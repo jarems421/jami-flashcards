@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useAddNote } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,16 +9,40 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Card, CardContent } from "@/components/ui/card";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Image, Type, Save } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+
+interface Deck {
+  id: string;
+  name: string;
+}
 
 export default function Editor() {
   const { mutate: addNote, isPending } = useAddNote();
   const { toast } = useToast();
   
+  // Fetch decks for dropdown
+  const { data: decks } = useQuery<Deck[]>({
+    queryKey: ["/api/decks"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/decks");
+      return res.json();
+    }
+  });
+
   const [type, setType] = useState('basic');
+  const [deckId, setDeckId] = useState<string>("");
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [tags, setTags] = useState('');
+
+  // Set default deck when data loads
+  useEffect(() => {
+    if (decks && decks.length > 0 && !deckId) {
+      setDeckId(decks[0].id);
+    }
+  }, [decks, deckId]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -32,9 +56,19 @@ export default function Editor() {
       return;
     }
 
+    if (!deckId) {
+      toast({
+        title: "Missing Deck",
+        description: "Please select a deck for this note.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     addNote({
+      deckId: deckId,
       type: type,
-      content: { Front: front, Back: back }, // Note the case sensitivity matches seed
+      content: { Front: front, Back: back },
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
     }, {
       onSuccess: () => {
@@ -72,18 +106,34 @@ export default function Editor() {
           <Card>
             <CardContent className="p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid gap-2">
-                  <Label>Note Type</Label>
-                  <Select value={type} onValueChange={setType}>
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="basic">Basic Card</SelectItem>
-                      <SelectItem value="cloze">Cloze Deletion (Coming Soon)</SelectItem>
-                      <SelectItem value="image-occlusion">Image Occlusion (Coming Soon)</SelectItem>
-                    </SelectContent>
-                  </Select>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="grid gap-2">
+                    <Label>Deck</Label>
+                    <Select value={deckId} onValueChange={setDeckId}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select deck" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {decks?.map(deck => (
+                          <SelectItem key={deck.id} value={deck.id}>{deck.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  
+                  <div className="grid gap-2">
+                    <Label>Note Type</Label>
+                    <Select value={type} onValueChange={setType}>
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="basic">Basic Card</SelectItem>
+                        <SelectItem value="cloze">Cloze Deletion (Coming Soon)</SelectItem>
+                        <SelectItem value="image-occlusion">Image Occlusion (Coming Soon)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
 
                 <div className="grid gap-2">

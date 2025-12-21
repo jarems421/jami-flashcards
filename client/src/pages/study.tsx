@@ -100,9 +100,14 @@ export default function Study() {
         <p className="text-muted-foreground mb-8">
           You've reviewed all your cards for today. Great job keeping up with your studies.
         </p>
-        <Link href="/">
-          <Button>Back to Dashboard</Button>
-        </Link>
+        <div className="flex gap-4">
+            <Button variant="outline" onClick={() => {
+                refetch();
+            }}>Refresh Queue</Button>
+            <Link href="/">
+              <Button>Back to Dashboard</Button>
+            </Link>
+        </div>
       </div>
     );
   }
@@ -121,7 +126,7 @@ export default function Study() {
           <Button variant="outline" onClick={() => {
             setCurrentIndex(0);
             refetch();
-          }}>Review More</Button>
+          }}>Review Again (Check Queue)</Button>
           <Link href="/">
             <Button>Back to Dashboard</Button>
           </Link>
