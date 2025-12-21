@@ -22,6 +22,8 @@ model Deck {
   subDecks   Deck[] @relation("DeckToDeck")
   cards      Card[]
   notes      Note[]
+  studyGoals StudyGoal[]
+  reminders  Reminder[]
 }
 
 model Note {
@@ -104,4 +106,65 @@ enum ReviewRating {
   HARD
   GOOD
   EASY
+}
+
+enum GoalCadence {
+  DAILY
+  WEEKLY
+}
+
+enum GoalStatus {
+  ACTIVE
+  COMPLETED
+  PAUSED
+}
+
+model StudyGoal {
+  id            String      @id @default(uuid()) @db.Uuid
+  deckId        String?     @db.Uuid
+  cadence       GoalCadence @default(DAILY)
+  targetCount   Int         @default(20)
+  deadline      DateTime?
+  status        GoalStatus  @default(ACTIVE)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  deck          Deck?       @relation(fields: [deckId], references: [id])
+  progress      GoalProgress[]
+}
+
+model GoalProgress {
+  id            String      @id @default(uuid()) @db.Uuid
+  goalId        String      @db.Uuid
+  dateBucket    DateTime    @db.Date
+  completedCount Int        @default(0)
+  createdAt     DateTime    @default(now())
+
+  goal          StudyGoal   @relation(fields: [goalId], references: [id], onDelete: Cascade)
+
+  @@unique([goalId, dateBucket])
+}
+
+model Reminder {
+  id            String      @id @default(uuid()) @db.Uuid
+  deckId        String?     @db.Uuid
+  goalId        String?     @db.Uuid
+  message       String?
+  sendAt        DateTime
+  isRecurring   Boolean     @default(false)
+  recurrencePattern String?
+  isSent        Boolean     @default(false)
+  createdAt     DateTime    @default(now())
+
+  deck          Deck?       @relation(fields: [deckId], references: [id])
+}
+
+model UserPreference {
+  id                  String   @id @default(uuid()) @db.Uuid
+  timezone            String   @default("UTC")
+  dailyReminderTime   String?
+  emailReminders      Boolean  @default(true)
+  inAppReminders      Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
