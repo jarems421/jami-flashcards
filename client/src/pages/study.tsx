@@ -73,7 +73,8 @@ export default function Study() {
       await apiRequest("POST", `/api/cards/${id}/grade`, { rating });
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/queue/today"] });
+      // Don't invalidate queue to keep the current session cards in memory
+      // queryClient.invalidateQueries({ queryKey: ["/api/queue/today"] }); 
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       // Move to next card locally
       setCurrentIndex(prev => prev + 1);
@@ -176,9 +177,17 @@ export default function Study() {
         </p>
         <div className="flex gap-4">
             <Button variant="outline" onClick={() => {
-                setCurrentIndex(0);
-                refetch();
-                setElapsed(0);
+                if (isFinished) {
+                  // If finished, just restart the local session without refetching
+                  // This allows the user to "Review Again" the same set of cards
+                  setCurrentIndex(0);
+                  setElapsed(0);
+                } else {
+                  // If not finished, try to fetch fresh cards
+                  setCurrentIndex(0);
+                  refetch();
+                  setElapsed(0);
+                }
             }}>{isFinished ? 'Review Again' : 'Refresh Queue'}</Button>
             <Link href="/">
               <Button>Back to Dashboard</Button>
