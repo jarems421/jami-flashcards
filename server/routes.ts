@@ -4,6 +4,7 @@ import { db } from "./db";
 import { parseCloze } from "../shared/cloze";
 import { z } from "zod";
 import { scheduleCard, DEFAULT_SETTINGS, CardSchedule, Rating, CardState } from "../shared/scheduler";
+import { startOfDay, endOfDay } from "date-fns";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -12,6 +13,144 @@ export async function registerRoutes(
   
   app.get("/health", (req, res) => {
     res.json({ ok: true });
+  });
+
+  // --- Queue Logic ---
+  
+  app.get("/api/queue/today", async (req, res) => {
+    try {
+      const { deckId } = req.query;
+      const now = new Date();
+      const todayStart = startOfDay(now);
+
+      // 1. Fetch Limits (Mock implementation of deck settings)
+      // In real app, we'd fetch deck settings. For now use defaults.
+      // If deckId is present, we filter by it. If not, we count all.
+      // "Today queue selection for a deck (and for “All decks”)"
+      
+      const maxReviewsPerDay = 200;
+      const maxNewPerDay = 20;
+
+      // 2. Count done today
+      // Filter logic: if deckId provided, filter by deckId. 
+      // NOTE: ReviewLog doesn't store deckId directly, need join.
+      const logFilter = {
+        reviewedAt: { gte: todayStart },
+        card: deckId ? { deckId: deckId as string } : undefined
+      };
+
+      const newDone = await db.reviewLog.count({
+        where: {
+          ...logFilter,
+          previousState: 'NEW'
+        }
+      });
+
+      const reviewDone = await db.reviewLog.count({
+        where: {
+          ...logFilter,
+          previousState: 'REVIEW'
+        }
+      });
+
+      const newLimit = Math.max(0, maxNewPerDay - newDone);
+      const reviewLimit = Math.max(0, maxReviewsPerDay - reviewDone);
+
+      // 3. Query Candidates
+      const whereDeck = deckId ? { deckId: deckId as string } : undefined;
+
+      // Group 1: Learning/Relearning (Priority 1, Ignore Limits)
+      const learningCards = await db.card.findMany({
+        where: {
+          ...whereDeck,
+          state: { in: ['LEARNING', 'RELEARNING'] },
+          dueAt: { lte: now }
+        },
+        orderBy: { dueAt: 'asc' },
+        include: { note: true, template: true }
+      });
+
+      // Group 2: Review (Priority 2, Respect Limits)
+      const reviewCards = await db.card.findMany({
+        where: {
+          ...whereDeck,
+          state: 'REVIEW',
+          dueAt: { lte: now }
+        },
+        orderBy: { dueAt: 'asc' },
+        take: reviewLimit,
+        include: { note: true, template: true }
+      });
+
+      // Group 3: New (Priority 3, Respect Limits)
+      const newCards = await db.card.findMany({
+        where: {
+          ...whereDeck,
+          state: 'NEW'
+        },
+        orderBy: { createdAt: 'asc' }, // Stable order
+        take: newLimit,
+        include: { note: true, template: true }
+      });
+
+      // Combine
+      const queue = [...learningCards, ...reviewCards, ...newCards];
+
+      // 4. Counts (Total available, ignoring limits for "due" counts usually, but limits for "available")
+      // User asked for: dueLearningCount, dueReviewCount, newAvailableCount, totalDueNow
+      
+      const dueLearningCount = await db.card.count({
+        where: {
+           ...whereDeck,
+           state: { in: ['LEARNING', 'RELEARNING'] },
+           dueAt: { lte: now }
+        }
+      });
+
+      const dueReviewTotal = await db.card.count({
+        where: {
+           ...whereDeck,
+           state: 'REVIEW',
+           dueAt: { lte: now }
+        }
+      });
+      // "dueReviewCount" in context of queue usually means what is available to study respecting limits?
+      // Or raw due? "totalDueNow" implies raw.
+      // Let's return raw counts and capped counts?
+      // "dueReviewCount" usually raw due.
+      // "newAvailableCount" usually cap respecting.
+      
+      const newTotal = await db.card.count({
+         where: { ...whereDeck, state: 'NEW' }
+      });
+      
+      const newAvailableCount = Math.min(newTotal, newLimit);
+      const dueReviewCount = Math.min(dueReviewTotal, reviewLimit); // Capped by daily limit
+
+      // Total due now (sum of what is theoretically studyable right now)
+      // Usually = learning + min(review, limit) + min(new, limit)
+      const totalDueNow = dueLearningCount + dueReviewCount + newAvailableCount;
+
+      res.json({
+        queue,
+        counts: {
+          dueLearning: dueLearningCount,
+          dueReview: dueReviewCount, // Capped
+          newAvailable: newAvailableCount, // Capped
+          totalDueNow
+        },
+        limits: {
+          maxReviews: maxReviewsPerDay,
+          reviewsDone: reviewDone,
+          maxNew: maxNewPerDay,
+          newDone: newDone
+        }
+      });
+
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to fetch queue" });
+    }
   });
 
   // --- Decks & Stats ---
