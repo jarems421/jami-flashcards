@@ -325,6 +325,19 @@ export async function registerRoutes(
        }
     }
 
+    // 4. Daily History for Charts (Last 30 days)
+    const history = [];
+    for (let i = 6; i >= 0; i--) {
+        const d = new Date();
+        d.setDate(d.getDate() - i);
+        const dateStr = d.toISOString().split('T')[0];
+        const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+        
+        // Count reviews on this date
+        const count = logs.filter(l => l.reviewedAt.toISOString().split('T')[0] === dateStr).length;
+        history.push({ date: dayName, reviews: count, fullDate: dateStr });
+    }
+
     res.json({
       totalCards,
       newCards,
@@ -333,7 +346,8 @@ export async function registerRoutes(
       dueCards,
       retentionRate,
       streak,
-      timeSpent
+      timeSpent,
+      dailyHistory: history
     });
   });
 

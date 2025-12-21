@@ -22,15 +22,15 @@ export default function Stats() {
     return <div className="p-8"><Skeleton className="h-[400px] w-full rounded-xl" /></div>;
   }
 
-  // Mock data for charts since backend doesn't support history yet
-  const reviewsData = [
-    { date: 'Mon', reviews: 12 },
-    { date: 'Tue', reviews: 19 },
-    { date: 'Wed', reviews: 15 },
-    { date: 'Thu', reviews: 25 },
-    { date: 'Fri', reviews: 32 },
-    { date: 'Sat', reviews: 45 },
-    { date: 'Sun', reviews: 38 },
+  // Use real history from backend or fallback to empty
+  const reviewsData = stats?.dailyHistory || [
+    { date: 'Mon', reviews: 0 },
+    { date: 'Tue', reviews: 0 },
+    { date: 'Wed', reviews: 0 },
+    { date: 'Thu', reviews: 0 },
+    { date: 'Fri', reviews: 0 },
+    { date: 'Sat', reviews: 0 },
+    { date: 'Sun', reviews: 0 },
   ];
 
   const stateData = [
@@ -86,7 +86,7 @@ export default function Stats() {
         <Card className="col-span-1">
           <CardHeader>
             <CardTitle>Reviews per Day</CardTitle>
-            <CardDescription>Activity over the last 7 days (Mock Data)</CardDescription>
+            <CardDescription>Activity over the last 7 days</CardDescription>
           </CardHeader>
           <CardContent className="h-[300px]">
             <ResponsiveContainer width="100%" height="100%">
