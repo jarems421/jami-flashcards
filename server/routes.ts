@@ -88,7 +88,7 @@ export async function registerRoutes(
           ...whereDeck,
           state: 'NEW'
         },
-        orderBy: { createdAt: 'asc' }, // Stable order
+        orderBy: { note: { createdAt: 'asc' } }, // Stable order
         take: newLimit,
         include: { note: true, template: true }
       });
@@ -376,8 +376,10 @@ export async function registerRoutes(
 
   app.post("/api/notes", async (req, res) => {
     try {
-      const { deckId, noteTypeId, fields, tags } = req.body; // Expects explicit IDs now per spec
+      const { deckId, noteTypeId, fields, content, tags } = req.body; // Expects explicit IDs now per spec
       
+      const noteFields = fields || content; // Backwards compatibility
+
       // Fallback for prototype "quick add" if deckId/noteTypeId missing
       let targetDeckId = deckId;
       let targetNoteTypeId = noteTypeId;
@@ -400,7 +402,7 @@ export async function registerRoutes(
         data: {
           deckId: targetDeckId,
           noteTypeId: targetNoteTypeId,
-          fields: fields, // { Front, Back } or { Text }
+          fields: noteFields, // { Front, Back } or { Text }
           tags: tags || []
         }
       });
@@ -424,7 +426,7 @@ export async function registerRoutes(
       for (const tmpl of templates) {
         if (tmpl.id === 'cloze') { // Special ID for cloze template?
            // Parse Text field
-           const text = fields['Text'] || fields['Front'] || "";
+           const text = noteFields['Text'] || noteFields['Front'] || "";
            const { indices } = parseCloze(text);
            for (const index of indices) {
              cardsToCreate.push({
