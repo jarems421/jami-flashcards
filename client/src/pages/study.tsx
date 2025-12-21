@@ -1,10 +1,10 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, X, ArrowLeft, RefreshCw, Clock } from "lucide-react";
+import { Check, X, ArrowLeft, RefreshCw, Clock, Undo2 } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -27,12 +27,39 @@ interface QueueResponse {
   };
 }
 
+interface Deck {
+  id: string;
+  name: string;
+}
+
 export default function Study() {
   const [location, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const deckId = searchParams.get("deckId");
   const queryClient = useQueryClient();
   const { toast } = useToast();
+
+  const [elapsed, setElapsed] = useState(0);
+  const [currentIndex, setCurrentIndex] = useState(0);
+  const [isFlipped, setIsFlipped] = useState(false);
+  const [canUndo, setCanUndo] = useState(false);
+
+  // Timer
+  useEffect(() => {
+    const timer = setInterval(() => setElapsed(e => e + 1), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = seconds % 60;
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  const { data: decks } = useQuery<Deck[]>({
+    queryKey: ["/api/decks"],
+  });
+  const currentDeck = decks?.find(d => d.id === deckId);
 
   const { data, isLoading, refetch } = useQuery<QueueResponse>({
     queryKey: ["/api/queue/today", deckId],
@@ -51,24 +78,77 @@ export default function Study() {
       queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       // Move to next card locally
       setCurrentIndex(prev => prev + 1);
+      setCanUndo(true);
     },
     onError: () => {
       toast({ title: "Failed to submit answer", variant: "destructive" });
     }
   });
-  
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
 
-  // Reset index when deck changes or queue reloads
+  const undoMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/study/undo");
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/queue/today"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      setCurrentIndex(prev => Math.max(0, prev - 1));
+      setCanUndo(false);
+      toast({ title: "Undone last review" });
+    },
+    onError: () => {
+      toast({ 
+        title: "Undo failed", 
+        description: "Undo functionality requires backend implementation.",
+        variant: "destructive" 
+      });
+    }
+  });
+
+  const handleAnswer = useCallback((rating: 'AGAIN' | 'HARD' | 'GOOD' | 'EASY') => {
+    const queue = data?.queue || [];
+    const currentCard = queue[currentIndex];
+    if (!currentCard) return;
+    
+    answerMutation.mutate({ id: currentCard.id, rating });
+    setIsFlipped(false);
+  }, [data, currentIndex, answerMutation]);
+
+  const handleUndo = useCallback(() => {
+    if (!canUndo) return;
+    undoMutation.mutate();
+  }, [canUndo, undoMutation]);
+
+  // Keyboard shortcuts
   useEffect(() => {
-    // Only reset if we are out of bounds or data changed significantly?
-    // Actually, simple queue logic: render current index.
-    // If we re-fetch, we might want to stay consistent or just start over.
-    // Let's stick to local index for this batch.
-  }, [data]);
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        if (!isFlipped) {
+          setIsFlipped(true);
+          e.preventDefault();
+        }
+      }
+      
+      // Ctrl+Z for Undo
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z') {
+         e.preventDefault();
+         handleUndo();
+         return;
+      }
 
-  
+      if (!isFlipped) return;
+
+      switch(e.key) {
+        case '1': handleAnswer('AGAIN'); break;
+        case '2': handleAnswer('HARD'); break;
+        case '3': handleAnswer('GOOD'); break;
+        case '4': handleAnswer('EASY'); break;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isFlipped, handleAnswer, handleUndo]);
+
   if (isLoading) {
     return <div className="p-8 flex items-center justify-center h-full"><Skeleton className="h-[400px] w-full max-w-xl rounded-xl" /></div>;
   }
@@ -77,35 +157,30 @@ export default function Study() {
   const currentCard = queue[currentIndex];
   const counts = data?.counts;
 
-  // Render template simple replacement
-  // For basic template: 
+  // Template rendering
   const frontContent = currentCard?.note?.fields?.Front || currentCard?.note?.fields?.Text || "No content";
   const backContent = currentCard?.note?.fields?.Back || "No answer";
 
-
-  const handleAnswer = (rating: 'AGAIN' | 'HARD' | 'GOOD' | 'EASY') => {
-    if (!currentCard) return;
+  if (!queue || queue.length === 0 || currentIndex >= queue.length) {
+    const isFinished = currentIndex >= queue.length && queue.length > 0;
     
-    answerMutation.mutate({ id: currentCard.id, rating });
-    setIsFlipped(false);
-  };
-
-  if (!queue || queue.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
-        <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
-          <Check className="h-8 w-8" />
+        <div className={`w-16 h-16 ${isFinished ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'} rounded-full flex items-center justify-center mb-6`}>
+          {isFinished ? <RefreshCw className="h-8 w-8" /> : <Check className="h-8 w-8" />}
         </div>
-        <h2 className="text-2xl font-bold mb-2">All Done!</h2>
+        <h2 className="text-2xl font-bold mb-2">{isFinished ? 'Session Complete' : 'All Done!'}</h2>
         <p className="text-muted-foreground mb-8">
-          You've reviewed all your cards for today. Great job keeping up with your studies.
+          {isFinished 
+            ? `You finished this batch of ${queue.length} cards in ${formatTime(elapsed)}.`
+            : "You've reviewed all your cards for today. Great job!"}
         </p>
         <div className="flex gap-4">
             <Button variant="outline" onClick={() => {
                 setCurrentIndex(0);
                 refetch();
-                toast({ title: "Checking for new cards..." });
-            }}>Refresh Queue</Button>
+                setElapsed(0);
+            }}>{isFinished ? 'Review Again' : 'Refresh Queue'}</Button>
             <Link href="/">
               <Button>Back to Dashboard</Button>
             </Link>
@@ -114,62 +189,46 @@ export default function Study() {
     );
   }
 
-  if (currentIndex >= queue.length) {
-    return (
-      <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
-        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center mb-6">
-          <RefreshCw className="h-8 w-8" />
-        </div>
-        <h2 className="text-2xl font-bold mb-2">Session Complete</h2>
-        <p className="text-muted-foreground mb-8">
-          You finished this batch of {queue.length} cards.
-        </p>
-        <div className="flex gap-4">
-          <Button variant="outline" onClick={() => {
-            setCurrentIndex(0);
-            refetch();
-          }}>Review Again (Check Queue)</Button>
-          <Link href="/">
-            <Button>Back to Dashboard</Button>
-          </Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (!currentCard) return null; // Should be handled by loading or empty check
-
   return (
-    <div className="h-full flex flex-col max-w-3xl mx-auto p-6">
-      <div className="flex items-center justify-between mb-8">
-        <Link href="/">
-          <Button variant="ghost" size="sm" className="gap-2">
-            <ArrowLeft className="h-4 w-4" />
-            Quit
-          </Button>
-        </Link>
-        
-        {/* Progress Stats */}
-        <div className="flex gap-4 text-sm font-medium">
-          <div className="flex items-center gap-1.5 text-blue-600">
-             <span className="w-2 h-2 rounded-full bg-blue-600" />
-             {counts?.newAvailable ?? 0} New
-          </div>
-          <div className="flex items-center gap-1.5 text-red-600">
-             <span className="w-2 h-2 rounded-full bg-red-600" />
-             {counts?.dueLearning ?? 0} Learn
-          </div>
-          <div className="flex items-center gap-1.5 text-green-600">
-             <span className="w-2 h-2 rounded-full bg-green-600" />
-             {counts?.dueReview ?? 0} Review
+    <div className="h-full flex flex-col max-w-3xl mx-auto p-4 md:p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6 bg-card/50 p-4 rounded-xl border backdrop-blur-sm">
+        <div className="flex items-center gap-4">
+          <Link href="/">
+            <Button variant="ghost" size="icon" className="h-8 w-8">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h2 className="font-semibold text-sm">{currentDeck?.name || "Study Session"}</h2>
+            <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
+               <span className="text-blue-600 font-medium">{counts?.newAvailable ?? 0} New</span>
+               <span className="text-red-600 font-medium">{counts?.dueLearning ?? 0} Learn</span>
+               <span className="text-green-600 font-medium">{counts?.dueReview ?? 0} Review</span>
+            </div>
           </div>
         </div>
-
-        <div className="text-sm font-medium text-muted-foreground">
-          <span className="text-foreground">{currentIndex + 1}</span> / {queue.length}
+        
+        <div className="flex items-center gap-4">
+           <div className="flex items-center gap-1.5 text-sm font-variant-numeric tabular-nums text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
+             <Clock className="h-3.5 w-3.5" />
+             {formatTime(elapsed)}
+           </div>
+           
+           <Button 
+             variant="ghost" 
+             size="icon" 
+             className="h-8 w-8 text-muted-foreground hover:text-foreground"
+             disabled={!canUndo || undoMutation.isPending}
+             onClick={handleUndo}
+             title="Undo (Ctrl+Z)"
+           >
+             <Undo2 className="h-4 w-4" />
+           </Button>
         </div>
       </div>
 
+      {/* Card Area */}
       <div className="flex-1 flex flex-col justify-center perspective-1000 relative min-h-[400px]">
         <AnimatePresence mode="wait">
           <motion.div
@@ -192,25 +251,24 @@ export default function Study() {
               >
                 {/* Front */}
                 <div className="absolute inset-0 backface-hidden p-8 md:p-12 flex flex-col items-center justify-center text-center bg-card rounded-2xl">
-                  <span className="absolute top-6 left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase">
-                    Front
+                  <span className="absolute top-6 left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase opacity-50">
+                    Question
                   </span>
                   <div className="font-serif text-2xl md:text-3xl leading-relaxed">
                     {frontContent}
                   </div>
-                  <div className="absolute bottom-6 text-xs text-muted-foreground flex items-center gap-2">
-                    Click to flip
+                  <div className="absolute bottom-6 text-xs text-muted-foreground flex items-center gap-2 opacity-50">
+                    Press Space to show answer
                   </div>
                 </div>
 
                 {/* Back */}
                 <div className="absolute inset-0 backface-hidden rotate-y-180 p-8 md:p-12 flex flex-col items-center justify-center text-center bg-card rounded-2xl">
-                  <span className="absolute top-6 left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase">
-                    Back
+                  <span className="absolute top-6 left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase opacity-50">
+                    Answer
                   </span>
                   
-                  {/* Small hint of front */}
-                  <div className="text-muted-foreground/50 text-sm mb-8 line-clamp-1 max-w-[80%]">
+                  <div className="text-muted-foreground/30 text-sm mb-8 line-clamp-1 max-w-[80%] select-none">
                     {frontContent}
                   </div>
 
@@ -229,63 +287,63 @@ export default function Study() {
         {!isFlipped ? (
           <Button 
             size="lg" 
-            className="w-full max-w-xs text-lg h-14" 
+            className="w-full max-w-sm text-lg h-14 shadow-lg shadow-primary/20" 
             onClick={() => setIsFlipped(true)}
           >
-            Show Answer
+            Show Answer <span className="ml-2 text-xs opacity-50 font-normal">(Space)</span>
           </Button>
         ) : (
           <div className="grid grid-cols-4 gap-3 w-full max-w-2xl">
             <div className="flex flex-col gap-1">
               <Button 
                 variant="outline" 
-                className="h-14 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950"
+                className="h-14 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950 transition-colors"
                 onClick={() => handleAnswer('AGAIN')}
                 disabled={answerMutation.isPending}
               >
                 Again
               </Button>
-              <span className="text-xs text-center text-muted-foreground font-medium">&lt; 1m</span>
+              <span className="text-[10px] uppercase tracking-wider text-center text-muted-foreground font-medium">1. &lt; 1m</span>
             </div>
             
             <div className="flex flex-col gap-1">
               <Button 
                 variant="outline" 
-                className="h-14 border-orange-200 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:border-orange-900/50 dark:hover:bg-orange-950"
+                className="h-14 border-orange-200 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:border-orange-900/50 dark:hover:bg-orange-950 transition-colors"
                 onClick={() => handleAnswer('HARD')}
                 disabled={answerMutation.isPending}
               >
                 Hard
               </Button>
-              <span className="text-xs text-center text-muted-foreground font-medium">
-                {currentCard.state === 'NEW' || currentCard.state === 'LEARNING' ? 'Now' : '2d'}
+              <span className="text-[10px] uppercase tracking-wider text-center text-muted-foreground font-medium">
+                2. {currentCard.state === 'NEW' || currentCard.state === 'LEARNING' ? 'Now' : '2d'}
               </span>
             </div>
 
             <div className="flex flex-col gap-1">
               <Button 
                 variant="outline" 
-                className="h-14 border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:border-blue-900/50 dark:hover:bg-blue-950"
+                className="h-14 border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:border-blue-900/50 dark:hover:bg-blue-950 transition-colors"
                 onClick={() => handleAnswer('GOOD')}
                 disabled={answerMutation.isPending}
               >
                 Good
               </Button>
-              <span className="text-xs text-center text-muted-foreground font-medium">
-                {currentCard.state === 'NEW' ? '10m' : '4d'}
+              <span className="text-[10px] uppercase tracking-wider text-center text-muted-foreground font-medium">
+                3. {currentCard.state === 'NEW' ? '10m' : '4d'}
               </span>
             </div>
 
             <div className="flex flex-col gap-1">
               <Button 
                 variant="outline" 
-                className="h-14 border-green-200 hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950"
+                className="h-14 border-green-200 hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950 transition-colors"
                 onClick={() => handleAnswer('EASY')}
                 disabled={answerMutation.isPending}
               >
                 Easy
               </Button>
-              <span className="text-xs text-center text-muted-foreground font-medium">4d</span>
+              <span className="text-[10px] uppercase tracking-wider text-center text-muted-foreground font-medium">4. 4d</span>
             </div>
           </div>
         )}
