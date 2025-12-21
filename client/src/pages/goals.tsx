@@ -156,12 +156,12 @@ export default function Goals() {
             <div className="space-y-4 mt-4">
               <div className="space-y-2">
                 <Label>Deck (optional)</Label>
-                <Select value={newGoal.deckId} onValueChange={(v) => setNewGoal(g => ({ ...g, deckId: v }))}>
+                <Select value={newGoal.deckId || "all"} onValueChange={(v) => setNewGoal(g => ({ ...g, deckId: v === "all" ? "" : v }))}>
                   <SelectTrigger data-testid="select-deck">
                     <SelectValue placeholder="All decks" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">All decks</SelectItem>
+                    <SelectItem value="all">All decks</SelectItem>
                     {decks?.map(d => (
                       <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                     ))}
