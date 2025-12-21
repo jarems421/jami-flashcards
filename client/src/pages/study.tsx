@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw } from "lucide-react";
+import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw, Shuffle, Calendar } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface CardData {
   id: string;
@@ -20,11 +22,15 @@ interface CardData {
 
 interface QueueResponse {
   queue: CardData[];
+  mode: 'scheduled' | 'free';
   counts: {
-    dueLearning: number;
-    dueReview: number;
-    newAvailable: number;
-    totalDueNow: number;
+    dueLearning?: number;
+    dueReview?: number;
+    newAvailable?: number;
+    totalDueNow?: number;
+    totalCards?: number;
+    studiedToday?: number;
+    queueSize?: number;
   };
 }
 
@@ -37,6 +43,7 @@ export default function Study() {
   const [location, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
   const deckId = searchParams.get("deckId");
+  const modeParam = searchParams.get("mode");
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -44,6 +51,7 @@ export default function Study() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
+  const [studyMode, setStudyMode] = useState<'scheduled' | 'free'>(modeParam === 'free' ? 'free' : 'scheduled');
 
   // Local Session State
   const [activeQueue, setActiveQueue] = useState<CardData[]>([]);
@@ -69,14 +77,33 @@ export default function Study() {
   const currentDeck = decks?.find(d => d.id === deckId);
 
   const { data, isLoading, refetch } = useQuery<QueueResponse>({
-    queryKey: ["/api/queue/today", deckId],
+    queryKey: ["/api/queue/today", deckId, studyMode],
     queryFn: async () => {
-      const res = await apiRequest("GET", `/api/queue/today${deckId ? `?deckId=${deckId}` : ""}`);
+      const params = new URLSearchParams();
+      if (deckId) params.set("deckId", deckId);
+      if (studyMode === 'free') params.set("mode", "free");
+      const res = await apiRequest("GET", `/api/queue/today?${params.toString()}`);
       return res.json();
     },
-    staleTime: Infinity, // Keep data fresh until manual invalidation to prevent session clears
+    staleTime: Infinity,
     refetchOnWindowFocus: false 
   });
+
+  const handleModeChange = useCallback(async (checked: boolean) => {
+    const newMode = checked ? 'free' : 'scheduled';
+    setStudyMode(newMode);
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setWrongCards([]);
+    setRightCards([]);
+    setSessionComplete(false);
+    setElapsed(0);
+  }, []);
+
+  // Refetch when study mode changes
+  useEffect(() => {
+    refetch();
+  }, [studyMode, refetch]);
 
   // Initialize active queue when data loads
   useEffect(() => {
@@ -302,21 +329,40 @@ export default function Study() {
       <div className="flex items-center justify-between mb-6 bg-card/50 p-4 rounded-xl border backdrop-blur-sm">
         <div className="flex items-center gap-4">
           <Link href="/">
-            <Button variant="ghost" size="icon" className="h-8 w-8">
+            <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-back">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
           <div>
             <h2 className="font-semibold text-sm">{currentDeck?.name || "Study Session"}</h2>
             <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
-               <span className="text-blue-600 font-medium">{counts?.newAvailable ?? 0} New</span>
-               <span className="text-red-600 font-medium">{counts?.dueLearning ?? 0} Learn</span>
-               <span className="text-green-600 font-medium">{counts?.dueReview ?? 0} Review</span>
+              {studyMode === 'scheduled' ? (
+                <>
+                  <span className="text-blue-600 font-medium">{counts?.newAvailable ?? 0} New</span>
+                  <span className="text-red-600 font-medium">{counts?.dueLearning ?? 0} Learn</span>
+                  <span className="text-green-600 font-medium">{counts?.dueReview ?? 0} Review</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-purple-600 font-medium">{counts?.queueSize ?? 0} Cards</span>
+                  <span className="text-muted-foreground">{counts?.studiedToday ?? 0} studied today</span>
+                </>
+              )}
             </div>
           </div>
         </div>
         
         <div className="flex items-center gap-4">
+           <div className="flex items-center gap-2 bg-muted/50 px-3 py-1.5 rounded-lg" data-testid="toggle-study-mode">
+             <Calendar className={`h-3.5 w-3.5 ${studyMode === 'scheduled' ? 'text-primary' : 'text-muted-foreground'}`} />
+             <Switch 
+               checked={studyMode === 'free'} 
+               onCheckedChange={handleModeChange}
+               className="data-[state=checked]:bg-purple-600"
+             />
+             <Shuffle className={`h-3.5 w-3.5 ${studyMode === 'free' ? 'text-purple-600' : 'text-muted-foreground'}`} />
+           </div>
+           
            <div className="flex items-center gap-1.5 text-sm font-variant-numeric tabular-nums text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
              <Clock className="h-3.5 w-3.5" />
              {formatTime(elapsed)}
@@ -329,6 +375,7 @@ export default function Study() {
              disabled={!canUndo || undoMutation.isPending}
              onClick={handleUndo}
              title="Undo (Ctrl+Z)"
+             data-testid="button-undo"
            >
              <RotateCcw className="h-4 w-4" />
            </Button>

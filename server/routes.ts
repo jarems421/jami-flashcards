@@ -19,9 +19,45 @@ export async function registerRoutes(
   
   app.get("/api/queue/today", async (req, res) => {
     try {
-      const { deckId } = req.query;
+      const { deckId, mode, limit: queryLimit } = req.query;
       const now = new Date();
       const todayStart = startOfDay(now);
+      const isFreeMode = mode === 'free';
+      const freeLimit = queryLimit ? parseInt(queryLimit as string, 10) : 50;
+
+      // Free mode: study any card regardless of due date
+      if (isFreeMode) {
+        const whereDeckFree = deckId ? { deckId: deckId as string } : {};
+        
+        const cards = await db.card.findMany({
+          where: whereDeckFree,
+          orderBy: [
+            { lastReviewedAt: 'asc' },
+            { dueAt: 'asc' }
+          ],
+          take: freeLimit,
+          include: { note: true, template: true }
+        });
+
+        const totalCards = await db.card.count({ where: whereDeckFree });
+        const studiedToday = await db.reviewLog.count({
+          where: {
+            reviewedAt: { gte: todayStart },
+            ...(deckId ? { card: { deckId: deckId as string } } : {})
+          }
+        });
+
+        res.json({
+          queue: cards,
+          mode: 'free',
+          counts: {
+            totalCards,
+            studiedToday,
+            queueSize: cards.length
+          }
+        });
+        return;
+      }
 
       // 1. Fetch Limits (Mock implementation of deck settings)
       // In real app, we'd fetch deck settings. For now use defaults.
@@ -133,6 +169,7 @@ export async function registerRoutes(
 
       res.json({
         queue,
+        mode: 'scheduled',
         counts: {
           dueLearning: dueLearningCount,
           dueReview: dueReviewCount, // Capped
@@ -736,6 +773,296 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Seeding error:", error);
       res.status(500).json({ error: "Failed to seed database" });
+    }
+  });
+
+  // --- Study Goals ---
+
+  app.get("/api/goals", async (req, res) => {
+    try {
+      const goals = await db.studyGoal.findMany({
+        include: { deck: true, progress: true },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json(goals);
+    } catch (error) {
+      console.error("Error fetching goals:", error);
+      res.status(500).json({ error: "Failed to fetch goals" });
+    }
+  });
+
+  app.get("/api/goals/active", async (req, res) => {
+    try {
+      const goals = await db.studyGoal.findMany({
+        where: { status: 'ACTIVE' },
+        include: { deck: true, progress: true },
+        orderBy: { createdAt: 'desc' }
+      });
+      res.json(goals);
+    } catch (error) {
+      console.error("Error fetching active goals:", error);
+      res.status(500).json({ error: "Failed to fetch active goals" });
+    }
+  });
+
+  app.post("/api/goals", async (req, res) => {
+    try {
+      const schema = z.object({
+        deckId: z.string().uuid().optional().nullable(),
+        cadence: z.enum(['DAILY', 'WEEKLY']).default('DAILY'),
+        targetCount: z.number().int().positive().default(20),
+        deadline: z.string().datetime().optional().nullable(),
+      });
+      const data = schema.parse(req.body);
+      
+      const goal = await db.studyGoal.create({
+        data: {
+          deckId: data.deckId || null,
+          cadence: data.cadence,
+          targetCount: data.targetCount,
+          deadline: data.deadline ? new Date(data.deadline) : null,
+        },
+        include: { deck: true }
+      });
+      res.status(201).json(goal);
+    } catch (error) {
+      console.error("Error creating goal:", error);
+      res.status(400).json({ error: "Failed to create goal" });
+    }
+  });
+
+  app.put("/api/goals/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const schema = z.object({
+        cadence: z.enum(['DAILY', 'WEEKLY']).optional(),
+        targetCount: z.number().int().positive().optional(),
+        deadline: z.string().datetime().optional().nullable(),
+        status: z.enum(['ACTIVE', 'COMPLETED', 'PAUSED']).optional(),
+      });
+      const data = schema.parse(req.body);
+      
+      const goal = await db.studyGoal.update({
+        where: { id },
+        data: {
+          ...data,
+          deadline: data.deadline !== undefined 
+            ? (data.deadline ? new Date(data.deadline) : null)
+            : undefined,
+        },
+        include: { deck: true, progress: true }
+      });
+      res.json(goal);
+    } catch (error) {
+      console.error("Error updating goal:", error);
+      res.status(400).json({ error: "Failed to update goal" });
+    }
+  });
+
+  app.delete("/api/goals/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.studyGoal.delete({ where: { id } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting goal:", error);
+      res.status(400).json({ error: "Failed to delete goal" });
+    }
+  });
+
+  // --- Goal Progress ---
+
+  app.get("/api/goals/:goalId/progress", async (req, res) => {
+    try {
+      const { goalId } = req.params;
+      const { startDate, endDate } = req.query;
+      
+      const where: any = { goalId };
+      if (startDate || endDate) {
+        where.dateBucket = {};
+        if (startDate) where.dateBucket.gte = new Date(startDate as string);
+        if (endDate) where.dateBucket.lte = new Date(endDate as string);
+      }
+      
+      const progress = await db.goalProgress.findMany({
+        where,
+        orderBy: { dateBucket: 'desc' }
+      });
+      res.json(progress);
+    } catch (error) {
+      console.error("Error fetching goal progress:", error);
+      res.status(500).json({ error: "Failed to fetch progress" });
+    }
+  });
+
+  app.get("/api/goals/progress/today", async (req, res) => {
+    try {
+      const today = startOfDay(new Date());
+      const progress = await db.goalProgress.findMany({
+        where: { dateBucket: today },
+        include: { goal: { include: { deck: true } } }
+      });
+      res.json(progress);
+    } catch (error) {
+      console.error("Error fetching today's progress:", error);
+      res.status(500).json({ error: "Failed to fetch today's progress" });
+    }
+  });
+
+  app.post("/api/goals/:goalId/progress", async (req, res) => {
+    try {
+      const { goalId } = req.params;
+      const schema = z.object({
+        date: z.string().optional(),
+        count: z.number().int().nonnegative().default(1),
+        increment: z.boolean().optional().default(false),
+      });
+      const data = schema.parse(req.body);
+      
+      const dateBucket = data.date ? startOfDay(new Date(data.date)) : startOfDay(new Date());
+      
+      if (data.increment) {
+        const progress = await db.goalProgress.upsert({
+          where: { goalId_dateBucket: { goalId, dateBucket } },
+          update: { completedCount: { increment: data.count } },
+          create: { goalId, dateBucket, completedCount: data.count }
+        });
+        res.json(progress);
+      } else {
+        const progress = await db.goalProgress.upsert({
+          where: { goalId_dateBucket: { goalId, dateBucket } },
+          update: { completedCount: data.count },
+          create: { goalId, dateBucket, completedCount: data.count }
+        });
+        res.json(progress);
+      }
+    } catch (error) {
+      console.error("Error updating goal progress:", error);
+      res.status(400).json({ error: "Failed to update progress" });
+    }
+  });
+
+  // --- Reminders ---
+
+  app.get("/api/reminders", async (req, res) => {
+    try {
+      const reminders = await db.reminder.findMany({
+        include: { deck: true },
+        orderBy: { sendAt: 'asc' }
+      });
+      res.json(reminders);
+    } catch (error) {
+      console.error("Error fetching reminders:", error);
+      res.status(500).json({ error: "Failed to fetch reminders" });
+    }
+  });
+
+  app.post("/api/reminders", async (req, res) => {
+    try {
+      const schema = z.object({
+        deckId: z.string().uuid().optional().nullable(),
+        goalId: z.string().uuid().optional().nullable(),
+        message: z.string().optional().nullable(),
+        sendAt: z.string().datetime(),
+        isRecurring: z.boolean().default(false),
+        recurrencePattern: z.string().optional().nullable(),
+      });
+      const data = schema.parse(req.body);
+      
+      const reminder = await db.reminder.create({
+        data: {
+          deckId: data.deckId || null,
+          goalId: data.goalId || null,
+          message: data.message || null,
+          sendAt: new Date(data.sendAt),
+          isRecurring: data.isRecurring,
+          recurrencePattern: data.recurrencePattern || null,
+        },
+        include: { deck: true }
+      });
+      res.status(201).json(reminder);
+    } catch (error) {
+      console.error("Error creating reminder:", error);
+      res.status(400).json({ error: "Failed to create reminder" });
+    }
+  });
+
+  app.put("/api/reminders/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const schema = z.object({
+        message: z.string().optional().nullable(),
+        sendAt: z.string().datetime().optional(),
+        isRecurring: z.boolean().optional(),
+        recurrencePattern: z.string().optional().nullable(),
+        isSent: z.boolean().optional(),
+      });
+      const data = schema.parse(req.body);
+      
+      const reminder = await db.reminder.update({
+        where: { id },
+        data: {
+          ...data,
+          sendAt: data.sendAt ? new Date(data.sendAt) : undefined,
+        },
+        include: { deck: true }
+      });
+      res.json(reminder);
+    } catch (error) {
+      console.error("Error updating reminder:", error);
+      res.status(400).json({ error: "Failed to update reminder" });
+    }
+  });
+
+  app.delete("/api/reminders/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      await db.reminder.delete({ where: { id } });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting reminder:", error);
+      res.status(400).json({ error: "Failed to delete reminder" });
+    }
+  });
+
+  // --- User Preferences ---
+
+  app.get("/api/preferences", async (req, res) => {
+    try {
+      let prefs = await db.userPreference.findFirst();
+      if (!prefs) {
+        prefs = await db.userPreference.create({ data: {} });
+      }
+      res.json(prefs);
+    } catch (error) {
+      console.error("Error fetching preferences:", error);
+      res.status(500).json({ error: "Failed to fetch preferences" });
+    }
+  });
+
+  app.put("/api/preferences", async (req, res) => {
+    try {
+      const schema = z.object({
+        timezone: z.string().optional(),
+        dailyReminderTime: z.string().optional().nullable(),
+        emailReminders: z.boolean().optional(),
+        inAppReminders: z.boolean().optional(),
+      });
+      const data = schema.parse(req.body);
+      
+      let prefs = await db.userPreference.findFirst();
+      if (!prefs) {
+        prefs = await db.userPreference.create({ data });
+      } else {
+        prefs = await db.userPreference.update({
+          where: { id: prefs.id },
+          data
+        });
+      }
+      res.json(prefs);
+    } catch (error) {
+      console.error("Error updating preferences:", error);
+      res.status(400).json({ error: "Failed to update preferences" });
     }
   });
 

@@ -1,5 +1,5 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { Brain, Plus, BarChart3, Settings, Library, Search } from "lucide-react";
+import { Brain, Plus, BarChart3, Settings, Library, Search, Target } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -14,6 +14,7 @@ import DeckDetails from "@/pages/deck-details";
 import Browser from "@/pages/browser";
 import Stats from "@/pages/stats";
 import SettingsPage from "@/pages/settings";
+import Goals from "@/pages/goals";
 import NotFound from "@/pages/not-found";
 
 import { ThemeProvider } from "@/components/theme-provider";
@@ -49,6 +50,7 @@ function Nav() {
         <NavItem href="/" icon={BarChart3} label="Dashboard" />
         <NavItem href="/decks" icon={Library} label="Decks" />
         <NavItem href="/study" icon={Brain} label="Study Now" />
+        <NavItem href="/goals" icon={Target} label="Goals" />
         <NavItem href="/browser" icon={Search} label="Browse Cards" />
         <NavItem href="/stats" icon={BarChart3} label="Stats" />
       </div>
@@ -79,6 +81,7 @@ function Router() {
       <Route path="/decks" component={Decks} />
       <Route path="/deck/:id" component={DeckDetails} />
       <Route path="/browser" component={Browser} />
+      <Route path="/goals" component={Goals} />
       <Route path="/stats" component={Stats} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
