@@ -271,7 +271,7 @@ export async function registerRoutes(
           note: true,
           template: true
         },
-        orderBy: { createdAt: 'desc' }, // Assuming createdAt exists or default sort
+        orderBy: { note: { createdAt: 'desc' } },
         take: 100 
       });
       res.json(cards);
