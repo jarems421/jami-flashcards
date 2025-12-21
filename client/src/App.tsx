@@ -1,5 +1,4 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { useStore } from "@/lib/store";
 import { Brain, Plus, BarChart3, Settings, Library } from "lucide-react";
 import { Button } from "@/components/ui/button";
 

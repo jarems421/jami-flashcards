@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useStore } from "@/lib/store";
+import { useAddNote } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,7 +12,7 @@ import { Image, Type, Save } from "lucide-react";
 import { Link } from "wouter";
 
 export default function Editor() {
-  const { addNote } = useStore();
+  const { mutate: addNote, isPending } = useAddNote();
   const { toast } = useToast();
   
   const [type, setType] = useState('basic');
@@ -33,18 +33,26 @@ export default function Editor() {
     }
 
     addNote({
-      type: type as any,
-      content: { front, back },
+      type: type,
+      content: { Front: front, Back: back }, // Note the case sensitivity matches seed
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
-    }, []);
-
-    toast({
-      title: "Note created",
-      description: "Your new flashcard has been added to the deck.",
+    }, {
+      onSuccess: () => {
+        toast({
+          title: "Note created",
+          description: "Your new flashcard has been added to the deck.",
+        });
+        setFront('');
+        setBack('');
+      },
+      onError: () => {
+        toast({
+          title: "Error",
+          description: "Failed to save note.",
+          variant: "destructive"
+        });
+      }
     });
-
-    setFront('');
-    setBack('');
   };
 
   return (
@@ -119,9 +127,9 @@ export default function Editor() {
                 </div>
 
                 <div className="pt-4 flex justify-end">
-                  <Button type="submit" size="lg" className="gap-2">
+                  <Button type="submit" size="lg" className="gap-2" disabled={isPending}>
                     <Save className="h-4 w-4" />
-                    Add Note
+                    {isPending ? 'Saving...' : 'Add Note'}
                   </Button>
                 </div>
               </form>

@@ -1,34 +1,28 @@
-import { useStore } from "@/lib/store";
+import { useStats, useDueCards } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Play, TrendingUp, Clock, CalendarDays, Activity } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import studyIllustration from "@assets/generated_images/minimalist_abstract_study_shapes_in_calm_blue_and_slate.png";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Dashboard() {
-  const { cards, logs, getDueCards } = useStore();
-  const dueCards = getDueCards();
+  const { data: stats, isLoading: statsLoading } = useStats();
+  // We can pre-fetch due cards count from stats, but fetching the actual list is okay too
   
-  const totalCards = Object.keys(cards).length;
-  const newCards = Object.values(cards).filter(c => c.state === 'new').length;
-  const learningCards = Object.values(cards).filter(c => c.state === 'learning' || c.state === 'relearning').length;
-  const reviewCards = Object.values(cards).filter(c => c.state === 'review').length;
+  const dueCount = stats?.dueCards || 0;
   
-  const todayLogs = logs.filter(l => {
-    const today = new Date();
-    const logDate = new Date(l.timestamp);
-    return logDate.getDate() === today.getDate() && 
-           logDate.getMonth() === today.getMonth() && 
-           logDate.getFullYear() === today.getFullYear();
-  });
+  if (statsLoading) {
+    return <div className="p-8"><Skeleton className="h-[200px] w-full rounded-xl" /></div>;
+  }
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-8">
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold tracking-tight mb-2">Welcome back, Scholar</h1>
-          <p className="text-muted-foreground">You have {dueCards.length} cards due for review today.</p>
+          <p className="text-muted-foreground">You have {dueCount} cards due for review today.</p>
         </div>
         <div className="text-sm text-right text-muted-foreground">
           <div className="font-medium text-foreground">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
@@ -59,10 +53,10 @@ export default function Dashboard() {
               <Link href="/study">
                 <Button size="lg" className="gap-2 shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-shadow">
                   <Play className="h-4 w-4 fill-current" />
-                  Start Session ({dueCards.length})
+                  Start Session ({dueCount})
                 </Button>
               </Link>
-              {dueCards.length === 0 && (
+              {dueCount === 0 && (
                 <span className="text-sm text-green-600 font-medium bg-green-50 px-3 py-2 rounded-md">
                   All caught up! 🎉
                 </span>
@@ -78,30 +72,24 @@ export default function Dashboard() {
         >
           <Card className="h-full">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Today's Activity</CardTitle>
+              <CardTitle className="text-sm font-medium text-muted-foreground">Status</CardTitle>
             </CardHeader>
             <CardContent>
-              <div className="text-4xl font-bold mb-1">{todayLogs.length}</div>
-              <p className="text-xs text-muted-foreground mb-4">Cards reviewed</p>
+              <div className="text-4xl font-bold mb-1">{stats?.reviewCards}</div>
+              <p className="text-xs text-muted-foreground mb-4">Active Cards</p>
               
               <div className="space-y-3 pt-4 border-t">
                 <div className="flex justify-between text-sm">
                   <span className="flex items-center gap-2 text-muted-foreground">
                     <Activity className="h-3 w-3" /> Learning
                   </span>
-                  <span className="font-medium">{learningCards}</span>
+                  <span className="font-medium">{stats?.learningCards}</span>
                 </div>
                 <div className="flex justify-between text-sm">
                   <span className="flex items-center gap-2 text-muted-foreground">
-                    <TrendingUp className="h-3 w-3" /> Young
+                    <TrendingUp className="h-3 w-3" /> New
                   </span>
-                  <span className="font-medium">{newCards}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="flex items-center gap-2 text-muted-foreground">
-                    <CalendarDays className="h-3 w-3" /> Mature
-                  </span>
-                  <span className="font-medium">{reviewCards}</span>
+                  <span className="font-medium">{stats?.newCards}</span>
                 </div>
               </div>
             </CardContent>
@@ -111,7 +99,7 @@ export default function Dashboard() {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: "Total Cards", value: totalCards, icon: Library },
+          { label: "Total Cards", value: stats?.totalCards, icon: Library },
           { label: "Retention Rate", value: "94%", icon: Activity }, // Mock
           { label: "Streak", value: "12 days", icon: TrendingUp },   // Mock
           { label: "Time Spent", value: "1.2h", icon: Clock },       // Mock

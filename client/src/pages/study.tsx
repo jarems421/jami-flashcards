@@ -1,40 +1,52 @@
 import { useState, useEffect } from "react";
-import { useStore, Card as CardType } from "@/lib/store";
+import { useDueCards, useAnswerCard } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
 import { Check, X, ArrowLeft, RefreshCw, Clock } from "lucide-react";
 import { Link, useLocation } from "wouter";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function Study() {
-  const { notes, cards, getDueCards, answerCard } = useStore();
-  const [dueCards, setDueCards] = useState<CardType[]>([]);
+  const { data: dueCards, isLoading } = useDueCards();
+  const { mutate: answerCard } = useAnswerCard();
+  
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [, setLocation] = useLocation();
 
-  useEffect(() => {
-    setDueCards(getDueCards());
-  }, []);
+  // If we finish the batch, we can re-fetch? 
+  // For now simple batch logic
+  
+  if (isLoading) {
+    return <div className="p-8 flex items-center justify-center h-full"><Skeleton className="h-[400px] w-full max-w-xl rounded-xl" /></div>;
+  }
 
-  const currentCard = dueCards[currentIndex];
-  const currentNote = currentCard ? notes[currentCard.noteId] : null;
+  const currentCard = dueCards?.[currentIndex];
+  // Note is joined in the API response
+  const currentNote = currentCard?.note;
+  
+  // Render template simple replacement
+  // For basic template: 
+  const frontContent = currentNote?.fields?.Front;
+  const backContent = currentNote?.fields?.Back;
 
-  const handleAnswer = (rating: 'again' | 'hard' | 'good' | 'easy') => {
+
+  const handleAnswer = (rating: 'AGAIN' | 'HARD' | 'GOOD' | 'EASY') => {
     if (!currentCard) return;
     
-    answerCard(currentCard.id, rating);
+    answerCard({ id: currentCard.id, rating });
     setIsFlipped(false);
     
-    if (currentIndex < dueCards.length - 1) {
+    if (currentIndex < (dueCards?.length || 0) - 1) {
       setTimeout(() => setCurrentIndex(prev => prev + 1), 150);
     } else {
-      // Finished
-      // In a real app we'd show a summary screen
+      // Finished batch
+      // In a real app we'd trigger a re-fetch or show summary
+      setCurrentIndex(prev => prev + 1); // Move to "done" state
     }
   };
 
-  if (dueCards.length === 0) {
+  if (!dueCards || dueCards.length === 0) {
     return (
       <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
         <div className="w-16 h-16 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-6">
@@ -110,7 +122,7 @@ export default function Study() {
                     Front
                   </span>
                   <div className="font-serif text-2xl md:text-3xl leading-relaxed">
-                    {currentNote.content.front}
+                    {frontContent}
                   </div>
                   <div className="absolute bottom-6 text-xs text-muted-foreground flex items-center gap-2">
                     Click to flip
@@ -125,11 +137,11 @@ export default function Study() {
                   
                   {/* Small hint of front */}
                   <div className="text-muted-foreground/50 text-sm mb-8 line-clamp-1 max-w-[80%]">
-                    {currentNote.content.front}
+                    {frontContent}
                   </div>
 
                   <div className="font-serif text-2xl md:text-3xl leading-relaxed">
-                    {currentNote.content.back}
+                    {backContent}
                   </div>
                 </div>
               </motion.div>
@@ -154,7 +166,7 @@ export default function Study() {
               <Button 
                 variant="outline" 
                 className="h-14 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950"
-                onClick={() => handleAnswer('again')}
+                onClick={() => handleAnswer('AGAIN')}
               >
                 Again
               </Button>
@@ -165,7 +177,7 @@ export default function Study() {
               <Button 
                 variant="outline" 
                 className="h-14 border-orange-200 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:border-orange-900/50 dark:hover:bg-orange-950"
-                onClick={() => handleAnswer('hard')}
+                onClick={() => handleAnswer('HARD')}
               >
                 Hard
               </Button>
@@ -176,7 +188,7 @@ export default function Study() {
               <Button 
                 variant="outline" 
                 className="h-14 border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:border-blue-900/50 dark:hover:bg-blue-950"
-                onClick={() => handleAnswer('good')}
+                onClick={() => handleAnswer('GOOD')}
               >
                 Good
               </Button>
@@ -187,7 +199,7 @@ export default function Study() {
               <Button 
                 variant="outline" 
                 className="h-14 border-green-200 hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950"
-                onClick={() => handleAnswer('easy')}
+                onClick={() => handleAnswer('EASY')}
               >
                 Easy
               </Button>
