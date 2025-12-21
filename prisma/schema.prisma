@@ -47,12 +47,7 @@ model Card {
   deckId            String    @db.Uuid
   templateId        String
   state             CardState
-  dueAt             DateTime
-  intervalDays      Float
-  easeFactor        Float     @default(2.5)
-  learningStepIndex Int       @default(0)
   reps              Int       @default(0)
-  lapses            Int       @default(0)
   lastReviewedAt    DateTime?
 
   note      Note        @relation(fields: [noteId], references: [id])
@@ -66,11 +61,7 @@ model ReviewLog {
   cardId               String      @db.Uuid
   reviewedAt           DateTime    @default(now())
   rating               ReviewRating
-  responseTimeMs       Int
-  previousState        CardState
-  newState             CardState
-  previousIntervalDays Float
-  newIntervalDays      Float
+  responseTimeMs       Int         @default(0)
 
   card Card @relation(fields: [cardId], references: [id])
 }
@@ -96,16 +87,12 @@ model Template {
 
 enum CardState {
   NEW
-  LEARNING
-  REVIEW
-  RELEARNING
+  STUDIED
 }
 
 enum ReviewRating {
-  AGAIN
-  HARD
-  GOOD
-  EASY
+  WRONG
+  CORRECT
 }
 
 enum GoalCadence {

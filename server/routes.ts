@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { db } from "./db";
 import { parseCloze } from "../shared/cloze";
 import { z } from "zod";
-import { scheduleCard, DEFAULT_SETTINGS, CardSchedule, Rating, CardState } from "../shared/scheduler";
+import { gradeCard, CardSchedule, Rating, CardState } from "../shared/scheduler";
 import { startOfDay, endOfDay } from "date-fns";
 
 export async function registerRoutes(
@@ -278,8 +278,7 @@ export async function registerRoutes(
   app.get("/api/stats", async (req, res) => {
     const totalCards = await db.card.count();
     const newCards = await db.card.count({ where: { state: 'NEW' } });
-    const learningCards = await db.card.count({ where: { state: { in: ['LEARNING', 'RELEARNING'] } } });
-    const reviewCards = await db.card.count({ where: { state: 'REVIEW' } });
+    const studiedCards = await db.card.count({ where: { state: 'STUDIED' } });
     
     // Cards due today (or overdue)
     const dueCards = await db.card.count({
@@ -306,7 +305,7 @@ export async function registerRoutes(
     const uniqueDays = new Set<string>();
 
     logs.forEach(log => {
-      if (log.rating === 'GOOD' || log.rating === 'EASY') {
+      if (log.rating === 'CORRECT') {
         successfulReviews++;
       }
       totalTimeMs += (log.responseTimeMs || 0);
@@ -447,64 +446,32 @@ export async function registerRoutes(
 
   app.post("/api/cards/:id/grade", async (req, res) => {
     const { id } = req.params;
-    const { rating } = req.body; // AGAIN, HARD, GOOD, EASY
+    const { rating } = req.body; // WRONG or CORRECT
 
-    if (!['AGAIN', 'HARD', 'GOOD', 'EASY'].includes(rating)) {
-      return res.status(400).json({ error: "Invalid rating" });
+    if (!['WRONG', 'CORRECT'].includes(rating)) {
+      return res.status(400).json({ error: "Invalid rating. Use WRONG or CORRECT" });
     }
 
     try {
       const card = await db.card.findUnique({ 
-        where: { id },
-        include: { deck: true }
+        where: { id }
       });
       if (!card) return res.status(404).json({ error: "Card not found" });
-
-      // Parse settings from deck override or use default
-      let settings = DEFAULT_SETTINGS;
-      if (card.deck.settingsOverride) {
-        // In real app, deep merge or parse. 
-        // For now assume if present it overrides
-        // settings = { ...DEFAULT_SETTINGS, ...(card.deck.settingsOverride as any) };
-      }
-
-      const currentSchedule: CardSchedule = {
-        state: card.state as CardState,
-        dueAt: card.dueAt,
-        intervalDays: card.intervalDays,
-        easeFactor: card.easeFactor,
-        learningStepIndex: card.learningStepIndex,
-        lapses: card.lapses,
-        reps: card.reps,
-        lastReviewedAt: card.lastReviewedAt || new Date(0) // Handle null
-      };
-
-      const nextSchedule = scheduleCard(currentSchedule, rating as Rating, settings);
 
       // Transaction: Update Card + Create Log
       const [updatedCard] = await db.$transaction([
         db.card.update({
           where: { id },
           data: {
-            state: nextSchedule.state,
-            dueAt: nextSchedule.dueAt,
-            intervalDays: nextSchedule.intervalDays,
-            easeFactor: nextSchedule.easeFactor,
-            learningStepIndex: nextSchedule.learningStepIndex,
-            lapses: nextSchedule.lapses,
-            reps: nextSchedule.reps,
-            lastReviewedAt: nextSchedule.lastReviewedAt
+            state: 'STUDIED',
+            reps: card.reps + 1,
+            lastReviewedAt: new Date()
           }
         }),
         db.reviewLog.create({
           data: {
             cardId: id,
-            rating: rating as any, // Prisma enum
-            responseTimeMs: 0, // Mock for now
-            previousState: card.state as any,
-            newState: nextSchedule.state as any,
-            previousIntervalDays: card.intervalDays,
-            newIntervalDays: nextSchedule.intervalDays
+            rating: rating as any
           }
         })
       ]);

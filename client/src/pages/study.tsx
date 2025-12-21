@@ -17,7 +17,6 @@ interface CardData {
     fields: any;
   };
   reps: number;
-  lapses: number;
 }
 
 interface QueueResponse {
@@ -125,7 +124,7 @@ export default function Study() {
       queryClient.invalidateQueries({ queryKey: ["stats"] });
       
       const currentCard = activeQueue[currentIndex];
-      if (variables.rating === 'AGAIN') {
+      if (variables.rating === 'WRONG') {
         setWrongCards(prev => [...prev, currentCard]);
       } else {
         setRightCards(prev => [...prev, currentCard]);
@@ -174,7 +173,7 @@ export default function Study() {
     }
   });
 
-  const handleAnswer = useCallback((rating: 'AGAIN' | 'GOOD') => {
+  const handleAnswer = useCallback((rating: 'WRONG' | 'CORRECT') => {
     const currentCard = activeQueue[currentIndex];
     if (!currentCard) return;
     
@@ -207,8 +206,8 @@ export default function Study() {
       if (!isFlipped) return;
 
       switch(e.key) {
-        case '1': handleAnswer('AGAIN'); break;
-        case '2': handleAnswer('GOOD'); break;
+        case '1': handleAnswer('WRONG'); break;
+        case '2': handleAnswer('CORRECT'); break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -464,7 +463,7 @@ export default function Study() {
               <Button 
                 variant="outline" 
                 className="h-16 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950 transition-colors text-lg font-medium"
-                onClick={() => handleAnswer('AGAIN')}
+                onClick={() => handleAnswer('WRONG')}
                 disabled={answerMutation.isPending}
               >
                 Wrong
@@ -475,7 +474,7 @@ export default function Study() {
               <Button 
                 variant="outline" 
                 className="h-16 border-green-200 hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950 transition-colors text-lg font-medium"
-                onClick={() => handleAnswer('GOOD')}
+                onClick={() => handleAnswer('CORRECT')}
                 disabled={answerMutation.isPending}
               >
                 Right
