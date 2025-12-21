@@ -42,6 +42,9 @@ async function buildAll() {
   console.log("syncing database schema...");
   execSync("npx prisma db push", { stdio: "inherit" });
 
+  console.log("seeding essential data...");
+  execSync("npx tsx script/seed.ts", { stdio: "inherit" });
+
   console.log("building client...");
   await viteBuild();
 
