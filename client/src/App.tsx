@@ -9,6 +9,8 @@ import { Toaster } from "@/components/ui/toaster";
 import Dashboard from "@/pages/dashboard";
 import Study from "@/pages/study";
 import Editor from "@/pages/editor";
+import Decks from "@/pages/decks";
+import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
 function Nav() {
@@ -67,7 +69,8 @@ function Router() {
       <Route path="/" component={Dashboard} />
       <Route path="/study" component={Study} />
       <Route path="/add" component={Editor} />
-      {/* <Route path="/decks" component={Decks} /> */}
+      <Route path="/decks" component={Decks} />
+      <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>
   );
