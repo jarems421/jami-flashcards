@@ -1,5 +1,6 @@
 import { Switch, Route, Link, useLocation } from "wouter";
 import { Brain, Plus, BarChart3, Settings, Library, Search, Target } from "lucide-react";
+import fairyIcon from "@assets/generated_images/cute_fairy_app_icon.png";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -40,9 +41,7 @@ function Nav() {
   return (
     <div className="w-64 border-r bg-card min-h-screen p-4 flex flex-col hidden md:flex">
       <div className="flex items-center gap-2 px-2 mb-8 mt-2">
-        <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
-          <Brain className="h-5 w-5 text-primary-foreground" />
-        </div>
+        <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
         <span className="font-bold text-lg tracking-tight">Jami</span>
       </div>
 
