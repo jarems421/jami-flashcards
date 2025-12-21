@@ -219,13 +219,16 @@ export async function registerRoutes(
       const { id } = req.params;
       
       // Delete recursively
-      // 1. Delete Cards
+      // 1. Delete ReviewLogs (Foreign Key Constraint)
+      await db.reviewLog.deleteMany({ where: { card: { deckId: id } } });
+
+      // 2. Delete Cards
       await db.card.deleteMany({ where: { deckId: id } });
       
-      // 2. Delete Notes
+      // 3. Delete Notes
       await db.note.deleteMany({ where: { deckId: id } });
       
-      // 3. Delete Deck
+      // 4. Delete Deck
       await db.deck.delete({ where: { id } });
 
       res.json({ success: true });
