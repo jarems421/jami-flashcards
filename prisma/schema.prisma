@@ -13,6 +13,7 @@ datasource db {
 model Deck {
   id               String   @id @default(uuid()) @db.Uuid
   name             String
+  userId           String?
   parentDeckId     String?  @db.Uuid
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
@@ -155,4 +156,25 @@ model UserPreference {
   inAppReminders      Boolean  @default(true)
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model User {
+  id              String   @id
+  email           String?  @unique
+  firstName       String?  @map("first_name")
+  lastName        String?  @map("last_name")
+  profileImageUrl String?  @map("profile_image_url")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+model Session {
+  sid    String   @id
+  sess   Json
+  expire DateTime
+
+  @@index([expire], name: "IDX_session_expire")
+  @@map("sessions")
 }
