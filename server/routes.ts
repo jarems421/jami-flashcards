@@ -1,9 +1,14 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { db } from "./db";
 import { parseCloze } from "../shared/cloze";
 import { z } from "zod";
 import { startOfDay, endOfDay } from "date-fns";
+import { isAuthenticated } from "./replit_integrations/auth";
+
+function getUserId(req: Request): string | null {
+  return (req.user as any)?.claims?.sub ?? null;
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -16,13 +21,16 @@ export async function registerRoutes(
 
   // --- Queue Logic ---
   
-  app.get("/api/queue/today", async (req, res) => {
+  app.get("/api/queue/today", isAuthenticated, async (req, res) => {
     try {
       const { deckId, limit: queryLimit } = req.query;
       const todayStart = startOfDay(new Date());
       const cardLimit = queryLimit ? parseInt(queryLimit as string, 10) : 50;
+      const userId = getUserId(req);
 
-      const whereDeck = deckId ? { deckId: deckId as string } : {};
+      const whereDeck = deckId 
+        ? { deckId: deckId as string, deck: { userId } } 
+        : { deck: { userId } };
       
       const cards = await db.card.findMany({
         where: whereDeck,
@@ -40,7 +48,7 @@ export async function registerRoutes(
       const studiedToday = await db.reviewLog.count({
         where: {
           reviewedAt: { gte: todayStart },
-          ...(deckId ? { card: { deckId: deckId as string } } : {})
+          card: { deck: { userId }, ...(deckId ? { deckId: deckId as string } : {}) }
         }
       });
 
@@ -63,9 +71,11 @@ export async function registerRoutes(
 
   // --- Decks & Stats ---
 
-  app.get("/api/decks", async (req, res) => {
+  app.get("/api/decks", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const decks = await db.deck.findMany({
+        where: { userId },
         include: {
           _count: {
             select: { cards: true }
@@ -101,14 +111,16 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/decks", async (req, res) => {
+  app.post("/api/decks", isAuthenticated, async (req, res) => {
     try {
       const { name, parentDeckId } = req.body;
       if (!name) return res.status(400).json({ error: "Name is required" });
+      const userId = getUserId(req);
 
       const deck = await db.deck.create({
         data: {
           name,
+          userId,
           parentDeckId: parentDeckId || null
         }
       });
@@ -119,9 +131,13 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/decks/:id", async (req, res) => {
+  app.delete("/api/decks/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = getUserId(req);
+      
+      const deck = await db.deck.findFirst({ where: { id, userId } });
+      if (!deck) return res.status(404).json({ error: "Deck not found" });
       
       await db.reviewLog.deleteMany({ where: { card: { deckId: id } } });
       await db.card.deleteMany({ where: { deckId: id } });
@@ -135,13 +151,17 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/stats", async (req, res) => {
+  app.get("/api/stats", isAuthenticated, async (req, res) => {
     try {
-      const totalCards = await db.card.count();
-      const newCards = await db.card.count({ where: { state: 'NEW' } });
-      const studiedCards = await db.card.count({ where: { state: 'STUDIED' } });
+      const userId = getUserId(req);
+      const userDeckFilter = { deck: { userId } };
+      
+      const totalCards = await db.card.count({ where: userDeckFilter });
+      const newCards = await db.card.count({ where: { ...userDeckFilter, state: 'NEW' } });
+      const studiedCards = await db.card.count({ where: { ...userDeckFilter, state: 'STUDIED' } });
 
       const logs = await db.reviewLog.findMany({
+        where: { card: userDeckFilter },
         select: {
           rating: true,
           reviewedAt: true,
@@ -228,11 +248,14 @@ export async function registerRoutes(
 
   // --- Cards ---
 
-  app.get("/api/cards", async (req, res) => {
+  app.get("/api/cards", isAuthenticated, async (req, res) => {
     try {
       const { deckId } = req.query;
+      const userId = getUserId(req);
       const cards = await db.card.findMany({
-        where: deckId ? { deckId: deckId as string } : undefined,
+        where: deckId 
+          ? { deckId: deckId as string, deck: { userId } } 
+          : { deck: { userId } },
         include: {
           note: true,
           template: true
@@ -247,9 +270,14 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/cards/:id", async (req, res) => {
+  app.delete("/api/cards/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = getUserId(req);
+      
+      const card = await db.card.findFirst({ where: { id, deck: { userId } } });
+      if (!card) return res.status(404).json({ error: "Card not found" });
+      
       await db.reviewLog.deleteMany({ where: { cardId: id } });
       await db.card.delete({ where: { id } });
       res.json({ success: true });
@@ -259,16 +287,17 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/cards/:id/grade", async (req, res) => {
+  app.post("/api/cards/:id/grade", isAuthenticated, async (req, res) => {
     const { id } = req.params;
     const { rating, responseTimeMs } = req.body;
+    const userId = getUserId(req);
 
     if (!['WRONG', 'CORRECT'].includes(rating)) {
       return res.status(400).json({ error: "Invalid rating. Use WRONG or CORRECT" });
     }
 
     try {
-      const card = await db.card.findUnique({ where: { id } });
+      const card = await db.card.findFirst({ where: { id, deck: { userId } } });
       if (!card) return res.status(404).json({ error: "Card not found" });
 
       const [updatedCard] = await db.$transaction([
@@ -296,16 +325,20 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/cards/:id/answer", async (req, res) => {
+  app.post("/api/cards/:id/answer", isAuthenticated, async (req, res) => {
     res.redirect(307, `/api/cards/${req.params.id}/grade`);
   });
 
   // --- Notes ---
 
-  app.put("/api/notes/:id", async (req, res) => {
+  app.put("/api/notes/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
       const { fields, tags } = req.body;
+      const userId = getUserId(req);
+
+      const existingNote = await db.note.findFirst({ where: { id, deck: { userId } } });
+      if (!existingNote) return res.status(404).json({ error: "Note not found" });
 
       const note = await db.note.update({
         where: { id },
@@ -319,11 +352,14 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/notes", async (req, res) => {
+  app.get("/api/notes", isAuthenticated, async (req, res) => {
     try {
       const { deckId } = req.query;
+      const userId = getUserId(req);
       const notes = await db.note.findMany({
-        where: deckId ? { deckId: deckId as string } : undefined,
+        where: deckId 
+          ? { deckId: deckId as string, deck: { userId } } 
+          : { deck: { userId } },
         include: {
           noteType: true,
           cards: true
@@ -337,9 +373,10 @@ export async function registerRoutes(
     }
   });
 
-  app.post("/api/notes", async (req, res) => {
+  app.post("/api/notes", isAuthenticated, async (req, res) => {
     try {
       const { deckId, noteTypeId, fields, content, tags } = req.body;
+      const userId = getUserId(req);
       
       const noteFields = fields || content;
 
@@ -347,9 +384,12 @@ export async function registerRoutes(
       let targetNoteTypeId = noteTypeId;
 
       if (!targetDeckId) {
-        const deck = await db.deck.findFirst({ where: { name: "Demo" } });
+        const deck = await db.deck.findFirst({ where: { name: "Demo", userId } });
         if (!deck) return res.status(500).json({ error: "Demo deck missing" });
         targetDeckId = deck.id;
+      } else {
+        const deck = await db.deck.findFirst({ where: { id: targetDeckId, userId } });
+        if (!deck) return res.status(404).json({ error: "Deck not found" });
       }
 
       if (!targetNoteTypeId) {
@@ -409,9 +449,10 @@ export async function registerRoutes(
 
   // --- Seed ---
 
-  app.post("/api/debug/seed", async (req, res) => {
+  app.post("/api/debug/seed", isAuthenticated, async (req, res) => {
     try {
-      const existingDecks = await db.deck.count();
+      const userId = getUserId(req);
+      const existingDecks = await db.deck.count({ where: { userId } });
       if (existingDecks > 0) {
         return res.status(400).json({ error: "Database already seeded" });
       }
@@ -442,7 +483,7 @@ export async function registerRoutes(
       });
 
       const deck = await db.deck.create({
-        data: { name: "Demo" },
+        data: { name: "Demo", userId },
       });
 
       const note = await db.note.create({
@@ -472,35 +513,39 @@ export async function registerRoutes(
 
   // --- Study Goals ---
 
-  app.get("/api/goals", async (req, res) => {
+  app.get("/api/goals", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const goals = await db.studyGoal.findMany({
+        where: { OR: [{ deck: { userId } }, { deckId: null }] },
         include: { deck: true, progress: true },
         orderBy: { createdAt: 'desc' }
       });
-      res.json(goals);
+      res.json(goals.filter(g => g.deckId === null || g.deck?.userId === userId));
     } catch (error) {
       console.error("Error fetching goals:", error);
       res.status(500).json({ error: "Failed to fetch goals" });
     }
   });
 
-  app.get("/api/goals/active", async (req, res) => {
+  app.get("/api/goals/active", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const goals = await db.studyGoal.findMany({
-        where: { status: 'ACTIVE' },
+        where: { status: 'ACTIVE', OR: [{ deck: { userId } }, { deckId: null }] },
         include: { deck: true, progress: true },
         orderBy: { createdAt: 'desc' }
       });
-      res.json(goals);
+      res.json(goals.filter(g => g.deckId === null || g.deck?.userId === userId));
     } catch (error) {
       console.error("Error fetching active goals:", error);
       res.status(500).json({ error: "Failed to fetch active goals" });
     }
   });
 
-  app.post("/api/goals", async (req, res) => {
+  app.post("/api/goals", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const schema = z.object({
         deckId: z.string().uuid().optional().nullable(),
         cadence: z.enum(['DAILY', 'WEEKLY']).default('DAILY'),
@@ -509,6 +554,11 @@ export async function registerRoutes(
         deadline: z.string().datetime().optional().nullable(),
       });
       const data = schema.parse(req.body);
+      
+      if (data.deckId) {
+        const deck = await db.deck.findFirst({ where: { id: data.deckId, userId } });
+        if (!deck) return res.status(404).json({ error: "Deck not found" });
+      }
       
       const goal = await db.studyGoal.create({
         data: {
@@ -527,9 +577,10 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/goals/:id", async (req, res) => {
+  app.put("/api/goals/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = getUserId(req);
       const schema = z.object({
         cadence: z.enum(['DAILY', 'WEEKLY']).optional(),
         targetCount: z.number().int().positive().optional(),
@@ -538,6 +589,14 @@ export async function registerRoutes(
         status: z.enum(['ACTIVE', 'COMPLETED', 'PAUSED']).optional(),
       });
       const data = schema.parse(req.body);
+      
+      const existingGoal = await db.studyGoal.findFirst({ 
+        where: { id, OR: [{ deck: { userId } }, { deckId: null }] },
+        include: { deck: true }
+      });
+      if (!existingGoal || (existingGoal.deckId && existingGoal.deck?.userId !== userId)) {
+        return res.status(404).json({ error: "Goal not found" });
+      }
       
       const goal = await db.studyGoal.update({
         where: { id },
@@ -556,9 +615,19 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/goals/:id", async (req, res) => {
+  app.delete("/api/goals/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = getUserId(req);
+      
+      const existingGoal = await db.studyGoal.findFirst({ 
+        where: { id, OR: [{ deck: { userId } }, { deckId: null }] },
+        include: { deck: true }
+      });
+      if (!existingGoal || (existingGoal.deckId && existingGoal.deck?.userId !== userId)) {
+        return res.status(404).json({ error: "Goal not found" });
+      }
+      
       await db.studyGoal.delete({ where: { id } });
       res.json({ success: true });
     } catch (error) {
@@ -569,10 +638,19 @@ export async function registerRoutes(
 
   // --- Goal Progress ---
 
-  app.get("/api/goals/:goalId/progress", async (req, res) => {
+  app.get("/api/goals/:goalId/progress", isAuthenticated, async (req, res) => {
     try {
       const { goalId } = req.params;
       const { startDate, endDate } = req.query;
+      const userId = getUserId(req);
+      
+      const goal = await db.studyGoal.findFirst({ 
+        where: { id: goalId, OR: [{ deck: { userId } }, { deckId: null }] },
+        include: { deck: true }
+      });
+      if (!goal || (goal.deckId && goal.deck?.userId !== userId)) {
+        return res.status(404).json({ error: "Goal not found" });
+      }
       
       const where: any = { goalId };
       if (startDate || endDate) {
@@ -592,29 +670,39 @@ export async function registerRoutes(
     }
   });
 
-  app.get("/api/goals/progress/today", async (req, res) => {
+  app.get("/api/goals/progress/today", isAuthenticated, async (req, res) => {
     try {
       const today = startOfDay(new Date());
+      const userId = getUserId(req);
       const progress = await db.goalProgress.findMany({
-        where: { dateBucket: today },
+        where: { dateBucket: today, goal: { OR: [{ deck: { userId } }, { deckId: null }] } },
         include: { goal: { include: { deck: true } } }
       });
-      res.json(progress);
+      res.json(progress.filter(p => p.goal.deckId === null || p.goal.deck?.userId === userId));
     } catch (error) {
       console.error("Error fetching today's progress:", error);
       res.status(500).json({ error: "Failed to fetch today's progress" });
     }
   });
 
-  app.post("/api/goals/:goalId/progress", async (req, res) => {
+  app.post("/api/goals/:goalId/progress", isAuthenticated, async (req, res) => {
     try {
       const { goalId } = req.params;
+      const userId = getUserId(req);
       const schema = z.object({
         date: z.string().optional(),
         count: z.number().int().nonnegative().default(1),
         increment: z.boolean().optional().default(false),
       });
       const data = schema.parse(req.body);
+      
+      const goal = await db.studyGoal.findFirst({ 
+        where: { id: goalId, OR: [{ deck: { userId } }, { deckId: null }] },
+        include: { deck: true }
+      });
+      if (!goal || (goal.deckId && goal.deck?.userId !== userId)) {
+        return res.status(404).json({ error: "Goal not found" });
+      }
       
       const dateBucket = data.date ? startOfDay(new Date(data.date)) : startOfDay(new Date());
       
@@ -641,21 +729,24 @@ export async function registerRoutes(
 
   // --- Reminders ---
 
-  app.get("/api/reminders", async (req, res) => {
+  app.get("/api/reminders", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const reminders = await db.reminder.findMany({
+        where: { OR: [{ deck: { userId } }, { deckId: null }] },
         include: { deck: true },
         orderBy: { sendAt: 'asc' }
       });
-      res.json(reminders);
+      res.json(reminders.filter(r => r.deckId === null || r.deck?.userId === userId));
     } catch (error) {
       console.error("Error fetching reminders:", error);
       res.status(500).json({ error: "Failed to fetch reminders" });
     }
   });
 
-  app.post("/api/reminders", async (req, res) => {
+  app.post("/api/reminders", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req);
       const schema = z.object({
         deckId: z.string().uuid().optional().nullable(),
         goalId: z.string().uuid().optional().nullable(),
@@ -665,6 +756,11 @@ export async function registerRoutes(
         recurrencePattern: z.string().optional().nullable(),
       });
       const data = schema.parse(req.body);
+      
+      if (data.deckId) {
+        const deck = await db.deck.findFirst({ where: { id: data.deckId, userId } });
+        if (!deck) return res.status(404).json({ error: "Deck not found" });
+      }
       
       const reminder = await db.reminder.create({
         data: {
@@ -684,9 +780,10 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/reminders/:id", async (req, res) => {
+  app.put("/api/reminders/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = getUserId(req);
       const schema = z.object({
         message: z.string().optional().nullable(),
         sendAt: z.string().datetime().optional(),
@@ -695,6 +792,14 @@ export async function registerRoutes(
         isSent: z.boolean().optional(),
       });
       const data = schema.parse(req.body);
+      
+      const existingReminder = await db.reminder.findFirst({ 
+        where: { id, OR: [{ deck: { userId } }, { deckId: null }] },
+        include: { deck: true }
+      });
+      if (!existingReminder || (existingReminder.deckId && existingReminder.deck?.userId !== userId)) {
+        return res.status(404).json({ error: "Reminder not found" });
+      }
       
       const reminder = await db.reminder.update({
         where: { id },
@@ -711,9 +816,19 @@ export async function registerRoutes(
     }
   });
 
-  app.delete("/api/reminders/:id", async (req, res) => {
+  app.delete("/api/reminders/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
+      const userId = getUserId(req);
+      
+      const existingReminder = await db.reminder.findFirst({ 
+        where: { id, OR: [{ deck: { userId } }, { deckId: null }] },
+        include: { deck: true }
+      });
+      if (!existingReminder || (existingReminder.deckId && existingReminder.deck?.userId !== userId)) {
+        return res.status(404).json({ error: "Reminder not found" });
+      }
+      
       await db.reminder.delete({ where: { id } });
       res.json({ success: true });
     } catch (error) {
@@ -724,7 +839,7 @@ export async function registerRoutes(
 
   // --- User Preferences ---
 
-  app.get("/api/preferences", async (req, res) => {
+  app.get("/api/preferences", isAuthenticated, async (req, res) => {
     try {
       let prefs = await db.userPreference.findFirst();
       if (!prefs) {
@@ -737,7 +852,7 @@ export async function registerRoutes(
     }
   });
 
-  app.put("/api/preferences", async (req, res) => {
+  app.put("/api/preferences", isAuthenticated, async (req, res) => {
     try {
       const schema = z.object({
         timezone: z.string().optional(),
