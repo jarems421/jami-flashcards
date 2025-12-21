@@ -1,0 +1,107 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Deck {
+  id               String   @id @default(uuid()) @db.Uuid
+  name             String
+  parentDeckId     String?  @db.Uuid
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  settingsOverride Json?
+
+  parentDeck Deck?  @relation("DeckToDeck", fields: [parentDeckId], references: [id])
+  subDecks   Deck[] @relation("DeckToDeck")
+  cards      Card[]
+  notes      Note[]
+}
+
+model Note {
+  id         String   @id @default(uuid()) @db.Uuid
+  deckId     String   @db.Uuid
+  noteTypeId String   @db.Uuid
+  fields     Json
+  tags       String[]
+  media      Json     @default("[]")
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  deck     Deck     @relation(fields: [deckId], references: [id])
+  noteType NoteType @relation(fields: [noteTypeId], references: [id])
+  cards    Card[]
+}
+
+model Card {
+  id                String    @id @default(uuid()) @db.Uuid
+  noteId            String    @db.Uuid
+  deckId            String    @db.Uuid
+  templateId        String
+  state             CardState
+  dueAt             DateTime
+  intervalDays      Float
+  easeFactor        Float     @default(2.5)
+  learningStepIndex Int       @default(0)
+  reps              Int       @default(0)
+  lapses            Int       @default(0)
+  lastReviewedAt    DateTime?
+
+  note      Note        @relation(fields: [noteId], references: [id])
+  deck      Deck        @relation(fields: [deckId], references: [id])
+  reviewLogs ReviewLog[]
+  template  Template    @relation(fields: [templateId], references: [id])
+}
+
+model ReviewLog {
+  id                   String      @id @default(uuid()) @db.Uuid
+  cardId               String      @db.Uuid
+  reviewedAt           DateTime    @default(now())
+  rating               ReviewRating
+  responseTimeMs       Int
+  previousState        CardState
+  newState             CardState
+  previousIntervalDays Float
+  newIntervalDays      Float
+
+  card Card @relation(fields: [cardId], references: [id])
+}
+
+model NoteType {
+  id     String   @id @default(uuid()) @db.Uuid
+  name   String
+  fields String[]
+
+  notes     Note[]
+  templates Template[]
+}
+
+model Template {
+  id          String @id
+  noteTypeId  String @db.Uuid
+  frontHTML   String
+  backHTML    String
+
+  noteType NoteType @relation(fields: [noteTypeId], references: [id])
+  cards    Card[]
+}
+
+enum CardState {
+  NEW
+  LEARNING
+  REVIEW
+  RELEARNING
+}
+
+enum ReviewRating {
+  AGAIN
+  HARD
+  GOOD
+  EASY
+}
