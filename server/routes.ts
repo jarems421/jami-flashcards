@@ -488,6 +488,26 @@ export async function registerRoutes(
 
   // --- Notes ---
 
+  app.put("/api/notes/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { fields, tags } = req.body;
+
+      const note = await db.note.update({
+        where: { id },
+        data: {
+          fields,
+          tags
+        }
+      });
+
+      res.json(note);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to update note" });
+    }
+  });
+
   app.get("/api/notes", async (req, res) => {
     try {
       const { deckId } = req.query;

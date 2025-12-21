@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Input } from "@/components/ui/input";
 import {
@@ -17,10 +17,29 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
 import { format } from "date-fns";
-import { Search, Filter, ArrowUpDown } from "lucide-react";
+import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface Card {
   id: string;
@@ -32,6 +51,7 @@ interface Card {
   reps: number;
   lastReviewedAt: string | null;
   note: {
+    id: string;
     fields: any;
     tags: string[];
     deckId: string;
@@ -44,6 +64,11 @@ export default function Browser() {
   const [stateFilter, setStateFilter] = useState<string>("ALL");
   const [sortField, setSortField] = useState<keyof Card | 'lastReviewedAt'>("dueAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
+  const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [editForm, setEditForm] = useState<{front: string, back: string}>({ front: "", back: "" });
+  
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const { data: cards, isLoading } = useQuery<Card[]>({
     queryKey: ["/api/cards"],
@@ -52,6 +77,62 @@ export default function Browser() {
       return res.json();
     }
   });
+
+  const deleteCardMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/cards/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cards"] });
+      toast({ title: "Card deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete card", variant: "destructive" });
+    }
+  });
+
+  const updateNoteMutation = useMutation({
+    mutationFn: async ({ id, fields }: { id: string, fields: any }) => {
+      await apiRequest("PUT", `/api/notes/${id}`, { fields });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cards"] });
+      setEditingCard(null);
+      toast({ title: "Card updated" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update card", variant: "destructive" });
+    }
+  });
+
+  const handleEdit = (card: Card) => {
+    setEditingCard(card);
+    setEditForm({
+      front: card.note.fields.Front || card.note.fields.Text || "",
+      back: card.note.fields.Back || ""
+    });
+  };
+
+  const handleSaveEdit = () => {
+    if (!editingCard) return;
+    
+    // Construct fields object based on what was there before
+    // Heuristic: if it had Text, keep Text. If Front/Back, keep Front/Back.
+    const newFields = { ...editingCard.note.fields };
+    
+    if (newFields.Text !== undefined) {
+       newFields.Text = editForm.front;
+       // Back usually doesn't exist for cloze note types in same way, but let's assume Basic structure mainly
+    } else {
+       newFields.Front = editForm.front;
+       newFields.Back = editForm.back;
+    }
+
+    updateNoteMutation.mutate({ 
+      id: editingCard.note.id, 
+      fields: newFields 
+    });
+  };
 
   const filteredCards = useMemo(() => {
     if (!cards) return [];
@@ -161,12 +242,13 @@ export default function Browser() {
                  </Button>
               </TableHead>
               <TableHead className="text-right">Reps</TableHead>
+              <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {filteredCards.length === 0 ? (
                <TableRow>
-                 <TableCell colSpan={6} className="h-24 text-center">
+                 <TableCell colSpan={7} className="h-24 text-center">
                    No cards found.
                  </TableCell>
                </TableRow>
@@ -193,12 +275,78 @@ export default function Browser() {
                   <TableCell>{card.intervalDays}d</TableCell>
                   <TableCell>{card.easeFactor.toFixed(2)}</TableCell>
                   <TableCell className="text-right">{card.reps}</TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" className="h-8 w-8 p-0">
+                          <span className="sr-only">Open menu</span>
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuLabel>Actions</DropdownMenuLabel>
+                        <DropdownMenuItem onClick={() => handleEdit(card)}>
+                          <Pencil className="mr-2 h-4 w-4" />
+                          Edit Note
+                        </DropdownMenuItem>
+                        <DropdownMenuSeparator />
+                        <DropdownMenuItem 
+                          className="text-red-600 focus:text-red-600 focus:bg-red-100 dark:focus:bg-red-900/20"
+                          onClick={() => {
+                            if (confirm("Are you sure? This will delete the card and its history.")) {
+                              deleteCardMutation.mutate(card.id);
+                            }
+                          }}
+                        >
+                          <Trash2 className="mr-2 h-4 w-4" />
+                          Delete Card
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
                 </TableRow>
               ))
             )}
           </TableBody>
         </Table>
       </div>
+
+      <Dialog open={!!editingCard} onOpenChange={(open) => !open && setEditingCard(null)}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Edit Note</DialogTitle>
+            <DialogDescription>
+              Make changes to the content of this card. This may affect other cards generated from this note.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="front">Front / Text</Label>
+              <Textarea
+                id="front"
+                value={editForm.front}
+                onChange={(e) => setEditForm(prev => ({ ...prev, front: e.target.value }))}
+                className="min-h-[100px]"
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="back">Back</Label>
+              <Textarea
+                id="back"
+                value={editForm.back}
+                onChange={(e) => setEditForm(prev => ({ ...prev, back: e.target.value }))}
+                className="min-h-[100px]"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditingCard(null)}>Cancel</Button>
+            <Button onClick={handleSaveEdit} disabled={updateNoteMutation.isPending}>
+              {updateNoteMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
