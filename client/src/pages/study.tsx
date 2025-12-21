@@ -161,6 +161,7 @@ export default function Study() {
   const frontContent = currentCard?.note?.fields?.Front || currentCard?.note?.fields?.Text || "No content";
   const backContent = currentCard?.note?.fields?.Back || "No answer";
 
+  // ...
   if (!queue || queue.length === 0 || currentIndex >= queue.length) {
     const isFinished = currentIndex >= queue.length && queue.length > 0;
     
@@ -176,17 +177,27 @@ export default function Study() {
             : "You've reviewed all your cards for today. Great job!"}
         </p>
         <div className="flex gap-4">
-            <Button variant="outline" onClick={() => {
+            <Button 
+              variant="outline" 
+              disabled={!isFinished} // Disable Redo if we never had cards
+              onClick={() => {
                 // Restart current session locally
+                setIsFlipped(false);
                 setCurrentIndex(0);
                 setElapsed(0);
             }}>Redo Queue</Button>
             
-            <Button variant="outline" onClick={() => {
+            <Button variant="outline" onClick={async () => {
                 // Fetch fresh cards from server
+                setIsFlipped(false);
                 setCurrentIndex(0);
-                refetch();
                 setElapsed(0);
+                const { data: newData } = await refetch();
+                if (!newData?.queue?.length) {
+                  toast({ title: "No new cards found", description: "You're all caught up!" });
+                } else {
+                  toast({ title: "Queue refreshed", description: `Found ${newData.queue.length} cards.` });
+                }
             }}>Refresh</Button>
 
             <Link href="/">
@@ -196,6 +207,7 @@ export default function Study() {
       </div>
     );
   }
+
 
   return (
     <div className="h-full flex flex-col max-w-3xl mx-auto p-4 md:p-6">
