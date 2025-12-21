@@ -1,6 +1,7 @@
 import { useStats } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Progress } from "@/components/ui/progress";
 import { 
   BarChart, 
   Bar, 
@@ -8,12 +9,9 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  Legend
+  ResponsiveContainer
 } from "recharts";
+import { CheckCircle, XCircle, Target } from "lucide-react";
 
 export default function Stats() {
   const { data: stats, isLoading } = useStats();
@@ -33,11 +31,10 @@ export default function Stats() {
     { date: 'Sun', reviews: 0 },
   ];
 
-  const stateData = [
-    { name: 'New', value: stats?.newCards || 0, color: '#3b82f6' },
-    { name: 'Learning', value: stats?.learningCards || 0, color: '#f97316' },
-    { name: 'Review', value: stats?.reviewCards || 0, color: '#22c55e' },
-  ];
+  const correctAnswers = stats?.correctAnswers || 0;
+  const wrongAnswers = stats?.wrongAnswers || 0;
+  const totalAnswers = correctAnswers + wrongAnswers;
+  const accuracyPercent = totalAnswers > 0 ? Math.round((correctAnswers / totalAnswers) * 100) : 0;
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -103,32 +100,44 @@ export default function Stats() {
           </CardContent>
         </Card>
 
-        {/* Card State Distribution */}
+        {/* Accuracy Breakdown */}
         <Card className="col-span-1">
           <CardHeader>
-            <CardTitle>Card Distribution</CardTitle>
-            <CardDescription>Breakdown by card state</CardDescription>
+            <CardTitle>Answer Accuracy</CardTitle>
+            <CardDescription>Your correct vs incorrect answers</CardDescription>
           </CardHeader>
-          <CardContent className="h-[300px] flex items-center justify-center">
-             <ResponsiveContainer width="100%" height="100%">
-               <PieChart>
-                 <Pie
-                   data={stateData}
-                   cx="50%"
-                   cy="50%"
-                   innerRadius={60}
-                   outerRadius={80}
-                   paddingAngle={5}
-                   dataKey="value"
-                 >
-                   {stateData.map((entry, index) => (
-                     <Cell key={`cell-${index}`} fill={entry.color} />
-                   ))}
-                 </Pie>
-                 <Tooltip />
-                 <Legend />
-               </PieChart>
-             </ResponsiveContainer>
+          <CardContent className="h-[300px] flex flex-col justify-center space-y-6">
+            <div className="flex items-center justify-center">
+              <div className="text-center">
+                <div className="text-5xl font-bold text-primary mb-2">{accuracyPercent}%</div>
+                <p className="text-sm text-muted-foreground">Overall Accuracy</p>
+              </div>
+            </div>
+            
+            <Progress value={accuracyPercent} className="h-3" />
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-green-50 dark:bg-green-950/30">
+                <CheckCircle className="h-8 w-8 text-green-600" />
+                <div>
+                  <div className="text-xl font-semibold text-green-700 dark:text-green-400">{correctAnswers}</div>
+                  <p className="text-xs text-green-600 dark:text-green-500">Correct</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-3 p-4 rounded-lg bg-red-50 dark:bg-red-950/30">
+                <XCircle className="h-8 w-8 text-red-600" />
+                <div>
+                  <div className="text-xl font-semibold text-red-700 dark:text-red-400">{wrongAnswers}</div>
+                  <p className="text-xs text-red-600 dark:text-red-500">Incorrect</p>
+                </div>
+              </div>
+            </div>
+            
+            {totalAnswers === 0 && (
+              <p className="text-center text-sm text-muted-foreground">
+                Start studying to see your accuracy stats
+              </p>
+            )}
           </CardContent>
         </Card>
       </div>

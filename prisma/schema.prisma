@@ -124,6 +124,7 @@ model StudyGoal {
   deckId        String?     @db.Uuid
   cadence       GoalCadence @default(DAILY)
   targetCount   Int         @default(20)
+  targetAccuracy Int?       @default(80)
   deadline      DateTime?
   status        GoalStatus  @default(ACTIVE)
   createdAt     DateTime    @default(now())

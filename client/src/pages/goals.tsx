@@ -29,6 +29,7 @@ interface StudyGoal {
   deckId: string | null;
   cadence: 'DAILY' | 'WEEKLY';
   targetCount: number;
+  targetAccuracy: number | null;
   deadline: string | null;
   status: 'ACTIVE' | 'COMPLETED' | 'PAUSED';
   deck: Deck | null;
@@ -44,6 +45,7 @@ export default function Goals() {
     deckId: '',
     cadence: 'DAILY' as 'DAILY' | 'WEEKLY',
     targetCount: 20,
+    targetAccuracy: 80,
     deadline: ''
   });
 
@@ -73,6 +75,7 @@ export default function Goals() {
         deckId: data.deckId || null,
         cadence: data.cadence,
         targetCount: data.targetCount,
+        targetAccuracy: data.targetAccuracy,
         deadline: data.deadline ? new Date(data.deadline).toISOString() : null
       });
       return res.json();
@@ -80,7 +83,7 @@ export default function Goals() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
       setIsDialogOpen(false);
-      setNewGoal({ deckId: '', cadence: 'DAILY', targetCount: 20, deadline: '' });
+      setNewGoal({ deckId: '', cadence: 'DAILY', targetCount: 20, targetAccuracy: 80, deadline: '' });
       toast({ title: "Goal created successfully" });
     },
     onError: () => {
@@ -194,6 +197,19 @@ export default function Goals() {
               </div>
 
               <div className="space-y-2">
+                <Label>Target Accuracy %</Label>
+                <Input 
+                  type="number" 
+                  min={1}
+                  max={100}
+                  value={newGoal.targetAccuracy}
+                  onChange={(e) => setNewGoal(g => ({ ...g, targetAccuracy: Math.min(100, Math.max(1, parseInt(e.target.value) || 80)) }))}
+                  data-testid="input-target-accuracy"
+                />
+                <p className="text-xs text-muted-foreground">Target percentage of correct answers</p>
+              </div>
+
+              <div className="space-y-2">
                 <Label>Deadline (optional)</Label>
                 <Input 
                   type="date"
@@ -258,6 +274,7 @@ export default function Goals() {
                         </div>
                         <p className="text-sm text-muted-foreground">
                           Target: {goal.targetCount} cards per {goal.cadence.toLowerCase().slice(0, -2)}
+                          {goal.targetAccuracy && ` • ${goal.targetAccuracy}% accuracy`}
                         </p>
                       </div>
                       

@@ -384,7 +384,9 @@ export async function registerRoutes(
       retentionRate,
       streak,
       timeSpent,
-      dailyHistory: history
+      dailyHistory: history,
+      correctAnswers: successfulReviews,
+      wrongAnswers: totalReviews - successfulReviews
     });
   });
 
@@ -811,6 +813,7 @@ export async function registerRoutes(
         deckId: z.string().uuid().optional().nullable(),
         cadence: z.enum(['DAILY', 'WEEKLY']).default('DAILY'),
         targetCount: z.number().int().positive().default(20),
+        targetAccuracy: z.number().int().min(1).max(100).optional().nullable(),
         deadline: z.string().datetime().optional().nullable(),
       });
       const data = schema.parse(req.body);
@@ -820,6 +823,7 @@ export async function registerRoutes(
           deckId: data.deckId || null,
           cadence: data.cadence,
           targetCount: data.targetCount,
+          targetAccuracy: data.targetAccuracy ?? 80,
           deadline: data.deadline ? new Date(data.deadline) : null,
         },
         include: { deck: true }
@@ -837,6 +841,7 @@ export async function registerRoutes(
       const schema = z.object({
         cadence: z.enum(['DAILY', 'WEEKLY']).optional(),
         targetCount: z.number().int().positive().optional(),
+        targetAccuracy: z.number().int().min(1).max(100).optional().nullable(),
         deadline: z.string().datetime().optional().nullable(),
         status: z.enum(['ACTIVE', 'COMPLETED', 'PAUSED']).optional(),
       });
