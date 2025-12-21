@@ -382,6 +382,18 @@ export default function Study() {
                   <div className="font-serif text-2xl md:text-3xl leading-relaxed">
                     {backContent}
                   </div>
+
+                  {/* Stats on Back */}
+                  <div className="absolute bottom-6 flex items-center gap-6 text-xs text-muted-foreground/60 font-medium">
+                      <div className="flex items-center gap-1.5">
+                         <div className="w-1.5 h-1.5 rounded-full bg-green-500/50"></div>
+                         <span>Correct: {Math.max(0, (currentCard.reps || 0) - (currentCard.lapses || 0))}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                         <div className="w-1.5 h-1.5 rounded-full bg-red-500/50"></div>
+                         <span>Incorrect: {currentCard.lapses || 0}</span>
+                      </div>
+                  </div>
                 </div>
               </motion.div>
             </div>
