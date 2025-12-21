@@ -58,6 +58,7 @@ export default function DeckDetails() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cards", deckId] });
       queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
       toast({ title: "Card deleted" });
     },
   });
