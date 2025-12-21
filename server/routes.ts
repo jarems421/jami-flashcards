@@ -214,6 +214,27 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/decks/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // Delete recursively
+      // 1. Delete Cards
+      await db.card.deleteMany({ where: { deckId: id } });
+      
+      // 2. Delete Notes
+      await db.note.deleteMany({ where: { deckId: id } });
+      
+      // 3. Delete Deck
+      await db.deck.delete({ where: { id } });
+
+      res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to delete deck" });
+    }
+  });
+
   app.get("/api/stats", async (req, res) => {
     const totalCards = await db.card.count();
     const newCards = await db.card.count({ where: { state: 'NEW' } });

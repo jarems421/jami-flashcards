@@ -102,7 +102,9 @@ export default function Study() {
         </p>
         <div className="flex gap-4">
             <Button variant="outline" onClick={() => {
+                setCurrentIndex(0);
                 refetch();
+                toast({ title: "Checking for new cards..." });
             }}>Refresh Queue</Button>
             <Link href="/">
               <Button>Back to Dashboard</Button>
