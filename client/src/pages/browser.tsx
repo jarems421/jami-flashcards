@@ -44,10 +44,6 @@ import { useToast } from "@/hooks/use-toast";
 interface Card {
   id: string;
   state: string;
-  dueAt: string;
-  intervalDays: number;
-  easeFactor: number;
-  lapses: number;
   reps: number;
   lastReviewedAt: string | null;
   note: {
@@ -62,7 +58,7 @@ interface Card {
 export default function Browser() {
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState<string>("ALL");
-  const [sortField, setSortField] = useState<keyof Card | 'lastReviewedAt'>("dueAt");
+  const [sortField, setSortField] = useState<keyof Card | 'lastReviewedAt'>("lastReviewedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingCard, setEditingCard] = useState<Card | null>(null);
   const [editForm, setEditForm] = useState<{front: string, back: string}>({ front: "", back: "" });
@@ -151,7 +147,7 @@ export default function Browser() {
       let valB = b[sortField];
 
       // Handle nested or nulls if needed
-      if (sortField === 'dueAt' || sortField === 'lastReviewedAt') {
+      if (sortField === 'lastReviewedAt') {
          const timeA = typeof valA === 'string' ? new Date(valA).getTime() : 0;
          const timeB = typeof valB === 'string' ? new Date(valB).getTime() : 0;
          return sortDir === "asc" ? timeA - timeB : timeB - timeA;
@@ -205,9 +201,7 @@ export default function Browser() {
           <SelectContent>
             <SelectItem value="ALL">All States</SelectItem>
             <SelectItem value="NEW">New</SelectItem>
-            <SelectItem value="LEARNING">Learning</SelectItem>
-            <SelectItem value="REVIEW">Review</SelectItem>
-            <SelectItem value="RELEARNING">Relearning</SelectItem>
+            <SelectItem value="STUDIED">Studied</SelectItem>
           </SelectContent>
         </Select>
 
@@ -227,18 +221,8 @@ export default function Browser() {
                  </Button>
               </TableHead>
               <TableHead>
-                 <Button variant="ghost" size="sm" onClick={() => toggleSort('dueAt')}>
-                   Due <ArrowUpDown className="ml-2 h-3 w-3" />
-                 </Button>
-              </TableHead>
-              <TableHead>
-                 <Button variant="ghost" size="sm" onClick={() => toggleSort('intervalDays')}>
-                   Interval <ArrowUpDown className="ml-2 h-3 w-3" />
-                 </Button>
-              </TableHead>
-              <TableHead>
-                 <Button variant="ghost" size="sm" onClick={() => toggleSort('easeFactor')}>
-                   Ease <ArrowUpDown className="ml-2 h-3 w-3" />
+                 <Button variant="ghost" size="sm" onClick={() => toggleSort('lastReviewedAt')}>
+                   Last Reviewed <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
               </TableHead>
               <TableHead className="text-right">Reps</TableHead>
@@ -248,7 +232,7 @@ export default function Browser() {
           <TableBody>
             {filteredCards.length === 0 ? (
                <TableRow>
-                 <TableCell colSpan={7} className="h-24 text-center">
+                 <TableCell colSpan={5} className="h-24 text-center">
                    No cards found.
                  </TableCell>
                </TableRow>
@@ -269,11 +253,8 @@ export default function Browser() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    {format(new Date(card.dueAt), "MMM d, yyyy")}
-                    {new Date(card.dueAt) < new Date() && <span className="ml-2 text-red-500 text-xs">Due</span>}
+                    {card.lastReviewedAt ? format(new Date(card.lastReviewedAt), "MMM d, yyyy") : "Never"}
                   </TableCell>
-                  <TableCell>{card.intervalDays}d</TableCell>
-                  <TableCell>{card.easeFactor.toFixed(2)}</TableCell>
                   <TableCell className="text-right">{card.reps}</TableCell>
                   <TableCell>
                     <DropdownMenu>
