@@ -54,10 +54,10 @@ export default function Stats() {
          </Card>
          <Card>
            <CardHeader className="pb-2">
-             <CardTitle className="text-sm font-medium text-muted-foreground">Retention Rate</CardTitle>
+             <CardTitle className="text-sm font-medium text-muted-foreground">Accuracy</CardTitle>
            </CardHeader>
            <CardContent>
-             <div className="text-2xl font-bold">{stats?.retentionRate || 0}%</div>
+             <div className="text-2xl font-bold">{stats?.accuracy || 0}%</div>
            </CardContent>
          </Card>
          <Card>

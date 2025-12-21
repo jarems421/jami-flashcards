@@ -21,15 +21,12 @@ interface CardData {
 
 interface QueueResponse {
   queue: CardData[];
-  mode: 'scheduled' | 'free';
   counts: {
-    dueLearning?: number;
-    dueReview?: number;
-    newAvailable?: number;
-    totalDueNow?: number;
-    totalCards?: number;
-    studiedToday?: number;
-    queueSize?: number;
+    totalCards: number;
+    newCards: number;
+    studiedCards: number;
+    studiedToday: number;
+    queueSize: number;
   };
 }
 
@@ -50,7 +47,6 @@ export default function Study() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
-  const [studyMode, setStudyMode] = useState<'scheduled' | 'free'>(modeParam === 'free' ? 'free' : 'scheduled');
 
   // Local Session State
   const [activeQueue, setActiveQueue] = useState<CardData[]>([]);
@@ -76,33 +72,16 @@ export default function Study() {
   const currentDeck = decks?.find(d => d.id === deckId);
 
   const { data, isLoading, refetch } = useQuery<QueueResponse>({
-    queryKey: ["/api/queue/today", deckId, studyMode],
+    queryKey: ["/api/queue/today", deckId],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (deckId) params.set("deckId", deckId);
-      if (studyMode === 'free') params.set("mode", "free");
       const res = await apiRequest("GET", `/api/queue/today?${params.toString()}`);
       return res.json();
     },
     staleTime: Infinity,
     refetchOnWindowFocus: false 
   });
-
-  const handleModeChange = useCallback(async (checked: boolean) => {
-    const newMode = checked ? 'free' : 'scheduled';
-    setStudyMode(newMode);
-    setCurrentIndex(0);
-    setIsFlipped(false);
-    setWrongCards([]);
-    setRightCards([]);
-    setSessionComplete(false);
-    setElapsed(0);
-  }, []);
-
-  // Refetch when study mode changes
-  useEffect(() => {
-    refetch();
-  }, [studyMode, refetch]);
 
   // Initialize active queue when data loads
   useEffect(() => {
