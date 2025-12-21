@@ -35,21 +35,21 @@ export default function Dashboard() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="md:col-span-2 relative overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm"
+          className="md:col-span-3 relative overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm"
         >
           <div className="absolute top-0 right-0 w-64 h-full opacity-10 pointer-events-none">
             <img src={studyIllustration} className="w-full h-full object-cover" alt="" />
           </div>
           
-          <div className="p-6 relative z-10 flex flex-col h-full justify-between">
+          <div className="p-6 relative z-10 flex flex-col md:flex-row h-full justify-between items-center gap-6">
             <div>
               <h2 className="text-xl font-semibold mb-1">Daily Review</h2>
-              <p className="text-muted-foreground mb-6 max-w-md">
+              <p className="text-muted-foreground max-w-xl">
                 Consistency is key. Reviewing your cards daily strengthens neural pathways and improves long-term retention.
               </p>
             </div>
             
-            <div className="flex items-center gap-4">
+            <div className="flex items-center gap-4 shrink-0">
               <Link href="/study">
                 <Button size="lg" className="gap-2 shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-shadow">
                   <Play className="h-4 w-4 fill-current" />
@@ -63,37 +63,6 @@ export default function Dashboard() {
               )}
             </div>
           </div>
-        </motion.div>
-
-        <motion.div 
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.3, delay: 0.1 }}
-        >
-          <Card className="h-full">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Status</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-4xl font-bold mb-1">{stats?.reviewCards}</div>
-              <p className="text-xs text-muted-foreground mb-4">Active Cards</p>
-              
-              <div className="space-y-3 pt-4 border-t">
-                <div className="flex justify-between text-sm">
-                  <span className="flex items-center gap-2 text-muted-foreground">
-                    <Activity className="h-3 w-3" /> Learning
-                  </span>
-                  <span className="font-medium">{stats?.learningCards}</span>
-                </div>
-                <div className="flex justify-between text-sm">
-                  <span className="flex items-center gap-2 text-muted-foreground">
-                    <TrendingUp className="h-3 w-3" /> New
-                  </span>
-                  <span className="font-medium">{stats?.newCards}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
         </motion.div>
       </div>
 

@@ -74,7 +74,7 @@ export default function Study() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue/today"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
       // Move to next card locally
       setCurrentIndex(prev => prev + 1);
       setCanUndo(true);
@@ -90,7 +90,7 @@ export default function Study() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/queue/today"] });
-      queryClient.invalidateQueries({ queryKey: ["/api/stats"] });
+      queryClient.invalidateQueries({ queryKey: ["stats"] });
       setCurrentIndex(prev => Math.max(0, prev - 1));
       setCanUndo(false);
       toast({ title: "Undone last review" });
