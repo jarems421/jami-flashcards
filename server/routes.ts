@@ -576,6 +576,10 @@ export async function registerRoutes(
       
       // Let's iterate templates and decide logic
       for (const tmpl of templates) {
+        // FIX: Skip reverse template for now to prevent duplicate/reverse cards by default
+        // The user finds "2 of the same note" confusing.
+        if (tmpl.id === 'reverse') continue;
+
         if (tmpl.id === 'cloze') { // Special ID for cloze template?
            // Parse Text field
            const text = noteFields['Text'] || noteFields['Front'] || "";
