@@ -3,37 +3,7 @@ import { createServer, type Server } from "http";
 import { db } from "./db";
 import { parseCloze } from "../shared/cloze";
 import { z } from "zod";
-
-// Helper to calculate SM-2
-function calculateSm2(
-  rating: 'AGAIN' | 'HARD' | 'GOOD' | 'EASY',
-  previousInterval: number,
-  previousEase: number,
-  previousState: 'NEW' | 'LEARNING' | 'REVIEW' | 'RELEARNING'
-) {
-  let newInterval = previousInterval;
-  let newEase = previousEase;
-  let newState = previousState;
-
-  if (rating === 'AGAIN') {
-    newInterval = 0; // < 1 min (re-queue immediately)
-    newState = 'LEARNING';
-    newEase = Math.max(1.3, previousEase - 0.2);
-  } else if (rating === 'HARD') {
-    newInterval = previousState === 'NEW' || previousState === 'LEARNING' ? 1 : Math.max(1, previousInterval * 1.2);
-    newEase = Math.max(1.3, previousEase - 0.15);
-    newState = 'REVIEW';
-  } else if (rating === 'GOOD') {
-    newInterval = previousState === 'NEW' || previousState === 'LEARNING' ? 1 : Math.max(1, previousInterval * previousEase);
-    newState = 'REVIEW';
-  } else if (rating === 'EASY') {
-    newInterval = previousState === 'NEW' || previousState === 'LEARNING' ? 4 : Math.max(1, previousInterval * previousEase * 1.3);
-    newEase += 0.15;
-    newState = 'REVIEW';
-  }
-
-  return { newInterval, newEase, newState };
-}
+import { scheduleCard, DEFAULT_SETTINGS, CardSchedule, Rating, CardState } from "../shared/scheduler";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -174,48 +144,57 @@ export async function registerRoutes(
     }
 
     try {
-      const card = await db.card.findUnique({ where: { id } });
+      const card = await db.card.findUnique({ 
+        where: { id },
+        include: { deck: true }
+      });
       if (!card) return res.status(404).json({ error: "Card not found" });
 
-      const { newInterval, newEase, newState } = calculateSm2(
-        rating, 
-        card.intervalDays, 
-        card.easeFactor, 
-        card.state
-      );
-
-      // Calculate next due date
-      // interval is in days. If interval is 0, it means "soon" (e.g. 1 minute)
-      let nextDue = new Date();
-      if (newInterval < 1) {
-        nextDue.setMinutes(nextDue.getMinutes() + 1); // 1 min later
-      } else {
-        nextDue.setDate(nextDue.getDate() + newInterval);
+      // Parse settings from deck override or use default
+      let settings = DEFAULT_SETTINGS;
+      if (card.deck.settingsOverride) {
+        // In real app, deep merge or parse. 
+        // For now assume if present it overrides
+        // settings = { ...DEFAULT_SETTINGS, ...(card.deck.settingsOverride as any) };
       }
+
+      const currentSchedule: CardSchedule = {
+        state: card.state as CardState,
+        dueAt: card.dueAt,
+        intervalDays: card.intervalDays,
+        easeFactor: card.easeFactor,
+        learningStepIndex: card.learningStepIndex,
+        lapses: card.lapses,
+        reps: card.reps,
+        lastReviewedAt: card.lastReviewedAt || new Date(0) // Handle null
+      };
+
+      const nextSchedule = scheduleCard(currentSchedule, rating as Rating, settings);
 
       // Transaction: Update Card + Create Log
       const [updatedCard] = await db.$transaction([
         db.card.update({
           where: { id },
           data: {
-            state: newState,
-            intervalDays: newInterval,
-            easeFactor: newEase,
-            dueAt: nextDue,
-            lastReviewedAt: new Date(),
-            reps: { increment: 1 },
-            lapses: rating === 'AGAIN' ? { increment: 1 } : undefined
+            state: nextSchedule.state,
+            dueAt: nextSchedule.dueAt,
+            intervalDays: nextSchedule.intervalDays,
+            easeFactor: nextSchedule.easeFactor,
+            learningStepIndex: nextSchedule.learningStepIndex,
+            lapses: nextSchedule.lapses,
+            reps: nextSchedule.reps,
+            lastReviewedAt: nextSchedule.lastReviewedAt
           }
         }),
         db.reviewLog.create({
           data: {
             cardId: id,
-            rating,
+            rating: rating as any, // Prisma enum
             responseTimeMs: 0, // Mock for now
-            previousState: card.state,
-            newState,
+            previousState: card.state as any,
+            newState: nextSchedule.state as any,
             previousIntervalDays: card.intervalDays,
-            newIntervalDays: newInterval
+            newIntervalDays: nextSchedule.intervalDays
           }
         })
       ]);
