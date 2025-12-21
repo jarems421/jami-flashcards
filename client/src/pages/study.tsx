@@ -3,12 +3,10 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw, Shuffle, Calendar } from "lucide-react";
+import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
-import { Switch } from "@/components/ui/switch";
-import { Label } from "@/components/ui/label";
 
 interface CardData {
   id: string;
@@ -314,33 +312,14 @@ export default function Study() {
           <div>
             <h2 className="font-semibold text-sm">{currentDeck?.name || "Study Session"}</h2>
             <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
-              {studyMode === 'scheduled' ? (
-                <>
-                  <span className="text-blue-600 font-medium">{counts?.newAvailable ?? 0} New</span>
-                  <span className="text-red-600 font-medium">{counts?.dueLearning ?? 0} Learn</span>
-                  <span className="text-green-600 font-medium">{counts?.dueReview ?? 0} Review</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-purple-600 font-medium">{counts?.queueSize ?? 0} Cards</span>
-                  <span className="text-muted-foreground">{counts?.studiedToday ?? 0} studied today</span>
-                </>
-              )}
+              <span className="text-blue-600 font-medium">{counts?.newCards ?? 0} New</span>
+              <span className="text-green-600 font-medium">{counts?.studiedCards ?? 0} Studied</span>
+              <span className="text-muted-foreground">{counts?.studiedToday ?? 0} today</span>
             </div>
           </div>
         </div>
         
-        <div className="flex items-center gap-4">
-           <div className="flex items-center gap-2 bg-muted/50 px-3 py-1.5 rounded-lg" data-testid="toggle-study-mode">
-             <Calendar className={`h-3.5 w-3.5 ${studyMode === 'scheduled' ? 'text-primary' : 'text-muted-foreground'}`} />
-             <Switch 
-               checked={studyMode === 'free'} 
-               onCheckedChange={handleModeChange}
-               className="data-[state=checked]:bg-purple-600"
-             />
-             <Shuffle className={`h-3.5 w-3.5 ${studyMode === 'free' ? 'text-purple-600' : 'text-muted-foreground'}`} />
-           </div>
-           
+        <div className="flex items-center gap-4">           
            <div className="flex items-center gap-1.5 text-sm font-variant-numeric tabular-nums text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
              <Clock className="h-3.5 w-3.5" />
              {formatTime(elapsed)}
@@ -411,12 +390,8 @@ export default function Study() {
                   {/* Stats on Back */}
                   <div className="absolute bottom-6 flex items-center gap-6 text-xs text-muted-foreground/60 font-medium">
                       <div className="flex items-center gap-1.5">
-                         <div className="w-1.5 h-1.5 rounded-full bg-green-500/50"></div>
-                         <span>Correct: {Math.max(0, (currentCard.reps || 0) - (currentCard.lapses || 0))}</span>
-                      </div>
-                      <div className="flex items-center gap-1.5">
-                         <div className="w-1.5 h-1.5 rounded-full bg-red-500/50"></div>
-                         <span>Incorrect: {currentCard.lapses || 0}</span>
+                         <div className="w-1.5 h-1.5 rounded-full bg-primary/50"></div>
+                         <span>Reviews: {currentCard.reps || 0}</span>
                       </div>
                   </div>
                 </div>
