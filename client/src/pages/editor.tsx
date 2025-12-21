@@ -89,6 +89,22 @@ export default function Editor() {
     });
   };
 
+  if (decks && decks.length === 0) {
+    return (
+      <div className="max-w-3xl mx-auto p-6 md:p-12">
+        <div className="text-center py-16">
+          <h1 className="text-3xl font-bold tracking-tight mb-4">No Decks Yet</h1>
+          <p className="text-muted-foreground mb-6">You need to create a deck before you can add notes.</p>
+          <Link href="/decks">
+            <Button size="lg" data-testid="button-create-deck">
+              Create Your First Deck
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto p-6 md:p-12">
       <div className="flex items-center justify-between mb-8">
