@@ -14,6 +14,8 @@ interface CardData {
   note: {
     fields: any;
   };
+  reps: number;
+  lapses: number;
 }
 
 interface QueueResponse {
@@ -43,6 +45,12 @@ export default function Study() {
   const [isFlipped, setIsFlipped] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
 
+  // Local Session State
+  const [activeQueue, setActiveQueue] = useState<CardData[]>([]);
+  const [wrongCards, setWrongCards] = useState<CardData[]>([]);
+  const [rightCards, setRightCards] = useState<CardData[]>([]);
+  const [sessionComplete, setSessionComplete] = useState(false);
+
   // Timer
   useEffect(() => {
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
@@ -70,17 +78,39 @@ export default function Study() {
     refetchOnWindowFocus: false 
   });
 
+  // Initialize active queue when data loads
+  useEffect(() => {
+    if (data?.queue) {
+      setActiveQueue(data.queue);
+      setWrongCards([]);
+      setRightCards([]);
+      setCurrentIndex(0);
+      setSessionComplete(false);
+    }
+  }, [data]);
+
   const answerMutation = useMutation({
     mutationFn: async ({ id, rating }: { id: string, rating: string }) => {
       await apiRequest("POST", `/api/cards/${id}/grade`, { rating });
     },
-    onSuccess: () => {
+    onSuccess: (_, variables) => {
       // Don't invalidate queue to keep the current session cards in memory
-      // queryClient.invalidateQueries({ queryKey: ["/api/queue/today"] }); 
       queryClient.invalidateQueries({ queryKey: ["stats"] });
+      
+      const currentCard = activeQueue[currentIndex];
+      if (variables.rating === 'AGAIN') {
+        setWrongCards(prev => [...prev, currentCard]);
+      } else {
+        setRightCards(prev => [...prev, currentCard]);
+      }
+
       // Move to next card locally
-      setCurrentIndex(prev => prev + 1);
-      setCanUndo(true);
+      if (currentIndex < activeQueue.length - 1) {
+        setCurrentIndex(prev => prev + 1);
+        setCanUndo(true);
+      } else {
+        setSessionComplete(true);
+      }
     },
     onError: () => {
       toast({ title: "Failed to submit answer", variant: "destructive" });
@@ -92,9 +122,19 @@ export default function Study() {
       await apiRequest("POST", "/api/study/undo");
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/queue/today"] });
       queryClient.invalidateQueries({ queryKey: ["stats"] });
+      
+      // Remove from last pile it was added to
+      const lastWasRight = rightCards.some(c => c.id === activeQueue[currentIndex - 1]?.id);
+      
+      if (lastWasRight) {
+        setRightCards(prev => prev.slice(0, -1));
+      } else {
+        setWrongCards(prev => prev.slice(0, -1));
+      }
+
       setCurrentIndex(prev => Math.max(0, prev - 1));
+      setSessionComplete(false);
       setCanUndo(false);
       toast({ title: "Undone last review" });
     },
@@ -107,14 +147,13 @@ export default function Study() {
     }
   });
 
-  const handleAnswer = useCallback((rating: 'AGAIN' | 'HARD' | 'GOOD' | 'EASY') => {
-    const queue = data?.queue || [];
-    const currentCard = queue[currentIndex];
+  const handleAnswer = useCallback((rating: 'AGAIN' | 'GOOD') => {
+    const currentCard = activeQueue[currentIndex];
     if (!currentCard) return;
     
     answerMutation.mutate({ id: currentCard.id, rating });
     setIsFlipped(false);
-  }, [data, currentIndex, answerMutation]);
+  }, [activeQueue, currentIndex, answerMutation]);
 
   const handleUndo = useCallback(() => {
     if (!canUndo) return;
@@ -153,8 +192,7 @@ export default function Study() {
     return <div className="p-8 flex items-center justify-center h-full"><Skeleton className="h-[400px] w-full max-w-xl rounded-xl" /></div>;
   }
 
-  const queue = data?.queue || [];
-  const currentCard = queue[currentIndex];
+  const currentCard = activeQueue[currentIndex];
   const counts = data?.counts;
 
   // Template rendering
@@ -162,46 +200,95 @@ export default function Study() {
   const backContent = currentCard?.note?.fields?.Back || "No answer";
 
   // ...
-  if (!queue || queue.length === 0 || currentIndex >= queue.length) {
-    const isFinished = currentIndex >= queue.length && queue.length > 0;
+  if (sessionComplete || !activeQueue || activeQueue.length === 0) {
+    const hasCards = activeQueue && activeQueue.length > 0;
     
     return (
       <div className="h-full flex flex-col items-center justify-center p-8 text-center max-w-md mx-auto">
-        <div className={`w-16 h-16 ${isFinished ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'} rounded-full flex items-center justify-center mb-6`}>
-          {isFinished ? <RefreshCw className="h-8 w-8" /> : <Check className="h-8 w-8" />}
+        <div className={`w-16 h-16 ${sessionComplete ? 'bg-blue-100 text-blue-600' : 'bg-green-100 text-green-600'} rounded-full flex items-center justify-center mb-6`}>
+          {sessionComplete ? <RefreshCw className="h-8 w-8" /> : <Check className="h-8 w-8" />}
         </div>
-        <h2 className="text-2xl font-bold mb-2">{isFinished ? 'Session Complete' : 'All Done!'}</h2>
+        <h2 className="text-2xl font-bold mb-2">{sessionComplete ? 'Session Complete' : 'All Done!'}</h2>
+        
+        {sessionComplete && (
+          <div className="grid grid-cols-2 gap-4 w-full mb-8">
+             <div className="bg-green-50 dark:bg-green-950/30 p-4 rounded-xl border border-green-100 dark:border-green-900/50">
+               <div className="text-2xl font-bold text-green-600 dark:text-green-400">{rightCards.length}</div>
+               <div className="text-sm text-green-700/70 dark:text-green-400/70 font-medium">Right</div>
+             </div>
+             <div className="bg-red-50 dark:bg-red-950/30 p-4 rounded-xl border border-red-100 dark:border-red-900/50">
+               <div className="text-2xl font-bold text-red-600 dark:text-red-400">{wrongCards.length}</div>
+               <div className="text-sm text-red-700/70 dark:text-red-400/70 font-medium">Wrong</div>
+             </div>
+          </div>
+        )}
+
         <p className="text-muted-foreground mb-8">
-          {isFinished 
-            ? `You finished this batch of ${queue.length} cards in ${formatTime(elapsed)}.`
+          {sessionComplete 
+            ? `You reviewed ${activeQueue.length} cards in ${formatTime(elapsed)}.`
             : "You've reviewed all your cards for today. Great job!"}
         </p>
-        <div className="flex gap-4">
-            <Button 
-              variant="outline" 
-              disabled={!isFinished} // Disable Redo if we never had cards
-              onClick={() => {
-                // Restart current session locally
-                setIsFlipped(false);
-                setCurrentIndex(0);
-                setElapsed(0);
-            }}>Redo Queue</Button>
-            
-            <Button variant="outline" onClick={async () => {
-                // Fetch fresh cards from server
-                setIsFlipped(false);
-                setCurrentIndex(0);
-                setElapsed(0);
-                const { data: newData } = await refetch();
-                if (!newData?.queue?.length) {
-                  toast({ title: "No new cards found", description: "You're all caught up!" });
-                } else {
-                  toast({ title: "Queue refreshed", description: `Found ${newData.queue.length} cards.` });
-                }
-            }}>Refresh</Button>
+        
+        <div className="flex flex-col gap-3 w-full">
+            {wrongCards.length > 0 && (
+              <Button 
+                variant="default" 
+                className="w-full bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/20"
+                onClick={() => {
+                  // Redo wrong cards
+                  setActiveQueue([...wrongCards]);
+                  setWrongCards([]);
+                  setRightCards([]);
+                  setCurrentIndex(0);
+                  setSessionComplete(false);
+                  setElapsed(0);
+                  toast({ title: "Redoing incorrect cards", description: `Queued ${wrongCards.length} cards for review.` });
+              }}>
+                Redo Incorrect Cards ({wrongCards.length})
+              </Button>
+            )}
+
+            <div className="flex gap-3 w-full">
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                disabled={!sessionComplete} 
+                onClick={() => {
+                  // Restart full session
+                  setActiveQueue(data?.queue || []);
+                  setWrongCards([]);
+                  setRightCards([]);
+                  setCurrentIndex(0);
+                  setSessionComplete(false);
+                  setIsFlipped(false);
+                  setElapsed(0);
+              }}>Redo All</Button>
+              
+              <Button 
+                variant="outline" 
+                className="flex-1"
+                onClick={async () => {
+                  setIsFlipped(false);
+                  setCurrentIndex(0);
+                  setElapsed(0);
+                  const { data: newData } = await refetch();
+                  if (newData?.queue) {
+                     setActiveQueue(newData.queue);
+                     setWrongCards([]);
+                     setRightCards([]);
+                     setSessionComplete(false);
+                  }
+                  
+                  if (!newData?.queue?.length) {
+                    toast({ title: "No new cards found", description: "You're all caught up!" });
+                  } else {
+                    toast({ title: "Queue refreshed", description: `Found ${newData.queue.length} cards.` });
+                  }
+              }}>Refresh</Button>
+            </div>
 
             <Link href="/">
-              <Button>Back to Dashboard</Button>
+              <Button variant="ghost" className="w-full">Back to Dashboard</Button>
             </Link>
         </div>
       </div>
