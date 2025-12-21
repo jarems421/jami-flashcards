@@ -100,9 +100,9 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         {[
           { label: "Total Cards", value: stats?.totalCards, icon: Library },
-          { label: "Retention Rate", value: "94%", icon: Activity }, // Mock
-          { label: "Streak", value: "12 days", icon: TrendingUp },   // Mock
-          { label: "Time Spent", value: "1.2h", icon: Clock },       // Mock
+          { label: "Retention Rate", value: `${stats?.retentionRate || 0}%`, icon: Activity },
+          { label: "Streak", value: `${stats?.streak || 0} days`, icon: TrendingUp },
+          { label: "Time Spent", value: stats?.timeSpent || "0m", icon: Clock },
         ].map((stat, i) => (
           <Card key={i} className="bg-muted/30 border-none shadow-none">
             <CardContent className="p-4 flex items-center justify-between">

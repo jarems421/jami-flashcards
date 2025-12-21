@@ -251,12 +251,89 @@ export async function registerRoutes(
       }
     });
 
+    // --- Advanced Stats ---
+    const logs = await db.reviewLog.findMany({
+      select: {
+        rating: true,
+        reviewedAt: true,
+        responseTimeMs: true
+      },
+      orderBy: { reviewedAt: 'desc' }
+    });
+
+    // 1. Retention Rate
+    const totalReviews = logs.length;
+    let successfulReviews = 0;
+    let totalTimeMs = 0;
+
+    const uniqueDays = new Set<string>();
+
+    logs.forEach(log => {
+      if (log.rating === 'GOOD' || log.rating === 'EASY') {
+        successfulReviews++;
+      }
+      totalTimeMs += (log.responseTimeMs || 0);
+      
+      // Streak calculation prep
+      const day = log.reviewedAt.toISOString().split('T')[0];
+      uniqueDays.add(day);
+    });
+
+    const retentionRate = totalReviews > 0 
+      ? Math.round((successfulReviews / totalReviews) * 100) 
+      : 0;
+
+    // 2. Time Spent
+    // Convert ms to hours if > 1h, else minutes
+    let timeSpent = "0m";
+    const minutes = Math.floor(totalTimeMs / 60000);
+    if (minutes >= 60) {
+       const hours = (minutes / 60).toFixed(1);
+       timeSpent = `${hours}h`;
+    } else {
+       timeSpent = `${minutes}m`;
+    }
+
+    // 3. Streak
+    // Simple streak: check if today is present, then yesterday, etc.
+    // If today is NOT present, check if yesterday is present (streak could be active but not incremented today yet)
+    // Actually, "Current Streak" usually implies consecutive days ending Today or Yesterday.
+    
+    const sortedDays = Array.from(uniqueDays).sort().reverse(); // Descending dates
+    let streak = 0;
+    const today = new Date().toISOString().split('T')[0];
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    // Check if streak is alive (has entry for today OR yesterday)
+    const hasToday = sortedDays.includes(today);
+    const hasYesterday = sortedDays.includes(yesterday);
+
+    if (hasToday || hasYesterday) {
+       // Count backwards
+       // We need to find the start date of the streak
+       // Actually simpler: iterate backwards from today/yesterday
+       let currentCheck = hasToday ? new Date() : new Date(Date.now() - 86400000);
+       
+       while (true) {
+         const checkStr = currentCheck.toISOString().split('T')[0];
+         if (uniqueDays.has(checkStr)) {
+           streak++;
+           currentCheck.setDate(currentCheck.getDate() - 1);
+         } else {
+           break;
+         }
+       }
+    }
+
     res.json({
       totalCards,
       newCards,
       learningCards,
       reviewCards,
-      dueCards
+      dueCards,
+      retentionRate,
+      streak,
+      timeSpent
     });
   });
 
