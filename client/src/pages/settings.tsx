@@ -3,9 +3,12 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { useToast } from "@/hooks/use-toast";
+import { useTheme } from "@/components/theme-provider";
+import { Moon, Sun } from "lucide-react";
 
 export default function Settings() {
   const { toast } = useToast();
+  const { theme, setTheme } = useTheme();
 
   const handleSave = () => {
     toast({
@@ -20,6 +23,29 @@ export default function Settings() {
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1">Manage your application preferences</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Appearance</CardTitle>
+          <CardDescription>Customize the look and feel of Jami</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between space-x-2">
+             <div className="space-y-1">
+               <Label>Dark Mode</Label>
+               <p className="text-sm text-muted-foreground">Toggle between light and dark themes</p>
+             </div>
+             <div className="flex items-center gap-2">
+               <Sun className="h-4 w-4 text-muted-foreground" />
+               <Switch 
+                 checked={theme === 'dark'}
+                 onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+               />
+               <Moon className="h-4 w-4 text-muted-foreground" />
+             </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>

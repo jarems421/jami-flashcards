@@ -16,6 +16,8 @@ import Stats from "@/pages/stats";
 import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
+import { ThemeProvider } from "@/components/theme-provider";
+
 function Nav() {
   const [location] = useLocation();
   
@@ -40,7 +42,7 @@ function Nav() {
         <div className="h-8 w-8 rounded-lg bg-primary flex items-center justify-center">
           <Brain className="h-5 w-5 text-primary-foreground" />
         </div>
-        <span className="font-bold text-lg tracking-tight">FlashRecall</span>
+        <span className="font-bold text-lg tracking-tight">Jami</span>
       </div>
 
       <div className="space-y-1">
@@ -87,13 +89,15 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <div className="flex min-h-screen bg-background text-foreground font-sans">
-        <Nav />
-        <main className="flex-1 overflow-auto">
-          <Router />
-        </main>
-      </div>
-      <Toaster />
+      <ThemeProvider defaultTheme="system" storageKey="jami-theme">
+        <div className="flex min-h-screen bg-background text-foreground font-sans">
+          <Nav />
+          <main className="flex-1 overflow-auto">
+            <Router />
+          </main>
+        </div>
+        <Toaster />
+      </ThemeProvider>
     </QueryClientProvider>
   );
 }
