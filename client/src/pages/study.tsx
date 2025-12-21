@@ -65,7 +65,9 @@ export default function Study() {
     queryFn: async () => {
       const res = await apiRequest("GET", `/api/queue/today${deckId ? `?deckId=${deckId}` : ""}`);
       return res.json();
-    }
+    },
+    staleTime: Infinity, // Keep data fresh until manual invalidation to prevent session clears
+    refetchOnWindowFocus: false 
   });
 
   const answerMutation = useMutation({
@@ -140,9 +142,7 @@ export default function Study() {
 
       switch(e.key) {
         case '1': handleAnswer('AGAIN'); break;
-        case '2': handleAnswer('HARD'); break;
-        case '3': handleAnswer('GOOD'); break;
-        case '4': handleAnswer('EASY'); break;
+        case '2': handleAnswer('GOOD'); break;
       }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -301,60 +301,31 @@ export default function Study() {
             Show Answer <span className="ml-2 text-xs opacity-50 font-normal">(Space)</span>
           </Button>
         ) : (
-          <div className="grid grid-cols-4 gap-3 w-full max-w-2xl">
+          <div className="grid grid-cols-2 gap-4 w-full max-w-lg">
             <div className="flex flex-col gap-1">
               <Button 
                 variant="outline" 
-                className="h-14 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950 transition-colors"
+                className="h-16 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950 transition-colors text-lg font-medium"
                 onClick={() => handleAnswer('AGAIN')}
                 disabled={answerMutation.isPending}
               >
-                Again
+                Wrong
               </Button>
-              <span className="text-[10px] uppercase tracking-wider text-center text-muted-foreground font-medium">1. &lt; 1m</span>
-            </div>
-            
-            <div className="flex flex-col gap-1">
-              <Button 
-                variant="outline" 
-                className="h-14 border-orange-200 hover:bg-orange-50 hover:text-orange-700 hover:border-orange-300 dark:border-orange-900/50 dark:hover:bg-orange-950 transition-colors"
-                onClick={() => handleAnswer('HARD')}
-                disabled={answerMutation.isPending}
-              >
-                Hard
-              </Button>
-              <span className="text-[10px] uppercase tracking-wider text-center text-muted-foreground font-medium">
-                2. {currentCard.state === 'NEW' || currentCard.state === 'LEARNING' ? 'Now' : '2d'}
-              </span>
             </div>
 
             <div className="flex flex-col gap-1">
               <Button 
                 variant="outline" 
-                className="h-14 border-blue-200 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:border-blue-900/50 dark:hover:bg-blue-950 transition-colors"
+                className="h-16 border-green-200 hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950 transition-colors text-lg font-medium"
                 onClick={() => handleAnswer('GOOD')}
                 disabled={answerMutation.isPending}
               >
-                Good
+                Right
               </Button>
-              <span className="text-[10px] uppercase tracking-wider text-center text-muted-foreground font-medium">
-                3. {currentCard.state === 'NEW' ? '10m' : '4d'}
-              </span>
-            </div>
-
-            <div className="flex flex-col gap-1">
-              <Button 
-                variant="outline" 
-                className="h-14 border-green-200 hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950 transition-colors"
-                onClick={() => handleAnswer('EASY')}
-                disabled={answerMutation.isPending}
-              >
-                Easy
-              </Button>
-              <span className="text-[10px] uppercase tracking-wider text-center text-muted-foreground font-medium">4. 4d</span>
             </div>
           </div>
         )}
+
       </div>
     </div>
   );
