@@ -15,7 +15,7 @@ interface Deck {
   name: string;
   counts: {
     new: number;
-    due: number;
+    studied: number;
     total: number;
   };
 }
@@ -23,7 +23,8 @@ interface Deck {
 interface CardData {
   id: string;
   state: string;
-  dueAt: string;
+  reps: number;
+  lastReviewedAt: string | null;
   note: {
     fields: any;
   };
@@ -83,7 +84,7 @@ export default function DeckDetails() {
         <div>
           <h1 className="text-3xl font-bold tracking-tight">{deck.name}</h1>
           <p className="text-muted-foreground mt-1">
-            {deck.counts.total} cards • {deck.counts.due} due • {deck.counts.new} new
+            {deck.counts.total} cards • {deck.counts.studied} studied • {deck.counts.new} new
           </p>
         </div>
         <div className="ml-auto">
@@ -133,13 +134,11 @@ export default function DeckDetails() {
                 <div className="flex items-center gap-4 pl-4 border-l">
                   <div className="text-xs text-muted-foreground text-right">
                     <div className={`font-medium ${
-                      card.state === 'NEW' ? 'text-blue-500' : 
-                      card.state === 'LEARNING' ? 'text-orange-500' : 
-                      'text-green-500'
+                      card.state === 'NEW' ? 'text-blue-500' : 'text-green-500'
                     }`}>
                       {card.state}
                     </div>
-                    <div>Due: {format(new Date(card.dueAt), 'MMM d')}</div>
+                    <div>{card.reps} reviews</div>
                   </div>
                   
                   <AlertDialog>
