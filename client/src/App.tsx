@@ -10,6 +10,7 @@ import Dashboard from "@/pages/dashboard";
 import Study from "@/pages/study";
 import Editor from "@/pages/editor";
 import Decks from "@/pages/decks";
+import DeckDetails from "@/pages/deck-details";
 import SettingsPage from "@/pages/settings";
 import NotFound from "@/pages/not-found";
 
@@ -70,6 +71,7 @@ function Router() {
       <Route path="/study" component={Study} />
       <Route path="/add" component={Editor} />
       <Route path="/decks" component={Decks} />
+      <Route path="/deck/:id" component={DeckDetails} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
     </Switch>

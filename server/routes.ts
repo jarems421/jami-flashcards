@@ -281,6 +281,23 @@ export async function registerRoutes(
     }
   });
 
+  app.delete("/api/cards/:id", async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      // 1. Delete ReviewLogs
+      await db.reviewLog.deleteMany({ where: { cardId: id } });
+      
+      // 2. Delete Card
+      await db.card.delete({ where: { id } });
+
+      res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to delete card" });
+    }
+  });
+
   app.get("/api/cards/due", async (req, res) => {
     const dueCards = await db.card.findMany({
       where: {

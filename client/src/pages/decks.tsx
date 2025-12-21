@@ -84,7 +84,7 @@ export default function Decks() {
 
         {decks?.map((deck) => (
           <div key={deck.id} className="relative group">
-            <Link href={`/study?deckId=${deck.id}`}>
+            <Link href={`/deck/${deck.id}`}>
               <Card className="cursor-pointer hover:border-primary transition-colors h-full">
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
