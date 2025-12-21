@@ -69,6 +69,33 @@ export default function Settings() {
         </CardContent>
       </Card>
 
+      <Card className="border-red-200 dark:border-red-900/50">
+        <CardHeader>
+          <CardTitle className="text-red-600 dark:text-red-400">Data Management</CardTitle>
+          <CardDescription>Backup and restore your collection</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label>Export Backup</Label>
+              <p className="text-sm text-muted-foreground">Create a downloadable SQL snapshot of your data</p>
+            </div>
+            <Button variant="outline" onClick={() => toast({ title: "Backup started", description: "This would trigger a SQL dump download." })}>
+              Export SQL
+            </Button>
+          </div>
+          <div className="flex items-center justify-between">
+            <div className="space-y-1">
+              <Label>Import Data</Label>
+              <p className="text-sm text-muted-foreground">Restore from a previous backup file</p>
+            </div>
+            <Button variant="outline" onClick={() => toast({ title: "Import dialog", description: "This would open a file picker." })}>
+              Import SQL
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       <div className="flex justify-end">
         <Button onClick={handleSave}>Save Changes</Button>
       </div>
