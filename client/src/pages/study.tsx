@@ -177,18 +177,18 @@ export default function Study() {
         </p>
         <div className="flex gap-4">
             <Button variant="outline" onClick={() => {
-                if (isFinished) {
-                  // If finished, just restart the local session without refetching
-                  // This allows the user to "Review Again" the same set of cards
-                  setCurrentIndex(0);
-                  setElapsed(0);
-                } else {
-                  // If not finished, try to fetch fresh cards
-                  setCurrentIndex(0);
-                  refetch();
-                  setElapsed(0);
-                }
-            }}>{isFinished ? 'Review Again' : 'Refresh Queue'}</Button>
+                // Restart current session locally
+                setCurrentIndex(0);
+                setElapsed(0);
+            }}>Redo Queue</Button>
+            
+            <Button variant="outline" onClick={() => {
+                // Fetch fresh cards from server
+                setCurrentIndex(0);
+                refetch();
+                setElapsed(0);
+            }}>Refresh</Button>
+
             <Link href="/">
               <Button>Back to Dashboard</Button>
             </Link>
