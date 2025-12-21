@@ -2,9 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, X, ArrowLeft, RefreshCw, Clock, Undo2 } from "lucide-react";
+import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -223,7 +222,7 @@ export default function Study() {
              onClick={handleUndo}
              title="Undo (Ctrl+Z)"
            >
-             <Undo2 className="h-4 w-4" />
+             <RotateCcw className="h-4 w-4" />
            </Button>
         </div>
       </div>
