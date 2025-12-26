@@ -46,7 +46,8 @@ export default function Goals() {
     cadence: 'DAILY' as 'DAILY' | 'WEEKLY',
     targetCount: 20,
     targetAccuracy: 80,
-    deadline: ''
+    deadline: '',
+    deadlineTime: '23:59'
   });
 
   const { data: goals, isLoading } = useQuery<StudyGoal[]>({
@@ -71,19 +72,26 @@ export default function Goals() {
 
   const createGoalMutation = useMutation({
     mutationFn: async (data: typeof newGoal) => {
+      let deadlineDateTime = null;
+      if (data.deadline) {
+        const [hours, minutes] = data.deadlineTime.split(':').map(Number);
+        const date = new Date(data.deadline);
+        date.setHours(hours, minutes, 0, 0);
+        deadlineDateTime = date.toISOString();
+      }
       const res = await apiRequest("POST", "/api/goals", {
         deckId: data.deckId || null,
         cadence: data.cadence,
         targetCount: data.targetCount,
         targetAccuracy: data.targetAccuracy,
-        deadline: data.deadline ? new Date(data.deadline).toISOString() : null
+        deadline: deadlineDateTime
       });
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
       setIsDialogOpen(false);
-      setNewGoal({ deckId: '', cadence: 'DAILY', targetCount: 20, targetAccuracy: 80, deadline: '' });
+      setNewGoal({ deckId: '', cadence: 'DAILY', targetCount: 20, targetAccuracy: 80, deadline: '', deadlineTime: '23:59' });
       toast({ title: "Goal created successfully" });
     },
     onError: () => {
@@ -132,9 +140,15 @@ export default function Goals() {
     return <div className="p-8">Loading goals...</div>;
   }
 
-  const activeGoals = goals?.filter(g => g.status === 'ACTIVE') || [];
+  const now = new Date();
+  const activeGoals = goals?.filter(g => {
+    if (g.status !== 'ACTIVE') return false;
+    if (g.deadline && new Date(g.deadline) < now) return false;
+    return true;
+  }) || [];
   const pausedGoals = goals?.filter(g => g.status === 'PAUSED') || [];
   const completedGoals = goals?.filter(g => g.status === 'COMPLETED') || [];
+  const expiredGoals = goals?.filter(g => g.status === 'ACTIVE' && g.deadline && new Date(g.deadline) < now) || [];
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-8">
@@ -211,12 +225,24 @@ export default function Goals() {
 
               <div className="space-y-2">
                 <Label>Deadline (optional)</Label>
-                <Input 
-                  type="date"
-                  value={newGoal.deadline}
-                  onChange={(e) => setNewGoal(g => ({ ...g, deadline: e.target.value }))}
-                  data-testid="input-deadline"
-                />
+                <div className="flex gap-2">
+                  <Input 
+                    type="date"
+                    value={newGoal.deadline}
+                    onChange={(e) => setNewGoal(g => ({ ...g, deadline: e.target.value }))}
+                    data-testid="input-deadline"
+                    className="flex-1"
+                  />
+                  <Input 
+                    type="time"
+                    value={newGoal.deadlineTime}
+                    onChange={(e) => setNewGoal(g => ({ ...g, deadlineTime: e.target.value }))}
+                    data-testid="input-deadline-time"
+                    className="w-32"
+                    disabled={!newGoal.deadline}
+                  />
+                </div>
+                <p className="text-xs text-muted-foreground">Goal will disappear after this date and time</p>
               </div>
 
               <Button 
@@ -308,11 +334,17 @@ export default function Goals() {
                       <Progress value={progressPercent} className="h-2" />
                     </div>
 
-                    {daysLeft !== null && (
+                    {goal.deadline && (
                       <div className="mt-4 flex items-center gap-2 text-sm">
                         <Calendar className="h-4 w-4 text-muted-foreground" />
-                        <span className={daysLeft <= 3 ? 'text-red-600 font-medium' : 'text-muted-foreground'}>
-                          {daysLeft > 0 ? `${daysLeft} days until deadline` : daysLeft === 0 ? 'Due today!' : 'Overdue'}
+                        <span className={daysLeft !== null && daysLeft <= 3 ? 'text-red-600 font-medium' : 'text-muted-foreground'}>
+                          {daysLeft !== null && daysLeft > 0 
+                            ? `${daysLeft} days until deadline` 
+                            : daysLeft === 0 
+                              ? 'Due today!' 
+                              : 'Overdue'}
+                          {' - '}
+                          {format(new Date(goal.deadline), "MMM d, yyyy 'at' h:mm a")}
                         </span>
                       </div>
                     )}
@@ -356,6 +388,41 @@ export default function Goals() {
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {expiredGoals.length > 0 && (
+        <div className="space-y-4">
+          <h2 className="text-lg font-semibold text-muted-foreground">Expired Goals</h2>
+          <p className="text-sm text-muted-foreground">These goals passed their deadline and are no longer tracked.</p>
+          <div className="grid gap-4">
+            {expiredGoals.map(goal => (
+              <Card key={goal.id} className="opacity-50 border-dashed" data-testid={`card-goal-expired-${goal.id}`}>
+                <CardContent className="p-6 flex items-center justify-between">
+                  <div>
+                    <span className="font-medium">{goal.deck?.name || "All Decks"}</span>
+                    <span className="text-muted-foreground ml-2">
+                      {goal.targetCount} cards/{goal.cadence.toLowerCase().slice(0, -2)}
+                    </span>
+                    {goal.deadline && (
+                      <span className="text-xs text-red-500 ml-2">
+                        Expired {format(new Date(goal.deadline), "MMM d, yyyy 'at' h:mm a")}
+                      </span>
+                    )}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => deleteGoalMutation.mutate(goal.id)}
+                    className="text-destructive hover:text-destructive"
+                    title="Delete goal"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
                 </CardContent>
               </Card>
             ))}

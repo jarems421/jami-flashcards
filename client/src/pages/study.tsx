@@ -3,10 +3,12 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw } from "lucide-react";
+import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw, Library } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 interface CardData {
   id: string;
@@ -31,6 +33,7 @@ interface QueueResponse {
 interface Deck {
   id: string;
   name: string;
+  _count?: { cards: number };
 }
 
 interface StudyGoal {
@@ -43,7 +46,7 @@ interface StudyGoal {
 export default function Study() {
   const [location, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
-  const deckId = searchParams.get("deckId");
+  const initialDeckId = searchParams.get("deckId");
   const modeParam = searchParams.get("mode");
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -52,6 +55,21 @@ export default function Study() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
+
+  // Deck selection state
+  const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>(initialDeckId ? [initialDeckId] : []);
+  const [hasStartedSession, setHasStartedSession] = useState(!!initialDeckId);
+
+  const handleChangeDeckSelection = () => {
+    setHasStartedSession(false);
+    setSelectedDeckIds([]);
+    setActiveQueue([]);
+    setWrongCards([]);
+    setRightCards([]);
+    setCurrentIndex(0);
+    setSessionComplete(false);
+    setElapsed(0);
+  };
 
   // Local Session State
   const [activeQueue, setActiveQueue] = useState<CardData[]>([]);
@@ -74,7 +92,6 @@ export default function Study() {
   const { data: decks } = useQuery<Deck[]>({
     queryKey: ["/api/decks"],
   });
-  const currentDeck = decks?.find(d => d.id === deckId);
 
   const { data: activeGoals } = useQuery<StudyGoal[]>({
     queryKey: ["/api/goals/active"],
@@ -92,15 +109,18 @@ export default function Study() {
   });
 
   const { data, isLoading, refetch } = useQuery<QueueResponse>({
-    queryKey: ["/api/queue/today", deckId],
+    queryKey: ["/api/queue/today", selectedDeckIds],
     queryFn: async () => {
       const params = new URLSearchParams();
-      if (deckId) params.set("deckId", deckId);
+      if (selectedDeckIds.length > 0) {
+        selectedDeckIds.forEach(id => params.append("deckIds", id));
+      }
       const res = await apiRequest("GET", `/api/queue/today?${params.toString()}`);
       return res.json();
     },
     staleTime: Infinity,
-    refetchOnWindowFocus: false 
+    refetchOnWindowFocus: false,
+    enabled: hasStartedSession
   });
 
   // Initialize active queue when data loads
@@ -132,7 +152,7 @@ export default function Study() {
       // Update progress for applicable goals (both deck-specific and global)
       if (activeGoals) {
         const applicableGoals = activeGoals.filter(goal => 
-          goal.status === 'ACTIVE' && (goal.deckId === null || goal.deckId === deckId)
+          goal.status === 'ACTIVE' && (goal.deckId === null || selectedDeckIds.includes(goal.deckId))
         );
         applicableGoals.forEach(goal => {
           updateGoalProgressMutation.mutate(goal.id);
@@ -223,12 +243,107 @@ export default function Study() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isFlipped, handleAnswer, handleUndo]);
 
+  // Deck selection screen
+  if (!hasStartedSession) {
+    const toggleDeck = (deckId: string) => {
+      setSelectedDeckIds(prev => 
+        prev.includes(deckId) 
+          ? prev.filter(id => id !== deckId)
+          : [...prev, deckId]
+      );
+    };
+
+    const selectAll = () => {
+      if (decks) setSelectedDeckIds(decks.map(d => d.id));
+    };
+
+    const selectNone = () => {
+      setSelectedDeckIds([]);
+    };
+
+    const startStudy = () => {
+      setHasStartedSession(true);
+      setElapsed(0);
+    };
+
+    return (
+      <div className="p-8 max-w-2xl mx-auto space-y-6">
+        <div className="flex items-center gap-4 mb-6">
+          <Link href="/">
+            <Button variant="ghost" size="icon" data-testid="button-back">
+              <ArrowLeft className="h-4 w-4" />
+            </Button>
+          </Link>
+          <div>
+            <h1 className="text-2xl font-bold">Select Decks to Study</h1>
+            <p className="text-muted-foreground">Choose one or more decks for your study session</p>
+          </div>
+        </div>
+
+        <div className="flex gap-2 mb-4">
+          <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all">
+            Select All
+          </Button>
+          <Button variant="outline" size="sm" onClick={selectNone} data-testid="button-select-none">
+            Clear
+          </Button>
+        </div>
+
+        <div className="grid gap-3">
+          {decks?.map(deck => (
+            <Card 
+              key={deck.id} 
+              className={`cursor-pointer transition-all ${selectedDeckIds.includes(deck.id) ? 'ring-2 ring-primary bg-primary/5' : 'hover:bg-muted/50'}`}
+              onClick={() => toggleDeck(deck.id)}
+              data-testid={`card-deck-select-${deck.id}`}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <Checkbox 
+                  checked={selectedDeckIds.includes(deck.id)} 
+                  onCheckedChange={() => toggleDeck(deck.id)}
+                  data-testid={`checkbox-deck-${deck.id}`}
+                />
+                <div className="flex-1">
+                  <div className="font-medium">{deck.name}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {deck._count?.cards ?? 0} cards
+                  </div>
+                </div>
+                <Library className="h-5 w-5 text-muted-foreground" />
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+
+        {(!decks || decks.length === 0) && (
+          <div className="text-center py-12 text-muted-foreground">
+            <Library className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>No decks found. Create a deck first to start studying.</p>
+            <Link href="/decks">
+              <Button variant="outline" className="mt-4">Go to Decks</Button>
+            </Link>
+          </div>
+        )}
+
+        <Button 
+          className="w-full h-12 text-lg mt-6" 
+          disabled={selectedDeckIds.length === 0}
+          onClick={startStudy}
+          data-testid="button-start-study"
+        >
+          Start Studying {selectedDeckIds.length > 0 && `(${selectedDeckIds.length} deck${selectedDeckIds.length > 1 ? 's' : ''})`}
+        </Button>
+      </div>
+    );
+  }
+
   if (isLoading) {
     return <div className="p-8 flex items-center justify-center h-full"><Skeleton className="h-[400px] w-full max-w-xl rounded-xl" /></div>;
   }
 
   const currentCard = activeQueue[currentIndex];
   const counts = data?.counts;
+  const selectedDeckNames = decks?.filter(d => selectedDeckIds.includes(d.id)).map(d => d.name).join(', ') || 'All Decks';
 
   // Template rendering
   const frontContent = currentCard?.note?.fields?.Front || currentCard?.note?.fields?.Text || "No content";
@@ -322,6 +437,16 @@ export default function Study() {
               }}>Refresh</Button>
             </div>
 
+            <Button 
+              variant="outline" 
+              className="w-full"
+              onClick={handleChangeDeckSelection}
+              data-testid="button-change-decks"
+            >
+              <Library className="h-4 w-4 mr-2" />
+              Change Decks
+            </Button>
+
             <Link href="/">
               <Button variant="ghost" className="w-full">Back to Dashboard</Button>
             </Link>
@@ -342,7 +467,7 @@ export default function Study() {
             </Button>
           </Link>
           <div>
-            <h2 className="font-semibold text-sm">{currentDeck?.name || "Study Session"}</h2>
+            <h2 className="font-semibold text-sm">{selectedDeckNames}</h2>
             <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
               <span className="text-blue-600 font-medium">{counts?.newCards ?? 0} New</span>
               <span className="text-green-600 font-medium">{counts?.studiedCards ?? 0} Studied</span>
@@ -351,7 +476,7 @@ export default function Study() {
           </div>
         </div>
         
-        <div className="flex items-center gap-4">           
+        <div className="flex items-center gap-2">           
            <div className="flex items-center gap-1.5 text-sm font-variant-numeric tabular-nums text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
              <Clock className="h-3.5 w-3.5" />
              {formatTime(elapsed)}
@@ -367,6 +492,17 @@ export default function Study() {
              data-testid="button-undo"
            >
              <RotateCcw className="h-4 w-4" />
+           </Button>
+
+           <Button 
+             variant="ghost" 
+             size="icon" 
+             className="h-8 w-8 text-muted-foreground hover:text-foreground"
+             onClick={handleChangeDeckSelection}
+             title="Change Decks"
+             data-testid="button-change-decks-header"
+           >
+             <Library className="h-4 w-4" />
            </Button>
         </div>
       </div>

@@ -37,11 +37,18 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
-import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Library, ArrowLeft, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
-interface Card {
+interface Deck {
+  id: string;
+  name: string;
+  _count?: { cards: number };
+}
+
+interface CardData {
   id: string;
   state: string;
   reps: number;
@@ -58,15 +65,20 @@ interface Card {
 export default function Browser() {
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState<string>("ALL");
-  const [sortField, setSortField] = useState<keyof Card | 'lastReviewedAt'>("lastReviewedAt");
+  const [sortField, setSortField] = useState<keyof CardData | 'lastReviewedAt'>("lastReviewedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
-  const [editingCard, setEditingCard] = useState<Card | null>(null);
+  const [editingCard, setEditingCard] = useState<CardData | null>(null);
   const [editForm, setEditForm] = useState<{front: string, back: string}>({ front: "", back: "" });
+  const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: cards, isLoading } = useQuery<Card[]>({
+  const { data: decks } = useQuery<Deck[]>({
+    queryKey: ["/api/decks"],
+  });
+
+  const { data: cards, isLoading } = useQuery<CardData[]>({
     queryKey: ["/api/cards"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/cards");
@@ -101,13 +113,19 @@ export default function Browser() {
     }
   });
 
-  const handleEdit = (card: Card) => {
+  const handleEdit = (card: CardData) => {
     setEditingCard(card);
     setEditForm({
       front: card.note.fields.Front || card.note.fields.Text || "",
       back: card.note.fields.Back || ""
     });
   };
+
+  const getCardsForDeck = (deckId: string) => {
+    return cards?.filter(c => c.deckId === deckId) || [];
+  };
+
+  const selectedDeck = decks?.find(d => d.id === selectedDeckId);
 
   const handleSaveEdit = () => {
     if (!editingCard) return;
@@ -134,6 +152,9 @@ export default function Browser() {
     if (!cards) return [];
     
     return cards.filter(card => {
+      // Filter by selected deck
+      if (selectedDeckId && card.deckId !== selectedDeckId) return false;
+
       // Search text in fields
       const content = Object.values(card.note.fields).join(" ").toLowerCase();
       if (search && !content.includes(search.toLowerCase())) return false;
@@ -162,9 +183,9 @@ export default function Browser() {
       if (valA > valB) return sortDir === "asc" ? 1 : -1;
       return sortDir === "asc" ? -1 : 1;
     });
-  }, [cards, search, stateFilter, sortField, sortDir]);
+  }, [cards, search, stateFilter, sortField, sortDir, selectedDeckId]);
 
-  const toggleSort = (field: keyof Card | 'lastReviewedAt') => {
+  const toggleSort = (field: keyof CardData | 'lastReviewedAt') => {
     if (sortField === field) {
       setSortDir(prev => prev === "asc" ? "desc" : "asc");
     } else {
@@ -173,11 +194,73 @@ export default function Browser() {
     }
   };
 
+  if (!selectedDeckId) {
+    return (
+      <div className="p-8 max-w-7xl mx-auto space-y-6">
+        <div className="flex flex-col gap-2">
+          <h1 className="text-3xl font-bold tracking-tight">Card Browser</h1>
+          <p className="text-muted-foreground">Select a deck to view and manage its cards.</p>
+        </div>
+
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {decks?.map((deck) => {
+            const deckCards = getCardsForDeck(deck.id);
+            const newCount = deckCards.filter(c => c.state === 'NEW').length;
+            const studiedCount = deckCards.filter(c => c.state !== 'NEW').length;
+            
+            return (
+              <Card 
+                key={deck.id}
+                className="cursor-pointer hover:border-primary transition-colors"
+                onClick={() => setSelectedDeckId(deck.id)}
+                data-testid={`deck-${deck.id}`}
+              >
+                <CardContent className="p-6">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <Library className="h-8 w-8 text-primary" />
+                      <div>
+                        <h3 className="font-semibold text-lg">{deck.name}</h3>
+                        <p className="text-sm text-muted-foreground">
+                          {deckCards.length} cards
+                        </p>
+                      </div>
+                    </div>
+                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                  </div>
+                  <div className="mt-4 flex gap-2">
+                    <Badge variant="outline">{newCount} new</Badge>
+                    <Badge variant="secondary">{studiedCount} studied</Badge>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+          
+          {(!decks || decks.length === 0) && (
+            <div className="col-span-full text-center py-12 text-muted-foreground">
+              No decks found. Create a deck first to add cards.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col gap-2">
-        <h1 className="text-3xl font-bold tracking-tight">Card Browser</h1>
-        <p className="text-muted-foreground">Manage and review your entire collection.</p>
+        <Button 
+          variant="ghost" 
+          className="w-fit -ml-2 mb-2"
+          onClick={() => setSelectedDeckId(null)}
+          data-testid="back-to-decks"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" />
+          Back to Decks
+        </Button>
+        <h1 className="text-3xl font-bold tracking-tight">{selectedDeck?.name || "Cards"}</h1>
+        <p className="text-muted-foreground">Browse and manage cards in this deck.</p>
       </div>
 
       <div className="flex items-center gap-4 bg-card p-4 rounded-lg border shadow-sm">
@@ -188,11 +271,12 @@ export default function Browser() {
             className="pl-9" 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            data-testid="input-search"
           />
         </div>
         
         <Select value={stateFilter} onValueChange={setStateFilter}>
-          <SelectTrigger className="w-[180px]">
+          <SelectTrigger className="w-[180px]" data-testid="select-state-filter">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <SelectValue placeholder="State" />
@@ -233,12 +317,12 @@ export default function Browser() {
             {filteredCards.length === 0 ? (
                <TableRow>
                  <TableCell colSpan={5} className="h-24 text-center">
-                   No cards found.
+                   No cards found in this deck.
                  </TableCell>
                </TableRow>
             ) : (
               filteredCards.map((card) => (
-                <TableRow key={card.id}>
+                <TableRow key={card.id} data-testid={`card-row-${card.id}`}>
                   <TableCell className="font-medium">
                     <div className="truncate max-w-[300px]" title={card.note.fields.Front || card.note.fields.Text}>
                        {card.note.fields.Front || card.note.fields.Text || "No Content"}
@@ -259,14 +343,14 @@ export default function Browser() {
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" className="h-8 w-8 p-0">
+                        <Button variant="ghost" className="h-8 w-8 p-0" data-testid={`card-menu-${card.id}`}>
                           <span className="sr-only">Open menu</span>
                           <MoreHorizontal className="h-4 w-4" />
                         </Button>
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleEdit(card)}>
+                        <DropdownMenuItem onClick={() => handleEdit(card)} data-testid={`edit-card-${card.id}`}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit Note
                         </DropdownMenuItem>
@@ -278,6 +362,7 @@ export default function Browser() {
                               deleteCardMutation.mutate(card.id);
                             }
                           }}
+                          data-testid={`delete-card-${card.id}`}
                         >
                           <Trash2 className="mr-2 h-4 w-4" />
                           Delete Card

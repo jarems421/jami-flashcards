@@ -23,13 +23,21 @@ export async function registerRoutes(
   
   app.get("/api/queue/today", isAuthenticated, async (req, res) => {
     try {
-      const { deckId, limit: queryLimit } = req.query;
+      const { deckId, deckIds, limit: queryLimit } = req.query;
       const todayStart = startOfDay(new Date());
       const cardLimit = queryLimit ? parseInt(queryLimit as string, 10) : 50;
       const userId = getUserId(req);
 
-      const whereDeck = deckId 
-        ? { deckId: deckId as string, deck: { userId } } 
+      // Support multiple deck IDs
+      let deckIdList: string[] = [];
+      if (deckIds) {
+        deckIdList = Array.isArray(deckIds) ? deckIds as string[] : [deckIds as string];
+      } else if (deckId) {
+        deckIdList = [deckId as string];
+      }
+
+      const whereDeck = deckIdList.length > 0
+        ? { deckId: { in: deckIdList }, deck: { userId } } 
         : { deck: { userId } };
       
       const cards = await db.card.findMany({
@@ -48,7 +56,7 @@ export async function registerRoutes(
       const studiedToday = await db.reviewLog.count({
         where: {
           reviewedAt: { gte: todayStart },
-          card: { deck: { userId }, ...(deckId ? { deckId: deckId as string } : {}) }
+          card: { deck: { userId }, ...(deckIdList.length > 0 ? { deckId: { in: deckIdList } } : {}) }
         }
       });
 
