@@ -141,7 +141,7 @@ export default function Decks() {
                   <Button 
                     variant="ghost" 
                     size="icon" 
-                    className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    className="h-8 w-8 text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                     data-testid={`button-deck-menu-${deck.id}`}
                   >
                     <MoreVertical className="h-4 w-4" />
