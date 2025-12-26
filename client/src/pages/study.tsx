@@ -110,12 +110,22 @@ export default function Study() {
 
   const updateGoalProgressMutation = useMutation({
     mutationFn: async (goalId: string) => {
-      await apiRequest("POST", `/api/goals/${goalId}/progress`, { increment: true, count: 1 });
+      const res = await apiRequest("POST", `/api/goals/${goalId}/progress`, { increment: true, count: 1 });
+      return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
       queryClient.invalidateQueries({ queryKey: ["/api/goals/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/goals/progress/today"] });
+      
+      if (data?.starAwarded) {
+        queryClient.invalidateQueries({ queryKey: ["constellations"] });
+        queryClient.invalidateQueries({ queryKey: ["constellation"] });
+        toast({ 
+          title: "Goal Complete! You earned a star!", 
+          description: "Check your Constellations to see it."
+        });
+      }
     }
   });
 

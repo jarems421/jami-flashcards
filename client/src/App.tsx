@@ -23,6 +23,7 @@ import Constellations from "@/pages/constellations";
 import NotFound from "@/pages/not-found";
 
 import { ThemeProvider } from "@/components/theme-provider";
+import { ConstellationBackground } from "@/components/constellation-background";
 
 function NavItem({ href, icon: Icon, label, onClick }: { href: string; icon: any; label: string; onClick?: () => void }) {
   const [location] = useLocation();
@@ -247,10 +248,11 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-background text-foreground font-sans">
+    <div className="flex flex-col md:flex-row min-h-screen bg-background text-foreground font-sans relative">
+      <ConstellationBackground />
       <MobileNav />
       <Nav />
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 overflow-auto relative z-10">
         <Router />
       </main>
     </div>
