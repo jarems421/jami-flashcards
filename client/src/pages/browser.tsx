@@ -33,19 +33,35 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format } from "date-fns";
-import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Library, ArrowLeft, ChevronRight, Tag } from "lucide-react";
+import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Deck {
   id: string;
   name: string;
   _count?: { cards: number };
+  counts?: {
+    new: number;
+    due: number;
+    total: number;
+  };
 }
 
 interface CardData {
@@ -71,11 +87,14 @@ export default function Browser() {
   const [editingCard, setEditingCard] = useState<CardData | null>(null);
   const [editForm, setEditForm] = useState<{front: string, back: string}>({ front: "", back: "" });
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
+  const [newDeckName, setNewDeckName] = useState("");
+  const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
+  const [editDeckName, setEditDeckName] = useState("");
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: decks } = useQuery<Deck[]>({
+  const { data: decks, isLoading: decksLoading } = useQuery<Deck[]>({
     queryKey: ["/api/decks"],
   });
 
@@ -87,7 +106,7 @@ export default function Browser() {
     }
   });
 
-  const { data: cards, isLoading } = useQuery<CardData[]>({
+  const { data: cards, isLoading: cardsLoading } = useQuery<CardData[]>({
     queryKey: ["/api/cards"],
     queryFn: async () => {
       const res = await apiRequest("GET", "/api/cards");
@@ -95,12 +114,58 @@ export default function Browser() {
     }
   });
 
+  // Deck mutations
+  const createDeckMutation = useMutation({
+    mutationFn: async (name: string) => {
+      await apiRequest("POST", "/api/decks", { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      setNewDeckName("");
+      toast({ title: "Deck created" });
+    },
+    onError: () => {
+      toast({ title: "Failed to create deck", variant: "destructive" });
+    }
+  });
+
+  const deleteDeckMutation = useMutation({
+    mutationFn: async (id: string) => {
+      await apiRequest("DELETE", `/api/decks/${id}`);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/cards"] });
+      toast({ title: "Deck deleted" });
+    },
+    onError: () => {
+      toast({ title: "Failed to delete deck", variant: "destructive" });
+    }
+  });
+
+  const renameDeckMutation = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      await apiRequest("PATCH", `/api/decks/${id}`, { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      setEditingDeck(null);
+      setEditDeckName("");
+      toast({ title: "Deck renamed" });
+    },
+    onError: () => {
+      toast({ title: "Failed to rename deck", variant: "destructive" });
+    }
+  });
+
+  // Card mutations
   const deleteCardMutation = useMutation({
     mutationFn: async (id: string) => {
       await apiRequest("DELETE", `/api/cards/${id}`);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
       toast({ title: "Card deleted" });
     },
     onError: () => {
@@ -122,7 +187,19 @@ export default function Browser() {
     }
   });
 
-  const handleEdit = (card: CardData) => {
+  const handleCreateDeck = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newDeckName.trim()) return;
+    createDeckMutation.mutate(newDeckName);
+  };
+
+  const handleRenameDeck = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDeck || !editDeckName.trim()) return;
+    renameDeckMutation.mutate({ id: editingDeck.id, name: editDeckName });
+  };
+
+  const handleEditCard = (card: CardData) => {
     setEditingCard(card);
     setEditForm({
       front: card.note.fields.Front || card.note.fields.Text || "",
@@ -136,16 +213,13 @@ export default function Browser() {
 
   const selectedDeck = decks?.find(d => d.id === selectedDeckId);
 
-  const handleSaveEdit = () => {
+  const handleSaveCardEdit = () => {
     if (!editingCard) return;
     
-    // Construct fields object based on what was there before
-    // Heuristic: if it had Text, keep Text. If Front/Back, keep Front/Back.
     const newFields = { ...editingCard.note.fields };
     
     if (newFields.Text !== undefined) {
        newFields.Text = editForm.front;
-       // Back usually doesn't exist for cloze note types in same way, but let's assume Basic structure mainly
     } else {
        newFields.Front = editForm.front;
        newFields.Back = editForm.back;
@@ -161,25 +235,16 @@ export default function Browser() {
     if (!cards) return [];
     
     return cards.filter(card => {
-      // Filter by selected deck
       if (selectedDeckId && card.deckId !== selectedDeckId) return false;
-
-      // Search text in fields
       const content = Object.values(card.note.fields).join(" ").toLowerCase();
       if (search && !content.includes(search.toLowerCase())) return false;
-
-      // State filter
       if (stateFilter !== "ALL" && card.state !== stateFilter) return false;
-
-      // Tag filter
       if (tagFilter !== "ALL" && !card.note.tags.includes(tagFilter)) return false;
-
       return true;
     }).sort((a, b) => {
       let valA = a[sortField];
       let valB = b[sortField];
 
-      // Handle nested or nulls if needed
       if (sortField === 'lastReviewedAt') {
          const timeA = typeof valA === 'string' ? new Date(valA).getTime() : 0;
          const timeB = typeof valB === 'string' ? new Date(valB).getTime() : 0;
@@ -187,11 +252,8 @@ export default function Browser() {
       }
 
       if (valA === valB) return 0;
-      
-      // Null handling
       if (valA === null || valA === undefined) return 1;
       if (valB === null || valB === undefined) return -1;
-      
       if (valA > valB) return sortDir === "asc" ? 1 : -1;
       return sortDir === "asc" ? -1 : 1;
     });
@@ -206,59 +268,173 @@ export default function Browser() {
     }
   };
 
+  if (decksLoading) return <div className="p-8">Loading decks...</div>;
+
+  // Deck selection view
   if (!selectedDeckId) {
     return (
-      <div className="p-8 max-w-7xl mx-auto space-y-6">
+      <div className="p-8 max-w-5xl mx-auto space-y-6">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-bold tracking-tight">Card Browser</h1>
-          <p className="text-muted-foreground">Select a deck to view and manage its cards.</p>
+          <h1 className="text-3xl font-bold tracking-tight">Decks</h1>
+          <p className="text-muted-foreground">Manage your flashcard collections</p>
         </div>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          <Card className="border-dashed flex flex-col justify-center items-center p-6 bg-muted/50">
+            <form onSubmit={handleCreateDeck} className="w-full space-y-4">
+              <div className="text-center font-medium text-muted-foreground">Create New Deck</div>
+              <Input 
+                placeholder="Deck Name" 
+                value={newDeckName} 
+                onChange={(e) => setNewDeckName(e.target.value)} 
+                className="bg-background"
+                data-testid="input-new-deck-name"
+              />
+              <Button type="submit" className="w-full" disabled={createDeckMutation.isPending} data-testid="button-create-deck">
+                <Plus className="h-4 w-4 mr-2" />
+                Create Deck
+              </Button>
+            </form>
+          </Card>
+
           {decks?.map((deck) => {
             const deckCards = getCardsForDeck(deck.id);
             const newCount = deckCards.filter(c => c.state === 'NEW').length;
             const studiedCount = deckCards.filter(c => c.state !== 'NEW').length;
             
             return (
-              <Card 
-                key={deck.id}
-                className="cursor-pointer hover:border-primary transition-colors"
-                onClick={() => setSelectedDeckId(deck.id)}
-                data-testid={`deck-${deck.id}`}
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <Library className="h-8 w-8 text-primary" />
-                      <div>
-                        <h3 className="font-semibold text-lg">{deck.name}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {deckCards.length} cards
-                        </p>
+              <div key={deck.id} className="relative group">
+                <Card 
+                  className="cursor-pointer hover:border-primary transition-colors h-full"
+                  onClick={() => setSelectedDeckId(deck.id)}
+                  data-testid={`card-deck-${deck.id}`}
+                >
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between">
+                      <div className="flex items-center gap-2">
+                        <Folder className="h-5 w-5 text-primary" />
+                        <CardTitle className="text-lg">{deck.name}</CardTitle>
                       </div>
                     </div>
-                    <ChevronRight className="h-5 w-5 text-muted-foreground" />
-                  </div>
-                  <div className="mt-4 flex gap-2">
-                    <Badge variant="outline">{newCount} new</Badge>
-                    <Badge variant="secondary">{studiedCount} studied</Badge>
-                  </div>
-                </CardContent>
-              </Card>
+                    <CardDescription>
+                      {deckCards.length} cards total
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex gap-4 text-sm">
+                      <div className="flex flex-col">
+                        <span className="text-blue-500 font-bold">{newCount}</span>
+                        <span className="text-muted-foreground text-xs">New</span>
+                      </div>
+                      <div className="flex flex-col">
+                        <span className="text-green-500 font-bold">{studiedCount}</span>
+                        <span className="text-muted-foreground text-xs">Studied</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+                
+                <div className="absolute top-4 right-4 z-10">
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-8 w-8 text-muted-foreground md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                        onClick={(e) => e.stopPropagation()}
+                        data-testid={`button-deck-menu-${deck.id}`}
+                      >
+                        <MoreVertical className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem 
+                        onClick={(e) => { 
+                          e.stopPropagation();
+                          setEditingDeck(deck); 
+                          setEditDeckName(deck.name); 
+                        }}
+                        data-testid={`button-rename-deck-${deck.id}`}
+                      >
+                        <Pencil className="h-4 w-4 mr-2" />
+                        Rename
+                      </DropdownMenuItem>
+                      <AlertDialog>
+                        <AlertDialogTrigger asChild>
+                          <DropdownMenuItem 
+                            onSelect={(e) => e.preventDefault()} 
+                            className="text-destructive focus:text-destructive"
+                            data-testid={`button-delete-deck-${deck.id}`}
+                          >
+                            <Trash2 className="h-4 w-4 mr-2" />
+                            Delete
+                          </DropdownMenuItem>
+                        </AlertDialogTrigger>
+                        <AlertDialogContent>
+                          <AlertDialogHeader>
+                            <AlertDialogTitle>Delete Deck</AlertDialogTitle>
+                            <AlertDialogDescription>
+                              Are you sure you want to delete "{deck.name}"? This will delete all cards and notes inside it. This action cannot be undone.
+                            </AlertDialogDescription>
+                          </AlertDialogHeader>
+                          <AlertDialogFooter>
+                            <AlertDialogCancel>Cancel</AlertDialogCancel>
+                            <AlertDialogAction 
+                              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                              onClick={() => deleteDeckMutation.mutate(deck.id)}
+                            >
+                              Delete
+                            </AlertDialogAction>
+                          </AlertDialogFooter>
+                        </AlertDialogContent>
+                      </AlertDialog>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
             );
           })}
           
           {(!decks || decks.length === 0) && (
             <div className="col-span-full text-center py-12 text-muted-foreground">
-              No decks found. Create a deck first to add cards.
+              No decks yet. Create your first deck above!
             </div>
           )}
         </div>
+
+        {/* Rename Deck Dialog */}
+        <Dialog open={!!editingDeck} onOpenChange={(open) => { if (!open) { setEditingDeck(null); setEditDeckName(""); } }}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Rename Deck</DialogTitle>
+              <DialogDescription>
+                Enter a new name for your deck.
+              </DialogDescription>
+            </DialogHeader>
+            <form onSubmit={handleRenameDeck}>
+              <Input 
+                value={editDeckName} 
+                onChange={(e) => setEditDeckName(e.target.value)} 
+                placeholder="Deck name"
+                className="mb-4"
+                data-testid="input-rename-deck"
+              />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => { setEditingDeck(null); setEditDeckName(""); }}>
+                  Cancel
+                </Button>
+                <Button type="submit" disabled={renameDeckMutation.isPending} data-testid="button-save-rename">
+                  Save
+                </Button>
+              </DialogFooter>
+            </form>
+          </DialogContent>
+        </Dialog>
       </div>
     );
   }
 
+  // Card browser view for selected deck
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-6">
       <div className="flex flex-col gap-2">
@@ -275,8 +451,8 @@ export default function Browser() {
         <p className="text-muted-foreground">Browse and manage cards in this deck.</p>
       </div>
 
-      <div className="flex items-center gap-4 bg-card p-4 rounded-lg border shadow-sm">
-        <div className="relative flex-1 max-w-sm">
+      <div className="flex flex-wrap items-center gap-4 bg-card p-4 rounded-lg border shadow-sm">
+        <div className="relative flex-1 min-w-[200px] max-w-sm">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="Search cards..." 
@@ -288,7 +464,7 @@ export default function Browser() {
         </div>
         
         <Select value={stateFilter} onValueChange={setStateFilter}>
-          <SelectTrigger className="w-[150px]" data-testid="select-state-filter">
+          <SelectTrigger className="w-[140px]" data-testid="select-state-filter">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <SelectValue placeholder="State" />
@@ -302,7 +478,7 @@ export default function Browser() {
         </Select>
 
         <Select value={tagFilter} onValueChange={setTagFilter}>
-          <SelectTrigger className="w-[150px]" data-testid="select-tag-filter">
+          <SelectTrigger className="w-[140px]" data-testid="select-tag-filter">
             <div className="flex items-center gap-2">
               <Tag className="h-4 w-4 text-muted-foreground" />
               <SelectValue placeholder="Tag" />
@@ -377,7 +553,7 @@ export default function Browser() {
                       </DropdownMenuTrigger>
                       <DropdownMenuContent align="end">
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
-                        <DropdownMenuItem onClick={() => handleEdit(card)} data-testid={`edit-card-${card.id}`}>
+                        <DropdownMenuItem onClick={() => handleEditCard(card)} data-testid={`edit-card-${card.id}`}>
                           <Pencil className="mr-2 h-4 w-4" />
                           Edit Note
                         </DropdownMenuItem>
@@ -404,6 +580,7 @@ export default function Browser() {
         </Table>
       </div>
 
+      {/* Edit Card Dialog */}
       <Dialog open={!!editingCard} onOpenChange={(open) => !open && setEditingCard(null)}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
@@ -434,7 +611,7 @@ export default function Browser() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingCard(null)}>Cancel</Button>
-            <Button onClick={handleSaveEdit} disabled={updateNoteMutation.isPending}>
+            <Button onClick={handleSaveCardEdit} disabled={updateNoteMutation.isPending}>
               {updateNoteMutation.isPending ? "Saving..." : "Save Changes"}
             </Button>
           </DialogFooter>
