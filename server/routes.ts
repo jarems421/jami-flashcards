@@ -1018,5 +1018,290 @@ export async function registerRoutes(
     }
   });
 
+  // --- Knowledge Constellations ---
+
+  // Helper to get or create active constellation
+  async function getOrCreateActiveConstellation(userId: string) {
+    const user = await db.user.findUnique({ where: { id: userId } });
+    
+    if (user?.activeConstellationId) {
+      const constellation = await db.constellation.findUnique({
+        where: { id: user.activeConstellationId },
+        include: { stars: { orderBy: { orderIndex: 'asc' } } }
+      });
+      if (constellation && !constellation.isComplete) {
+        return constellation;
+      }
+    }
+    
+    // Create new constellation
+    const newConstellation = await db.constellation.create({
+      data: {
+        userId,
+        name: "Untitled Constellation"
+      },
+      include: { stars: true }
+    });
+    
+    await db.user.update({
+      where: { id: userId },
+      data: { activeConstellationId: newConstellation.id }
+    });
+    
+    return newConstellation;
+  }
+
+  // Get all user constellations
+  app.get("/api/constellations", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      
+      const constellations = await db.constellation.findMany({
+        where: { userId },
+        include: { stars: { orderBy: { orderIndex: 'asc' } } },
+        orderBy: { createdAt: 'desc' }
+      });
+      
+      res.json(constellations);
+    } catch (error) {
+      console.error("Error fetching constellations:", error);
+      res.status(500).json({ error: "Failed to fetch constellations" });
+    }
+  });
+
+  // Get active constellation
+  app.get("/api/constellations/active", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      
+      const constellation = await getOrCreateActiveConstellation(userId);
+      res.json(constellation);
+    } catch (error) {
+      console.error("Error fetching active constellation:", error);
+      res.status(500).json({ error: "Failed to fetch active constellation" });
+    }
+  });
+
+  // Get single constellation
+  app.get("/api/constellations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      
+      const constellation = await db.constellation.findFirst({
+        where: { id, userId },
+        include: { stars: { orderBy: { orderIndex: 'asc' } } }
+      });
+      
+      if (!constellation) {
+        return res.status(404).json({ error: "Constellation not found" });
+      }
+      
+      res.json(constellation);
+    } catch (error) {
+      console.error("Error fetching constellation:", error);
+      res.status(500).json({ error: "Failed to fetch constellation" });
+    }
+  });
+
+  // Update constellation (name, star positions)
+  app.put("/api/constellations/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      
+      const schema = z.object({
+        name: z.string().optional(),
+        stars: z.array(z.object({
+          id: z.string().uuid(),
+          positionX: z.number().min(0).max(1),
+          positionY: z.number().min(0).max(1)
+        })).optional()
+      });
+      const data = schema.parse(req.body);
+      
+      const existing = await db.constellation.findFirst({ where: { id, userId } });
+      if (!existing) {
+        return res.status(404).json({ error: "Constellation not found" });
+      }
+      
+      // Update constellation name if provided
+      if (data.name !== undefined) {
+        await db.constellation.update({
+          where: { id },
+          data: { name: data.name }
+        });
+      }
+      
+      // Update star positions if provided
+      if (data.stars && data.stars.length > 0) {
+        for (const star of data.stars) {
+          await db.star.update({
+            where: { id: star.id },
+            data: { positionX: star.positionX, positionY: star.positionY }
+          });
+        }
+      }
+      
+      const updated = await db.constellation.findUnique({
+        where: { id },
+        include: { stars: { orderBy: { orderIndex: 'asc' } } }
+      });
+      
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating constellation:", error);
+      res.status(400).json({ error: "Failed to update constellation" });
+    }
+  });
+
+  // Award a star (called when a goal is completed)
+  app.post("/api/constellations/award-star", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      
+      let constellation = await getOrCreateActiveConstellation(userId);
+      const currentStarCount = constellation.stars.length;
+      
+      // If constellation is full (100 stars), it should already be marked complete
+      // and a new one should have been created
+      if (currentStarCount >= 100) {
+        // Mark as complete and create new
+        await db.constellation.update({
+          where: { id: constellation.id },
+          data: { isComplete: true }
+        });
+        
+        constellation = await db.constellation.create({
+          data: { userId, name: "Untitled Constellation" },
+          include: { stars: true }
+        });
+        
+        await db.user.update({
+          where: { id: userId },
+          data: { activeConstellationId: constellation.id }
+        });
+      }
+      
+      const newOrderIndex = constellation.stars.length + 1;
+      
+      // Determine rarity
+      let rarity: 'NORMAL' | 'BRIGHT' | 'BRILLIANT' = 'NORMAL';
+      if (newOrderIndex % 25 === 0) {
+        rarity = 'BRILLIANT';
+      } else if (newOrderIndex % 10 === 0) {
+        rarity = 'BRIGHT';
+      }
+      
+      // Generate random position (avoiding edges, spread nicely)
+      const positionX = 0.1 + Math.random() * 0.8;
+      const positionY = 0.1 + Math.random() * 0.8;
+      
+      const star = await db.star.create({
+        data: {
+          constellationId: constellation.id,
+          orderIndex: newOrderIndex,
+          positionX,
+          positionY,
+          rarity
+        }
+      });
+      
+      // Check if constellation is now complete
+      let justCompleted = false;
+      if (newOrderIndex >= 100) {
+        await db.constellation.update({
+          where: { id: constellation.id },
+          data: { isComplete: true }
+        });
+        justCompleted = true;
+        
+        // Create new active constellation
+        const newConstellation = await db.constellation.create({
+          data: { userId, name: "Untitled Constellation" },
+          include: { stars: true }
+        });
+        
+        await db.user.update({
+          where: { id: userId },
+          data: { activeConstellationId: newConstellation.id }
+        });
+      }
+      
+      const updatedConstellation = await db.constellation.findUnique({
+        where: { id: constellation.id },
+        include: { stars: { orderBy: { orderIndex: 'asc' } } }
+      });
+      
+      res.json({ 
+        star, 
+        constellation: updatedConstellation,
+        justCompleted,
+        totalStars: newOrderIndex
+      });
+    } catch (error) {
+      console.error("Error awarding star:", error);
+      res.status(500).json({ error: "Failed to award star" });
+    }
+  });
+
+  // Get user constellation settings (active + background)
+  app.get("/api/constellation-settings", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      
+      const user = await db.user.findUnique({
+        where: { id: userId },
+        select: { activeConstellationId: true, backgroundConstellationId: true }
+      });
+      
+      res.json({
+        activeConstellationId: user?.activeConstellationId || null,
+        backgroundConstellationId: user?.backgroundConstellationId || null
+      });
+    } catch (error) {
+      console.error("Error fetching constellation settings:", error);
+      res.status(500).json({ error: "Failed to fetch settings" });
+    }
+  });
+
+  // Set constellation as background
+  app.post("/api/constellation-settings/background", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+      
+      const schema = z.object({
+        constellationId: z.string().uuid().nullable()
+      });
+      const { constellationId } = schema.parse(req.body);
+      
+      if (constellationId) {
+        const constellation = await db.constellation.findFirst({
+          where: { id: constellationId, userId }
+        });
+        if (!constellation) {
+          return res.status(404).json({ error: "Constellation not found" });
+        }
+      }
+      
+      await db.user.update({
+        where: { id: userId },
+        data: { backgroundConstellationId: constellationId }
+      });
+      
+      res.json({ success: true, backgroundConstellationId: constellationId });
+    } catch (error) {
+      console.error("Error setting background constellation:", error);
+      res.status(400).json({ error: "Failed to set background" });
+    }
+  });
+
   return httpServer;
 }
