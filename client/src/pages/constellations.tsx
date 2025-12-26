@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Check, Edit2, Image, X, ChevronLeft, ChevronRight, Star, Maximize2 } from "lucide-react";
+import { Check, X, Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -122,7 +122,7 @@ export default function Constellations() {
     if (currentConstellation) {
       setNameInput(currentConstellation.name);
       setEditingName(true);
-      setLocalStars(currentConstellation.stars);
+      setLocalStars(currentConstellation.stars.map(s => ({ ...s })));
     }
   };
 
@@ -233,7 +233,7 @@ export default function Constellations() {
                         )}
                       </CardTitle>
                       <Button size="sm" variant="ghost" onClick={handleStartEdit} data-testid="button-edit">
-                        <Edit2 className="h-4 w-4" />
+                        Edit
                       </Button>
                     </div>
                   )}
@@ -244,13 +244,12 @@ export default function Constellations() {
                       onClick={isBackgroundSet ? handleClearBackground : handleSetBackground}
                       data-testid="button-set-background"
                     >
-                      <Image className="h-4 w-4 mr-1" />
-                      {isBackgroundSet ? "Clear BG" : "Set as BG"}
+                      {isBackgroundSet ? "Clear Background" : "Set as Background"}
                     </Button>
                     <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
                       <DialogTrigger asChild>
                         <Button size="sm" variant="outline" data-testid="button-fullscreen">
-                          <Maximize2 className="h-4 w-4" />
+                          Fullscreen
                         </Button>
                       </DialogTrigger>
                       <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full p-0 bg-transparent border-0">

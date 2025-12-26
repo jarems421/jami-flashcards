@@ -52,18 +52,18 @@ export function ConstellationBackground() {
   }
 
   const getStarStyles = (star: StarData) => {
-    let size = 3;
-    let glowSize = 6;
-    let opacity = 0.15;
+    let size = 4;
+    let glowSize = 10;
+    let opacity = 0.6;
 
     if (star.rarity === "BRIGHT") {
-      size = 4;
-      glowSize = 10;
-      opacity = 0.25;
-    } else if (star.rarity === "BRILLIANT") {
       size = 6;
       glowSize = 14;
-      opacity = 0.35;
+      opacity = 0.75;
+    } else if (star.rarity === "BRILLIANT") {
+      size = 10;
+      glowSize = 20;
+      opacity = 0.9;
     }
 
     return { size, glowSize, opacity };
@@ -71,10 +71,16 @@ export function ConstellationBackground() {
 
   return (
     <div
-      className="fixed inset-0 pointer-events-none z-0 overflow-hidden"
+      className="fixed inset-0 pointer-events-none z-0 overflow-hidden bg-gradient-to-b from-slate-900 via-slate-950 to-black"
       aria-hidden="true"
     >
-      <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-background/50" />
+      <div 
+        className="absolute inset-0 opacity-30"
+        style={{
+          backgroundImage:
+            "radial-gradient(circle at 20% 30%, rgba(99, 102, 241, 0.15) 0%, transparent 50%), radial-gradient(circle at 80% 70%, rgba(139, 92, 246, 0.1) 0%, transparent 50%)",
+        }}
+      />
       
       {constellation.stars.map((star) => {
         const { size, glowSize, opacity } = getStarStyles(star);
