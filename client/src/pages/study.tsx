@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw, Library, Shuffle } from "lucide-react";
+import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw, Library, Shuffle, Tag } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
@@ -11,6 +11,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
+import { Badge } from "@/components/ui/badge";
 
 interface CardData {
   id: string;
@@ -60,12 +61,14 @@ export default function Study() {
 
   // Deck selection state
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>(initialDeckId ? [initialDeckId] : []);
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [hasStartedSession, setHasStartedSession] = useState(!!initialDeckId);
   const [shuffleMode, setShuffleMode] = useState(false);
 
   const handleChangeDeckSelection = () => {
     setHasStartedSession(false);
     setSelectedDeckIds([]);
+    setSelectedTags([]);
     setActiveQueue([]);
     setWrongCards([]);
     setRightCards([]);
@@ -97,6 +100,10 @@ export default function Study() {
     queryKey: ["/api/decks"],
   });
 
+  const { data: allTags } = useQuery<string[]>({
+    queryKey: ["/api/tags"],
+  });
+
   const { data: activeGoals } = useQuery<StudyGoal[]>({
     queryKey: ["/api/goals/active"],
   });
@@ -113,11 +120,14 @@ export default function Study() {
   });
 
   const { data, isLoading, refetch } = useQuery<QueueResponse>({
-    queryKey: ["/api/queue/today", selectedDeckIds],
+    queryKey: ["/api/queue/today", selectedDeckIds, selectedTags],
     queryFn: async () => {
       const params = new URLSearchParams();
       if (selectedDeckIds.length > 0) {
         selectedDeckIds.forEach(id => params.append("deckIds", id));
+      }
+      if (selectedTags.length > 0) {
+        selectedTags.forEach(tag => params.append("tags", tag));
       }
       const res = await apiRequest("GET", `/api/queue/today?${params.toString()}`);
       return res.json();
@@ -344,6 +354,45 @@ export default function Study() {
             </Card>
           ))}
         </div>
+
+        {/* Tag Filter */}
+        {allTags && allTags.length > 0 && (
+          <div className="space-y-3 pt-4 border-t">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <Tag className="h-4 w-4" />
+              Filter by Tags (optional)
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {allTags.map(tag => (
+                <Badge 
+                  key={tag}
+                  variant={selectedTags.includes(tag) ? "default" : "outline"}
+                  className="cursor-pointer hover:bg-primary/20 transition-colors"
+                  onClick={() => {
+                    setSelectedTags(prev => 
+                      prev.includes(tag) 
+                        ? prev.filter(t => t !== tag)
+                        : [...prev, tag]
+                    );
+                  }}
+                  data-testid={`tag-filter-${tag}`}
+                >
+                  {tag}
+                </Badge>
+              ))}
+            </div>
+            {selectedTags.length > 0 && (
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setSelectedTags([])}
+                className="text-xs"
+              >
+                Clear tags
+              </Button>
+            )}
+          </div>
+        )}
 
         {(!decks || decks.length === 0) && (
           <div className="text-center py-12 text-muted-foreground">

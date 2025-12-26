@@ -23,7 +23,7 @@ export async function registerRoutes(
   
   app.get("/api/queue/today", isAuthenticated, async (req, res) => {
     try {
-      const { deckId, deckIds, limit: queryLimit } = req.query;
+      const { deckId, deckIds, tags, limit: queryLimit } = req.query;
       const todayStart = startOfDay(new Date());
       const cardLimit = queryLimit ? parseInt(queryLimit as string, 10) : 50;
       const userId = getUserId(req);
@@ -36,12 +36,23 @@ export async function registerRoutes(
         deckIdList = [deckId as string];
       }
 
+      // Support tag filtering
+      let tagList: string[] = [];
+      if (tags) {
+        tagList = Array.isArray(tags) ? tags as string[] : [tags as string];
+      }
+
       const whereDeck = deckIdList.length > 0
         ? { deckId: { in: deckIdList }, deck: { userId } } 
         : { deck: { userId } };
+
+      // Add tag filter to where clause
+      const whereClause = tagList.length > 0
+        ? { ...whereDeck, note: { tags: { hasSome: tagList } } }
+        : whereDeck;
       
       const cards = await db.card.findMany({
-        where: whereDeck,
+        where: whereClause,
         orderBy: [
           { lastReviewedAt: { sort: 'asc', nulls: 'first' } }
         ],
@@ -49,16 +60,19 @@ export async function registerRoutes(
         include: { note: true, template: true }
       });
 
-      const totalCards = await db.card.count({ where: whereDeck });
-      const newCards = await db.card.count({ where: { ...whereDeck, state: 'NEW' } });
-      const studiedCards = await db.card.count({ where: { ...whereDeck, state: 'STUDIED' } });
+      const totalCards = await db.card.count({ where: whereClause });
+      const newCards = await db.card.count({ where: { ...whereClause, state: 'NEW' } });
+      const studiedCards = await db.card.count({ where: { ...whereClause, state: 'STUDIED' } });
       
-      const studiedToday = await db.reviewLog.count({
-        where: {
-          reviewedAt: { gte: todayStart },
-          card: { deck: { userId }, ...(deckIdList.length > 0 ? { deckId: { in: deckIdList } } : {}) }
+      const studiedTodayWhere: any = {
+        reviewedAt: { gte: todayStart },
+        card: { 
+          deck: { userId }, 
+          ...(deckIdList.length > 0 ? { deckId: { in: deckIdList } } : {}),
+          ...(tagList.length > 0 ? { note: { tags: { hasSome: tagList } } } : {})
         }
-      });
+      };
+      const studiedToday = await db.reviewLog.count({ where: studiedTodayWhere });
 
       res.json({
         queue: cards,
@@ -74,6 +88,28 @@ export async function registerRoutes(
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Failed to fetch queue" });
+    }
+  });
+
+  // --- Tags ---
+  
+  app.get("/api/tags", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const notes = await db.note.findMany({
+        where: { deck: { userId } },
+        select: { tags: true }
+      });
+      
+      const allTags = new Set<string>();
+      notes.forEach(note => {
+        note.tags.forEach(tag => allTags.add(tag));
+      });
+      
+      res.json(Array.from(allTags).sort());
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to fetch tags" });
     }
   });
 
