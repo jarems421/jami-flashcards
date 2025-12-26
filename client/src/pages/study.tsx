@@ -118,13 +118,25 @@ export default function Study() {
       queryClient.invalidateQueries({ queryKey: ["/api/goals/active"] });
       queryClient.invalidateQueries({ queryKey: ["/api/goals/progress/today"] });
       
-      if (data?.starAwarded) {
+      if (data?.starAwarded && data?.star) {
         queryClient.invalidateQueries({ queryKey: ["constellations"] });
         queryClient.invalidateQueries({ queryKey: ["constellation"] });
-        toast({ 
-          title: "Goal Complete! You earned a star!", 
-          description: "Check your Constellations to see it."
-        });
+        
+        const rarityText = data.star.rarity === 'BRILLIANT' ? 'Brilliant' : 
+                          data.star.rarity === 'BRIGHT' ? 'Bright' : '';
+        const starLabel = rarityText ? `${rarityText} Star` : 'Star';
+        
+        if (data.constellationCompleted) {
+          toast({ 
+            title: "Constellation Complete!",
+            description: `You've collected 100 stars! A new constellation awaits.`
+          });
+        } else {
+          toast({ 
+            title: `Goal Complete! ${starLabel} Earned!`, 
+            description: `Star #${data.star.orderIndex} added to your constellation.`
+          });
+        }
       }
     }
   });
