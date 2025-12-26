@@ -39,7 +39,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { format } from "date-fns";
-import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Library, ArrowLeft, ChevronRight } from "lucide-react";
+import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Library, ArrowLeft, ChevronRight, Tag } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 interface Deck {
@@ -65,6 +65,7 @@ interface CardData {
 export default function Browser() {
   const [search, setSearch] = useState("");
   const [stateFilter, setStateFilter] = useState<string>("ALL");
+  const [tagFilter, setTagFilter] = useState<string>("ALL");
   const [sortField, setSortField] = useState<keyof CardData | 'lastReviewedAt'>("lastReviewedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingCard, setEditingCard] = useState<CardData | null>(null);
@@ -76,6 +77,14 @@ export default function Browser() {
 
   const { data: decks } = useQuery<Deck[]>({
     queryKey: ["/api/decks"],
+  });
+
+  const { data: allTags } = useQuery<string[]>({
+    queryKey: ["/api/tags"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/tags");
+      return res.json();
+    }
   });
 
   const { data: cards, isLoading } = useQuery<CardData[]>({
@@ -162,6 +171,9 @@ export default function Browser() {
       // State filter
       if (stateFilter !== "ALL" && card.state !== stateFilter) return false;
 
+      // Tag filter
+      if (tagFilter !== "ALL" && !card.note.tags.includes(tagFilter)) return false;
+
       return true;
     }).sort((a, b) => {
       let valA = a[sortField];
@@ -183,7 +195,7 @@ export default function Browser() {
       if (valA > valB) return sortDir === "asc" ? 1 : -1;
       return sortDir === "asc" ? -1 : 1;
     });
-  }, [cards, search, stateFilter, sortField, sortDir, selectedDeckId]);
+  }, [cards, search, stateFilter, tagFilter, sortField, sortDir, selectedDeckId]);
 
   const toggleSort = (field: keyof CardData | 'lastReviewedAt') => {
     if (sortField === field) {
@@ -276,7 +288,7 @@ export default function Browser() {
         </div>
         
         <Select value={stateFilter} onValueChange={setStateFilter}>
-          <SelectTrigger className="w-[180px]" data-testid="select-state-filter">
+          <SelectTrigger className="w-[150px]" data-testid="select-state-filter">
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-muted-foreground" />
               <SelectValue placeholder="State" />
@@ -286,6 +298,21 @@ export default function Browser() {
             <SelectItem value="ALL">All States</SelectItem>
             <SelectItem value="NEW">New</SelectItem>
             <SelectItem value="STUDIED">Studied</SelectItem>
+          </SelectContent>
+        </Select>
+
+        <Select value={tagFilter} onValueChange={setTagFilter}>
+          <SelectTrigger className="w-[150px]" data-testid="select-tag-filter">
+            <div className="flex items-center gap-2">
+              <Tag className="h-4 w-4 text-muted-foreground" />
+              <SelectValue placeholder="Tag" />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="ALL">All Tags</SelectItem>
+            {allTags?.map(tag => (
+              <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
 
