@@ -1,13 +1,14 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { Brain, Plus, BarChart3, Settings, Library, Search, Target, LogOut, Loader2, Menu, X } from "lucide-react";
+import { Brain, Plus, BarChart3, Settings, Library, Search, Target, LogOut, Loader2, Menu, RefreshCw } from "lucide-react";
 import fairyIcon from "@assets/generated_images/cute_fairy_app_icon.png";
 import { Button } from "@/components/ui/button";
-import { QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { useToast } from "@/hooks/use-toast";
 
 import Dashboard from "@/pages/dashboard";
 import Study from "@/pages/study";
@@ -40,6 +41,14 @@ function NavItem({ href, icon: Icon, label, onClick }: { href: string; icon: any
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout, isLoggingOut } = useAuth();
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  
+  const handleRefresh = () => {
+    qc.invalidateQueries();
+    toast({ title: "Refreshed", description: "Content has been updated." });
+    onNavigate?.();
+  };
   
   return (
     <>
@@ -50,6 +59,15 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem href="/goals" icon={Target} label="Goals" onClick={onNavigate} />
         <NavItem href="/browser" icon={Search} label="Browse Cards" onClick={onNavigate} />
         <NavItem href="/stats" icon={BarChart3} label="Stats" onClick={onNavigate} />
+        <Button 
+          variant="ghost" 
+          className="w-full justify-start gap-3 text-muted-foreground"
+          onClick={handleRefresh}
+          data-testid="button-refresh"
+        >
+          <RefreshCw className="h-4 w-4" />
+          Refresh
+        </Button>
       </div>
 
       <div className="mt-8">
@@ -180,6 +198,18 @@ function LandingPage() {
           
           <Button 
             size="lg" 
+            className="w-full bg-black hover:bg-gray-900 text-white"
+            onClick={() => window.location.href = '/api/login'}
+            data-testid="button-login-apple"
+          >
+            <svg className="h-5 w-5 mr-2" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M17.05 20.28c-.98.95-2.05.8-3.08.35-1.09-.46-2.09-.48-3.24 0-1.44.62-2.2.44-3.06-.35C2.79 15.25 3.51 7.59 9.05 7.31c1.35.07 2.29.74 3.08.8 1.18-.24 2.31-.93 3.57-.84 1.51.12 2.65.72 3.4 1.8-3.12 1.87-2.38 5.98.48 7.13-.57 1.5-1.31 2.99-2.54 4.09l.01-.01zM12.03 7.25c-.15-2.23 1.66-4.07 3.74-4.25.29 2.58-2.34 4.5-3.74 4.25z"/>
+            </svg>
+            Continue with Apple
+          </Button>
+          
+          <Button 
+            size="lg" 
             variant="default"
             className="w-full"
             onClick={() => window.location.href = '/api/login'}
@@ -190,7 +220,7 @@ function LandingPage() {
           </Button>
           
           <p className="text-xs text-muted-foreground mt-4">
-            More options available: GitHub, Apple, or email
+            More options available: GitHub or email
           </p>
         </div>
       </div>

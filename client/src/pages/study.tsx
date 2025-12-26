@@ -77,11 +77,12 @@ export default function Study() {
   const [rightCards, setRightCards] = useState<CardData[]>([]);
   const [sessionComplete, setSessionComplete] = useState(false);
 
-  // Timer
+  // Timer - stops when session is complete
   useEffect(() => {
+    if (sessionComplete) return;
     const timer = setInterval(() => setElapsed(e => e + 1), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [sessionComplete]);
 
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);
