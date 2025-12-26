@@ -22,7 +22,7 @@ import Constellations from "@/pages/constellations";
 import NotFound from "@/pages/not-found";
 
 import { ThemeProvider } from "@/components/theme-provider";
-import { ConstellationBackground } from "@/components/constellation-background";
+import { ConstellationBackground, useConstellationBackground } from "@/components/constellation-background";
 
 function NavItem({ href, icon: Icon, label, onClick }: { href: string; icon: any; label: string; onClick?: () => void }) {
   const [location] = useLocation();
@@ -93,9 +93,9 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   );
 }
 
-function Nav() {
+function Nav({ transparent = false }: { transparent?: boolean }) {
   return (
-    <div className="w-64 border-r bg-card min-h-screen p-4 flex-col hidden md:flex">
+    <div className={`w-64 border-r min-h-screen p-4 flex-col hidden md:flex ${transparent ? 'bg-black/40 backdrop-blur-sm border-white/10' : 'bg-card'}`}>
       <div className="flex items-center gap-2 px-2 mb-8 mt-2">
         <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
         <span className="font-bold text-lg tracking-tight">Jami</span>
@@ -105,7 +105,7 @@ function Nav() {
   );
 }
 
-function MobileNav() {
+function MobileNav({ transparent = false }: { transparent?: boolean }) {
   const [open, setOpen] = useState(false);
   const qc = useQueryClient();
   const { toast } = useToast();
@@ -116,7 +116,7 @@ function MobileNav() {
   };
   
   return (
-    <div className="md:hidden flex items-center justify-between p-4 border-b bg-card">
+    <div className={`md:hidden flex items-center justify-between p-4 border-b ${transparent ? 'bg-black/40 backdrop-blur-sm border-white/10' : 'bg-card'}`}>
       <div className="flex items-center gap-2">
         <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
         <span className="font-bold text-lg tracking-tight">Jami</span>
@@ -235,6 +235,7 @@ function LoadingScreen() {
 
 function AuthenticatedApp() {
   const { user, isLoading } = useAuth();
+  const { isActive: hasConstellationBg } = useConstellationBackground();
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -245,10 +246,10 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="flex flex-col md:flex-row min-h-screen bg-background text-foreground font-sans relative">
+    <div className={`flex flex-col md:flex-row min-h-screen text-foreground font-sans relative ${hasConstellationBg ? '' : 'bg-background'}`}>
       <ConstellationBackground />
-      <MobileNav />
-      <Nav />
+      <MobileNav transparent={hasConstellationBg} />
+      <Nav transparent={hasConstellationBg} />
       <main className="flex-1 overflow-auto relative z-10">
         <Router />
       </main>

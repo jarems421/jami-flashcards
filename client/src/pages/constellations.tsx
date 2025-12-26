@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
-import { Check, X, Star } from "lucide-react";
+import { Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -122,7 +122,15 @@ export default function Constellations() {
     if (currentConstellation) {
       setNameInput(currentConstellation.name);
       setEditingName(true);
-      setLocalStars(currentConstellation.stars.map(s => ({ ...s })));
+      setLocalStars(currentConstellation.stars.map(s => ({
+        id: s.id,
+        constellationId: s.constellationId,
+        orderIndex: s.orderIndex,
+        positionX: s.positionX,
+        positionY: s.positionY,
+        rarity: s.rarity,
+        earnedAt: s.earnedAt,
+      })));
     }
   };
 
@@ -215,10 +223,10 @@ export default function Constellations() {
                         data-testid="input-constellation-name"
                       />
                       <Button size="sm" onClick={handleSave} data-testid="button-save">
-                        <Check className="h-4 w-4" />
+                        Save
                       </Button>
                       <Button size="sm" variant="ghost" onClick={handleCancelEdit} data-testid="button-cancel">
-                        <X className="h-4 w-4" />
+                        Cancel
                       </Button>
                     </div>
                   ) : (

@@ -33,7 +33,7 @@ async function fetchConstellation(id: string): Promise<Constellation | null> {
   return res.json();
 }
 
-export function ConstellationBackground() {
+export function useConstellationBackground() {
   const { data: settings } = useQuery({
     queryKey: ["constellation-settings"],
     queryFn: fetchSettings,
@@ -47,7 +47,15 @@ export function ConstellationBackground() {
     staleTime: 30000,
   });
 
-  if (!constellation || !constellation.stars.length) {
+  const isActive = !!constellation && constellation.stars.length > 0;
+  
+  return { isActive, constellation };
+}
+
+export function ConstellationBackground() {
+  const { isActive, constellation } = useConstellationBackground();
+
+  if (!isActive || !constellation) {
     return null;
   }
 
