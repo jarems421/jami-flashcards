@@ -50,7 +50,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format } from "date-fns";
-import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag } from "lucide-react";
+import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag, ExternalLink } from "lucide-react";
+import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
 interface Deck {
@@ -59,7 +60,7 @@ interface Deck {
   _count?: { cards: number };
   counts?: {
     new: number;
-    due: number;
+    studied: number;
     total: number;
   };
 }
@@ -299,8 +300,9 @@ export default function Browser() {
 
           {decks?.map((deck) => {
             const deckCards = getCardsForDeck(deck.id);
-            const newCount = deckCards.filter(c => c.state === 'NEW').length;
-            const studiedCount = deckCards.filter(c => c.state !== 'NEW').length;
+            const newCount = deck.counts?.new ?? deckCards.filter(c => c.state === 'NEW').length;
+            const studiedCount = deck.counts?.studied ?? deckCards.filter(c => c.state !== 'NEW').length;
+            const totalCount = deck.counts?.total ?? deckCards.length;
             
             return (
               <div key={deck.id} className="relative group">
@@ -317,7 +319,7 @@ export default function Browser() {
                       </div>
                     </div>
                     <CardDescription>
-                      {deckCards.length} cards total
+                      {totalCount} cards total
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -348,6 +350,13 @@ export default function Browser() {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
+                      <Link href={`/deck/${deck.id}`}>
+                        <DropdownMenuItem data-testid={`button-details-deck-${deck.id}`}>
+                          <ExternalLink className="h-4 w-4 mr-2" />
+                          Deck Details
+                        </DropdownMenuItem>
+                      </Link>
+                      <DropdownMenuSeparator />
                       <DropdownMenuItem 
                         onClick={(e) => { 
                           e.stopPropagation();
