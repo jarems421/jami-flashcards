@@ -1,5 +1,5 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { Brain, Plus, BarChart3, Settings, Library, Search, Target, LogOut, Loader2, Menu, RefreshCw } from "lucide-react";
+import { Brain, Plus, BarChart3, Settings, Library, Search, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles } from "lucide-react";
 import fairyIcon from "@assets/generated_images/cute_fairy_app_icon.png";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +19,7 @@ import Browser from "@/pages/browser";
 import Stats from "@/pages/stats";
 import SettingsPage from "@/pages/settings";
 import Goals from "@/pages/goals";
+import Constellations from "@/pages/constellations";
 import NotFound from "@/pages/not-found";
 
 import { ThemeProvider } from "@/components/theme-provider";
@@ -49,6 +50,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem href="/decks" icon={Library} label="Decks" onClick={onNavigate} />
         <NavItem href="/study" icon={Brain} label="Study Now" onClick={onNavigate} />
         <NavItem href="/goals" icon={Target} label="Goals" onClick={onNavigate} />
+        <NavItem href="/constellations" icon={Sparkles} label="Constellations" onClick={onNavigate} />
         <NavItem href="/browser" icon={Search} label="Browse Cards" onClick={onNavigate} />
         <NavItem href="/stats" icon={BarChart3} label="Stats" onClick={onNavigate} />
       </div>
@@ -155,6 +157,7 @@ function Router() {
       <Route path="/deck/:id" component={DeckDetails} />
       <Route path="/browser" component={Browser} />
       <Route path="/goals" component={Goals} />
+      <Route path="/constellations" component={Constellations} />
       <Route path="/stats" component={Stats} />
       <Route path="/settings" component={SettingsPage} />
       <Route component={NotFound} />
