@@ -457,27 +457,27 @@ export default function Study() {
 
 
   return (
-    <div className="h-full flex flex-col max-w-3xl mx-auto p-4 md:p-6">
+    <div className="min-h-[calc(100vh-60px)] md:min-h-screen flex flex-col max-w-3xl mx-auto p-3 md:p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6 bg-card/50 p-4 rounded-xl border backdrop-blur-sm">
-        <div className="flex items-center gap-4">
+      <div className="flex items-center justify-between mb-4 md:mb-6 bg-card/50 p-3 md:p-4 rounded-xl border backdrop-blur-sm">
+        <div className="flex items-center gap-2 md:gap-4 flex-1 min-w-0">
           <Link href="/">
-            <Button variant="ghost" size="icon" className="h-8 w-8" data-testid="button-back">
+            <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" data-testid="button-back">
               <ArrowLeft className="h-4 w-4" />
             </Button>
           </Link>
-          <div>
-            <h2 className="font-semibold text-sm">{selectedDeckNames}</h2>
-            <div className="flex gap-3 text-xs text-muted-foreground mt-0.5">
+          <div className="min-w-0">
+            <h2 className="font-semibold text-sm truncate">{selectedDeckNames}</h2>
+            <div className="flex gap-2 md:gap-3 text-xs text-muted-foreground mt-0.5">
               <span className="text-blue-600 font-medium">{counts?.newCards ?? 0} New</span>
               <span className="text-green-600 font-medium">{counts?.studiedCards ?? 0} Studied</span>
-              <span className="text-muted-foreground">{counts?.studiedToday ?? 0} today</span>
+              <span className="text-muted-foreground hidden sm:inline">{counts?.studiedToday ?? 0} today</span>
             </div>
           </div>
         </div>
         
-        <div className="flex items-center gap-2">           
-           <div className="flex items-center gap-1.5 text-sm font-variant-numeric tabular-nums text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
+        <div className="flex items-center gap-1 md:gap-2 shrink-0">           
+           <div className="hidden sm:flex items-center gap-1.5 text-sm font-variant-numeric tabular-nums text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
              <Clock className="h-3.5 w-3.5" />
              {formatTime(elapsed)}
            </div>
@@ -508,7 +508,7 @@ export default function Study() {
       </div>
 
       {/* Card Area */}
-      <div className="flex-1 flex flex-col justify-center perspective-1000 relative min-h-[400px]">
+      <div className="flex-1 flex flex-col justify-center relative min-h-[250px] md:min-h-[400px]">
         <AnimatePresence mode="wait">
           <motion.div
             key={currentCard.id}
@@ -516,95 +516,88 @@ export default function Study() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: -20, transition: { duration: 0.15 } }}
             transition={{ duration: 0.3 }}
-            className="w-full h-full"
+            className="w-full"
           >
             <div 
-              className="relative w-full h-full min-h-[400px] cursor-pointer"
+              className="relative w-full cursor-pointer"
               onClick={() => !isFlipped && setIsFlipped(true)}
             >
-              {/* Card Container */}
-              <motion.div
-                className="w-full h-full transform-style-3d transition-all duration-500 shadow-xl rounded-2xl bg-card border"
-                animate={{ rotateY: isFlipped ? 180 : 0 }}
-                transition={{ type: "spring", stiffness: 260, damping: 20 }}
-              >
-                {/* Front */}
-                <div className="absolute inset-0 backface-hidden p-8 md:p-12 flex flex-col items-center justify-center text-center bg-card rounded-2xl">
-                  <span className="absolute top-6 left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase opacity-50">
-                    Question
-                  </span>
-                  <div className="font-serif text-2xl md:text-3xl leading-relaxed">
-                    {frontContent}
+              {/* Card - No 3D flip on mobile for better compatibility */}
+              <div className="w-full shadow-xl rounded-2xl bg-card border overflow-hidden">
+                {!isFlipped ? (
+                  /* Front */
+                  <div className="p-6 md:p-12 flex flex-col items-center justify-center text-center min-h-[250px] md:min-h-[350px]">
+                    <span className="absolute top-4 left-4 md:top-6 md:left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase opacity-50">
+                      Question
+                    </span>
+                    <div className="font-serif text-xl md:text-3xl leading-relaxed px-2">
+                      {frontContent}
+                    </div>
+                    <div className="absolute bottom-4 md:bottom-6 text-xs text-muted-foreground flex items-center gap-2 opacity-50">
+                      <span className="hidden md:inline">Press Space or</span> Tap to show answer
+                    </div>
                   </div>
-                  <div className="absolute bottom-6 text-xs text-muted-foreground flex items-center gap-2 opacity-50">
-                    Press Space to show answer
-                  </div>
-                </div>
+                ) : (
+                  /* Back */
+                  <div className="p-6 md:p-12 flex flex-col items-center justify-center text-center min-h-[250px] md:min-h-[350px]">
+                    <span className="absolute top-4 left-4 md:top-6 md:left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase opacity-50">
+                      Answer
+                    </span>
+                    
+                    <div className="text-muted-foreground/30 text-sm mb-4 md:mb-8 line-clamp-1 max-w-[80%] select-none">
+                      {frontContent}
+                    </div>
 
-                {/* Back */}
-                <div className="absolute inset-0 backface-hidden rotate-y-180 p-8 md:p-12 flex flex-col items-center justify-center text-center bg-card rounded-2xl">
-                  <span className="absolute top-6 left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase opacity-50">
-                    Answer
-                  </span>
-                  
-                  <div className="text-muted-foreground/30 text-sm mb-8 line-clamp-1 max-w-[80%] select-none">
-                    {frontContent}
-                  </div>
+                    <div className="font-serif text-xl md:text-3xl leading-relaxed px-2">
+                      {backContent}
+                    </div>
 
-                  <div className="font-serif text-2xl md:text-3xl leading-relaxed">
-                    {backContent}
+                    {/* Stats on Back */}
+                    <div className="absolute bottom-4 md:bottom-6 flex items-center gap-6 text-xs text-muted-foreground/60 font-medium">
+                        <div className="flex items-center gap-1.5">
+                           <div className="w-1.5 h-1.5 rounded-full bg-primary/50"></div>
+                           <span>Reviews: {currentCard.reps || 0}</span>
+                        </div>
+                    </div>
                   </div>
-
-                  {/* Stats on Back */}
-                  <div className="absolute bottom-6 flex items-center gap-6 text-xs text-muted-foreground/60 font-medium">
-                      <div className="flex items-center gap-1.5">
-                         <div className="w-1.5 h-1.5 rounded-full bg-primary/50"></div>
-                         <span>Reviews: {currentCard.reps || 0}</span>
-                      </div>
-                  </div>
-                </div>
-              </motion.div>
+                )}
+              </div>
             </div>
           </motion.div>
         </AnimatePresence>
       </div>
 
       {/* Controls */}
-      <div className="h-24 mt-8 flex items-end justify-center">
+      <div className="py-4 md:py-6 mt-4 flex items-end justify-center">
         {!isFlipped ? (
           <Button 
             size="lg" 
-            className="w-full max-w-sm text-lg h-14 shadow-lg shadow-primary/20" 
+            className="w-full max-w-sm text-base md:text-lg h-12 md:h-14 shadow-lg shadow-primary/20" 
             onClick={() => setIsFlipped(true)}
           >
-            Show Answer <span className="ml-2 text-xs opacity-50 font-normal">(Space)</span>
+            Show Answer <span className="ml-2 text-xs opacity-50 font-normal hidden md:inline">(Space)</span>
           </Button>
         ) : (
-          <div className="grid grid-cols-2 gap-4 w-full max-w-lg">
-            <div className="flex flex-col gap-1">
-              <Button 
-                variant="outline" 
-                className="h-16 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950 transition-colors text-lg font-medium"
-                onClick={() => handleAnswer('WRONG')}
-                disabled={answerMutation.isPending}
-              >
-                Wrong
-              </Button>
-            </div>
+          <div className="grid grid-cols-2 gap-3 md:gap-4 w-full max-w-lg">
+            <Button 
+              variant="outline" 
+              className="h-14 md:h-16 border-red-200 hover:bg-red-50 hover:text-red-700 hover:border-red-300 dark:border-red-900/50 dark:hover:bg-red-950 transition-colors text-base md:text-lg font-medium"
+              onClick={() => handleAnswer('WRONG')}
+              disabled={answerMutation.isPending}
+            >
+              Wrong
+            </Button>
 
-            <div className="flex flex-col gap-1">
-              <Button 
-                variant="outline" 
-                className="h-16 border-green-200 hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950 transition-colors text-lg font-medium"
-                onClick={() => handleAnswer('CORRECT')}
-                disabled={answerMutation.isPending}
-              >
-                Right
-              </Button>
-            </div>
+            <Button 
+              variant="outline" 
+              className="h-14 md:h-16 border-green-200 hover:bg-green-50 hover:text-green-700 hover:border-green-300 dark:border-green-900/50 dark:hover:bg-green-950 transition-colors text-base md:text-lg font-medium"
+              onClick={() => handleAnswer('CORRECT')}
+              disabled={answerMutation.isPending}
+            >
+              Right
+            </Button>
           </div>
         )}
-
       </div>
     </div>
   );
