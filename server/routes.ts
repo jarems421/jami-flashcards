@@ -139,6 +139,31 @@ export async function registerRoutes(
     }
   });
 
+  app.patch("/api/decks/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { name } = req.body;
+      const userId = getUserId(req);
+      
+      if (!name || !name.trim()) {
+        return res.status(400).json({ error: "Name is required" });
+      }
+      
+      const deck = await db.deck.findFirst({ where: { id, userId } });
+      if (!deck) return res.status(404).json({ error: "Deck not found" });
+      
+      const updated = await db.deck.update({
+        where: { id },
+        data: { name: name.trim() }
+      });
+      
+      res.json(updated);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to update deck" });
+    }
+  });
+
   app.delete("/api/decks/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;

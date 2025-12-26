@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Link } from "wouter";
-import { Plus, Folder, Trash2 } from "lucide-react";
+import { Plus, Folder, Trash2, Pencil, MoreVertical } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -8,6 +8,8 @@ import { useState } from "react";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface Deck {
   id: string;
@@ -48,10 +50,31 @@ export default function Decks() {
     },
   });
 
+  const renameDeck = useMutation({
+    mutationFn: async ({ id, name }: { id: string; name: string }) => {
+      await apiRequest("PATCH", `/api/decks/${id}`, { name });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      toast({ title: "Deck renamed" });
+      setEditingDeck(null);
+      setEditName("");
+    },
+  });
+
+  const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
+  const [editName, setEditName] = useState("");
+
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newDeckName.trim()) return;
     createDeck.mutate(newDeckName);
+  };
+
+  const handleRename = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingDeck || !editName.trim()) return;
+    renameDeck.mutate({ id: editingDeck.id, name: editName });
   };
 
   if (isLoading) return <div className="p-8">Loading decks...</div>;
@@ -85,7 +108,7 @@ export default function Decks() {
         {decks?.map((deck) => (
           <div key={deck.id} className="relative group">
             <Link href={`/deck/${deck.id}`}>
-              <Card className="cursor-pointer hover:border-primary transition-colors h-full">
+              <Card className="cursor-pointer hover:border-primary transition-colors h-full" data-testid={`card-deck-${deck.id}`}>
                 <CardHeader className="pb-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-2">
@@ -112,35 +135,89 @@ export default function Decks() {
               </Card>
             </Link>
             
-            <div className="absolute top-4 right-4 z-10 opacity-0 group-hover:opacity-100 transition-opacity">
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive">
-                    <Trash2 className="h-4 w-4" />
+            <div className="absolute top-4 right-4 z-10">
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-8 w-8 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity"
+                    data-testid={`button-deck-menu-${deck.id}`}
+                  >
+                    <MoreVertical className="h-4 w-4" />
                   </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>Delete Deck</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Are you sure you want to delete "{deck.name}"? This will delete all cards and notes inside it. This action cannot be undone.
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancel</AlertDialogCancel>
-                    <AlertDialogAction 
-                      className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                      onClick={() => deleteDeck.mutate(deck.id)}
-                    >
-                      Delete
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem 
+                    onClick={() => { setEditingDeck(deck); setEditName(deck.name); }}
+                    data-testid={`button-rename-deck-${deck.id}`}
+                  >
+                    <Pencil className="h-4 w-4 mr-2" />
+                    Rename
+                  </DropdownMenuItem>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <DropdownMenuItem 
+                        onSelect={(e) => e.preventDefault()} 
+                        className="text-destructive focus:text-destructive"
+                        data-testid={`button-delete-deck-${deck.id}`}
+                      >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete Deck</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Are you sure you want to delete "{deck.name}"? This will delete all cards and notes inside it. This action cannot be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction 
+                          className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                          onClick={() => deleteDeck.mutate(deck.id)}
+                        >
+                          Delete
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
         ))}
       </div>
+
+      <Dialog open={!!editingDeck} onOpenChange={(open) => { if (!open) { setEditingDeck(null); setEditName(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Rename Deck</DialogTitle>
+            <DialogDescription>
+              Enter a new name for your deck.
+            </DialogDescription>
+          </DialogHeader>
+          <form onSubmit={handleRename}>
+            <Input 
+              value={editName} 
+              onChange={(e) => setEditName(e.target.value)} 
+              placeholder="Deck name"
+              className="mb-4"
+              data-testid="input-rename-deck"
+            />
+            <DialogFooter>
+              <Button type="button" variant="outline" onClick={() => { setEditingDeck(null); setEditName(""); }}>
+                Cancel
+              </Button>
+              <Button type="submit" disabled={renameDeck.isPending} data-testid="button-save-rename">
+                Save
+              </Button>
+            </DialogFooter>
+          </form>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
