@@ -1,5 +1,5 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { Brain, Plus, BarChart3, Settings, Library, Search, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles } from "lucide-react";
+import { Brain, Plus, BarChart3, Settings, Library, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles } from "lucide-react";
 import fairyIcon from "@assets/generated_images/cute_fairy_app_icon.png";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -13,9 +13,8 @@ import { useToast } from "@/hooks/use-toast";
 import Dashboard from "@/pages/dashboard";
 import Study from "@/pages/study";
 import Editor from "@/pages/editor";
-import Decks from "@/pages/decks";
 import DeckDetails from "@/pages/deck-details";
-import Browser from "@/pages/browser";
+import Decks from "@/pages/browser";
 import Stats from "@/pages/stats";
 import SettingsPage from "@/pages/settings";
 import Goals from "@/pages/goals";
@@ -52,7 +51,6 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem href="/study" icon={Brain} label="Study Now" onClick={onNavigate} />
         <NavItem href="/goals" icon={Target} label="Goals" onClick={onNavigate} />
         <NavItem href="/constellations" icon={Sparkles} label="Constellations" onClick={onNavigate} />
-        <NavItem href="/browser" icon={Search} label="Browse Cards" onClick={onNavigate} />
         <NavItem href="/stats" icon={BarChart3} label="Stats" onClick={onNavigate} />
       </div>
 
@@ -156,7 +154,6 @@ function Router() {
       <Route path="/add" component={Editor} />
       <Route path="/decks" component={Decks} />
       <Route path="/deck/:id" component={DeckDetails} />
-      <Route path="/browser" component={Browser} />
       <Route path="/goals" component={Goals} />
       <Route path="/constellations" component={Constellations} />
       <Route path="/stats" component={Stats} />
