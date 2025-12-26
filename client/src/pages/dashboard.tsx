@@ -1,7 +1,7 @@
 import { useStats, useDueCards } from "@/lib/store";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Play, TrendingUp, Clock, CalendarDays, Activity } from "lucide-react";
+import { Play, TrendingUp, Clock, CalendarDays } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import studyIllustration from "@assets/generated_images/minimalist_abstract_study_shapes_in_calm_blue_and_slate.png";
@@ -119,10 +119,9 @@ export default function Dashboard() {
         </motion.div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
           { label: "Total Cards", value: stats?.totalCards, icon: Library },
-          { label: "Retention Rate", value: `${stats?.retentionRate || 0}%`, icon: Activity },
           { label: "Streak", value: `${stats?.streak || 0} days`, icon: TrendingUp },
           { label: "Time Spent", value: stats?.timeSpent || "0m", icon: Clock },
         ].map((stat, i) => (
