@@ -11,6 +11,7 @@ export interface UpsertUser {
 export interface User {
   id: string;
   email: string | null;
+  username: string | null;
   firstName: string | null;
   lastName: string | null;
   profileImageUrl: string | null;
@@ -21,6 +22,7 @@ export interface User {
 export interface IAuthStorage {
   getUser(id: string): Promise<User | null>;
   upsertUser(user: UpsertUser): Promise<User>;
+  updateUsername(id: string, username: string): Promise<User>;
 }
 
 class AuthStorage implements IAuthStorage {
@@ -44,6 +46,13 @@ class AuthStorage implements IAuthStorage {
         lastName: userData.lastName,
         profileImageUrl: userData.profileImageUrl,
       },
+    });
+  }
+  
+  async updateUsername(id: string, username: string): Promise<User> {
+    return db.user.update({
+      where: { id },
+      data: { username }
     });
   }
 }

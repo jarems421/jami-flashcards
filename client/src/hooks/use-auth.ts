@@ -31,6 +31,22 @@ async function logout(): Promise<void> {
   window.location.href = "/api/logout";
 }
 
+async function updateUsername(username: string): Promise<User> {
+  const response = await fetch("/api/auth/username", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    credentials: "include",
+    body: JSON.stringify({ username }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.message || "Failed to update username");
+  }
+
+  return response.json();
+}
+
 export function useAuth() {
   const queryClient = useQueryClient();
   const { data: user, isLoading } = useQuery<User | null>({
@@ -47,11 +63,20 @@ export function useAuth() {
     },
   });
 
+  const updateUsernameMutation = useMutation({
+    mutationFn: updateUsername,
+    onSuccess: (updatedUser) => {
+      queryClient.setQueryData(["/api/auth/user"], updatedUser);
+    },
+  });
+
   return {
     user,
     isLoading,
     isAuthenticated: !!user,
     logout: logoutMutation.mutate,
     isLoggingOut: logoutMutation.isPending,
+    updateUsername: updateUsernameMutation.mutateAsync,
+    isUpdatingUsername: updateUsernameMutation.isPending,
   };
 }

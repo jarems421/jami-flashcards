@@ -6,12 +6,35 @@ import { Link } from "wouter";
 import { motion } from "framer-motion";
 import studyIllustration from "@assets/generated_images/minimalist_abstract_study_shapes_in_calm_blue_and_slate.png";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAuth } from "@/hooks/use-auth";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useState } from "react";
 
 export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useStats();
-  // We can pre-fetch due cards count from stats, but fetching the actual list is okay too
+  const { user, updateUsername, isUpdatingUsername } = useAuth();
+  const [showUsernameDialog, setShowUsernameDialog] = useState(() => !user?.username);
+  const [usernameInput, setUsernameInput] = useState("");
+  const [usernameError, setUsernameError] = useState("");
   
   const decksCount = stats?.decksWithDueCards || 0;
+  const displayName = user?.username || user?.firstName || "Scholar";
+  
+  const handleSetUsername = async () => {
+    if (usernameInput.trim().length < 2) {
+      setUsernameError("Username must be at least 2 characters");
+      return;
+    }
+    try {
+      await updateUsername(usernameInput.trim());
+      setShowUsernameDialog(false);
+      setUsernameError("");
+    } catch (error: any) {
+      setUsernameError(error.message || "Failed to set username");
+    }
+  };
   
   if (statsLoading) {
     return <div className="p-8"><Skeleton className="h-[200px] w-full rounded-xl" /></div>;
@@ -19,9 +42,39 @@ export default function Dashboard() {
 
   return (
     <div className="p-8 max-w-6xl mx-auto space-y-8">
+      <Dialog open={showUsernameDialog && !user?.username} onOpenChange={setShowUsernameDialog}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Welcome to Jami!</DialogTitle>
+            <DialogDescription>
+              Choose a username for your personalized learning experience.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                placeholder="Enter your username"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleSetUsername()}
+                data-testid="input-username"
+              />
+              {usernameError && <p className="text-sm text-red-500">{usernameError}</p>}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button onClick={handleSetUsername} disabled={isUpdatingUsername} data-testid="button-save-username">
+              {isUpdatingUsername ? "Saving..." : "Save Username"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
       <div className="flex justify-between items-end">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight mb-2">Welcome back, Scholar</h1>
+          <h1 className="text-3xl font-bold tracking-tight mb-2" data-testid="text-welcome-message">Welcome back, {displayName}</h1>
           <p className="text-muted-foreground">You have {decksCount} deck{decksCount !== 1 ? 's' : ''} ready to study.</p>
         </div>
         <div className="text-sm text-right text-muted-foreground">

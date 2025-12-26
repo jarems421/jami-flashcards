@@ -1,7 +1,6 @@
 import type { Express } from "express";
 import { authStorage } from "./storage";
 import { isAuthenticated } from "./replitAuth";
-import { db } from "../../db";
 
 // Register auth-specific routes
 export function registerAuthRoutes(app: Express): void {
@@ -29,10 +28,7 @@ export function registerAuthRoutes(app: Express): void {
       
       const trimmedUsername = username.trim();
       
-      const updatedUser = await db.user.update({
-        where: { id: userId },
-        data: { username: trimmedUsername }
-      });
+      const updatedUser = await authStorage.updateUsername(userId, trimmedUsername);
       
       res.json(updatedUser);
     } catch (error) {
