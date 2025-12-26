@@ -11,7 +11,7 @@ export default function Dashboard() {
   const { data: stats, isLoading: statsLoading } = useStats();
   // We can pre-fetch due cards count from stats, but fetching the actual list is okay too
   
-  const dueCount = stats?.dueCards || 0;
+  const decksCount = stats?.decksWithDueCards || 0;
   
   if (statsLoading) {
     return <div className="p-8"><Skeleton className="h-[200px] w-full rounded-xl" /></div>;
@@ -22,7 +22,7 @@ export default function Dashboard() {
       <div className="flex justify-between items-end">
         <div>
           <h1 className="text-3xl font-bold tracking-tight mb-2">Welcome back, Scholar</h1>
-          <p className="text-muted-foreground">You have {dueCount} cards due for review today.</p>
+          <p className="text-muted-foreground">You have {decksCount} deck{decksCount !== 1 ? 's' : ''} ready to study.</p>
         </div>
         <div className="text-sm text-right text-muted-foreground">
           <div className="font-medium text-foreground">{new Date().toLocaleDateString(undefined, { weekday: 'long', month: 'long', day: 'numeric' })}</div>
@@ -53,12 +53,12 @@ export default function Dashboard() {
               <Link href="/study">
                 <Button size="lg" className="gap-2 shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-shadow">
                   <Play className="h-4 w-4 fill-current" />
-                  Start Session ({dueCount})
+                  Start Session ({decksCount})
                 </Button>
               </Link>
-              {dueCount === 0 && (
+              {decksCount === 0 && (
                 <span className="text-sm text-green-600 font-medium bg-green-50 px-3 py-2 rounded-md">
-                  All caught up! 🎉
+                  All caught up!
                 </span>
               )}
             </div>

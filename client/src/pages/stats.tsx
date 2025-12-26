@@ -35,6 +35,7 @@ export default function Stats() {
   const wrongAnswers = stats?.wrongAnswers || 0;
   const totalAnswers = correctAnswers + wrongAnswers;
   const accuracyPercent = totalAnswers > 0 ? Math.round((correctAnswers / totalAnswers) * 100) : 0;
+  const deckAccuracy = stats?.deckAccuracy || [];
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -141,6 +142,36 @@ export default function Stats() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Per-Deck Accuracy */}
+      {deckAccuracy.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Accuracy by Deck</CardTitle>
+            <CardDescription>See how well you're doing in each deck</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {deckAccuracy.map((deck: { deckId: string; deckName: string; correct: number; wrong: number; total: number; accuracy: number }) => (
+                <div key={deck.deckId} className="space-y-2" data-testid={`deck-accuracy-${deck.deckId}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{deck.deckName}</span>
+                      <span className="text-xs text-muted-foreground">({deck.total} reviews)</span>
+                    </div>
+                    <div className="flex items-center gap-3 text-sm">
+                      <span className="text-green-600">{deck.correct} correct</span>
+                      <span className="text-red-500">{deck.wrong} wrong</span>
+                      <span className="font-bold text-primary">{deck.accuracy}%</span>
+                    </div>
+                  </div>
+                  <Progress value={deck.accuracy} className="h-2" />
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }

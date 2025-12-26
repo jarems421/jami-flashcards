@@ -237,6 +237,68 @@ export async function registerRoutes(
         history.push({ date: dayName, reviews: count, fullDate: dateStr });
       }
 
+      // Calculate per-deck accuracy
+      const logsWithDeck = await db.reviewLog.findMany({
+        where: { card: { deck: { userId } } },
+        select: {
+          rating: true,
+          card: {
+            select: {
+              deckId: true,
+              deck: { select: { id: true, name: true } }
+            }
+          }
+        }
+      });
+
+      const deckStatsMap = new Map<string, { name: string; correct: number; total: number }>();
+      logsWithDeck.forEach(log => {
+        const deckId = log.card.deckId;
+        const deckName = log.card.deck.name;
+        if (!deckStatsMap.has(deckId)) {
+          deckStatsMap.set(deckId, { name: deckName, correct: 0, total: 0 });
+        }
+        const stats = deckStatsMap.get(deckId)!;
+        stats.total++;
+        if (log.rating === 'CORRECT') {
+          stats.correct++;
+        }
+      });
+
+      const deckAccuracy = Array.from(deckStatsMap.entries()).map(([deckId, stats]) => ({
+        deckId,
+        deckName: stats.name,
+        correct: stats.correct,
+        wrong: stats.total - stats.correct,
+        total: stats.total,
+        accuracy: stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0
+      }));
+
+      // Count decks with cards that need study (cards not reviewed today or new cards)
+      const todayStart = startOfDay(new Date());
+      const decksWithCards = await db.deck.findMany({
+        where: { userId },
+        select: {
+          id: true,
+          cards: {
+            select: {
+              id: true,
+              lastReviewedAt: true,
+              state: true
+            }
+          }
+        }
+      });
+      
+      // A deck needs to be studied if it has at least one card that:
+      // - Has never been reviewed (lastReviewedAt is null), OR
+      // - Was last reviewed before today
+      const decksWithDueCards = decksWithCards.filter(d => {
+        return d.cards.some(card => 
+          !card.lastReviewedAt || new Date(card.lastReviewedAt) < todayStart
+        );
+      }).length;
+
       res.json({
         totalCards,
         newCards,
@@ -246,7 +308,10 @@ export async function registerRoutes(
         timeSpent,
         dailyHistory: history,
         correctAnswers: correctReviews,
-        wrongAnswers: totalReviews - correctReviews
+        wrongAnswers: totalReviews - correctReviews,
+        deckAccuracy,
+        decksWithDueCards,
+        dueCards: totalCards // for backwards compat
       });
     } catch (e) {
       console.error(e);
