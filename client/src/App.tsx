@@ -41,14 +41,6 @@ function NavItem({ href, icon: Icon, label, onClick }: { href: string; icon: any
 
 function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout, isLoggingOut } = useAuth();
-  const qc = useQueryClient();
-  const { toast } = useToast();
-  
-  const handleRefresh = () => {
-    qc.invalidateQueries();
-    toast({ title: "Refreshed", description: "Content has been updated." });
-    onNavigate?.();
-  };
   
   return (
     <>
@@ -59,15 +51,6 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
         <NavItem href="/goals" icon={Target} label="Goals" onClick={onNavigate} />
         <NavItem href="/browser" icon={Search} label="Browse Cards" onClick={onNavigate} />
         <NavItem href="/stats" icon={BarChart3} label="Stats" onClick={onNavigate} />
-        <Button 
-          variant="ghost" 
-          className="w-full justify-start gap-3 text-muted-foreground"
-          onClick={handleRefresh}
-          data-testid="button-refresh"
-        >
-          <RefreshCw className="h-4 w-4" />
-          Refresh
-        </Button>
       </div>
 
       <div className="mt-8">
@@ -123,6 +106,13 @@ function Nav() {
 
 function MobileNav() {
   const [open, setOpen] = useState(false);
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  
+  const handleRefresh = () => {
+    qc.invalidateQueries();
+    toast({ title: "Refreshed", description: "Content has been updated." });
+  };
   
   return (
     <div className="md:hidden flex items-center justify-between p-4 border-b bg-card">
@@ -131,12 +121,17 @@ function MobileNav() {
         <span className="font-bold text-lg tracking-tight">Jami</span>
       </div>
       
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
-          <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
-            <Menu className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
+      <div className="flex items-center gap-1">
+        <Button variant="ghost" size="icon" onClick={handleRefresh} data-testid="button-refresh-mobile">
+          <RefreshCw className="h-5 w-5" />
+        </Button>
+        
+        <Sheet open={open} onOpenChange={setOpen}>
+          <SheetTrigger asChild>
+            <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
+              <Menu className="h-5 w-5" />
+            </Button>
+          </SheetTrigger>
         <SheetContent side="left" className="w-64 p-4">
           <div className="flex items-center gap-2 mb-8 mt-2">
             <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
@@ -144,7 +139,8 @@ function MobileNav() {
           </div>
           <NavContent onNavigate={() => setOpen(false)} />
         </SheetContent>
-      </Sheet>
+        </Sheet>
+      </div>
     </div>
   );
 }

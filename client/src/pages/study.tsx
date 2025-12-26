@@ -3,12 +3,14 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { motion, AnimatePresence } from "framer-motion";
-import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw, Library } from "lucide-react";
+import { Check, ArrowLeft, RefreshCw, Clock, RotateCcw, Library, Shuffle } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 
 interface CardData {
   id: string;
@@ -59,6 +61,7 @@ export default function Study() {
   // Deck selection state
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>(initialDeckId ? [initialDeckId] : []);
   const [hasStartedSession, setHasStartedSession] = useState(!!initialDeckId);
+  const [shuffleMode, setShuffleMode] = useState(false);
 
   const handleChangeDeckSelection = () => {
     setHasStartedSession(false);
@@ -124,16 +127,27 @@ export default function Study() {
     enabled: hasStartedSession
   });
 
+  // Shuffle function
+  const shuffleArray = <T,>(array: T[]): T[] => {
+    const shuffled = [...array];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    return shuffled;
+  };
+
   // Initialize active queue when data loads
   useEffect(() => {
     if (data?.queue) {
-      setActiveQueue(data.queue);
+      const queue = shuffleMode ? shuffleArray(data.queue) : data.queue;
+      setActiveQueue(queue);
       setWrongCards([]);
       setRightCards([]);
       setCurrentIndex(0);
       setSessionComplete(false);
     }
-  }, [data]);
+  }, [data, shuffleMode]);
 
   const answerMutation = useMutation({
     mutationFn: async ({ id, rating }: { id: string, rating: string }) => {
@@ -281,13 +295,28 @@ export default function Study() {
           </div>
         </div>
 
-        <div className="flex gap-2 mb-4">
-          <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all">
-            Select All
-          </Button>
-          <Button variant="outline" size="sm" onClick={selectNone} data-testid="button-select-none">
-            Clear
-          </Button>
+        <div className="flex flex-wrap items-center justify-between gap-4 mb-4">
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={selectAll} data-testid="button-select-all">
+              Select All
+            </Button>
+            <Button variant="outline" size="sm" onClick={selectNone} data-testid="button-select-none">
+              Clear
+            </Button>
+          </div>
+          
+          <div className="flex items-center gap-2">
+            <Switch 
+              id="shuffle" 
+              checked={shuffleMode} 
+              onCheckedChange={setShuffleMode}
+              data-testid="switch-shuffle"
+            />
+            <Label htmlFor="shuffle" className="flex items-center gap-1.5 cursor-pointer">
+              <Shuffle className="h-4 w-4" />
+              Shuffle
+            </Label>
+          </div>
         </div>
 
         <div className="grid gap-3">
@@ -349,6 +378,8 @@ export default function Study() {
   // Template rendering
   const frontContent = currentCard?.note?.fields?.Front || currentCard?.note?.fields?.Text || "No content";
   const backContent = currentCard?.note?.fields?.Back || "No answer";
+  const frontImage = currentCard?.note?.fields?.FrontImage;
+  const backImage = currentCard?.note?.fields?.BackImage;
 
   // ...
   if (sessionComplete || !activeQueue || activeQueue.length === 0) {
@@ -531,6 +562,9 @@ export default function Study() {
                     <span className="absolute top-4 left-4 md:top-6 md:left-6 text-xs font-bold tracking-wider text-muted-foreground uppercase opacity-50">
                       Question
                     </span>
+                    {frontImage && (
+                      <img src={frontImage} alt="" className="max-h-32 md:max-h-48 rounded-lg object-contain mb-4" />
+                    )}
                     <div className="font-serif text-xl md:text-3xl leading-relaxed px-2">
                       {frontContent}
                     </div>
@@ -549,6 +583,9 @@ export default function Study() {
                       {frontContent}
                     </div>
 
+                    {backImage && (
+                      <img src={backImage} alt="" className="max-h-32 md:max-h-48 rounded-lg object-contain mb-4" />
+                    )}
                     <div className="font-serif text-xl md:text-3xl leading-relaxed px-2">
                       {backContent}
                     </div>

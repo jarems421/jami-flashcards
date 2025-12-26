@@ -9,9 +9,11 @@ import {
   YAxis, 
   CartesianGrid, 
   Tooltip, 
-  ResponsiveContainer
+  ResponsiveContainer,
+  LineChart,
+  Line
 } from "recharts";
-import { CheckCircle, XCircle, Target } from "lucide-react";
+import { CheckCircle, XCircle } from "lucide-react";
 
 export default function Stats() {
   const { data: stats, isLoading } = useStats();
@@ -36,6 +38,7 @@ export default function Stats() {
   const totalAnswers = correctAnswers + wrongAnswers;
   const accuracyPercent = totalAnswers > 0 ? Math.round((correctAnswers / totalAnswers) * 100) : 0;
   const deckAccuracy = stats?.deckAccuracy || [];
+  const accuracyHistory = stats?.accuracyHistory || [];
 
   return (
     <div className="p-8 max-w-7xl mx-auto space-y-8">
@@ -86,16 +89,17 @@ export default function Stats() {
             <CardTitle>Reviews per Day</CardTitle>
             <CardDescription>Activity over the last 7 days</CardDescription>
           </CardHeader>
-          <CardContent className="h-[300px]">
+          <CardContent className="h-[300px] -ml-4">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={reviewsData}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="date" axisLine={false} tickLine={false} />
-                <YAxis axisLine={false} tickLine={false} />
+              <BarChart data={reviewsData} margin={{ left: 0, right: 10 }}>
+                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+                <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} fontSize={12} />
+                <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} fontSize={12} width={30} />
                 <Tooltip 
-                  contentStyle={{ backgroundColor: 'var(--background)', borderRadius: '8px', border: '1px solid var(--border)' }}
+                  contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))' }}
+                  labelStyle={{ color: 'hsl(var(--foreground))' }}
                 />
-                <Bar dataKey="reviews" fill="var(--primary)" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="reviews" fill="hsl(var(--primary))" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
@@ -143,6 +147,36 @@ export default function Stats() {
         </Card>
       </div>
 
+      {/* Accuracy Over Time Chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Accuracy Over Time</CardTitle>
+          <CardDescription>Your daily correct answer percentage over the last 7 days</CardDescription>
+        </CardHeader>
+        <CardContent className="h-[300px] -ml-4">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={accuracyHistory} margin={{ left: 0, right: 10 }}>
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="hsl(var(--border))" />
+              <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} fontSize={12} />
+              <YAxis axisLine={false} tickLine={false} tick={{ fill: 'hsl(var(--muted-foreground))' }} fontSize={12} width={40} domain={[0, 100]} tickFormatter={(v) => `${v}%`} />
+              <Tooltip 
+                contentStyle={{ backgroundColor: 'hsl(var(--card))', borderRadius: '8px', border: '1px solid hsl(var(--border))', color: 'hsl(var(--foreground))' }}
+                labelStyle={{ color: 'hsl(var(--foreground))' }}
+                formatter={(value: any) => value !== null ? [`${value}%`, 'Accuracy'] : ['No data', '']}
+              />
+              <Line 
+                type="monotone" 
+                dataKey="accuracy" 
+                stroke="hsl(142, 76%, 36%)" 
+                strokeWidth={2} 
+                dot={{ fill: 'hsl(142, 76%, 36%)', strokeWidth: 2, r: 4 }}
+                connectNulls={false}
+              />
+            </LineChart>
+          </ResponsiveContainer>
+        </CardContent>
+      </Card>
+
       {/* Per-Deck Accuracy */}
       {deckAccuracy.length > 0 && (
         <Card>
@@ -154,7 +188,7 @@ export default function Stats() {
             <div className="space-y-4">
               {deckAccuracy.map((deck: { deckId: string; deckName: string; correct: number; wrong: number; total: number; accuracy: number }) => (
                 <div key={deck.deckId} className="space-y-2" data-testid={`deck-accuracy-${deck.deckId}`}>
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <span className="font-medium">{deck.deckName}</span>
                       <span className="text-xs text-muted-foreground">({deck.total} reviews)</span>

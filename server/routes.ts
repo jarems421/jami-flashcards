@@ -253,13 +253,18 @@ export async function registerRoutes(
       }
 
       const history = [];
+      const accuracyHistory = [];
       for (let i = 6; i >= 0; i--) {
         const d = new Date();
         d.setDate(d.getDate() - i);
         const dateStr = d.toISOString().split('T')[0];
         const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-        const count = logs.filter(l => l.reviewedAt.toISOString().split('T')[0] === dateStr).length;
+        const dayLogs = logs.filter(l => l.reviewedAt.toISOString().split('T')[0] === dateStr);
+        const count = dayLogs.length;
+        const correctCount = dayLogs.filter(l => l.rating === 'CORRECT').length;
+        const dayAccuracy = count > 0 ? Math.round((correctCount / count) * 100) : null;
         history.push({ date: dayName, reviews: count, fullDate: dateStr });
+        accuracyHistory.push({ date: dayName, accuracy: dayAccuracy, correct: correctCount, total: count, fullDate: dateStr });
       }
 
       // Calculate per-deck accuracy
@@ -332,6 +337,7 @@ export async function registerRoutes(
         streak,
         timeSpent,
         dailyHistory: history,
+        accuracyHistory,
         correctAnswers: correctReviews,
         wrongAnswers: totalReviews - correctReviews,
         deckAccuracy,

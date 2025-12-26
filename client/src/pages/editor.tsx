@@ -36,6 +36,8 @@ export default function Editor() {
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
   const [tags, setTags] = useState('');
+  const [frontImage, setFrontImage] = useState('');
+  const [backImage, setBackImage] = useState('');
 
   // Set default deck when data loads
   useEffect(() => {
@@ -68,7 +70,12 @@ export default function Editor() {
     addNote({
       deckId: deckId,
       type: type,
-      content: { Front: front, Back: back },
+      content: { 
+        Front: front, 
+        Back: back,
+        FrontImage: frontImage || undefined,
+        BackImage: backImage || undefined
+      },
       tags: tags.split(',').map(t => t.trim()).filter(Boolean),
     }, {
       onSuccess: () => {
@@ -78,6 +85,8 @@ export default function Editor() {
         });
         setFront('');
         setBack('');
+        setFrontImage('');
+        setBackImage('');
       },
       onError: () => {
         toast({
@@ -145,8 +154,6 @@ export default function Editor() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="basic">Basic Card</SelectItem>
-                        <SelectItem value="cloze">Cloze Deletion (Coming Soon)</SelectItem>
-                        <SelectItem value="image-occlusion">Image Occlusion (Coming Soon)</SelectItem>
                       </SelectContent>
                     </Select>
                   </div>
@@ -154,22 +161,28 @@ export default function Editor() {
 
                 <div className="grid gap-2">
                   <Label>Front</Label>
-                  <div className="relative">
-                    <Textarea 
-                      value={front} 
-                      onChange={e => setFront(e.target.value)}
-                      placeholder="e.g. What is the capital of Japan?"
-                      className="font-serif min-h-[120px] resize-y text-lg p-4"
+                  <Textarea 
+                    value={front} 
+                    onChange={e => setFront(e.target.value)}
+                    placeholder="e.g. What is the capital of Japan?"
+                    className="font-serif min-h-[100px] resize-y text-lg p-4"
+                    data-testid="input-front"
+                  />
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Image className="h-3 w-3" />
+                      Front Image URL (optional)
+                    </Label>
+                    <Input 
+                      value={frontImage}
+                      onChange={e => setFrontImage(e.target.value)}
+                      placeholder="https://example.com/image.jpg"
+                      data-testid="input-front-image"
                     />
-                    <div className="absolute top-3 right-3 flex gap-1">
-                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6">
-                        <Image className="h-3 w-3" />
-                      </Button>
-                      <Button type="button" variant="ghost" size="icon" className="h-6 w-6">
-                        <Type className="h-3 w-3" />
-                      </Button>
-                    </div>
                   </div>
+                  {frontImage && (
+                    <img src={frontImage} alt="Front preview" className="max-h-32 rounded object-contain border" />
+                  )}
                 </div>
 
                 <div className="grid gap-2">
@@ -178,8 +191,24 @@ export default function Editor() {
                     value={back} 
                     onChange={e => setBack(e.target.value)}
                     placeholder="e.g. Tokyo"
-                    className="font-serif min-h-[120px] resize-y text-lg p-4"
+                    className="font-serif min-h-[100px] resize-y text-lg p-4"
+                    data-testid="input-back"
                   />
+                  <div className="space-y-1">
+                    <Label className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Image className="h-3 w-3" />
+                      Back Image URL (optional)
+                    </Label>
+                    <Input 
+                      value={backImage}
+                      onChange={e => setBackImage(e.target.value)}
+                      placeholder="https://example.com/answer.jpg"
+                      data-testid="input-back-image"
+                    />
+                  </div>
+                  {backImage && (
+                    <img src={backImage} alt="Back preview" className="max-h-32 rounded object-contain border" />
+                  )}
                 </div>
 
                 <div className="grid gap-2">

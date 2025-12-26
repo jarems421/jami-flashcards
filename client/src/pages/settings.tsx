@@ -62,18 +62,18 @@ export default function Settings() {
           <CardDescription>Manage your account settings</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="space-y-1 flex-1">
+          <div className="space-y-4">
+            <div className="space-y-1">
               <Label htmlFor="username">Username</Label>
               <p className="text-sm text-muted-foreground">This is how you'll be greeted in the app</p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
               <Input
                 id="username"
                 value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value)}
                 placeholder="Enter username"
-                className="w-48"
+                className="flex-1 sm:max-w-[200px]"
                 data-testid="input-settings-username"
               />
               <Button 
@@ -150,12 +150,27 @@ export default function Settings() {
           <CardDescription>Manage your daily reminders</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center justify-between space-x-2">
-            <div className="space-y-1">
-              <Label htmlFor="reminders">Daily Study Reminder</Label>
-              <p className="text-sm text-muted-foreground">Get notified when you have cards due</p>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between space-x-2">
+              <div className="space-y-1">
+                <Label htmlFor="reminders">Daily Study Reminder</Label>
+                <p className="text-sm text-muted-foreground">Get a reminder at a specific time each day</p>
+              </div>
+              <Switch id="reminders" />
             </div>
-            <Switch id="reminders" />
+            <div className="flex items-center gap-4">
+              <Label htmlFor="reminder-time" className="text-sm text-muted-foreground">Reminder Time</Label>
+              <Input 
+                id="reminder-time"
+                type="time" 
+                defaultValue="19:00"
+                className="w-32"
+                data-testid="input-reminder-time"
+              />
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Note: Browser notifications require permission. Click "Save Changes" to enable.
+            </p>
           </div>
         </CardContent>
       </Card>

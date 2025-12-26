@@ -299,7 +299,7 @@ export default function Goals() {
                           </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Target: {goal.targetCount} cards per {goal.cadence.toLowerCase().slice(0, -2)}
+                          Target: {goal.targetCount} cards per {goal.cadence === 'DAILY' ? 'day' : 'week'}
                           {goal.targetAccuracy && ` • ${goal.targetAccuracy}% accuracy`}
                         </p>
                       </div>
@@ -329,9 +329,14 @@ export default function Goals() {
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span>{todayCount} / {goal.targetCount} cards</span>
-                        <span className="text-muted-foreground">{Math.round(progressPercent)}%</span>
+                        <span className={progressPercent >= 100 ? "text-green-600 font-medium" : "text-muted-foreground"}>
+                          {progressPercent >= 100 ? "Complete!" : `${Math.max(0, goal.targetCount - todayCount)} to go`}
+                        </span>
                       </div>
                       <Progress value={progressPercent} className="h-2" />
+                      {progressPercent >= 100 && (
+                        <p className="text-xs text-green-600">You've reached your {goal.cadence === 'DAILY' ? 'daily' : 'weekly'} goal!</p>
+                      )}
                     </div>
 
                     {goal.deadline && (
@@ -366,7 +371,7 @@ export default function Goals() {
                   <div>
                     <span className="font-medium">{goal.deck?.name || "All Decks"}</span>
                     <span className="text-muted-foreground ml-2">
-                      {goal.targetCount} cards/{goal.cadence.toLowerCase().slice(0, -2)}
+                      {goal.targetCount} cards/{goal.cadence === 'DAILY' ? 'day' : 'week'}
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -406,7 +411,7 @@ export default function Goals() {
                   <div>
                     <span className="font-medium">{goal.deck?.name || "All Decks"}</span>
                     <span className="text-muted-foreground ml-2">
-                      {goal.targetCount} cards/{goal.cadence.toLowerCase().slice(0, -2)}
+                      {goal.targetCount} cards/{goal.cadence === 'DAILY' ? 'day' : 'week'}
                     </span>
                     {goal.deadline && (
                       <span className="text-xs text-red-500 ml-2">
