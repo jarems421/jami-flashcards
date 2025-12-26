@@ -167,8 +167,49 @@ model User {
   profileImageUrl String?  @map("profile_image_url")
   createdAt       DateTime @default(now()) @map("created_at")
   updatedAt       DateTime @updatedAt @map("updated_at")
+  
+  activeConstellationId     String? @db.Uuid @map("active_constellation_id")
+  backgroundConstellationId String? @db.Uuid @map("background_constellation_id")
+
+  constellations Constellation[]
 
   @@map("users")
+}
+
+// Knowledge Constellations Progress System
+model Constellation {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String
+  name        String   @default("Untitled Constellation")
+  isComplete  Boolean  @default(false)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id])
+  stars Star[]
+
+  @@map("constellations")
+}
+
+enum StarRarity {
+  NORMAL
+  BRIGHT      // Every 10th star
+  BRILLIANT   // Every 25th star
+}
+
+model Star {
+  id              String      @id @default(uuid()) @db.Uuid
+  constellationId String      @db.Uuid
+  orderIndex      Int         // 1-100, position earned in constellation
+  positionX       Float       @default(0.5) // 0-1 normalized position
+  positionY       Float       @default(0.5) // 0-1 normalized position
+  rarity          StarRarity  @default(NORMAL)
+  earnedAt        DateTime    @default(now())
+
+  constellation Constellation @relation(fields: [constellationId], references: [id], onDelete: Cascade)
+
+  @@unique([constellationId, orderIndex])
+  @@map("stars")
 }
 
 model Session {
