@@ -871,83 +871,99 @@ export async function registerRoutes(
       
       // Check if goal target was just reached (award star once per goal per period)
       let starAwarded = false;
+      let awardedStar: { id: string; rarity: string; orderIndex: number } | null = null;
+      let constellationCompleted = false;
       const newCount = progress.completedCount;
       const targetReached = newCount >= goal.targetCount;
       const wasNotReached = previousCount < goal.targetCount;
       
       if (targetReached && wasNotReached) {
-        // Goal just completed - award a star!
+        // Goal just completed - award a star using a transaction
         try {
-          // Get or create active constellation
-          const user = await db.user.findUnique({ where: { id: userId } });
-          let constellation;
-          
-          if (user?.activeConstellationId) {
-            constellation = await db.constellation.findUnique({
-              where: { id: user.activeConstellationId },
-              include: { stars: { orderBy: { orderIndex: 'asc' } } }
-            });
-          }
-          
-          if (!constellation || constellation.isComplete) {
-            constellation = await db.constellation.create({
-              data: { userId, name: "Untitled Constellation" },
-              include: { stars: true }
-            });
-            await db.user.update({
-              where: { id: userId },
-              data: { activeConstellationId: constellation.id }
-            });
-          }
-          
-          const newOrderIndex = constellation.stars.length + 1;
-          
-          // Determine rarity
-          let rarity: 'NORMAL' | 'BRIGHT' | 'BRILLIANT' = 'NORMAL';
-          if (newOrderIndex % 25 === 0) {
-            rarity = 'BRILLIANT';
-          } else if (newOrderIndex % 10 === 0) {
-            rarity = 'BRIGHT';
-          }
-          
-          // Generate random position
-          const positionX = 0.1 + Math.random() * 0.8;
-          const positionY = 0.1 + Math.random() * 0.8;
-          
-          await db.star.create({
-            data: {
-              constellationId: constellation.id,
-              orderIndex: newOrderIndex,
-              positionX,
-              positionY,
-              rarity
+          const result = await db.$transaction(async (tx) => {
+            // Get or create active constellation
+            const user = await tx.user.findUnique({ where: { id: userId } });
+            let constellation;
+            
+            if (user?.activeConstellationId) {
+              constellation = await tx.constellation.findUnique({
+                where: { id: user.activeConstellationId },
+                include: { stars: { orderBy: { orderIndex: 'asc' } } }
+              });
             }
-          });
-          
-          // Mark constellation complete if it reached 100 stars
-          if (newOrderIndex >= 100) {
-            await db.constellation.update({
-              where: { id: constellation.id },
-              data: { isComplete: true }
+            
+            if (!constellation || constellation.isComplete) {
+              constellation = await tx.constellation.create({
+                data: { userId, name: "Untitled Constellation" },
+                include: { stars: true }
+              });
+              await tx.user.update({
+                where: { id: userId },
+                data: { activeConstellationId: constellation.id }
+              });
+            }
+            
+            const newOrderIndex = constellation.stars.length + 1;
+            
+            // Determine rarity
+            let rarity: 'NORMAL' | 'BRIGHT' | 'BRILLIANT' = 'NORMAL';
+            if (newOrderIndex % 25 === 0) {
+              rarity = 'BRILLIANT';
+            } else if (newOrderIndex % 10 === 0) {
+              rarity = 'BRIGHT';
+            }
+            
+            // Generate random position
+            const positionX = 0.1 + Math.random() * 0.8;
+            const positionY = 0.1 + Math.random() * 0.8;
+            
+            const star = await tx.star.create({
+              data: {
+                constellationId: constellation.id,
+                orderIndex: newOrderIndex,
+                positionX,
+                positionY,
+                rarity
+              }
             });
             
-            // Create new active constellation
-            const newConstellation = await db.constellation.create({
-              data: { userId, name: "Untitled Constellation" }
-            });
-            await db.user.update({
-              where: { id: userId },
-              data: { activeConstellationId: newConstellation.id }
-            });
-          }
+            let completed = false;
+            // Mark constellation complete if it reached 100 stars
+            if (newOrderIndex >= 100) {
+              await tx.constellation.update({
+                where: { id: constellation.id },
+                data: { isComplete: true }
+              });
+              completed = true;
+              
+              // Create new active constellation
+              const newConstellation = await tx.constellation.create({
+                data: { userId, name: "Untitled Constellation" }
+              });
+              await tx.user.update({
+                where: { id: userId },
+                data: { activeConstellationId: newConstellation.id }
+              });
+            }
+            
+            return { star, completed };
+          });
           
           starAwarded = true;
+          awardedStar = { id: result.star.id, rarity: result.star.rarity, orderIndex: result.star.orderIndex };
+          constellationCompleted = result.completed;
         } catch (starError) {
           console.error("Error awarding star:", starError);
+          // Star awarding failed - don't report it as awarded
         }
       }
       
-      res.json({ ...progress, starAwarded });
+      res.json({ 
+        ...progress, 
+        starAwarded, 
+        star: awardedStar,
+        constellationCompleted
+      });
     } catch (error) {
       console.error("Error updating goal progress:", error);
       res.status(400).json({ error: "Failed to update progress" });
