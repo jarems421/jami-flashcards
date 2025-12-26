@@ -33,6 +33,13 @@ interface Deck {
   name: string;
 }
 
+interface StudyGoal {
+  id: string;
+  deckId: string | null;
+  targetCount: number;
+  status: string;
+}
+
 export default function Study() {
   const [location, setLocation] = useLocation();
   const searchParams = new URLSearchParams(window.location.search);
@@ -68,6 +75,21 @@ export default function Study() {
     queryKey: ["/api/decks"],
   });
   const currentDeck = decks?.find(d => d.id === deckId);
+
+  const { data: activeGoals } = useQuery<StudyGoal[]>({
+    queryKey: ["/api/goals/active"],
+  });
+
+  const updateGoalProgressMutation = useMutation({
+    mutationFn: async (goalId: string) => {
+      await apiRequest("POST", `/api/goals/${goalId}/progress`, { increment: true, count: 1 });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/goals/active"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/goals/progress/today"] });
+    }
+  });
 
   const { data, isLoading, refetch } = useQuery<QueueResponse>({
     queryKey: ["/api/queue/today", deckId],
@@ -105,6 +127,16 @@ export default function Study() {
         setWrongCards(prev => [...prev, currentCard]);
       } else {
         setRightCards(prev => [...prev, currentCard]);
+      }
+
+      // Update progress for applicable goals (both deck-specific and global)
+      if (activeGoals) {
+        const applicableGoals = activeGoals.filter(goal => 
+          goal.status === 'ACTIVE' && (goal.deckId === null || goal.deckId === deckId)
+        );
+        applicableGoals.forEach(goal => {
+          updateGoalProgressMutation.mutate(goal.id);
+        });
       }
 
       // Move to next card locally
