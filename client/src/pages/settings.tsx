@@ -2,13 +2,18 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
-import { Moon, Sun } from "lucide-react";
+import { useAuth } from "@/hooks/use-auth";
+import { Moon, Sun, User } from "lucide-react";
+import { useState, useEffect } from "react";
 
 export default function Settings() {
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
+  const { user, updateUsername, isUpdatingUsername } = useAuth();
+  const [usernameInput, setUsernameInput] = useState(user?.username || "");
 
   const handleSave = () => {
     toast({
@@ -17,12 +22,72 @@ export default function Settings() {
     });
   };
 
+  const handleUpdateUsername = async () => {
+    if (usernameInput.trim().length < 2) {
+      toast({
+        title: "Invalid username",
+        description: "Username must be at least 2 characters.",
+        variant: "destructive",
+      });
+      return;
+    }
+    try {
+      await updateUsername(usernameInput.trim());
+      toast({
+        title: "Username updated",
+        description: "Your username has been changed successfully.",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to update username.",
+        variant: "destructive",
+      });
+    }
+  };
+
   return (
     <div className="p-8 max-w-3xl mx-auto space-y-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Settings</h1>
         <p className="text-muted-foreground mt-1">Manage your application preferences</p>
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <User className="h-5 w-5" />
+            Account
+          </CardTitle>
+          <CardDescription>Manage your account settings</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          <div className="flex items-center justify-between gap-4">
+            <div className="space-y-1 flex-1">
+              <Label htmlFor="username">Username</Label>
+              <p className="text-sm text-muted-foreground">This is how you'll be greeted in the app</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <Input
+                id="username"
+                value={usernameInput}
+                onChange={(e) => setUsernameInput(e.target.value)}
+                placeholder="Enter username"
+                className="w-48"
+                data-testid="input-settings-username"
+              />
+              <Button 
+                onClick={handleUpdateUsername} 
+                disabled={isUpdatingUsername || usernameInput === user?.username}
+                size="sm"
+                data-testid="button-update-username"
+              >
+                {isUpdatingUsername ? "Saving..." : "Update"}
+              </Button>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
