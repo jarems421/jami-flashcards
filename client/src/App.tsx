@@ -1,11 +1,13 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { Brain, Plus, BarChart3, Settings, Library, Search, Target, LogOut, Loader2 } from "lucide-react";
+import { Brain, Plus, BarChart3, Settings, Library, Search, Target, LogOut, Loader2, Menu, X } from "lucide-react";
 import fairyIcon from "@assets/generated_images/cute_fairy_app_icon.png";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
 import { Toaster } from "@/components/ui/toaster";
 import { useAuth } from "@/hooks/use-auth";
+import { useState } from "react";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 import Dashboard from "@/pages/dashboard";
 import Study from "@/pages/study";
@@ -20,48 +22,43 @@ import NotFound from "@/pages/not-found";
 
 import { ThemeProvider } from "@/components/theme-provider";
 
-function Nav() {
+function NavItem({ href, icon: Icon, label, onClick }: { href: string; icon: any; label: string; onClick?: () => void }) {
   const [location] = useLocation();
+  const isActive = location === href;
+  return (
+    <Link href={href} onClick={onClick}>
+      <Button 
+        variant={isActive ? "secondary" : "ghost"} 
+        className={`w-full justify-start gap-3 ${isActive ? 'bg-secondary font-medium' : 'text-muted-foreground'}`}
+      >
+        <Icon className="h-4 w-4" />
+        {label}
+      </Button>
+    </Link>
+  );
+}
+
+function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout, isLoggingOut } = useAuth();
   
-  const NavItem = ({ href, icon: Icon, label }: { href: string; icon: any; label: string }) => {
-    const isActive = location === href;
-    return (
-      <Link href={href}>
-        <Button 
-          variant={isActive ? "secondary" : "ghost"} 
-          className={`w-full justify-start gap-3 ${isActive ? 'bg-secondary font-medium' : 'text-muted-foreground'}`}
-        >
-          <Icon className="h-4 w-4" />
-          {label}
-        </Button>
-      </Link>
-    );
-  };
-
   return (
-    <div className="w-64 border-r bg-card min-h-screen p-4 flex flex-col hidden md:flex">
-      <div className="flex items-center gap-2 px-2 mb-8 mt-2">
-        <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
-        <span className="font-bold text-lg tracking-tight">Jami</span>
-      </div>
-
+    <>
       <div className="space-y-1">
-        <NavItem href="/" icon={BarChart3} label="Dashboard" />
-        <NavItem href="/decks" icon={Library} label="Decks" />
-        <NavItem href="/study" icon={Brain} label="Study Now" />
-        <NavItem href="/goals" icon={Target} label="Goals" />
-        <NavItem href="/browser" icon={Search} label="Browse Cards" />
-        <NavItem href="/stats" icon={BarChart3} label="Stats" />
+        <NavItem href="/" icon={BarChart3} label="Dashboard" onClick={onNavigate} />
+        <NavItem href="/decks" icon={Library} label="Decks" onClick={onNavigate} />
+        <NavItem href="/study" icon={Brain} label="Study Now" onClick={onNavigate} />
+        <NavItem href="/goals" icon={Target} label="Goals" onClick={onNavigate} />
+        <NavItem href="/browser" icon={Search} label="Browse Cards" onClick={onNavigate} />
+        <NavItem href="/stats" icon={BarChart3} label="Stats" onClick={onNavigate} />
       </div>
 
       <div className="mt-8">
         <div className="px-2 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Create</div>
-        <NavItem href="/add" icon={Plus} label="Add Note" />
+        <NavItem href="/add" icon={Plus} label="Add Note" onClick={onNavigate} />
       </div>
 
       <div className="mt-auto space-y-2">
-        <NavItem href="/settings" icon={Settings} label="Settings" />
+        <NavItem href="/settings" icon={Settings} label="Settings" onClick={onNavigate} />
         
         {user && (
           <div className="pt-4 border-t">
@@ -74,7 +71,7 @@ function Nav() {
                 />
               )}
               <span className="text-sm text-muted-foreground truncate">
-                {user.firstName || user.email || 'User'}
+                {user.username || user.firstName || user.email || 'User'}
               </span>
             </div>
             <Button 
@@ -90,6 +87,46 @@ function Nav() {
           </div>
         )}
       </div>
+    </>
+  );
+}
+
+function Nav() {
+  return (
+    <div className="w-64 border-r bg-card min-h-screen p-4 flex-col hidden md:flex">
+      <div className="flex items-center gap-2 px-2 mb-8 mt-2">
+        <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
+        <span className="font-bold text-lg tracking-tight">Jami</span>
+      </div>
+      <NavContent />
+    </div>
+  );
+}
+
+function MobileNav() {
+  const [open, setOpen] = useState(false);
+  
+  return (
+    <div className="md:hidden flex items-center justify-between p-4 border-b bg-card">
+      <div className="flex items-center gap-2">
+        <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
+        <span className="font-bold text-lg tracking-tight">Jami</span>
+      </div>
+      
+      <Sheet open={open} onOpenChange={setOpen}>
+        <SheetTrigger asChild>
+          <Button variant="ghost" size="icon" data-testid="button-mobile-menu">
+            <Menu className="h-5 w-5" />
+          </Button>
+        </SheetTrigger>
+        <SheetContent side="left" className="w-64 p-4">
+          <div className="flex items-center gap-2 mb-8 mt-2">
+            <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
+            <span className="font-bold text-lg tracking-tight">Jami</span>
+          </div>
+          <NavContent onNavigate={() => setOpen(false)} />
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
@@ -181,7 +218,8 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className="flex min-h-screen bg-background text-foreground font-sans">
+    <div className="flex flex-col md:flex-row min-h-screen bg-background text-foreground font-sans">
+      <MobileNav />
       <Nav />
       <main className="flex-1 overflow-auto">
         <Router />
