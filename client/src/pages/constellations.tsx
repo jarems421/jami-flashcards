@@ -212,69 +212,74 @@ export default function Constellations() {
           {currentConstellation && (
             <Card>
               <CardHeader className="pb-2">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-col gap-3">
                   {editingName ? (
-                    <div className="flex items-center gap-2 flex-1">
+                    <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                       <Input
                         value={nameInput}
                         onChange={(e) => setNameInput(e.target.value)}
-                        className="max-w-xs"
+                        className="flex-1"
                         placeholder="Constellation name"
                         data-testid="input-constellation-name"
                       />
-                      <Button size="sm" onClick={handleSave} data-testid="button-save">
-                        Save
-                      </Button>
-                      <Button size="sm" variant="ghost" onClick={handleCancelEdit} data-testid="button-cancel">
-                        Cancel
-                      </Button>
+                      <div className="flex gap-2">
+                        <Button size="sm" onClick={handleSave} className="flex-1 sm:flex-none" data-testid="button-save">
+                          Save
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={handleCancelEdit} className="flex-1 sm:flex-none" data-testid="button-cancel">
+                          Cancel
+                        </Button>
+                      </div>
                     </div>
                   ) : (
-                    <div className="flex items-center gap-2">
-                      <CardTitle className="flex items-center gap-2">
-                        <Star className="h-5 w-5 text-amber-400" />
-                        {currentConstellation.name}
-                        {currentConstellation.isComplete && (
-                          <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
-                            Complete
-                          </span>
-                        )}
-                      </CardTitle>
-                      <Button size="sm" variant="ghost" onClick={handleStartEdit} data-testid="button-edit">
-                        Edit
-                      </Button>
+                    <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <CardTitle className="flex items-center gap-2">
+                          <Star className="h-5 w-5 text-amber-400" />
+                          {currentConstellation.name}
+                          {currentConstellation.isComplete && (
+                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
+                              Complete
+                            </span>
+                          )}
+                        </CardTitle>
+                        <Button size="sm" variant="ghost" onClick={handleStartEdit} data-testid="button-edit">
+                          Edit
+                        </Button>
+                      </div>
+                      <div className="flex gap-2 flex-wrap">
+                        <Button
+                          size="sm"
+                          variant={isBackgroundSet ? "default" : "outline"}
+                          onClick={isBackgroundSet ? handleClearBackground : handleSetBackground}
+                          className="flex-1 sm:flex-none text-xs sm:text-sm"
+                          data-testid="button-set-background"
+                        >
+                          {isBackgroundSet ? "Clear BG" : "Set as BG"}
+                        </Button>
+                        <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
+                          <DialogTrigger asChild>
+                            <Button size="sm" variant="outline" className="flex-1 sm:flex-none" data-testid="button-fullscreen">
+                              Fullscreen
+                            </Button>
+                          </DialogTrigger>
+                          <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full p-0 bg-transparent border-0">
+                            <DialogHeader className="sr-only">
+                              <DialogTitle>{currentConstellation.name}</DialogTitle>
+                              <DialogDescription>Fullscreen view of your constellation</DialogDescription>
+                            </DialogHeader>
+                            <div className="w-full h-full min-h-[80vh]">
+                              <StarCanvas
+                                stars={displayStars}
+                                editable={false}
+                                className="w-full h-full"
+                              />
+                            </div>
+                          </DialogContent>
+                        </Dialog>
+                      </div>
                     </div>
                   )}
-                  <div className="flex gap-2">
-                    <Button
-                      size="sm"
-                      variant={isBackgroundSet ? "default" : "outline"}
-                      onClick={isBackgroundSet ? handleClearBackground : handleSetBackground}
-                      data-testid="button-set-background"
-                    >
-                      {isBackgroundSet ? "Clear Background" : "Set as Background"}
-                    </Button>
-                    <Dialog open={isFullscreen} onOpenChange={setIsFullscreen}>
-                      <DialogTrigger asChild>
-                        <Button size="sm" variant="outline" data-testid="button-fullscreen">
-                          Fullscreen
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full p-0 bg-transparent border-0">
-                        <DialogHeader className="sr-only">
-                          <DialogTitle>{currentConstellation.name}</DialogTitle>
-                          <DialogDescription>Fullscreen view of your constellation</DialogDescription>
-                        </DialogHeader>
-                        <div className="w-full h-full min-h-[80vh]">
-                          <StarCanvas
-                            stars={displayStars}
-                            editable={false}
-                            className="w-full h-full"
-                          />
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
                 </div>
               </CardHeader>
               <CardContent>
