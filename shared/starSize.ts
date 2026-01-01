@@ -6,10 +6,10 @@ export interface StarSizeConfig {
 }
 
 const DEFAULT_CONFIG: StarSizeConfig = {
-  baseStarSize: 32,
+  baseStarSize: 20,
   baselineGoal: 10,
-  minSize: 16,
-  maxSize: 80,
+  minSize: 12,
+  maxSize: 48,
 };
 
 export function calculateStarSize(

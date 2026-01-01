@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { calculateStarSize } from "@shared/starSize";
-import brightStar from "@assets/generated_images/singular_bright_star_with_rays.png";
+import brightStar from "@assets/generated_images/white_star_transparent_background.png";
 
 interface StarData {
   id: string;
@@ -64,9 +64,9 @@ export function ConstellationBackground() {
 
   const getStarStyles = (star: StarData) => {
     const baseSize = calculateStarSize(star.goalTargetCount || 10, { 
-      baseStarSize: 16,
-      minSize: 8, 
-      maxSize: 40 
+      baseStarSize: 12,
+      minSize: 6, 
+      maxSize: 28 
     });
     
     let sizeMultiplier = 1;

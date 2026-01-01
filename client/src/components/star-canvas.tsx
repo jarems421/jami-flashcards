@@ -1,7 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { calculateStarSize } from "@shared/starSize";
-import brightStar from "@assets/generated_images/singular_bright_star_with_rays.png";
+import brightStar from "@assets/generated_images/white_star_transparent_background.png";
 
 interface Star {
   id: string;
