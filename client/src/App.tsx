@@ -1,6 +1,6 @@
 import { Switch, Route, Link, useLocation } from "wouter";
 import { Plus, BarChart3, Settings, Library, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles, Brain } from "lucide-react";
-import fairyIcon from "@assets/generated_images/cute_fairy_app_icon.png";
+import appIcon from "@assets/IMG_6630_1767309916255.jpeg";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
 import { queryClient } from "@/lib/queryClient";
@@ -96,7 +96,7 @@ function Nav({ transparent = false }: { transparent?: boolean }) {
   return (
     <div className={`w-64 border-r min-h-screen p-4 flex-col hidden md:flex ${transparent ? 'bg-black/40 backdrop-blur-sm border-white/10' : 'bg-card'}`}>
       <div className="flex items-center gap-2 px-2 mb-8 mt-2">
-        <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
+        <img src={appIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
         <span className="font-bold text-lg tracking-tight">Jami</span>
       </div>
       <NavContent />
@@ -117,7 +117,7 @@ function MobileNav({ transparent = false }: { transparent?: boolean }) {
   return (
     <div className={`md:hidden flex items-center justify-between p-4 border-b ${transparent ? 'bg-black/40 backdrop-blur-sm border-white/10' : 'bg-card'}`}>
       <div className="flex items-center gap-2">
-        <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
+        <img src={appIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
         <span className="font-bold text-lg tracking-tight">Jami</span>
       </div>
       
@@ -134,7 +134,7 @@ function MobileNav({ transparent = false }: { transparent?: boolean }) {
           </SheetTrigger>
         <SheetContent side="left" className="w-64 p-4">
           <div className="flex items-center gap-2 mb-8 mt-2">
-            <img src={fairyIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
+            <img src={appIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
             <span className="font-bold text-lg tracking-tight">Jami</span>
           </div>
           <NavContent onNavigate={() => setOpen(false)} />
@@ -167,7 +167,7 @@ function LandingPage() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-background p-8">
       <div className="text-center max-w-md">
         <img 
-          src={fairyIcon} 
+          src={appIcon} 
           alt="Jami" 
           className="h-24 w-24 mx-auto mb-6 rounded-2xl shadow-lg"
         />

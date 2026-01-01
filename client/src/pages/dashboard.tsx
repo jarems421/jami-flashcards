@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Play, TrendingUp, Clock, CalendarDays } from "lucide-react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
-import studyIllustration from "@assets/generated_images/minimalist_abstract_study_shapes_in_calm_blue_and_slate.png";
+import studyIllustration from "@assets/IMG_6630_1767309916255.jpeg";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/use-auth";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
@@ -126,7 +126,7 @@ export default function Dashboard() {
             </motion.div>
           </Link>
 
-          <div className="flex justify-center gap-8 md:gap-16">
+          <div className="flex justify-center gap-8 md:gap-16 pt-4">
             {[
               { label: "Cards", value: stats?.totalCards || 0 },
               { label: "Streak", value: `${stats?.streak || 0}d` },
