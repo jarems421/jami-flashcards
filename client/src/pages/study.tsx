@@ -58,6 +58,7 @@ export default function Study() {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
+  const [cardStartTime, setCardStartTime] = useState<number>(Date.now());
 
   // Deck selection state
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>(initialDeckId ? [initialDeckId] : []);
@@ -178,12 +179,13 @@ export default function Study() {
       setRightCards([]);
       setCurrentIndex(0);
       setSessionComplete(false);
+      setCardStartTime(Date.now());
     }
   }, [data, shuffleMode]);
 
   const answerMutation = useMutation({
-    mutationFn: async ({ id, rating }: { id: string, rating: string }) => {
-      await apiRequest("POST", `/api/cards/${id}/grade`, { rating });
+    mutationFn: async ({ id, rating, responseTimeMs }: { id: string, rating: string, responseTimeMs: number }) => {
+      await apiRequest("POST", `/api/cards/${id}/grade`, { rating, responseTimeMs });
     },
     onSuccess: (_, variables) => {
       // Don't invalidate queue to keep the current session cards in memory
@@ -210,6 +212,7 @@ export default function Study() {
       if (currentIndex < activeQueue.length - 1) {
         setCurrentIndex(prev => prev + 1);
         setCanUndo(true);
+        setCardStartTime(Date.now());
       } else {
         setSessionComplete(true);
       }
@@ -253,9 +256,10 @@ export default function Study() {
     const currentCard = activeQueue[currentIndex];
     if (!currentCard) return;
     
-    answerMutation.mutate({ id: currentCard.id, rating });
+    const responseTimeMs = Date.now() - cardStartTime;
+    answerMutation.mutate({ id: currentCard.id, rating, responseTimeMs });
     setIsFlipped(false);
-  }, [activeQueue, currentIndex, answerMutation]);
+  }, [activeQueue, currentIndex, answerMutation, cardStartTime]);
 
   const handleUndo = useCallback(() => {
     if (!canUndo) return;
