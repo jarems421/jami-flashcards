@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { calculateStarSize } from "@shared/starSize";
-import glitterStar from "@assets/—Pngtree—vector_white_glitter_stars_element_5449106_1767310369044.png";
+import brightStar from "@assets/generated_images/singular_bright_star_with_rays.png";
 
 interface StarData {
   id: string;
@@ -130,7 +130,7 @@ export function ConstellationBackground() {
                 }}
               />
               <img
-                src={glitterStar}
+                src={brightStar}
                 alt=""
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
                 style={{
