@@ -83,41 +83,40 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <Link href="/study">
         <motion.div 
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.3 }}
-          className="md:col-span-3 relative overflow-hidden rounded-xl border bg-card text-card-foreground shadow-sm"
+          whileHover={{ scale: 1.01 }}
+          whileTap={{ scale: 0.99 }}
+          className="relative overflow-hidden rounded-xl border bg-gradient-to-br from-primary/10 via-primary/5 to-transparent cursor-pointer group"
         >
-          <div className="absolute top-0 right-0 w-64 h-full opacity-10 pointer-events-none">
+          <div className="absolute top-0 right-0 w-48 h-full opacity-10 pointer-events-none">
             <img src={studyIllustration} className="w-full h-full object-cover" alt="" />
           </div>
           
-          <div className="p-6 relative z-10 flex flex-col md:flex-row h-full justify-between items-center gap-6">
-            <div>
-              <h2 className="text-xl font-semibold mb-1">Daily Review</h2>
-              <p className="text-muted-foreground max-w-xl">
-                Consistency is key. Reviewing your cards daily strengthens neural pathways and improves long-term retention.
-              </p>
+          <div className="p-6 relative z-10 flex items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center group-hover:bg-primary/20 transition-colors">
+                <Play className="h-5 w-5 text-primary fill-current" />
+              </div>
+              <div>
+                <h2 className="text-xl font-semibold">Study Now</h2>
+                <p className="text-muted-foreground text-sm">
+                  {decksCount > 0 ? `${decksCount} deck${decksCount !== 1 ? 's' : ''} ready to review` : "All caught up!"}
+                </p>
+              </div>
             </div>
             
-            <div className="flex items-center gap-4 shrink-0">
-              <Link href="/study">
-                <Button size="lg" className="gap-2 shadow-lg shadow-primary/20 hover:shadow-primary/40 transition-shadow">
-                  <Play className="h-4 w-4 fill-current" />
-                  Start Session ({decksCount})
-                </Button>
-              </Link>
-              {decksCount === 0 && (
-                <span className="text-sm text-green-600 font-medium bg-green-50 px-3 py-2 rounded-md">
-                  All caught up!
-                </span>
-              )}
+            <div className="text-muted-foreground group-hover:text-foreground transition-colors">
+              <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+              </svg>
             </div>
           </div>
         </motion.div>
-      </div>
+      </Link>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         {[
