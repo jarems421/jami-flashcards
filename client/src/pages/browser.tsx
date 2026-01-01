@@ -386,7 +386,7 @@ export default function Browser() {
                           <AlertDialogHeader>
                             <AlertDialogTitle>Delete Deck</AlertDialogTitle>
                             <AlertDialogDescription>
-                              Are you sure you want to delete "{deck.name}"? This will delete all cards and notes inside it. This action cannot be undone.
+                              Are you sure you want to delete "{deck.name}"? This will delete all cards inside it. This action cannot be undone.
                             </AlertDialogDescription>
                           </AlertDialogHeader>
                           <AlertDialogFooter>
@@ -567,7 +567,7 @@ export default function Browser() {
                         <DropdownMenuLabel>Actions</DropdownMenuLabel>
                         <DropdownMenuItem onClick={() => handleEditCard(card)} data-testid={`edit-card-${card.id}`}>
                           <Pencil className="mr-2 h-4 w-4" />
-                          Edit Note
+                          Edit Card
                         </DropdownMenuItem>
                         <DropdownMenuSeparator />
                         <DropdownMenuItem 
@@ -596,9 +596,9 @@ export default function Browser() {
       <Dialog open={!!editingCard} onOpenChange={(open) => !open && setEditingCard(null)}>
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
-            <DialogTitle>Edit Note</DialogTitle>
+            <DialogTitle>Edit Card</DialogTitle>
             <DialogDescription>
-              Make changes to the content of this card. This may affect other cards generated from this note.
+              Make changes to the content of this flashcard.
             </DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">

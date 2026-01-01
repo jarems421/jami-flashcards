@@ -61,7 +61,7 @@ export default function Editor() {
     if (!deckId) {
       toast({
         title: "Missing Deck",
-        description: "Please select a deck for this note.",
+        description: "Please select a deck for this card.",
         variant: "destructive"
       });
       return;
@@ -80,7 +80,7 @@ export default function Editor() {
     }, {
       onSuccess: () => {
         toast({
-          title: "Note created",
+          title: "Card created",
           description: "Your new flashcard has been added to the deck.",
         });
         setFront('');
@@ -91,7 +91,7 @@ export default function Editor() {
       onError: () => {
         toast({
           title: "Error",
-          description: "Failed to save note.",
+          description: "Failed to save card.",
           variant: "destructive"
         });
       }
@@ -103,7 +103,7 @@ export default function Editor() {
       <div className="max-w-3xl mx-auto p-6 md:p-12">
         <div className="text-center py-16">
           <h1 className="text-3xl font-bold tracking-tight mb-4">No Decks Yet</h1>
-          <p className="text-muted-foreground mb-6">You need to create a deck before you can add notes.</p>
+          <p className="text-muted-foreground mb-6">You need to create a deck before you can add cards.</p>
           <Link href="/decks">
             <Button size="lg" data-testid="button-create-deck">
               Create Your First Deck
@@ -118,7 +118,7 @@ export default function Editor() {
     <div className="max-w-3xl mx-auto p-6 md:p-12">
       <div className="flex items-center justify-between mb-8">
         <div>
-          <h1 className="text-3xl font-bold tracking-tight mb-1">Add Note</h1>
+          <h1 className="text-3xl font-bold tracking-tight mb-1">Add Card</h1>
           <p className="text-muted-foreground">Create new material for your collection.</p>
         </div>
         <Link href="/">
@@ -147,7 +147,7 @@ export default function Editor() {
                   </div>
                   
                   <div className="grid gap-2">
-                    <Label>Note Type</Label>
+                    <Label>Card Type</Label>
                     <Select value={type} onValueChange={setType}>
                       <SelectTrigger>
                         <SelectValue />
@@ -224,7 +224,7 @@ export default function Editor() {
                 <div className="pt-4 flex justify-end">
                   <Button type="submit" size="lg" className="gap-2" disabled={isPending}>
                     <Save className="h-4 w-4" />
-                    {isPending ? 'Saving...' : 'Add Note'}
+                    {isPending ? 'Saving...' : 'Add Card'}
                   </Button>
                 </div>
               </form>

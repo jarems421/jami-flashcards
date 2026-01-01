@@ -56,7 +56,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="mt-8">
         <div className="px-2 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Create</div>
-        <NavItem href="/add" icon={Plus} label="Add Note" onClick={onNavigate} />
+        <NavItem href="/add" icon={Plus} label="Add Card" onClick={onNavigate} />
       </div>
 
       <div className="mt-auto space-y-2">
