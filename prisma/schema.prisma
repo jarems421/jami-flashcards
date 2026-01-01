@@ -205,6 +205,7 @@ model Star {
   positionY       Float       @default(0.5) // 0-1 normalized position
   rarity          StarRarity  @default(NORMAL)
   earnedAt        DateTime    @default(now())
+  goalTargetCount Int         @default(10) // Used for star size scaling
 
   constellation Constellation @relation(fields: [constellationId], references: [id], onDelete: Cascade)
 
