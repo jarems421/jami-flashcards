@@ -9,7 +9,7 @@ const DEFAULT_CONFIG: StarSizeConfig = {
   baseStarSize: 20,
   baselineGoal: 10,
   minSize: 12,
-  maxSize: 48,
+  maxSize: 80,
 };
 
 export function calculateStarSize(

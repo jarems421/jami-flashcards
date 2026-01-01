@@ -65,7 +65,7 @@ export function ConstellationBackground() {
     const baseSize = calculateStarSize(star.goalTargetCount || 10, { 
       baseStarSize: 12,
       minSize: 6, 
-      maxSize: 28 
+      maxSize: 48 
     });
     
     let sizeMultiplier = 1;
