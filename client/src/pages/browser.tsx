@@ -86,7 +86,7 @@ export default function Browser() {
   const [sortField, setSortField] = useState<keyof CardData | 'lastReviewedAt'>("lastReviewedAt");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [editingCard, setEditingCard] = useState<CardData | null>(null);
-  const [editForm, setEditForm] = useState<{front: string, back: string}>({ front: "", back: "" });
+  const [editForm, setEditForm] = useState<{front: string, back: string, tags: string[]}>({ front: "", back: "", tags: [] });
   const [selectedDeckId, setSelectedDeckId] = useState<string | null>(null);
   const [newDeckName, setNewDeckName] = useState("");
   const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
@@ -175,11 +175,12 @@ export default function Browser() {
   });
 
   const updateNoteMutation = useMutation({
-    mutationFn: async ({ id, fields }: { id: string, fields: any }) => {
-      await apiRequest("PUT", `/api/notes/${id}`, { fields });
+    mutationFn: async ({ id, fields, tags }: { id: string, fields: any, tags: string[] }) => {
+      await apiRequest("PUT", `/api/notes/${id}`, { fields, tags });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/cards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
       setEditingCard(null);
       toast({ title: "Card updated" });
     },
@@ -204,7 +205,8 @@ export default function Browser() {
     setEditingCard(card);
     setEditForm({
       front: card.note.fields.Front || card.note.fields.Text || "",
-      back: card.note.fields.Back || ""
+      back: card.note.fields.Back || "",
+      tags: [...card.note.tags]
     });
   };
 
@@ -228,7 +230,8 @@ export default function Browser() {
 
     updateNoteMutation.mutate({ 
       id: editingCard.note.id, 
-      fields: newFields 
+      fields: newFields,
+      tags: editForm.tags
     });
   };
 
@@ -616,6 +619,40 @@ export default function Browser() {
                 onChange={(e) => setEditForm(prev => ({ ...prev, back: e.target.value }))}
                 className="min-h-[100px]"
               />
+            </div>
+            <div className="grid gap-2">
+              <Label>Tags</Label>
+              <div className="flex flex-wrap gap-2 mb-2">
+                {editForm.tags.map((tag, idx) => (
+                  <Badge key={idx} variant="secondary" className="flex items-center gap-1">
+                    {tag}
+                    <button 
+                      type="button"
+                      onClick={() => setEditForm(prev => ({ ...prev, tags: prev.tags.filter((_, i) => i !== idx) }))}
+                      className="ml-1 hover:text-destructive"
+                    >
+                      ×
+                    </button>
+                  </Badge>
+                ))}
+              </div>
+              <Select
+                value=""
+                onValueChange={(tag) => {
+                  if (tag && !editForm.tags.includes(tag)) {
+                    setEditForm(prev => ({ ...prev, tags: [...prev.tags, tag] }));
+                  }
+                }}
+              >
+                <SelectTrigger data-testid="select-add-tag">
+                  <SelectValue placeholder="Add a tag..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {allTags?.filter(t => !editForm.tags.includes(t)).map(tag => (
+                    <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <DialogFooter>
