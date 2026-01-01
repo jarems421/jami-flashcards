@@ -9,6 +9,66 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
+import { calculateStarSize } from "@shared/starSize";
+
+function CSSStarPreview({ size, label }: { size: number; label: string }) {
+  const glowOpacity = 0.6;
+  const glowSize = size * 1.5;
+  
+  return (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className="relative bg-slate-900 rounded-lg flex items-center justify-center"
+        style={{ width: 80, height: 80 }}
+      >
+        <div
+          className="relative"
+          style={{ width: glowSize, height: glowSize }}
+        >
+          <div 
+            className="absolute inset-0 animate-pulse"
+            style={{
+              background: `radial-gradient(circle, rgba(255, 255, 255, ${glowOpacity * 0.5}) 0%, transparent 60%)`,
+              animationDuration: '3s',
+            }}
+          />
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+            style={{ width: size, height: size }}
+          >
+            <div
+              className="absolute top-1/2 left-0 -translate-y-1/2"
+              style={{
+                width: '100%',
+                height: size * 0.08,
+                background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity}) 40%, white 50%, rgba(255,255,255,${glowOpacity}) 60%, transparent 100%)`,
+              }}
+            />
+            <div
+              className="absolute left-1/2 top-0 -translate-x-1/2"
+              style={{
+                height: '100%',
+                width: size * 0.08,
+                background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity}) 40%, white 50%, rgba(255,255,255,${glowOpacity}) 60%, transparent 100%)`,
+              }}
+            />
+            <div
+              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+              style={{
+                width: size * 0.25,
+                height: size * 0.25,
+                background: 'white',
+                boxShadow: `0 0 ${size * 0.2}px white, 0 0 ${size * 0.4}px rgba(255,255,255,0.5)`,
+              }}
+            />
+          </div>
+        </div>
+      </div>
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <span className="text-xs text-muted-foreground/60">{size.toFixed(0)}px</span>
+    </div>
+  );
+}
 
 interface StarData {
   id: string;
@@ -297,6 +357,28 @@ export default function Constellations() {
               </CardContent>
             </Card>
           )}
+
+          {/* Star Size Demo */}
+          <Card className="mt-4">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Star Size by Goal</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex justify-center gap-8">
+                <CSSStarPreview 
+                  size={calculateStarSize(10)} 
+                  label="10 cards" 
+                />
+                <CSSStarPreview 
+                  size={calculateStarSize(200)} 
+                  label="200 cards" 
+                />
+              </div>
+              <p className="text-xs text-muted-foreground text-center mt-3">
+                Bigger goals earn bigger stars!
+              </p>
+            </CardContent>
+          </Card>
 
           {!currentConstellation && (
             <Card>
