@@ -1,7 +1,6 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { calculateStarSize } from "@shared/starSize";
-import brightStar from "@assets/generated_images/white_star_transparent_background.png";
 
 interface Star {
   id: string;
@@ -189,23 +188,51 @@ export function StarCanvas({
                   height: glowSize,
                 }}
               >
+                {/* Soft glow background */}
                 <div 
                   className="absolute inset-0 animate-pulse"
                   style={{
-                    background: `radial-gradient(circle, rgba(255, 255, 255, ${glowOpacity}) 0%, transparent 70%)`,
+                    background: `radial-gradient(circle, rgba(255, 255, 255, ${glowOpacity * 0.5}) 0%, transparent 60%)`,
+                    animationDuration: '3s',
                   }}
                 />
-                <img
-                  src={brightStar}
-                  alt=""
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                {/* CSS four-pointed star */}
+                <div
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
                   style={{
                     width: size,
                     height: size,
-                    filter: `drop-shadow(0 0 ${size * 0.3}px rgba(255, 255, 255, ${glowOpacity}))`,
                   }}
-                  draggable={false}
-                />
+                >
+                  {/* Horizontal ray */}
+                  <div
+                    className="absolute top-1/2 left-0 -translate-y-1/2"
+                    style={{
+                      width: '100%',
+                      height: size * 0.08,
+                      background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity}) 40%, white 50%, rgba(255,255,255,${glowOpacity}) 60%, transparent 100%)`,
+                    }}
+                  />
+                  {/* Vertical ray */}
+                  <div
+                    className="absolute left-1/2 top-0 -translate-x-1/2"
+                    style={{
+                      height: '100%',
+                      width: size * 0.08,
+                      background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity}) 40%, white 50%, rgba(255,255,255,${glowOpacity}) 60%, transparent 100%)`,
+                    }}
+                  />
+                  {/* Bright center core */}
+                  <div
+                    className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                    style={{
+                      width: size * 0.25,
+                      height: size * 0.25,
+                      background: 'white',
+                      boxShadow: `0 0 ${size * 0.2}px white, 0 0 ${size * 0.4}px rgba(255,255,255,0.5)`,
+                    }}
+                  />
+                </div>
               </div>
               {showLabels && (
                 <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 text-[10px] text-white/60">
