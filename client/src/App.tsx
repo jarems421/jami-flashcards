@@ -1,5 +1,5 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { Brain, Plus, BarChart3, Settings, Library, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles } from "lucide-react";
+import { Plus, BarChart3, Settings, Library, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles, Brain } from "lucide-react";
 import fairyIcon from "@assets/generated_images/cute_fairy_app_icon.png";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -48,7 +48,6 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="space-y-1">
         <NavItem href="/" icon={BarChart3} label="Dashboard" onClick={onNavigate} />
         <NavItem href="/decks" icon={Library} label="Decks" onClick={onNavigate} />
-        <NavItem href="/study" icon={Brain} label="Study Now" onClick={onNavigate} />
         <NavItem href="/goals" icon={Target} label="Goals" onClick={onNavigate} />
         <NavItem href="/constellations" icon={Sparkles} label="Constellations" onClick={onNavigate} />
         <NavItem href="/stats" icon={BarChart3} label="Stats" onClick={onNavigate} />
