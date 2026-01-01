@@ -923,7 +923,8 @@ export async function registerRoutes(
                 orderIndex: newOrderIndex,
                 positionX,
                 positionY,
-                rarity
+                rarity,
+                goalTargetCount: goal.targetCount
               }
             });
             

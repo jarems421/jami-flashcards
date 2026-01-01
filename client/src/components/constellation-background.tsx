@@ -1,5 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { calculateStarSize } from "@shared/starSize";
+import glitterStar from "@assets/—Pngtree—vector_white_glitter_stars_element_5449106_1767310369044.png";
 
 interface StarData {
   id: string;
@@ -7,6 +9,7 @@ interface StarData {
   positionX: number;
   positionY: number;
   rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
+  goalTargetCount?: number;
 }
 
 interface Constellation {
@@ -60,19 +63,25 @@ export function ConstellationBackground() {
   }
 
   const getStarStyles = (star: StarData) => {
-    let size = 4;
-    let glowSize = 10;
+    const baseSize = calculateStarSize(star.goalTargetCount || 10, { 
+      baseStarSize: 16,
+      minSize: 8, 
+      maxSize: 40 
+    });
+    
+    let sizeMultiplier = 1;
     let opacity = 0.6;
 
     if (star.rarity === "BRIGHT") {
-      size = 6;
-      glowSize = 14;
+      sizeMultiplier = 1.25;
       opacity = 0.75;
     } else if (star.rarity === "BRILLIANT") {
-      size = 10;
-      glowSize = 20;
+      sizeMultiplier = 1.5;
       opacity = 0.9;
     }
+
+    const size = baseSize * sizeMultiplier;
+    const glowSize = size * 1.5;
 
     return { size, glowSize, opacity };
   };
@@ -107,22 +116,31 @@ export function ConstellationBackground() {
             }}
           >
             <div
-              className="rounded-full animate-pulse"
+              className="relative"
               style={{
                 width: glowSize,
                 height: glowSize,
-                background: `radial-gradient(circle, rgba(255, 255, 255, ${opacity}) 0%, transparent 70%)`,
-                animationDuration: `${3 + Math.random() * 2}s`,
               }}
-            />
-            <div
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-              style={{
-                width: size,
-                height: size,
-                backgroundColor: `rgba(255, 255, 255, ${opacity + 0.1})`,
-              }}
-            />
+            >
+              <div
+                className="absolute inset-0 animate-pulse"
+                style={{
+                  background: `radial-gradient(circle, rgba(255, 255, 255, ${opacity}) 0%, transparent 70%)`,
+                  animationDuration: `${3 + Math.random() * 2}s`,
+                }}
+              />
+              <img
+                src={glitterStar}
+                alt=""
+                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                style={{
+                  width: size,
+                  height: size,
+                  filter: `drop-shadow(0 0 ${size * 0.3}px rgba(255, 255, 255, ${opacity}))`,
+                  opacity: opacity + 0.1,
+                }}
+              />
+            </div>
           </motion.div>
         );
       })}

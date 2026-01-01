@@ -1,5 +1,7 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { calculateStarSize } from "@shared/starSize";
+import glitterStar from "@assets/—Pngtree—vector_white_glitter_stars_element_5449106_1767310369044.png";
 
 interface Star {
   id: string;
@@ -8,6 +10,7 @@ interface Star {
   positionY: number;
   rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
   earnedAt: string;
+  goalTargetCount?: number;
 }
 
 interface StarCanvasProps {
@@ -116,24 +119,23 @@ export function StarCanvas({
   }, [draggingStar, dragOffset, onStarMove]);
 
   const getStarStyles = (star: Star) => {
-    let size = 6;
-    let glowSize = 8;
-    let color = "#ffffff";
-    let glowColor = "rgba(255, 255, 255, 0.4)";
+    const baseSize = calculateStarSize(star.goalTargetCount || 10);
+    
+    let sizeMultiplier = 1;
+    let glowOpacity = 0.4;
 
     if (star.rarity === "BRIGHT") {
-      size = 8;
-      glowSize = 16;
-      color = "#fffef0";
-      glowColor = "rgba(255, 254, 220, 0.6)";
+      sizeMultiplier = 1.25;
+      glowOpacity = 0.6;
     } else if (star.rarity === "BRILLIANT") {
-      size = 12;
-      glowSize = 24;
-      color = "#ffefc0";
-      glowColor = "rgba(255, 239, 180, 0.8)";
+      sizeMultiplier = 1.5;
+      glowOpacity = 0.8;
     }
 
-    return { size, glowSize, color, glowColor };
+    const size = baseSize * sizeMultiplier;
+    const glowSize = size * 1.5;
+
+    return { size, glowSize, glowOpacity };
   };
 
   return (
@@ -153,7 +155,7 @@ export function StarCanvas({
 
       <AnimatePresence>
         {stars.map((star) => {
-          const { size, glowSize, color, glowColor } = getStarStyles(star);
+          const { size, glowSize, glowOpacity } = getStarStyles(star);
           const isNew = star.id === newStarId;
           const isDragging = star.id === draggingStar;
 
@@ -181,22 +183,30 @@ export function StarCanvas({
               data-testid={`star-${star.orderIndex}`}
             >
               <div
-                className="rounded-full animate-pulse"
+                className="relative"
                 style={{
                   width: glowSize,
                   height: glowSize,
-                  background: `radial-gradient(circle, ${glowColor} 0%, transparent 70%)`,
                 }}
-              />
-              <div
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-                style={{
-                  width: size,
-                  height: size,
-                  backgroundColor: color,
-                  boxShadow: `0 0 ${size}px ${color}`,
-                }}
-              />
+              >
+                <div 
+                  className="absolute inset-0 animate-pulse"
+                  style={{
+                    background: `radial-gradient(circle, rgba(255, 255, 255, ${glowOpacity}) 0%, transparent 70%)`,
+                  }}
+                />
+                <img
+                  src={glitterStar}
+                  alt=""
+                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 pointer-events-none"
+                  style={{
+                    width: size,
+                    height: size,
+                    filter: `drop-shadow(0 0 ${size * 0.3}px rgba(255, 255, 255, ${glowOpacity}))`,
+                  }}
+                  draggable={false}
+                />
+              </div>
               {showLabels && (
                 <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 text-[10px] text-white/60">
                   {star.orderIndex}
