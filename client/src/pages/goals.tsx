@@ -44,8 +44,8 @@ export default function Goals() {
   const [newGoal, setNewGoal] = useState({
     deckId: '',
     cadence: 'DAILY' as 'DAILY' | 'WEEKLY',
-    targetCount: 20,
-    targetAccuracy: 80,
+    targetCount: '20',
+    targetAccuracy: '80',
     deadline: '',
     deadlineTime: '23:59'
   });
@@ -82,8 +82,8 @@ export default function Goals() {
       const res = await apiRequest("POST", "/api/goals", {
         deckId: data.deckId || null,
         cadence: data.cadence,
-        targetCount: data.targetCount,
-        targetAccuracy: data.targetAccuracy,
+        targetCount: parseInt(data.targetCount) || 0,
+        targetAccuracy: parseInt(data.targetAccuracy) || 0,
         deadline: deadlineDateTime
       });
       return res.json();
@@ -91,7 +91,7 @@ export default function Goals() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
       setIsDialogOpen(false);
-      setNewGoal({ deckId: '', cadence: 'DAILY', targetCount: 20, targetAccuracy: 80, deadline: '', deadlineTime: '23:59' });
+      setNewGoal({ deckId: '', cadence: 'DAILY', targetCount: '20', targetAccuracy: '80', deadline: '', deadlineTime: '23:59' });
       toast({ title: "Goal created successfully" });
     },
     onError: () => {
@@ -203,9 +203,13 @@ export default function Goals() {
                 <Label>Target Cards</Label>
                 <Input 
                   type="number" 
-                  min={1} 
+                  inputMode="numeric"
                   value={newGoal.targetCount}
-                  onChange={(e) => setNewGoal(g => ({ ...g, targetCount: parseInt(e.target.value) || 1 }))}
+                  onChange={(e) => setNewGoal(g => ({ ...g, targetCount: e.target.value }))}
+                  onBlur={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    setNewGoal(g => ({ ...g, targetCount: val.toString() }));
+                  }}
                   data-testid="input-target-count"
                 />
               </div>
@@ -213,11 +217,15 @@ export default function Goals() {
               <div className="space-y-2">
                 <Label>Target Accuracy %</Label>
                 <Input 
-                  type="number" 
-                  min={1}
-                  max={100}
+                  type="number"
+                  inputMode="numeric"
                   value={newGoal.targetAccuracy}
-                  onChange={(e) => setNewGoal(g => ({ ...g, targetAccuracy: Math.min(100, Math.max(1, parseInt(e.target.value) || 80)) }))}
+                  onChange={(e) => setNewGoal(g => ({ ...g, targetAccuracy: e.target.value }))}
+                  onBlur={(e) => {
+                    const val = parseInt(e.target.value) || 0;
+                    const clamped = Math.min(100, Math.max(0, val));
+                    setNewGoal(g => ({ ...g, targetAccuracy: clamped.toString() }));
+                  }}
                   data-testid="input-target-accuracy"
                 />
                 <p className="text-xs text-muted-foreground">Target percentage of correct answers</p>
