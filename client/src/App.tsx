@@ -9,7 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 import Dashboard from "@/pages/dashboard";
 import Study from "@/pages/study";
@@ -32,18 +32,39 @@ function NavItem({ href, icon: Icon, label, onClick }: { href: string; icon: any
   const isActive = location === href;
   return (
     <Link href={href} onClick={onClick}>
-      <motion.div whileHover={{ x: 2 }} whileTap={{ scale: 0.98 }}>
+      <motion.div 
+        whileHover={{ x: 4 }} 
+        whileTap={{ scale: 0.97 }}
+        className="relative"
+      >
+        <AnimatePresence>
+          {isActive && (
+            <motion.div
+              layoutId="nav-indicator"
+              className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-6 bg-primary rounded-full"
+              initial={{ opacity: 0, x: -4 }}
+              animate={{ opacity: 1, x: -8 }}
+              exit={{ opacity: 0, x: -4 }}
+              transition={{ type: "spring", stiffness: 500, damping: 30 }}
+            />
+          )}
+        </AnimatePresence>
         <Button 
           variant={isActive ? "secondary" : "ghost"} 
-          className={`w-full justify-start gap-3 ${isActive ? 'bg-secondary font-medium' : 'text-muted-foreground'}`}
+          className={`w-full justify-start gap-3 transition-colors ${isActive ? 'bg-secondary/80 font-medium text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
         >
           <motion.div
-            animate={isActive ? { scale: [1, 1.2, 1] } : {}}
+            animate={isActive ? { scale: [1, 1.15, 1], rotate: [0, -5, 5, 0] } : {}}
+            transition={{ duration: 0.4, ease: "easeOut" }}
+          >
+            <Icon className={`h-4 w-4 ${isActive ? 'text-primary' : ''}`} />
+          </motion.div>
+          <motion.span
+            animate={isActive ? { x: [0, 2, 0] } : {}}
             transition={{ duration: 0.3 }}
           >
-            <Icon className="h-4 w-4" />
-          </motion.div>
-          {label}
+            {label}
+          </motion.span>
         </Button>
       </motion.div>
     </Link>
@@ -54,7 +75,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
   const { user, logout, isLoggingOut } = useAuth();
   
   return (
-    <>
+    <LayoutGroup>
       <div className="space-y-1">
         <NavItem href="/" icon={BarChart3} label="Dashboard" onClick={onNavigate} />
         <NavItem href="/decks" icon={Library} label="Decks" onClick={onNavigate} />
@@ -102,7 +123,7 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
           </div>
         )}
       </div>
-    </>
+    </LayoutGroup>
   );
 }
 

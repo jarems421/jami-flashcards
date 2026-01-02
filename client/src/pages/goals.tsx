@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -9,9 +9,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Target, Plus, Trash2, Calendar, TrendingUp, Pause, Play } from "lucide-react";
+import { Target, Plus, Trash2, Calendar, TrendingUp, Pause, Play, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, differenceInDays } from "date-fns";
+import { motion, AnimatePresence } from "framer-motion";
+import { celebrateGoalComplete } from "@/lib/confetti";
 
 interface Deck {
   id: string;
@@ -119,6 +121,28 @@ export default function Goals() {
       toast({ title: "Goal deleted" });
     }
   });
+
+  const celebratedGoals = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (!goals || !todayProgress) return;
+    
+    goals.forEach(goal => {
+      if (goal.status !== 'ACTIVE') return;
+      
+      const todayCount = todayProgress.find(p => (p as any).goalId === goal.id)?.completedCount || 0;
+      const progressPercent = goal.targetCount > 0 ? (todayCount / goal.targetCount) * 100 : 0;
+      
+      if (progressPercent >= 100 && !celebratedGoals.current.has(goal.id)) {
+        celebratedGoals.current.add(goal.id);
+        celebrateGoalComplete();
+        toast({ 
+          title: "Goal Completed!", 
+          description: `You've reached your ${goal.cadence.toLowerCase()} target for ${goal.deck?.name || "all decks"}!`
+        });
+      }
+    });
+  }, [goals, todayProgress, toast]);
 
   const getTodayCount = (goalId: string) => {
     const progress = todayProgress?.find(p => (p as any).goalId === goalId);
@@ -288,13 +312,22 @@ export default function Goals() {
             Active Goals
           </h2>
           <div className="grid gap-4">
-            {activeGoals.map(goal => {
+            <AnimatePresence>
+            {activeGoals.map((goal, index) => {
               const todayCount = getTodayCount(goal.id);
               const progressPercent = getProgressPercent(goal);
               const daysLeft = getDaysUntilDeadline(goal.deadline);
+              const isComplete = progressPercent >= 100;
 
               return (
-                <Card key={goal.id} data-testid={`card-goal-${goal.id}`}>
+                <motion.div
+                  key={goal.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, x: -100 }}
+                  transition={{ duration: 0.3, delay: index * 0.1 }}
+                >
+                <Card data-testid={`card-goal-${goal.id}`} className={isComplete ? "border-green-500/50 bg-green-50/50 dark:bg-green-950/20" : ""}>
                   <CardContent className="p-6">
                     <div className="flex items-start justify-between mb-4">
                       <div>
@@ -337,13 +370,37 @@ export default function Goals() {
                     <div className="space-y-2">
                       <div className="flex justify-between text-sm">
                         <span>{todayCount} / {goal.targetCount} cards</span>
-                        <span className={progressPercent >= 100 ? "text-green-600 font-medium" : "text-muted-foreground"}>
-                          {progressPercent >= 100 ? "Complete!" : `${Math.max(0, goal.targetCount - todayCount)} to go`}
+                        <span className={isComplete ? "text-green-600 font-medium flex items-center gap-1" : "text-muted-foreground"}>
+                          {isComplete ? (
+                            <>
+                              <motion.div
+                                initial={{ scale: 0 }}
+                                animate={{ scale: 1, rotate: [0, 10, -10, 0] }}
+                                transition={{ type: "spring", stiffness: 500 }}
+                              >
+                                <CheckCircle2 className="h-4 w-4" />
+                              </motion.div>
+                              Complete!
+                            </>
+                          ) : `${Math.max(0, goal.targetCount - todayCount)} to go`}
                         </span>
                       </div>
-                      <Progress value={progressPercent} className="h-2" />
-                      {progressPercent >= 100 && (
-                        <p className="text-xs text-green-600">You've reached your {goal.cadence === 'DAILY' ? 'daily' : 'weekly'} goal!</p>
+                      <motion.div
+                        initial={{ scaleX: 0 }}
+                        animate={{ scaleX: 1 }}
+                        transition={{ duration: 0.5, ease: "easeOut" }}
+                        style={{ originX: 0 }}
+                      >
+                        <Progress value={progressPercent} className={`h-2 ${isComplete ? "[&>div]:bg-green-500" : ""}`} />
+                      </motion.div>
+                      {isComplete && (
+                        <motion.p 
+                          initial={{ opacity: 0, y: 5 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="text-xs text-green-600"
+                        >
+                          You've reached your {goal.cadence === 'DAILY' ? 'daily' : 'weekly'} goal!
+                        </motion.p>
                       )}
                     </div>
 
@@ -363,8 +420,10 @@ export default function Goals() {
                     )}
                   </CardContent>
                 </Card>
+                </motion.div>
               );
             })}
+            </AnimatePresence>
           </div>
         </div>
       )}
