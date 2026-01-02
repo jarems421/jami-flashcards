@@ -193,7 +193,7 @@ export function StarCanvas({
                 <div 
                   className="absolute inset-0 animate-pulse"
                   style={{
-                    background: `radial-gradient(circle, rgba(255, 255, 255, ${glowOpacity * 0.5}) 0%, transparent 60%)`,
+                    background: `radial-gradient(circle, rgba(200, 200, 220, ${glowOpacity * 0.4}) 0%, transparent 60%)`,
                     animationDuration: '3s',
                   }}
                 />
@@ -212,7 +212,7 @@ export function StarCanvas({
                     style={{
                       width: '100%',
                       height: Math.max(2, size * 0.06),
-                      background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.7}) 35%, white 50%, rgba(255,255,255,${glowOpacity * 0.7}) 65%, transparent 100%)`,
+                      background: `linear-gradient(90deg, transparent 0%, rgba(200,200,220,${glowOpacity * 0.7}) 35%, rgba(220,220,235,1) 50%, rgba(200,200,220,${glowOpacity * 0.7}) 65%, transparent 100%)`,
                       borderRadius: '50%',
                     }}
                   />
@@ -222,7 +222,7 @@ export function StarCanvas({
                     style={{
                       height: '100%',
                       width: Math.max(2, size * 0.06),
-                      background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.7}) 35%, white 50%, rgba(255,255,255,${glowOpacity * 0.7}) 65%, transparent 100%)`,
+                      background: `linear-gradient(180deg, transparent 0%, rgba(200,200,220,${glowOpacity * 0.7}) 35%, rgba(220,220,235,1) 50%, rgba(200,200,220,${glowOpacity * 0.7}) 65%, transparent 100%)`,
                       borderRadius: '50%',
                     }}
                   />
@@ -232,8 +232,8 @@ export function StarCanvas({
                     style={{
                       width: Math.max(3, size * 0.2),
                       height: Math.max(3, size * 0.2),
-                      background: 'radial-gradient(circle, white 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 100%)',
-                      boxShadow: `0 0 ${size * 0.15}px white, 0 0 ${size * 0.3}px rgba(255,255,255,0.6), 0 0 ${size * 0.5}px rgba(255,255,255,0.3)`,
+                      background: 'radial-gradient(circle, rgba(220,220,235,1) 0%, rgba(200,200,220,0.8) 50%, rgba(200,200,220,0) 100%)',
+                      boxShadow: `0 0 ${size * 0.15}px rgba(200,200,220,0.9), 0 0 ${size * 0.3}px rgba(200,200,220,0.5), 0 0 ${size * 0.5}px rgba(200,200,220,0.25)`,
                     }}
                   />
                 </div>
