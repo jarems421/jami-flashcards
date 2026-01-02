@@ -184,26 +184,12 @@
   }
 }
 
-/* Constellation Background Active - Override color tokens with transparency */
+/* Constellation Background Active - Add transparency via color-mix */
 .constellation-active {
-  --background: 210 20% 98% / 0.75;
-  --card: 0 0% 100% / 0.8;
-  --popover: 0 0% 100% / 0.9;
-  --sidebar: 0 0% 100% / 0.8;
-  --muted: 210 40% 96.1% / 0.85;
-  --secondary: 210 40% 96.1% / 0.85;
-}
-
-.constellation-active.dark,
-.constellation-active .dark {
-  --background: 222.2 84% 4.9% / 0.7;
-  --card: 222.2 84% 4.9% / 0.75;
-  --popover: 222.2 84% 4.9% / 0.88;
-  --sidebar: 240 5.9% 10% / 0.75;
-  --muted: 217.2 32.6% 17.5% / 0.8;
-  --secondary: 217.2 32.6% 17.5% / 0.8;
-}
-
-.constellation-active .constellation-content {
-  backdrop-filter: blur(2px);
+  --color-background: color-mix(in srgb, hsl(var(--background)) 80%, transparent);
+  --color-card: color-mix(in srgb, hsl(var(--card)) 85%, transparent);
+  --color-popover: color-mix(in srgb, hsl(var(--popover)) 92%, transparent);
+  --color-sidebar: color-mix(in srgb, hsl(var(--sidebar)) 85%, transparent);
+  --color-muted: color-mix(in srgb, hsl(var(--muted)) 88%, transparent);
+  --color-secondary: color-mix(in srgb, hsl(var(--secondary)) 88%, transparent);
 }
