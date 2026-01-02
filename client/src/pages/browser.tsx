@@ -50,7 +50,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format } from "date-fns";
-import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag, ExternalLink, Palette, BookOpen, Brain, Sparkles, Flame, Zap, Star, Heart, Globe, Code, Music, Camera } from "lucide-react";
+import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag, ExternalLink, Palette, BookOpen, Brain, Sparkles, Zap, Star, Heart, Globe, Code, Music, Atom, FlaskConical, Calculator, Dna, Microscope, Orbit, Binary, Languages, Lightbulb, PenTool } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
@@ -113,30 +113,64 @@ export default function Browser() {
     { name: "Folder", value: "" },
     { name: "Book", value: "book" },
     { name: "Brain", value: "brain" },
+    { name: "Atom", value: "atom" },
+    { name: "Calculator", value: "calculator" },
+    { name: "Flask", value: "flask" },
+    { name: "Sigma", value: "sigma" },
+    { name: "Pi", value: "pi" },
+    { name: "DNA", value: "dna" },
+    { name: "Microscope", value: "microscope" },
+    { name: "Orbit", value: "orbit" },
+    { name: "Function", value: "function" },
+    { name: "Binary", value: "binary" },
+    { name: "Globe", value: "globe" },
+    { name: "Languages", value: "languages" },
+    { name: "Lightbulb", value: "lightbulb" },
+    { name: "Sparkles", value: "sparkles" },
     { name: "Star", value: "star" },
     { name: "Heart", value: "heart" },
-    { name: "Flame", value: "flame" },
-    { name: "Zap", value: "zap" },
-    { name: "Sparkles", value: "sparkles" },
-    { name: "Globe", value: "globe" },
-    { name: "Code", value: "code" },
     { name: "Music", value: "music" },
-    { name: "Camera", value: "camera" },
+    { name: "Palette", value: "palette" },
+    { name: "Pen", value: "pen" },
+    { name: "Code", value: "code" },
+    { name: "Zap", value: "zap" },
   ];
+
+  const SigmaIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+    <span className={`text-sm font-bold ${className || ''}`} style={style}>Σ</span>
+  );
+  const PiIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+    <span className={`text-sm font-bold ${className || ''}`} style={style}>π</span>
+  );
+  const FunctionIcon = ({ className, style }: { className?: string; style?: React.CSSProperties }) => (
+    <span className={`text-xs font-mono font-bold ${className || ''}`} style={style}>f(x)</span>
+  );
 
   const getDeckIcon = (iconName?: string | null) => {
     const iconMap: Record<string, any> = {
       book: BookOpen,
       brain: Brain,
+      atom: Atom,
+      calculator: Calculator,
+      flask: FlaskConical,
+      sigma: SigmaIcon,
+      pi: PiIcon,
+      dna: Dna,
+      microscope: Microscope,
+      orbit: Orbit,
+      function: FunctionIcon,
+      binary: Binary,
+      globe: Globe,
+      languages: Languages,
+      lightbulb: Lightbulb,
+      sparkles: Sparkles,
       star: Star,
       heart: Heart,
-      flame: Flame,
-      zap: Zap,
-      sparkles: Sparkles,
-      globe: Globe,
-      code: Code,
       music: Music,
-      camera: Camera,
+      palette: Palette,
+      pen: PenTool,
+      code: Code,
+      zap: Zap,
     };
     return iconMap[iconName || ""] || Folder;
   };

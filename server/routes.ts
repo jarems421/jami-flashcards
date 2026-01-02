@@ -601,8 +601,7 @@ export async function registerRoutes(
           note: true,
           template: true
         },
-        orderBy: { note: { createdAt: 'desc' } },
-        take: search ? 500 : 100
+        orderBy: { note: { createdAt: 'desc' } }
       });
       
       if (search && typeof search === 'string') {
@@ -1298,9 +1297,10 @@ export async function registerRoutes(
 
   app.get("/api/preferences", isAuthenticated, async (req, res) => {
     try {
-      let prefs = await db.userPreference.findFirst();
+      const userId = getUserId(req)!;
+      let prefs = await db.userPreference.findFirst({ where: { userId } });
       if (!prefs) {
-        prefs = await db.userPreference.create({ data: {} });
+        prefs = await db.userPreference.create({ data: { userId } });
       }
       res.json(prefs);
     } catch (error) {
@@ -1311,17 +1311,19 @@ export async function registerRoutes(
 
   app.put("/api/preferences", isAuthenticated, async (req, res) => {
     try {
+      const userId = getUserId(req)!;
       const schema = z.object({
         timezone: z.string().optional(),
         dailyReminderTime: z.string().optional().nullable(),
-        emailReminders: z.boolean().optional(),
-        inAppReminders: z.boolean().optional(),
+        dailyReminderEnabled: z.boolean().optional(),
+        goalDeadlineAlerts: z.boolean().optional(),
+        goalAlertDaysBefore: z.number().optional(),
       });
       const data = schema.parse(req.body);
       
-      let prefs = await db.userPreference.findFirst();
+      let prefs = await db.userPreference.findFirst({ where: { userId } });
       if (!prefs) {
-        prefs = await db.userPreference.create({ data });
+        prefs = await db.userPreference.create({ data: { userId, ...data } });
       } else {
         prefs = await db.userPreference.update({
           where: { id: prefs.id },
