@@ -9,21 +9,21 @@
   "orientation": "portrait-primary",
   "icons": [
     {
-      "src": "/pwa-192x192.png",
+      "src": "/cat-icon.jpg",
       "sizes": "192x192",
-      "type": "image/png",
+      "type": "image/jpeg",
       "purpose": "any"
     },
     {
-      "src": "/pwa-512x512.png",
+      "src": "/cat-icon.jpg",
       "sizes": "512x512",
-      "type": "image/png",
+      "type": "image/jpeg",
       "purpose": "any maskable"
     },
     {
-      "src": "/apple-touch-icon.png",
+      "src": "/cat-icon.jpg",
       "sizes": "180x180",
-      "type": "image/png",
+      "type": "image/jpeg",
       "purpose": "any"
     }
   ]

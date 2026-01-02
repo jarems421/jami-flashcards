@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useAddNote } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Image, Save, Upload, X } from "lucide-react";
 import { Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
@@ -30,17 +31,63 @@ export default function Editor() {
     }
   });
 
+  // Fetch existing tags for autocomplete
+  const { data: existingTags } = useQuery<string[]>({
+    queryKey: ["/api/tags"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/tags");
+      return res.json();
+    }
+  });
+
   const [type, setType] = useState('basic');
   const [deckId, setDeckId] = useState<string>("");
   const [front, setFront] = useState('');
   const [back, setBack] = useState('');
-  const [tags, setTags] = useState('');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const [tagInput, setTagInput] = useState('');
+  const [showTagSuggestions, setShowTagSuggestions] = useState(false);
   const [frontImage, setFrontImage] = useState('');
   const [backImage, setBackImage] = useState('');
   const [uploadingFront, setUploadingFront] = useState(false);
   const [uploadingBack, setUploadingBack] = useState(false);
   const frontInputRef = useRef<HTMLInputElement>(null);
   const backInputRef = useRef<HTMLInputElement>(null);
+  const tagInputRef = useRef<HTMLInputElement>(null);
+
+  // Filter tags based on input
+  const filteredTags = useMemo(() => {
+    if (!existingTags || !tagInput.trim()) return [];
+    const input = tagInput.toLowerCase().trim();
+    return existingTags
+      .filter(tag => tag.toLowerCase().includes(input) && !selectedTags.includes(tag))
+      .slice(0, 5);
+  }, [existingTags, tagInput, selectedTags]);
+
+  const addTag = (tag: string) => {
+    const trimmed = tag.trim();
+    if (trimmed && !selectedTags.includes(trimmed)) {
+      setSelectedTags([...selectedTags, trimmed]);
+    }
+    setTagInput('');
+    setShowTagSuggestions(false);
+    tagInputRef.current?.focus();
+  };
+
+  const removeTag = (tagToRemove: string) => {
+    setSelectedTags(selectedTags.filter(t => t !== tagToRemove));
+  };
+
+  const handleTagInputKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      if (tagInput.trim()) {
+        addTag(tagInput);
+      }
+    } else if (e.key === 'Backspace' && !tagInput && selectedTags.length > 0) {
+      removeTag(selectedTags[selectedTags.length - 1]);
+    }
+  };
 
   const uploadImage = async (file: File): Promise<string> => {
     const formData = new FormData();
@@ -120,7 +167,7 @@ export default function Editor() {
         FrontImage: frontImage || undefined,
         BackImage: backImage || undefined
       },
-      tags: tags.split(',').map(t => t.trim()).filter(Boolean),
+      tags: selectedTags,
     }, {
       onSuccess: () => {
         toast({
@@ -131,6 +178,8 @@ export default function Editor() {
         setBack('');
         setFrontImage('');
         setBackImage('');
+        setSelectedTags([]);
+        setTagInput('');
       },
       onError: () => {
         toast({
@@ -175,7 +224,7 @@ export default function Editor() {
           <Card>
             <CardContent className="p-6">
               <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-2 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div className="grid gap-2">
                     <Label>Deck</Label>
                     <Select value={deckId} onValueChange={setDeckId}>
@@ -307,12 +356,54 @@ export default function Editor() {
 
                 <div className="grid gap-2">
                   <Label>Tags</Label>
-                  <Input 
-                    value={tags} 
-                    onChange={e => setTags(e.target.value)}
-                    placeholder="geography, capitals, asia" 
-                  />
-                  <p className="text-xs text-muted-foreground">Comma separated</p>
+                  <div className="relative">
+                    <div className="flex flex-wrap gap-1.5 p-2 border rounded-md bg-background min-h-[42px] focus-within:ring-2 focus-within:ring-ring">
+                      {selectedTags.map(tag => (
+                        <Badge key={tag} variant="secondary" className="gap-1 px-2 py-0.5">
+                          {tag}
+                          <button
+                            type="button"
+                            onClick={() => removeTag(tag)}
+                            className="hover:text-destructive"
+                            data-testid={`button-remove-tag-${tag}`}
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </Badge>
+                      ))}
+                      <input
+                        ref={tagInputRef}
+                        type="text"
+                        value={tagInput}
+                        onChange={e => {
+                          setTagInput(e.target.value);
+                          setShowTagSuggestions(true);
+                        }}
+                        onKeyDown={handleTagInputKeyDown}
+                        onFocus={() => setShowTagSuggestions(true)}
+                        onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
+                        placeholder={selectedTags.length === 0 ? "Type to add tags..." : ""}
+                        className="flex-1 min-w-[120px] bg-transparent outline-none text-sm"
+                        data-testid="input-tags"
+                      />
+                    </div>
+                    {showTagSuggestions && filteredTags.length > 0 && (
+                      <div className="absolute z-10 w-full mt-1 bg-popover border rounded-md shadow-md max-h-40 overflow-auto">
+                        {filteredTags.map(tag => (
+                          <button
+                            key={tag}
+                            type="button"
+                            className="w-full text-left px-3 py-2 text-sm hover:bg-accent hover:text-accent-foreground"
+                            onMouseDown={() => addTag(tag)}
+                            data-testid={`button-suggest-tag-${tag}`}
+                          >
+                            {tag}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">Press Enter or comma to add a tag</p>
                 </div>
 
                 <div className="pt-4 flex justify-end">
