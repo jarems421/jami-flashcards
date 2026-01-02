@@ -128,37 +128,40 @@ export function ConstellationBackground() {
                   animationDuration: `${3 + Math.random() * 2}s`,
                 }}
               />
-              {/* CSS four-pointed star */}
+              {/* CSS four-pointed star with smooth blur */}
               <div
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
                 style={{
                   width: size,
                   height: size,
+                  filter: `blur(${Math.max(0.5, size * 0.02)}px)`,
                 }}
               >
                 <div
                   className="absolute top-1/2 left-0 -translate-y-1/2"
                   style={{
                     width: '100%',
-                    height: size * 0.06,
-                    background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${opacity}) 40%, white 50%, rgba(255,255,255,${opacity}) 60%, transparent 100%)`,
+                    height: Math.max(2, size * 0.08),
+                    background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${opacity * 0.3}) 25%, rgba(255,255,255,${opacity * 0.8}) 45%, white 50%, rgba(255,255,255,${opacity * 0.8}) 55%, rgba(255,255,255,${opacity * 0.3}) 75%, transparent 100%)`,
+                    borderRadius: '50%',
                   }}
                 />
                 <div
                   className="absolute left-1/2 top-0 -translate-x-1/2"
                   style={{
                     height: '100%',
-                    width: size * 0.06,
-                    background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${opacity}) 40%, white 50%, rgba(255,255,255,${opacity}) 60%, transparent 100%)`,
+                    width: Math.max(2, size * 0.08),
+                    background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${opacity * 0.3}) 25%, rgba(255,255,255,${opacity * 0.8}) 45%, white 50%, rgba(255,255,255,${opacity * 0.8}) 55%, rgba(255,255,255,${opacity * 0.3}) 75%, transparent 100%)`,
+                    borderRadius: '50%',
                   }}
                 />
                 <div
                   className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
                   style={{
-                    width: size * 0.2,
-                    height: size * 0.2,
-                    background: 'white',
-                    boxShadow: `0 0 ${size * 0.15}px white`,
+                    width: size * 0.25,
+                    height: size * 0.25,
+                    background: 'radial-gradient(circle, white 0%, rgba(255,255,255,0.8) 40%, rgba(255,255,255,0) 100%)',
+                    boxShadow: `0 0 ${size * 0.2}px white, 0 0 ${size * 0.4}px rgba(255,255,255,0.5)`,
                   }}
                 />
               </div>
