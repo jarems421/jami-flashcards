@@ -9,6 +9,18 @@ import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
+import webpush from "web-push";
+
+const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
+const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
+
+if (VAPID_PUBLIC_KEY && VAPID_PRIVATE_KEY) {
+  webpush.setVapidDetails(
+    "mailto:support@jami.app",
+    VAPID_PUBLIC_KEY,
+    VAPID_PRIVATE_KEY
+  );
+}
 
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) {
@@ -62,6 +74,86 @@ export async function registerRoutes(
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Upload failed" });
+    }
+  });
+
+  // --- Push Notifications ---
+
+  app.get("/api/push/vapid-public-key", (req, res) => {
+    res.json({ publicKey: VAPID_PUBLIC_KEY });
+  });
+
+  app.post("/api/push/subscribe", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { endpoint, keys } = req.body;
+      if (!endpoint || !keys?.p256dh || !keys?.auth) {
+        return res.status(400).json({ error: "Invalid subscription" });
+      }
+
+      await db.pushSubscription.upsert({
+        where: { endpoint },
+        update: { p256dh: keys.p256dh, auth: keys.auth, userId },
+        create: { endpoint, p256dh: keys.p256dh, auth: keys.auth, userId }
+      });
+
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Push subscribe error:", e);
+      res.status(500).json({ error: "Failed to save subscription" });
+    }
+  });
+
+  app.delete("/api/push/subscribe", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { endpoint } = req.body;
+      if (endpoint) {
+        await db.pushSubscription.deleteMany({ where: { endpoint } });
+      }
+      res.json({ success: true });
+    } catch (e) {
+      console.error("Push unsubscribe error:", e);
+      res.status(500).json({ error: "Failed to remove subscription" });
+    }
+  });
+
+  app.post("/api/push/test", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const subscriptions = await db.pushSubscription.findMany({ where: { userId } });
+      
+      if (subscriptions.length === 0) {
+        return res.status(400).json({ error: "No push subscriptions found" });
+      }
+
+      const payload = JSON.stringify({
+        title: "Jami",
+        body: "Push notifications are working! Time to study.",
+        icon: "/pwa-192x192.png",
+        url: "/study"
+      });
+
+      const results = await Promise.allSettled(
+        subscriptions.map(sub => 
+          webpush.sendNotification({
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth }
+          }, payload)
+        )
+      );
+
+      const successful = results.filter(r => r.status === "fulfilled").length;
+      res.json({ sent: successful, total: subscriptions.length });
+    } catch (e) {
+      console.error("Push test error:", e);
+      res.status(500).json({ error: "Failed to send test notification" });
     }
   });
 

@@ -223,3 +223,14 @@ model Session {
   @@index([expire], name: "IDX_session_expire")
   @@map("sessions")
 }
+
+model PushSubscription {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String
+  endpoint     String   @unique
+  p256dh       String
+  auth         String
+  createdAt    DateTime @default(now())
+
+  @@map("push_subscriptions")
+}

@@ -6,14 +6,50 @@ import { Input } from "@/components/ui/input";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
-import { Moon, Sun, User } from "lucide-react";
-import { useState, useEffect } from "react";
+import { usePushNotifications } from "@/hooks/use-push-notifications";
+import { Moon, Sun, User, Bell, BellOff, Loader2, Smartphone } from "lucide-react";
+import { useState } from "react";
 
 export default function Settings() {
   const { toast } = useToast();
   const { theme, setTheme } = useTheme();
   const { user, updateUsername, isUpdatingUsername } = useAuth();
   const [usernameInput, setUsernameInput] = useState(user?.username || "");
+  const { 
+    isSupported: pushSupported, 
+    isSubscribed: pushSubscribed, 
+    permission: pushPermission,
+    isLoading: pushLoading,
+    error: pushError,
+    subscribe: subscribePush,
+    unsubscribe: unsubscribePush,
+    sendTestNotification
+  } = usePushNotifications();
+
+  const handleTogglePush = async () => {
+    if (pushSubscribed) {
+      const success = await unsubscribePush();
+      if (success) {
+        toast({ title: "Notifications disabled", description: "You won't receive push notifications anymore." });
+      }
+    } else {
+      const success = await subscribePush();
+      if (success) {
+        toast({ title: "Notifications enabled", description: "You'll now receive push notifications on this device." });
+      } else if (pushError) {
+        toast({ title: "Failed to enable notifications", description: pushError, variant: "destructive" });
+      }
+    }
+  };
+
+  const handleTestNotification = async () => {
+    const success = await sendTestNotification();
+    if (success) {
+      toast({ title: "Test notification sent", description: "Check your device for the notification." });
+    } else {
+      toast({ title: "Failed to send test notification", variant: "destructive" });
+    }
+  };
 
   const handleSave = () => {
     toast({
@@ -146,32 +182,76 @@ export default function Settings() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Notifications</CardTitle>
-          <CardDescription>Manage your daily reminders</CardDescription>
+          <CardTitle className="flex items-center gap-2">
+            <Bell className="h-5 w-5" />
+            Push Notifications
+          </CardTitle>
+          <CardDescription>Get reminders on your phone or device</CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="space-y-4">
-            <div className="flex items-center justify-between space-x-2">
-              <div className="space-y-1">
-                <Label htmlFor="reminders">Daily Study Reminder</Label>
-                <p className="text-sm text-muted-foreground">Get a reminder at a specific time each day</p>
+          {!pushSupported ? (
+            <div className="flex items-center gap-3 p-4 bg-muted/50 rounded-lg">
+              <BellOff className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <p className="font-medium">Not Supported</p>
+                <p className="text-sm text-muted-foreground">
+                  Push notifications aren't available on this browser. For iPhone, install Jami to your home screen first.
+                </p>
               </div>
-              <Switch id="reminders" />
             </div>
-            <div className="flex items-center gap-4">
-              <Label htmlFor="reminder-time" className="text-sm text-muted-foreground">Reminder Time</Label>
-              <Input 
-                id="reminder-time"
-                type="time" 
-                defaultValue="19:00"
-                className="w-32"
-                data-testid="input-reminder-time"
-              />
-            </div>
-            <p className="text-xs text-muted-foreground">
-              Note: Browser notifications require permission. Click "Save Changes" to enable.
-            </p>
-          </div>
+          ) : (
+            <>
+              <div className="flex items-center justify-between space-x-2">
+                <div className="space-y-1">
+                  <Label htmlFor="push-notifications">Enable Push Notifications</Label>
+                  <p className="text-sm text-muted-foreground">
+                    Receive study reminders and goal alerts on this device
+                  </p>
+                </div>
+                <Switch 
+                  id="push-notifications"
+                  checked={pushSubscribed}
+                  onCheckedChange={handleTogglePush}
+                  disabled={pushLoading}
+                  data-testid="switch-push-notifications"
+                />
+              </div>
+
+              {pushPermission === "denied" && (
+                <div className="p-3 bg-destructive/10 text-destructive rounded-lg text-sm">
+                  Notifications are blocked. Please enable them in your browser settings.
+                </div>
+              )}
+
+              {pushSubscribed && (
+                <div className="flex items-center justify-between pt-2 border-t">
+                  <div className="space-y-1">
+                    <Label>Test Notification</Label>
+                    <p className="text-sm text-muted-foreground">Send a test to verify it's working</p>
+                  </div>
+                  <Button 
+                    variant="outline" 
+                    size="sm"
+                    onClick={handleTestNotification}
+                    disabled={pushLoading}
+                    data-testid="button-test-notification"
+                  >
+                    {pushLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Test"}
+                  </Button>
+                </div>
+              )}
+
+              <div className="flex items-start gap-3 p-4 bg-primary/5 rounded-lg">
+                <Smartphone className="h-5 w-5 text-primary mt-0.5" />
+                <div className="text-sm">
+                  <p className="font-medium">iPhone Users</p>
+                  <p className="text-muted-foreground">
+                    To receive notifications on iPhone, tap the Share button in Safari and select "Add to Home Screen" to install Jami as an app.
+                  </p>
+                </div>
+              </div>
+            </>
+          )}
         </CardContent>
       </Card>
 
