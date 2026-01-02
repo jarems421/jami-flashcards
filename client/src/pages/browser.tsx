@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Input } from "@/components/ui/input";
@@ -50,7 +50,8 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format } from "date-fns";
-import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag, ExternalLink, Palette, BookOpen, Brain, Sparkles, Zap, Star, Heart, Globe, Code, Music, Atom, FlaskConical, Calculator, Dna, Microscope, Orbit, Binary, Languages, Lightbulb, PenTool } from "lucide-react";
+import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag, ExternalLink, Palette, BookOpen, Brain, Sparkles, Zap, Star, Heart, Globe, Code, Music, Atom, FlaskConical, Calculator, Dna, Microscope, Orbit, Binary, Languages, Lightbulb, PenTool, Check, X, FolderInput, Tags } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
@@ -96,6 +97,19 @@ export default function Browser() {
   const [editDeckName, setEditDeckName] = useState("");
   const [editDeckColor, setEditDeckColor] = useState<string>("");
   const [editDeckIcon, setEditDeckIcon] = useState<string>("");
+  
+  // Multi-select state
+  const [selectedCardIds, setSelectedCardIds] = useState<Set<string>>(new Set());
+  const [bulkMoveDialogOpen, setBulkMoveDialogOpen] = useState(false);
+  const [bulkTagDialogOpen, setBulkTagDialogOpen] = useState(false);
+  const [bulkMoveToDeckId, setBulkMoveToDeckId] = useState<string>("");
+  const [bulkTagsToAdd, setBulkTagsToAdd] = useState<string>("");
+  const [bulkTagsToRemove, setBulkTagsToRemove] = useState<string>("");
+
+  // Clear selection when switching decks
+  useEffect(() => {
+    setSelectedCardIds(new Set());
+  }, [selectedDeckId]);
 
   const DECK_COLORS = [
     { name: "Default", value: "" },
@@ -273,6 +287,80 @@ export default function Browser() {
       toast({ title: "Failed to update card", variant: "destructive" });
     }
   });
+
+  // Bulk operations
+  const bulkMoveMutation = useMutation({
+    mutationFn: async ({ cardIds, deckId }: { cardIds: string[], deckId: string }) => {
+      await apiRequest("POST", `/api/cards/bulk-move`, { cardIds, deckId });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
+      setSelectedCardIds(new Set());
+      setBulkMoveDialogOpen(false);
+      setBulkMoveToDeckId("");
+      toast({ title: "Cards moved successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to move cards", variant: "destructive" });
+    }
+  });
+
+  const bulkTagMutation = useMutation({
+    mutationFn: async ({ cardIds, addTags, removeTags }: { cardIds: string[], addTags: string[], removeTags: string[] }) => {
+      await apiRequest("POST", `/api/cards/bulk-tags`, { cardIds, addTags, removeTags });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/cards"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/tags"] });
+      setSelectedCardIds(new Set());
+      setBulkTagDialogOpen(false);
+      setBulkTagsToAdd("");
+      setBulkTagsToRemove("");
+      toast({ title: "Tags updated successfully" });
+    },
+    onError: () => {
+      toast({ title: "Failed to update tags", variant: "destructive" });
+    }
+  });
+
+  // Selection helpers
+  const toggleCardSelection = (cardId: string) => {
+    setSelectedCardIds(prev => {
+      const next = new Set(prev);
+      if (next.has(cardId)) {
+        next.delete(cardId);
+      } else {
+        next.add(cardId);
+      }
+      return next;
+    });
+  };
+
+  const selectAllCards = () => {
+    if (selectedCardIds.size === filteredCards.length) {
+      setSelectedCardIds(new Set());
+    } else {
+      setSelectedCardIds(new Set(filteredCards.map(c => c.id)));
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedCardIds(new Set());
+  };
+
+  const handleBulkMove = () => {
+    if (!bulkMoveToDeckId || selectedCardIds.size === 0) return;
+    bulkMoveMutation.mutate({ cardIds: Array.from(selectedCardIds), deckId: bulkMoveToDeckId });
+  };
+
+  const handleBulkTags = () => {
+    if (selectedCardIds.size === 0) return;
+    const addTags = bulkTagsToAdd.split(',').map(t => t.trim()).filter(Boolean);
+    const removeTags = bulkTagsToRemove.split(',').map(t => t.trim()).filter(Boolean);
+    if (addTags.length === 0 && removeTags.length === 0) return;
+    bulkTagMutation.mutate({ cardIds: Array.from(selectedCardIds), addTags, removeTags });
+  };
 
   const handleCreateDeck = (e: React.FormEvent) => {
     e.preventDefault();
@@ -648,10 +736,56 @@ export default function Browser() {
         </div>
       </div>
 
+      {/* Bulk action bar */}
+      {selectedCardIds.size > 0 && (
+        <div className="flex items-center gap-4 p-4 bg-primary/10 border border-primary/20 rounded-lg">
+          <div className="flex items-center gap-2">
+            <Check className="h-4 w-4 text-primary" />
+            <span className="font-medium">{selectedCardIds.size} card{selectedCardIds.size !== 1 ? 's' : ''} selected</span>
+          </div>
+          <div className="flex items-center gap-2 ml-auto">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setBulkMoveDialogOpen(true)}
+              data-testid="bulk-move-button"
+            >
+              <FolderInput className="h-4 w-4 mr-2" />
+              Move to Deck
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setBulkTagDialogOpen(true)}
+              data-testid="bulk-tags-button"
+            >
+              <Tags className="h-4 w-4 mr-2" />
+              Edit Tags
+            </Button>
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              onClick={clearSelection}
+              data-testid="clear-selection-button"
+            >
+              <X className="h-4 w-4 mr-2" />
+              Clear
+            </Button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-md border bg-card">
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px]">
+                <Checkbox 
+                  checked={filteredCards.length > 0 && selectedCardIds.size === filteredCards.length}
+                  onCheckedChange={selectAllCards}
+                  data-testid="select-all-checkbox"
+                />
+              </TableHead>
               <TableHead className="w-[300px]">Card Content</TableHead>
               <TableHead>
                  <Button variant="ghost" size="sm" onClick={() => toggleSort('state')}>
@@ -670,13 +804,24 @@ export default function Browser() {
           <TableBody>
             {filteredCards.length === 0 ? (
                <TableRow>
-                 <TableCell colSpan={5} className="h-24 text-center">
+                 <TableCell colSpan={6} className="h-24 text-center">
                    No cards found in this deck.
                  </TableCell>
                </TableRow>
             ) : (
               filteredCards.map((card) => (
-                <TableRow key={card.id} data-testid={`card-row-${card.id}`}>
+                <TableRow 
+                  key={card.id} 
+                  data-testid={`card-row-${card.id}`}
+                  className={selectedCardIds.has(card.id) ? 'bg-primary/5' : ''}
+                >
+                  <TableCell>
+                    <Checkbox 
+                      checked={selectedCardIds.has(card.id)}
+                      onCheckedChange={() => toggleCardSelection(card.id)}
+                      data-testid={`select-card-${card.id}`}
+                    />
+                  </TableCell>
                   <TableCell className="font-medium">
                     <div className="truncate max-w-[300px]" title={card.note.fields.Front || card.note.fields.Text}>
                        {card.note.fields.Front || card.note.fields.Text || "No Content"}
@@ -730,6 +875,85 @@ export default function Browser() {
           </TableBody>
         </Table>
       </div>
+
+      {/* Bulk Move Dialog */}
+      <Dialog open={bulkMoveDialogOpen} onOpenChange={setBulkMoveDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Move Cards to Deck</DialogTitle>
+            <DialogDescription>
+              Move {selectedCardIds.size} selected card{selectedCardIds.size !== 1 ? 's' : ''} to another deck.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <Label>Select Destination Deck</Label>
+            <Select value={bulkMoveToDeckId} onValueChange={setBulkMoveToDeckId}>
+              <SelectTrigger className="mt-2" data-testid="bulk-move-deck-select">
+                <SelectValue placeholder="Choose a deck..." />
+              </SelectTrigger>
+              <SelectContent>
+                {decks?.filter(d => d.id !== selectedDeckId).map(deck => (
+                  <SelectItem key={deck.id} value={deck.id}>{deck.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkMoveDialogOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={handleBulkMove} 
+              disabled={!bulkMoveToDeckId || bulkMoveMutation.isPending}
+              data-testid="bulk-move-confirm"
+            >
+              {bulkMoveMutation.isPending ? "Moving..." : "Move Cards"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Bulk Tags Dialog */}
+      <Dialog open={bulkTagDialogOpen} onOpenChange={setBulkTagDialogOpen}>
+        <DialogContent className="sm:max-w-[400px]">
+          <DialogHeader>
+            <DialogTitle>Edit Tags</DialogTitle>
+            <DialogDescription>
+              Add or remove tags from {selectedCardIds.size} selected card{selectedCardIds.size !== 1 ? 's' : ''}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Tags to Add</Label>
+              <Input 
+                placeholder="tag1, tag2, tag3..."
+                value={bulkTagsToAdd}
+                onChange={(e) => setBulkTagsToAdd(e.target.value)}
+                data-testid="bulk-tags-add-input"
+              />
+              <p className="text-xs text-muted-foreground">Comma-separated list of tags to add</p>
+            </div>
+            <div className="space-y-2">
+              <Label>Tags to Remove</Label>
+              <Input 
+                placeholder="tag1, tag2..."
+                value={bulkTagsToRemove}
+                onChange={(e) => setBulkTagsToRemove(e.target.value)}
+                data-testid="bulk-tags-remove-input"
+              />
+              <p className="text-xs text-muted-foreground">Comma-separated list of tags to remove</p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkTagDialogOpen(false)}>Cancel</Button>
+            <Button 
+              onClick={handleBulkTags} 
+              disabled={bulkTagMutation.isPending || (!bulkTagsToAdd.trim() && !bulkTagsToRemove.trim())}
+              data-testid="bulk-tags-confirm"
+            >
+              {bulkTagMutation.isPending ? "Updating..." : "Update Tags"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Edit Card Dialog */}
       <Dialog open={!!editingCard} onOpenChange={(open) => !open && setEditingCard(null)}>

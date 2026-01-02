@@ -639,6 +639,94 @@ export async function registerRoutes(
     }
   });
 
+  // Bulk move cards to different deck
+  app.post("/api/cards/bulk-move", isAuthenticated, async (req, res) => {
+    try {
+      const { cardIds, deckId } = req.body;
+      const userId = getUserId(req);
+      
+      if (!cardIds || !Array.isArray(cardIds) || cardIds.length === 0) {
+        return res.status(400).json({ error: "Card IDs required" });
+      }
+      if (!deckId) {
+        return res.status(400).json({ error: "Deck ID required" });
+      }
+
+      // Verify target deck belongs to user
+      const targetDeck = await db.deck.findFirst({ where: { id: deckId, userId } });
+      if (!targetDeck) {
+        return res.status(404).json({ error: "Target deck not found" });
+      }
+
+      // Update cards and their notes
+      const cards = await db.card.findMany({
+        where: { id: { in: cardIds }, deck: { userId } },
+        include: { note: true }
+      });
+
+      for (const card of cards) {
+        await db.note.update({
+          where: { id: card.noteId },
+          data: { deckId }
+        });
+        await db.card.update({
+          where: { id: card.id },
+          data: { deckId }
+        });
+      }
+
+      res.json({ success: true, movedCount: cards.length });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to move cards" });
+    }
+  });
+
+  // Bulk update tags for cards
+  app.post("/api/cards/bulk-tags", isAuthenticated, async (req, res) => {
+    try {
+      const { cardIds, addTags, removeTags } = req.body;
+      const userId = getUserId(req);
+      
+      if (!cardIds || !Array.isArray(cardIds) || cardIds.length === 0) {
+        return res.status(400).json({ error: "Card IDs required" });
+      }
+
+      const cards = await db.card.findMany({
+        where: { id: { in: cardIds }, deck: { userId } },
+        include: { note: true }
+      });
+
+      for (const card of cards) {
+        let currentTags = card.note.tags || [];
+        
+        // Remove tags
+        if (removeTags && Array.isArray(removeTags)) {
+          currentTags = currentTags.filter(t => !removeTags.includes(t));
+        }
+        
+        // Add tags
+        if (addTags && Array.isArray(addTags)) {
+          for (const tag of addTags) {
+            if (!currentTags.includes(tag)) {
+              currentTags.push(tag);
+            }
+          }
+        }
+
+        await db.note.update({
+          where: { id: card.noteId },
+          data: { tags: currentTags }
+        });
+      }
+
+      res.json({ success: true, updatedCount: cards.length });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to update tags" });
+    }
+  });
+
   app.post("/api/cards/:id/grade", isAuthenticated, async (req, res) => {
     const { id } = req.params;
     const { rating, responseTimeMs } = req.body;
