@@ -13,13 +13,14 @@ import { calculateStarSize } from "@shared/starSize";
 
 function CSSStarPreview({ size, label }: { size: number; label: string }) {
   const glowOpacity = 0.6;
-  const glowSize = size * 1.5;
+  const glowSize = Math.max(size * 1.5, 30);
+  const containerSize = Math.max(80, size * 1.2);
   
   return (
     <div className="flex flex-col items-center gap-2">
       <div
         className="relative bg-slate-900 rounded-lg flex items-center justify-center"
-        style={{ width: 80, height: 80 }}
+        style={{ width: containerSize, height: containerSize }}
       >
         <div
           className="relative"
@@ -34,31 +35,37 @@ function CSSStarPreview({ size, label }: { size: number; label: string }) {
           />
           <div
             className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-            style={{ width: size, height: size }}
+            style={{ 
+              width: size, 
+              height: size,
+              filter: size > 40 ? 'blur(0.5px)' : undefined,
+            }}
           >
             <div
               className="absolute top-1/2 left-0 -translate-y-1/2"
               style={{
                 width: '100%',
-                height: size * 0.08,
-                background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity}) 40%, white 50%, rgba(255,255,255,${glowOpacity}) 60%, transparent 100%)`,
+                height: Math.max(2, size * 0.06),
+                background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.7}) 35%, white 50%, rgba(255,255,255,${glowOpacity * 0.7}) 65%, transparent 100%)`,
+                borderRadius: '50%',
               }}
             />
             <div
               className="absolute left-1/2 top-0 -translate-x-1/2"
               style={{
                 height: '100%',
-                width: size * 0.08,
-                background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity}) 40%, white 50%, rgba(255,255,255,${glowOpacity}) 60%, transparent 100%)`,
+                width: Math.max(2, size * 0.06),
+                background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.7}) 35%, white 50%, rgba(255,255,255,${glowOpacity * 0.7}) 65%, transparent 100%)`,
+                borderRadius: '50%',
               }}
             />
             <div
               className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
               style={{
-                width: size * 0.25,
-                height: size * 0.25,
-                background: 'white',
-                boxShadow: `0 0 ${size * 0.2}px white, 0 0 ${size * 0.4}px rgba(255,255,255,0.5)`,
+                width: Math.max(3, size * 0.2),
+                height: Math.max(3, size * 0.2),
+                background: 'radial-gradient(circle, white 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 100%)',
+                boxShadow: `0 0 ${size * 0.15}px white, 0 0 ${size * 0.3}px rgba(255,255,255,0.6), 0 0 ${size * 0.5}px rgba(255,255,255,0.3)`,
               }}
             />
           </div>
@@ -79,6 +86,7 @@ interface StarData {
   rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
   earnedAt: string;
   goalTargetCount?: number;
+  targetAccuracy?: number;
 }
 
 interface Constellation {
@@ -394,11 +402,11 @@ export default function Constellations() {
                 <>
                   <div className="flex justify-center gap-8">
                     <CSSStarPreview 
-                      size={calculateStarSize(10)} 
+                      size={calculateStarSize(10, 80)} 
                       label="10 cards" 
                     />
                     <CSSStarPreview 
-                      size={calculateStarSize(200)} 
+                      size={calculateStarSize(200, 95)} 
                       label="200 cards" 
                     />
                   </div>
@@ -437,8 +445,8 @@ export default function Constellations() {
                     <div className="flex items-center gap-3">
                       <span className="text-xs text-muted-foreground">Preview:</span>
                       <CSSStarPreview 
-                        size={calculateStarSize(parseInt(demoCardCount) || 10)} 
-                        label={`${demoCardCount || 0} cards`} 
+                        size={calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80)} 
+                        label={`${demoCardCount || 0} cards @ ${demoAccuracy || 80}%`} 
                       />
                     </div>
                     <div className="flex gap-2">
@@ -453,6 +461,7 @@ export default function Constellations() {
                             rarity: "NORMAL" as const,
                             earnedAt: new Date().toISOString(),
                             goalTargetCount: parseInt(demoCardCount) || 10,
+                            targetAccuracy: parseInt(demoAccuracy) || 80,
                           };
                           setDemoStars([...demoStars, newStar]);
                         }}
@@ -475,12 +484,20 @@ export default function Constellations() {
 
                   {demoStars.length > 0 && (
                     <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">Demo Preview (not saved):</p>
+                      <p className="text-xs text-muted-foreground">Demo Preview (not saved) - drag stars to arrange:</p>
                       <StarCanvas
                         stars={[
                           ...(currentConstellation?.stars || []),
                           ...demoStars
                         ]}
+                        editable={true}
+                        onStarMove={(starId, positionX, positionY) => {
+                          if (starId.startsWith('demo-')) {
+                            setDemoStars(prev => prev.map(s => 
+                              s.id === starId ? { ...s, positionX, positionY } : s
+                            ));
+                          }
+                        }}
                         className="w-full aspect-[4/3] md:aspect-[16/9] border-2 border-dashed border-amber-500/30"
                       />
                       <p className="text-xs text-amber-500 text-center">

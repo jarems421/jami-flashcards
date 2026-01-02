@@ -9,6 +9,7 @@ interface StarData {
   positionY: number;
   rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
   goalTargetCount?: number;
+  targetAccuracy?: number;
 }
 
 interface Constellation {
@@ -62,9 +63,8 @@ export function ConstellationBackground() {
   }
 
   const getStarStyles = (star: StarData) => {
-    const baseSize = calculateStarSize(star.goalTargetCount || 10, { 
-      baseStarSize: 12,
-      minSize: 6, 
+    const baseSize = calculateStarSize(star.goalTargetCount || 10, star.targetAccuracy || 80, { 
+      minSize: 4, 
       maxSize: 48 
     });
     

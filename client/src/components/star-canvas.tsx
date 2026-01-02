@@ -10,6 +10,7 @@ interface Star {
   rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
   earnedAt: string;
   goalTargetCount?: number;
+  targetAccuracy?: number;
 }
 
 interface StarCanvasProps {
@@ -118,7 +119,7 @@ export function StarCanvas({
   }, [draggingStar, dragOffset, onStarMove]);
 
   const getStarStyles = (star: Star) => {
-    const baseSize = calculateStarSize(star.goalTargetCount || 10);
+    const baseSize = calculateStarSize(star.goalTargetCount || 10, star.targetAccuracy || 80);
     
     let sizeMultiplier = 1;
     let glowOpacity = 0.4;
@@ -196,12 +197,13 @@ export function StarCanvas({
                     animationDuration: '3s',
                   }}
                 />
-                {/* CSS four-pointed star */}
+                {/* CSS four-pointed star with smooth rendering */}
                 <div
                   className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
                   style={{
                     width: size,
                     height: size,
+                    filter: size > 40 ? 'blur(0.5px)' : undefined,
                   }}
                 >
                   {/* Horizontal ray */}
@@ -209,8 +211,9 @@ export function StarCanvas({
                     className="absolute top-1/2 left-0 -translate-y-1/2"
                     style={{
                       width: '100%',
-                      height: size * 0.08,
-                      background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity}) 40%, white 50%, rgba(255,255,255,${glowOpacity}) 60%, transparent 100%)`,
+                      height: Math.max(2, size * 0.06),
+                      background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.7}) 35%, white 50%, rgba(255,255,255,${glowOpacity * 0.7}) 65%, transparent 100%)`,
+                      borderRadius: '50%',
                     }}
                   />
                   {/* Vertical ray */}
@@ -218,18 +221,19 @@ export function StarCanvas({
                     className="absolute left-1/2 top-0 -translate-x-1/2"
                     style={{
                       height: '100%',
-                      width: size * 0.08,
-                      background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity}) 40%, white 50%, rgba(255,255,255,${glowOpacity}) 60%, transparent 100%)`,
+                      width: Math.max(2, size * 0.06),
+                      background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.7}) 35%, white 50%, rgba(255,255,255,${glowOpacity * 0.7}) 65%, transparent 100%)`,
+                      borderRadius: '50%',
                     }}
                   />
-                  {/* Bright center core */}
+                  {/* Bright center core with smooth glow */}
                   <div
                     className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
                     style={{
-                      width: size * 0.25,
-                      height: size * 0.25,
-                      background: 'white',
-                      boxShadow: `0 0 ${size * 0.2}px white, 0 0 ${size * 0.4}px rgba(255,255,255,0.5)`,
+                      width: Math.max(3, size * 0.2),
+                      height: Math.max(3, size * 0.2),
+                      background: 'radial-gradient(circle, white 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 100%)',
+                      boxShadow: `0 0 ${size * 0.15}px white, 0 0 ${size * 0.3}px rgba(255,255,255,0.6), 0 0 ${size * 0.5}px rgba(255,255,255,0.3)`,
                     }}
                   />
                 </div>
