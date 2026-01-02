@@ -93,11 +93,24 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 function Nav({ transparent = false }: { transparent?: boolean }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  
+  const handleRefresh = () => {
+    qc.invalidateQueries();
+    toast({ title: "Refreshed", description: "Content has been updated." });
+  };
+  
   return (
     <div className={`w-64 border-r min-h-screen p-4 flex-col hidden md:flex ${transparent ? 'bg-black/40 backdrop-blur-sm border-white/10' : 'bg-card'}`}>
-      <div className="flex items-center gap-2 px-2 mb-8 mt-2">
-        <img src={appIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
-        <span className="font-bold text-lg tracking-tight">Jami</span>
+      <div className="flex items-center justify-between px-2 mb-8 mt-2">
+        <div className="flex items-center gap-2">
+          <img src={appIcon} alt="Jami" className="h-8 w-8 rounded-lg object-cover" />
+          <span className="font-bold text-lg tracking-tight">Jami</span>
+        </div>
+        <Button variant="ghost" size="icon" onClick={handleRefresh} className="h-8 w-8" data-testid="button-refresh-desktop">
+          <RefreshCw className="h-4 w-4" />
+        </Button>
       </div>
       <NavContent />
     </div>
