@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+import { startScheduler } from "./scheduler";
 
 const app = express();
 const httpServer = createServer(app);
@@ -96,6 +97,7 @@ app.use((req, res, next) => {
     },
     () => {
       log(`serving on port ${port}`);
+      startScheduler();
     },
   );
 })();

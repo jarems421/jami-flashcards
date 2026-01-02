@@ -151,13 +151,18 @@ model Reminder {
 }
 
 model UserPreference {
-  id                  String   @id @default(uuid()) @db.Uuid
-  timezone            String   @default("UTC")
-  dailyReminderTime   String?
-  emailReminders      Boolean  @default(true)
-  inAppReminders      Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                      String   @id @default(uuid()) @db.Uuid
+  userId                  String   @unique
+  timezone                String   @default("UTC")
+  dailyReminderEnabled    Boolean  @default(false)
+  dailyReminderTime       String?  @default("19:00")
+  goalDeadlineAlerts      Boolean  @default(true)
+  goalAlertDaysBefore     Int      @default(1)
+  lastDailyReminderSent   DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  @@map("user_preferences")
 }
 
 model User {

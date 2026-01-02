@@ -157,6 +157,61 @@ export async function registerRoutes(
     }
   });
 
+  // --- User Preferences ---
+
+  app.get("/api/preferences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      let prefs = await db.userPreference.findUnique({ where: { userId } });
+      
+      if (!prefs) {
+        prefs = await db.userPreference.create({
+          data: { userId, dailyReminderTime: "19:00" }
+        });
+      }
+      
+      res.json(prefs);
+    } catch (e) {
+      console.error("Get preferences error:", e);
+      res.status(500).json({ error: "Failed to get preferences" });
+    }
+  });
+
+  app.patch("/api/preferences", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      if (!userId) return res.status(401).json({ error: "Unauthorized" });
+
+      const { 
+        dailyReminderEnabled, 
+        dailyReminderTime, 
+        goalDeadlineAlerts,
+        goalAlertDaysBefore,
+        timezone 
+      } = req.body;
+
+      const updateData: any = {};
+      if (typeof dailyReminderEnabled === "boolean") updateData.dailyReminderEnabled = dailyReminderEnabled;
+      if (dailyReminderTime) updateData.dailyReminderTime = dailyReminderTime;
+      if (typeof goalDeadlineAlerts === "boolean") updateData.goalDeadlineAlerts = goalDeadlineAlerts;
+      if (typeof goalAlertDaysBefore === "number") updateData.goalAlertDaysBefore = goalAlertDaysBefore;
+      if (timezone) updateData.timezone = timezone;
+
+      const prefs = await db.userPreference.upsert({
+        where: { userId },
+        update: updateData,
+        create: { userId, ...updateData }
+      });
+      
+      res.json(prefs);
+    } catch (e) {
+      console.error("Update preferences error:", e);
+      res.status(500).json({ error: "Failed to update preferences" });
+    }
+  });
+
   // --- Queue Logic ---
   
   app.get("/api/queue/today", isAuthenticated, async (req, res) => {

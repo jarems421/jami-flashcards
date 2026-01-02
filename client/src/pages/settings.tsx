@@ -3,12 +3,32 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { useTheme } from "@/components/theme-provider";
 import { useAuth } from "@/hooks/use-auth";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
-import { Moon, Sun, User, Bell, BellOff, Loader2, Smartphone } from "lucide-react";
-import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { Moon, Sun, User, Bell, BellOff, Loader2, Smartphone, Clock, Target, Globe } from "lucide-react";
+
+const COMMON_TIMEZONES = [
+  { value: "UTC", label: "UTC" },
+  { value: "America/New_York", label: "Eastern Time (ET)" },
+  { value: "America/Chicago", label: "Central Time (CT)" },
+  { value: "America/Denver", label: "Mountain Time (MT)" },
+  { value: "America/Los_Angeles", label: "Pacific Time (PT)" },
+  { value: "America/Anchorage", label: "Alaska Time" },
+  { value: "Pacific/Honolulu", label: "Hawaii Time" },
+  { value: "Europe/London", label: "London (GMT/BST)" },
+  { value: "Europe/Paris", label: "Paris (CET/CEST)" },
+  { value: "Europe/Berlin", label: "Berlin (CET/CEST)" },
+  { value: "Asia/Tokyo", label: "Tokyo (JST)" },
+  { value: "Asia/Shanghai", label: "Shanghai (CST)" },
+  { value: "Asia/Kolkata", label: "India (IST)" },
+  { value: "Australia/Sydney", label: "Sydney (AEST/AEDT)" },
+];
+import { useState, useEffect } from "react";
 
 export default function Settings() {
   const { toast } = useToast();
@@ -49,6 +69,53 @@ export default function Settings() {
     } else {
       toast({ title: "Failed to send test notification", variant: "destructive" });
     }
+  };
+
+  const queryClient = useQueryClient();
+  
+  const { data: preferences, isLoading: prefsLoading } = useQuery({
+    queryKey: ["/api/preferences"],
+    queryFn: async () => {
+      const res = await fetch("/api/preferences", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch preferences");
+      return res.json();
+    }
+  });
+
+  const updatePrefs = useMutation({
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("PATCH", "/api/preferences", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preferences"] });
+    }
+  });
+
+  const handleDailyReminderToggle = (enabled: boolean) => {
+    updatePrefs.mutate({ dailyReminderEnabled: enabled });
+    if (enabled && !pushSubscribed) {
+      subscribePush();
+    }
+  };
+
+  const handleReminderTimeChange = (time: string) => {
+    updatePrefs.mutate({ dailyReminderTime: time });
+  };
+
+  const handleGoalAlertsToggle = (enabled: boolean) => {
+    updatePrefs.mutate({ goalDeadlineAlerts: enabled });
+    if (enabled && !pushSubscribed) {
+      subscribePush();
+    }
+  };
+
+  const handleAlertDaysChange = (days: string) => {
+    updatePrefs.mutate({ goalAlertDaysBefore: parseInt(days, 10) });
+  };
+
+  const handleTimezoneChange = (tz: string) => {
+    updatePrefs.mutate({ timezone: tz });
   };
 
   const handleSave = () => {
@@ -224,21 +291,112 @@ export default function Settings() {
               )}
 
               {pushSubscribed && (
-                <div className="flex items-center justify-between pt-2 border-t">
-                  <div className="space-y-1">
-                    <Label>Test Notification</Label>
-                    <p className="text-sm text-muted-foreground">Send a test to verify it's working</p>
+                <>
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-2">
+                        <Globe className="h-4 w-4" />
+                        Your Timezone
+                      </Label>
+                      <p className="text-sm text-muted-foreground">Used for scheduling notifications</p>
+                    </div>
+                    <Select 
+                      value={preferences?.timezone ?? "UTC"}
+                      onValueChange={handleTimezoneChange}
+                    >
+                      <SelectTrigger className="w-48" data-testid="select-timezone">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {COMMON_TIMEZONES.map(tz => (
+                          <SelectItem key={tz.value} value={tz.value}>{tz.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
-                  <Button 
-                    variant="outline" 
-                    size="sm"
-                    onClick={handleTestNotification}
-                    disabled={pushLoading}
-                    data-testid="button-test-notification"
-                  >
-                    {pushLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Test"}
-                  </Button>
-                </div>
+
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-2">
+                        <Clock className="h-4 w-4" />
+                        Daily Study Reminder
+                      </Label>
+                      <p className="text-sm text-muted-foreground">Get a reminder at a specific time each day</p>
+                    </div>
+                    <Switch 
+                      checked={preferences?.dailyReminderEnabled ?? false}
+                      onCheckedChange={handleDailyReminderToggle}
+                      disabled={updatePrefs.isPending}
+                      data-testid="switch-daily-reminder"
+                    />
+                  </div>
+
+                  {preferences?.dailyReminderEnabled && (
+                    <div className="flex items-center justify-between pl-6">
+                      <Label className="text-sm text-muted-foreground">Reminder Time</Label>
+                      <Input 
+                        type="time"
+                        value={preferences?.dailyReminderTime ?? "19:00"}
+                        onChange={(e) => handleReminderTimeChange(e.target.value)}
+                        className="w-32"
+                        data-testid="input-reminder-time"
+                      />
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <div className="space-y-1">
+                      <Label className="flex items-center gap-2">
+                        <Target className="h-4 w-4" />
+                        Goal Deadline Alerts
+                      </Label>
+                      <p className="text-sm text-muted-foreground">Get notified when goals are nearing their deadline</p>
+                    </div>
+                    <Switch 
+                      checked={preferences?.goalDeadlineAlerts ?? true}
+                      onCheckedChange={handleGoalAlertsToggle}
+                      disabled={updatePrefs.isPending}
+                      data-testid="switch-goal-alerts"
+                    />
+                  </div>
+
+                  {preferences?.goalDeadlineAlerts && (
+                    <div className="flex items-center justify-between pl-6">
+                      <Label className="text-sm text-muted-foreground">Alert me</Label>
+                      <Select 
+                        value={String(preferences?.goalAlertDaysBefore ?? 1)}
+                        onValueChange={handleAlertDaysChange}
+                      >
+                        <SelectTrigger className="w-40" data-testid="select-alert-days">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="0">On the day</SelectItem>
+                          <SelectItem value="1">1 day before</SelectItem>
+                          <SelectItem value="2">2 days before</SelectItem>
+                          <SelectItem value="3">3 days before</SelectItem>
+                          <SelectItem value="7">1 week before</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  )}
+
+                  <div className="flex items-center justify-between pt-2 border-t">
+                    <div className="space-y-1">
+                      <Label>Test Notification</Label>
+                      <p className="text-sm text-muted-foreground">Send a test to verify it's working</p>
+                    </div>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={handleTestNotification}
+                      disabled={pushLoading}
+                      data-testid="button-test-notification"
+                    >
+                      {pushLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Send Test"}
+                    </Button>
+                  </div>
+                </>
               )}
 
               <div className="flex items-start gap-3 p-4 bg-primary/5 rounded-lg">
