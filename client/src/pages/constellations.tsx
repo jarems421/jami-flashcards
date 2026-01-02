@@ -11,65 +11,17 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { calculateStarSize } from "@shared/starSize";
 
-function CSSStarPreview({ size, label }: { size: number; label: string }) {
-  const glowOpacity = 0.6;
-  const glowSize = Math.max(size * 1.5, 30);
-  const containerSize = Math.max(80, size * 1.2);
+function SizeIndicator({ size, label }: { size: number; label: string }) {
+  const maxSize = 80;
+  const percentage = Math.min(100, (size / maxSize) * 100);
   
   return (
-    <div className="flex flex-col items-center gap-2">
-      <div
-        className="relative bg-slate-900 rounded-lg flex items-center justify-center"
-        style={{ width: containerSize, height: containerSize }}
-      >
-        <div
-          className="relative"
-          style={{ width: glowSize, height: glowSize }}
-        >
-          <div 
-            className="absolute inset-0 animate-pulse"
-            style={{
-              background: `radial-gradient(circle, rgba(255, 255, 255, ${glowOpacity * 0.5}) 0%, transparent 60%)`,
-              animationDuration: '3s',
-            }}
-          />
-          <div
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
-            style={{ 
-              width: size, 
-              height: size,
-              filter: size > 40 ? 'blur(0.5px)' : undefined,
-            }}
-          >
-            <div
-              className="absolute top-1/2 left-0 -translate-y-1/2"
-              style={{
-                width: '100%',
-                height: Math.max(2, size * 0.06),
-                background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.7}) 35%, white 50%, rgba(255,255,255,${glowOpacity * 0.7}) 65%, transparent 100%)`,
-                borderRadius: '50%',
-              }}
-            />
-            <div
-              className="absolute left-1/2 top-0 -translate-x-1/2"
-              style={{
-                height: '100%',
-                width: Math.max(2, size * 0.06),
-                background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.7}) 35%, white 50%, rgba(255,255,255,${glowOpacity * 0.7}) 65%, transparent 100%)`,
-                borderRadius: '50%',
-              }}
-            />
-            <div
-              className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-              style={{
-                width: Math.max(3, size * 0.2),
-                height: Math.max(3, size * 0.2),
-                background: 'radial-gradient(circle, white 0%, rgba(255,255,255,0.8) 50%, rgba(255,255,255,0) 100%)',
-                boxShadow: `0 0 ${size * 0.15}px white, 0 0 ${size * 0.3}px rgba(255,255,255,0.6), 0 0 ${size * 0.5}px rgba(255,255,255,0.3)`,
-              }}
-            />
-          </div>
-        </div>
+    <div className="flex flex-col items-center gap-2 flex-1">
+      <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
+        <div 
+          className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all"
+          style={{ width: `${percentage}%` }}
+        />
       </div>
       <span className="text-xs text-muted-foreground">{label}</span>
       <span className="text-xs text-muted-foreground/60">{size.toFixed(0)}px</span>
@@ -400,12 +352,12 @@ export default function Constellations() {
             <CardContent>
               {!demoMode ? (
                 <>
-                  <div className="flex justify-center gap-8">
-                    <CSSStarPreview 
+                  <div className="flex justify-center gap-4 px-4">
+                    <SizeIndicator 
                       size={calculateStarSize(10, 80)} 
                       label="10 cards" 
                     />
-                    <CSSStarPreview 
+                    <SizeIndicator 
                       size={calculateStarSize(200, 95)} 
                       label="200 cards" 
                     />
@@ -442,9 +394,8 @@ export default function Constellations() {
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <span className="text-xs text-muted-foreground">Preview:</span>
-                      <CSSStarPreview 
+                    <div className="flex-1 mr-4">
+                      <SizeIndicator 
                         size={calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80)} 
                         label={`${demoCardCount || 0} cards @ ${demoAccuracy || 80}%`} 
                       />
