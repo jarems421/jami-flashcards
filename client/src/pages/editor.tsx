@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useAddNote } from "@/lib/store";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,10 +7,9 @@ import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent } from "@/components/ui/card";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-import { Image, Type, Save } from "lucide-react";
-import { Link, useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { Image, Save, Upload, X } from "lucide-react";
+import { Link } from "wouter";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 
 interface Deck {
@@ -38,6 +37,51 @@ export default function Editor() {
   const [tags, setTags] = useState('');
   const [frontImage, setFrontImage] = useState('');
   const [backImage, setBackImage] = useState('');
+  const [uploadingFront, setUploadingFront] = useState(false);
+  const [uploadingBack, setUploadingBack] = useState(false);
+  const frontInputRef = useRef<HTMLInputElement>(null);
+  const backInputRef = useRef<HTMLInputElement>(null);
+
+  const uploadImage = async (file: File): Promise<string> => {
+    const formData = new FormData();
+    formData.append("file", file);
+    const res = await fetch("/api/upload", {
+      method: "POST",
+      body: formData,
+      credentials: "include"
+    });
+    if (!res.ok) throw new Error("Upload failed");
+    const data = await res.json();
+    return data.url;
+  };
+
+  const handleFrontImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingFront(true);
+    try {
+      const url = await uploadImage(file);
+      setFrontImage(url);
+      toast({ title: "Image uploaded" });
+    } catch {
+      toast({ title: "Failed to upload image", variant: "destructive" });
+    }
+    setUploadingFront(false);
+  };
+
+  const handleBackImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploadingBack(true);
+    try {
+      const url = await uploadImage(file);
+      setBackImage(url);
+      toast({ title: "Image uploaded" });
+    } catch {
+      toast({ title: "Failed to upload image", variant: "destructive" });
+    }
+    setUploadingBack(false);
+  };
 
   // Set default deck when data loads
   useEffect(() => {
@@ -168,21 +212,46 @@ export default function Editor() {
                     className="font-serif min-h-[100px] resize-y text-lg p-4"
                     data-testid="input-front"
                   />
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground flex items-center gap-1">
                       <Image className="h-3 w-3" />
-                      Front Image URL (optional)
+                      Front Image (optional)
                     </Label>
-                    <Input 
-                      value={frontImage}
-                      onChange={e => setFrontImage(e.target.value)}
-                      placeholder="https://example.com/image.jpg"
-                      data-testid="input-front-image"
+                    <input
+                      ref={frontInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleFrontImageUpload}
                     />
+                    {frontImage ? (
+                      <div className="relative inline-block">
+                        <img src={frontImage} alt="Front preview" className="max-h-32 rounded object-contain border" />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-6 w-6"
+                          onClick={() => setFrontImage('')}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={uploadingFront}
+                        onClick={() => frontInputRef.current?.click()}
+                        data-testid="button-upload-front-image"
+                      >
+                        <Upload className="h-4 w-4" />
+                        {uploadingFront ? "Uploading..." : "Upload Image"}
+                      </Button>
+                    )}
                   </div>
-                  {frontImage && (
-                    <img src={frontImage} alt="Front preview" className="max-h-32 rounded object-contain border" />
-                  )}
                 </div>
 
                 <div className="grid gap-2">
@@ -194,21 +263,46 @@ export default function Editor() {
                     className="font-serif min-h-[100px] resize-y text-lg p-4"
                     data-testid="input-back"
                   />
-                  <div className="space-y-1">
+                  <div className="space-y-2">
                     <Label className="text-xs text-muted-foreground flex items-center gap-1">
                       <Image className="h-3 w-3" />
-                      Back Image URL (optional)
+                      Back Image (optional)
                     </Label>
-                    <Input 
-                      value={backImage}
-                      onChange={e => setBackImage(e.target.value)}
-                      placeholder="https://example.com/answer.jpg"
-                      data-testid="input-back-image"
+                    <input
+                      ref={backInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleBackImageUpload}
                     />
+                    {backImage ? (
+                      <div className="relative inline-block">
+                        <img src={backImage} alt="Back preview" className="max-h-32 rounded object-contain border" />
+                        <Button
+                          type="button"
+                          variant="destructive"
+                          size="icon"
+                          className="absolute -top-2 -right-2 h-6 w-6"
+                          onClick={() => setBackImage('')}
+                        >
+                          <X className="h-3 w-3" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="gap-2"
+                        disabled={uploadingBack}
+                        onClick={() => backInputRef.current?.click()}
+                        data-testid="button-upload-back-image"
+                      >
+                        <Upload className="h-4 w-4" />
+                        {uploadingBack ? "Uploading..." : "Upload Image"}
+                      </Button>
+                    )}
                   </div>
-                  {backImage && (
-                    <img src={backImage} alt="Back preview" className="max-h-32 rounded object-contain border" />
-                  )}
                 </div>
 
                 <div className="grid gap-2">
