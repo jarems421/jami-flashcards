@@ -97,7 +97,7 @@ export default function Dashboard() {
             <motion.div 
               whileHover={{ scale: 1.02, y: -2 }}
               whileTap={{ scale: 0.98 }}
-              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary via-primary/90 to-primary/80 cursor-pointer group shadow-xl shadow-primary/20"
+              className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-primary/70 via-primary/60 to-primary/50 cursor-pointer group shadow-xl shadow-primary/20"
             >
               <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent" />
               <div className="absolute top-0 right-0 w-64 h-full opacity-20 pointer-events-none">

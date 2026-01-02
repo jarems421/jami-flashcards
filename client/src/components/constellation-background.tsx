@@ -124,7 +124,7 @@ export function ConstellationBackground() {
               <div
                 className="absolute inset-0 animate-pulse"
                 style={{
-                  background: `radial-gradient(circle, rgba(200, 200, 220, ${opacity * 0.35}) 0%, transparent 60%)`,
+                  background: `radial-gradient(circle, rgba(255, 255, 255, ${opacity * 0.4}) 0%, transparent 60%)`,
                   animationDuration: `${3 + Math.random() * 2}s`,
                 }}
               />
@@ -141,7 +141,7 @@ export function ConstellationBackground() {
                   style={{
                     width: '100%',
                     height: size * 0.06,
-                    background: `linear-gradient(90deg, transparent 0%, rgba(200,200,220,${opacity}) 40%, rgba(220,220,235,1) 50%, rgba(200,200,220,${opacity}) 60%, transparent 100%)`,
+                    background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${opacity}) 40%, white 50%, rgba(255,255,255,${opacity}) 60%, transparent 100%)`,
                   }}
                 />
                 <div
@@ -149,7 +149,7 @@ export function ConstellationBackground() {
                   style={{
                     height: '100%',
                     width: size * 0.06,
-                    background: `linear-gradient(180deg, transparent 0%, rgba(200,200,220,${opacity}) 40%, rgba(220,220,235,1) 50%, rgba(200,200,220,${opacity}) 60%, transparent 100%)`,
+                    background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${opacity}) 40%, white 50%, rgba(255,255,255,${opacity}) 60%, transparent 100%)`,
                   }}
                 />
                 <div
@@ -157,8 +157,8 @@ export function ConstellationBackground() {
                   style={{
                     width: size * 0.2,
                     height: size * 0.2,
-                    background: 'rgba(220, 220, 235, 0.9)',
-                    boxShadow: `0 0 ${size * 0.15}px rgba(200, 200, 220, 0.8)`,
+                    background: 'white',
+                    boxShadow: `0 0 ${size * 0.15}px white`,
                   }}
                 />
               </div>
