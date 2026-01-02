@@ -1,5 +1,5 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { Plus, BarChart3, Settings, Library, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles, Brain, Search, Upload, Download } from "lucide-react";
+import { Plus, BarChart3, Settings, Library, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles, Brain, Search, Download } from "lucide-react";
 import appIcon from "@assets/IMG_6630_1767309916255.jpeg";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -22,7 +22,6 @@ import Goals from "@/pages/goals";
 import Constellations from "@/pages/constellations";
 import NotFound from "@/pages/not-found";
 import GlobalSearch from "@/pages/search";
-import BulkImport from "@/pages/import";
 import DataExport from "@/pages/export";
 
 import { ThemeProvider } from "@/components/theme-provider";
@@ -67,7 +66,6 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mt-8">
         <div className="px-2 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Create</div>
         <NavItem href="/add" icon={Plus} label="Add Card" onClick={onNavigate} />
-        <NavItem href="/import" icon={Upload} label="Bulk Import" onClick={onNavigate} />
       </div>
 
       <div className="mt-4">
@@ -203,7 +201,6 @@ function Router() {
         <Route path="/stats">{() => <AnimatedRoute component={Stats} />}</Route>
         <Route path="/settings">{() => <AnimatedRoute component={SettingsPage} />}</Route>
         <Route path="/search">{() => <AnimatedRoute component={GlobalSearch} />}</Route>
-        <Route path="/import">{() => <AnimatedRoute component={BulkImport} />}</Route>
         <Route path="/export">{() => <AnimatedRoute component={DataExport} />}</Route>
         <Route>{() => <AnimatedRoute component={NotFound} />}</Route>
       </Switch>
