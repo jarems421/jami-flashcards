@@ -72,12 +72,13 @@ function CSSStarPreview({ size, label }: { size: number; label: string }) {
 
 interface StarData {
   id: string;
-  constellationId: string;
+  constellationId?: string;
   orderIndex: number;
   positionX: number;
   positionY: number;
   rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
   earnedAt: string;
+  goalTargetCount?: number;
 }
 
 interface Constellation {
@@ -122,6 +123,18 @@ export default function Constellations() {
   const [showCompletion, setShowCompletion] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [localStars, setLocalStars] = useState<StarData[]>([]);
+  const [demoMode, setDemoMode] = useState(false);
+  const [demoStars, setDemoStars] = useState<Array<{
+    id: string;
+    orderIndex: number;
+    positionX: number;
+    positionY: number;
+    rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
+    earnedAt: string;
+    goalTargetCount: number;
+  }>>([]);
+  const [demoCardCount, setDemoCardCount] = useState('50');
+  const [demoAccuracy, setDemoAccuracy] = useState('80');
 
   const { data: constellations, isLoading } = useQuery({
     queryKey: ["constellations"],
@@ -358,25 +371,125 @@ export default function Constellations() {
             </Card>
           )}
 
-          {/* Star Size Demo */}
+          {/* Star Preview Demo */}
           <Card className="mt-4">
             <CardHeader className="pb-2">
-              <CardTitle className="text-sm">Star Size by Goal</CardTitle>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm">Star Preview</CardTitle>
+                <Button 
+                  size="sm" 
+                  variant={demoMode ? "default" : "outline"}
+                  onClick={() => {
+                    setDemoMode(!demoMode);
+                    if (demoMode) setDemoStars([]);
+                  }}
+                  data-testid="button-toggle-demo"
+                >
+                  {demoMode ? "Exit Demo" : "Try Demo"}
+                </Button>
+              </div>
             </CardHeader>
             <CardContent>
-              <div className="flex justify-center gap-8">
-                <CSSStarPreview 
-                  size={calculateStarSize(10)} 
-                  label="10 cards" 
-                />
-                <CSSStarPreview 
-                  size={calculateStarSize(200)} 
-                  label="200 cards" 
-                />
-              </div>
-              <p className="text-xs text-muted-foreground text-center mt-3">
-                Bigger goals earn bigger stars!
-              </p>
+              {!demoMode ? (
+                <>
+                  <div className="flex justify-center gap-8">
+                    <CSSStarPreview 
+                      size={calculateStarSize(10)} 
+                      label="10 cards" 
+                    />
+                    <CSSStarPreview 
+                      size={calculateStarSize(200)} 
+                      label="200 cards" 
+                    />
+                  </div>
+                  <p className="text-xs text-muted-foreground text-center mt-3">
+                    Bigger goals earn bigger stars! Click "Try Demo" to preview custom stars.
+                  </p>
+                </>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Target Cards</label>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        value={demoCardCount}
+                        onChange={(e) => setDemoCardCount(e.target.value)}
+                        placeholder="50"
+                        data-testid="input-demo-cards"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Target Accuracy %</label>
+                      <Input
+                        type="number"
+                        inputMode="numeric"
+                        value={demoAccuracy}
+                        onChange={(e) => setDemoAccuracy(e.target.value)}
+                        placeholder="80"
+                        data-testid="input-demo-accuracy"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className="text-xs text-muted-foreground">Preview:</span>
+                      <CSSStarPreview 
+                        size={calculateStarSize(parseInt(demoCardCount) || 10)} 
+                        label={`${demoCardCount || 0} cards`} 
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => {
+                          const newStar = {
+                            id: `demo-${Date.now()}`,
+                            orderIndex: demoStars.length + (currentConstellation?.stars.length || 0) + 1,
+                            positionX: 0.2 + Math.random() * 0.6,
+                            positionY: 0.2 + Math.random() * 0.6,
+                            rarity: "NORMAL" as const,
+                            earnedAt: new Date().toISOString(),
+                            goalTargetCount: parseInt(demoCardCount) || 10,
+                          };
+                          setDemoStars([...demoStars, newStar]);
+                        }}
+                        data-testid="button-add-demo-star"
+                      >
+                        Add to Preview
+                      </Button>
+                      {demoStars.length > 0 && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setDemoStars([])}
+                          data-testid="button-clear-demo"
+                        >
+                          Clear ({demoStars.length})
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+
+                  {demoStars.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs text-muted-foreground">Demo Preview (not saved):</p>
+                      <StarCanvas
+                        stars={[
+                          ...(currentConstellation?.stars || []),
+                          ...demoStars
+                        ]}
+                        className="w-full aspect-[4/3] md:aspect-[16/9] border-2 border-dashed border-amber-500/30"
+                      />
+                      <p className="text-xs text-amber-500 text-center">
+                        This is just a preview - complete goals to earn real stars!
+                      </p>
+                    </div>
+                  )}
+                </div>
+              )}
             </CardContent>
           </Card>
 
