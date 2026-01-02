@@ -11,23 +11,6 @@ import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
 import { calculateStarSize } from "@shared/starSize";
 
-function SizeIndicator({ size, label }: { size: number; label: string }) {
-  const maxSize = 80;
-  const percentage = Math.min(100, (size / maxSize) * 100);
-  
-  return (
-    <div className="flex flex-col items-center gap-2 flex-1">
-      <div className="w-full h-3 bg-slate-800 rounded-full overflow-hidden">
-        <div 
-          className="h-full bg-gradient-to-r from-amber-400 to-amber-500 rounded-full transition-all"
-          style={{ width: `${percentage}%` }}
-        />
-      </div>
-      <span className="text-xs text-muted-foreground">{label}</span>
-      <span className="text-xs text-muted-foreground/60">{size.toFixed(0)}px</span>
-    </div>
-  );
-}
 
 interface StarData {
   id: string;
@@ -351,21 +334,15 @@ export default function Constellations() {
             </CardHeader>
             <CardContent>
               {!demoMode ? (
-                <>
-                  <div className="flex justify-center gap-4 px-4">
-                    <SizeIndicator 
-                      size={calculateStarSize(10, 80)} 
-                      label="10 cards" 
-                    />
-                    <SizeIndicator 
-                      size={calculateStarSize(200, 95)} 
-                      label="200 cards" 
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground text-center mt-3">
-                    Bigger goals earn bigger stars! Click "Try Demo" to preview custom stars.
+                <div className="text-center py-4">
+                  <Star className="h-8 w-8 mx-auto mb-3 text-amber-400" />
+                  <p className="text-sm text-muted-foreground">
+                    Bigger goals earn bigger stars!
                   </p>
-                </>
+                  <p className="text-xs text-muted-foreground/60 mt-1">
+                    Click "Try Demo" to preview custom star sizes
+                  </p>
+                </div>
               ) : (
                 <div className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -394,12 +371,10 @@ export default function Constellations() {
                   </div>
                   
                   <div className="flex items-center justify-between">
-                    <div className="flex-1 mr-4">
-                      <SizeIndicator 
-                        size={calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80)} 
-                        label={`${demoCardCount || 0} cards @ ${demoAccuracy || 80}%`} 
-                      />
-                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      <Star className="h-3 w-3 inline mr-1 text-amber-400" />
+                      {demoCardCount || 0} cards @ {demoAccuracy || 80}% = {calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80).toFixed(0)}px
+                    </p>
                     <div className="flex gap-2">
                       <Button
                         size="sm"
