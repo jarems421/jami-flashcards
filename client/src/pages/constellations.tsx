@@ -393,7 +393,7 @@ export default function Constellations() {
                         }}
                         data-testid="button-add-demo-star"
                       >
-                        Add to Preview
+                        + Add Star
                       </Button>
                       {demoStars.length > 0 && (
                         <Button
@@ -408,29 +408,33 @@ export default function Constellations() {
                     </div>
                   </div>
 
-                  {demoStars.length > 0 && (
-                    <div className="space-y-2">
-                      <p className="text-xs text-muted-foreground">Demo Preview (not saved) - drag stars to arrange:</p>
-                      <StarCanvas
-                        stars={[
-                          ...(currentConstellation?.stars || []),
-                          ...demoStars
-                        ]}
-                        editable={true}
-                        onStarMove={(starId, positionX, positionY) => {
-                          if (starId.startsWith('demo-')) {
-                            setDemoStars(prev => prev.map(s => 
-                              s.id === starId ? { ...s, positionX, positionY } : s
-                            ));
-                          }
-                        }}
-                        className="w-full aspect-[4/3] md:aspect-[16/9] border-2 border-dashed border-amber-500/30"
-                      />
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">
+                      {demoStars.length > 0 
+                        ? `Demo Preview (${demoStars.length} star${demoStars.length > 1 ? 's' : ''}) - drag to arrange:`
+                        : "Click 'Add Star' to preview - you can add multiple!"}
+                    </p>
+                    <StarCanvas
+                      stars={[
+                        ...(currentConstellation?.stars || []),
+                        ...demoStars
+                      ]}
+                      editable={true}
+                      onStarMove={(starId, positionX, positionY) => {
+                        if (starId.startsWith('demo-')) {
+                          setDemoStars(prev => prev.map(s => 
+                            s.id === starId ? { ...s, positionX, positionY } : s
+                          ));
+                        }
+                      }}
+                      className="w-full aspect-[4/3] md:aspect-[16/9] border-2 border-dashed border-amber-500/30"
+                    />
+                    {demoStars.length > 0 && (
                       <p className="text-xs text-amber-500 text-center">
                         This is just a preview - complete goals to earn real stars!
                       </p>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
               )}
             </CardContent>
