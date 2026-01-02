@@ -12,6 +12,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { celebrateGoalComplete, celebrateStarEarned } from "@/lib/confetti";
 
 interface CardData {
   id: string;
@@ -128,11 +129,13 @@ export default function Study() {
         const starLabel = rarityText ? `${rarityText} Star` : 'Star';
         
         if (data.constellationCompleted) {
+          celebrateGoalComplete();
           toast({ 
             title: "Constellation Complete!",
             description: `You've collected 100 stars! A new constellation awaits.`
           });
         } else {
+          celebrateStarEarned();
           toast({ 
             title: `Goal Complete! ${starLabel} Earned!`, 
             description: `Star #${data.star.orderIndex} added to your constellation.`
@@ -584,8 +587,8 @@ export default function Study() {
         </div>
         
         <div className="flex items-center gap-1 md:gap-2 shrink-0">           
-           <div className="hidden sm:flex items-center gap-1.5 text-sm font-variant-numeric tabular-nums text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
-             <Clock className="h-3.5 w-3.5" />
+           <div className="flex items-center gap-1.5 text-xs sm:text-sm font-variant-numeric tabular-nums text-muted-foreground bg-muted/50 px-2 py-1 rounded-md">
+             <Clock className="h-3 w-3 sm:h-3.5 sm:w-3.5" />
              {formatTime(elapsed)}
            </div>
            

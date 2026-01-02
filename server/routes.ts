@@ -5,6 +5,32 @@ import { parseCloze } from "../shared/cloze";
 import { z } from "zod";
 import { startOfDay, endOfDay } from "date-fns";
 import { isAuthenticated } from "./replit_integrations/auth";
+import multer from "multer";
+import path from "path";
+import fs from "fs";
+import { v4 as uuidv4 } from "uuid";
+
+const uploadDir = path.join(process.cwd(), "uploads");
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
+}
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadDir),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    cb(null, `${uuidv4()}${ext}`);
+  }
+});
+
+const upload = multer({ 
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    const allowed = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
+    cb(null, allowed.includes(file.mimetype));
+  }
+});
 
 function getUserId(req: Request): string | null {
   return (req.user as any)?.claims?.sub ?? null;
@@ -17,6 +43,26 @@ export async function registerRoutes(
   
   app.get("/health", (req, res) => {
     res.json({ ok: true });
+  });
+
+  app.use("/uploads", (req, res, next) => {
+    res.setHeader("Cache-Control", "public, max-age=31536000");
+    next();
+  });
+  
+  app.use("/uploads", (await import("express")).default.static(uploadDir));
+
+  app.post("/api/upload", isAuthenticated, upload.single("file"), (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({ error: "No file uploaded" });
+      }
+      const url = `/uploads/${req.file.filename}`;
+      res.json({ url, filename: req.file.filename });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Upload failed" });
+    }
   });
 
   // --- Queue Logic ---
@@ -157,7 +203,7 @@ export async function registerRoutes(
 
   app.post("/api/decks", isAuthenticated, async (req, res) => {
     try {
-      const { name, parentDeckId } = req.body;
+      const { name, parentDeckId, color, icon } = req.body;
       if (!name) return res.status(400).json({ error: "Name is required" });
       const userId = getUserId(req);
 
@@ -165,7 +211,9 @@ export async function registerRoutes(
         data: {
           name,
           userId,
-          parentDeckId: parentDeckId || null
+          parentDeckId: parentDeckId || null,
+          color: color || null,
+          icon: icon || null
         }
       });
       res.json(deck);
@@ -178,19 +226,21 @@ export async function registerRoutes(
   app.patch("/api/decks/:id", isAuthenticated, async (req, res) => {
     try {
       const { id } = req.params;
-      const { name } = req.body;
+      const { name, color, icon, parentDeckId } = req.body;
       const userId = getUserId(req);
-      
-      if (!name || !name.trim()) {
-        return res.status(400).json({ error: "Name is required" });
-      }
       
       const deck = await db.deck.findFirst({ where: { id, userId } });
       if (!deck) return res.status(404).json({ error: "Deck not found" });
       
+      const updateData: any = {};
+      if (name !== undefined) updateData.name = name.trim();
+      if (color !== undefined) updateData.color = color;
+      if (icon !== undefined) updateData.icon = icon;
+      if (parentDeckId !== undefined) updateData.parentDeckId = parentDeckId || null;
+      
       const updated = await db.deck.update({
         where: { id },
-        data: { name: name.trim() }
+        data: updateData
       });
       
       res.json(updated);
@@ -390,19 +440,35 @@ export async function registerRoutes(
 
   app.get("/api/cards", isAuthenticated, async (req, res) => {
     try {
-      const { deckId } = req.query;
+      const { deckId, search } = req.query;
       const userId = getUserId(req);
-      const cards = await db.card.findMany({
-        where: deckId 
-          ? { deckId: deckId as string, deck: { userId } } 
-          : { deck: { userId } },
+      
+      const whereClause: any = { deck: { userId } };
+      if (deckId) {
+        whereClause.deckId = deckId as string;
+      }
+      
+      let cards = await db.card.findMany({
+        where: whereClause,
         include: {
           note: true,
           template: true
         },
         orderBy: { note: { createdAt: 'desc' } },
-        take: 100 
+        take: search ? 500 : 100
       });
+      
+      if (search && typeof search === 'string') {
+        const q = search.toLowerCase();
+        cards = cards.filter(card => {
+          const fields = card.note?.fields as any;
+          const front = String(fields?.Front || '').toLowerCase();
+          const back = String(fields?.Back || '').toLowerCase();
+          const tags = (card.note?.tags || []).join(' ').toLowerCase();
+          return front.includes(q) || back.includes(q) || tags.includes(q);
+        });
+      }
+      
       res.json(cards);
     } catch (e) {
       console.error(e);

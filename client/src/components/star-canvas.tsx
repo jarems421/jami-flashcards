@@ -189,12 +189,13 @@ export function StarCanvas({
                   height: glowSize,
                 }}
               >
-                {/* Soft glow background */}
+                {/* Soft glow background with varied twinkle */}
                 <div 
-                  className="absolute inset-0 animate-pulse"
+                  className="absolute inset-0"
                   style={{
                     background: `radial-gradient(circle, rgba(255, 255, 255, ${glowOpacity * 0.5}) 0%, transparent 60%)`,
-                    animationDuration: '3s',
+                    animation: `twinkle ${2 + (star.orderIndex % 5) * 0.5}s ease-in-out infinite`,
+                    animationDelay: `${(star.orderIndex * 0.3) % 2}s`,
                   }}
                 />
                 {/* CSS four-pointed star with smooth blur */}

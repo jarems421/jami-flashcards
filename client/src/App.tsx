@@ -1,5 +1,5 @@
 import { Switch, Route, Link, useLocation } from "wouter";
-import { Plus, BarChart3, Settings, Library, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles, Brain } from "lucide-react";
+import { Plus, BarChart3, Settings, Library, Target, LogOut, Loader2, Menu, RefreshCw, Sparkles, Brain, Search, Upload, Download } from "lucide-react";
 import appIcon from "@assets/IMG_6630_1767309916255.jpeg";
 import { Button } from "@/components/ui/button";
 import { QueryClientProvider, useQueryClient } from "@tanstack/react-query";
@@ -9,6 +9,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useToast } from "@/hooks/use-toast";
+import { motion, AnimatePresence } from "framer-motion";
 
 import Dashboard from "@/pages/dashboard";
 import Study from "@/pages/study";
@@ -20,6 +21,9 @@ import SettingsPage from "@/pages/settings";
 import Goals from "@/pages/goals";
 import Constellations from "@/pages/constellations";
 import NotFound from "@/pages/not-found";
+import GlobalSearch from "@/pages/search";
+import BulkImport from "@/pages/import";
+import DataExport from "@/pages/export";
 
 import { ThemeProvider } from "@/components/theme-provider";
 import { ConstellationBackground, useConstellationBackground } from "@/components/constellation-background";
@@ -29,13 +33,20 @@ function NavItem({ href, icon: Icon, label, onClick }: { href: string; icon: any
   const isActive = location === href;
   return (
     <Link href={href} onClick={onClick}>
-      <Button 
-        variant={isActive ? "secondary" : "ghost"} 
-        className={`w-full justify-start gap-3 ${isActive ? 'bg-secondary font-medium' : 'text-muted-foreground'}`}
-      >
-        <Icon className="h-4 w-4" />
-        {label}
-      </Button>
+      <motion.div whileHover={{ x: 2 }} whileTap={{ scale: 0.98 }}>
+        <Button 
+          variant={isActive ? "secondary" : "ghost"} 
+          className={`w-full justify-start gap-3 ${isActive ? 'bg-secondary font-medium' : 'text-muted-foreground'}`}
+        >
+          <motion.div
+            animate={isActive ? { scale: [1, 1.2, 1] } : {}}
+            transition={{ duration: 0.3 }}
+          >
+            <Icon className="h-4 w-4" />
+          </motion.div>
+          {label}
+        </Button>
+      </motion.div>
     </Link>
   );
 }
@@ -56,6 +67,11 @@ function NavContent({ onNavigate }: { onNavigate?: () => void }) {
       <div className="mt-8">
         <div className="px-2 text-xs font-medium text-muted-foreground uppercase tracking-wider mb-2">Create</div>
         <NavItem href="/add" icon={Plus} label="Add Card" onClick={onNavigate} />
+        <NavItem href="/import" icon={Upload} label="Bulk Import" onClick={onNavigate} />
+      </div>
+
+      <div className="mt-4">
+        <NavItem href="/search" icon={Search} label="Search" onClick={onNavigate} />
       </div>
 
       <div className="mt-auto space-y-2">
@@ -158,20 +174,40 @@ function MobileNav({ transparent = false }: { transparent?: boolean }) {
   );
 }
 
-function Router() {
+function AnimatedRoute({ component: Component }: { component: React.ComponentType }) {
   return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/study" component={Study} />
-      <Route path="/add" component={Editor} />
-      <Route path="/decks" component={Decks} />
-      <Route path="/deck/:id" component={DeckDetails} />
-      <Route path="/goals" component={Goals} />
-      <Route path="/constellations" component={Constellations} />
-      <Route path="/stats" component={Stats} />
-      <Route path="/settings" component={SettingsPage} />
-      <Route component={NotFound} />
-    </Switch>
+    <motion.div
+      initial={{ opacity: 0, y: 8 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -8 }}
+      transition={{ duration: 0.2, ease: "easeOut" }}
+    >
+      <Component />
+    </motion.div>
+  );
+}
+
+function Router() {
+  const [location] = useLocation();
+  
+  return (
+    <AnimatePresence mode="wait">
+      <Switch location={location} key={location}>
+        <Route path="/">{() => <AnimatedRoute component={Dashboard} />}</Route>
+        <Route path="/study">{() => <AnimatedRoute component={Study} />}</Route>
+        <Route path="/add">{() => <AnimatedRoute component={Editor} />}</Route>
+        <Route path="/decks">{() => <AnimatedRoute component={Decks} />}</Route>
+        <Route path="/deck/:id">{() => <AnimatedRoute component={DeckDetails} />}</Route>
+        <Route path="/goals">{() => <AnimatedRoute component={Goals} />}</Route>
+        <Route path="/constellations">{() => <AnimatedRoute component={Constellations} />}</Route>
+        <Route path="/stats">{() => <AnimatedRoute component={Stats} />}</Route>
+        <Route path="/settings">{() => <AnimatedRoute component={SettingsPage} />}</Route>
+        <Route path="/search">{() => <AnimatedRoute component={GlobalSearch} />}</Route>
+        <Route path="/import">{() => <AnimatedRoute component={BulkImport} />}</Route>
+        <Route path="/export">{() => <AnimatedRoute component={DataExport} />}</Route>
+        <Route>{() => <AnimatedRoute component={NotFound} />}</Route>
+      </Switch>
+    </AnimatePresence>
   );
 }
 

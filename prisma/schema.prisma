@@ -15,6 +15,8 @@ model Deck {
   name             String
   userId           String?
   parentDeckId     String?  @db.Uuid
+  color            String?
+  icon             String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
   settingsOverride Json?
