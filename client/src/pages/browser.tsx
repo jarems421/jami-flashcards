@@ -913,7 +913,7 @@ export default function Browser() {
 
       {/* Bulk Tags Dialog */}
       <Dialog open={bulkTagDialogOpen} onOpenChange={setBulkTagDialogOpen}>
-        <DialogContent className="sm:max-w-[400px]">
+        <DialogContent className="sm:max-w-[450px]">
           <DialogHeader>
             <DialogTitle>Edit Tags</DialogTitle>
             <DialogDescription>
@@ -923,23 +923,77 @@ export default function Browser() {
           <div className="space-y-4 py-4">
             <div className="space-y-2">
               <Label>Tags to Add</Label>
+              <div className="flex flex-wrap gap-2 p-3 border rounded-lg bg-muted/30 min-h-[60px]">
+                {allTags?.map(tag => {
+                  const tagsToAddList = bulkTagsToAdd.split(',').map(t => t.trim()).filter(Boolean);
+                  const isSelected = tagsToAddList.includes(tag);
+                  return (
+                    <Badge 
+                      key={tag} 
+                      variant={isSelected ? "default" : "outline"}
+                      className={`cursor-pointer transition-all ${isSelected ? 'bg-green-600 hover:bg-green-700' : 'hover:bg-muted'}`}
+                      onClick={() => {
+                        if (isSelected) {
+                          setBulkTagsToAdd(tagsToAddList.filter(t => t !== tag).join(', '));
+                        } else {
+                          setBulkTagsToAdd([...tagsToAddList, tag].join(', '));
+                        }
+                      }}
+                      data-testid={`bulk-add-tag-${tag}`}
+                    >
+                      {isSelected && <Check className="h-3 w-3 mr-1" />}
+                      {tag}
+                    </Badge>
+                  );
+                })}
+                {(!allTags || allTags.length === 0) && (
+                  <span className="text-sm text-muted-foreground">No existing tags</span>
+                )}
+              </div>
               <Input 
-                placeholder="tag1, tag2, tag3..."
+                placeholder="Or type new tags: tag1, tag2..."
                 value={bulkTagsToAdd}
                 onChange={(e) => setBulkTagsToAdd(e.target.value)}
                 data-testid="bulk-tags-add-input"
+                className="mt-2"
               />
-              <p className="text-xs text-muted-foreground">Comma-separated list of tags to add</p>
             </div>
             <div className="space-y-2">
               <Label>Tags to Remove</Label>
+              <div className="flex flex-wrap gap-2 p-3 border rounded-lg bg-muted/30 min-h-[60px]">
+                {allTags?.map(tag => {
+                  const tagsToRemoveList = bulkTagsToRemove.split(',').map(t => t.trim()).filter(Boolean);
+                  const isSelected = tagsToRemoveList.includes(tag);
+                  return (
+                    <Badge 
+                      key={tag} 
+                      variant={isSelected ? "default" : "outline"}
+                      className={`cursor-pointer transition-all ${isSelected ? 'bg-red-600 hover:bg-red-700' : 'hover:bg-muted'}`}
+                      onClick={() => {
+                        if (isSelected) {
+                          setBulkTagsToRemove(tagsToRemoveList.filter(t => t !== tag).join(', '));
+                        } else {
+                          setBulkTagsToRemove([...tagsToRemoveList, tag].join(', '));
+                        }
+                      }}
+                      data-testid={`bulk-remove-tag-${tag}`}
+                    >
+                      {isSelected && <X className="h-3 w-3 mr-1" />}
+                      {tag}
+                    </Badge>
+                  );
+                })}
+                {(!allTags || allTags.length === 0) && (
+                  <span className="text-sm text-muted-foreground">No existing tags</span>
+                )}
+              </div>
               <Input 
-                placeholder="tag1, tag2..."
+                placeholder="Or type tags to remove..."
                 value={bulkTagsToRemove}
                 onChange={(e) => setBulkTagsToRemove(e.target.value)}
                 data-testid="bulk-tags-remove-input"
+                className="mt-2"
               />
-              <p className="text-xs text-muted-foreground">Comma-separated list of tags to remove</p>
             </div>
           </div>
           <DialogFooter>
