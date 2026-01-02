@@ -187,9 +187,9 @@
 /* Constellation Background Active - Subtle card transparency */
 .constellation-active .constellation-content .bg-card,
 .constellation-active .constellation-content [class*="bg-card"] {
-  background-color: rgba(15, 23, 42, 0.85) !important;
+  background-color: rgba(15, 23, 42, 0.7) !important;
 }
 
 .constellation-active .constellation-content .bg-muted {
-  background-color: rgba(30, 41, 59, 0.85) !important;
+  background-color: rgba(30, 41, 59, 0.7) !important;
 }
