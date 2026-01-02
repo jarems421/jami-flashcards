@@ -183,3 +183,21 @@
     @apply tracking-tight font-semibold;
   }
 }
+
+/* Constellation Background Active Styles */
+.constellation-active .constellation-content [data-slot="card"],
+.constellation-active .constellation-content .bg-card {
+  background-color: hsla(var(--card) / 0.85) !important;
+  backdrop-filter: blur(8px);
+}
+
+.constellation-active .constellation-content [data-slot="dialog-content"],
+.constellation-active .constellation-content [data-slot="popover-content"],
+.constellation-active .constellation-content [data-slot="dropdown-menu-content"] {
+  background-color: hsla(var(--popover) / 0.92) !important;
+  backdrop-filter: blur(12px);
+}
+
+.constellation-active .constellation-content > div {
+  background-color: transparent !important;
+}
