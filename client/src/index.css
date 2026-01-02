@@ -184,20 +184,26 @@
   }
 }
 
-/* Constellation Background Active Styles */
-.constellation-active .constellation-content [data-slot="card"],
-.constellation-active .constellation-content .bg-card {
-  background-color: hsla(var(--card) / 0.85) !important;
-  backdrop-filter: blur(8px);
+/* Constellation Background Active - Override color tokens with transparency */
+.constellation-active {
+  --background: 210 20% 98% / 0.75;
+  --card: 0 0% 100% / 0.8;
+  --popover: 0 0% 100% / 0.9;
+  --sidebar: 0 0% 100% / 0.8;
+  --muted: 210 40% 96.1% / 0.85;
+  --secondary: 210 40% 96.1% / 0.85;
 }
 
-.constellation-active .constellation-content [data-slot="dialog-content"],
-.constellation-active .constellation-content [data-slot="popover-content"],
-.constellation-active .constellation-content [data-slot="dropdown-menu-content"] {
-  background-color: hsla(var(--popover) / 0.92) !important;
-  backdrop-filter: blur(12px);
+.constellation-active.dark,
+.constellation-active .dark {
+  --background: 222.2 84% 4.9% / 0.7;
+  --card: 222.2 84% 4.9% / 0.75;
+  --popover: 222.2 84% 4.9% / 0.88;
+  --sidebar: 240 5.9% 10% / 0.75;
+  --muted: 217.2 32.6% 17.5% / 0.8;
+  --secondary: 217.2 32.6% 17.5% / 0.8;
 }
 
-.constellation-active .constellation-content > div {
-  background-color: transparent !important;
+.constellation-active .constellation-content {
+  backdrop-filter: blur(2px);
 }
