@@ -248,6 +248,11 @@ function LoadingScreen() {
 function AuthenticatedApp() {
   const { user, isLoading } = useAuth();
   const { isActive: hasConstellationBg } = useConstellationBackground();
+  const [location] = useLocation();
+  
+  // Don't show constellation background on the constellations page
+  const isConstellationsPage = location === "/constellations" || location.startsWith("/constellations");
+  const showConstellationBg = hasConstellationBg && !isConstellationsPage;
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -258,11 +263,11 @@ function AuthenticatedApp() {
   }
 
   return (
-    <div className={`flex flex-col md:flex-row min-h-screen text-foreground font-sans relative ${hasConstellationBg ? 'constellation-active' : 'bg-background'}`}>
+    <div className={`flex flex-col md:flex-row min-h-screen text-foreground font-sans relative ${showConstellationBg ? 'constellation-active' : 'bg-background'}`}>
       <ConstellationBackground />
-      <MobileNav transparent={hasConstellationBg} />
-      <Nav transparent={hasConstellationBg} />
-      <main className={`flex-1 overflow-auto relative z-10 ${hasConstellationBg ? 'constellation-content' : ''}`}>
+      <MobileNav transparent={showConstellationBg} />
+      <Nav transparent={showConstellationBg} />
+      <main className={`flex-1 overflow-auto relative z-10 ${showConstellationBg ? 'constellation-content' : ''}`}>
         <Router />
       </main>
     </div>

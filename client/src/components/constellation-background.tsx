@@ -1,5 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
+import { useLocation } from "wouter";
 import { calculateStarSize } from "@shared/starSize";
 
 interface StarData {
@@ -57,6 +58,12 @@ export function useConstellationBackground() {
 
 export function ConstellationBackground() {
   const { isActive, constellation } = useConstellationBackground();
+  const [location] = useLocation();
+
+  // Don't show constellation background on the constellations page to avoid confusion
+  if (location === "/constellations" || location.startsWith("/constellations")) {
+    return null;
+  }
 
   if (!isActive || !constellation) {
     return null;
