@@ -231,22 +231,53 @@ function Router() {
 
 function LandingPage() {
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-background p-8">
-      <div className="text-center max-w-md">
-        <img 
+    <motion.div 
+      className="min-h-screen flex flex-col items-center justify-center bg-background p-8"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.3 }}
+    >
+      <motion.div 
+        className="text-center max-w-md"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+      >
+        <motion.img 
           src={appIcon} 
           alt="Jami" 
           className="h-24 w-24 mx-auto mb-6 rounded-2xl shadow-lg"
+          initial={{ scale: 0.8, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
         />
-        <h1 className="text-4xl font-bold mb-4">Jami</h1>
-        <p className="text-muted-foreground text-lg mb-8">
+        <motion.h1 
+          className="text-4xl font-bold mb-4"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.3 }}
+        >
+          Jami
+        </motion.h1>
+        <motion.p 
+          className="text-muted-foreground text-lg mb-8"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.3, delay: 0.4 }}
+        >
           Master any subject with spaced repetition flashcards. Create decks, study smarter, and track your progress.
-        </p>
+        </motion.p>
         
-        <div className="space-y-3">
+        <motion.div 
+          className="space-y-3"
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.3, delay: 0.5 }}
+        >
           <Button 
             size="lg" 
-            className="w-full bg-white hover:bg-gray-50 text-gray-900 border border-gray-300"
+            className="w-full bg-white hover:bg-gray-50 text-gray-900 border border-gray-300 transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
             onClick={() => window.location.href = '/api/login'}
             data-testid="button-login-google"
           >
@@ -261,7 +292,7 @@ function LandingPage() {
           
           <Button 
             size="lg" 
-            className="w-full bg-black hover:bg-gray-900 text-white"
+            className="w-full bg-black hover:bg-gray-900 text-white transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
             onClick={() => window.location.href = '/api/login'}
             data-testid="button-login-apple"
           >
@@ -274,7 +305,7 @@ function LandingPage() {
           <Button 
             size="lg" 
             variant="default"
-            className="w-full"
+            className="w-full transition-all duration-200 hover:scale-[1.02] active:scale-[0.98]"
             onClick={() => window.location.href = '/api/login'}
             data-testid="button-login-replit"
           >
@@ -285,17 +316,37 @@ function LandingPage() {
           <p className="text-xs text-muted-foreground mt-4">
             More options available: GitHub or email
           </p>
-        </div>
-      </div>
-    </div>
+        </motion.div>
+      </motion.div>
+    </motion.div>
   );
 }
 
 function LoadingScreen() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background">
-      <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-    </div>
+    <motion.div 
+      className="min-h-screen flex flex-col items-center justify-center bg-background gap-4"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.2 }}
+    >
+      <motion.img 
+        src={appIcon} 
+        alt="Jami" 
+        className="h-16 w-16 rounded-xl shadow-md"
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.3 }}
+      />
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.2 }}
+      >
+        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+      </motion.div>
+    </motion.div>
   );
 }
 
@@ -308,23 +359,30 @@ function AuthenticatedApp() {
   const isConstellationsPage = location === "/constellations" || location.startsWith("/constellations");
   const showConstellationBg = hasConstellationBg && !isConstellationsPage;
 
-  if (isLoading) {
-    return <LoadingScreen />;
-  }
-
-  if (!user) {
-    return <LandingPage />;
-  }
-
   return (
-    <div className={`flex flex-col md:flex-row min-h-screen text-foreground font-sans relative ${showConstellationBg ? 'constellation-active' : 'bg-background'}`}>
-      <ConstellationBackground />
-      <MobileNav transparent={showConstellationBg} />
-      <Nav transparent={showConstellationBg} />
-      <main className={`flex-1 overflow-auto relative z-10 ${showConstellationBg ? 'constellation-content' : ''}`}>
-        <Router />
-      </main>
-    </div>
+    <AnimatePresence mode="wait">
+      {isLoading ? (
+        <LoadingScreen key="loading" />
+      ) : !user ? (
+        <LandingPage key="landing" />
+      ) : (
+        <motion.div 
+          key="app"
+          className={`flex flex-col md:flex-row min-h-screen text-foreground font-sans relative ${showConstellationBg ? 'constellation-active' : 'bg-background'}`}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.3 }}
+        >
+          <ConstellationBackground />
+          <MobileNav transparent={showConstellationBg} />
+          <Nav transparent={showConstellationBg} />
+          <main className={`flex-1 overflow-auto relative z-10 ${showConstellationBg ? 'constellation-content' : ''}`}>
+            <Router />
+          </main>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
