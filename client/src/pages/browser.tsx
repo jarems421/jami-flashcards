@@ -50,13 +50,16 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { format } from "date-fns";
-import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag, ExternalLink } from "lucide-react";
+import { Search, Filter, ArrowUpDown, MoreHorizontal, Pencil, Trash2, Folder, ArrowLeft, Plus, MoreVertical, Tag, ExternalLink, Palette, BookOpen, Brain, Sparkles, Flame, Zap, Star, Heart, Globe, Code, Music, Camera } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useToast } from "@/hooks/use-toast";
 
 interface Deck {
   id: string;
   name: string;
+  color?: string | null;
+  icon?: string | null;
+  parentDeckId?: string | null;
   _count?: { cards: number };
   counts?: {
     new: number;
@@ -91,6 +94,52 @@ export default function Browser() {
   const [newDeckName, setNewDeckName] = useState("");
   const [editingDeck, setEditingDeck] = useState<Deck | null>(null);
   const [editDeckName, setEditDeckName] = useState("");
+  const [editDeckColor, setEditDeckColor] = useState<string>("");
+  const [editDeckIcon, setEditDeckIcon] = useState<string>("");
+
+  const DECK_COLORS = [
+    { name: "Default", value: "" },
+    { name: "Blue", value: "#3b82f6" },
+    { name: "Purple", value: "#8b5cf6" },
+    { name: "Pink", value: "#ec4899" },
+    { name: "Red", value: "#ef4444" },
+    { name: "Orange", value: "#f97316" },
+    { name: "Yellow", value: "#eab308" },
+    { name: "Green", value: "#22c55e" },
+    { name: "Teal", value: "#14b8a6" },
+  ];
+
+  const DECK_ICONS = [
+    { name: "Folder", value: "" },
+    { name: "Book", value: "book" },
+    { name: "Brain", value: "brain" },
+    { name: "Star", value: "star" },
+    { name: "Heart", value: "heart" },
+    { name: "Flame", value: "flame" },
+    { name: "Zap", value: "zap" },
+    { name: "Sparkles", value: "sparkles" },
+    { name: "Globe", value: "globe" },
+    { name: "Code", value: "code" },
+    { name: "Music", value: "music" },
+    { name: "Camera", value: "camera" },
+  ];
+
+  const getDeckIcon = (iconName?: string | null) => {
+    const iconMap: Record<string, any> = {
+      book: BookOpen,
+      brain: Brain,
+      star: Star,
+      heart: Heart,
+      flame: Flame,
+      zap: Zap,
+      sparkles: Sparkles,
+      globe: Globe,
+      code: Code,
+      music: Music,
+      camera: Camera,
+    };
+    return iconMap[iconName || ""] || Folder;
+  };
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -144,18 +193,20 @@ export default function Browser() {
     }
   });
 
-  const renameDeckMutation = useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      await apiRequest("PATCH", `/api/decks/${id}`, { name });
+  const updateDeckMutation = useMutation({
+    mutationFn: async ({ id, name, color, icon }: { id: string; name: string; color?: string; icon?: string }) => {
+      await apiRequest("PATCH", `/api/decks/${id}`, { name, color: color || null, icon: icon || null });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/decks"] });
       setEditingDeck(null);
       setEditDeckName("");
-      toast({ title: "Deck renamed" });
+      setEditDeckColor("");
+      setEditDeckIcon("");
+      toast({ title: "Deck updated" });
     },
     onError: () => {
-      toast({ title: "Failed to rename deck", variant: "destructive" });
+      toast({ title: "Failed to update deck", variant: "destructive" });
     }
   });
 
@@ -195,10 +246,10 @@ export default function Browser() {
     createDeckMutation.mutate(newDeckName);
   };
 
-  const handleRenameDeck = (e: React.FormEvent) => {
+  const handleUpdateDeck = (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingDeck || !editDeckName.trim()) return;
-    renameDeckMutation.mutate({ id: editingDeck.id, name: editDeckName });
+    updateDeckMutation.mutate({ id: editingDeck.id, name: editDeckName, color: editDeckColor, icon: editDeckIcon });
   };
 
   const handleEditCard = (card: CardData) => {
@@ -317,7 +368,10 @@ export default function Browser() {
                   <CardHeader className="pb-3">
                     <div className="flex items-start justify-between">
                       <div className="flex items-center gap-2">
-                        <Folder className="h-5 w-5 text-primary" />
+                        {(() => {
+                          const IconComponent = getDeckIcon(deck.icon);
+                          return <IconComponent className="h-5 w-5" style={{ color: deck.color || 'hsl(var(--primary))' }} />;
+                        })()}
                         <CardTitle className="text-lg">{deck.name}</CardTitle>
                       </div>
                     </div>
@@ -364,12 +418,14 @@ export default function Browser() {
                         onClick={(e) => { 
                           e.stopPropagation();
                           setEditingDeck(deck); 
-                          setEditDeckName(deck.name); 
+                          setEditDeckName(deck.name);
+                          setEditDeckColor(deck.color || "");
+                          setEditDeckIcon(deck.icon || "");
                         }}
                         data-testid={`button-rename-deck-${deck.id}`}
                       >
                         <Pencil className="h-4 w-4 mr-2" />
-                        Rename
+                        Edit Deck
                       </DropdownMenuItem>
                       <AlertDialog>
                         <AlertDialogTrigger asChild>
@@ -414,28 +470,77 @@ export default function Browser() {
           )}
         </div>
 
-        {/* Rename Deck Dialog */}
-        <Dialog open={!!editingDeck} onOpenChange={(open) => { if (!open) { setEditingDeck(null); setEditDeckName(""); } }}>
-          <DialogContent>
+        {/* Edit Deck Dialog */}
+        <Dialog open={!!editingDeck} onOpenChange={(open) => { if (!open) { setEditingDeck(null); setEditDeckName(""); setEditDeckColor(""); setEditDeckIcon(""); } }}>
+          <DialogContent className="sm:max-w-md">
             <DialogHeader>
-              <DialogTitle>Rename Deck</DialogTitle>
+              <DialogTitle>Edit Deck</DialogTitle>
               <DialogDescription>
-                Enter a new name for your deck.
+                Customize your deck's name, color, and icon.
               </DialogDescription>
             </DialogHeader>
-            <form onSubmit={handleRenameDeck}>
-              <Input 
-                value={editDeckName} 
-                onChange={(e) => setEditDeckName(e.target.value)} 
-                placeholder="Deck name"
-                className="mb-4"
-                data-testid="input-rename-deck"
-              />
+            <form onSubmit={handleUpdateDeck} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="deck-name">Name</Label>
+                <Input 
+                  id="deck-name"
+                  value={editDeckName} 
+                  onChange={(e) => setEditDeckName(e.target.value)} 
+                  placeholder="Deck name"
+                  data-testid="input-rename-deck"
+                />
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Color</Label>
+                <div className="flex flex-wrap gap-2">
+                  {DECK_COLORS.map((color) => (
+                    <button
+                      key={color.value}
+                      type="button"
+                      onClick={() => setEditDeckColor(color.value)}
+                      className={`w-8 h-8 rounded-full border-2 transition-all ${
+                        editDeckColor === color.value ? 'ring-2 ring-primary ring-offset-2' : ''
+                      }`}
+                      style={{ 
+                        backgroundColor: color.value || 'hsl(var(--muted))',
+                        borderColor: color.value || 'hsl(var(--border))'
+                      }}
+                      title={color.name}
+                      data-testid={`color-${color.name.toLowerCase()}`}
+                    />
+                  ))}
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <Label>Icon</Label>
+                <div className="flex flex-wrap gap-2">
+                  {DECK_ICONS.map((icon) => {
+                    const IconComponent = getDeckIcon(icon.value);
+                    return (
+                      <button
+                        key={icon.value}
+                        type="button"
+                        onClick={() => setEditDeckIcon(icon.value)}
+                        className={`w-10 h-10 rounded-lg border flex items-center justify-center transition-all ${
+                          editDeckIcon === icon.value ? 'ring-2 ring-primary bg-primary/10' : 'hover:bg-muted'
+                        }`}
+                        title={icon.name}
+                        data-testid={`icon-${icon.name.toLowerCase()}`}
+                      >
+                        <IconComponent className="h-5 w-5" style={{ color: editDeckColor || undefined }} />
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+              
               <DialogFooter>
-                <Button type="button" variant="outline" onClick={() => { setEditingDeck(null); setEditDeckName(""); }}>
+                <Button type="button" variant="outline" onClick={() => { setEditingDeck(null); setEditDeckName(""); setEditDeckColor(""); setEditDeckIcon(""); }}>
                   Cancel
                 </Button>
-                <Button type="submit" disabled={renameDeckMutation.isPending} data-testid="button-save-rename">
+                <Button type="submit" disabled={updateDeckMutation.isPending} data-testid="button-save-deck">
                   Save
                 </Button>
               </DialogFooter>

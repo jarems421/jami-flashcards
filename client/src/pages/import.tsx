@@ -104,7 +104,67 @@ export default function BulkImport() {
 
     const text = await file.text();
     setTextInput(text);
-    parseTextFromString(text);
+    
+    if (file.name.endsWith('.csv')) {
+      parseCSV(text);
+    } else {
+      parseTextFromString(text);
+    }
+  };
+
+  const parseCSV = (input: string) => {
+    setImportStatus("parsing");
+    const lines = input.trim().split("\n");
+    const cards: ParsedCard[] = [];
+    
+    const parseCSVLine = (line: string): string[] => {
+      const result: string[] = [];
+      let current = "";
+      let inQuotes = false;
+      
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          result.push(current.trim());
+          current = "";
+        } else {
+          current += char;
+        }
+      }
+      result.push(current.trim());
+      return result;
+    };
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      if (!line.trim()) continue;
+      
+      if (i === 0 && line.toLowerCase().includes('front') && line.toLowerCase().includes('back')) {
+        continue;
+      }
+      
+      const parts = parseCSVLine(line);
+      const front = parts[0] || "";
+      const back = parts[1] || "";
+      
+      if (front) {
+        cards.push({ front, back });
+      }
+    }
+
+    if (cards.length === 0) {
+      toast({ title: "No cards found in CSV", description: "Make sure your file has front,back columns", variant: "destructive" });
+    }
+    
+    setParsedCards(cards);
+    setImportStatus("idle");
   };
 
   const parseTextFromString = (input: string) => {
@@ -135,6 +195,10 @@ export default function BulkImport() {
       if (front) {
         cards.push({ front, back });
       }
+    }
+
+    if (cards.length === 0) {
+      toast({ title: "No cards found", description: "Use Tab, ;;, |, or ' - ' as separators between front and back", variant: "destructive" });
     }
 
     setParsedCards(cards);
