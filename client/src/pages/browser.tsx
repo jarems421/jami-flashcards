@@ -675,7 +675,7 @@ export default function Browser() {
 
   // Card browser view for selected deck
   return (
-    <div className="p-8 max-w-7xl mx-auto space-y-6">
+    <div className="p-4 sm:p-6 md:p-8 max-w-7xl mx-auto space-y-4 sm:space-y-6">
       <div className="flex flex-col gap-2">
         <Button 
           variant="ghost" 
@@ -686,81 +686,85 @@ export default function Browser() {
           <ArrowLeft className="h-4 w-4 mr-2" />
           Back to Decks
         </Button>
-        <h1 className="text-3xl font-bold tracking-tight">{selectedDeck?.name || "Cards"}</h1>
-        <p className="text-muted-foreground">Browse and manage cards in this deck.</p>
+        <h1 className="text-2xl sm:text-3xl font-bold tracking-tight">{selectedDeck?.name || "Cards"}</h1>
+        <p className="text-sm sm:text-base text-muted-foreground">Browse and manage cards in this deck.</p>
       </div>
 
-      <div className="flex flex-wrap items-center gap-4 bg-card p-4 rounded-lg border shadow-sm">
-        <div className="relative flex-1 min-w-[200px] max-w-sm">
+      <div className="flex flex-wrap items-center gap-2 sm:gap-4 bg-card p-3 sm:p-4 rounded-lg border shadow-sm">
+        <div className="relative flex-1 min-w-[150px] sm:min-w-[200px] max-w-sm order-1">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input 
             placeholder="Search cards..." 
-            className="pl-9" 
+            className="pl-9 text-sm" 
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             data-testid="input-search"
           />
         </div>
         
-        <Select value={stateFilter} onValueChange={setStateFilter}>
-          <SelectTrigger className="w-[140px]" data-testid="select-state-filter">
-            <div className="flex items-center gap-2">
-              <Filter className="h-4 w-4 text-muted-foreground" />
-              <SelectValue placeholder="State" />
-            </div>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All States</SelectItem>
-            <SelectItem value="NEW">New</SelectItem>
-            <SelectItem value="STUDIED">Studied</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex gap-2 order-3 sm:order-2 w-full sm:w-auto">
+          <Select value={stateFilter} onValueChange={setStateFilter}>
+            <SelectTrigger className="w-full sm:w-[140px]" data-testid="select-state-filter">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-muted-foreground" />
+                <SelectValue placeholder="State" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All States</SelectItem>
+              <SelectItem value="NEW">New</SelectItem>
+              <SelectItem value="STUDIED">Studied</SelectItem>
+            </SelectContent>
+          </Select>
 
-        <Select value={tagFilter} onValueChange={setTagFilter}>
-          <SelectTrigger className="w-[140px]" data-testid="select-tag-filter">
-            <div className="flex items-center gap-2">
-              <Tag className="h-4 w-4 text-muted-foreground" />
-              <SelectValue placeholder="Tag" />
-            </div>
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="ALL">All Tags</SelectItem>
-            {allTags?.map(tag => (
-              <SelectItem key={tag} value={tag}>{tag}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+          <Select value={tagFilter} onValueChange={setTagFilter}>
+            <SelectTrigger className="w-full sm:w-[140px]" data-testid="select-tag-filter">
+              <div className="flex items-center gap-2">
+                <Tag className="h-4 w-4 text-muted-foreground" />
+                <SelectValue placeholder="Tag" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="ALL">All Tags</SelectItem>
+              {allTags?.map(tag => (
+                <SelectItem key={tag} value={tag}>{tag}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
 
-        <div className="ml-auto text-sm text-muted-foreground">
-          Showing {filteredCards.length} cards
+        <div className="text-xs sm:text-sm text-muted-foreground order-2 sm:order-3 sm:ml-auto">
+          {filteredCards.length} cards
         </div>
       </div>
 
       {/* Bulk action bar */}
       {selectedCardIds.size > 0 && (
-        <div className="flex items-center gap-4 p-4 bg-primary/10 border border-primary/20 rounded-lg">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-4 p-3 sm:p-4 bg-primary/10 border border-primary/20 rounded-lg">
           <div className="flex items-center gap-2">
             <Check className="h-4 w-4 text-primary" />
-            <span className="font-medium">{selectedCardIds.size} card{selectedCardIds.size !== 1 ? 's' : ''} selected</span>
+            <span className="font-medium text-sm sm:text-base">{selectedCardIds.size} card{selectedCardIds.size !== 1 ? 's' : ''} selected</span>
           </div>
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="flex flex-wrap items-center gap-2 sm:ml-auto w-full sm:w-auto">
             <Button 
               variant="outline" 
               size="sm" 
               onClick={() => setBulkMoveDialogOpen(true)}
+              className="flex-1 sm:flex-none"
               data-testid="bulk-move-button"
             >
               <FolderInput className="h-4 w-4 mr-2" />
-              Move to Deck
+              <span className="hidden sm:inline">Move to </span>Deck
             </Button>
             <Button 
               variant="outline" 
               size="sm" 
               onClick={() => setBulkTagDialogOpen(true)}
+              className="flex-1 sm:flex-none"
               data-testid="bulk-tags-button"
             >
               <Tags className="h-4 w-4 mr-2" />
-              Edit Tags
+              <span className="hidden sm:inline">Edit </span>Tags
             </Button>
             <Button 
               variant="ghost" 
@@ -768,14 +772,14 @@ export default function Browser() {
               onClick={clearSelection}
               data-testid="clear-selection-button"
             >
-              <X className="h-4 w-4 mr-2" />
-              Clear
+              <X className="h-4 w-4" />
+              <span className="sr-only sm:not-sr-only sm:ml-2">Clear</span>
             </Button>
           </div>
         </div>
       )}
 
-      <div className="rounded-md border bg-card">
+      <div className="rounded-md border bg-card overflow-x-auto">
         <Table>
           <TableHeader>
             <TableRow>
@@ -786,18 +790,18 @@ export default function Browser() {
                   data-testid="select-all-checkbox"
                 />
               </TableHead>
-              <TableHead className="w-[300px]">Card Content</TableHead>
-              <TableHead>
+              <TableHead className="min-w-[150px] sm:min-w-[200px] md:w-[300px]">Card Content</TableHead>
+              <TableHead className="hidden sm:table-cell">
                  <Button variant="ghost" size="sm" onClick={() => toggleSort('state')}>
                    State <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
               </TableHead>
-              <TableHead>
+              <TableHead className="hidden md:table-cell">
                  <Button variant="ghost" size="sm" onClick={() => toggleSort('lastReviewedAt')}>
                    Last Reviewed <ArrowUpDown className="ml-2 h-3 w-3" />
                  </Button>
               </TableHead>
-              <TableHead className="text-right">Reps</TableHead>
+              <TableHead className="text-right hidden lg:table-cell">Reps</TableHead>
               <TableHead className="w-[50px]"></TableHead>
             </TableRow>
           </TableHeader>
@@ -815,7 +819,7 @@ export default function Browser() {
                   data-testid={`card-row-${card.id}`}
                   className={selectedCardIds.has(card.id) ? 'bg-primary/5' : ''}
                 >
-                  <TableCell>
+                  <TableCell className="pr-0 sm:pr-4">
                     <Checkbox 
                       checked={selectedCardIds.has(card.id)}
                       onCheckedChange={() => toggleCardSelection(card.id)}
@@ -823,22 +827,25 @@ export default function Browser() {
                     />
                   </TableCell>
                   <TableCell className="font-medium">
-                    <div className="truncate max-w-[300px]" title={card.note.fields.Front || card.note.fields.Text}>
+                    <div className="truncate max-w-[150px] sm:max-w-[200px] md:max-w-[300px] text-sm sm:text-base" title={card.note.fields.Front || card.note.fields.Text}>
                        {card.note.fields.Front || card.note.fields.Text || "No Content"}
                     </div>
-                    <div className="text-xs text-muted-foreground mt-1">
-                      {card.note.tags.map(t => <Badge key={t} variant="secondary" className="mr-1 text-[10px] px-1 py-0">{t}</Badge>)}
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {card.note.tags.map(t => <Badge key={t} variant="secondary" className="text-[10px] px-1 py-0">{t}</Badge>)}
+                      <Badge variant={card.state === 'NEW' ? 'outline' : 'default'} className="uppercase text-[10px] sm:hidden">
+                        {card.state}
+                      </Badge>
                     </div>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden sm:table-cell">
                     <Badge variant={card.state === 'NEW' ? 'outline' : 'default'} className="uppercase text-[10px]">
                       {card.state}
                     </Badge>
                   </TableCell>
-                  <TableCell>
+                  <TableCell className="hidden md:table-cell">
                     {card.lastReviewedAt ? format(new Date(card.lastReviewedAt), "MMM d, yyyy") : "Never"}
                   </TableCell>
-                  <TableCell className="text-right">{card.reps}</TableCell>
+                  <TableCell className="text-right hidden lg:table-cell">{card.reps}</TableCell>
                   <TableCell>
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>

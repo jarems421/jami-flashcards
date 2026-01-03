@@ -381,7 +381,14 @@ export default function Editor() {
                         }}
                         onKeyDown={handleTagInputKeyDown}
                         onFocus={() => setShowTagSuggestions(true)}
-                        onBlur={() => setTimeout(() => setShowTagSuggestions(false), 200)}
+                        onBlur={() => {
+                          setTimeout(() => {
+                            if (tagInput.trim()) {
+                              addTag(tagInput);
+                            }
+                            setShowTagSuggestions(false);
+                          }, 200);
+                        }}
                         placeholder={selectedTags.length === 0 ? "Type to add tags..." : ""}
                         className="flex-1 min-w-[120px] bg-transparent outline-none text-sm"
                         data-testid="input-tags"
