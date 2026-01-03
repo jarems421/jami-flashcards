@@ -67,6 +67,8 @@ export function useAddNote() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['stats'] });
       queryClient.invalidateQueries({ queryKey: ['cards'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/tags'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/decks'] });
     }
   });
 }
