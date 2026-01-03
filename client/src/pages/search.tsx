@@ -123,9 +123,16 @@ export default function GlobalSearch() {
       finalTags.push(tagInput.trim());
     }
     
+    // Preserve existing fields (like FrontImage, BackImage) and update only edited ones
+    const updatedFields = {
+      ...editingCard.note.fields,
+      Front: editFront,
+      Back: editBack
+    };
+    
     updateNoteMutation.mutate({
       noteId: editingCard.note.id,
-      fields: { Front: editFront, Back: editBack },
+      fields: updatedFields,
       tags: finalTags
     });
   };
