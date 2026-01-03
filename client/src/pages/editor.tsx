@@ -158,6 +158,12 @@ export default function Editor() {
       return;
     }
 
+    // Include any pending tag input that hasn't been added yet
+    const finalTags = [...selectedTags];
+    if (tagInput.trim() && !finalTags.includes(tagInput.trim())) {
+      finalTags.push(tagInput.trim());
+    }
+
     addNote({
       deckId: deckId,
       type: type,
@@ -167,7 +173,7 @@ export default function Editor() {
         FrontImage: frontImage || undefined,
         BackImage: backImage || undefined
       },
-      tags: selectedTags,
+      tags: finalTags,
     }, {
       onSuccess: () => {
         toast({
