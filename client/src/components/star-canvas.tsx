@@ -24,6 +24,12 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
   const colors = starColors[rarity];
   const glowSize = size * 2;
   
+  // Ensure minimum ray thickness for small stars
+  const mainRayThickness = Math.max(1.5, size * 0.06);
+  const diagRayThickness = Math.max(1, size * 0.04);
+  const coreSize = Math.max(3, size * 0.15);
+  const innerShineSize = Math.max(5, size * 0.4);
+  
   const getAnimation = () => {
     if (rarity === "BRILLIANT") return "slow-rotate 60s linear infinite";
     if (rarity === "BRIGHT") return "breathing-glow 3s ease-in-out infinite";
@@ -44,7 +50,7 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
         className="absolute inset-0 rounded-full"
         style={{
           background: `radial-gradient(circle, ${colors.outer} 0%, transparent 70%)`,
-          filter: `blur(${size * 0.03}px)`,
+          filter: `blur(${Math.max(0.5, size * 0.03)}px)`,
         }}
       />
       
@@ -52,10 +58,10 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute top-1/2 left-0 right-0"
         style={{
-          height: size * 0.06,
+          height: mainRayThickness,
           transform: 'translateY(-50%)',
           background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 20%, ${colors.core} 50%, ${colors.glow} 80%, transparent 100%)`,
-          filter: `blur(${size * 0.02}px)`,
+          filter: `blur(${Math.max(0.3, size * 0.02)}px)`,
         }}
       />
       
@@ -63,10 +69,10 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute left-1/2 top-0 bottom-0"
         style={{
-          width: size * 0.06,
+          width: mainRayThickness,
           transform: 'translateX(-50%)',
           background: `linear-gradient(180deg, transparent 0%, ${colors.glow} 20%, ${colors.core} 50%, ${colors.glow} 80%, transparent 100%)`,
-          filter: `blur(${size * 0.02}px)`,
+          filter: `blur(${Math.max(0.3, size * 0.02)}px)`,
         }}
       />
       
@@ -75,10 +81,10 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
         className="absolute top-1/2 left-1/2"
         style={{
           width: glowSize * 0.75,
-          height: size * 0.04,
+          height: diagRayThickness,
           transform: 'translate(-50%, -50%) rotate(45deg)',
           background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 25%, ${colors.core} 50%, ${colors.glow} 75%, transparent 100%)`,
-          filter: `blur(${size * 0.015}px)`,
+          filter: `blur(${Math.max(0.2, size * 0.015)}px)`,
         }}
       />
       
@@ -87,10 +93,10 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
         className="absolute top-1/2 left-1/2"
         style={{
           width: glowSize * 0.75,
-          height: size * 0.04,
+          height: diagRayThickness,
           transform: 'translate(-50%, -50%) rotate(-45deg)',
           background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 25%, ${colors.core} 50%, ${colors.glow} 75%, transparent 100%)`,
-          filter: `blur(${size * 0.015}px)`,
+          filter: `blur(${Math.max(0.2, size * 0.015)}px)`,
         }}
       />
       
@@ -98,11 +104,11 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute top-1/2 left-1/2 rounded-full"
         style={{
-          width: size * 0.4,
-          height: size * 0.4,
+          width: innerShineSize,
+          height: innerShineSize,
           transform: 'translate(-50%, -50%)',
           background: `radial-gradient(circle, ${colors.core} 0%, ${colors.glow} 50%, transparent 100%)`,
-          filter: `blur(${size * 0.025}px)`,
+          filter: `blur(${Math.max(0.3, size * 0.025)}px)`,
         }}
       />
       
@@ -110,11 +116,11 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute top-1/2 left-1/2 rounded-full"
         style={{
-          width: size * 0.15,
-          height: size * 0.15,
+          width: coreSize,
+          height: coreSize,
           transform: 'translate(-50%, -50%)',
           background: `radial-gradient(circle, white 0%, ${colors.core} 60%)`,
-          boxShadow: `0 0 ${size * 0.3}px ${colors.core}, 0 0 ${size * 0.15}px white, 0 0 ${size * 0.5}px ${colors.glow}`,
+          boxShadow: `0 0 ${Math.max(4, size * 0.3)}px ${colors.core}, 0 0 ${Math.max(2, size * 0.15)}px white, 0 0 ${Math.max(6, size * 0.5)}px ${colors.glow}`,
         }}
       />
     </div>
