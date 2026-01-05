@@ -6,24 +6,24 @@ import { calculateStarSize, StarRarityType } from "@shared/starSize";
 const starColors: Record<StarRarityType, { core: string; glow: string; outer: string }> = {
   NORMAL: { 
     core: "rgba(255, 255, 255, 1)", 
-    glow: "rgba(255, 255, 255, 0.6)", 
-    outer: "rgba(200, 210, 255, 0.3)" 
+    glow: "rgba(255, 255, 255, 0.7)", 
+    outer: "rgba(200, 210, 255, 0.4)" 
   },
   BRIGHT: { 
     core: "rgba(255, 250, 230, 1)", 
-    glow: "rgba(255, 235, 180, 0.7)", 
-    outer: "rgba(255, 220, 150, 0.4)" 
+    glow: "rgba(255, 235, 180, 0.8)", 
+    outer: "rgba(255, 220, 150, 0.5)" 
   },
   BRILLIANT: { 
     core: "rgba(220, 235, 255, 1)", 
-    glow: "rgba(180, 210, 255, 0.8)", 
-    outer: "rgba(150, 190, 255, 0.5)" 
+    glow: "rgba(180, 210, 255, 0.9)", 
+    outer: "rgba(150, 190, 255, 0.6)" 
   },
 };
 
 function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
   const colors = starColors[rarity];
-  const glowSize = size * 1.8;
+  const glowSize = size * 2;
   
   const getAnimation = () => {
     if (rarity === "BRILLIANT") return "bg-slow-rotate 120s linear infinite";
@@ -40,29 +40,76 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
         animation: getAnimation(),
       }}
     >
+      {/* Outer glow */}
       <div 
         className="absolute inset-0 rounded-full"
         style={{
-          background: `radial-gradient(circle, ${colors.outer} 0%, transparent 70%)`,
+          background: `radial-gradient(circle, ${colors.outer} 0%, transparent 60%)`,
         }}
       />
+      
+      {/* Main horizontal ray */}
+      <div 
+        className="absolute top-1/2 left-0 right-0"
+        style={{
+          height: size * 0.08,
+          transform: 'translateY(-50%)',
+          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 35%, ${colors.core} 50%, ${colors.glow} 65%, transparent 100%)`,
+        }}
+      />
+      
+      {/* Main vertical ray */}
+      <div 
+        className="absolute left-1/2 top-0 bottom-0"
+        style={{
+          width: size * 0.08,
+          transform: 'translateX(-50%)',
+          background: `linear-gradient(180deg, transparent 0%, ${colors.glow} 35%, ${colors.core} 50%, ${colors.glow} 65%, transparent 100%)`,
+        }}
+      />
+      
+      {/* Diagonal ray 1 (45 deg) */}
+      <div 
+        className="absolute top-1/2 left-1/2"
+        style={{
+          width: glowSize * 0.9,
+          height: size * 0.04,
+          transform: 'translate(-50%, -50%) rotate(45deg)',
+          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 40%, ${colors.core} 50%, ${colors.glow} 60%, transparent 100%)`,
+        }}
+      />
+      
+      {/* Diagonal ray 2 (135 deg) */}
+      <div 
+        className="absolute top-1/2 left-1/2"
+        style={{
+          width: glowSize * 0.9,
+          height: size * 0.04,
+          transform: 'translate(-50%, -50%) rotate(-45deg)',
+          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 40%, ${colors.core} 50%, ${colors.glow} 60%, transparent 100%)`,
+        }}
+      />
+      
+      {/* Inner glow */}
       <div 
         className="absolute top-1/2 left-1/2 rounded-full"
         style={{
-          width: size * 0.8,
-          height: size * 0.8,
+          width: size * 0.5,
+          height: size * 0.5,
           transform: 'translate(-50%, -50%)',
-          background: `radial-gradient(circle, ${colors.glow} 0%, transparent 70%)`,
+          background: `radial-gradient(circle, ${colors.core} 0%, ${colors.glow} 50%, transparent 100%)`,
         }}
       />
+      
+      {/* Bright core */}
       <div 
         className="absolute top-1/2 left-1/2 rounded-full"
         style={{
-          width: size * 0.25,
-          height: size * 0.25,
+          width: size * 0.2,
+          height: size * 0.2,
           transform: 'translate(-50%, -50%)',
-          background: `radial-gradient(circle, ${colors.core} 0%, ${colors.glow} 60%, transparent 100%)`,
-          boxShadow: `0 0 ${size * 0.2}px ${colors.glow}`,
+          background: colors.core,
+          boxShadow: `0 0 ${size * 0.3}px ${colors.core}, 0 0 ${size * 0.15}px ${colors.core}`,
         }}
       />
     </div>
