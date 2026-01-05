@@ -9,11 +9,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
-import { Target, Plus, Trash2, Calendar, TrendingUp, Pause, Play, CheckCircle2 } from "lucide-react";
+import { Target, Plus, Trash2, Calendar, TrendingUp, Pause, Play, CheckCircle2, Sparkles } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, differenceInDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
 import { celebrateGoalComplete } from "@/lib/confetti";
+import { getNextStarRarity } from "@shared/starSize";
 
 interface Deck {
   id: string;
@@ -71,6 +72,18 @@ export default function Goals() {
       return res.json();
     }
   });
+
+  const { data: activeConstellation } = useQuery<{ stars: { id: string }[] }>({
+    queryKey: ["constellation", "active"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/constellations/active");
+      return res.json();
+    }
+  });
+
+  const nextStar = activeConstellation 
+    ? getNextStarRarity(activeConstellation.stars?.length || 0)
+    : { displayName: 'Starlight', rarity: 'NORMAL' as const };
 
   const createGoalMutation = useMutation({
     mutationFn: async (data: typeof newGoal) => {
@@ -173,6 +186,12 @@ export default function Goals() {
   const pausedGoals = goals?.filter(g => g.status === 'PAUSED') || [];
   const completedGoals = goals?.filter(g => g.status === 'COMPLETED') || [];
   const expiredGoals = goals?.filter(g => g.status === 'ACTIVE' && g.deadline && new Date(g.deadline) < now) || [];
+
+  const getStarColorClass = (rarity: string) => {
+    if (rarity === 'BRILLIANT') return 'text-purple-400';
+    if (rarity === 'BRIGHT') return 'text-amber-400';
+    return 'text-white';
+  };
 
   return (
     <div className="p-8 max-w-4xl mx-auto space-y-8">
@@ -289,6 +308,25 @@ export default function Goals() {
           </DialogContent>
         </Dialog>
       </div>
+
+      <Card className="bg-gradient-to-r from-slate-900 to-slate-800 border-slate-700">
+        <CardContent className="p-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-full ${nextStar.rarity === 'BRILLIANT' ? 'bg-purple-500/20' : nextStar.rarity === 'BRIGHT' ? 'bg-amber-500/20' : 'bg-white/10'}`}>
+              <Sparkles className={`h-5 w-5 ${getStarColorClass(nextStar.rarity)}`} />
+            </div>
+            <div>
+              <p className="text-sm text-slate-300">Next goal completion earns</p>
+              <p className={`font-semibold ${getStarColorClass(nextStar.rarity)}`}>
+                {nextStar.displayName} Star
+              </p>
+            </div>
+          </div>
+          <div className="text-right text-sm text-slate-400">
+            Star #{(activeConstellation?.stars?.length || 0) + 1} of 100
+          </div>
+        </CardContent>
+      </Card>
 
       {activeGoals.length === 0 && pausedGoals.length === 0 && (
         <Card className="border-dashed">

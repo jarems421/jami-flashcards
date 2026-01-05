@@ -1,14 +1,14 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
-import { calculateStarSize } from "@shared/starSize";
+import { calculateStarSize, StarRarityType } from "@shared/starSize";
 
 interface StarData {
   id: string;
   orderIndex: number;
   positionX: number;
   positionY: number;
-  rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
+  rarity: StarRarityType;
   goalTargetCount?: number;
   targetAccuracy?: number;
 }
@@ -70,26 +70,23 @@ export function ConstellationBackground() {
   }
 
   const getStarStyles = (star: StarData) => {
-    const baseSize = calculateStarSize(star.goalTargetCount || 10, star.targetAccuracy || 80, { 
-      minSize: 4, 
-      maxSize: 48 
-    });
+    const baseSize = calculateStarSize(star.goalTargetCount || 10, star.targetAccuracy || 80);
     
-    let sizeMultiplier = 1;
     let opacity = 0.6;
+    let color = "rgba(255, 255, 255, 1)";
 
     if (star.rarity === "BRIGHT") {
-      sizeMultiplier = 1.25;
       opacity = 0.75;
+      color = "rgba(251, 191, 36, 1)";
     } else if (star.rarity === "BRILLIANT") {
-      sizeMultiplier = 1.5;
       opacity = 0.9;
+      color = "rgba(147, 112, 219, 1)";
     }
 
-    const size = baseSize * sizeMultiplier;
+    const size = baseSize;
     const glowSize = size * 1.5;
 
-    return { size, glowSize, opacity };
+    return { size, glowSize, opacity, color };
   };
 
   return (
@@ -106,7 +103,8 @@ export function ConstellationBackground() {
       />
       
       {constellation.stars.map((star) => {
-        const { size, glowSize, opacity } = getStarStyles(star);
+        const { size, glowSize, opacity, color } = getStarStyles(star);
+        const glowColor = color.replace('1)', `${opacity})`);
 
         return (
           <motion.div
@@ -131,11 +129,10 @@ export function ConstellationBackground() {
               <div
                 className="absolute inset-0 animate-pulse"
                 style={{
-                  background: `radial-gradient(circle, rgba(255, 255, 255, ${opacity * 0.4}) 0%, transparent 60%)`,
+                  background: `radial-gradient(circle, ${glowColor.replace(`${opacity})`, `${opacity * 0.4})`)} 0%, transparent 60%)`,
                   animationDuration: `${3 + Math.random() * 2}s`,
                 }}
               />
-              {/* CSS four-pointed star with smooth blur */}
               <div
                 className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
                 style={{
@@ -149,7 +146,7 @@ export function ConstellationBackground() {
                   style={{
                     width: '100%',
                     height: Math.max(2, size * 0.08),
-                    background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${opacity * 0.3}) 25%, rgba(255,255,255,${opacity * 0.8}) 45%, white 50%, rgba(255,255,255,${opacity * 0.8}) 55%, rgba(255,255,255,${opacity * 0.3}) 75%, transparent 100%)`,
+                    background: `linear-gradient(90deg, transparent 0%, ${glowColor.replace(`${opacity})`, '0.3)')} 25%, ${glowColor.replace(`${opacity})`, '0.8)')} 45%, ${color} 50%, ${glowColor.replace(`${opacity})`, '0.8)')} 55%, ${glowColor.replace(`${opacity})`, '0.3)')} 75%, transparent 100%)`,
                     borderRadius: '50%',
                   }}
                 />
@@ -158,7 +155,7 @@ export function ConstellationBackground() {
                   style={{
                     height: '100%',
                     width: Math.max(2, size * 0.08),
-                    background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${opacity * 0.3}) 25%, rgba(255,255,255,${opacity * 0.8}) 45%, white 50%, rgba(255,255,255,${opacity * 0.8}) 55%, rgba(255,255,255,${opacity * 0.3}) 75%, transparent 100%)`,
+                    background: `linear-gradient(180deg, transparent 0%, ${glowColor.replace(`${opacity})`, '0.3)')} 25%, ${glowColor.replace(`${opacity})`, '0.8)')} 45%, ${color} 50%, ${glowColor.replace(`${opacity})`, '0.8)')} 55%, ${glowColor.replace(`${opacity})`, '0.3)')} 75%, transparent 100%)`,
                     borderRadius: '50%',
                   }}
                 />
@@ -167,8 +164,8 @@ export function ConstellationBackground() {
                   style={{
                     width: size * 0.25,
                     height: size * 0.25,
-                    background: 'radial-gradient(circle, white 0%, rgba(255,255,255,0.8) 40%, rgba(255,255,255,0) 100%)',
-                    boxShadow: `0 0 ${size * 0.2}px white, 0 0 ${size * 0.4}px rgba(255,255,255,0.5)`,
+                    background: `radial-gradient(circle, ${color} 0%, ${glowColor.replace(`${opacity})`, '0.8)')} 40%, transparent 100%)`,
+                    boxShadow: `0 0 ${size * 0.2}px ${color}, 0 0 ${size * 0.4}px ${glowColor.replace(`${opacity})`, '0.5)')}`,
                   }}
                 />
               </div>

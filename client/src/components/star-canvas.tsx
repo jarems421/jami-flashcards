@@ -1,13 +1,13 @@
 import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { calculateStarSize } from "@shared/starSize";
+import { calculateStarSize, getStarDisplayName, StarRarityType } from "@shared/starSize";
 
 interface Star {
   id: string;
   orderIndex: number;
   positionX: number;
   positionY: number;
-  rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
+  rarity: StarRarityType;
   earnedAt: string;
   goalTargetCount?: number;
   targetAccuracy?: number;
@@ -121,21 +121,30 @@ export function StarCanvas({
   const getStarStyles = (star: Star) => {
     const baseSize = calculateStarSize(star.goalTargetCount || 10, star.targetAccuracy || 80);
     
-    let sizeMultiplier = 1;
+    let color = "rgba(255, 255, 255, 1)";
+    let glowColor = "rgba(255, 255, 255, 0.8)";
     let glowOpacity = 0.4;
+    let animationClass = "";
+    let outerGlowColor = "transparent";
 
     if (star.rarity === "BRIGHT") {
-      sizeMultiplier = 1.25;
-      glowOpacity = 0.6;
+      color = "rgba(251, 191, 36, 1)";
+      glowColor = "rgba(251, 191, 36, 0.9)";
+      outerGlowColor = "rgba(251, 191, 36, 0.4)";
+      glowOpacity = 0.7;
+      animationClass = "astral-pulse";
     } else if (star.rarity === "BRILLIANT") {
-      sizeMultiplier = 1.5;
-      glowOpacity = 0.8;
+      color = "rgba(147, 112, 219, 1)";
+      glowColor = "rgba(147, 112, 219, 0.9)";
+      outerGlowColor = "rgba(147, 112, 219, 0.5)";
+      glowOpacity = 0.9;
+      animationClass = "ethereal-sparkle";
     }
 
-    const size = baseSize * sizeMultiplier;
-    const glowSize = size * 1.5;
+    const size = baseSize;
+    const glowSize = size * 2;
 
-    return { size, glowSize, glowOpacity };
+    return { size, glowSize, glowOpacity, color, glowColor, outerGlowColor, animationClass };
   };
 
   return (
@@ -145,6 +154,29 @@ export function StarCanvas({
       style={{ touchAction: editable ? "none" : "auto" }}
       data-testid="star-canvas"
     >
+      <style>{`
+        @keyframes astral-pulse {
+          0%, 100% { opacity: 0.7; transform: scale(1); }
+          50% { opacity: 1; transform: scale(1.15); }
+        }
+        @keyframes ethereal-sparkle {
+          0%, 100% { opacity: 0.8; transform: scale(1) rotate(0deg); filter: brightness(1); }
+          25% { opacity: 1; transform: scale(1.1) rotate(2deg); filter: brightness(1.3); }
+          50% { opacity: 0.9; transform: scale(1.2) rotate(0deg); filter: brightness(1.5); }
+          75% { opacity: 1; transform: scale(1.1) rotate(-2deg); filter: brightness(1.3); }
+        }
+        @keyframes twinkle {
+          0%, 100% { opacity: 0.6; }
+          50% { opacity: 1; }
+        }
+        .astral-pulse {
+          animation: astral-pulse 2s ease-in-out infinite;
+        }
+        .ethereal-sparkle {
+          animation: ethereal-sparkle 3s ease-in-out infinite;
+        }
+      `}</style>
+      
       <div
         className="absolute inset-0 opacity-30"
         style={{
@@ -155,7 +187,7 @@ export function StarCanvas({
 
       <AnimatePresence>
         {stars.map((star) => {
-          const { size, glowSize, glowOpacity } = getStarStyles(star);
+          const { size, glowSize, glowOpacity, color, glowColor, outerGlowColor, animationClass } = getStarStyles(star);
           const isNew = star.id === newStarId;
           const isDragging = star.id === draggingStar;
 
@@ -176,7 +208,7 @@ export function StarCanvas({
               }
               className={`absolute -translate-x-1/2 -translate-y-1/2 ${
                 editable ? "cursor-grab" : ""
-              } ${isDragging ? "cursor-grabbing z-50" : ""}`}
+              } ${isDragging ? "cursor-grabbing z-50" : ""} ${animationClass}`}
               style={{ touchAction: "none" }}
               onMouseDown={(e) => handleMouseDown(e, star.id)}
               onTouchStart={(e) => handleTouchStart(e, star.id)}
@@ -189,16 +221,34 @@ export function StarCanvas({
                   height: glowSize,
                 }}
               >
-                {/* Soft glow background with varied twinkle */}
+                {star.rarity === "BRILLIANT" && (
+                  <div 
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      background: `radial-gradient(circle, ${outerGlowColor} 0%, transparent 70%)`,
+                      animation: `twinkle 1.5s ease-in-out infinite`,
+                      transform: 'scale(1.5)',
+                    }}
+                  />
+                )}
+                {star.rarity === "BRIGHT" && (
+                  <div 
+                    className="absolute inset-0 rounded-full"
+                    style={{
+                      background: `radial-gradient(circle, ${outerGlowColor} 0%, transparent 60%)`,
+                      animation: `twinkle 2s ease-in-out infinite`,
+                      transform: 'scale(1.3)',
+                    }}
+                  />
+                )}
                 <div 
                   className="absolute inset-0"
                   style={{
-                    background: `radial-gradient(circle, rgba(255, 255, 255, ${glowOpacity * 0.5}) 0%, transparent 60%)`,
+                    background: `radial-gradient(circle, ${glowColor.replace('0.9', String(glowOpacity * 0.5))} 0%, transparent 60%)`,
                     animation: `twinkle ${2 + (star.orderIndex % 5) * 0.5}s ease-in-out infinite`,
                     animationDelay: `${(star.orderIndex * 0.3) % 2}s`,
                   }}
                 />
-                {/* CSS four-pointed star with smooth blur */}
                 <div
                   className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
                   style={{
@@ -207,34 +257,31 @@ export function StarCanvas({
                     filter: `blur(${Math.max(0.5, size * 0.02)}px)`,
                   }}
                 >
-                  {/* Horizontal ray */}
                   <div
                     className="absolute top-1/2 left-0 -translate-y-1/2"
                     style={{
                       width: '100%',
                       height: Math.max(2, size * 0.08),
-                      background: `linear-gradient(90deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.3}) 25%, rgba(255,255,255,${glowOpacity * 0.8}) 45%, white 50%, rgba(255,255,255,${glowOpacity * 0.8}) 55%, rgba(255,255,255,${glowOpacity * 0.3}) 75%, transparent 100%)`,
+                      background: `linear-gradient(90deg, transparent 0%, ${glowColor.replace('0.9', '0.3')} 25%, ${glowColor.replace('0.9', '0.8')} 45%, ${color} 50%, ${glowColor.replace('0.9', '0.8')} 55%, ${glowColor.replace('0.9', '0.3')} 75%, transparent 100%)`,
                       borderRadius: '50%',
                     }}
                   />
-                  {/* Vertical ray */}
                   <div
                     className="absolute left-1/2 top-0 -translate-x-1/2"
                     style={{
                       height: '100%',
                       width: Math.max(2, size * 0.08),
-                      background: `linear-gradient(180deg, transparent 0%, rgba(255,255,255,${glowOpacity * 0.3}) 25%, rgba(255,255,255,${glowOpacity * 0.8}) 45%, white 50%, rgba(255,255,255,${glowOpacity * 0.8}) 55%, rgba(255,255,255,${glowOpacity * 0.3}) 75%, transparent 100%)`,
+                      background: `linear-gradient(180deg, transparent 0%, ${glowColor.replace('0.9', '0.3')} 25%, ${glowColor.replace('0.9', '0.8')} 45%, ${color} 50%, ${glowColor.replace('0.9', '0.8')} 55%, ${glowColor.replace('0.9', '0.3')} 75%, transparent 100%)`,
                       borderRadius: '50%',
                     }}
                   />
-                  {/* Bright center core with smooth glow */}
                   <div
                     className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
                     style={{
                       width: Math.max(3, size * 0.25),
                       height: Math.max(3, size * 0.25),
-                      background: 'radial-gradient(circle, white 0%, rgba(255,255,255,0.8) 40%, rgba(255,255,255,0) 100%)',
-                      boxShadow: `0 0 ${size * 0.2}px white, 0 0 ${size * 0.4}px rgba(255,255,255,0.5)`,
+                      background: `radial-gradient(circle, ${color} 0%, ${glowColor.replace('0.9', '0.8')} 40%, transparent 100%)`,
+                      boxShadow: `0 0 ${size * 0.2}px ${color}, 0 0 ${size * 0.4}px ${glowColor.replace('0.9', '0.5')}`,
                     }}
                   />
                 </div>

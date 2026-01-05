@@ -13,6 +13,7 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { celebrateGoalComplete, celebrateStarEarned } from "@/lib/confetti";
+import { getStarDisplayName, StarRarityType } from "@shared/starSize";
 
 interface CardData {
   id: string;
@@ -124,9 +125,7 @@ export default function Study() {
         queryClient.invalidateQueries({ queryKey: ["constellations"] });
         queryClient.invalidateQueries({ queryKey: ["constellation"] });
         
-        const rarityText = data.star.rarity === 'BRILLIANT' ? 'Brilliant' : 
-                          data.star.rarity === 'BRIGHT' ? 'Bright' : '';
-        const starLabel = rarityText ? `${rarityText} Star` : 'Star';
+        const starDisplayName = getStarDisplayName(data.star.rarity as StarRarityType);
         
         if (data.constellationCompleted) {
           celebrateGoalComplete();
@@ -137,7 +136,7 @@ export default function Study() {
         } else {
           celebrateStarEarned();
           toast({ 
-            title: `Goal Complete! ${starLabel} Earned!`, 
+            title: `Goal Complete! ${starDisplayName} Star Earned!`, 
             description: `Star #${data.star.orderIndex} added to your constellation.`
           });
         }

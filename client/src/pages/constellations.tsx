@@ -9,7 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, Dialog
 import { Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
-import { calculateStarSize } from "@shared/starSize";
+import { calculateStarSize, getStarDisplayName, StarRarityType } from "@shared/starSize";
 
 
 interface StarData {
@@ -18,7 +18,7 @@ interface StarData {
   orderIndex: number;
   positionX: number;
   positionY: number;
-  rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
+  rarity: StarRarityType;
   earnedAt: string;
   goalTargetCount?: number;
   targetAccuracy?: number;
@@ -72,7 +72,7 @@ export default function Constellations() {
     orderIndex: number;
     positionX: number;
     positionY: number;
-    rarity: "NORMAL" | "BRIGHT" | "BRILLIANT";
+    rarity: StarRarityType;
     earnedAt: string;
     goalTargetCount: number;
   }>>([]);
