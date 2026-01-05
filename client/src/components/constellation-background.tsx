@@ -1,17 +1,73 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
-import { calculateStarSize, StarRarityType, getStarDisplayName } from "@shared/starSize";
+import { calculateStarSize, StarRarityType } from "@shared/starSize";
 
-import starNormal from "../assets/star-normal.png";
-import starAscended from "../assets/star-ascended.png";
-import starTranscendent from "../assets/star-transcendent.png";
-
-const starImages: Record<StarRarityType, string> = {
-  NORMAL: starNormal,
-  BRIGHT: starAscended,
-  BRILLIANT: starTranscendent,
+const starColors: Record<StarRarityType, { core: string; glow: string; outer: string }> = {
+  NORMAL: { 
+    core: "rgba(255, 255, 255, 0.9)", 
+    glow: "rgba(255, 255, 255, 0.4)", 
+    outer: "rgba(200, 210, 255, 0.15)" 
+  },
+  BRIGHT: { 
+    core: "rgba(255, 250, 230, 0.95)", 
+    glow: "rgba(255, 235, 180, 0.5)", 
+    outer: "rgba(255, 220, 150, 0.2)" 
+  },
+  BRILLIANT: { 
+    core: "rgba(220, 235, 255, 1)", 
+    glow: "rgba(180, 210, 255, 0.6)", 
+    outer: "rgba(150, 190, 255, 0.25)" 
+  },
 };
+
+function BackgroundStar({ size, rarity, opacity }: { size: number; rarity: StarRarityType; opacity: number }) {
+  const colors = starColors[rarity];
+  const glowSize = size * 1.5;
+  
+  const getAnimation = () => {
+    if (rarity === "BRILLIANT") return "bg-slow-rotate 120s linear infinite";
+    if (rarity === "BRIGHT") return "bg-breathing 4s ease-in-out infinite";
+    return "bg-subtle-pulse 5s ease-in-out infinite";
+  };
+  
+  return (
+    <div 
+      className="relative" 
+      style={{ 
+        width: glowSize, 
+        height: glowSize,
+        opacity,
+        animation: getAnimation(),
+      }}
+    >
+      <div 
+        className="absolute inset-0 rounded-full"
+        style={{
+          background: `radial-gradient(circle, ${colors.outer} 0%, transparent 70%)`,
+        }}
+      />
+      <div 
+        className="absolute top-1/2 left-1/2 rounded-full"
+        style={{
+          width: size * 0.6,
+          height: size * 0.6,
+          transform: 'translate(-50%, -50%)',
+          background: `radial-gradient(circle, ${colors.glow} 0%, transparent 70%)`,
+        }}
+      />
+      <div 
+        className="absolute top-1/2 left-1/2 rounded-full"
+        style={{
+          width: size * 0.15,
+          height: size * 0.15,
+          transform: 'translate(-50%, -50%)',
+          background: `radial-gradient(circle, ${colors.core} 0%, ${colors.glow} 60%, transparent 100%)`,
+        }}
+      />
+    </div>
+  );
+}
 
 interface StarData {
   id: string;
@@ -122,17 +178,12 @@ export function ConstellationBackground() {
       
       {constellation.stars.map((star) => {
         const { size, opacity } = getStarStyles(star);
-        const glowColor = star.rarity === "BRILLIANT" 
-          ? 'rgba(200, 220, 255, 0.08)' 
-          : star.rarity === "BRIGHT"
-            ? 'rgba(255, 245, 220, 0.06)'
-            : 'rgba(255, 255, 255, 0.04)';
 
         return (
           <motion.div
             key={star.id}
             initial={{ opacity: 0 }}
-            animate={{ opacity }}
+            animate={{ opacity: 1 }}
             transition={{ duration: 1, delay: Math.random() * 0.5 }}
             className="absolute"
             style={{
@@ -141,35 +192,7 @@ export function ConstellationBackground() {
               transform: "translate(-50%, -50%)",
             }}
           >
-            <div className="relative" style={{ width: size * 1.3, height: size * 1.3 }}>
-              <div 
-                className="absolute inset-0 rounded-full"
-                style={{
-                  background: `radial-gradient(circle, ${glowColor} 0%, transparent 60%)`,
-                  animation: star.rarity === "BRIGHT" 
-                    ? 'bg-breathing 4s ease-in-out infinite' 
-                    : 'bg-subtle-pulse 5s ease-in-out infinite',
-                }}
-              />
-              <img
-                src={starImages[star.rarity]}
-                alt={getStarDisplayName(star.rarity)}
-                className="absolute top-1/2 left-1/2 object-contain pointer-events-none"
-                style={{
-                  width: size,
-                  height: size,
-                  transform: 'translate(-50%, -50%)',
-                  filter: `drop-shadow(0 0 ${size * 0.1}px rgba(255, 255, 255, 0.3))`,
-                  animation: star.rarity === "BRILLIANT" 
-                    ? 'bg-slow-rotate 120s linear infinite' 
-                    : star.rarity === "BRIGHT"
-                      ? 'bg-breathing 4s ease-in-out infinite'
-                      : undefined,
-                  transformOrigin: star.rarity === "BRILLIANT" ? undefined : 'center center',
-                }}
-                draggable={false}
-              />
-            </div>
+            <BackgroundStar size={size} rarity={star.rarity} opacity={opacity} />
           </motion.div>
         );
       })}

@@ -2,15 +2,71 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { calculateStarSize, getStarDisplayName, StarRarityType } from "@shared/starSize";
 
-import starNormal from "../assets/star-normal.png";
-import starAscended from "../assets/star-ascended.png";
-import starTranscendent from "../assets/star-transcendent.png";
-
-const starImages: Record<StarRarityType, string> = {
-  NORMAL: starNormal,
-  BRIGHT: starAscended,
-  BRILLIANT: starTranscendent,
+const starColors: Record<StarRarityType, { core: string; glow: string; outer: string }> = {
+  NORMAL: { 
+    core: "rgba(255, 255, 255, 1)", 
+    glow: "rgba(255, 255, 255, 0.6)", 
+    outer: "rgba(200, 210, 255, 0.3)" 
+  },
+  BRIGHT: { 
+    core: "rgba(255, 250, 230, 1)", 
+    glow: "rgba(255, 235, 180, 0.7)", 
+    outer: "rgba(255, 220, 150, 0.4)" 
+  },
+  BRILLIANT: { 
+    core: "rgba(220, 235, 255, 1)", 
+    glow: "rgba(180, 210, 255, 0.8)", 
+    outer: "rgba(150, 190, 255, 0.5)" 
+  },
 };
+
+function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
+  const colors = starColors[rarity];
+  const glowSize = size * 1.8;
+  
+  const getAnimation = () => {
+    if (rarity === "BRILLIANT") return "slow-rotate 60s linear infinite";
+    if (rarity === "BRIGHT") return "breathing-glow 3s ease-in-out infinite";
+    return "subtle-pulse 5s ease-in-out infinite";
+  };
+  
+  return (
+    <div 
+      className="relative" 
+      style={{ 
+        width: glowSize, 
+        height: glowSize,
+        animation: getAnimation(),
+      }}
+    >
+      <div 
+        className="absolute inset-0 rounded-full"
+        style={{
+          background: `radial-gradient(circle, ${colors.outer} 0%, transparent 70%)`,
+        }}
+      />
+      <div 
+        className="absolute top-1/2 left-1/2 rounded-full"
+        style={{
+          width: size * 0.8,
+          height: size * 0.8,
+          transform: 'translate(-50%, -50%)',
+          background: `radial-gradient(circle, ${colors.glow} 0%, transparent 70%)`,
+        }}
+      />
+      <div 
+        className="absolute top-1/2 left-1/2 rounded-full"
+        style={{
+          width: size * 0.25,
+          height: size * 0.25,
+          transform: 'translate(-50%, -50%)',
+          background: `radial-gradient(circle, ${colors.core} 0%, ${colors.glow} 60%, transparent 100%)`,
+          boxShadow: `0 0 ${size * 0.2}px ${colors.glow}`,
+        }}
+      />
+    </div>
+  );
+}
 
 interface Star {
   id: string;
@@ -192,56 +248,10 @@ export function StarCanvas({
               onTouchStart={(e) => handleTouchStart(e, star.id)}
               data-testid={`star-${star.orderIndex}`}
             >
-              <div
-                className="relative"
-                style={{
-                  width: size * 1.5,
-                  height: size * 1.5,
-                }}
-              >
-                {star.rarity === "BRILLIANT" && (
-                  <div 
-                    className="absolute inset-0 rounded-full"
-                    style={{
-                      background: 'radial-gradient(circle, rgba(200, 220, 255, 0.15) 0%, transparent 60%)',
-                      animation: 'subtle-pulse 3s ease-in-out infinite',
-                    }}
-                  />
-                )}
-                {star.rarity === "BRIGHT" && (
-                  <div 
-                    className="absolute inset-0 rounded-full"
-                    style={{
-                      background: 'radial-gradient(circle, rgba(255, 245, 220, 0.12) 0%, transparent 55%)',
-                      animation: 'breathing-glow 3s ease-in-out infinite',
-                    }}
-                  />
-                )}
-                <div
-                  className="absolute top-1/2 left-1/2"
-                  style={{
-                    width: size,
-                    height: size,
-                    transform: 'translate(-50%, -50%)',
-                  }}
-                >
-                  <img
-                    src={starImages[star.rarity]}
-                    alt={getStarDisplayName(star.rarity)}
-                    className="w-full h-full object-contain pointer-events-none"
-                    style={{
-                      animation: star.rarity === "BRILLIANT" 
-                        ? 'slow-rotate 60s linear infinite' 
-                        : star.rarity === "BRIGHT"
-                          ? 'breathing-glow 3s ease-in-out infinite'
-                          : 'subtle-pulse 5s ease-in-out infinite',
-                      filter: `drop-shadow(0 0 ${size * 0.15}px rgba(255, 255, 255, 0.5))`,
-                      transformOrigin: 'center center',
-                    }}
-                    draggable={false}
-                  />
-                </div>
-              </div>
+              <CSStar 
+                size={size} 
+                rarity={star.rarity} 
+              />
               {showLabels && (
                 <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 text-[10px] text-white/60">
                   {star.orderIndex}
