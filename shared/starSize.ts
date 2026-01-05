@@ -6,7 +6,7 @@ export interface StarSizeConfig {
 }
 
 const DEFAULT_CONFIG: StarSizeConfig = {
-  minSize: 8,
+  minSize: 12,
   maxSize: 70,
   minCards: 10,
   maxCards: 10000,
