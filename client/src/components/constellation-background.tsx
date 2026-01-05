@@ -144,12 +144,12 @@ export function ConstellationBackground() {
                 width: size,
                 height: size,
                 opacity,
-                mixBlendMode: 'screen',
                 animation: star.rarity === "BRILLIANT" 
                   ? 'bg-slow-rotate 120s linear infinite' 
                   : star.rarity === "BRIGHT"
                     ? 'bg-breathing 4s ease-in-out infinite'
                     : 'bg-subtle-pulse 5s ease-in-out infinite',
+                filter: `drop-shadow(0 0 ${size * 0.1}px rgba(255, 255, 255, 0.3))`,
               }}
               draggable={false}
             />

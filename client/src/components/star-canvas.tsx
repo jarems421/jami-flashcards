@@ -204,13 +204,12 @@ export function StarCanvas({
                   alt={getStarDisplayName(star.rarity)}
                   className="w-full h-full object-contain pointer-events-none"
                   style={{
-                    mixBlendMode: 'screen',
                     animation: star.rarity === "BRILLIANT" 
                       ? 'slow-rotate 60s linear infinite' 
                       : star.rarity === "BRIGHT"
                         ? 'breathing-glow 3s ease-in-out infinite'
                         : 'subtle-pulse 5s ease-in-out infinite',
-                    filter: `drop-shadow(0 0 ${size * 0.1}px rgba(255, 255, 255, 0.4))`,
+                    filter: `drop-shadow(0 0 ${size * 0.15}px rgba(255, 255, 255, 0.5))`,
                   }}
                   draggable={false}
                 />
