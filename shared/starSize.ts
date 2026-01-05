@@ -82,3 +82,14 @@ export function getNextStarRarity(currentStarCount: number): { rarity: StarRarit
     displayName: getStarDisplayName(rarity)
   };
 }
+
+export function getStarSizeLabel(size: number): string {
+  const { minSize, maxSize } = DEFAULT_CONFIG;
+  const percent = Math.round(((size - minSize) / (maxSize - minSize)) * 100);
+  
+  if (percent <= 20) return 'Tiny';
+  if (percent <= 40) return 'Small';
+  if (percent <= 60) return 'Medium';
+  if (percent <= 80) return 'Large';
+  return 'Brilliant';
+}
