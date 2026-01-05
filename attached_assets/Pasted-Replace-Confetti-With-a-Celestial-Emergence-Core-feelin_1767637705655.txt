@@ -1,0 +1,189 @@
+Replace Confetti With a Celestial Emergence
+Core feeling
+
+Not “🎉 you won!”
+But “✨ something meaningful just happened”
+
+Think space dust, light, gravity, silence — not celebration cannons.
+
+1️⃣ The New Celebration Effect (Global)
+❌ Remove
+
+Multicolor confetti
+
+Fast downward motion
+
+Gravity-based falling
+
+Screen clutter
+
+✅ Replace with: Celestial Drift
+
+A short, elegant visual that feels cosmic and intentional.
+
+Visual elements
+
+Tiny dust-like particles (white / silver / faint blue)
+
+Soft radial glow pulse from the center
+
+Subtle light rays expanding outward
+
+Particles:
+
+drift slowly
+
+fade in + out
+
+never bounce or fall
+
+Motion rules
+
+Duration: 1.5–2.5 seconds
+
+Easing: ease-out only
+
+No sharp starts or stops
+
+Nothing moves fast
+
+This should feel like the app exhaled, not exploded.
+
+2️⃣ Tier-Specific Variations (important)
+
+You don’t need different animations — just different intensities.
+
+🌟 Star (every goal)
+
+Very light dust
+
+One soft glow pulse
+
+Barely noticeable rays
+
+“Acknowledged.”
+
+⭐ Ascended Star (every 10 goals)
+
+Slightly brighter glow
+
+More particles
+
+Rays extend a bit farther
+
+Dust lingers a fraction longer
+
+“This matters.”
+
+✨ Transcendent Star (every 25 goals)
+
+Bright, focused core flash (not blinding)
+
+Wider glow radius
+
+Distinct starburst silhouette
+
+Particles feel like they emanate, not scatter
+
+“This is significant.”
+
+Still calm. Still restrained.
+
+3️⃣ The Popup (replacing confetti entirely)
+
+This popup is non-negotiable — it’s what grounds the emotion.
+
+Behavior
+
+Appears centered
+
+Fades in gently
+
+Background dims slightly (not dark)
+
+No buttons
+
+Auto-dismiss after ~2.5s
+
+Tap anywhere to dismiss early
+
+Content (exact copy)
+For a normal Star
+
+Star earned
+You completed your goal.
+
+(optional — you could even skip the popup here)
+
+For Ascended Star
+
+Ascended Star earned
+10 goals completed.
+
+For Transcendent Star
+
+Transcendent Star earned
+25 goals completed.
+
+That’s it.
+No emojis. No exclamation marks. No “Congratulations”.
+
+Let the visual do the emotional work.
+
+4️⃣ Sound (optional but powerful)
+
+If you use sound at all:
+
+Very soft
+
+Single tone
+
+Bell / chime / airy synth
+
+<300ms
+
+No melody
+
+One sound per tier, slightly deeper each time.
+
+Silence is also totally acceptable.
+
+5️⃣ Timing (this matters more than people think)
+
+Order of events:
+
+Goal completes
+
+Celestial emergence animation
+
+Popup fades in
+
+Popup fades out
+
+Star appears in constellation (ready to place)
+
+Never overlap step 3 and 5.
+That sequencing makes the moment feel intentional.
+
+6️⃣ What NOT to do (hard rules)
+
+❌ No rainbow colors
+❌ No screen shake
+❌ No fast particles
+❌ No physics-y falling
+❌ No stacking multiple popups
+❌ No celebratory language
+
+You’re building meaning, not dopamine spikes.
+
+7️⃣ Why this works psychologically
+
+Confetti = short-term reward
+
+Celestial emergence = identity reinforcement
+
+It tells the user:
+
+“This effort is part of who you are.”
+
+Which fits Stars → Ascended → Transcendent perfectly.
