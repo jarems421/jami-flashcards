@@ -58,12 +58,12 @@ export type StarRarityType = 'NORMAL' | 'BRIGHT' | 'BRILLIANT';
 export function getStarDisplayName(rarity: StarRarityType): string {
   switch (rarity) {
     case 'BRILLIANT':
-      return 'Ethereal';
+      return 'Diamond';
     case 'BRIGHT':
-      return 'Astral';
+      return 'Topaz';
     case 'NORMAL':
     default:
-      return 'Starlight';
+      return 'Quartz';
   }
 }
 

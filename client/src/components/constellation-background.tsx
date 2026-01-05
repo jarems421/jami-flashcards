@@ -80,7 +80,7 @@ export function ConstellationBackground() {
       color = "rgba(251, 191, 36, 1)";
     } else if (star.rarity === "BRILLIANT") {
       opacity = 0.9;
-      color = "rgba(147, 112, 219, 1)";
+      color = "rgba(96, 165, 250, 1)";
     }
 
     const size = baseSize;

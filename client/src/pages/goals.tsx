@@ -83,7 +83,7 @@ export default function Goals() {
 
   const nextStar = activeConstellation 
     ? getNextStarRarity(activeConstellation.stars?.length || 0)
-    : { displayName: 'Starlight', rarity: 'NORMAL' as const };
+    : { displayName: 'Quartz', rarity: 'NORMAL' as const };
 
   const createGoalMutation = useMutation({
     mutationFn: async (data: typeof newGoal) => {
@@ -188,7 +188,7 @@ export default function Goals() {
   const expiredGoals = goals?.filter(g => g.status === 'ACTIVE' && g.deadline && new Date(g.deadline) < now) || [];
 
   const getStarColorClass = (rarity: string) => {
-    if (rarity === 'BRILLIANT') return 'text-purple-400';
+    if (rarity === 'BRILLIANT') return 'text-blue-400';
     if (rarity === 'BRIGHT') return 'text-amber-400';
     return 'text-white';
   };
@@ -312,7 +312,7 @@ export default function Goals() {
       <Card className="bg-gradient-to-r from-slate-900 to-slate-800 border-slate-700">
         <CardContent className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-full ${nextStar.rarity === 'BRILLIANT' ? 'bg-purple-500/20' : nextStar.rarity === 'BRIGHT' ? 'bg-amber-500/20' : 'bg-white/10'}`}>
+            <div className={`p-2 rounded-full ${nextStar.rarity === 'BRILLIANT' ? 'bg-blue-500/20' : nextStar.rarity === 'BRIGHT' ? 'bg-amber-500/20' : 'bg-white/10'}`}>
               <Sparkles className={`h-5 w-5 ${getStarColorClass(nextStar.rarity)}`} />
             </div>
             <div>

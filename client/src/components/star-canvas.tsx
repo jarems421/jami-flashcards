@@ -132,13 +132,13 @@ export function StarCanvas({
       glowColor = "rgba(251, 191, 36, 0.9)";
       outerGlowColor = "rgba(251, 191, 36, 0.4)";
       glowOpacity = 0.7;
-      animationClass = "astral-pulse";
+      animationClass = "topaz-pulse";
     } else if (star.rarity === "BRILLIANT") {
-      color = "rgba(147, 112, 219, 1)";
-      glowColor = "rgba(147, 112, 219, 0.9)";
-      outerGlowColor = "rgba(147, 112, 219, 0.5)";
+      color = "rgba(96, 165, 250, 1)";
+      glowColor = "rgba(96, 165, 250, 0.9)";
+      outerGlowColor = "rgba(96, 165, 250, 0.5)";
       glowOpacity = 0.9;
-      animationClass = "ethereal-sparkle";
+      animationClass = "diamond-sparkle";
     }
 
     const size = baseSize;
@@ -155,11 +155,11 @@ export function StarCanvas({
       data-testid="star-canvas"
     >
       <style>{`
-        @keyframes astral-pulse {
+        @keyframes topaz-pulse {
           0%, 100% { opacity: 0.7; transform: scale(1); }
           50% { opacity: 1; transform: scale(1.15); }
         }
-        @keyframes ethereal-sparkle {
+        @keyframes diamond-sparkle {
           0%, 100% { opacity: 0.8; transform: scale(1) rotate(0deg); filter: brightness(1); }
           25% { opacity: 1; transform: scale(1.1) rotate(2deg); filter: brightness(1.3); }
           50% { opacity: 0.9; transform: scale(1.2) rotate(0deg); filter: brightness(1.5); }
@@ -169,11 +169,11 @@ export function StarCanvas({
           0%, 100% { opacity: 0.6; }
           50% { opacity: 1; }
         }
-        .astral-pulse {
-          animation: astral-pulse 2s ease-in-out infinite;
+        .topaz-pulse {
+          animation: topaz-pulse 2s ease-in-out infinite;
         }
-        .ethereal-sparkle {
-          animation: ethereal-sparkle 3s ease-in-out infinite;
+        .diamond-sparkle {
+          animation: diamond-sparkle 3s ease-in-out infinite;
         }
       `}</style>
       
