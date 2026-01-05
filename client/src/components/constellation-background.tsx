@@ -1,17 +1,46 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
-import { calculateStarSize, StarRarityType, getStarDisplayName } from "@shared/starSize";
+import { calculateStarSize, StarRarityType } from "@shared/starSize";
 
-import starNormal from "../assets/star-normal.png";
-import starAscended from "../assets/star-ascended.png";
-import starTranscendent from "../assets/star-transcendent.png";
-
-const starImages: Record<StarRarityType, string> = {
-  NORMAL: starNormal,
-  BRIGHT: starAscended,
-  BRILLIANT: starTranscendent,
+const starColors: Record<StarRarityType, { primary: string; glow: string }> = {
+  NORMAL: { primary: "#FFFFFF", glow: "rgba(255, 255, 255, 0.6)" },
+  BRIGHT: { primary: "#FFF8DC", glow: "rgba(255, 248, 220, 0.7)" },
+  BRILLIANT: { primary: "#E8F0FF", glow: "rgba(200, 220, 255, 0.8)" },
 };
+
+function StarShape({ rarity, size, id }: { rarity: StarRarityType; size: number; id: string }) {
+  const colors = starColors[rarity];
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className="pointer-events-none"
+    >
+      <defs>
+        <filter id={`bg-glow-${id}`} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="0.8" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        <radialGradient id={`bg-starGradient-${id}`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor={colors.primary} />
+          <stop offset="70%" stopColor={colors.primary} stopOpacity="0.9" />
+          <stop offset="100%" stopColor={colors.glow} stopOpacity="0.6" />
+        </radialGradient>
+      </defs>
+      <path
+        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+        fill={`url(#bg-starGradient-${id})`}
+        filter={`url(#bg-glow-${id})`}
+      />
+    </svg>
+  );
+}
 
 interface StarData {
   id: string;
@@ -136,23 +165,18 @@ export function ConstellationBackground() {
               transform: "translate(-50%, -50%)",
             }}
           >
-            <img
-              src={starImages[star.rarity]}
-              alt={getStarDisplayName(star.rarity)}
-              className="object-contain pointer-events-none"
+            <div
               style={{
-                width: size,
-                height: size,
                 opacity,
-                mixBlendMode: 'screen',
                 animation: star.rarity === "BRILLIANT" 
                   ? 'bg-slow-rotate 120s linear infinite' 
                   : star.rarity === "BRIGHT"
                     ? 'bg-breathing 4s ease-in-out infinite'
                     : 'bg-subtle-pulse 5s ease-in-out infinite',
               }}
-              draggable={false}
-            />
+            >
+              <StarShape rarity={star.rarity} size={size} id={star.id} />
+            </div>
           </motion.div>
         );
       })}

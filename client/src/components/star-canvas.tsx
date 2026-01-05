@@ -226,22 +226,14 @@ export function StarCanvas({
                 style={{
                   width: size,
                   height: size,
+                  animation: star.rarity === "BRILLIANT" 
+                    ? 'slow-rotate 60s linear infinite' 
+                    : star.rarity === "BRIGHT"
+                      ? 'breathing-glow 3s ease-in-out infinite'
+                      : 'subtle-pulse 5s ease-in-out infinite',
                 }}
               >
-                <img
-                  src={starImages[star.rarity]}
-                  alt={getStarDisplayName(star.rarity)}
-                  className="w-full h-full object-contain pointer-events-none"
-                  style={{
-                    mixBlendMode: 'screen',
-                    animation: star.rarity === "BRILLIANT" 
-                      ? 'slow-rotate 60s linear infinite' 
-                      : star.rarity === "BRIGHT"
-                        ? 'breathing-glow 3s ease-in-out infinite'
-                        : 'subtle-pulse 5s ease-in-out infinite',
-                  }}
-                  draggable={false}
-                />
+                <StarShape rarity={star.rarity} size={size} />
               </div>
               {showLabels && (
                 <span className="absolute top-full left-1/2 -translate-x-1/2 mt-1 text-[10px] text-white/60">
