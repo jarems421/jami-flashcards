@@ -28,13 +28,23 @@ export function calculateStarSize(
 
   const clampedCards = Math.max(minCards, Math.min(maxCards, goalTargetCount));
   
-  const logMin = Math.log(minCards);
-  const logMax = Math.log(maxCards);
-  const logCurrent = Math.log(clampedCards);
+  let t: number;
   
-  let t = (logCurrent - logMin) / (logMax - logMin);
-  
-  t = 0.15 + (t * 0.85);
+  if (clampedCards < 1000) {
+    // Below 1000 cards: smaller stars (0-35% of size range)
+    const logMin = Math.log(minCards);
+    const logMid = Math.log(1000);
+    const logCurrent = Math.log(clampedCards);
+    const progress = (logCurrent - logMin) / (logMid - logMin);
+    t = progress * 0.35;
+  } else {
+    // 1000+ cards: larger stars (35-100% of size range)
+    const logMid = Math.log(1000);
+    const logMax = Math.log(maxCards);
+    const logCurrent = Math.log(clampedCards);
+    const progress = (logCurrent - logMid) / (logMax - logMid);
+    t = 0.35 + (progress * 0.65);
+  }
   
   const accuracyBonus = targetAccuracy > 80 ? (targetAccuracy - 80) / 100 : 0;
   t = Math.min(1, t + (accuracyBonus * 0.05));
