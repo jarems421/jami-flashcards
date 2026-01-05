@@ -218,7 +218,8 @@ export async function registerRoutes(
     try {
       const { deckId, deckIds, tags, limit: queryLimit } = req.query;
       const todayStart = startOfDay(new Date());
-      const cardLimit = queryLimit ? parseInt(queryLimit as string, 10) : 50;
+      // Default to 1000 cards for study sessions - enough for most use cases
+      const cardLimit = queryLimit ? parseInt(queryLimit as string, 10) : 1000;
       const userId = getUserId(req);
 
       // Support multiple deck IDs
