@@ -395,7 +395,7 @@ export default function Goals() {
                             <>
                               <motion.div
                                 initial={{ scale: 0 }}
-                                animate={{ scale: 1, rotate: [0, 10, -10, 0] }}
+                                animate={{ scale: 1 }}
                                 transition={{ type: "spring", stiffness: 500 }}
                               >
                                 <CheckCircle2 className="h-4 w-4" />
