@@ -172,7 +172,7 @@ export function CelestialEmergence({
                 alt={displayName}
                 className="w-24 h-24 object-contain pointer-events-none"
                 style={{
-                  filter: `drop-shadow(0 0 20px rgba(255, 255, 255, 0.6))`,
+                  mixBlendMode: 'screen',
                 }}
               />
             </motion.div>
