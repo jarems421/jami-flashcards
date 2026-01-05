@@ -308,7 +308,7 @@ export default function Goals() {
             </div>
           </div>
           <div className="text-right text-sm text-slate-400">
-            Star #{(activeConstellation?.stars?.length || 0) + 1} of 100
+            Star {(activeConstellation?.stars?.length || 0) + 1} of 30
           </div>
         </CardContent>
       </Card>

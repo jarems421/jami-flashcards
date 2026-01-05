@@ -388,7 +388,7 @@ export default function Constellations() {
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">
                       <Star className={`h-3 w-3 inline mr-1 ${demoRarity === 'BRILLIANT' ? 'text-blue-300' : demoRarity === 'BRIGHT' ? 'text-yellow-100' : 'text-white'}`} />
-                      {getStarDisplayName(demoRarity)} · {demoCardCount || 0} cards @ {demoAccuracy || 80}% = {calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80).toFixed(0)}px
+                      {getStarDisplayName(demoRarity)} · {demoCardCount || 0} cards, {demoAccuracy || 80}% accuracy = {calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80).toFixed(0)}px
                     </p>
                     <div className="flex gap-2">
                       <Button

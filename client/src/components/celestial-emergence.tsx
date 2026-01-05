@@ -45,10 +45,10 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute top-1/2 left-0 right-0"
         style={{
-          height: size * 0.1,
+          height: size * 0.15,
           transform: 'translateY(-50%)',
-          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 30%, ${colors.core} 50%, ${colors.glow} 70%, transparent 100%)`,
-          filter: `blur(${size * 0.025}px)`,
+          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 25%, ${colors.core} 50%, ${colors.glow} 75%, transparent 100%)`,
+          filter: `blur(${size * 0.06}px)`,
         }}
       />
       
@@ -56,10 +56,10 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute left-1/2 top-0 bottom-0"
         style={{
-          width: size * 0.1,
+          width: size * 0.15,
           transform: 'translateX(-50%)',
-          background: `linear-gradient(180deg, transparent 0%, ${colors.glow} 30%, ${colors.core} 50%, ${colors.glow} 70%, transparent 100%)`,
-          filter: `blur(${size * 0.025}px)`,
+          background: `linear-gradient(180deg, transparent 0%, ${colors.glow} 25%, ${colors.core} 50%, ${colors.glow} 75%, transparent 100%)`,
+          filter: `blur(${size * 0.06}px)`,
         }}
       />
       
@@ -67,11 +67,11 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute top-1/2 left-1/2"
         style={{
-          width: glowSize * 0.85,
-          height: size * 0.06,
+          width: glowSize * 0.8,
+          height: size * 0.1,
           transform: 'translate(-50%, -50%) rotate(45deg)',
-          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 35%, ${colors.core} 50%, ${colors.glow} 65%, transparent 100%)`,
-          filter: `blur(${size * 0.02}px)`,
+          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 30%, ${colors.core} 50%, ${colors.glow} 70%, transparent 100%)`,
+          filter: `blur(${size * 0.05}px)`,
         }}
       />
       
@@ -79,11 +79,11 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute top-1/2 left-1/2"
         style={{
-          width: glowSize * 0.85,
-          height: size * 0.06,
+          width: glowSize * 0.8,
+          height: size * 0.1,
           transform: 'translate(-50%, -50%) rotate(-45deg)',
-          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 35%, ${colors.core} 50%, ${colors.glow} 65%, transparent 100%)`,
-          filter: `blur(${size * 0.02}px)`,
+          background: `linear-gradient(90deg, transparent 0%, ${colors.glow} 30%, ${colors.core} 50%, ${colors.glow} 70%, transparent 100%)`,
+          filter: `blur(${size * 0.05}px)`,
         }}
       />
       
@@ -91,11 +91,11 @@ function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
       <div 
         className="absolute top-1/2 left-1/2 rounded-full"
         style={{
-          width: size * 0.6,
-          height: size * 0.6,
+          width: size * 0.7,
+          height: size * 0.7,
           transform: 'translate(-50%, -50%)',
-          background: `radial-gradient(circle, ${colors.core} 0%, ${colors.glow} 40%, transparent 100%)`,
-          filter: `blur(${size * 0.03}px)`,
+          background: `radial-gradient(circle, ${colors.core} 0%, ${colors.glow} 35%, transparent 100%)`,
+          filter: `blur(${size * 0.08}px)`,
         }}
       />
       
@@ -283,7 +283,7 @@ export function CelestialEmergence({
             <h3 className="text-xl font-light text-white mb-1">{titleText}</h3>
             <p className="text-white/60 text-sm">{descriptionText}</p>
             {starNumber && (
-              <p className="text-white/40 text-xs mt-2">Star #{starNumber}</p>
+              <p className="text-white/40 text-xs mt-2">Star {starNumber}</p>
             )}
           </motion.div>
         </motion.div>

@@ -1230,8 +1230,8 @@ export async function registerRoutes(
             });
             
             let completed = false;
-            // Mark constellation complete if it reached 100 stars
-            if (newOrderIndex >= 100) {
+            // Mark constellation complete if it reached 30 stars
+            if (newOrderIndex >= 30) {
               await tx.constellation.update({
                 where: { id: constellation.id },
                 data: { isComplete: true }
@@ -1576,9 +1576,9 @@ export async function registerRoutes(
       let constellation = await getOrCreateActiveConstellation(userId);
       const currentStarCount = constellation.stars.length;
       
-      // If constellation is full (100 stars), it should already be marked complete
+      // If constellation is full (30 stars), it should already be marked complete
       // and a new one should have been created
-      if (currentStarCount >= 100) {
+      if (currentStarCount >= 30) {
         // Mark as complete and create new
         await db.constellation.update({
           where: { id: constellation.id },
