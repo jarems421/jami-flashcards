@@ -3,42 +3,69 @@ import { motion } from "framer-motion";
 import { useLocation } from "wouter";
 import { calculateStarSize, StarRarityType } from "@shared/starSize";
 
-const starColors: Record<StarRarityType, { primary: string; glow: string }> = {
-  NORMAL: { primary: "#FFFFFF", glow: "rgba(255, 255, 255, 0.6)" },
-  BRIGHT: { primary: "#FFF8DC", glow: "rgba(255, 248, 220, 0.7)" },
-  BRILLIANT: { primary: "#E8F0FF", glow: "rgba(200, 220, 255, 0.8)" },
+const starColors: Record<StarRarityType, { core: string; glow: string; outer: string }> = {
+  NORMAL: { 
+    core: "rgba(255, 255, 255, 1)", 
+    glow: "rgba(255, 255, 255, 0.6)", 
+    outer: "rgba(200, 210, 255, 0.3)" 
+  },
+  BRIGHT: { 
+    core: "rgba(255, 250, 230, 1)", 
+    glow: "rgba(255, 235, 180, 0.7)", 
+    outer: "rgba(255, 220, 150, 0.4)" 
+  },
+  BRILLIANT: { 
+    core: "rgba(220, 235, 255, 1)", 
+    glow: "rgba(180, 210, 255, 0.8)", 
+    outer: "rgba(150, 190, 255, 0.5)" 
+  },
 };
 
-function StarShape({ rarity, size, id }: { rarity: StarRarityType; size: number; id: string }) {
+function CSStar({ size, rarity }: { size: number; rarity: StarRarityType }) {
   const colors = starColors[rarity];
+  const glowSize = size * 1.8;
+  
+  const getAnimation = () => {
+    if (rarity === "BRILLIANT") return "bg-slow-rotate 120s linear infinite";
+    if (rarity === "BRIGHT") return "bg-breathing 4s ease-in-out infinite";
+    return "bg-subtle-pulse 5s ease-in-out infinite";
+  };
+  
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="none"
-      className="pointer-events-none"
+    <div 
+      className="relative" 
+      style={{ 
+        width: glowSize, 
+        height: glowSize,
+        animation: getAnimation(),
+      }}
     >
-      <defs>
-        <filter id={`bg-glow-${id}`} x="-50%" y="-50%" width="200%" height="200%">
-          <feGaussianBlur stdDeviation="0.8" result="coloredBlur"/>
-          <feMerge>
-            <feMergeNode in="coloredBlur"/>
-            <feMergeNode in="SourceGraphic"/>
-          </feMerge>
-        </filter>
-        <radialGradient id={`bg-starGradient-${id}`} cx="50%" cy="50%" r="50%">
-          <stop offset="0%" stopColor={colors.primary} />
-          <stop offset="70%" stopColor={colors.primary} stopOpacity="0.9" />
-          <stop offset="100%" stopColor={colors.glow} stopOpacity="0.6" />
-        </radialGradient>
-      </defs>
-      <path
-        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
-        fill={`url(#bg-starGradient-${id})`}
-        filter={`url(#bg-glow-${id})`}
+      <div 
+        className="absolute inset-0 rounded-full"
+        style={{
+          background: `radial-gradient(circle, ${colors.outer} 0%, transparent 70%)`,
+        }}
       />
-    </svg>
+      <div 
+        className="absolute top-1/2 left-1/2 rounded-full"
+        style={{
+          width: size * 0.8,
+          height: size * 0.8,
+          transform: 'translate(-50%, -50%)',
+          background: `radial-gradient(circle, ${colors.glow} 0%, transparent 70%)`,
+        }}
+      />
+      <div 
+        className="absolute top-1/2 left-1/2 rounded-full"
+        style={{
+          width: size * 0.25,
+          height: size * 0.25,
+          transform: 'translate(-50%, -50%)',
+          background: `radial-gradient(circle, ${colors.core} 0%, ${colors.glow} 60%, transparent 100%)`,
+          boxShadow: `0 0 ${size * 0.2}px ${colors.glow}`,
+        }}
+      />
+    </div>
   );
 }
 
@@ -165,17 +192,8 @@ export function ConstellationBackground() {
               transform: "translate(-50%, -50%)",
             }}
           >
-            <div
-              style={{
-                opacity,
-                animation: star.rarity === "BRILLIANT" 
-                  ? 'bg-slow-rotate 120s linear infinite' 
-                  : star.rarity === "BRIGHT"
-                    ? 'bg-breathing 4s ease-in-out infinite'
-                    : 'bg-subtle-pulse 5s ease-in-out infinite',
-              }}
-            >
-              <StarShape rarity={star.rarity} size={size} id={star.id} />
+            <div style={{ opacity }}>
+              <CSStar rarity={star.rarity} size={size} />
             </div>
           </motion.div>
         );
