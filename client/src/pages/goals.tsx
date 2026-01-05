@@ -13,7 +13,6 @@ import { Target, Plus, Trash2, Calendar, TrendingUp, Pause, Play, CheckCircle2, 
 import { useToast } from "@/hooks/use-toast";
 import { format, startOfDay, differenceInDays } from "date-fns";
 import { motion, AnimatePresence } from "framer-motion";
-import { celebrateGoalComplete } from "@/lib/confetti";
 import { getNextStarRarity } from "@shared/starSize";
 
 interface Deck {
@@ -83,7 +82,7 @@ export default function Goals() {
 
   const nextStar = activeConstellation 
     ? getNextStarRarity(activeConstellation.stars?.length || 0)
-    : { displayName: 'Quartz', rarity: 'NORMAL' as const };
+    : { displayName: 'Star', rarity: 'NORMAL' as const };
 
   const createGoalMutation = useMutation({
     mutationFn: async (data: typeof newGoal) => {
@@ -107,7 +106,7 @@ export default function Goals() {
       queryClient.invalidateQueries({ queryKey: ["/api/goals"] });
       setIsDialogOpen(false);
       setNewGoal({ deckId: '', cadence: 'DAILY', targetCount: '20', targetAccuracy: '80', deadline: '', deadlineTime: '23:59' });
-      toast({ title: "Goal created successfully" });
+      toast({ title: "Goal created" });
     },
     onError: () => {
       toast({ title: "Failed to create goal", variant: "destructive" });
@@ -148,10 +147,9 @@ export default function Goals() {
       
       if (progressPercent >= 100 && !celebratedGoals.current.has(goal.id)) {
         celebratedGoals.current.add(goal.id);
-        celebrateGoalComplete();
         toast({ 
-          title: "Goal Completed!", 
-          description: `You've reached your ${goal.cadence.toLowerCase()} target for ${goal.deck?.name || "all decks"}!`
+          title: "Goal completed", 
+          description: `${goal.cadence.toLowerCase()} target reached for ${goal.deck?.name || "all decks"}.`
         });
       }
     });

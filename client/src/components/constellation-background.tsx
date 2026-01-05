@@ -1,7 +1,17 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion } from "framer-motion";
 import { useLocation } from "wouter";
-import { calculateStarSize, StarRarityType } from "@shared/starSize";
+import { calculateStarSize, StarRarityType, getStarDisplayName } from "@shared/starSize";
+
+import starNormal from "../assets/star-normal.png";
+import starAscended from "../assets/star-ascended.png";
+import starTranscendent from "../assets/star-transcendent.png";
+
+const starImages: Record<StarRarityType, string> = {
+  NORMAL: starNormal,
+  BRIGHT: starAscended,
+  BRILLIANT: starTranscendent,
+};
 
 interface StarData {
   id: string;
@@ -70,25 +80,16 @@ export function ConstellationBackground() {
   }
 
   const getStarStyles = (star: StarData) => {
-    const baseSize = calculateStarSize(star.goalTargetCount || 10, star.targetAccuracy || 80);
+    const size = calculateStarSize(star.goalTargetCount || 10, star.targetAccuracy || 80) * 0.6;
     
-    let opacity = 0.6;
-    let color = "rgba(255, 255, 255, 1)";
-
-    let accentColor = "transparent";
-    
+    let opacity = 0.5;
     if (star.rarity === "BRIGHT") {
-      opacity = 0.7;
-      accentColor = "rgba(251, 191, 36, 0.5)";
+      opacity = 0.6;
     } else if (star.rarity === "BRILLIANT") {
-      opacity = 0.8;
-      accentColor = "rgba(96, 165, 250, 0.5)";
+      opacity = 0.7;
     }
 
-    const size = baseSize;
-    const glowSize = size * 1.5;
-
-    return { size, glowSize, opacity, color, accentColor };
+    return { size, opacity };
   };
 
   return (
@@ -104,16 +105,34 @@ export function ConstellationBackground() {
         }}
       />
       
+      <style>{`
+        @keyframes bg-breathing {
+          0%, 100% { opacity: 0.85; }
+          50% { opacity: 1; }
+        }
+        @keyframes bg-slow-rotate {
+          0% { transform: translate(-50%, -50%) rotate(0deg); }
+          100% { transform: translate(-50%, -50%) rotate(360deg); }
+        }
+        @keyframes bg-subtle-pulse {
+          0%, 100% { opacity: 0.9; }
+          50% { opacity: 1; }
+        }
+      `}</style>
+      
       {constellation.stars.map((star) => {
-        const { size, glowSize, opacity, color, accentColor } = getStarStyles(star);
-        const glowColor = color.replace('1)', `${opacity})`);
-        const hasAccent = star.rarity === "BRIGHT" || star.rarity === "BRILLIANT";
+        const { size, opacity } = getStarStyles(star);
+        const glowColor = star.rarity === "BRILLIANT" 
+          ? 'rgba(200, 220, 255, 0.08)' 
+          : star.rarity === "BRIGHT"
+            ? 'rgba(255, 245, 220, 0.06)'
+            : 'rgba(255, 255, 255, 0.04)';
 
         return (
           <motion.div
             key={star.id}
             initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
+            animate={{ opacity }}
             transition={{ duration: 1, delay: Math.random() * 0.5 }}
             className="absolute"
             style={{
@@ -122,84 +141,34 @@ export function ConstellationBackground() {
               transform: "translate(-50%, -50%)",
             }}
           >
-            <div
-              className="relative"
-              style={{
-                width: glowSize,
-                height: glowSize,
-              }}
-            >
-              <div
-                className="absolute inset-0 animate-pulse"
+            <div className="relative" style={{ width: size * 1.3, height: size * 1.3 }}>
+              <div 
+                className="absolute inset-0 rounded-full"
                 style={{
-                  background: `radial-gradient(circle, ${glowColor.replace(`${opacity})`, `${opacity * 0.4})`)} 0%, transparent 60%)`,
-                  animationDuration: `${3 + Math.random() * 2}s`,
+                  background: `radial-gradient(circle, ${glowColor} 0%, transparent 60%)`,
+                  animation: star.rarity === "BRIGHT" 
+                    ? 'bg-breathing 4s ease-in-out infinite' 
+                    : 'bg-subtle-pulse 5s ease-in-out infinite',
                 }}
               />
-              <div
-                className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2"
+              <img
+                src={starImages[star.rarity]}
+                alt={getStarDisplayName(star.rarity)}
+                className="absolute top-1/2 left-1/2 object-contain pointer-events-none"
                 style={{
                   width: size,
                   height: size,
-                  filter: `blur(${Math.max(0.5, size * 0.02)}px)`,
+                  transform: 'translate(-50%, -50%)',
+                  filter: `drop-shadow(0 0 ${size * 0.1}px rgba(255, 255, 255, 0.3))`,
+                  animation: star.rarity === "BRILLIANT" 
+                    ? 'bg-slow-rotate 120s linear infinite' 
+                    : star.rarity === "BRIGHT"
+                      ? 'bg-breathing 4s ease-in-out infinite'
+                      : undefined,
+                  transformOrigin: star.rarity === "BRILLIANT" ? undefined : 'center center',
                 }}
-              >
-                <div
-                  className="absolute top-1/2 left-0 -translate-y-1/2"
-                  style={{
-                    width: '100%',
-                    height: Math.max(2, size * 0.08),
-                    background: `linear-gradient(90deg, transparent 0%, ${glowColor.replace(`${opacity})`, '0.3)')} 25%, ${glowColor.replace(`${opacity})`, '0.8)')} 45%, ${color} 50%, ${glowColor.replace(`${opacity})`, '0.8)')} 55%, ${glowColor.replace(`${opacity})`, '0.3)')} 75%, transparent 100%)`,
-                    borderRadius: '50%',
-                  }}
-                />
-                <div
-                  className="absolute left-1/2 top-0 -translate-x-1/2"
-                  style={{
-                    height: '100%',
-                    width: Math.max(2, size * 0.08),
-                    background: `linear-gradient(180deg, transparent 0%, ${glowColor.replace(`${opacity})`, '0.3)')} 25%, ${glowColor.replace(`${opacity})`, '0.8)')} 45%, ${color} 50%, ${glowColor.replace(`${opacity})`, '0.8)')} 55%, ${glowColor.replace(`${opacity})`, '0.3)')} 75%, transparent 100%)`,
-                    borderRadius: '50%',
-                  }}
-                />
-                <div
-                  className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 rounded-full"
-                  style={{
-                    width: size * 0.25,
-                    height: size * 0.25,
-                    background: `radial-gradient(circle, ${color} 0%, ${glowColor.replace(`${opacity})`, '0.8)')} 40%, transparent 100%)`,
-                    boxShadow: `0 0 ${size * 0.2}px ${color}, 0 0 ${size * 0.4}px ${glowColor.replace(`${opacity})`, '0.5)')}`,
-                  }}
-                />
-              </div>
-              {hasAccent && (
-                <>
-                  <div 
-                    className="absolute animate-pulse rounded-full"
-                    style={{
-                      top: '20%',
-                      left: '25%',
-                      width: 2,
-                      height: 2,
-                      background: accentColor,
-                      animationDuration: '1.5s',
-                      animationDelay: '0.2s',
-                    }}
-                  />
-                  <div 
-                    className="absolute animate-pulse rounded-full"
-                    style={{
-                      top: '65%',
-                      left: '70%',
-                      width: 2,
-                      height: 2,
-                      background: accentColor,
-                      animationDuration: '2s',
-                      animationDelay: '0.7s',
-                    }}
-                  />
-                </>
-              )}
+                draggable={false}
+              />
             </div>
           </motion.div>
         );

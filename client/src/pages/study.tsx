@@ -12,8 +12,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { celebrateGoalComplete, celebrateStarEarned } from "@/lib/confetti";
 import { getStarDisplayName, StarRarityType } from "@shared/starSize";
+import { CelestialEmergence, ConstellationCompleteEmergence } from "@/components/celestial-emergence";
 
 interface CardData {
   id: string;
@@ -61,6 +61,11 @@ export default function Study() {
   const [isFlipped, setIsFlipped] = useState(false);
   const [canUndo, setCanUndo] = useState(false);
   const [cardStartTime, setCardStartTime] = useState<number>(Date.now());
+  
+  const [showCelestialEmergence, setShowCelestialEmergence] = useState(false);
+  const [emergenceStarRarity, setEmergenceStarRarity] = useState<StarRarityType>("NORMAL");
+  const [emergenceStarNumber, setEmergenceStarNumber] = useState<number | undefined>();
+  const [showConstellationComplete, setShowConstellationComplete] = useState(false);
 
   // Deck selection state
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>(initialDeckId ? [initialDeckId] : []);
@@ -125,20 +130,12 @@ export default function Study() {
         queryClient.invalidateQueries({ queryKey: ["constellations"] });
         queryClient.invalidateQueries({ queryKey: ["constellation"] });
         
-        const starDisplayName = getStarDisplayName(data.star.rarity as StarRarityType);
-        
         if (data.constellationCompleted) {
-          celebrateGoalComplete();
-          toast({ 
-            title: "Constellation Complete!",
-            description: `You've collected 100 stars! A new constellation awaits.`
-          });
+          setShowConstellationComplete(true);
         } else {
-          celebrateStarEarned();
-          toast({ 
-            title: `Goal Complete! ${starDisplayName} Star Earned!`, 
-            description: `Star #${data.star.orderIndex} added to your constellation.`
-          });
+          setEmergenceStarRarity(data.star.rarity as StarRarityType);
+          setEmergenceStarNumber(data.star.orderIndex);
+          setShowCelestialEmergence(true);
         }
       }
     }
@@ -243,7 +240,7 @@ export default function Study() {
       setCurrentIndex(prev => Math.max(0, prev - 1));
       setSessionComplete(false);
       setCanUndo(false);
-      toast({ title: "Undone last review" });
+      toast({ title: "Last review undone" });
     },
     onError: () => {
       toast({ 
@@ -501,7 +498,7 @@ export default function Study() {
                   setCurrentIndex(0);
                   setSessionComplete(false);
                   setElapsed(0);
-                  toast({ title: "Redoing incorrect cards", description: `Queued ${wrongCards.length} cards for review.` });
+                  toast({ title: "Redoing incorrect cards", description: `${wrongCards.length} cards queued for review.` });
               }}>
                 Redo Incorrect Cards ({wrongCards.length})
               </Button>
@@ -539,9 +536,9 @@ export default function Study() {
                   }
                   
                   if (!newData?.queue?.length) {
-                    toast({ title: "No new cards found", description: "You're all caught up!" });
+                    toast({ title: "No new cards found", description: "You're all caught up." });
                   } else {
-                    toast({ title: "Queue refreshed", description: `Found ${newData.queue.length} cards.` });
+                    toast({ title: "Queue refreshed", description: `${newData.queue.length} cards ready.` });
                   }
               }}>Refresh</Button>
             </div>
@@ -714,6 +711,18 @@ export default function Study() {
           </div>
         )}
       </div>
+
+      <CelestialEmergence
+        isVisible={showCelestialEmergence}
+        starRarity={emergenceStarRarity}
+        starNumber={emergenceStarNumber}
+        onComplete={() => setShowCelestialEmergence(false)}
+      />
+      
+      <ConstellationCompleteEmergence
+        isVisible={showConstellationComplete}
+        onComplete={() => setShowConstellationComplete(false)}
+      />
     </div>
   );
 }

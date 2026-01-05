@@ -377,9 +377,9 @@ export default function Constellations() {
                           <SelectValue />
                         </SelectTrigger>
                         <SelectContent>
-                          <SelectItem value="NORMAL">Quartz</SelectItem>
-                          <SelectItem value="BRIGHT">Topaz</SelectItem>
-                          <SelectItem value="BRILLIANT">Diamond</SelectItem>
+                          <SelectItem value="NORMAL">Star</SelectItem>
+                          <SelectItem value="BRIGHT">Ascended</SelectItem>
+                          <SelectItem value="BRILLIANT">Transcendent</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
