@@ -2,15 +2,44 @@ import { useRef, useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { calculateStarSize, getStarDisplayName, StarRarityType } from "@shared/starSize";
 
-import starNormal from "../assets/star-normal.png";
-import starAscended from "../assets/star-ascended.png";
-import starTranscendent from "../assets/star-transcendent.png";
-
-const starImages: Record<StarRarityType, string> = {
-  NORMAL: starNormal,
-  BRIGHT: starAscended,
-  BRILLIANT: starTranscendent,
+const starColors: Record<StarRarityType, { primary: string; glow: string }> = {
+  NORMAL: { primary: "#FFFFFF", glow: "rgba(255, 255, 255, 0.6)" },
+  BRIGHT: { primary: "#FFF8DC", glow: "rgba(255, 248, 220, 0.7)" },
+  BRILLIANT: { primary: "#E8F0FF", glow: "rgba(200, 220, 255, 0.8)" },
 };
+
+function StarShape({ rarity, size }: { rarity: StarRarityType; size: number }) {
+  const colors = starColors[rarity];
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      className="pointer-events-none"
+    >
+      <defs>
+        <filter id={`glow-${rarity}`} x="-50%" y="-50%" width="200%" height="200%">
+          <feGaussianBlur stdDeviation="1" result="coloredBlur"/>
+          <feMerge>
+            <feMergeNode in="coloredBlur"/>
+            <feMergeNode in="SourceGraphic"/>
+          </feMerge>
+        </filter>
+        <radialGradient id={`starGradient-${rarity}`} cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stopColor={colors.primary} />
+          <stop offset="70%" stopColor={colors.primary} stopOpacity="0.9" />
+          <stop offset="100%" stopColor={colors.glow} stopOpacity="0.6" />
+        </radialGradient>
+      </defs>
+      <path
+        d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"
+        fill={`url(#starGradient-${rarity})`}
+        filter={`url(#glow-${rarity})`}
+      />
+    </svg>
+  );
+}
 
 interface Star {
   id: string;
