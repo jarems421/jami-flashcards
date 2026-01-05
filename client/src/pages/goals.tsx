@@ -149,7 +149,7 @@ export default function Goals() {
         celebratedGoals.current.add(goal.id);
         toast({ 
           title: "Goal completed", 
-          description: `${goal.cadence.toLowerCase()} target reached for ${goal.deck?.name || "all decks"}.`
+          description: `Daily target reached for ${goal.deck?.name || "all decks"}.`
         });
       }
     });
@@ -186,8 +186,8 @@ export default function Goals() {
   const expiredGoals = goals?.filter(g => g.status === 'ACTIVE' && g.deadline && new Date(g.deadline) < now) || [];
 
   const getStarColorClass = (rarity: string) => {
-    if (rarity === 'BRILLIANT') return 'text-blue-400';
-    if (rarity === 'BRIGHT') return 'text-amber-400';
+    if (rarity === 'BRILLIANT') return 'text-blue-300';
+    if (rarity === 'BRIGHT') return 'text-yellow-100';
     return 'text-white';
   };
 
@@ -223,19 +223,6 @@ export default function Goals() {
                     {decks?.map(d => (
                       <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Cadence</Label>
-                <Select value={newGoal.cadence} onValueChange={(v) => setNewGoal(g => ({ ...g, cadence: v as 'DAILY' | 'WEEKLY' }))}>
-                  <SelectTrigger data-testid="select-cadence">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="DAILY">Daily</SelectItem>
-                    <SelectItem value="WEEKLY">Weekly</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -310,13 +297,13 @@ export default function Goals() {
       <Card className="bg-gradient-to-r from-slate-900 to-slate-800 border-slate-700">
         <CardContent className="p-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-full ${nextStar.rarity === 'BRILLIANT' ? 'bg-blue-500/20' : nextStar.rarity === 'BRIGHT' ? 'bg-amber-500/20' : 'bg-white/10'}`}>
+            <div className={`p-2 rounded-full ${nextStar.rarity === 'BRILLIANT' ? 'bg-blue-500/20' : nextStar.rarity === 'BRIGHT' ? 'bg-yellow-100/20' : 'bg-white/10'}`}>
               <Sparkles className={`h-5 w-5 ${getStarColorClass(nextStar.rarity)}`} />
             </div>
             <div>
               <p className="text-sm text-slate-300">Next goal completion earns</p>
               <p className={`font-semibold ${getStarColorClass(nextStar.rarity)}`}>
-                {nextStar.displayName} Star
+                {nextStar.rarity === 'NORMAL' ? 'Star' : `${nextStar.displayName} Star`}
               </p>
             </div>
           </div>
@@ -332,7 +319,7 @@ export default function Goals() {
             <Target className="h-12 w-12 text-muted-foreground/50 mb-4" />
             <h3 className="font-semibold mb-2">No study goals yet</h3>
             <p className="text-sm text-muted-foreground text-center max-w-sm mb-4">
-              Set daily or weekly targets to stay consistent with your studying
+              Set daily targets to stay consistent with your studying
             </p>
             <Button variant="outline" onClick={() => setIsDialogOpen(true)} data-testid="button-create-first-goal">
               Create your first goal
@@ -371,12 +358,9 @@ export default function Goals() {
                           <span className="font-semibold">
                             {goal.deck?.name || "All Decks"}
                           </span>
-                          <Badge variant="outline" className="text-xs">
-                            {goal.cadence}
-                          </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          Target: {goal.targetCount} cards per {goal.cadence === 'DAILY' ? 'day' : 'week'}
+                          Target: {goal.targetCount} cards per day
                           {goal.targetAccuracy && ` • ${goal.targetAccuracy}% accuracy`}
                         </p>
                       </div>
@@ -435,7 +419,7 @@ export default function Goals() {
                           animate={{ opacity: 1, y: 0 }}
                           className="text-xs text-green-600"
                         >
-                          You've reached your {goal.cadence === 'DAILY' ? 'daily' : 'weekly'} goal!
+                          You've reached your daily goal!
                         </motion.p>
                       )}
                     </div>
@@ -474,7 +458,7 @@ export default function Goals() {
                   <div>
                     <span className="font-medium">{goal.deck?.name || "All Decks"}</span>
                     <span className="text-muted-foreground ml-2">
-                      {goal.targetCount} cards/{goal.cadence === 'DAILY' ? 'day' : 'week'}
+                      {goal.targetCount} cards/day
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
@@ -514,7 +498,7 @@ export default function Goals() {
                   <div>
                     <span className="font-medium">{goal.deck?.name || "All Decks"}</span>
                     <span className="text-muted-foreground ml-2">
-                      {goal.targetCount} cards/{goal.cadence === 'DAILY' ? 'day' : 'week'}
+                      {goal.targetCount} cards/day
                     </span>
                     {goal.deadline && (
                       <span className="text-xs text-red-500 ml-2">

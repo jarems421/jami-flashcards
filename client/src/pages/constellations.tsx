@@ -253,10 +253,10 @@ export default function Constellations() {
                     <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
                       <div className="flex items-center gap-2 flex-wrap">
                         <CardTitle className="flex items-center gap-2">
-                          <Star className="h-5 w-5 text-amber-400" />
+                          <Star className="h-5 w-5 text-white" />
                           {currentConstellation.name}
                           {currentConstellation.isComplete && (
-                            <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
+                            <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">
                               Complete
                             </span>
                           )}
@@ -337,7 +337,7 @@ export default function Constellations() {
             <CardContent>
               {!demoMode ? (
                 <div className="text-center py-4">
-                  <Star className="h-8 w-8 mx-auto mb-3 text-amber-400" />
+                  <Star className="h-8 w-8 mx-auto mb-3 text-white" />
                   <p className="text-sm text-muted-foreground">
                     Bigger goals earn bigger stars!
                   </p>
@@ -387,7 +387,7 @@ export default function Constellations() {
                   
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">
-                      <Star className={`h-3 w-3 inline mr-1 ${demoRarity === 'BRILLIANT' ? 'text-blue-400' : demoRarity === 'BRIGHT' ? 'text-amber-400' : 'text-white'}`} />
+                      <Star className={`h-3 w-3 inline mr-1 ${demoRarity === 'BRILLIANT' ? 'text-blue-300' : demoRarity === 'BRIGHT' ? 'text-yellow-100' : 'text-white'}`} />
                       {getStarDisplayName(demoRarity)} · {demoCardCount || 0} cards @ {demoAccuracy || 80}% = {calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80).toFixed(0)}px
                     </p>
                     <div className="flex gap-2">
@@ -442,10 +442,10 @@ export default function Constellations() {
                           ));
                         }
                       }}
-                      className="w-full aspect-[4/3] md:aspect-[16/9] border-2 border-dashed border-amber-500/30"
+                      className="w-full aspect-[4/3] md:aspect-[16/9] border-2 border-dashed border-white/30"
                     />
                     {demoStars.length > 0 && (
-                      <p className="text-xs text-amber-500 text-center">
+                      <p className="text-xs text-white/60 text-center">
                         This is just a preview - complete goals to earn real stars!
                       </p>
                     )}
@@ -482,11 +482,11 @@ export default function Constellations() {
                   <CardHeader className="pb-2">
                     <CardTitle className="text-sm flex items-center justify-between">
                       <span className="flex items-center gap-2">
-                        <Star className="h-4 w-4 text-amber-400" />
+                        <Star className="h-4 w-4 text-white" />
                         {constellation.name}
                       </span>
                       {constellation.isComplete && (
-                        <span className="text-xs bg-amber-500/20 text-amber-400 px-2 py-0.5 rounded-full">
+                        <span className="text-xs bg-white/20 text-white px-2 py-0.5 rounded-full">
                           Complete
                         </span>
                       )}
