@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Star } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { motion, AnimatePresence } from "framer-motion";
@@ -78,6 +79,7 @@ export default function Constellations() {
   }>>([]);
   const [demoCardCount, setDemoCardCount] = useState('50');
   const [demoAccuracy, setDemoAccuracy] = useState('80');
+  const [demoRarity, setDemoRarity] = useState<StarRarityType>('NORMAL');
 
   const { data: constellations, isLoading } = useQuery({
     queryKey: ["constellations"],
@@ -345,7 +347,7 @@ export default function Constellations() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div className="space-y-1">
                       <label className="text-xs text-muted-foreground">Target Cards</label>
                       <Input
@@ -358,7 +360,7 @@ export default function Constellations() {
                       />
                     </div>
                     <div className="space-y-1">
-                      <label className="text-xs text-muted-foreground">Target Accuracy %</label>
+                      <label className="text-xs text-muted-foreground">Accuracy %</label>
                       <Input
                         type="number"
                         inputMode="numeric"
@@ -368,12 +370,25 @@ export default function Constellations() {
                         data-testid="input-demo-accuracy"
                       />
                     </div>
+                    <div className="space-y-1">
+                      <label className="text-xs text-muted-foreground">Star Type</label>
+                      <Select value={demoRarity} onValueChange={(v) => setDemoRarity(v as StarRarityType)}>
+                        <SelectTrigger data-testid="select-demo-rarity">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="NORMAL">Quartz</SelectItem>
+                          <SelectItem value="BRIGHT">Topaz</SelectItem>
+                          <SelectItem value="BRILLIANT">Diamond</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   </div>
                   
                   <div className="flex items-center justify-between">
                     <p className="text-xs text-muted-foreground">
-                      <Star className="h-3 w-3 inline mr-1 text-amber-400" />
-                      {demoCardCount || 0} cards @ {demoAccuracy || 80}% = {calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80).toFixed(0)}px
+                      <Star className={`h-3 w-3 inline mr-1 ${demoRarity === 'BRILLIANT' ? 'text-blue-400' : demoRarity === 'BRIGHT' ? 'text-amber-400' : 'text-white'}`} />
+                      {getStarDisplayName(demoRarity)} · {demoCardCount || 0} cards @ {demoAccuracy || 80}% = {calculateStarSize(parseInt(demoCardCount) || 10, parseInt(demoAccuracy) || 80).toFixed(0)}px
                     </p>
                     <div className="flex gap-2">
                       <Button
@@ -384,7 +399,7 @@ export default function Constellations() {
                             orderIndex: demoStars.length + (currentConstellation?.stars.length || 0) + 1,
                             positionX: 0.2 + Math.random() * 0.6,
                             positionY: 0.2 + Math.random() * 0.6,
-                            rarity: "NORMAL" as const,
+                            rarity: demoRarity,
                             earnedAt: new Date().toISOString(),
                             goalTargetCount: parseInt(demoCardCount) || 10,
                             targetAccuracy: parseInt(demoAccuracy) || 80,
