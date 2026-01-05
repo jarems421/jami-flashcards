@@ -126,25 +126,28 @@ export function StarCanvas({
     let glowOpacity = 0.4;
     let animationClass = "";
     let outerGlowColor = "transparent";
+    let accentColor = "transparent";
 
     if (star.rarity === "BRIGHT") {
-      color = "rgba(251, 191, 36, 1)";
-      glowColor = "rgba(251, 191, 36, 0.9)";
-      outerGlowColor = "rgba(251, 191, 36, 0.4)";
-      glowOpacity = 0.7;
+      color = "rgba(255, 255, 255, 1)";
+      glowColor = "rgba(255, 255, 255, 0.8)";
+      accentColor = "rgba(251, 191, 36, 0.6)";
+      outerGlowColor = "rgba(251, 191, 36, 0.25)";
+      glowOpacity = 0.5;
       animationClass = "topaz-pulse";
     } else if (star.rarity === "BRILLIANT") {
-      color = "rgba(96, 165, 250, 1)";
-      glowColor = "rgba(96, 165, 250, 0.9)";
-      outerGlowColor = "rgba(96, 165, 250, 0.5)";
-      glowOpacity = 0.9;
+      color = "rgba(255, 255, 255, 1)";
+      glowColor = "rgba(255, 255, 255, 0.8)";
+      accentColor = "rgba(96, 165, 250, 0.6)";
+      outerGlowColor = "rgba(96, 165, 250, 0.3)";
+      glowOpacity = 0.6;
       animationClass = "diamond-sparkle";
     }
 
     const size = baseSize;
     const glowSize = size * 2;
 
-    return { size, glowSize, glowOpacity, color, glowColor, outerGlowColor, animationClass };
+    return { size, glowSize, glowOpacity, color, glowColor, outerGlowColor, accentColor, animationClass };
   };
 
   return (
@@ -155,25 +158,23 @@ export function StarCanvas({
       data-testid="star-canvas"
     >
       <style>{`
-        @keyframes topaz-pulse {
-          0%, 100% { opacity: 0.7; transform: scale(1); }
-          50% { opacity: 1; transform: scale(1.15); }
+        @keyframes topaz-glitter {
+          0%, 100% { opacity: 0; transform: scale(0.8); }
+          50% { opacity: 1; transform: scale(1.2); }
         }
-        @keyframes diamond-sparkle {
-          0%, 100% { opacity: 0.8; transform: scale(1) rotate(0deg); filter: brightness(1); }
-          25% { opacity: 1; transform: scale(1.1) rotate(2deg); filter: brightness(1.3); }
-          50% { opacity: 0.9; transform: scale(1.2) rotate(0deg); filter: brightness(1.5); }
-          75% { opacity: 1; transform: scale(1.1) rotate(-2deg); filter: brightness(1.3); }
+        @keyframes diamond-glitter {
+          0%, 100% { opacity: 0; transform: scale(0.6) rotate(0deg); }
+          25% { opacity: 0.8; transform: scale(1) rotate(45deg); }
+          50% { opacity: 1; transform: scale(1.3) rotate(90deg); }
+          75% { opacity: 0.8; transform: scale(1) rotate(135deg); }
         }
         @keyframes twinkle {
           0%, 100% { opacity: 0.6; }
           50% { opacity: 1; }
         }
-        .topaz-pulse {
-          animation: topaz-pulse 2s ease-in-out infinite;
-        }
-        .diamond-sparkle {
-          animation: diamond-sparkle 3s ease-in-out infinite;
+        @keyframes color-shimmer {
+          0%, 100% { opacity: 0.2; }
+          50% { opacity: 0.7; }
         }
       `}</style>
       
@@ -187,7 +188,7 @@ export function StarCanvas({
 
       <AnimatePresence>
         {stars.map((star) => {
-          const { size, glowSize, glowOpacity, color, glowColor, outerGlowColor, animationClass } = getStarStyles(star);
+          const { size, glowSize, glowOpacity, color, glowColor, outerGlowColor, accentColor, animationClass } = getStarStyles(star);
           const isNew = star.id === newStarId;
           const isDragging = star.id === draggingStar;
 
@@ -208,7 +209,7 @@ export function StarCanvas({
               }
               className={`absolute -translate-x-1/2 -translate-y-1/2 ${
                 editable ? "cursor-grab" : ""
-              } ${isDragging ? "cursor-grabbing z-50" : ""} ${animationClass}`}
+              } ${isDragging ? "cursor-grabbing z-50" : ""}`}
               style={{ touchAction: "none" }}
               onMouseDown={(e) => handleMouseDown(e, star.id)}
               onTouchStart={(e) => handleTouchStart(e, star.id)}
@@ -222,24 +223,93 @@ export function StarCanvas({
                 }}
               >
                 {star.rarity === "BRILLIANT" && (
-                  <div 
-                    className="absolute inset-0 rounded-full"
-                    style={{
-                      background: `radial-gradient(circle, ${outerGlowColor} 0%, transparent 70%)`,
-                      animation: `twinkle 1.5s ease-in-out infinite`,
-                      transform: 'scale(1.5)',
-                    }}
-                  />
+                  <>
+                    <div 
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background: `radial-gradient(circle, ${outerGlowColor} 0%, transparent 70%)`,
+                        animation: `color-shimmer 2s ease-in-out infinite`,
+                        transform: 'scale(1.5)',
+                      }}
+                    />
+                    <div 
+                      className="absolute"
+                      style={{
+                        top: '20%',
+                        left: '30%',
+                        width: 4,
+                        height: 4,
+                        background: accentColor,
+                        borderRadius: '50%',
+                        animation: `diamond-glitter 1.8s ease-in-out infinite`,
+                        animationDelay: '0.2s',
+                      }}
+                    />
+                    <div 
+                      className="absolute"
+                      style={{
+                        top: '60%',
+                        left: '70%',
+                        width: 3,
+                        height: 3,
+                        background: accentColor,
+                        borderRadius: '50%',
+                        animation: `diamond-glitter 2.2s ease-in-out infinite`,
+                        animationDelay: '0.8s',
+                      }}
+                    />
+                    <div 
+                      className="absolute"
+                      style={{
+                        top: '75%',
+                        left: '25%',
+                        width: 3,
+                        height: 3,
+                        background: accentColor,
+                        borderRadius: '50%',
+                        animation: `diamond-glitter 2s ease-in-out infinite`,
+                        animationDelay: '1.2s',
+                      }}
+                    />
+                  </>
                 )}
                 {star.rarity === "BRIGHT" && (
-                  <div 
-                    className="absolute inset-0 rounded-full"
-                    style={{
-                      background: `radial-gradient(circle, ${outerGlowColor} 0%, transparent 60%)`,
-                      animation: `twinkle 2s ease-in-out infinite`,
-                      transform: 'scale(1.3)',
-                    }}
-                  />
+                  <>
+                    <div 
+                      className="absolute inset-0 rounded-full"
+                      style={{
+                        background: `radial-gradient(circle, ${outerGlowColor} 0%, transparent 60%)`,
+                        animation: `color-shimmer 2.5s ease-in-out infinite`,
+                        transform: 'scale(1.3)',
+                      }}
+                    />
+                    <div 
+                      className="absolute"
+                      style={{
+                        top: '25%',
+                        left: '65%',
+                        width: 3,
+                        height: 3,
+                        background: accentColor,
+                        borderRadius: '50%',
+                        animation: `topaz-glitter 1.5s ease-in-out infinite`,
+                        animationDelay: '0.3s',
+                      }}
+                    />
+                    <div 
+                      className="absolute"
+                      style={{
+                        top: '70%',
+                        left: '35%',
+                        width: 3,
+                        height: 3,
+                        background: accentColor,
+                        borderRadius: '50%',
+                        animation: `topaz-glitter 2s ease-in-out infinite`,
+                        animationDelay: '0.9s',
+                      }}
+                    />
+                  </>
                 )}
                 <div 
                   className="absolute inset-0"

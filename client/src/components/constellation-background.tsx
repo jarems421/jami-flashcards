@@ -75,18 +75,20 @@ export function ConstellationBackground() {
     let opacity = 0.6;
     let color = "rgba(255, 255, 255, 1)";
 
+    let accentColor = "transparent";
+    
     if (star.rarity === "BRIGHT") {
-      opacity = 0.75;
-      color = "rgba(251, 191, 36, 1)";
+      opacity = 0.7;
+      accentColor = "rgba(251, 191, 36, 0.5)";
     } else if (star.rarity === "BRILLIANT") {
-      opacity = 0.9;
-      color = "rgba(96, 165, 250, 1)";
+      opacity = 0.8;
+      accentColor = "rgba(96, 165, 250, 0.5)";
     }
 
     const size = baseSize;
     const glowSize = size * 1.5;
 
-    return { size, glowSize, opacity, color };
+    return { size, glowSize, opacity, color, accentColor };
   };
 
   return (
@@ -103,8 +105,9 @@ export function ConstellationBackground() {
       />
       
       {constellation.stars.map((star) => {
-        const { size, glowSize, opacity, color } = getStarStyles(star);
+        const { size, glowSize, opacity, color, accentColor } = getStarStyles(star);
         const glowColor = color.replace('1)', `${opacity})`);
+        const hasAccent = star.rarity === "BRIGHT" || star.rarity === "BRILLIANT";
 
         return (
           <motion.div
@@ -169,6 +172,34 @@ export function ConstellationBackground() {
                   }}
                 />
               </div>
+              {hasAccent && (
+                <>
+                  <div 
+                    className="absolute animate-pulse rounded-full"
+                    style={{
+                      top: '20%',
+                      left: '25%',
+                      width: 2,
+                      height: 2,
+                      background: accentColor,
+                      animationDuration: '1.5s',
+                      animationDelay: '0.2s',
+                    }}
+                  />
+                  <div 
+                    className="absolute animate-pulse rounded-full"
+                    style={{
+                      top: '65%',
+                      left: '70%',
+                      width: 2,
+                      height: 2,
+                      background: accentColor,
+                      animationDuration: '2s',
+                      animationDelay: '0.7s',
+                    }}
+                  />
+                </>
+              )}
             </div>
           </motion.div>
         );
