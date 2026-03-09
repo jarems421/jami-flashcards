@@ -1,6 +1,6 @@
 # Jami Flashcards
 
-![Jami Preview](client/public/opengraph.jpg)
+![Jami Preview](client/public/Screenshot 2026-03-09 193148.png)
 
 Jami is a modern flashcard learning platform designed to make memorisation simple, effective, and engaging.
 
