@@ -275,7 +275,7 @@ function LandingPage() {
           animate={{ opacity: 1 }}
           transition={{ duration: 0.3, delay: 0.45 }}
         >
-          Sign in with Google or Apple. No account linking needed.
+          Sign in once and stay logged in for 30 days.
         </motion.p>
         
         <motion.div 

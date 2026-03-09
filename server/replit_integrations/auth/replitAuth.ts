@@ -19,12 +19,13 @@ const getOidcConfig = memoize(
 );
 
 export function getSession() {
-  const sessionTtl = 30 * 24 * 60 * 60 * 1000; // 30 days
+  const sessionTtlSeconds = 30 * 24 * 60 * 60; // 30 days in seconds
+  const sessionTtlMs = sessionTtlSeconds * 1000; // 30 days in milliseconds
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
     createTableIfMissing: true,
-    ttl: sessionTtl,
+    ttl: sessionTtlSeconds,
     tableName: "sessions",
   });
   return session({
@@ -32,11 +33,12 @@ export function getSession() {
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
+    rolling: true,
     cookie: {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
-      maxAge: sessionTtl,
+      maxAge: sessionTtlMs,
     },
   });
 }
@@ -49,6 +51,7 @@ function updateUserSession(
   user.access_token = tokens.access_token;
   user.refresh_token = tokens.refresh_token || null;
   user.expires_at = user.claims?.exp;
+  user.authenticated_at = Math.floor(Date.now() / 1000);
 }
 
 async function upsertUser(claims: any) {
@@ -79,10 +82,8 @@ export async function setupAuth(app: Express) {
     verified(null, user);
   };
 
-  // Keep track of registered strategies
   const registeredStrategies = new Set<string>();
 
-  // Helper function to ensure strategy exists for a domain
   const ensureStrategy = (domain: string) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
@@ -110,7 +111,6 @@ export async function setupAuth(app: Express) {
   app.get("/api/login", (req, res, next) => {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
-      prompt: "none",
       scope: ["openid", "email", "profile"],
     })(req, res, next);
   });
@@ -136,30 +136,8 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  const user = req.user as any;
-
-  if (!req.isAuthenticated() || !user.expires_at) {
+  if (!req.isAuthenticated() || !(req.user as any)?.claims?.sub) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-
-  const now = Math.floor(Date.now() / 1000);
-  if (now <= user.expires_at) {
-    return next();
-  }
-
-  const refreshToken = user.refresh_token;
-  if (!refreshToken) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
-
-  try {
-    const config = await getOidcConfig();
-    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
-    updateUserSession(user, tokenResponse);
-    return next();
-  } catch (error) {
-    res.status(401).json({ message: "Unauthorized" });
-    return;
-  }
+  return next();
 };
