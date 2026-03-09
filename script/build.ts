@@ -39,8 +39,13 @@ async function buildAll() {
   console.log("generating Prisma client...");
   execSync("npx prisma generate", { stdio: "inherit" });
 
-  console.log("syncing database schema...");
-  execSync("npx prisma db push", { stdio: "inherit" });
+  console.log("syncing database schema (safe mode - will fail if data loss required)...");
+  try {
+    execSync("npx prisma db push", { stdio: "inherit" });
+  } catch (e) {
+    console.error("WARNING: prisma db push failed. If schema changes require data loss, run manually with --accept-data-loss flag.");
+    console.error("Continuing build without schema sync...");
+  }
 
   console.log("seeding essential data...");
   execSync("npx tsx script/seed.ts", { stdio: "inherit" });
