@@ -47,7 +47,7 @@ function updateUserSession(
 ) {
   user.claims = tokens.claims();
   user.access_token = tokens.access_token;
-  user.refresh_token = tokens.refresh_token;
+  user.refresh_token = tokens.refresh_token || null;
   user.expires_at = user.claims?.exp;
 }
 
@@ -94,7 +94,7 @@ export async function setupAuth(app: Express) {
         {
           name: strategyName,
           config,
-          scope: "openid email profile offline_access",
+          scope: "openid email profile",
           callbackURL,
         },
         verify
@@ -111,7 +111,7 @@ export async function setupAuth(app: Express) {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
       prompt: "login",
-      scope: ["openid", "email", "profile", "offline_access"],
+      scope: ["openid", "email", "profile"],
     })(req, res, next);
   });
 
