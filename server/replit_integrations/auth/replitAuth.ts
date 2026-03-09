@@ -86,12 +86,16 @@ export async function setupAuth(app: Express) {
   const ensureStrategy = (domain: string) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
+      const callbackURL = domain.includes("replit.dev") || domain.includes("replit.app")
+        ? `https://${domain}/api/callback`
+        : `${process.env.NODE_ENV === "production" ? "https" : "http"}://${domain}/api/callback`;
+
       const strategy = new Strategy(
         {
           name: strategyName,
           config,
           scope: "openid email profile offline_access",
-          callbackURL: `https://${domain}/api/callback`,
+          callbackURL,
         },
         verify
       );
