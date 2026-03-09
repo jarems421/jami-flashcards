@@ -62,6 +62,10 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  app.get("/health", (_req, res) => {
+    res.json({ ok: true });
+  });
+
   await setupAuth(app);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
