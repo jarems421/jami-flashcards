@@ -53,6 +53,14 @@ Preferred communication style: Simple, everyday language.
 - **Development**: Vite dev server with HMR
 - **Production**: Custom build script using esbuild for server bundling, Vite for client
 - **Output**: Single `dist/` folder with server bundle and static public files
+- **IMPORTANT**: `prisma db push` is NOT run during builds to protect production data. Schema changes must be applied manually via shell before deploying.
+
+### Data Safety
+- **Backup/Export**: Server-side `/api/export/backup` endpoint exports all user data as JSON
+- **Import/Restore**: `/api/import/backup` endpoint restores data from a backup file
+- **Cascade Deletes**: Deck deletion recursively removes sub-decks, study goals, goal progress, reminders, review logs, cards, and notes
+- **Note Deletion**: Individual notes can be deleted via `DELETE /api/notes/:id`
+- **Study Undo**: `POST /api/study/undo` reverses the last review action
 
 ## External Dependencies
 

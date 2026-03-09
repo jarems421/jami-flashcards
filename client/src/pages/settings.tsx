@@ -10,7 +10,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { usePushNotifications } from "@/hooks/use-push-notifications";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { Moon, Sun, User, Bell, BellOff, Loader2, Smartphone, Clock, Target, Globe } from "lucide-react";
+import { Moon, Sun, User, Bell, BellOff, Loader2, Smartphone, Clock, Target, Globe, Download, Upload } from "lucide-react";
 
 const COMMON_TIMEZONES = [
   { value: "UTC", label: "UTC" },
@@ -422,10 +422,25 @@ export default function Settings() {
           <div className="flex items-center justify-between">
             <div className="space-y-1">
               <Label>Export Backup</Label>
-              <p className="text-sm text-muted-foreground">Create a downloadable SQL snapshot of your data</p>
+              <p className="text-sm text-muted-foreground">Download a JSON backup of all your data</p>
             </div>
-            <Button variant="outline" onClick={() => toast({ title: "Backup started", description: "This would trigger a SQL dump download." })}>
-              Export SQL
+            <Button variant="outline" data-testid="button-export-backup" onClick={async () => {
+              try {
+                const res = await fetch("/api/export/backup", { credentials: "include" });
+                if (!res.ok) throw new Error("Export failed");
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                a.download = `jami-backup-${new Date().toISOString().split("T")[0]}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+                toast({ title: "Backup downloaded", description: "Your data has been exported successfully." });
+              } catch {
+                toast({ title: "Export failed", description: "Could not download backup.", variant: "destructive" });
+              }
+            }}>
+              <Download className="h-4 w-4 mr-2" /> Export
             </Button>
           </div>
           <div className="flex items-center justify-between">
@@ -433,8 +448,27 @@ export default function Settings() {
               <Label>Import Data</Label>
               <p className="text-sm text-muted-foreground">Restore from a previous backup file</p>
             </div>
-            <Button variant="outline" onClick={() => toast({ title: "Import dialog", description: "This would open a file picker." })}>
-              Import SQL
+            <Button variant="outline" data-testid="button-import-backup" onClick={() => {
+              const input = document.createElement("input");
+              input.type = "file";
+              input.accept = ".json";
+              input.onchange = async (e) => {
+                const file = (e.target as HTMLInputElement).files?.[0];
+                if (!file) return;
+                try {
+                  const text = await file.text();
+                  const backup = JSON.parse(text);
+                  const res = await apiRequest("POST", "/api/import/backup", backup);
+                  const result = await res.json();
+                  toast({ title: "Import complete", description: `Imported ${result.importedDecks} decks, ${result.importedNotes} notes, ${result.importedCards} cards.` });
+                  queryClient.invalidateQueries();
+                } catch {
+                  toast({ title: "Import failed", description: "Could not parse or import backup file.", variant: "destructive" });
+                }
+              };
+              input.click();
+            }}>
+              <Upload className="h-4 w-4 mr-2" /> Import
             </Button>
           </div>
         </CardContent>

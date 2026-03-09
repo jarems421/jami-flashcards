@@ -401,11 +401,34 @@ export async function registerRoutes(
       
       const deck = await db.deck.findFirst({ where: { id, userId } });
       if (!deck) return res.status(404).json({ error: "Deck not found" });
-      
-      await db.reviewLog.deleteMany({ where: { card: { deckId: id } } });
-      await db.card.deleteMany({ where: { deckId: id } });
-      await db.note.deleteMany({ where: { deckId: id } });
-      await db.deck.delete({ where: { id } });
+
+      async function collectDeckIds(deckId: string): Promise<string[]> {
+        const subDecks = await db.deck.findMany({ where: { parentDeckId: deckId, userId }, select: { id: true } });
+        const ids = [deckId];
+        for (const sub of subDecks) {
+          ids.push(...await collectDeckIds(sub.id));
+        }
+        return ids;
+      }
+
+      const allDeckIds = await collectDeckIds(id);
+
+      await db.$transaction(async (tx) => {
+        const goals = await tx.studyGoal.findMany({ where: { deckId: { in: allDeckIds } }, select: { id: true } });
+        const goalIds = goals.map(g => g.id);
+        if (goalIds.length > 0) {
+          await tx.goalProgress.deleteMany({ where: { goalId: { in: goalIds } } });
+          await tx.reminder.deleteMany({ where: { goalId: { in: goalIds } } });
+        }
+        await tx.studyGoal.deleteMany({ where: { deckId: { in: allDeckIds } } });
+        await tx.reminder.deleteMany({ where: { deckId: { in: allDeckIds } } });
+        await tx.reviewLog.deleteMany({ where: { card: { deckId: { in: allDeckIds } } } });
+        await tx.card.deleteMany({ where: { deckId: { in: allDeckIds } } });
+        await tx.note.deleteMany({ where: { deckId: { in: allDeckIds } } });
+        for (const deckId of allDeckIds.reverse()) {
+          await tx.deck.delete({ where: { id: deckId } });
+        }
+      });
 
       res.json({ success: true });
     } catch (e) {
@@ -766,6 +789,41 @@ export async function registerRoutes(
     res.redirect(307, `/api/cards/${req.params.id}/grade`);
   });
 
+  app.post("/api/study/undo", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const lastLog = await db.reviewLog.findFirst({
+        where: { card: { deck: { userId } } },
+        orderBy: { reviewedAt: 'desc' },
+        include: { card: true }
+      });
+
+      if (!lastLog) return res.status(404).json({ error: "Nothing to undo" });
+
+      const previousLog = await db.reviewLog.findFirst({
+        where: { cardId: lastLog.cardId, id: { not: lastLog.id } },
+        orderBy: { reviewedAt: 'desc' }
+      });
+
+      await db.$transaction([
+        db.reviewLog.delete({ where: { id: lastLog.id } }),
+        db.card.update({
+          where: { id: lastLog.cardId },
+          data: {
+            reps: Math.max(0, lastLog.card.reps - 1),
+            state: lastLog.card.reps <= 1 ? 'NEW' : 'STUDIED',
+            lastReviewedAt: previousLog?.reviewedAt || null
+          }
+        })
+      ]);
+
+      res.json({ success: true, cardId: lastLog.cardId });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to undo" });
+    }
+  });
+
   // --- Notes ---
 
   app.put("/api/notes/:id", isAuthenticated, async (req, res) => {
@@ -807,6 +865,25 @@ export async function registerRoutes(
     } catch (e) {
       console.error(e);
       res.status(500).json({ error: "Failed to list notes" });
+    }
+  });
+
+  app.delete("/api/notes/:id", isAuthenticated, async (req, res) => {
+    try {
+      const { id } = req.params;
+      const userId = getUserId(req);
+
+      const note = await db.note.findFirst({ where: { id, deck: { userId } } });
+      if (!note) return res.status(404).json({ error: "Note not found" });
+
+      await db.reviewLog.deleteMany({ where: { card: { noteId: id } } });
+      await db.card.deleteMany({ where: { noteId: id } });
+      await db.note.delete({ where: { id } });
+
+      res.json({ success: true });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to delete note" });
     }
   });
 
@@ -1704,6 +1781,143 @@ export async function registerRoutes(
     } catch (error) {
       console.error("Error setting background constellation:", error);
       res.status(400).json({ error: "Failed to set background" });
+    }
+  });
+
+  app.get("/api/export/backup", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+
+      const decks = await db.deck.findMany({
+        where: { userId },
+        include: {
+          notes: { include: { cards: { include: { reviewLogs: true } } } },
+          studyGoals: { include: { progress: true } }
+        }
+      });
+
+      const constellations = await db.constellation.findMany({
+        where: { userId },
+        include: { stars: true }
+      });
+
+      const preferences = await db.userPreference.findFirst({ where: { userId } });
+
+      const backup = {
+        version: 1,
+        exportedAt: new Date().toISOString(),
+        data: { decks, constellations, preferences }
+      };
+
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Content-Disposition', `attachment; filename="jami-backup-${new Date().toISOString().split('T')[0]}.json"`);
+      res.json(backup);
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to export backup" });
+    }
+  });
+
+  app.post("/api/import/backup", isAuthenticated, async (req, res) => {
+    try {
+      const userId = getUserId(req);
+      const { data } = req.body;
+
+      if (!data || !data.decks) {
+        return res.status(400).json({ error: "Invalid backup file" });
+      }
+
+      const basicNoteType = await db.noteType.findFirst({ where: { name: "Basic" } });
+      if (!basicNoteType) return res.status(500).json({ error: "Basic note type missing" });
+
+      let importedDecks = 0;
+      let importedNotes = 0;
+      let importedCards = 0;
+
+      await db.$transaction(async (tx) => {
+        for (const deck of data.decks) {
+          const existingDeck = await tx.deck.findFirst({
+            where: { name: deck.name, userId }
+          });
+          if (existingDeck) continue;
+
+          const newDeck = await tx.deck.create({
+            data: {
+              name: deck.name,
+              userId,
+              color: deck.color || null,
+              icon: deck.icon || null
+            }
+          });
+          importedDecks++;
+
+          for (const note of (deck.notes || [])) {
+            const newNote = await tx.note.create({
+              data: {
+                deckId: newDeck.id,
+                noteTypeId: note.noteTypeId || basicNoteType.id,
+                fields: note.fields,
+                tags: note.tags || [],
+                media: note.media || []
+              }
+            });
+            importedNotes++;
+
+            for (const card of (note.cards || [])) {
+              const newCard = await tx.card.create({
+                data: {
+                  noteId: newNote.id,
+                  deckId: newDeck.id,
+                  templateId: card.templateId || 'basic',
+                  state: card.state || 'NEW',
+                  reps: card.reps || 0,
+                  lastReviewedAt: card.lastReviewedAt ? new Date(card.lastReviewedAt) : null
+                }
+              });
+              importedCards++;
+
+              for (const log of (card.reviewLogs || [])) {
+                await tx.reviewLog.create({
+                  data: {
+                    cardId: newCard.id,
+                    rating: log.rating,
+                    responseTimeMs: log.responseTimeMs || 0,
+                    reviewedAt: new Date(log.reviewedAt)
+                  }
+                });
+              }
+            }
+          }
+
+          for (const goal of (deck.studyGoals || [])) {
+            const newGoal = await tx.studyGoal.create({
+              data: {
+                deckId: newDeck.id,
+                cadence: goal.cadence || 'DAILY',
+                targetCount: goal.targetCount || 20,
+                targetAccuracy: goal.targetAccuracy || 80,
+                deadline: goal.deadline ? new Date(goal.deadline) : null,
+                status: goal.status || 'ACTIVE'
+              }
+            });
+
+            for (const prog of (goal.progress || [])) {
+              await tx.goalProgress.create({
+                data: {
+                  goalId: newGoal.id,
+                  dateBucket: new Date(prog.dateBucket),
+                  completedCount: prog.completedCount || 0
+                }
+              });
+            }
+          }
+        }
+      }, { timeout: 60000 });
+
+      res.json({ success: true, importedDecks, importedNotes, importedCards });
+    } catch (e) {
+      console.error(e);
+      res.status(500).json({ error: "Failed to import backup" });
     }
   });
 
