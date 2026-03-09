@@ -19,29 +19,24 @@ const getOidcConfig = memoize(
 );
 
 export function getSession() {
-  const sessionTtlSeconds = 30 * 24 * 60 * 60; // 30 days in seconds
-  const sessionTtlMs = sessionTtlSeconds * 1000; // 30 days in milliseconds
+  const sessionTtl = 7 * 24 * 60 * 60 * 1000; // 1 week
   const pgStore = connectPg(session);
   const sessionStore = new pgStore({
     conString: process.env.DATABASE_URL,
     createTableIfMissing: true,
-    ttl: sessionTtlSeconds,
+    ttl: sessionTtl,
     tableName: "sessions",
-    errorLog: (err: Error) => {
-      console.error("[Session Store]", err.message);
-    },
   });
   return session({
     secret: process.env.SESSION_SECRET!,
     store: sessionStore,
     resave: false,
     saveUninitialized: false,
-    rolling: true,
     cookie: {
       httpOnly: true,
       secure: true,
       sameSite: "lax",
-      maxAge: sessionTtlMs,
+      maxAge: sessionTtl,
     },
   });
 }
@@ -52,9 +47,8 @@ function updateUserSession(
 ) {
   user.claims = tokens.claims();
   user.access_token = tokens.access_token;
-  user.refresh_token = tokens.refresh_token || null;
+  user.refresh_token = tokens.refresh_token;
   user.expires_at = user.claims?.exp;
-  user.authenticated_at = Math.floor(Date.now() / 1000);
 }
 
 async function upsertUser(claims: any) {
@@ -85,21 +79,19 @@ export async function setupAuth(app: Express) {
     verified(null, user);
   };
 
+  // Keep track of registered strategies
   const registeredStrategies = new Set<string>();
 
+  // Helper function to ensure strategy exists for a domain
   const ensureStrategy = (domain: string) => {
     const strategyName = `replitauth:${domain}`;
     if (!registeredStrategies.has(strategyName)) {
-      const callbackURL = domain.includes("replit.dev") || domain.includes("replit.app")
-        ? `https://${domain}/api/callback`
-        : `${process.env.NODE_ENV === "production" ? "https" : "http"}://${domain}/api/callback`;
-
       const strategy = new Strategy(
         {
           name: strategyName,
           config,
-          scope: "openid email profile",
-          callbackURL,
+          scope: "openid email profile offline_access",
+          callbackURL: `https://${domain}/api/callback`,
         },
         verify
       );
@@ -114,7 +106,8 @@ export async function setupAuth(app: Express) {
   app.get("/api/login", (req, res, next) => {
     ensureStrategy(req.hostname);
     passport.authenticate(`replitauth:${req.hostname}`, {
-      scope: ["openid", "email", "profile"],
+      prompt: "login consent",
+      scope: ["openid", "email", "profile", "offline_access"],
     })(req, res, next);
   });
 
@@ -139,8 +132,30 @@ export async function setupAuth(app: Express) {
 }
 
 export const isAuthenticated: RequestHandler = async (req, res, next) => {
-  if (!req.isAuthenticated() || !(req.user as any)?.claims?.sub) {
+  const user = req.user as any;
+
+  if (!req.isAuthenticated() || !user.expires_at) {
     return res.status(401).json({ message: "Unauthorized" });
   }
-  return next();
+
+  const now = Math.floor(Date.now() / 1000);
+  if (now <= user.expires_at) {
+    return next();
+  }
+
+  const refreshToken = user.refresh_token;
+  if (!refreshToken) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
+
+  try {
+    const config = await getOidcConfig();
+    const tokenResponse = await client.refreshTokenGrant(config, refreshToken);
+    updateUserSession(user, tokenResponse);
+    return next();
+  } catch (error) {
+    res.status(401).json({ message: "Unauthorized" });
+    return;
+  }
 };

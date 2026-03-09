@@ -53,6 +53,10 @@ export async function registerRoutes(
   app: Express
 ): Promise<Server> {
   
+  app.get("/health", (req, res) => {
+    res.json({ ok: true });
+  });
+
   app.use("/uploads", (req, res, next) => {
     res.setHeader("Cache-Control", "public, max-age=31536000");
     next();

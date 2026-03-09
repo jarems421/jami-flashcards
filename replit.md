@@ -24,8 +24,7 @@ Preferred communication style: Simple, everyday language.
 - **Language**: TypeScript (ESM modules)
 - **API Design**: RESTful JSON endpoints under `/api/*` prefix
 - **Database ORM**: Prisma Client for PostgreSQL interactions
-- **Session Management**: Express sessions with connect-pg-simple for session storage (30-day TTL, rolling sessions)
-- **Authentication**: Replit OIDC (openid-client + passport), session-based auth check (no token expiry validation)
+- **Session Management**: Express sessions with connect-pg-simple for session storage
 
 ### Data Layer
 - **Primary Database**: PostgreSQL
