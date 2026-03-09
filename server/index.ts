@@ -14,6 +14,10 @@ declare module "http" {
   }
 }
 
+app.get("/health", (_req, res) => {
+  res.json({ ok: true });
+});
+
 app.use(
   express.json({
     verify: (req, _res, buf) => {
@@ -62,10 +66,6 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  app.get("/health", (_req, res) => {
-    res.json({ ok: true });
-  });
-
   await setupAuth(app);
   registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
