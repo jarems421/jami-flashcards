@@ -2,7 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
-import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
+// import { setupAuth, registerAuthRoutes } from "./replit_integrations/auth";
 import { startScheduler } from "./scheduler";
 
 const app = express();
@@ -67,8 +67,8 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await setupAuth(app);
-  registerAuthRoutes(app);
+  // await setupAuth(app);
+// registerAuthRoutes(app);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
@@ -94,15 +94,8 @@ app.use((req, res, next) => {
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "5000", 10);
-  httpServer.listen(
-    {
-      port,
-      host: "0.0.0.0",
-      reusePort: true,
-    },
-    () => {
-      log(`serving on port ${port}`);
-      startScheduler();
-    },
-  );
+httpServer.listen(port, () => {
+  log(`serving on port ${port}`);
+  startScheduler();
+});
 })();
