@@ -3,13 +3,30 @@ import { createServer, type Server } from "http";
 import { db } from "./db";
 import { parseCloze } from "../shared/cloze";
 import { z } from "zod";
-import { startOfDay, endOfDay } from "date-fns";
-import { isAuthenticated } from "./replit_integrations/auth";
+import { startOfDay } from "date-fns";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
 import { v4 as uuidv4 } from "uuid";
 import webpush from "web-push";
+
+/**
+ * ✅ TEMP AUTH MIDDLEWARE (Phase 1)
+ * This replaces Replit auth completely.
+ * Next phase = Firebase token verification
+ */
+function isAuthenticated(req: Request, res: Response, next: NextFunction) {
+  // Allow all requests for now
+  next();
+}
+
+/**
+ * ✅ TEMP USER ID (Phase 1)
+ * Later replaced with Firebase UID
+ */
+function getUserId(req: Request): string {
+  return "dev-user";
+}
 
 const VAPID_PUBLIC_KEY = process.env.VAPID_PUBLIC_KEY || "";
 const VAPID_PRIVATE_KEY = process.env.VAPID_PRIVATE_KEY || "";
@@ -35,7 +52,7 @@ const storage = multer.diskStorage({
   }
 });
 
-const upload = multer({ 
+const upload = multer({
   storage,
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
@@ -44,9 +61,7 @@ const upload = multer({
   }
 });
 
-function getUserId(req: Request): string | null {
-  return (req.user as any)?.claims?.sub ?? null;
-}
+
 
 export async function registerRoutes(
   httpServer: Server,

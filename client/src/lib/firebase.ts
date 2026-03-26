@@ -1,5 +1,12 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider, signInWithPopup } from "firebase/auth";
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  onAuthStateChanged,
+  signOut,
+  User
+} from "firebase/auth";
 
 const firebaseConfig = {
   apiKey: "AIzaSyDXpnHIRxysk5OSeMZuJ2zhRPcT-CmHK40",
@@ -11,10 +18,25 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig);
-const auth = getAuth(app);
+
+export const auth = getAuth(app);
 const provider = new GoogleAuthProvider();
 
+
+// 🔥 LOGIN
 export const signInWithGoogle = async () => {
   const result = await signInWithPopup(auth, provider);
   return result.user;
+};
+
+
+// 🔥 LOGOUT
+export const logout = async () => {
+  await signOut(auth);
+};
+
+
+// 🔥 LISTEN TO AUTH STATE
+export const onAuthChange = (callback: (user: User | null) => void) => {
+  return onAuthStateChanged(auth, callback);
 };
