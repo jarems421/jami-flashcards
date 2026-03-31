@@ -1,86 +1,138 @@
 # Jami Flashcards
 
-![Jami Preview](client/public/jami-dashboard.png)
+Jami Flashcards is a spaced-repetition study app built with Next.js and Firebase. It combines deck-based flashcards with goals, constellation progress, stars, and dust so study sessions feel more like a long-running progression loop than a plain quiz app.
 
-Jami is a modern flashcard learning platform designed to make memorisation simple, effective, and engaging.
+## What it does
 
-The application allows users to create flashcards, organise them into decks, and track their learning progress through structured review sessions and goal-based rewards.
+- Create and manage private flashcard decks.
+- Study with spaced repetition scheduling.
+- Track progress through goals and constellation-style rewards.
+- Persist user data in Firebase Auth and Firestore.
+- Expose a `/health` endpoint for deployment checks.
 
-Jami aims to make studying both **efficient and enjoyable**, helping students retain knowledge through consistent review.
+## Stack
 
----
+- Next.js 16 App Router
+- React 19
+- TypeScript
+- Firebase Auth
+- Cloud Firestore
+- Vitest
+- Firebase Emulator Suite for security-rules tests
 
-# Features
+## Local setup
 
-• Create and manage flashcards
-• Organise flashcards into decks
-• Track study progress
-• Goal-based reward system using stars
-• Apple authentication login
-• Clean and responsive user interface
+### Prerequisites
 
----
+- Node.js 20+
+- npm 10+
+- A Firebase project with Authentication and Firestore enabled
+- Java 21+ if you want to run the Firestore emulator and `npm run test:rules`
 
-# Tech Stack
+### Environment variables
 
-This project is built using a modern full-stack TypeScript architecture.
+Copy [.env.example](.env.example) to `.env.local` and fill in your Firebase web app values.
 
-### Frontend
+Required variables:
 
-* React
-* Vite
-* TypeScript
-* CSS
+- `NEXT_PUBLIC_FIREBASE_API_KEY`
+- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
+- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `NEXT_PUBLIC_FIREBASE_APP_ID`
 
-### Backend
+### Install and run
 
-* Node.js
-* Express
-
-### Database
-
-* PostgreSQL
-* Prisma ORM
-
----
-
-# Project Structure
-
-```
-jami-flashcards
-│
-├── client/        Frontend application
-├── server/        Backend API
-├── prisma/        Database schema and migrations
-├── script/        Utility and seed scripts
-├── shared/        Shared types and utilities
-├── attached_assets
-│
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── drizzle.config.ts
+```bash
+npm install
+npm run dev
 ```
 
----
+Open `http://localhost:3000`.
 
-# Running the Application
+If Next route types get stale after page removals or renames, clear the cache first:
 
-The application is currently developed and hosted using **Replit**.
+```bash
+npm run dev:clean
+```
 
-The live version of the project runs directly from the Replit environment rather than a local development setup.
+## Scripts
 
----
+```bash
+npm run dev
+npm run dev:clean
+npm run lint
+npm run typecheck
+npm run test
+npm run test:rules
+npm run build
+```
 
-# Author
+Additional Firebase helper scripts:
 
-James
+```bash
+npm run emulators:firestore
+npm run firebase:login
+npm run firebase:projects
+npm run firebase:rules:deploy
+```
 
-GitHub:
-https://github.com/jarems421
+## Security rules testing
 
----
+This repo includes emulator-backed Firestore rules tests in [tests/firestore.rules.test.ts](tests/firestore.rules.test.ts).
 
-# License
+The Firestore emulator requires Java to be installed and available on your `PATH`.
 
-This project is licensed under the MIT License.
+Run them with:
+
+```bash
+npm run test:rules
+```
+
+That command starts the Firestore emulator through the Firebase CLI, runs the rules suite with [vitest.rules.config.ts](vitest.rules.config.ts), and then shuts the emulator down.
+
+## Deployment
+
+### App hosting on Vercel
+
+1. Push the repo to GitHub.
+2. Import the project into Vercel.
+3. Add every `NEXT_PUBLIC_FIREBASE_*` variable from your local `.env.local` to the Vercel project settings.
+4. Deploy.
+5. Verify the deployed site and the `/health` route.
+
+This app does not need server secrets for the current architecture. Vercel only needs the public Firebase client config already documented above.
+
+### Firebase backend operations
+
+This repo includes [.firebaserc](.firebaserc), [firebase.json](firebase.json), [firestore.rules](firestore.rules), and [firestore.indexes.json](firestore.indexes.json) so Firestore rules and indexes can be managed from source control.
+
+First-time CLI setup:
+
+```bash
+npm run firebase:login
+npm run firebase:projects
+```
+
+Deploy Firestore rules and indexes:
+
+```bash
+npm run firebase:rules:deploy
+```
+
+## Publish checklist
+
+- Fill in production Firebase environment variables in Vercel.
+- Run `npm run lint`.
+- Run `npm run typecheck`.
+- Run `npm run test`.
+- Run `npm run test:rules`.
+- Run `npm run build`.
+- Deploy the app on Vercel.
+- Deploy Firestore rules with `npm run firebase:rules:deploy`.
+- Smoke-test auth, deck creation, study flow, goals, constellation rewards, and account deletion.
+
+## Health endpoint
+
+`GET /health` returns application status, a timestamp, and Firestore reachability details. It is useful for a quick post-deploy verification.

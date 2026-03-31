@@ -1,0 +1,98 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSelf(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isOwnedByRequestAuth(data) {
+      return isSignedIn() &&
+        (('userId' in data) || ('uid' in data)) &&
+        (!('userId' in data) || data.userId == request.auth.uid) &&
+        (!('uid' in data) || data.uid == request.auth.uid);
+    }
+
+    function isOwnedDeckData(data) {
+      return (('userId' in data) || ('uid' in data)) &&
+        (!('userId' in data) || data.userId == request.auth.uid) &&
+        (!('uid' in data) || data.uid == request.auth.uid);
+    }
+
+    function deckExistsAndIsOwned(deckId) {
+      return deckId is string &&
+        exists(/databases/$(database)/documents/decks/$(deckId)) &&
+        isOwnedDeckData(get(/databases/$(database)/documents/decks/$(deckId)).data);
+    }
+
+    match /decks/{deckId} {
+      allow read: if ownsDeck();
+      allow create: if createsOwnDeck();
+      allow update: if ownsDeck() && updatesOwnDeck();
+      allow delete: if ownsDeck();
+
+      function ownsDeck() {
+        return isOwnedByRequestAuth(resource.data);
+      }
+
+      function createsOwnDeck() {
+        return isOwnedByRequestAuth(request.resource.data);
+      }
+
+      function updatesOwnDeck() {
+        return isOwnedByRequestAuth(request.resource.data);
+      }
+    }
+
+    match /cards/{cardId} {
+      allow read: if isOwnedByRequestAuth(resource.data);
+      allow create: if isOwnedByRequestAuth(request.resource.data) &&
+        deckExistsAndIsOwned(request.resource.data.deckId);
+      allow update: if isOwnedByRequestAuth(resource.data) &&
+        isOwnedByRequestAuth(request.resource.data) &&
+        request.resource.data.deckId == resource.data.deckId;
+      allow delete: if isOwnedByRequestAuth(resource.data);
+    }
+
+    match /users/{userId} {
+      allow read, create, update, delete: if isSelf(userId);
+
+      match /goals/{goalId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
+      match /stars/{starId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
+      match /dust/{dustId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
+      match /constellations/{constellationId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
+      match /constellationState/{stateId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
+      match /decks/{deckId} {
+        allow read, delete: if isSelf(userId);
+        allow create, update: if isSelf(userId) &&
+          request.resource.data.deckId == deckId &&
+          deckExistsAndIsOwned(deckId);
+
+        match /attempts/{attemptId} {
+          allow read, delete: if isSelf(userId);
+          allow create, update: if isSelf(userId) &&
+            request.resource.data.deckId == deckId &&
+            deckExistsAndIsOwned(deckId);
+        }
+      }
+    }
+  }
+}
