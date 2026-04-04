@@ -186,4 +186,72 @@ describe("Firestore security rules", () => {
       })
     );
   });
+
+  it("restricts notification preference docs to the caller", async () => {
+    await seedData();
+
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "notificationPreferences", "config"), {
+        enabled: true,
+        dueCardDigest: true,
+        updatedAt: 1,
+      })
+    );
+
+    await assertSucceeds(
+      getDoc(doc(aliceDb, "users", ALICE, "notificationPreferences", "config"))
+    );
+
+    await assertFails(
+      getDoc(doc(bobDb, "users", ALICE, "notificationPreferences", "config"))
+    );
+
+    await assertFails(
+      setDoc(doc(bobDb, "users", ALICE, "notificationPreferences", "config"), {
+        enabled: true,
+        dueCardDigest: true,
+        updatedAt: 1,
+      })
+    );
+  });
+
+  it("restricts push subscriptions to the caller", async () => {
+    await seedData();
+
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "pushSubscriptions", "device-1"), {
+        endpoint: "https://example.test/subscription",
+        keys: {
+          auth: "auth",
+          p256dh: "p256dh",
+        },
+        updatedAt: 1,
+      })
+    );
+
+    await assertSucceeds(
+      getDoc(doc(aliceDb, "users", ALICE, "pushSubscriptions", "device-1"))
+    );
+
+    await assertFails(
+      getDoc(doc(bobDb, "users", ALICE, "pushSubscriptions", "device-1"))
+    );
+
+    await assertFails(
+      setDoc(doc(bobDb, "users", ALICE, "pushSubscriptions", "device-1"), {
+        endpoint: "https://example.test/subscription",
+        keys: {
+          auth: "auth",
+          p256dh: "p256dh",
+        },
+        updatedAt: 1,
+      })
+    );
+  });
 });

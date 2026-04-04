@@ -80,6 +80,14 @@ service cloud.firestore {
         allow read, create, update, delete: if isSelf(userId);
       }
 
+      match /notificationPreferences/{documentId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
+      match /pushSubscriptions/{subscriptionId} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
       match /decks/{deckId} {
         allow read, delete: if isSelf(userId);
         allow create, update: if isSelf(userId) &&

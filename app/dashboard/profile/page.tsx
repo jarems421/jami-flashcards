@@ -4,6 +4,7 @@ import { FirebaseError } from "firebase/app";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/user-context";
+import NotificationSettingsCard from "@/components/NotificationSettingsCard";
 import { logout, deleteAccount } from "@/services/auth";
 
 export default function ProfilePage() {
@@ -99,14 +100,7 @@ export default function ProfilePage() {
               Coming soon
             </span>
           </div>
-          <div className="flex items-center justify-between rounded-xl border border-border bg-glass-subtle p-3 opacity-50 sm:p-4"
-            style={{ backgroundImage: "var(--gradient-card)" }}
-          >
-            <span className="text-sm">Notifications</span>
-            <span className="rounded-md bg-glass-medium px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-              Coming soon
-            </span>
-          </div>
+          <NotificationSettingsCard userId={user.uid} />
         </div>
 
         {/* ── Danger zone ── */}

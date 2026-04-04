@@ -14,21 +14,18 @@ import {
   where,
 } from "firebase/firestore";
 import { listenToAuth } from "@/lib/auth-listener";
+import {
+  addCardTag,
+  mapCardData,
+  MAX_BACK_LENGTH,
+  MAX_FRONT_LENGTH,
+  normalizeCardTags,
+  type Card,
+} from "@/lib/cards";
+import TagInput from "@/components/TagInput";
 import { db } from "@/services/firebase";
 import { User } from "firebase/auth";
 import { getDeckById, type Deck } from "@/services/decks";
-
-const MAX_FRONT_LENGTH = 400;
-const MAX_BACK_LENGTH = 2_000;
-
-type Card = {
-  id: string;
-  deckId: string;
-  userId: string;
-  front: string;
-  back: string;
-  createdAt: number;
-};
 
 export default function DeckPage() {
   const router = useRouter();
@@ -39,8 +36,11 @@ export default function DeckPage() {
   const [user, setUser] = useState<User | null>(null);
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
+  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [front, setFront] = useState("");
   const [back, setBack] = useState("");
+  const [cardTags, setCardTags] = useState<string[]>([]);
+  const [pendingTag, setPendingTag] = useState("");
   const [adding, setAdding] = useState(false);
   const [loadingCards, setLoadingCards] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -50,6 +50,8 @@ export default function DeckPage() {
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
+  const [editingTags, setEditingTags] = useState<string[]>([]);
+  const [editingPendingTag, setEditingPendingTag] = useState("");
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
 
@@ -86,31 +88,39 @@ export default function DeckPage() {
           return;
         }
 
-        const q = query(
+        const deckCardsQuery = query(
           collection(db, "cards"),
           where("deckId", "==", deckId),
           where("userId", "==", user.uid)
         );
-        const snapshot = await getDocs(q);
+        const userCardsQuery = query(
+          collection(db, "cards"),
+          where("userId", "==", user.uid)
+        );
+        const [snapshot, allUserCardsSnapshot] = await Promise.all([
+          getDocs(deckCardsQuery),
+          getDocs(userCardsQuery),
+        ]);
         if (cancelled) return;
-        const list: Card[] = snapshot.docs.map((doc) => {
-          const data = doc.data();
-          return {
-            id: doc.id,
-            deckId: String(data.deckId ?? ""),
-            userId: String(data.userId ?? ""),
-            front: String(data.front ?? ""),
-            back: String(data.back ?? ""),
-            createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
-          };
-        });
+        const list: Card[] = snapshot.docs.map((cardDoc) =>
+          mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
+        );
         list.sort((a, b) => b.createdAt - a.createdAt);
+        const nextAvailableTags = Array.from(
+          new Set(
+            allUserCardsSnapshot.docs.flatMap((cardDoc) =>
+              normalizeCardTags(cardDoc.data().tags)
+            )
+          )
+        ).sort((left, right) => left.localeCompare(right));
         setDeck(ownedDeck);
         setCards(list);
+        setAvailableTags(nextAvailableTags);
       } catch (e) {
         console.error(e);
         if (!cancelled) {
           setDeck(null);
+          setAvailableTags([]);
           setFeedback({
             type: "error",
             message: "Failed to load cards.",
@@ -132,6 +142,8 @@ export default function DeckPage() {
     setEditingCardId(null);
     setEditingFront("");
     setEditingBack("");
+    setEditingTags([]);
+    setEditingPendingTag("");
     setSavingCardId(null);
   };
 
@@ -186,6 +198,15 @@ export default function DeckPage() {
             maxLength={MAX_BACK_LENGTH}
             className="rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white placeholder:text-text-muted outline-none transition duration-fast focus:border-accent"
           />
+          <TagInput
+            tags={cardTags}
+            pendingTag={pendingTag}
+            availableTags={availableTags}
+            onTagsChange={setCardTags}
+            onPendingTagChange={setPendingTag}
+            helperText="Reuse existing topics as you type, or add a new one for this card."
+            disabled={adding}
+          />
           <button
             type="button"
             disabled={adding || !user || !deckId || !deck}
@@ -193,10 +214,18 @@ export default function DeckPage() {
               if (!user || !deckId || !deck) return;
               const f = front.trim();
               const b = back.trim();
+              const tagResult = addCardTag(cardTags, pendingTag);
               if (!f || !b) {
                 setFeedback({
                   type: "error",
                   message: "Both front and back are required.",
+                });
+                return;
+              }
+              if (tagResult.error) {
+                setFeedback({
+                  type: "error",
+                  message: tagResult.error,
                 });
                 return;
               }
@@ -212,11 +241,13 @@ export default function DeckPage() {
               setFeedback(null);
               try {
                 const createdAt = Date.now();
+                const tags = tagResult.nextTags;
                 const ref = await addDoc(collection(db, "cards"), {
                   deckId,
                   userId: user.uid,
                   front: f,
                   back: b,
+                  tags,
                   createdAt,
                 });
                 setCards((prev) => [
@@ -226,12 +257,20 @@ export default function DeckPage() {
                     userId: user.uid,
                     front: f,
                     back: b,
+                    tags,
                     createdAt,
                   },
                   ...prev,
                 ]);
                 setFront("");
                 setBack("");
+                setCardTags([]);
+                setPendingTag("");
+                setAvailableTags((prev) =>
+                  Array.from(new Set([...prev, ...tags])).sort((left, right) =>
+                    left.localeCompare(right)
+                  )
+                );
                 setFeedback({
                   type: "success",
                   message: "Card added.",
@@ -277,6 +316,15 @@ export default function DeckPage() {
                     onChange={(e) => setEditingBack(e.target.value)}
                     className="w-full rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white outline-none focus:border-accent"
                   />
+                  <TagInput
+                    tags={editingTags}
+                    pendingTag={editingPendingTag}
+                    availableTags={availableTags}
+                    onTagsChange={setEditingTags}
+                    onPendingTagChange={setEditingPendingTag}
+                    helperText="Suggestions come from tags you already use across all decks."
+                    disabled={savingCardId === c.id}
+                  />
                   <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -284,6 +332,7 @@ export default function DeckPage() {
                       onClick={async () => {
                         const nextFront = editingFront.trim();
                         const nextBack = editingBack.trim();
+                        const tagResult = addCardTag(editingTags, editingPendingTag);
 
                         if (!nextFront || !nextBack) {
                           setFeedback({
@@ -292,6 +341,15 @@ export default function DeckPage() {
                           });
                           return;
                         }
+                        if (tagResult.error) {
+                          setFeedback({
+                            type: "error",
+                            message: tagResult.error,
+                          });
+                          return;
+                        }
+
+                        const nextTags = tagResult.nextTags;
 
                         setSavingCardId(c.id);
                         setFeedback(null);
@@ -300,6 +358,7 @@ export default function DeckPage() {
                           await updateDoc(doc(db, "cards", c.id), {
                             front: nextFront,
                             back: nextBack,
+                            tags: nextTags,
                           });
                           setCards((prev) =>
                             prev.map((card) =>
@@ -308,8 +367,14 @@ export default function DeckPage() {
                                     ...card,
                                     front: nextFront,
                                     back: nextBack,
+                                    tags: nextTags,
                                   }
                                 : card
+                            )
+                          );
+                          setAvailableTags((prev) =>
+                            Array.from(new Set([...prev, ...nextTags])).sort((left, right) =>
+                              left.localeCompare(right)
                             )
                           );
                           resetEditingCard();
@@ -345,6 +410,19 @@ export default function DeckPage() {
                   <div className="space-y-1">
                     <div>{c.front}</div>
                     <div className="text-text-muted">{c.back}</div>
+                    {c.tags.length > 0 ? (
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {c.tags.map((tag) => (
+                          <Link
+                            key={tag}
+                            href={`/deck/${deckId}/study?tags=${encodeURIComponent(tag)}`}
+                            className="rounded-full border border-accent/30 bg-accent/10 px-2 py-0.5 text-xs text-accent transition duration-fast hover:bg-accent/20"
+                          >
+                            #{tag}
+                          </Link>
+                        ))}
+                      </div>
+                    ) : null}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -354,6 +432,8 @@ export default function DeckPage() {
                         setEditingCardId(c.id);
                         setEditingFront(c.front);
                         setEditingBack(c.back);
+                        setEditingTags(c.tags);
+                        setEditingPendingTag("");
                         setFeedback(null);
                       }}
                       className="rounded-md bg-glass-medium px-3 py-1.5 text-sm disabled:opacity-50 hover:bg-glass-strong"

@@ -41,6 +41,22 @@ Required variables:
 - `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
 - `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
 - `NEXT_PUBLIC_FIREBASE_APP_ID`
+- `NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY`
+
+Server-side variables for notifications:
+
+- `FIREBASE_ADMIN_PROJECT_ID`
+- `FIREBASE_ADMIN_CLIENT_EMAIL`
+- `FIREBASE_ADMIN_PRIVATE_KEY`
+- `WEB_PUSH_VAPID_PRIVATE_KEY`
+- `WEB_PUSH_SUBJECT`
+- `CRON_SECRET`
+
+Generate VAPID keys with:
+
+```bash
+npx web-push generate-vapid-keys
+```
 
 ### Install and run
 
@@ -104,6 +120,10 @@ That command starts the Firestore emulator through the Firebase CLI, runs the ru
 
 This app does not need server secrets for the current architecture. Vercel only needs the public Firebase client config already documented above.
 
+For daily push notifications, also add every server-side notification variable listed above to Vercel.
+
+The free notification design uses one once-daily digest sent by [vercel.json](vercel.json). On iPhone and iPad, users must add the site to the Home Screen before enabling notifications.
+
 ### Firebase backend operations
 
 This repo includes [.firebaserc](.firebaserc), [firebase.json](firebase.json), [firestore.rules](firestore.rules), and [firestore.indexes.json](firestore.indexes.json) so Firestore rules and indexes can be managed from source control.
@@ -132,6 +152,7 @@ npm run firebase:rules:deploy
 - Deploy the app on Vercel.
 - Deploy Firestore rules with `npm run firebase:rules:deploy`.
 - Smoke-test auth, deck creation, study flow, goals, constellation rewards, and account deletion.
+- Smoke-test PWA install flow and a manual test push on at least one real device.
 
 ## Health endpoint
 

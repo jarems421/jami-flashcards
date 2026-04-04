@@ -18,16 +18,19 @@
   },
   "dependencies": {
     "firebase": "^12.11.0",
+    "firebase-admin": "^13.7.0",
     "geist": "^1.7.0",
     "next": "^16.2.1",
     "react": "^19.2.0",
-    "react-dom": "^19.2.0"
+    "react-dom": "^19.2.0",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
     "@types/node": "^20",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
+    "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^9",
     "eslint-config-next": "16.2.1",

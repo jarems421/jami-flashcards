@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
   collection,
   doc,
@@ -11,18 +11,14 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { listenToAuth } from "@/lib/auth-listener";
+import { useUser } from "@/lib/user-context";
 import { db } from "@/services/firebase";
-import { User } from "firebase/auth";
 import { ensureConstellationSetup } from "@/services/constellations";
 import { updateCardSchedule, type CardRating } from "@/lib/scheduler";
-import {
-  getUpdatedGoalAfterAnswer,
-  normalizeGoal,
-} from "@/lib/goals";
+import { getUpdatedGoalAfterAnswer, normalizeGoal } from "@/lib/goals";
 import { createDustForCardReview } from "@/services/dust";
 import { createStarForGoalIfMissing } from "@/services/stars";
-import { getDeckById, type Deck } from "@/services/decks";
+import { getDecks } from "@/services/decks";
 import {
   cardMatchesAnyTag,
   mapCardData,
@@ -41,19 +37,12 @@ type SessionStats = {
   ratings: Record<CardRating, number>;
 };
 
-function buildVisibleCards(
-  cards: Card[],
-  studyMode: StudyMode,
-  now: number,
-  selectedTags: string[]
-) {
-  const filteredCards = cards.filter((card) => cardMatchesAnyTag(card, selectedTags));
-
+function buildVisibleCards(cards: Card[], studyMode: StudyMode, now: number) {
   if (studyMode === "all") {
-    return filteredCards;
+    return cards;
   }
 
-  return filteredCards
+  return cards
     .map((card, originalIndex) => ({
       card,
       originalIndex,
@@ -93,20 +82,15 @@ function createEmptySessionStats(): SessionStats {
   };
 }
 
-export default function StudyPage() {
-  const router = useRouter();
-  const routerRef = useRef(router);
+export default function TagStudyPage() {
   const searchParams = useSearchParams();
-  const params = useParams();
-  const rawId = params?.id;
-  const deckId = Array.isArray(rawId) ? (rawId[0] ?? "") : (rawId ?? "");
+  const { user } = useUser();
   const tagParam = searchParams.get("tags");
+  const selectedTags = parseCardTagsParam(tagParam);
+  const tagSummary = selectedTags.map((tag) => `#${tag}`).join(" · ");
 
-  const [user, setUser] = useState<User | null>(null);
-  const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [sessionCards, setSessionCards] = useState<Card[]>([]);
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
   const [loaded, setLoaded] = useState(false);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
@@ -120,6 +104,7 @@ export default function StudyPage() {
     type: "error" | "success";
     message: string;
   } | null>(null);
+  const [deckNamesById, setDeckNamesById] = useState<Record<string, string>>({});
   const isMountedRef = useRef(true);
 
   useEffect(() => {
@@ -133,58 +118,43 @@ export default function StudyPage() {
   }, [studyMode]);
 
   useEffect(() => {
-    routerRef.current = router;
-  }, [router]);
+    const nextSelectedTags = parseCardTagsParam(tagParam);
 
-  useEffect(() => {
-    const unsubscribe = listenToAuth((u) => {
-      if (!u) {
-        routerRef.current.push("/");
-        return;
-      }
-      setUser(u);
-    });
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
-    if (!user || !deckId) return;
+    if (nextSelectedTags.length === 0) {
+      setCards([]);
+      setSessionCards([]);
+      setSessionStats(createEmptySessionStats());
+      setFeedback({
+        type: "error",
+        message: "Choose at least one tag from the decks page to start a topic study session.",
+      });
+      setLoaded(true);
+      return;
+    }
 
     let cancelled = false;
-    const initialSelectedTags = parseCardTagsParam(tagParam);
 
     void (async () => {
       setLoaded(false);
       setFeedback(null);
 
       try {
-        const ownedDeck = await getDeckById(user.uid, deckId);
-        if (!ownedDeck) {
-          if (!cancelled) {
-            setDeck(null);
-            setCards([]);
-            setSessionCards([]);
-            setSessionStats(createEmptySessionStats());
-            setFeedback({
-              type: "error",
-              message: "Deck not found.",
-            });
-            setLoaded(true);
-          }
+        await ensureConstellationSetup(user.uid);
+
+        const cardsQuery = query(collection(db, "cards"), where("userId", "==", user.uid));
+        const [snapshot, decks] = await Promise.all([getDocs(cardsQuery), getDecks(user.uid)]);
+
+        if (cancelled) {
           return;
         }
 
-        await ensureConstellationSetup(user.uid);
-        const q = query(
-          collection(db, "cards"),
-          where("deckId", "==", deckId),
-          where("userId", "==", user.uid)
+        const nextDeckNamesById = Object.fromEntries(
+          decks.map((deck) => [deck.id, deck.name])
         );
-        const snapshot = await getDocs(q);
-        if (cancelled) return;
-        const list: Card[] = snapshot.docs.map((cardDoc) =>
-          mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
-        );
+        const list = snapshot.docs
+          .map((cardDoc) => mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>))
+          .filter((card) => cardMatchesAnyTag(card, nextSelectedTags));
+
         const sortedCards = list
           .map((card, originalIndex) => ({
             card,
@@ -192,20 +162,15 @@ export default function StudyPage() {
           }))
           .sort(
             (a, b) =>
-              b.card.createdAt - a.card.createdAt ||
-              a.originalIndex - b.originalIndex
+              b.card.createdAt - a.card.createdAt || a.originalIndex - b.originalIndex
           )
           .map(({ card }) => card);
-        const nextSessionCards = buildVisibleCards(
-          sortedCards,
-          studyModeRef.current,
-          Date.now(),
-          initialSelectedTags
-        );
-        setDeck(ownedDeck);
+
+        setDeckNamesById(nextDeckNamesById);
         setCards(sortedCards);
-        setSessionCards(nextSessionCards);
-        setSelectedTags(initialSelectedTags);
+        setSessionCards(
+          buildVisibleCards(sortedCards, studyModeRef.current, Date.now())
+        );
         setSessionStats(createEmptySessionStats());
         setIndex(0);
         setFlipped(false);
@@ -213,13 +178,13 @@ export default function StudyPage() {
       } catch (e) {
         console.error(e);
         if (!cancelled) {
-          setDeck(null);
+          setDeckNamesById({});
           setCards([]);
           setSessionCards([]);
           setSessionStats(createEmptySessionStats());
           setFeedback({
             type: "error",
-            message: "Failed to load study cards.",
+            message: "Failed to load tagged study cards.",
           });
           setLoaded(true);
         }
@@ -229,11 +194,11 @@ export default function StudyPage() {
     return () => {
       cancelled = true;
     };
-  }, [user, deckId, tagParam]);
+  }, [tagParam, user.uid]);
 
-  const resetSession = (nextMode: StudyMode, nextSelectedTags = selectedTags) => {
+  const resetSession = (nextMode: StudyMode) => {
     setStudyMode(nextMode);
-    setSessionCards(buildVisibleCards(cards, nextMode, Date.now(), nextSelectedTags));
+    setSessionCards(buildVisibleCards(cards, nextMode, Date.now()));
     setSessionStats(createEmptySessionStats());
     setIndex(0);
     setFlipped(false);
@@ -241,32 +206,25 @@ export default function StudyPage() {
     setFeedback(null);
   };
 
-  const applyTagFilter = (nextSelectedTags: string[]) => {
-    setSelectedTags(nextSelectedTags);
-    resetSession(studyModeRef.current, nextSelectedTags);
-  };
-
-  const done =
-    loaded && (sessionCards.length === 0 || index >= sessionCards.length);
-  const current =
-    loaded && !done ? sessionCards[index] : null;
+  const done = loaded && (sessionCards.length === 0 || index >= sessionCards.length);
+  const current = loaded && !done ? sessionCards[index] : null;
   const totalCards = sessionCards.length;
   const currentCardNumber = current ? index + 1 : 0;
   const accuracyPercentage =
     sessionStats.reviewedCards > 0
       ? Math.round((sessionStats.correctAnswers / sessionStats.reviewedCards) * 100)
       : 0;
-  const availableTags = Array.from(
-    new Set(cards.flatMap((card) => card.tags))
-  ).sort((left, right) => left.localeCompare(right));
+  const currentDeckName = current ? deckNamesById[current.deckId] ?? "Unknown deck" : null;
 
   const goNext = () => {
-    setIndex((i) => i + 1);
+    setIndex((value) => value + 1);
     setFlipped(false);
   };
 
   const handleRating = async (rating: CardRating) => {
-    if (!current || !user) return;
+    if (!current) {
+      return;
+    }
 
     setSavingRating(rating);
     setFeedback(null);
@@ -364,7 +322,10 @@ export default function StudyPage() {
   };
 
   const handleFlip = useCallback(() => {
-    if (!current || flipped) return;
+    if (!current || flipped) {
+      return;
+    }
+
     setFlipped(true);
   }, [current, flipped]);
 
@@ -374,18 +335,25 @@ export default function StudyPage() {
   });
 
   useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (
+        event.target instanceof HTMLInputElement ||
+        event.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
 
-      if (e.code === "Space") {
-        e.preventDefault();
+      if (event.code === "Space") {
+        event.preventDefault();
         if (!flipped && current) {
           setFlipped(true);
         }
         return;
       }
 
-      if (!flipped || savingRating !== null || !current) return;
+      if (!flipped || savingRating !== null || !current) {
+        return;
+      }
 
       const ratingMap: Record<string, CardRating> = {
         "1": "again",
@@ -393,38 +361,34 @@ export default function StudyPage() {
         "3": "good",
         "4": "easy",
       };
-      const rating = ratingMap[e.key];
+      const rating = ratingMap[event.key];
       if (rating) {
-        e.preventDefault();
+        event.preventDefault();
         void handleRatingRef.current(rating);
       }
     };
 
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [flipped, savingRating, current]);
+  }, [current, flipped, savingRating]);
 
   const progressPercent = totalCards > 0 ? Math.round((index / totalCards) * 100) : 0;
 
   return (
-    <main
-      data-app-surface="true"
-      className="flex min-h-screen flex-col items-center p-6 text-white"
-    >
-      {/* ── Header ── */}
-      <div className="mb-6 flex w-full max-w-lg items-center justify-between">
-        <h1 className="text-lg font-semibold">{deck ? `${deck.name} Study` : "Study"}</h1>
-        {deckId && deck ? (
-          <Link
-            href={`/deck/${deckId}`}
-            className="rounded-md bg-glass-medium px-3 py-1.5 text-sm transition duration-fast hover:bg-glass-strong"
-          >
-            Back to deck
-          </Link>
-        ) : null}
+    <main data-app-surface="true" className="flex min-h-screen flex-col items-center p-6 text-white">
+      <div className="mb-6 flex w-full max-w-lg items-center justify-between gap-3">
+        <div>
+          <h1 className="text-lg font-semibold">Study by tag</h1>
+          <p className="text-sm text-text-muted">{tagSummary || "Select tags from your decks"}</p>
+        </div>
+        <Link
+          href="/dashboard/decks"
+          className="rounded-md bg-glass-medium px-3 py-1.5 text-sm transition duration-fast hover:bg-glass-strong"
+        >
+          Back to decks
+        </Link>
       </div>
 
-      {/* ── Feedback ── */}
       {feedback ? (
         <div
           className={`mb-4 flex w-full max-w-lg items-center justify-between gap-4 rounded-md p-3 text-sm ${
@@ -444,96 +408,38 @@ export default function StudyPage() {
         </div>
       ) : null}
 
-      {deck && availableTags.length > 0 ? (
-        <div
-          className="mb-6 w-full max-w-lg rounded-xl border border-white/[0.07] p-4"
-          style={{ backgroundImage: "var(--gradient-card)" }}
+      {selectedTags.length > 0 ? (
+        <div className="mb-4 flex w-full max-w-lg flex-wrap gap-2">
+          {selectedTags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs text-accent"
+            >
+              #{tag}
+            </span>
+          ))}
+        </div>
+      ) : null}
+
+      <div className="mb-6 flex w-full max-w-lg gap-2">
+        <button
+          type="button"
+          onClick={() => resetSession("due")}
+          className={`rounded-md px-4 py-2 text-sm transition duration-fast ${studyMode === "due" ? "bg-accent" : "bg-glass-medium hover:bg-glass-strong"}`}
         >
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <div className="text-xs font-semibold text-text-muted">Filter this deck by tag</div>
-              <p className="text-sm text-text-secondary">
-                Narrow the session to one or more topics without leaving this deck.
-              </p>
-            </div>
-            {selectedTags.length > 0 ? (
-              <button
-                type="button"
-                onClick={() => applyTagFilter([])}
-                className="rounded-md bg-glass-medium px-3 py-1.5 text-sm hover:bg-glass-strong"
-              >
-                Clear tags
-              </button>
-            ) : null}
-          </div>
+          Due cards
+        </button>
+        <button
+          type="button"
+          onClick={() => resetSession("all")}
+          className={`rounded-md px-4 py-2 text-sm transition duration-fast ${studyMode === "all" ? "bg-accent" : "bg-glass-medium hover:bg-glass-strong"}`}
+        >
+          All matching cards
+        </button>
+      </div>
 
-          <div className="mt-3 flex flex-wrap gap-2">
-            {availableTags.map((tag) => {
-              const selected = selectedTags.includes(tag);
-
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() =>
-                    applyTagFilter(
-                      selected
-                        ? selectedTags.filter((currentTag) => currentTag !== tag)
-                        : [...selectedTags, tag]
-                    )
-                  }
-                  className={`rounded-full border px-3 py-1.5 text-sm transition duration-fast ${
-                    selected
-                      ? "border-accent bg-accent/20 text-accent"
-                      : "border-border bg-glass-medium text-white hover:bg-glass-strong"
-                  }`}
-                >
-                  #{tag}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      ) : null}
-
-      {/* ── Mode toggle ── */}
-      {deck ? (
-        <div className="mb-6 flex w-full max-w-lg gap-2">
-          <button
-            type="button"
-            onClick={() => resetSession("due")}
-            className={`rounded-md px-4 py-2 text-sm transition duration-fast ${studyMode === "due" ? "bg-accent" : "bg-glass-medium hover:bg-glass-strong"}`}
-          >
-            Due cards
-          </button>
-          <button
-            type="button"
-            onClick={() => resetSession("all")}
-            className={`rounded-md px-4 py-2 text-sm transition duration-fast ${studyMode === "all" ? "bg-accent" : "bg-glass-medium hover:bg-glass-strong"}`}
-          >
-            All cards
-          </button>
-        </div>
-      ) : null}
-
-      {/* ── Content ── */}
       {!loaded ? (
         <p className="text-sm text-text-muted">Loading study cards…</p>
-      ) : !deck ? (
-        <div
-          className="w-full max-w-lg space-y-3 rounded-xl border border-warm-border bg-warm-glow p-5"
-          style={{ backgroundImage: "var(--gradient-card)" }}
-        >
-          <p className="text-text-secondary">
-            This deck does not exist or you no longer have access to it.
-          </p>
-          <Link
-            href="/dashboard/decks"
-            className="inline-block rounded-md bg-glass-medium px-4 py-2 text-sm hover:bg-glass-strong"
-          >
-            Back to decks
-          </Link>
-        </div>
       ) : done ? (
         totalCards === 0 ? (
           <div
@@ -541,23 +447,20 @@ export default function StudyPage() {
             style={{ backgroundImage: "var(--gradient-card)" }}
           >
             <p className="text-text-secondary">
-              {selectedTags.length > 0
-                ? `No ${studyMode === "due" ? "due " : ""}cards in this deck match ${selectedTags.map((tag) => `#${tag}`).join(", ")}.`
+              {selectedTags.length === 0
+                ? "Choose one or more tags from your decks page to begin."
                 : studyMode === "due"
-                  ? "No cards are due right now. Check back later or study all cards."
-                  : "This deck has no cards yet. Add some from the deck page."}
+                  ? "No cards with those tags are due right now. Try all matching cards instead."
+                  : "No cards match those tags yet."}
             </p>
-            {deckId ? (
-              <Link
-                href={`/deck/${deckId}`}
-                className="inline-block rounded-md bg-glass-medium px-4 py-2 text-sm hover:bg-glass-strong"
-              >
-                Back to deck
-              </Link>
-            ) : null}
+            <Link
+              href="/dashboard/decks"
+              className="inline-block rounded-md bg-glass-medium px-4 py-2 text-sm hover:bg-glass-strong"
+            >
+              Back to decks
+            </Link>
           </div>
         ) : (
-          /* ── Session complete ── */
           <div
             className="w-full max-w-lg space-y-5 rounded-xl border border-warm-border bg-glass-subtle p-6 animate-warm-glow-pulse"
             style={{
@@ -568,11 +471,10 @@ export default function StudyPage() {
             <div>
               <h2 className="text-lg font-bold">Session complete</h2>
               <p className="mt-1 text-sm text-text-secondary">
-                You reviewed {sessionStats.reviewedCards} of {totalCards} card{totalCards === 1 ? "" : "s"}.
+                You reviewed {sessionStats.reviewedCards} of {totalCards} tagged card{totalCards === 1 ? "" : "s"}.
               </p>
             </div>
 
-            {/* Stats grid */}
             <div className="grid grid-cols-2 gap-3 text-sm">
               <div className="rounded-lg border border-white/[0.07] bg-glass-medium p-3 animate-fade-in">
                 <div className="text-xs text-text-muted">Accuracy</div>
@@ -604,20 +506,17 @@ export default function StudyPage() {
               >
                 Study again
               </button>
-              {deckId ? (
-                <Link
-                  href={`/deck/${deckId}`}
-                  className="rounded-md bg-glass-medium px-4 py-2 text-sm hover:bg-glass-strong"
-                >
-                  Back to deck
-                </Link>
-              ) : null}
+              <Link
+                href="/dashboard/decks"
+                className="rounded-md bg-glass-medium px-4 py-2 text-sm hover:bg-glass-strong"
+              >
+                Pick other tags
+              </Link>
             </div>
           </div>
         )
       ) : current ? (
         <div key={current.id} className="w-full max-w-lg animate-slide-up space-y-5">
-          {/* ── Progress bar ── */}
           <div>
             <div className="mb-1 flex justify-between text-xs text-text-muted">
               <span>Card {currentCardNumber} of {totalCards}</span>
@@ -631,14 +530,15 @@ export default function StudyPage() {
             </div>
           </div>
 
-          {/* ── Card ── */}
           <div
             className="perspective-[800px]"
             onClick={!flipped ? handleFlip : undefined}
-            onKeyDown={(e) => {
-              if (flipped) return;
-              if (e.key === "Enter" || e.key === " ") {
-                e.preventDefault();
+            onKeyDown={(event) => {
+              if (flipped) {
+                return;
+              }
+              if (event.key === "Enter" || event.key === " ") {
+                event.preventDefault();
                 handleFlip();
               }
             }}
@@ -652,9 +552,13 @@ export default function StudyPage() {
               }`}
               style={{ aspectRatio: "3 / 2" }}
             >
-              {/* Front face */}
               <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-border bg-glass-subtle p-6 shadow-card [backface-visibility:hidden]">
                 <div className="mb-auto flex flex-wrap justify-center gap-2">
+                  {currentDeckName ? (
+                    <span className="rounded-full border border-border bg-glass-medium px-3 py-1 text-xs text-text-muted">
+                      {currentDeckName}
+                    </span>
+                  ) : null}
                   {current.tags.map((tag) => (
                     <span
                       key={tag}
@@ -672,9 +576,13 @@ export default function StudyPage() {
                 </div>
               </div>
 
-              {/* Back face */}
               <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-accent/30 bg-glass-subtle p-6 shadow-card [backface-visibility:hidden] [transform:rotateY(180deg)]">
                 <div className="mb-auto flex flex-wrap justify-center gap-2">
+                  {currentDeckName ? (
+                    <span className="rounded-full border border-border bg-glass-medium px-3 py-1 text-xs text-text-muted">
+                      {currentDeckName}
+                    </span>
+                  ) : null}
                   {current.tags.map((tag) => (
                     <span
                       key={tag}
@@ -692,7 +600,6 @@ export default function StudyPage() {
             </div>
           </div>
 
-          {/* ── Stacked deck hint (decorative layers behind the card) ── */}
           {totalCards - index > 1 ? (
             <div className="pointer-events-none relative -mt-4 flex justify-center">
               <div className="h-2 w-[92%] rounded-b-xl border border-t-0 border-border bg-glass-medium opacity-60" />
@@ -704,13 +611,10 @@ export default function StudyPage() {
             </div>
           ) : null}
 
-          {/* ── Rating buttons ── */}
           {flipped ? (
             <div className="animate-fade-in space-y-3">
               {savingRating ? (
-                <div className="text-center text-sm text-text-muted">
-                  Saving…
-                </div>
+                <div className="text-center text-sm text-text-muted">Saving…</div>
               ) : null}
 
               <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
