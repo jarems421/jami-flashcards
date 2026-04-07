@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   normalizeNotificationPreferences,
-} from "@/lib/notifications";
+} from "@/lib/app/notifications";
 
 describe("notification helpers", () => {
   it("falls back when updatedAt is not a finite number", () => {

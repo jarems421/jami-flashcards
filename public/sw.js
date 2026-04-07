@@ -1,5 +1,11 @@
-const CACHE_NAME = "jami-shell-v1";
-const APP_SHELL = ["/", "/manifest.webmanifest"];
+const CACHE_NAME = "jami-shell-v2";
+const APP_SHELL = [
+  "/",
+  "/manifest.webmanifest",
+  "/icons/icon-192.png",
+  "/icons/icon-512.png",
+  "/icons/notification-icon-192.png",
+];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -54,8 +60,8 @@ self.addEventListener("push", (event) => {
   const title = payload.title || "Jami Flashcards";
   const options = {
     body: payload.body || "Your daily study digest is ready.",
-    icon: payload.icon || "/icon",
-    badge: payload.badge || "/icon",
+    icon: payload.icon || "/icons/notification-icon-192.png",
+    badge: payload.badge || "/icons/notification-icon-192.png",
     tag: payload.tag || "daily-digest",
     data: {
       url: payload.url || "/dashboard",

@@ -3,8 +3,10 @@
 import { FirebaseError } from "firebase/app";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { useUser } from "@/lib/user-context";
-import NotificationSettingsCard from "@/components/NotificationSettingsCard";
+import { useUser } from "@/lib/auth/user-context";
+import AppPage from "@/components/layout/AppPage";
+import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
+import { Button, Card } from "@/components/ui";
 import { logout, deleteAccount } from "@/services/auth";
 
 export default function ProfilePage() {
@@ -46,103 +48,85 @@ export default function ProfilePage() {
   };
 
   return (
-    <main
-      data-app-surface="true"
-      className="min-h-screen px-3 py-2 text-white sm:px-4 sm:py-3 md:px-6 md:py-4"
-    >
-      <div className="mx-auto max-w-3xl">
-        {/* ── Header ── */}
-        <div className="mb-3 sm:mb-4">
-          <h1 className="text-xl font-bold">Profile</h1>
-        </div>
-
-        {/* ── User info ── */}
-        <div className="mb-4 flex items-center gap-3 rounded-xl border border-warm-border bg-warm-glow p-3 sm:p-4"
-          style={{ backgroundImage: "var(--gradient-card)" }}
-        >
+    <AppPage title="Profile" backHref="/dashboard" backLabel="Dashboard" width="xl" contentClassName="space-y-6">
+      <Card tone="warm" className="flex items-center gap-4 sm:p-6" padding="md">
           {user.photoURL ? (
             <div
               aria-hidden="true"
-              className="h-12 w-12 rounded-full bg-cover bg-center"
+              className="h-16 w-16 rounded-full bg-cover bg-center"
               style={{ backgroundImage: `url(${user.photoURL})` }}
             />
           ) : (
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-accent text-lg font-bold">
+            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-warm-accent to-accent text-xl font-bold text-surface-base shadow-[var(--shadow-accent)]">
               {initial}
             </div>
           )}
           <div className="min-w-0">
-            <div className="truncate font-semibold">{displayName}</div>
+            <div className="truncate text-xl font-semibold">{displayName}</div>
             {user.email ? (
-              <div className="truncate text-sm text-text-muted">
+              <div className="mt-1 truncate text-sm text-text-muted">
                 {user.email}
               </div>
             ) : null}
           </div>
-        </div>
+      </Card>
 
-        {/* ── Sign out ── */}
-        <button
+      <Button
           onClick={() => void handleSignOut()}
-          className="mb-4 w-full rounded-xl border border-border bg-glass-subtle p-3 text-left text-sm font-semibold transition duration-fast hover:bg-glass-medium hover:shadow-card active:scale-[0.98] sm:p-4"
-          style={{ backgroundImage: "var(--gradient-card)" }}
+          variant="surface"
+          size="lg"
+          className="w-full justify-start"
         >
           Sign out
-        </button>
+      </Button>
 
-        {/* ── Coming soon settings ── */}
-        <div className="mb-4 space-y-2">
-          <div className="flex items-center justify-between rounded-xl border border-border bg-glass-subtle p-3 opacity-50 sm:p-4"
-            style={{ backgroundImage: "var(--gradient-card)" }}
-          >
+      <div className="space-y-4">
+        <Card className="flex items-center justify-between opacity-60" padding="md">
             <span className="text-sm">Theme</span>
-            <span className="rounded-md bg-glass-medium px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+            <span className="rounded-lg bg-glass-medium px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
               Coming soon
             </span>
-          </div>
-          <NotificationSettingsCard userId={user.uid} />
-        </div>
+        </Card>
+        <NotificationSettingsCard userId={user.uid} />
+      </div>
 
-        {/* ── Danger zone ── */}
-        <div className="rounded-xl border border-error-muted bg-error-muted/30 p-3 sm:p-4"
-          style={{ backgroundImage: "var(--gradient-card)" }}
-        >
-          <h2 className="mb-1 text-sm font-bold text-red-300">Danger Zone</h2>
+        <Card tone="subtle" className="border-error-muted bg-error-muted/20 sm:p-6" padding="md">
+          <h2 className="mb-1 text-sm font-bold text-rose-200">Danger Zone</h2>
           <p className="mb-3 text-xs text-text-muted">
             Permanently delete your account and all associated data. This
             cannot be undone.
           </p>
 
           {error ? (
-            <p className="mb-2 text-xs text-red-300">{error}</p>
+            <p className="mb-2 text-xs text-rose-200">{error}</p>
           ) : null}
 
           {!showDeleteConfirm ? (
-            <button
+            <Button
               onClick={() => setShowDeleteConfirm(true)}
-              className="rounded-md bg-error px-4 py-2 text-sm font-semibold transition duration-fast hover:bg-red-600 active:scale-[0.97]"
+              variant="danger"
             >
               Delete Account
-            </button>
+            </Button>
           ) : (
             <div className="flex flex-wrap gap-2">
-              <button
+              <Button
                 disabled={isDeleting}
                 onClick={() => void handleDeleteAccount()}
-                className="rounded-md bg-error px-4 py-2 text-sm font-semibold transition duration-fast hover:bg-red-600 active:scale-[0.97] disabled:opacity-50"
+                variant="danger"
               >
                 {isDeleting ? "Deleting…" : "Yes, delete everything"}
-              </button>
-              <button
+              </Button>
+              <Button
                 onClick={() => setShowDeleteConfirm(false)}
-                className="rounded-md bg-glass-medium px-4 py-2 text-sm transition duration-fast hover:bg-glass-strong active:scale-[0.97]"
+                variant="secondary"
               >
                 Cancel
-              </button>
+              </Button>
             </div>
           )}
-        </div>
-      </div>
-    </main>
+      </Card>
+    </AppPage>
   );
 }
+

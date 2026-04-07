@@ -6,7 +6,7 @@ import {
   getCardTagsInputError,
   parseCardTagsInput,
   parseCardTagsParam,
-} from "@/lib/cards";
+} from "@/lib/study/cards";
 
 describe("card tag helpers", () => {
   it("normalizes and deduplicates comma-separated tags", () => {

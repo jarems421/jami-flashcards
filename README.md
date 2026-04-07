@@ -1,159 +1,98 @@
-# Jami Flashcards
+<p align="center">
+  <img src="public/icon-512.png" alt="Jami" width="120" height="120" style="border-radius: 24px;" />
+</p>
 
-Jami Flashcards is a spaced-repetition study app built with Next.js and Firebase. It combines deck-based flashcards with goals, constellation progress, stars, and dust so study sessions feel more like a long-running progression loop than a plain quiz app.
+<h1 align="center">Jami Flashcards</h1>
 
-## What it does
+<p align="center">
+  A spaced-repetition study app that turns daily review sessions into a growing constellation of stars.
+</p>
 
-- Create and manage private flashcard decks.
-- Study with spaced repetition scheduling.
-- Track progress through goals and constellation-style rewards.
-- Persist user data in Firebase Auth and Firestore.
-- Expose a `/health` endpoint for deployment checks.
+<p align="center">
+  <strong>Next.js</strong> · <strong>React</strong> · <strong>TypeScript</strong> · <strong>Firebase</strong> · <strong>Tailwind CSS</strong>
+</p>
 
-## Stack
+---
 
-- Next.js 16 App Router
-- React 19
-- TypeScript
-- Firebase Auth
-- Cloud Firestore
-- Vitest
-- Firebase Emulator Suite for security-rules tests
+## Features
 
-## Local setup
+| Area | Details |
+|------|---------|
+| **Flashcards** | Create decks, write cards, tag them, and study with spaced repetition scheduling |
+| **Goals** | Set study targets with deadlines — earn a constellation star when you complete one |
+| **Constellations** | Visual star map that grows as you hit goals — set one as your live background |
+| **Statistics** | Track reviews per day, accuracy, and study streaks over time |
+| **Push notifications** | Daily digest reminders (PWA — add to Home Screen on iOS) |
+| **PWA** | Installable on mobile and desktop with offline-ready service worker |
+
+## Tech stack
+
+- **Framework** — Next.js 16 (App Router)
+- **UI** — React 19, Tailwind CSS 4
+- **Auth** — Firebase Authentication (Google sign-in)
+- **Database** — Cloud Firestore with per-user security rules
+- **Testing** — Vitest + Firebase Emulator Suite
+- **Deployment** — Vercel
+
+## Project structure
+
+```
+app/                    → Pages and API routes (App Router)
+  dashboard/            → Authenticated app screens
+  deck/[id]/            → Deck detail and study pages
+  api/                  → Notification endpoints
+components/
+  constellation/        → Star rendering, background, dust effects
+  decks/                → Deck and card management UI
+  layout/               → AppPage, AppTopBar, TabBar shell
+  ui/                   → Button, Card, Input, EmptyState, etc.
+lib/                    → Pure logic (scheduling, goals, stars, time)
+services/               → Firebase reads/writes (auth, decks, stars, etc.)
+tests/                  → Unit and Firestore rules tests
+```
+
+## Getting started
 
 ### Prerequisites
 
 - Node.js 20+
-- npm 10+
-- A Firebase project with Authentication and Firestore enabled
-- Java 21+ if you want to run the Firestore emulator and `npm run test:rules`
+- A Firebase project with **Authentication** and **Firestore** enabled
+
+### Setup
+
+```bash
+git clone https://github.com/jarems421/jami-flashcards.git
+cd jami-flashcards
+npm install
+cp .env.example .env.local   # Fill in your Firebase config
+npm run dev                   # http://localhost:3000
+```
 
 ### Environment variables
 
-Copy [.env.example](.env.example) to `.env.local` and fill in your Firebase web app values.
-
-Required variables:
-
-- `NEXT_PUBLIC_FIREBASE_API_KEY`
-- `NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN`
-- `NEXT_PUBLIC_FIREBASE_PROJECT_ID`
-- `NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET`
-- `NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
-- `NEXT_PUBLIC_FIREBASE_APP_ID`
-- `NEXT_PUBLIC_WEB_PUSH_VAPID_PUBLIC_KEY`
-
-Server-side variables for notifications:
-
-- `FIREBASE_ADMIN_PROJECT_ID`
-- `FIREBASE_ADMIN_CLIENT_EMAIL`
-- `FIREBASE_ADMIN_PRIVATE_KEY`
-- `WEB_PUSH_VAPID_PRIVATE_KEY`
-- `WEB_PUSH_SUBJECT`
-- `CRON_SECRET`
-
-Generate VAPID keys with:
-
-```bash
-npx web-push generate-vapid-keys
-```
-
-### Install and run
-
-```bash
-npm install
-npm run dev
-```
-
-Open `http://localhost:3000`.
-
-If Next route types get stale after page removals or renames, clear the cache first:
-
-```bash
-npm run dev:clean
-```
+See [`.env.example`](.env.example) for all required values. The client-side Firebase keys are prefixed with `NEXT_PUBLIC_FIREBASE_*`. Server-side variables are only needed for push notifications.
 
 ## Scripts
 
-```bash
-npm run dev
-npm run dev:clean
-npm run lint
-npm run typecheck
-npm run test
-npm run test:rules
-npm run build
-```
-
-Additional Firebase helper scripts:
-
-```bash
-npm run emulators:firestore
-npm run firebase:login
-npm run firebase:projects
-npm run firebase:rules:deploy
-```
-
-## Security rules testing
-
-This repo includes emulator-backed Firestore rules tests in [tests/firestore.rules.test.ts](tests/firestore.rules.test.ts).
-
-The Firestore emulator requires Java to be installed and available on your `PATH`.
-
-Run them with:
-
-```bash
-npm run test:rules
-```
-
-That command starts the Firestore emulator through the Firebase CLI, runs the rules suite with [vitest.rules.config.ts](vitest.rules.config.ts), and then shuts the emulator down.
+| Command | Purpose |
+|---------|---------|
+| `npm run dev` | Start dev server |
+| `npm run build` | Production build |
+| `npm run lint` | ESLint |
+| `npm run typecheck` | TypeScript check |
+| `npm run test` | Unit tests (Vitest) |
+| `npm run test:rules` | Firestore security rules tests (requires Java) |
+| `npm run firebase:rules:deploy` | Deploy Firestore rules |
 
 ## Deployment
 
-### App hosting on Vercel
+1. Push to GitHub
+2. Import into [Vercel](https://vercel.com)
+3. Add `NEXT_PUBLIC_FIREBASE_*` environment variables
+4. Deploy
 
-1. Push the repo to GitHub.
-2. Import the project into Vercel.
-3. Add every `NEXT_PUBLIC_FIREBASE_*` variable from your local `.env.local` to the Vercel project settings.
-4. Deploy.
-5. Verify the deployed site and the `/health` route.
+For push notifications, also add the server-side notification variables (`FIREBASE_ADMIN_*`, `WEB_PUSH_*`, `CRON_SECRET`).
 
-This app does not need server secrets for the current architecture. Vercel only needs the public Firebase client config already documented above.
+## License
 
-For daily push notifications, also add every server-side notification variable listed above to Vercel.
-
-The free notification design uses one once-daily digest sent by [vercel.json](vercel.json). On iPhone and iPad, users must add the site to the Home Screen before enabling notifications.
-
-### Firebase backend operations
-
-This repo includes [.firebaserc](.firebaserc), [firebase.json](firebase.json), [firestore.rules](firestore.rules), and [firestore.indexes.json](firestore.indexes.json) so Firestore rules and indexes can be managed from source control.
-
-First-time CLI setup:
-
-```bash
-npm run firebase:login
-npm run firebase:projects
-```
-
-Deploy Firestore rules and indexes:
-
-```bash
-npm run firebase:rules:deploy
-```
-
-## Publish checklist
-
-- Fill in production Firebase environment variables in Vercel.
-- Run `npm run lint`.
-- Run `npm run typecheck`.
-- Run `npm run test`.
-- Run `npm run test:rules`.
-- Run `npm run build`.
-- Deploy the app on Vercel.
-- Deploy Firestore rules with `npm run firebase:rules:deploy`.
-- Smoke-test auth, deck creation, study flow, goals, constellation rewards, and account deletion.
-- Smoke-test PWA install flow and a manual test push on at least one real device.
-
-## Health endpoint
-
-`GET /health` returns application status, a timestamp, and Firestore reachability details. It is useful for a quick post-deploy verification.
+Private project — not open source.

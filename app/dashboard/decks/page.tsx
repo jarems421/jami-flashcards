@@ -9,7 +9,7 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { useUser } from "@/lib/user-context";
+import { useUser } from "@/lib/auth/user-context";
 import {
   createDeck,
   deleteDeck,
@@ -17,12 +17,15 @@ import {
   reattemptDeck,
   renameDeck,
   type Deck,
-} from "@/services/decks";
-import { getTagSuggestions, normalizeCardTags } from "@/lib/cards";
-import { db } from "@/services/firebase";
+} from "@/services/study/decks";
+import { getTagSuggestions, normalizeCardTags } from "@/lib/study/cards";
+import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
+import { db } from "@/services/firebase/client";
 import { FirebaseError } from "firebase/app";
-import Refreshable, { RefreshIconButton } from "@/components/Refreshable";
-import { removeUserTag, renameUserTag } from "@/services/tags";
+import AppPage from "@/components/layout/AppPage";
+import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, Skeleton } from "@/components/ui";
+import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
+import { removeUserTag, renameUserTag } from "@/services/study/tags";
 
 type DeckDueCounts = Record<string, number>;
 type DeckTotalCounts = Record<string, number>;
@@ -31,7 +34,7 @@ type Feedback = { type: "success" | "error"; message: string };
 
 export default function DecksPage() {
   const router = useRouter();
-  const { user, refreshKey } = useUser();
+  const { user } = useUser();
 
   const [decks, setDecks] = useState<Deck[]>([]);
   const [dueCount, setDueCount] = useState(0);
@@ -140,7 +143,7 @@ export default function DecksPage() {
 
   useEffect(() => {
     void loadAll(user.uid);
-  }, [user.uid, loadAll, refreshKey]);
+  }, [user.uid, loadAll]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -337,74 +340,91 @@ export default function DecksPage() {
 
   return (
     <Refreshable onRefresh={handleRefresh}>
-      <main
-        data-app-surface="true"
-        className="min-h-screen px-3 py-2 text-white sm:px-4 sm:py-3 md:px-6 md:py-4"
+      <AppPage
+        title="Decks"
+        backHref="/dashboard"
+        backLabel="Dashboard"
+        width="2xl"
+        action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
+        contentClassName="space-y-6"
       >
-        <div className="mx-auto max-w-3xl">
-          {/* ── Header ── */}
-          <div className="mb-3 flex items-center justify-between sm:mb-4">
-            <h1 className="text-xl font-bold">Decks</h1>
-            <RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />
-          </div>
+        {feedback ? (
+          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
+        ) : null}
 
-          {/* ── Feedback ── */}
-          {feedback ? (
-            <div
-              className={`mb-3 flex items-center justify-between gap-4 rounded-xl p-2.5 text-sm sm:mb-4 sm:p-3 ${
-                feedback.type === "error"
-                  ? "bg-error-muted text-red-200"
-                  : "bg-success-muted text-emerald-200"
-              }`}
-            >
-              <div>{feedback.message}</div>
-              <button
-                onClick={() => setFeedback(null)}
-                className="rounded-md bg-glass-medium px-3 py-1 text-xs hover:bg-glass-strong active:scale-[0.97]"
-              >
-                Dismiss
-              </button>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_320px]">
+          <Card padding="lg">
+            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+              Build your library
             </div>
-          ) : null}
+            <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
+              Create and organize decks.
+            </h2>
+            <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
+              Keep subjects clean, add tags for cross-deck study, and return to any topic when you need a deeper pass.
+            </p>
+            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
+              <Input
+                placeholder="New deck name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && name.trim()) {
+                    e.preventDefault();
+                    void handleCreate();
+                  }
+                }}
+                containerClassName="w-full"
+                className="sm:max-w-md"
+              />
+              <Button
+                disabled={isCreatingDeck || !name.trim()}
+                onClick={() => void handleCreate()}
+                size="lg"
+                className="sm:min-w-[9rem]"
+              >
+                {isCreatingDeck ? "Creating…" : "Create"}
+              </Button>
+            </div>
+          </Card>
 
-          {/* ── Due summary ── */}
-          <div
-            className="mb-4 rounded-xl border border-white/[0.07] p-3 sm:p-4"
-            style={{ backgroundImage: "var(--gradient-card)" }}
-          >
-            <div className="mb-1 text-xs font-semibold text-text-muted">Total cards due</div>
-            <div className="text-2xl font-bold">{dueCount}</div>
-          </div>
+          <Card tone="warm" padding="md">
+            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+              Queue
+            </div>
+            <div className="mt-3 text-3xl font-semibold">{dueCount}</div>
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              Cards are waiting across your deck library. Study by deck or narrow by tag when you want a tighter session.
+            </p>
+          </Card>
+        </div>
 
-          <div
-            className="mb-4 rounded-xl border border-white/[0.07] p-3 sm:p-4"
-            style={{ backgroundImage: "var(--gradient-card)" }}
-          >
+        <Card padding="lg">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="space-y-1">
-                <div className="text-xs font-semibold text-text-muted">Study by tag</div>
+                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Study by tag</div>
                 <p className="text-sm text-text-secondary">
                   Group cards from different decks by topic, then study only those tags.
                 </p>
               </div>
               <div className="flex flex-wrap gap-2">
                 {selectedTags.length > 0 ? (
-                  <button
+                  <Button
                     type="button"
                     onClick={() => setSelectedTags([])}
-                    className="rounded-md bg-glass-medium px-3 py-1.5 text-sm hover:bg-glass-strong"
+                    variant="secondary"
                   >
                     Clear
-                  </button>
+                  </Button>
                 ) : null}
-                <button
+                <Button
                   type="button"
                   disabled={selectedTags.length === 0}
                   onClick={handleStudySelectedTags}
-                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold transition duration-fast hover:bg-accent-hover disabled:opacity-50"
+                  className="min-w-[12rem]"
                 >
                   Study selected tags
-                </button>
+                </Button>
               </div>
             </div>
 
@@ -425,10 +445,10 @@ export default function DecksPage() {
                         key={tag}
                         type="button"
                         onClick={() => toggleTagSelection(tag)}
-                        className={`rounded-full border px-3 py-1.5 text-left text-sm transition duration-fast ${
+                        className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${
                           selected
                             ? "border-accent bg-accent/20 text-accent"
-                            : "border-border bg-glass-medium text-white hover:bg-glass-strong"
+                            : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"
                         }`}
                       >
                         <div className="font-medium">#{tag}</div>
@@ -440,22 +460,22 @@ export default function DecksPage() {
                   })}
                 </div>
 
-                <div className="rounded-xl border border-white/[0.07] bg-glass-subtle p-3">
+                <div className="rounded-[1.85rem] border border-white/[0.07] bg-white/[0.03] p-4">
                   <div className="mb-3 flex items-start justify-between gap-3">
                     <div>
-                      <div className="text-xs font-semibold text-text-muted">Manage tags</div>
+                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Manage tags</div>
                       <p className="text-sm text-text-secondary">
                         Rename a tag, merge it into another one, or remove it from every card.
                       </p>
                     </div>
                     {renamingTag ? (
-                      <button
+                      <Button
                         type="button"
                         onClick={cancelTagRename}
-                        className="rounded-md bg-glass-medium px-3 py-1.5 text-sm hover:bg-glass-strong"
+                        variant="secondary"
                       >
                         Cancel rename
-                      </button>
+                      </Button>
                     ) : null}
                   </div>
 
@@ -469,46 +489,42 @@ export default function DecksPage() {
                         : [];
 
                       return (
-                        <div key={`manage-${tag}`} className="rounded-lg border border-white/[0.06] bg-glass-medium p-3">
+                        <div key={`manage-${tag}`} className="rounded-[1.5rem] border border-white/[0.06] bg-white/[0.05] p-3">
                           <div className="flex flex-wrap items-center justify-between gap-3">
                             <div>
                               <div className="font-medium">#{tag}</div>
                               <div className="text-xs text-text-muted">{due} due · {total} total</div>
                             </div>
                             <div className="flex flex-wrap gap-2">
-                              <button
+                              <Button
                                 type="button"
                                 onClick={() => {
                                   setRenamingTag(tag);
                                   setRenamingTagValue(tag);
                                   setFeedback(null);
                                 }}
-                                className="rounded-md bg-glass-medium px-3 py-1.5 text-sm hover:bg-glass-strong"
+                                variant="secondary"
                               >
                                 Rename or merge
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
                                 disabled={removingTag === tag}
                                 onClick={() => void handleRemoveTag(tag)}
-                                className="rounded-md bg-error/80 px-3 py-1.5 text-sm hover:bg-error disabled:opacity-50"
+                                variant="danger"
                               >
                                 {removingTag === tag ? "Removing…" : "Remove from cards"}
-                              </button>
+                              </Button>
                             </div>
                           </div>
 
                           {isEditing ? (
-                            <div className="mt-3 space-y-3 rounded-lg border border-white/[0.06] bg-glass-subtle p-3">
+                            <div className="mt-3 space-y-3 rounded-[1.5rem] border border-white/[0.06] bg-black/10 p-3">
                               <div className="space-y-2">
-                                <label className="block text-xs font-semibold text-text-muted">
-                                  Rename or merge into
-                                </label>
-                                <input
+                                <Input
+                                  label="Rename or merge into"
                                   value={renamingTagValue}
                                   onChange={(event) => setRenamingTagValue(event.target.value)}
-                                  className="w-full rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
-                                  placeholder="Type a replacement tag"
                                 />
                               </div>
 
@@ -519,7 +535,7 @@ export default function DecksPage() {
                                       key={`${tag}-${suggestion}`}
                                       type="button"
                                       onClick={() => setRenamingTagValue(suggestion)}
-                                      className="rounded-full border border-border bg-glass-medium px-3 py-1 text-xs text-text-muted hover:bg-glass-strong"
+                                      className="rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-xs text-text-muted transition duration-fast hover:border-border-strong hover:bg-white/[0.08]"
                                     >
                                       Merge into #{suggestion}
                                     </button>
@@ -528,22 +544,21 @@ export default function DecksPage() {
                               ) : null}
 
                               <div className="flex flex-wrap gap-2">
-                                <button
+                                <Button
                                   type="button"
                                   disabled={savingTag === tag}
                                   onClick={() => void handleSaveTagRename()}
-                                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold transition duration-fast hover:bg-accent-hover disabled:opacity-50"
                                 >
                                   {savingTag === tag ? "Saving…" : "Save tag change"}
-                                </button>
-                                <button
+                                </Button>
+                                <Button
                                   type="button"
                                   disabled={savingTag === tag}
                                   onClick={cancelTagRename}
-                                  className="rounded-md bg-glass-medium px-3 py-1.5 text-sm hover:bg-glass-strong disabled:opacity-50"
+                                  variant="secondary"
                                 >
                                   Cancel
-                                </button>
+                                </Button>
                               </div>
                             </div>
                           ) : null}
@@ -554,45 +569,23 @@ export default function DecksPage() {
                 </div>
               </div>
             )}
-          </div>
-
-          {/* ── Create deck ── */}
-          <div className="mb-4 flex gap-2">
-            <input
-              placeholder="New deck name"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && name.trim()) {
-                  e.preventDefault();
-                  void handleCreate();
-                }
-              }}
-              className="w-full max-w-xs rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white placeholder:text-text-muted outline-none transition duration-fast focus:border-accent focus:ring-2 focus:ring-accent/20"
-            />
-            <button
-              disabled={isCreatingDeck || !name.trim()}
-              onClick={() => void handleCreate()}
-              className="rounded-md bg-accent px-4 py-2 text-sm font-semibold text-white transition duration-fast hover:bg-accent-hover active:scale-[0.97] disabled:opacity-50"
-            >
-              {isCreatingDeck ? "Creating…" : "Create"}
-            </button>
-          </div>
+        </Card>
 
           {/* ── Deck list ── */}
           {isLoadingDecks ? (
-            <p className="text-sm text-text-muted">Loading decks…</p>
-          ) : decks.length === 0 ? (
-            <div
-              className="rounded-xl border border-warm-border bg-warm-glow p-4 text-center"
-              style={{ backgroundImage: "var(--gradient-card)" }}
-            >
-              <p className="mb-2 text-sm text-text-secondary">
-                No decks yet. Create your first deck above to get started.
-              </p>
+            <div className="grid gap-4 xl:grid-cols-2">
+              <Skeleton className="h-28" />
+              <Skeleton className="h-28" />
+              <Skeleton className="h-28" />
             </div>
+          ) : decks.length === 0 ? (
+            <EmptyState
+              emoji="📦"
+              title="No decks yet"
+              description="Create your first deck above to get started."
+            />
           ) : (
-            <div className="grid gap-2.5 sm:gap-3">
+            <div className="grid animate-slide-up gap-4 xl:grid-cols-2">
               {decks.map((deck) => {
                 const due = deckDueCounts[deck.id] ?? 0;
                 const total = deckTotalCounts[deck.id] ?? 0;
@@ -602,40 +595,38 @@ export default function DecksPage() {
                 return (
                   <div
                     key={deck.id}
-                    className="rounded-xl border border-white/[0.07] p-2.5 sm:p-3 md:p-4"
-                    style={{ backgroundImage: "var(--gradient-card)" }}
+                    className="app-panel p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
                   >
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         {editingDeckId === deck.id ? (
                           <div className="space-y-2">
-                            <input
+                            <Input
                               value={editingDeckName}
                               onChange={(e) => setEditingDeckName(e.target.value)}
-                              className="w-full rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white outline-none focus:border-accent focus:ring-2 focus:ring-accent/20"
+                              placeholder="Deck name"
                             />
                             <div className="flex flex-wrap gap-2">
-                              <button
+                              <Button
                                 type="button"
                                 disabled={savingDeckId === deck.id}
                                 onClick={() => void handleDeckRename(deck)}
-                                className="rounded-md bg-accent px-3 py-1.5 text-sm active:scale-[0.97] disabled:opacity-50"
                               >
                                 {savingDeckId === deck.id ? "Saving…" : "Save"}
-                              </button>
-                              <button
+                              </Button>
+                              <Button
                                 type="button"
                                 disabled={savingDeckId === deck.id}
                                 onClick={resetDeckEditing}
-                                className="rounded-md bg-glass-medium px-3 py-1.5 text-sm active:scale-[0.97] disabled:opacity-50 hover:bg-glass-strong"
+                                variant="secondary"
                               >
                                 Cancel
-                              </button>
+                              </Button>
                             </div>
                           </div>
                         ) : (
                           <Link
-                            href={`/deck/${deck.id}`}
+                            href={getDeckHref(deck.id)}
                             className="block transition duration-fast hover:opacity-80"
                           >
                             <div className="font-semibold">{deck.name}</div>
@@ -650,22 +641,22 @@ export default function DecksPage() {
                       <div className="flex flex-wrap gap-2">
                         {due > 0 ? (
                           <Link
-                            href={`/deck/${deck.id}/study`}
-                            className="rounded-md bg-accent px-3 py-1.5 text-sm font-semibold transition duration-fast hover:bg-accent-hover active:scale-[0.97]"
+                            href={getDeckStudyHref(deck.id)}
+                            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
                           >
                             Study
                           </Link>
                         ) : total > 0 ? (
-                          <button
+                          <Button
                             type="button"
                             disabled={reattemptingDeckId === deck.id}
                             onClick={() => void handleReattempt(deck)}
-                            className="rounded-md bg-warm-accent px-3 py-1.5 text-sm font-semibold text-surface-base transition duration-fast hover:brightness-110 active:scale-[0.97] disabled:opacity-50"
+                            variant="warm"
                           >
                             {reattemptingDeckId === deck.id ? "Resetting…" : "Reattempt"}
-                          </button>
+                          </Button>
                         ) : null}
-                        <button
+                        <Button
                           type="button"
                           disabled={deletingDeckId === deck.id}
                           onClick={() => {
@@ -673,37 +664,31 @@ export default function DecksPage() {
                             setEditingDeckName(deck.name);
                             setFeedback(null);
                           }}
-                          className="rounded-md bg-glass-medium px-3 py-1.5 text-sm active:scale-[0.97] disabled:opacity-50 hover:bg-glass-strong"
+                          variant="secondary"
                         >
                           Rename
-                        </button>
-                        <button
+                        </Button>
+                        <Button
                           type="button"
                           disabled={deletingDeckId === deck.id}
                           onClick={() => void handleDeckDelete(deck)}
-                          className="rounded-md bg-error/80 px-3 py-1.5 text-sm active:scale-[0.97] disabled:opacity-50 hover:bg-error"
+                          variant="danger"
                         >
                           {deletingDeckId === deck.id ? "Deleting…" : "Delete"}
-                        </button>
+                        </Button>
                       </div>
                     </div>
 
                     {/* Due progress bar */}
                     {total > 0 ? (
-                      <div className="mt-2 h-1.5 rounded-full bg-glass-medium">
-                        <div
-                          className="h-1.5 rounded-full bg-gradient-to-r from-accent to-success transition-all duration-slow"
-                          style={{ width: `${progressPct}%` }}
-                        />
-                      </div>
+                      <ProgressBar progress={progressPct} className="mt-4" />
                     ) : null}
                   </div>
                 );
               })}
             </div>
           )}
-        </div>
-      </main>
+      </AppPage>
     </Refreshable>
   );
 
@@ -727,3 +712,4 @@ export default function DecksPage() {
     }
   }
 }
+

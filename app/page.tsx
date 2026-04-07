@@ -1,10 +1,12 @@
 "use client";
 
+import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FirebaseError } from "firebase/app";
 import { signInWithGoogle, handleGoogleRedirectResult } from "@/services/auth";
-import { listenToAuth } from "@/lib/auth-listener";
+import { listenToAuth } from "@/lib/auth/auth-listener";
+import AppPage from "@/components/layout/AppPage";
 import { Button, Card } from "@/components/ui";
 
 export default function Home() {
@@ -34,95 +36,112 @@ export default function Home() {
       }
     });
 
-    // Handle Google redirect result (when popup fallback triggers a redirect)
-    void handleGoogleRedirectResult().catch((e) => {
-      console.error("Redirect result error:", e);
+    // Handle Google redirect result when popup fallback triggers a redirect.
+    void handleGoogleRedirectResult().catch((error) => {
+      console.error("Redirect result error:", error);
     });
 
     return () => unsubscribe();
   }, [redirectToDashboard]);
 
   return (
-    <main
-      data-app-surface="true"
-      className="flex min-h-screen flex-col items-center justify-center px-4 text-white"
-    >
-      {/* ── Hero ── */}
-      <Card className="w-full max-w-md animate-fade-in text-center">
-        <h1 className="mb-2 text-3xl font-semibold tracking-tight">
-          Jami Flashcards
-        </h1>
-        <p className="mb-8 text-text-secondary">
-          Master anything with spaced repetition.
-          <br />
-          Build decks, study daily, grow your constellation.
-        </p>
-
-        {error ? (
-          <div className="mb-4 rounded-md bg-error-muted px-3 py-2 text-sm text-red-200">
-            {error}
+    <AppPage title="Welcome" width="2xl" className="flex flex-col justify-center">
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(280px,0.85fr)] lg:gap-8">
+        <Card className="animate-fade-in text-left sm:p-8 lg:p-10" padding="lg">
+          <div className="mb-4 inline-flex items-center gap-2.5 rounded-full border border-warm-border bg-[linear-gradient(180deg,rgba(255,214,246,0.16),rgba(183,124,255,0.16))] px-3 py-1.5 text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-warm-accent shadow-[0_18px_30px_rgba(183,124,255,0.18)]">
+            <Image
+              src="/icon.png"
+              alt=""
+              width={18}
+              height={18}
+              className="h-[1.125rem] w-[1.125rem] rounded-[0.55rem] border border-white/10 shadow-[0_0_18px_rgba(255,214,246,0.34)]"
+            />
+            Study that sticks
           </div>
-        ) : null}
+          <h1 className="max-w-xl text-4xl font-bold tracking-tight sm:text-5xl">
+            Jami Flashcards
+          </h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-text-secondary sm:text-lg">
+            Build decks, review with spaced repetition, and turn steady study into a growing constellation.
+          </p>
 
-        <button
-          disabled={isSigningIn}
-          onClick={async () => {
-            if (isSigningIn) return;
-            setIsSigningIn(true);
-            setError(null);
-
-            try {
-              await signInWithGoogle();
-              redirectToDashboard();
-            } catch (e) {
-              const maybeCode =
-                e instanceof FirebaseError ? e.code : undefined;
-              if (maybeCode !== "auth/popup-closed-by-user") {
-                setError(
-                  maybeCode
-                    ? `Google sign-in failed (${maybeCode}).`
-                    : "Google sign-in failed. Please try again."
-                );
-              }
-              console.error(e);
-              setIsSigningIn(false);
-            }
-          }}
-          className="mb-3 w-full rounded-md bg-white py-2 text-sm font-medium text-black transition duration-fast ease-standard hover:bg-white/80 disabled:opacity-50"
-        >
-          {isSigningIn ? "Signing in…" : "Continue with Google"}
-        </button>
-
-        <div className="mb-3 text-sm text-text-muted">or</div>
-
-        <Button
-          onClick={() => router.push("/auth")}
-          className="w-full"
-        >
-          Continue with Email
-        </Button>
-      </Card>
-
-      {/* ── How it works ── */}
-      <div className="mt-12 grid w-full max-w-md gap-4 sm:grid-cols-3 sm:max-w-2xl">
-        {[
-          { step: "1", title: "Create a deck", desc: "Add cards with a front and back on any topic." },
-          { step: "2", title: "Study daily", desc: "Spaced repetition shows each card right when you need it." },
-          { step: "3", title: "Earn rewards", desc: "Hit goals, collect stars, and grow your constellation." },
-        ].map((item) => (
-          <div
-            key={item.step}
-            className="animate-slide-up rounded-lg border border-border bg-glass-subtle p-4 text-center"
-            style={{ animationDelay: `${Number(item.step) * 100}ms` }}
-          >
-            <div className="mx-auto mb-2 flex h-8 w-8 items-center justify-center rounded-full bg-accent text-sm font-semibold">
-              {item.step}
+          {error ? (
+            <div className="mt-6 rounded-2xl border border-error-muted bg-error-muted px-4 py-3 text-sm text-rose-100">
+              {error}
             </div>
-            <h3 className="mb-1 text-sm font-medium">{item.title}</h3>
-            <p className="text-xs text-text-muted">{item.desc}</p>
+          ) : null}
+
+          <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <Button
+              disabled={isSigningIn}
+              onClick={async () => {
+                if (isSigningIn) return;
+                setIsSigningIn(true);
+                setError(null);
+
+                try {
+                  await signInWithGoogle();
+                } catch (error) {
+                  const maybeCode =
+                    error instanceof FirebaseError ? error.code : undefined;
+                  if (maybeCode !== "auth/popup-closed-by-user") {
+                    setError(
+                      maybeCode
+                        ? `Google sign-in failed (${maybeCode}).`
+                        : "Google sign-in failed. Please try again."
+                    );
+                  }
+                  console.error(error);
+                  setIsSigningIn(false);
+                }
+              }}
+              variant="warm"
+              size="lg"
+              className="sm:min-w-[12rem]"
+            >
+              {isSigningIn ? "Signing in..." : "Continue with Google"}
+            </Button>
+
+            <Button onClick={() => router.push("/auth")} size="lg" className="sm:min-w-[12rem]">
+              Continue with Email
+            </Button>
           </div>
-        ))}
+        </Card>
+
+        <div className="grid gap-4 sm:grid-cols-3 lg:grid-cols-1">
+          {[
+            {
+              step: "01",
+              title: "Create a deck",
+              desc: "Capture definitions, prompts, formulas, or anything else you want to remember.",
+            },
+            {
+              step: "02",
+              title: "Study with rhythm",
+              desc: "Review the right cards at the right time with a cleaner, calmer study loop.",
+            },
+            {
+              step: "03",
+              title: "Grow your sky",
+              desc: "Earn stars, track goals, and let your study history shape the constellation.",
+            },
+          ].map((item, index) => (
+            <Card
+              key={item.step}
+              className="animate-slide-up"
+              padding="sm"
+              style={{ animationDelay: `${(index + 1) * 90}ms` }}
+            >
+              <div className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                {item.step}
+              </div>
+              <h3 className="mt-3 text-base font-semibold">{item.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">{item.desc}</p>
+            </Card>
+          ))}
+        </div>
       </div>
-    </main>
+    </AppPage>
   );
 }
+

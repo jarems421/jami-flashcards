@@ -6,78 +6,212 @@
 
 @layer base {
   :root {
-    /* Surface colors – deep navy palette */
-    --color-surface-base: #050816;
-    --color-surface-raised: #0a0f1c;
-    --color-surface-overlay: #0f1629;
+    /* Surface colors – starry night palette */
+    --color-surface-base: #10091d;
+    --color-surface-raised: #170f29;
+    --color-surface-overlay: #201536;
+    --color-surface-panel: rgba(28, 19, 48, 0.82);
+    --color-surface-panel-strong: rgba(24, 16, 42, 0.92);
 
     /* Glass layers */
     --color-glass-subtle: rgba(255, 255, 255, 0.05);
-    --color-glass-medium: rgba(255, 255, 255, 0.10);
-    --color-glass-strong: rgba(255, 255, 255, 0.15);
+    --color-glass-medium: rgba(255, 255, 255, 0.09);
+    --color-glass-strong: rgba(255, 255, 255, 0.16);
 
     /* Accent */
-    --color-accent: #6366f1;
-    --color-accent-hover: #4f46e5;
-    --color-accent-muted: rgba(99, 102, 241, 0.15);
+    --color-accent: #9d63df;
+    --color-accent-hover: #b37bf0;
+    --color-accent-muted: rgba(157, 99, 223, 0.24);
 
     /* Semantic */
-    --color-success: #10b981;
-    --color-success-muted: rgba(16, 185, 129, 0.15);
-    --color-error: #ef4444;
-    --color-error-muted: rgba(239, 68, 68, 0.15);
+    --color-success: #7de0cc;
+    --color-success-muted: rgba(125, 224, 204, 0.2);
+    --color-error: #ff78b7;
+    --color-error-muted: rgba(255, 120, 183, 0.18);
 
-    /* Warm accent (goals, constellation, profile zones) */
-    --color-warm-glow: rgba(251, 191, 36, 0.08);
-    --color-warm-border: rgba(251, 191, 36, 0.15);
-    --color-warm-accent: #f59e0b;
+    /* Warm accent (blush highlight from the star body) */
+    --color-warm-glow: rgba(255, 214, 246, 0.12);
+    --color-warm-border: rgba(214, 163, 255, 0.26);
+    --color-warm-accent: #ffd6f6;
 
     /* Text */
-    --color-text-primary: #ffffff;
-    --color-text-secondary: #d1d5db;
-    --color-text-muted: #9ca3af;
+    --color-text-primary: #fff8ff;
+    --color-text-secondary: #f1e7ff;
+    --color-text-muted: #c6b7e3;
 
     /* Border */
-    --color-border: rgba(255, 255, 255, 0.10);
+    --color-border: rgba(214, 193, 244, 0.14);
+    --color-border-strong: rgba(233, 219, 255, 0.24);
 
     /* Gradient card overlay */
-    --gradient-card: linear-gradient(135deg, rgba(30, 30, 80, 0.6), rgba(60, 30, 100, 0.4));
+    --gradient-card: linear-gradient(
+      160deg,
+      rgba(31, 20, 54, 0.96) 0%,
+      rgba(48, 28, 84, 0.9) 52%,
+      rgba(23, 15, 42, 0.98) 100%
+    );
+    --gradient-panel: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.09),
+      rgba(255, 255, 255, 0.02)
+    );
 
-    /* Radius */
-    --radius-sm: 0.375rem;
-    --radius-md: 0.75rem;
-    --radius-lg: 1rem;
-    --radius-xl: 1.5rem;
+    /* Radius — bubbly / pill-forward */
+    --radius-sm: 0.75rem;
+    --radius-md: 1.2rem;
+    --radius-lg: 1.6rem;
+    --radius-xl: 2.2rem;
+    --radius-2xl: 2.8rem;
 
     /* Shadows */
-    --shadow-glass: 0 8px 32px rgba(0, 0, 0, 0.3);
-    --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.2);
+    --shadow-glass: 0 18px 50px rgba(4, 0, 18, 0.44);
+    --shadow-card: 0 18px 34px rgba(10, 4, 24, 0.24);
+    --shadow-shell: 0 20px 38px rgba(8, 3, 20, 0.28);
+    --shadow-accent: 0 16px 28px rgba(157, 99, 223, 0.2);
+    --shadow-warm: 0 14px 28px rgba(255, 214, 246, 0.18);
+    --shadow-bubble: 0 4px 0 rgba(0, 0, 0, 0.18), 0 12px 28px rgba(10, 4, 24, 0.22);
+    --shadow-button-3d: 0 3px 0 rgba(0, 0, 0, 0.22), 0 8px 20px rgba(10, 4, 24, 0.18);
 
     /* Motion */
-    --duration-fast: 150ms;
-    --duration-normal: 250ms;
-    --duration-slow: 400ms;
+    --duration-fast: 160ms;
+    --duration-normal: 260ms;
+    --duration-slow: 430ms;
     --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   body {
     min-height: 100vh;
-    background: var(--color-surface-base);
+    background: linear-gradient(180deg, #0e0820 0%, #110b1f 38%, #150d26 100%);
     color: var(--color-text-primary);
-    font-family: var(--font-nunito), Arial, Helvetica, sans-serif;
+    font-family:
+      var(--font-nunito),
+      ui-rounded,
+      "SF Pro Rounded",
+      "Avenir Next Rounded",
+      "Trebuchet MS",
+      Arial,
+      sans-serif;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: "";
+    pointer-events: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(160, 120, 255, 0.025);
+    z-index: 0;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    font: inherit;
+  }
+
+  ::selection {
+    background: rgba(183, 124, 255, 0.28);
+    color: #fff7ff;
+  }
+}
+
+@layer utilities {
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@layer components {
+  .app-panel {
+    position: relative;
+    overflow: hidden;
+    border: 1.5px solid var(--color-border-strong);
+    background-color: var(--color-surface-panel);
+    background-image: var(--gradient-card);
+    border-radius: 2.6rem;
+    box-shadow: var(--shadow-bubble);
+  }
+
+  .app-panel-warm {
+    position: relative;
+    overflow: hidden;
+    border: 1.5px solid var(--color-warm-border);
+    background-color: rgba(43, 29, 72, 0.82);
+    background-image: var(--gradient-card);
+    border-radius: 2.6rem;
+    box-shadow: var(--shadow-bubble);
   }
 }
 
 /* ─── Constellation background overrides ─── */
 
 body.constellation-background-enabled {
-  background: #020617;
+  background: #060311;
+
+  /* Re-map surface tokens so every bg-surface-* utility becomes translucent */
+  --color-surface-base: transparent;
+  --color-surface-raised: rgba(18, 10, 38, 0.1);
+  --color-surface-overlay: rgba(18, 10, 38, 0.14);
+  --color-surface-panel: rgba(18, 10, 38, 0.16);
+  --color-surface-panel-strong: rgba(18, 10, 38, 0.22);
 }
 
 body.constellation-background-enabled [data-app-surface="true"] {
   background: transparent !important;
   background-image: none !important;
+}
+
+body.constellation-background-enabled .app-panel {
+  background-color: rgba(18, 10, 38, 0.14);
+  background-image: none;
+  backdrop-filter: none;
+}
+
+body.constellation-background-enabled .app-panel-warm {
+  background-color: rgba(34, 18, 56, 0.16);
+  background-image: none;
+  backdrop-filter: none;
+}
+
+body.constellation-background-enabled .bg-surface-panel,
+body.constellation-background-enabled .bg-surface-panel-strong {
+  background-color: rgba(18, 10, 38, 0.16) !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+body.constellation-background-enabled .app-topbar {
+  background: rgba(18, 10, 38, 0.08) !important;
+  background-image: none !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+}
+
+body.constellation-background-enabled .app-nav {
+  background: rgba(18, 10, 38, 0.10) !important;
+  background-image: none !important;
+  backdrop-filter: none !important;
+}
+
+/* Kill any Tailwind backdrop-blur utilities under constellation mode */
+body.constellation-background-enabled .backdrop-blur-md,
+body.constellation-background-enabled .backdrop-blur-lg,
+body.constellation-background-enabled .backdrop-blur-xl,
+body.constellation-background-enabled .backdrop-blur-2xl {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+body.constellation-background-enabled::before {
+  opacity: 0.02;
 }
 
 /* ─── Constellation keyframes ─── */
@@ -94,45 +228,8 @@ body.constellation-background-enabled [data-app-surface="true"] {
   }
 }
 
-@keyframes constellation-dust-float {
-  0%,
-  100% {
-    transform: translate3d(0, 0, 0);
-  }
-  50% {
-    transform: translate3d(
-      var(--dust-drift-x, 1px),
-      var(--dust-drift-y, -2px),
-      0
-    );
-  }
-}
 
-/* ─── Reward pulse (used via inline style, not Tailwind utility) ─── */
 
-@keyframes reward-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.5);
-  }
-  70% {
-    box-shadow: 0 0 0 10px rgba(99, 102, 241, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(99, 102, 241, 0);
-  }
-}
-
-@keyframes warm-glow-pulse {
-  0% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.4);
-  }
-  70% {
-    box-shadow: 0 0 20px 6px rgba(245, 158, 11, 0);
-  }
-  100% {
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
-  }
-}
 
 /* ─── Reduced-motion fallback ─── */
 

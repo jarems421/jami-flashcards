@@ -1,9 +1,9 @@
 import type { NextRequest } from "next/server";
-import { getAdminAuth, getAdminDb } from "@/services/firebase-admin";
+import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import {
   isExpiredPushSubscriptionError,
   sendPushNotification,
-} from "@/services/web-push";
+} from "@/services/notifications/web-push";
 
 export const runtime = "nodejs";
 
@@ -108,8 +108,8 @@ export async function POST(request: NextRequest) {
             body: "Test notification from your installed app.",
             url: "/dashboard/profile",
             tag: "notification-test",
-            icon: "/icon",
-            badge: "/icon",
+            icon: "/icons/notification-icon-192.png",
+            badge: "/icons/notification-icon-192.png",
           }
         );
 

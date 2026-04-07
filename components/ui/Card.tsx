@@ -1,11 +1,35 @@
 import { type HTMLAttributes } from "react";
 
-type CardProps = HTMLAttributes<HTMLDivElement>;
+type CardTone = "default" | "warm" | "subtle";
+type CardPadding = "sm" | "md" | "lg";
 
-export default function Card({ className = "", children, ...props }: CardProps) {
+type CardProps = HTMLAttributes<HTMLDivElement> & {
+  tone?: CardTone;
+  padding?: CardPadding;
+};
+
+const toneClasses: Record<CardTone, string> = {
+  default: "app-panel",
+  warm: "app-panel-warm",
+  subtle: "border-[1.5px] border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04))] shadow-bubble",
+};
+
+const paddingClasses: Record<CardPadding, string> = {
+  sm: "p-4",
+  md: "p-6",
+  lg: "p-8",
+};
+
+export default function Card({
+  tone = "default",
+  padding = "md",
+  className = "",
+  children,
+  ...props
+}: CardProps) {
   return (
     <div
-      className={`rounded-xl border border-border bg-glass-subtle p-6 shadow-glass backdrop-blur-md ${className}`}
+      className={`relative overflow-hidden rounded-[2.8rem] backdrop-blur-md transition duration-fast ${toneClasses[tone]} ${paddingClasses[padding]} ${className}`}
       {...props}
     >
       {children}

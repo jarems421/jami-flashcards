@@ -7,11 +7,16 @@ module.exports = {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ["var(--font-nunito)", "ui-rounded", "SF Pro Rounded", "Avenir Next Rounded", "Trebuchet MS", "Arial", "sans-serif"],
+      },
       colors: {
         surface: {
           base: "var(--color-surface-base)",
           raised: "var(--color-surface-raised)",
           overlay: "var(--color-surface-overlay)",
+          panel: "var(--color-surface-panel)",
+          "panel-strong": "var(--color-surface-panel-strong)",
         },
         glass: {
           subtle: "var(--color-glass-subtle)",
@@ -43,6 +48,7 @@ module.exports = {
         },
         border: {
           DEFAULT: "var(--color-border)",
+          strong: "var(--color-border-strong)",
         },
       },
       borderRadius: {
@@ -50,10 +56,14 @@ module.exports = {
         md: "var(--radius-md)",
         lg: "var(--radius-lg)",
         xl: "var(--radius-xl)",
+        "2xl": "var(--radius-2xl)",
       },
       boxShadow: {
         glass: "var(--shadow-glass)",
         card: "var(--shadow-card)",
+        shell: "var(--shadow-shell)",
+        bubble: "var(--shadow-bubble)",
+        "button-3d": "var(--shadow-button-3d)",
       },
       transitionDuration: {
         fast: "var(--duration-fast)",
@@ -63,6 +73,7 @@ module.exports = {
       transitionTimingFunction: {
         standard: "var(--ease-standard)",
         spring: "var(--ease-spring)",
+        bounce: "cubic-bezier(0.34, 1.56, 0.64, 1)",
       },
       keyframes: {
         "fade-in": {
@@ -74,14 +85,14 @@ module.exports = {
           to: { opacity: "1", transform: "translateY(0)" },
         },
         "reward-pulse": {
-          "0%": { boxShadow: "0 0 0 0 rgba(99, 102, 241, 0.5)" },
-          "70%": { boxShadow: "0 0 0 10px rgba(99, 102, 241, 0)" },
-          "100%": { boxShadow: "0 0 0 0 rgba(99, 102, 241, 0)" },
+          "0%": { boxShadow: "0 0 0 0 rgba(183, 124, 255, 0.52)" },
+          "70%": { boxShadow: "0 0 0 12px rgba(183, 124, 255, 0)" },
+          "100%": { boxShadow: "0 0 0 0 rgba(183, 124, 255, 0)" },
         },
         "warm-glow-pulse": {
-          "0%": { boxShadow: "0 0 0 0 rgba(245, 158, 11, 0.4)" },
-          "70%": { boxShadow: "0 0 20px 6px rgba(245, 158, 11, 0)" },
-          "100%": { boxShadow: "0 0 0 0 rgba(245, 158, 11, 0)" },
+          "0%": { boxShadow: "0 0 0 0 rgba(255, 214, 246, 0.38)" },
+          "70%": { boxShadow: "0 0 22px 8px rgba(255, 214, 246, 0)" },
+          "100%": { boxShadow: "0 0 0 0 rgba(255, 214, 246, 0)" },
         },
       },
       animation: {

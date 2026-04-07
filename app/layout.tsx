@@ -1,16 +1,14 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito } from "next/font/google";
-import { GeistMono } from "geist/font/mono";
-import ConstellationBackgroundShell from "@/components/ConstellationBackgroundShell";
-import PwaBootstrap from "@/components/PwaBootstrap";
-import "./globals.css";
 
 const nunito = Nunito({
   subsets: ["latin"],
-  weight: ["400", "600", "700"],
   display: "swap",
   variable: "--font-nunito",
 });
+import ConstellationBackgroundShell from "@/components/constellation/ConstellationBackgroundShell";
+import PwaBootstrap from "@/components/layout/PwaBootstrap";
+import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Jami Flashcards",
@@ -31,7 +29,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#081120",
+  themeColor: "#100719",
 };
 
 export default function RootLayout({
@@ -42,12 +40,13 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${nunito.variable} ${GeistMono.variable} h-full antialiased`}
+      className={`${nunito.variable} h-full antialiased`}
     >
-      <body>
+      <body className="min-h-full bg-surface-base text-text-primary">
         <PwaBootstrap />
         <ConstellationBackgroundShell>{children}</ConstellationBackgroundShell>
       </body>
     </html>
   );
 }
+

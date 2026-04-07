@@ -11,15 +11,20 @@ const firestoreMock = vi.hoisted(() => ({
   query: vi.fn(),
   updateDoc: vi.fn(),
   where: vi.fn(),
+  writeBatch: vi.fn(() => ({
+    delete: vi.fn(),
+    commit: vi.fn(async () => {}),
+  })),
+  deleteField: vi.fn(),
 }));
 
 vi.mock("firebase/firestore", () => firestoreMock);
 
-vi.mock("@/services/firebase", () => ({
+vi.mock("@/services/firebase/client", () => ({
   db: {},
 }));
 
-vi.mock("@/services/firestore", () => ({
+vi.mock("@/services/firebase/firestore", () => ({
   withTimeout: vi.fn(async (promise: Promise<unknown>) => await promise),
 }));
 
@@ -65,7 +70,7 @@ describe("constellations initial setup", () => {
     });
 
     const { getConstellations, INITIAL_CONSTELLATION_ID } = await import(
-      "@/services/constellations"
+      "@/services/constellation/constellations"
     );
 
     await getConstellations("user-1");
@@ -126,7 +131,9 @@ describe("constellations initial setup", () => {
       }),
     });
 
-    const { getConstellations } = await import("@/services/constellations");
+    const { getConstellations } = await import(
+      "@/services/constellation/constellations"
+    );
 
     await getConstellations("user-2");
 
@@ -137,31 +144,37 @@ describe("constellations initial setup", () => {
     const docRefFor = (constellationId: string) => ({ id: constellationId });
 
     firestoreMock.collection.mockReturnValue({});
-    firestoreMock.getDocs.mockResolvedValue({
-      empty: false,
-      docs: [
-        {
-          id: "newest-active",
-          data: () => ({
-            name: "Newest",
-            status: "active",
-            maxStars: 40,
-            maxDust: 400,
-            createdAt: 300,
-          }),
-        },
-        {
-          id: "older-active",
-          data: () => ({
-            name: "Older",
-            status: "active",
-            maxStars: 40,
-            maxDust: 400,
-            createdAt: 200,
-          }),
-        },
-      ],
-    });
+    firestoreMock.getDocs
+      .mockResolvedValueOnce({
+        empty: false,
+        docs: [
+          {
+            id: "newest-active",
+            data: () => ({
+              name: "Newest",
+              status: "active",
+              maxStars: 40,
+              maxNebulaProgress: 400,
+              starCount: 0,
+              nebulaProgressCount: 0,
+              createdAt: 300,
+            }),
+          },
+          {
+            id: "older-active",
+            data: () => ({
+              name: "Older",
+              status: "active",
+              maxStars: 40,
+              maxNebulaProgress: 400,
+              starCount: 0,
+              nebulaProgressCount: 0,
+              createdAt: 200,
+            }),
+          },
+        ],
+      })
+      .mockResolvedValueOnce({ empty: true, docs: [] });
     firestoreMock.doc.mockImplementation((_db, _users, _userId, _path, constellationId) =>
       docRefFor(constellationId)
     );
@@ -170,7 +183,9 @@ describe("constellations initial setup", () => {
       data: () => ({}),
     });
 
-    const { getConstellations } = await import("@/services/constellations");
+    const { getConstellations } = await import(
+      "@/services/constellation/constellations"
+    );
     const repaired = await getConstellations("user-3");
 
     expect(firestoreMock.updateDoc).toHaveBeenCalledTimes(1);
@@ -247,7 +262,9 @@ describe("constellations initial setup", () => {
       })
     );
 
-    const { createConstellation } = await import("@/services/constellations");
+    const { createConstellation } = await import(
+      "@/services/constellation/constellations"
+    );
 
     await expect(createConstellation("user-4", "Next")).rejects.toThrow(
       "Finish your active constellation before creating a new one."

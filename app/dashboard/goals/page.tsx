@@ -8,51 +8,47 @@ import {
   getDocs,
   updateDoc,
 } from "firebase/firestore";
-import { useUser } from "@/lib/user-context";
-import { db } from "@/services/firebase";
+import { useUser } from "@/lib/auth/user-context";
+import { db } from "@/services/firebase/client";
 import {
   getActiveConstellation,
-  buildConstellationProgressMap,
   type Constellation,
-  type ConstellationProgress,
-} from "@/lib/constellations";
-import { ensureConstellationSetup } from "@/services/constellations";
-import { normalizeDust } from "@/lib/dust";
+} from "@/lib/constellation/constellations";
+import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
   getGoalStatusAtTime,
   getGoalAccuracy,
   normalizeGoal,
   type Goal,
-} from "@/lib/goals";
+} from "@/lib/study/goals";
 import {
   buildPreviewStar,
-  parseStarData,
-  resolveStarPresetId,
-  spreadBackfilledStars,
-} from "@/lib/stars";
-import { formatTimeRemaining } from "@/lib/time";
-import ConstellationDust from "@/components/ConstellationDust";
-import ConstellationStar from "@/components/constellation-star";
-import Refreshable, { RefreshIconButton } from "@/components/Refreshable";
+  getEffectiveStarVisualSize,
+} from "@/lib/constellation/stars";
+import { formatTimeRemaining } from "@/lib/study/time";
+import AppPage from "@/components/layout/AppPage";
+import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, Skeleton } from "@/components/ui";
+import ConstellationStar from "@/components/constellation/ConstellationStar";
+import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
 type Feedback = { type: "success" | "error"; message: string };
 
 function parseTargetCardsInput(value: string) {
   if (!value.trim()) return null;
-  const v = Number(value);
-  return Number.isFinite(v) && v > 0 ? v : null;
+  const nextValue = Number(value);
+  return Number.isFinite(nextValue) && nextValue > 0 ? nextValue : null;
 }
 
 function parseTargetAccuracyInput(value: string) {
   if (!value.trim()) return null;
-  const v = Number(value);
-  if (!Number.isFinite(v)) return null;
-  const n = v > 1 ? v / 100 : v;
-  return n >= 0 && n <= 1 ? n : null;
+  const nextValue = Number(value);
+  if (!Number.isFinite(nextValue)) return null;
+  const normalizedValue = nextValue > 1 ? nextValue / 100 : nextValue;
+  return normalizedValue >= 0 && normalizedValue <= 1 ? normalizedValue : null;
 }
 
 export default function GoalsPage() {
-  const { user, refreshKey } = useUser();
+  const { user } = useUser();
 
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showGoalHistory, setShowGoalHistory] = useState(false);
@@ -60,15 +56,12 @@ export default function GoalsPage() {
   const [targetAccuracy, setTargetAccuracy] = useState("");
   const [deadlineDate, setDeadlineDate] = useState("");
   const [deadlineTime, setDeadlineTime] = useState("");
-  const [previewDustCount, setPreviewDustCount] = useState<number | null>(null);
   const [isLoadingGoals, setIsLoadingGoals] = useState(true);
   const [isCreatingGoal, setIsCreatingGoal] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-
-  // Constellation data for reward preview
-  const [activeConstellation, setActiveConstellation] = useState<Constellation | null>(null);
-  const [activeConstellationProgress, setActiveConstellationProgress] = useState<ConstellationProgress | null>(null);
+  const [activeConstellation, setActiveConstellation] =
+    useState<Constellation | null>(null);
 
   const lastForegroundRefreshAtRef = useRef(0);
 
@@ -94,14 +87,18 @@ export default function GoalsPage() {
           );
           return { ...goal, status: statusAtTime };
         }
+
         return goal;
       });
 
-      if (updates.length > 0) await Promise.all(updates);
-      nextGoals.sort((a, b) => b.createdAt - a.createdAt);
+      if (updates.length > 0) {
+        await Promise.all(updates);
+      }
+
+      nextGoals.sort((left, right) => right.createdAt - left.createdAt);
       setGoals(nextGoals);
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       setGoals([]);
     } finally {
       setIsLoadingGoals(false);
@@ -111,37 +108,10 @@ export default function GoalsPage() {
   const loadConstellationSummary = useCallback(async (uid: string) => {
     try {
       const constellations = await ensureConstellationSetup(uid);
-      const active = getActiveConstellation(constellations);
-      setActiveConstellation(active);
-
-      if (active) {
-        const [starsSnap, dustSnap] = await Promise.all([
-          getDocs(collection(db, "users", uid, "stars")),
-          getDocs(collection(db, "users", uid, "dust")),
-        ]);
-        const stars = spreadBackfilledStars(
-          starsSnap.docs.map((d) =>
-            parseStarData(d.id, d.data() as Record<string, unknown>)
-          )
-        );
-        const dust = dustSnap.docs.map((d) =>
-          normalizeDust(d.id, d.data() as Record<string, unknown>)
-        );
-        const progressMap = buildConstellationProgressMap(
-          constellations.map((c) => c.id),
-          stars,
-          dust
-        );
-        setActiveConstellationProgress(
-          progressMap[active.id] ?? { starCount: 0, dustCount: 0 }
-        );
-      } else {
-        setActiveConstellationProgress(null);
-      }
-    } catch (e) {
-      console.error(e);
+      setActiveConstellation(getActiveConstellation(constellations));
+    } catch (error) {
+      console.error(error);
       setActiveConstellation(null);
-      setActiveConstellationProgress(null);
     }
   }, []);
 
@@ -154,7 +124,7 @@ export default function GoalsPage() {
 
   useEffect(() => {
     void loadAll(user.uid);
-  }, [user.uid, loadAll, refreshKey]);
+  }, [user.uid, loadAll]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -167,8 +137,10 @@ export default function GoalsPage() {
         void loadAll(user.uid);
       }
     };
+
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleFocus);
+
     return () => {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
@@ -185,55 +157,41 @@ export default function GoalsPage() {
     }
   }, [user.uid, loadAll]);
 
-  // ── Derived preview state ──
-  const completedGoalsCount = goals.filter((g) => g.status === "completed").length;
+  const completedGoalsCount = goals.filter(
+    (goal) => goal.status === "completed"
+  ).length;
   const parsedGoalTargetCards = parseTargetCardsInput(targetCards);
   const parsedGoalTargetAccuracy = parseTargetAccuracyInput(targetAccuracy);
   const previewTargetCards = parsedGoalTargetCards ?? 10;
   const previewTargetAccuracy = parsedGoalTargetAccuracy ?? 1;
-  const previewMaxDust = activeConstellation?.maxDust ?? 400;
-  const previewDustValue = Math.max(
-    0,
-    Math.min(
-      previewMaxDust,
-      previewDustCount ?? activeConstellationProgress?.dustCount ?? 0
-    )
-  );
-  const previewConstellationId = activeConstellation?.id ?? "preview-constellation";
-  const previewPresetId = resolveStarPresetId({
-    id: "preview-goal",
-    targetCards: previewTargetCards,
-    targetAccuracy: previewTargetAccuracy,
-    deadline: 0,
-    progress: { cardsCompleted: 0, correctAnswers: 0, totalAnswers: 0 },
-    status: "active",
-    createdAt: 0,
-  });
+  const previewConstellationId =
+    activeConstellation?.id ?? "preview-constellation";
   const previewStar = buildPreviewStar({
     targetCards: previewTargetCards,
     targetAccuracy: previewTargetAccuracy,
     completedGoalsCount: completedGoalsCount + 1,
     constellationId: previewConstellationId,
     position: { x: 50, y: 52 },
-    presetId: previewPresetId,
   });
-  const previewNebulaStatus = previewDustValue >= previewMaxDust ? "finished" : "active";
 
   const formatGoalAccuracyText = (goal: Goal) => {
     if (goal.progress.totalAnswers === 0) {
       return `Current accuracy: -- | Target: ${Math.round(goal.targetAccuracy * 100)}%`;
     }
-    return `Current accuracy: ${Math.round(getGoalAccuracy(goal.progress) * 100)}% | Target: ${Math.round(goal.targetAccuracy * 100)}%`;
+
+    return `Current accuracy: ${Math.round(
+      getGoalAccuracy(goal.progress) * 100
+    )}% | Target: ${Math.round(goal.targetAccuracy * 100)}%`;
   };
 
   const handleCreateGoal = async () => {
-    const parsedTargetCards2 = parseTargetCardsInput(targetCards);
-    const parsedTargetAccuracy2 = parseTargetAccuracyInput(targetAccuracy);
+    const nextTargetCards = parseTargetCardsInput(targetCards);
+    const nextTargetAccuracy = parseTargetAccuracyInput(targetAccuracy);
     const parsedDeadline = Date.parse(`${deadlineDate}T${deadlineTime || "23:59"}`);
 
     if (
-      parsedTargetCards2 === null ||
-      parsedTargetAccuracy2 === null ||
+      nextTargetCards === null ||
+      nextTargetAccuracy === null ||
       !deadlineDate ||
       !Number.isFinite(parsedDeadline) ||
       parsedDeadline <= Date.now()
@@ -248,8 +206,8 @@ export default function GoalsPage() {
     try {
       const createdAt = Date.now();
       const newGoal = {
-        targetCards: parsedTargetCards2,
-        targetAccuracy: parsedTargetAccuracy2,
+        targetCards: nextTargetCards,
+        targetAccuracy: nextTargetAccuracy,
         deadline: parsedDeadline,
         progress: { cardsCompleted: 0, correctAnswers: 0, totalAnswers: 0 },
         status: "active" as const,
@@ -259,104 +217,90 @@ export default function GoalsPage() {
         collection(db, "users", user.uid, "goals"),
         newGoal
       );
+
       setGoals((prev) => [{ id: goalRef.id, ...newGoal }, ...prev]);
       setTargetCards("");
       setTargetAccuracy("");
       setDeadlineDate("");
       setDeadlineTime("");
       setFeedback({ type: "success", message: "Goal created." });
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       setFeedback({ type: "error", message: "Failed to create goal." });
     } finally {
       setIsCreatingGoal(false);
     }
   };
 
+  const activeGoals = goals.filter((goal) => goal.status === "active");
+  const historicalGoals = goals.filter((goal) => goal.status !== "active");
+
   return (
     <Refreshable onRefresh={handleRefresh}>
-      <main
-        data-app-surface="true"
-        className="min-h-screen px-3 py-2 text-white sm:px-4 sm:py-3 md:px-6 md:py-4"
+      <AppPage
+        title="Goals"
+        backHref="/dashboard"
+        backLabel="Dashboard"
+        width="2xl"
+        action={
+          <RefreshIconButton
+            refreshing={refreshing}
+            onClick={() => void handleRefresh()}
+          />
+        }
+        contentClassName="space-y-6"
       >
-        <div className="mx-auto max-w-3xl">
-        {/* ── Header ── */}
-        <div className="mb-3 flex items-center justify-between sm:mb-4">
-          <h1 className="text-xl font-bold">Goals</h1>
-          <RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />
-        </div>
-
-        {/* ── Feedback ── */}
         {feedback ? (
-          <div
-            className={`mb-3 flex items-center justify-between gap-4 rounded-xl p-2.5 text-sm sm:mb-4 sm:p-3 ${
-              feedback.type === "error"
-                ? "bg-error-muted text-red-200"
-                : "bg-success-muted text-emerald-200"
-            }`}
-          >
-            <div>{feedback.message}</div>
-            <button
-              onClick={() => setFeedback(null)}
-              className="rounded-md bg-glass-medium px-3 py-1 text-xs hover:bg-glass-strong active:scale-[0.97]"
-            >
-              Dismiss
-            </button>
-          </div>
+          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        {/* ── Goal creation form ── */}
-        <div
-          className="mb-4 rounded-xl border border-warm-border p-3 sm:p-4"
-          style={{ backgroundImage: "var(--gradient-card)" }}
-        >
-          <h3 className="mb-3 text-sm font-semibold">New goal</h3>
+        <Card tone="warm" padding="lg">
+          <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+            New goal
+          </h3>
           <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
-            <input
+            <Input
               type="number"
               min="1"
               placeholder="Target cards"
               value={targetCards}
-              onChange={(e) => setTargetCards(e.target.value)}
-              className="w-full rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white placeholder:text-text-muted outline-none focus:border-accent focus:ring-2 focus:ring-warm-accent/20 sm:w-auto"
+              onChange={(event) => setTargetCards(event.target.value)}
+              containerClassName="sm:min-w-[10.5rem] lg:flex-[1_1_10.5rem]"
             />
-            <input
+            <Input
               type="number"
               min="0"
               max="100"
               step="1"
               placeholder="Accuracy %"
               value={targetAccuracy}
-              onChange={(e) => setTargetAccuracy(e.target.value)}
-              className="w-full rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white placeholder:text-text-muted outline-none focus:border-accent focus:ring-2 focus:ring-warm-accent/20 sm:w-auto"
+              onChange={(event) => setTargetAccuracy(event.target.value)}
+              containerClassName="sm:min-w-[11rem] lg:flex-[1_1_11rem]"
             />
-            <input
+            <Input
               type="date"
               value={deadlineDate}
-              onChange={(e) => setDeadlineDate(e.target.value)}
-              className="w-full rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white outline-none focus:border-accent focus:ring-2 focus:ring-warm-accent/20 sm:w-auto"
+              onChange={(event) => setDeadlineDate(event.target.value)}
+              containerClassName="sm:min-w-[10rem] lg:flex-[1_1_10rem]"
             />
-            <input
+            <Input
               type="time"
               value={deadlineTime}
-              onChange={(e) => setDeadlineTime(e.target.value)}
-              className="w-full rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white outline-none focus:border-accent focus:ring-2 focus:ring-warm-accent/20 sm:w-auto"
+              onChange={(event) => setDeadlineTime(event.target.value)}
+              containerClassName="sm:min-w-[9rem] lg:flex-[1_1_9rem]"
             />
-            <button
+            <Button
               disabled={isCreatingGoal}
               onClick={() => void handleCreateGoal()}
-              className="rounded-md bg-warm-accent px-4 py-2 text-sm font-semibold text-surface-base transition duration-fast hover:brightness-110 active:scale-[0.97] disabled:opacity-50"
+              variant="warm"
+              size="lg"
             >
-              {isCreatingGoal ? "Creating…" : "Create goal"}
-            </button>
+              {isCreatingGoal ? "Creating..." : "Create goal"}
+            </Button>
           </div>
-        </div>
+        </Card>
 
-        {/* ── Reward preview ── */}
-        <div
-          className="mb-4 rounded-xl border border-warm-border p-3 sm:p-4"
-          style={{ backgroundImage: "var(--gradient-card)" }}
-        >
+        <Card tone="warm" padding="lg">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-medium">Reward preview</h3>
             <p className="text-xs text-text-muted">
@@ -371,141 +315,115 @@ export default function GoalsPage() {
                 {Math.round(previewTargetAccuracy * 100)}% accuracy
               </div>
               <div>
-                Star color: {previewStar.color} · Style:{" "}
-                {previewStar.presetId?.replace(/-/g, " ") ?? "classic"}
+                Star size preview: {getEffectiveStarVisualSize(previewStar).toFixed(1)}px | Glow:{" "}
+                {Math.round(previewStar.glow * 100)}%
               </div>
-              <div>
-                Nebula dust: {previewDustValue} / {previewMaxDust}
-              </div>
-              <input
-                type="range"
-                min="0"
-                max={previewMaxDust}
-                value={previewDustValue}
-                onChange={(e) => setPreviewDustCount(Number(e.target.value))}
-                className="w-full accent-accent"
-              />
-              <div className="grid gap-2 text-xs text-text-muted sm:grid-cols-3">
+              <div className="grid gap-2 text-xs text-text-muted sm:grid-cols-2">
                 <div>Glow: {Math.round(previewStar.glow * 100)}%</div>
-                <div>State: {previewNebulaStatus}</div>
-                <div>Larger goals produce more dramatic stars.</div>
+                <div>Preview updates from your goal inputs.</div>
               </div>
             </div>
 
-            <div className="relative h-56 overflow-hidden rounded-lg border border-border bg-surface-base">
-              <ConstellationDust
-                particles={[]}
-                particleCount={previewDustValue}
-                constellationId={previewConstellationId}
-                status={previewNebulaStatus}
-                maxDust={previewMaxDust}
-                mode="page"
-                className="z-0"
-              />
+            <div className="relative h-56 overflow-hidden rounded-xl border border-border bg-surface-base">
+              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(9,7,20,0.12),rgba(9,7,20,0.34))]" />
               <div className="absolute inset-0 z-10">
-                <ConstellationStar star={previewStar} />
+                <ConstellationStar star={previewStar} variant="preview" />
               </div>
             </div>
           </div>
-        </div>
+        </Card>
 
-        {/* ── Active goals ── */}
         {isLoadingGoals ? (
-          <p className="text-sm text-text-muted">Loading goals…</p>
+          <div className="grid gap-4 xl:grid-cols-2">
+            <Skeleton className="h-28" />
+            <Skeleton className="h-28" />
+          </div>
         ) : (
           <>
-            {goals.filter((g) => g.status === "active").length === 0 ? (
-              <div
-                className="mb-3 rounded-xl border border-warm-border bg-warm-glow p-4 text-center"
-                style={{ backgroundImage: "var(--gradient-card)" }}
-              >
-                <p className="text-sm text-text-secondary">
-                  No active goals — create one to start earning stars.
-                </p>
-              </div>
+            {activeGoals.length === 0 ? (
+              <EmptyState
+                emoji="🎯"
+                title="No active goals"
+                description="Create one to start earning stars."
+              />
             ) : (
-              <div className="mb-4 grid gap-2.5 sm:gap-3">
-                {goals
-                  .filter((g) => g.status === "active")
-                  .map((goal) => {
-                    const progressPct = goal.targetCards > 0
-                      ? Math.min(100, Math.round((goal.progress.cardsCompleted / goal.targetCards) * 100))
+              <div className="grid animate-slide-up gap-4 xl:grid-cols-2">
+                {activeGoals.map((goal) => {
+                  const progressPct =
+                    goal.targetCards > 0
+                      ? Math.min(
+                          100,
+                          Math.round(
+                            (goal.progress.cardsCompleted / goal.targetCards) * 100
+                          )
+                        )
                       : 0;
-                    return (
-                      <div
-                        key={goal.id}
-                        className="rounded-xl border border-warm-border p-2.5 text-sm sm:p-3"
-                        style={{ backgroundImage: "var(--gradient-card)" }}
-                      >
-                        <div className="font-semibold">
-                          {goal.progress.cardsCompleted} / {goal.targetCards} cards
-                        </div>
-                        <div className="text-text-muted">
-                          {formatGoalAccuracyText(goal)}
-                        </div>
-                        <div className="text-xs text-text-muted">
-                          {formatTimeRemaining(goal.deadline)}
-                        </div>
-                        <div className="mt-2 h-1.5 rounded-full bg-glass-medium">
-                          <div
-                            className="h-1.5 rounded-full bg-gradient-to-r from-warm-accent to-success transition-all duration-slow"
-                            style={{ width: `${progressPct}%` }}
-                          />
-                        </div>
+
+                  return (
+                    <div
+                      key={goal.id}
+                      className="app-panel-warm p-4 text-sm transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell"
+                    >
+                      <div className="font-semibold">
+                        {goal.progress.cardsCompleted} / {goal.targetCards} cards
                       </div>
-                    );
-                  })}
+                      <div className="text-text-muted">
+                        {formatGoalAccuracyText(goal)}
+                      </div>
+                      <div className="text-xs text-text-muted">
+                        {formatTimeRemaining(goal.deadline)}
+                      </div>
+                      <ProgressBar progress={progressPct} size="sm" variant="warm" className="mt-2" />
+                    </div>
+                  );
+                })}
               </div>
             )}
 
-            {/* Goal history */}
-            <button
+            <Button
               type="button"
-              onClick={() => setShowGoalHistory((v) => !v)}
-              className="mb-3 rounded-md bg-glass-medium px-3 py-1.5 text-sm transition duration-fast hover:bg-glass-strong active:scale-[0.97]"
+              onClick={() => setShowGoalHistory((value) => !value)}
+              variant="secondary"
             >
               {showGoalHistory ? "Hide goal history" : "Show goal history"}
-            </button>
+            </Button>
 
             {showGoalHistory ? (
-              goals.filter((g) => g.status !== "active").length === 0 ? (
-                <p className="text-sm text-text-muted">No past goals yet.</p>
+              historicalGoals.length === 0 ? (
+                <EmptyState emoji="📜" title="No past goals yet" />
               ) : (
-                <div className="grid gap-2.5 sm:gap-3">
-                  {goals
-                    .filter((g) => g.status !== "active")
-                    .map((goal) => (
-                      <div
-                        key={goal.id}
-                        className="rounded-xl border border-white/[0.07] p-2.5 text-sm sm:p-3"
-                        style={{ backgroundImage: "var(--gradient-card)" }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold">
-                            {goal.progress.cardsCompleted} / {goal.targetCards} cards
-                          </span>
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-xs ${
-                              goal.status === "completed"
-                                ? "bg-success-muted text-emerald-200"
-                                : "bg-error-muted text-red-200"
-                            }`}
-                          >
-                            {goal.status === "completed" ? "Completed" : "Expired"}
-                          </span>
-                        </div>
-                        <div className="text-text-muted">
-                          {formatGoalAccuracyText(goal)}
-                        </div>
+                <div className="grid gap-4 xl:grid-cols-2">
+                  {historicalGoals.map((goal) => (
+                    <div
+                      key={goal.id}
+                      className="app-panel p-4 text-sm"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="font-semibold">
+                          {goal.progress.cardsCompleted} / {goal.targetCards} cards
+                        </span>
+                        <span
+                          className={`rounded-lg px-2 py-1 text-xs ${
+                            goal.status === "completed"
+                              ? "bg-success-muted text-emerald-100"
+                              : "bg-error-muted text-rose-100"
+                          }`}
+                        >
+                          {goal.status === "completed" ? "Completed" : "Expired"}
+                        </span>
                       </div>
-                    ))}
+                      <div className="text-text-muted">
+                        {formatGoalAccuracyText(goal)}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )
             ) : null}
           </>
         )}
-        </div>
-      </main>
+      </AppPage>
     </Refreshable>
   );
 }
+

@@ -1,7 +1,7 @@
 "use client";
 
-import UserProvider from "@/lib/user-context";
-import TabBar from "@/components/TabBar";
+import UserProvider from "@/lib/auth/user-context";
+import TabBar from "@/components/layout/TabBar";
 
 export default function DashboardLayout({
   children,
@@ -10,8 +10,9 @@ export default function DashboardLayout({
 }) {
   return (
     <UserProvider>
-      <div className="pb-20 md:pb-0 md:pl-20">{children}</div>
+      <div className="pb-28 md:pb-0 md:pl-28">{children}</div>
       <TabBar />
     </UserProvider>
   );
 }
+

@@ -72,6 +72,10 @@ service cloud.firestore {
         allow read, create, update, delete: if isSelf(userId);
       }
 
+      match /studyActivity/{dayKey} {
+        allow read, create, update, delete: if isSelf(userId);
+      }
+
       match /constellations/{constellationId} {
         allow read, create, update, delete: if isSelf(userId);
       }

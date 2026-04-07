@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@/services/firebase", () => ({
+vi.mock("@/services/firebase/client", () => ({
   auth: {},
 }));
 

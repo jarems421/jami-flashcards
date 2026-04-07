@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -11,20 +11,22 @@ import {
   updateDoc,
   where,
 } from "firebase/firestore";
-import { useUser } from "@/lib/user-context";
-import { db } from "@/services/firebase";
-import { ensureConstellationSetup } from "@/services/constellations";
-import { updateCardSchedule, type CardRating } from "@/lib/scheduler";
-import { getUpdatedGoalAfterAnswer, normalizeGoal } from "@/lib/goals";
-import { createDustForCardReview } from "@/services/dust";
-import { createStarForGoalIfMissing } from "@/services/stars";
-import { getDecks } from "@/services/decks";
+import { useUser } from "@/lib/auth/user-context";
+import { db } from "@/services/firebase/client";
+import { ensureConstellationSetup } from "@/services/constellation/constellations";
+import { updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
+import { getUpdatedGoalAfterAnswer, normalizeGoal } from "@/lib/study/goals";
+import { recordStudyReview } from "@/services/study/activity";
+import { createStarForGoalIfMissing } from "@/services/constellation/stars";
+import { getDecks } from "@/services/study/decks";
 import {
   cardMatchesAnyTag,
   mapCardData,
   parseCardTagsParam,
   type Card,
-} from "@/lib/cards";
+} from "@/lib/study/cards";
+import AppPage from "@/components/layout/AppPage";
+import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, ProgressBar } from "@/components/ui";
 
 type StudyMode = "due" | "all";
 
@@ -33,7 +35,6 @@ type SessionStats = {
   correctAnswers: number;
   completedGoals: number;
   starsEarned: number;
-  dustEarned: number;
   ratings: Record<CardRating, number>;
 };
 
@@ -72,17 +73,15 @@ function createEmptySessionStats(): SessionStats {
     correctAnswers: 0,
     completedGoals: 0,
     starsEarned: 0,
-    dustEarned: 0,
     ratings: {
+      wrong: 0,
+      right: 0,
       again: 0,
-      hard: 0,
-      good: 0,
-      easy: 0,
     },
   };
 }
 
-export default function TagStudyPage() {
+export default function StudyPage() {
   const searchParams = useSearchParams();
   const { user } = useUser();
   const tagParam = searchParams.get("tags");
@@ -105,13 +104,7 @@ export default function TagStudyPage() {
     message: string;
   } | null>(null);
   const [deckNamesById, setDeckNamesById] = useState<Record<string, string>>({});
-  const isMountedRef = useRef(true);
-
-  useEffect(() => {
-    return () => {
-      isMountedRef.current = false;
-    };
-  }, []);
+  const flipTimestampRef = useRef<number>(0);
 
   useEffect(() => {
     studyModeRef.current = studyMode;
@@ -232,7 +225,7 @@ export default function TagStudyPage() {
     try {
       const now = Date.now();
       const schedule = updateCardSchedule(current, rating);
-      const isCorrect = rating === "good" || rating === "easy";
+      const isCorrect = rating === "right";
       const goalsCollection = collection(db, "users", user.uid, "goals");
       const activeGoalsSnapshot = await getDocs(
         query(goalsCollection, where("status", "==", "active"))
@@ -265,11 +258,16 @@ export default function TagStudyPage() {
         };
       });
 
-      const [, createdDust] = await Promise.all([
+      const [, , goalResults] = await Promise.all([
         updateDoc(doc(db, "cards", current.id), schedule),
-        createDustForCardReview(user.uid, current.id),
+        recordStudyReview(user.uid, now, {
+          isCorrect,
+          durationMs: flipTimestampRef.current > 0
+            ? now - flipTimestampRef.current
+            : undefined,
+        }),
+        Promise.all(goalUpdates),
       ]);
-      const goalResults = await Promise.all(goalUpdates);
       const completedGoals = goalResults.reduce(
         (sum, result) => sum + result.completedGoals,
         0
@@ -278,10 +276,6 @@ export default function TagStudyPage() {
         (sum, result) => sum + result.starsEarned,
         0
       );
-
-      if (!isMountedRef.current) {
-        return;
-      }
 
       setCards((prev) =>
         prev.map((card) =>
@@ -298,7 +292,6 @@ export default function TagStudyPage() {
         correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0),
         completedGoals: prev.completedGoals + completedGoals,
         starsEarned: prev.starsEarned + starsEarned,
-        dustEarned: prev.dustEarned + (createdDust ? 1 : 0),
         ratings: {
           ...prev.ratings,
           [rating]: prev.ratings[rating] + 1,
@@ -308,16 +301,12 @@ export default function TagStudyPage() {
       goNext();
     } catch (e) {
       console.error(e);
-      if (isMountedRef.current) {
-        setFeedback({
-          type: "error",
-          message: "Failed to save that rating. Please try again.",
-        });
-      }
+      setFeedback({
+        type: "error",
+        message: "Failed to save that rating. Please try again.",
+      });
     } finally {
-      if (isMountedRef.current) {
-        setSavingRating(null);
-      }
+      setSavingRating(null);
     }
   };
 
@@ -326,6 +315,7 @@ export default function TagStudyPage() {
       return;
     }
 
+    flipTimestampRef.current = Date.now();
     setFlipped(true);
   }, [current, flipped]);
 
@@ -356,10 +346,9 @@ export default function TagStudyPage() {
       }
 
       const ratingMap: Record<string, CardRating> = {
-        "1": "again",
-        "2": "hard",
-        "3": "good",
-        "4": "easy",
+        "1": "wrong",
+        "2": "again",
+        "3": "right",
       };
       const rating = ratingMap[event.key];
       if (rating) {
@@ -375,264 +364,272 @@ export default function TagStudyPage() {
   const progressPercent = totalCards > 0 ? Math.round((index / totalCards) * 100) : 0;
 
   return (
-    <main data-app-surface="true" className="flex min-h-screen flex-col items-center p-6 text-white">
-      <div className="mb-6 flex w-full max-w-lg items-center justify-between gap-3">
-        <div>
-          <h1 className="text-lg font-semibold">Study by tag</h1>
-          <p className="text-sm text-text-muted">{tagSummary || "Select tags from your decks"}</p>
-        </div>
-        <Link
-          href="/dashboard/decks"
-          className="rounded-md bg-glass-medium px-3 py-1.5 text-sm transition duration-fast hover:bg-glass-strong"
-        >
-          Back to decks
-        </Link>
-      </div>
-
+    <AppPage
+      title="Study by tag"
+      backHref="/dashboard/decks"
+      backLabel="Decks"
+      width="study"
+      contentClassName="space-y-6"
+    >
       {feedback ? (
-        <div
-          className={`mb-4 flex w-full max-w-lg items-center justify-between gap-4 rounded-md p-3 text-sm ${
-            feedback.type === "error"
-              ? "bg-error-muted text-red-200"
-              : "bg-success-muted text-emerald-200"
-          }`}
-        >
-          <div>{feedback.message}</div>
-          <button
-            type="button"
-            onClick={() => setFeedback(null)}
-            className="rounded-md bg-glass-medium px-3 py-1 text-xs hover:bg-glass-strong"
-          >
-            Dismiss
-          </button>
-        </div>
+        <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
 
-      {selectedTags.length > 0 ? (
-        <div className="mb-4 flex w-full max-w-lg flex-wrap gap-2">
-          {selectedTags.map((tag) => (
-            <span
-              key={tag}
-              className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs text-accent"
+      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_300px]">
+        <SurfaceCard padding="md">
+          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+            Topic session
+          </div>
+          <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
+            Pull matching cards across your deck library and stay inside one theme until it feels sharper.
+          </p>
+
+          {selectedTags.length > 0 ? (
+            <div className="mt-5 flex flex-wrap gap-2">
+              {selectedTags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-full border border-accent/30 bg-accent/10 px-3 py-2 text-xs font-medium text-accent"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          ) : (
+            <p className="mt-5 text-sm text-text-muted">
+              Select tags from your decks to build a focused cross-deck session.
+            </p>
+          )}
+
+          {tagSummary ? (
+            <p className="mt-4 text-sm text-text-secondary">
+              {tagSummary}
+            </p>
+          ) : null}
+        </SurfaceCard>
+
+        <SurfaceCard tone="warm" padding="md">
+          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+            Study mode
+          </div>
+          <div className="mt-4 grid gap-3">
+            <Button
+              type="button"
+              onClick={() => resetSession("due")}
+              variant={studyMode === "due" ? "primary" : "secondary"}
+              className="justify-start"
             >
-              #{tag}
-            </span>
-          ))}
-        </div>
-      ) : null}
-
-      <div className="mb-6 flex w-full max-w-lg gap-2">
-        <button
-          type="button"
-          onClick={() => resetSession("due")}
-          className={`rounded-md px-4 py-2 text-sm transition duration-fast ${studyMode === "due" ? "bg-accent" : "bg-glass-medium hover:bg-glass-strong"}`}
-        >
-          Due cards
-        </button>
-        <button
-          type="button"
-          onClick={() => resetSession("all")}
-          className={`rounded-md px-4 py-2 text-sm transition duration-fast ${studyMode === "all" ? "bg-accent" : "bg-glass-medium hover:bg-glass-strong"}`}
-        >
-          All matching cards
-        </button>
+              Due cards
+            </Button>
+            <Button
+              type="button"
+              onClick={() => resetSession("all")}
+              variant={studyMode === "all" ? "primary" : "secondary"}
+              className="justify-start"
+            >
+              All matching cards
+            </Button>
+          </div>
+        </SurfaceCard>
       </div>
 
       {!loaded ? (
-        <p className="text-sm text-text-muted">Loading study cards…</p>
+        <p className="text-sm text-text-muted">Loading study cards...</p>
       ) : done ? (
         totalCards === 0 ? (
-          <div
-            className="w-full max-w-lg space-y-3 rounded-xl border border-warm-border bg-warm-glow p-5"
-            style={{ backgroundImage: "var(--gradient-card)" }}
-          >
-            <p className="text-text-secondary">
-              {selectedTags.length === 0
+          <EmptyState
+            emoji="📚"
+            title="No cards to study"
+            description={
+              selectedTags.length === 0
                 ? "Choose one or more tags from your decks page to begin."
                 : studyMode === "due"
                   ? "No cards with those tags are due right now. Try all matching cards instead."
-                  : "No cards match those tags yet."}
-            </p>
-            <Link
-              href="/dashboard/decks"
-              className="inline-block rounded-md bg-glass-medium px-4 py-2 text-sm hover:bg-glass-strong"
-            >
-              Back to decks
-            </Link>
-          </div>
+                  : "No cards match those tags yet."
+            }
+            action={
+              <Link
+                href="/dashboard/decks"
+                className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+              >
+                Back to decks
+              </Link>
+            }
+          />
         ) : (
-          <div
-            className="w-full max-w-lg space-y-5 rounded-xl border border-warm-border bg-glass-subtle p-6 animate-warm-glow-pulse"
-            style={{
-              backgroundImage: "var(--gradient-card)",
-              animation: "slide-up var(--duration-slow) var(--ease-standard) both, warm-glow-pulse 2s ease 1 var(--duration-slow)",
-            }}
-          >
+          <SurfaceCard tone="warm" padding="lg" className="animate-warm-glow-pulse">
             <div>
-              <h2 className="text-lg font-bold">Session complete</h2>
-              <p className="mt-1 text-sm text-text-secondary">
+              <h2 className="text-2xl font-bold tracking-tight">Session complete</h2>
+              <p className="mt-3 text-sm leading-7 text-text-secondary sm:text-base">
                 You reviewed {sessionStats.reviewedCards} of {totalCards} tagged card{totalCards === 1 ? "" : "s"}.
               </p>
             </div>
 
-            <div className="grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-lg border border-white/[0.07] bg-glass-medium p-3 animate-fade-in">
+            <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+              <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
                 <div className="text-xs text-text-muted">Accuracy</div>
-                <div className="text-lg font-bold">{accuracyPercentage}%</div>
+                <div className="mt-2 text-2xl font-semibold">{accuracyPercentage}%</div>
               </div>
-              <div className="rounded-lg border border-white/[0.07] bg-glass-medium p-3 animate-fade-in [animation-delay:80ms]">
+              <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
                 <div className="text-xs text-text-muted">Ratings</div>
-                <div className="text-xs text-text-secondary">
-                  {sessionStats.ratings.again}a · {sessionStats.ratings.hard}h · {sessionStats.ratings.good}g · {sessionStats.ratings.easy}e
+                <div className="mt-2 text-sm text-text-secondary">
+                  {sessionStats.ratings.wrong}w · {sessionStats.ratings.right}r · {sessionStats.ratings.again}a
                 </div>
               </div>
-              <div className="rounded-lg border border-white/[0.07] bg-glass-medium p-3 animate-fade-in [animation-delay:160ms]">
+              <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
                 <div className="text-xs text-text-muted">Goals completed</div>
-                <div className="text-lg font-bold">{sessionStats.completedGoals}</div>
+                <div className="mt-2 text-2xl font-semibold">{sessionStats.completedGoals}</div>
               </div>
-              <div className="rounded-lg border border-white/[0.07] bg-glass-medium p-3 animate-fade-in [animation-delay:240ms]">
+              <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
                 <div className="text-xs text-text-muted">Rewards</div>
-                <div className="text-xs text-text-secondary">
-                  {sessionStats.starsEarned} star{sessionStats.starsEarned === 1 ? "" : "s"} · {sessionStats.dustEarned} dust
+                <div className="mt-2 text-sm text-text-secondary">
+                  {sessionStats.starsEarned} star{sessionStats.starsEarned === 1 ? "" : "s"}
                 </div>
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-2">
-              <button
-                type="button"
-                onClick={() => resetSession(studyMode)}
-                className="rounded-md bg-accent px-4 py-2 text-sm font-medium transition duration-fast hover:bg-accent-hover"
-              >
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Button type="button" onClick={() => resetSession(studyMode)} size="lg" variant="warm">
                 Study again
-              </button>
+              </Button>
               <Link
                 href="/dashboard/decks"
-                className="rounded-md bg-glass-medium px-4 py-2 text-sm hover:bg-glass-strong"
+                className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
               >
                 Pick other tags
               </Link>
             </div>
-          </div>
+          </SurfaceCard>
         )
       ) : current ? (
-        <div key={current.id} className="w-full max-w-lg animate-slide-up space-y-5">
-          <div>
-            <div className="mb-1 flex justify-between text-xs text-text-muted">
-              <span>Card {currentCardNumber} of {totalCards}</span>
-              <span>{progressPercent}%</span>
-            </div>
-            <div className="h-1.5 rounded-full bg-glass-medium">
+        <div key={current.id} className="animate-slide-up space-y-6">
+          <SurfaceCard padding="lg" className="overflow-hidden">
+            <div className="space-y-6">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div>
+                  <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                    Session progress
+                  </div>
+                  <div className="mt-2 text-sm leading-6 text-text-secondary sm:text-base">
+                    Card {currentCardNumber} of {totalCards}
+                  </div>
+                </div>
+                <div className="text-sm font-semibold text-text-secondary">
+                  {progressPercent}% complete
+                </div>
+              </div>
+
+              <ProgressBar progress={progressPercent} />
+
               <div
-                className="h-1.5 rounded-full bg-accent transition-all duration-slow"
-                style={{ width: `${progressPercent}%` }}
-              />
-            </div>
-          </div>
+                className="mx-auto w-full max-w-[58rem] perspective-[1400px]"
+                onClick={!flipped ? handleFlip : undefined}
+                onKeyDown={(event) => {
+                  if (flipped) {
+                    return;
+                  }
+                  if (event.key === "Enter" || event.key === " ") {
+                    event.preventDefault();
+                    handleFlip();
+                  }
+                }}
+                role="button"
+                tabIndex={0}
+                aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}
+              >
+                <div
+                  className={`relative aspect-[4/3] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/11] xl:aspect-[16/10] ${
+                    flipped ? "[transform:rotateY(180deg)]" : ""
+                  }`}
+                >
+                  <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] sm:p-8 lg:p-10">
+                    <div className="flex flex-wrap gap-2">
+                      {currentDeckName ? (
+                        <span className="rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                          {currentDeckName}
+                        </span>
+                      ) : null}
+                      {current.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex flex-1 items-center justify-center py-6">
+                      <p className="max-w-4xl text-center text-2xl font-bold leading-tight sm:text-3xl xl:text-[2.65rem]">
+                        {current.front}
+                      </p>
+                    </div>
+                    <div className="text-center text-xs uppercase tracking-[0.2em] text-text-muted">
+                      {flipped ? "" : "Tap or press Space to reveal the answer"}
+                    </div>
+                  </div>
 
-          <div
-            className="perspective-[800px]"
-            onClick={!flipped ? handleFlip : undefined}
-            onKeyDown={(event) => {
-              if (flipped) {
-                return;
-              }
-              if (event.key === "Enter" || event.key === " ") {
-                event.preventDefault();
-                handleFlip();
-              }
-            }}
-            role="button"
-            tabIndex={0}
-            aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}
-          >
-            <div
-              className={`relative w-full transition-transform duration-normal ease-standard [transform-style:preserve-3d] ${
-                flipped ? "[transform:rotateY(180deg)]" : ""
-              }`}
-              style={{ aspectRatio: "3 / 2" }}
-            >
-              <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-border bg-glass-subtle p-6 shadow-card [backface-visibility:hidden]">
-                <div className="mb-auto flex flex-wrap justify-center gap-2">
-                  {currentDeckName ? (
-                    <span className="rounded-full border border-border bg-glass-medium px-3 py-1 text-xs text-text-muted">
-                      {currentDeckName}
-                    </span>
-                  ) : null}
-                  {current.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs text-accent"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
-                <p className="text-center text-lg">{current.front}</p>
-                <div className="mt-auto pt-4">
-                  <span className="text-xs text-text-muted">
-                    {flipped ? "" : "Tap or press Space to flip card"}
-                  </span>
+                  <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-accent/30 bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
+                    <div className="flex flex-wrap gap-2">
+                      {currentDeckName ? (
+                        <span className="rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                          {currentDeckName}
+                        </span>
+                      ) : null}
+                      {current.tags.map((tag) => (
+                        <span
+                          key={tag}
+                          className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+                        >
+                          #{tag}
+                        </span>
+                      ))}
+                    </div>
+                    <div className="flex flex-1 items-center justify-center py-6">
+                      <p className="max-w-4xl text-center text-2xl font-bold leading-tight text-white sm:text-3xl xl:text-[2.65rem]">
+                        {current.back}
+                      </p>
+                    </div>
+                    <div className="text-center text-xs uppercase tracking-[0.2em] text-text-muted">
+                      How well did you recall this?
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="absolute inset-0 flex flex-col items-center justify-center rounded-xl border border-accent/30 bg-glass-subtle p-6 shadow-card [backface-visibility:hidden] [transform:rotateY(180deg)]">
-                <div className="mb-auto flex flex-wrap justify-center gap-2">
-                  {currentDeckName ? (
-                    <span className="rounded-full border border-border bg-glass-medium px-3 py-1 text-xs text-text-muted">
-                      {currentDeckName}
-                    </span>
-                  ) : null}
-                  {current.tags.map((tag) => (
-                    <span
-                      key={tag}
-                      className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1 text-xs text-accent"
-                    >
-                      #{tag}
-                    </span>
-                  ))}
+              {totalCards - index > 1 ? (
+                <div className="pointer-events-none relative -mt-5 flex justify-center">
+                  <div className="h-3 w-[94%] rounded-b-[1.6rem] border border-t-0 border-border bg-white/[0.06] opacity-60" />
                 </div>
-                <p className="text-center text-lg">{current.back}</p>
-                <div className="mt-auto pt-4">
-                  <span className="text-xs text-text-muted">How well did you recall this?</span>
+              ) : null}
+              {totalCards - index > 2 ? (
+                <div className="pointer-events-none relative -mt-4 flex justify-center">
+                  <div className="h-3 w-[88%] rounded-b-[1.5rem] border border-t-0 border-border bg-white/[0.04] opacity-35" />
                 </div>
-              </div>
+              ) : null}
             </div>
-          </div>
-
-          {totalCards - index > 1 ? (
-            <div className="pointer-events-none relative -mt-4 flex justify-center">
-              <div className="h-2 w-[92%] rounded-b-xl border border-t-0 border-border bg-glass-medium opacity-60" />
-            </div>
-          ) : null}
-          {totalCards - index > 2 ? (
-            <div className="pointer-events-none relative -mt-3 flex justify-center">
-              <div className="h-2 w-[84%] rounded-b-xl border border-t-0 border-border bg-glass-medium opacity-30" />
-            </div>
-          ) : null}
+          </SurfaceCard>
 
           {flipped ? (
             <div className="animate-fade-in space-y-3">
               {savingRating ? (
-                <div className="text-center text-sm text-text-muted">Saving…</div>
+                <div className="text-center text-sm text-text-muted">Savingâ€¦</div>
               ) : null}
 
-              <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+              <div className="grid gap-3 sm:grid-cols-3">
                 {([
-                  { rating: "again" as CardRating, label: "Again", key: "1", color: "bg-error/60 hover:bg-error/80 active:bg-error/90" },
-                  { rating: "hard" as CardRating, label: "Hard", key: "2", color: "bg-glass-medium hover:bg-glass-strong active:bg-glass-strong" },
-                  { rating: "good" as CardRating, label: "Good", key: "3", color: "bg-accent/70 hover:bg-accent active:bg-accent" },
-                  { rating: "easy" as CardRating, label: "Easy", key: "4", color: "bg-success/70 hover:bg-success active:bg-success" },
+                  { rating: "wrong" as CardRating, label: "Wrong", key: "1", color: "border border-transparent bg-error text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
+                  { rating: "again" as CardRating, label: "Again", key: "2", color: "border border-border bg-white/[0.06] text-white hover:border-border-strong hover:bg-white/[0.10]" },
+                  { rating: "right" as CardRating, label: "Right", key: "3", color: "border border-transparent bg-success text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
                 ]).map(({ rating, label, key, color }) => (
                   <button
                     key={rating}
                     type="button"
                     disabled={savingRating !== null}
-                    className={`flex flex-col items-center gap-0.5 rounded-lg px-3 py-3 text-sm font-medium transition duration-fast active:scale-[0.97] disabled:opacity-50 ${color}`}
+                    className={`flex min-h-[5.25rem] flex-col items-center justify-center gap-1 rounded-[1.75rem] px-4 py-4 text-sm font-semibold shadow-card transition duration-fast ease-spring active:scale-[0.98] disabled:opacity-50 ${color}`}
                     onClick={() => void handleRating(rating)}
                   >
                     <span>{label}</span>
-                    <span className="text-xs text-white/50">{key}</span>
+                    <span className="text-xs opacity-70">{key}</span>
                   </button>
                 ))}
               </div>
@@ -640,6 +637,9 @@ export default function TagStudyPage() {
           ) : null}
         </div>
       ) : null}
-    </main>
+    </AppPage>
   );
 }
+
+
+

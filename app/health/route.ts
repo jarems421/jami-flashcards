@@ -21,7 +21,7 @@ export async function GET() {
   const timestamp = new Date().toISOString();
 
   try {
-    const { db, validateFirebaseConfig, getFirebaseEnvIssues } = await import("@/services/firebase");
+    const { db, validateFirebaseConfig, getFirebaseEnvIssues } = await import("@/services/firebase/client");
     const { doc, getDoc } = await import("firebase/firestore");
     const configIssues = getFirebaseEnvIssues();
 
@@ -68,3 +68,4 @@ export async function GET() {
     );
   }
 }
+

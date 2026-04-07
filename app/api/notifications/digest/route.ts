@@ -1,11 +1,11 @@
 import type { NextRequest } from "next/server";
-import { normalizeGoal } from "@/lib/goals";
-import { normalizeNotificationPreferences } from "@/lib/notifications";
-import { getAdminDb } from "@/services/firebase-admin";
+import { normalizeGoal } from "@/lib/study/goals";
+import { normalizeNotificationPreferences } from "@/lib/app/notifications";
+import { getAdminDb } from "@/services/firebase/admin";
 import {
   isExpiredPushSubscriptionError,
   sendPushNotification,
-} from "@/services/web-push";
+} from "@/services/notifications/web-push";
 
 export const runtime = "nodejs";
 
@@ -78,8 +78,8 @@ function buildDigestPayload(
       body: parts.join(" • "),
       url: dueCount > 0 ? "/dashboard" : "/dashboard/goals",
       tag: "daily-digest",
-      icon: "/icon",
-      badge: "/icon",
+      icon: "/icons/notification-icon-192.png",
+      badge: "/icons/notification-icon-192.png",
     };
   }
 
@@ -92,8 +92,8 @@ function buildDigestPayload(
     body: "Take a few minutes to review today.",
     url: "/dashboard",
     tag: "daily-digest",
-    icon: "/icon",
-    badge: "/icon",
+    icon: "/icons/notification-icon-192.png",
+    badge: "/icons/notification-icon-192.png",
   };
 }
 

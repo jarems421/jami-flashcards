@@ -8,64 +8,32 @@ import {
   query,
   where,
 } from "firebase/firestore";
-import { useUser } from "@/lib/user-context";
-import { getDecks, type Deck } from "@/services/decks";
-import { db } from "@/services/firebase";
+import { useUser } from "@/lib/auth/user-context";
+import { getDecks, type Deck } from "@/services/study/decks";
+import { db } from "@/services/firebase/client";
 import { FirebaseError } from "firebase/app";
+import { normalizeGoal } from "@/lib/study/goals";
+import { getDeckStudyHref } from "@/lib/app/routes";
 import {
-  getActiveConstellation,
-  type Constellation,
-} from "@/lib/constellations";
-import { ensureConstellationSetup } from "@/services/constellations";
-import { normalizeDust, type DustParticle } from "@/lib/dust";
-import { normalizeGoal } from "@/lib/goals";
-import Refreshable, { RefreshIconButton } from "@/components/Refreshable";
+  countTodayReviews,
+  type DailyStudyActivity,
+} from "@/lib/study/activity";
+import { loadStudyActivity } from "@/services/study/activity";
+import AppPage from "@/components/layout/AppPage";
+import { Card, FeedbackBanner } from "@/components/ui";
+import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
 type DeckDueCounts = Record<string, number>;
 type DashboardFeedback = { type: "success" | "error"; message: string };
 
-function computeStreak(dustParticles: DustParticle[]): number {
-  if (dustParticles.length === 0) return 0;
-
-  const daySet = new Set<string>();
-  for (const p of dustParticles) {
-    const d = new Date(p.createdAt);
-    daySet.add(`${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`);
-  }
-
-  let streak = 0;
-  const now = new Date();
-  // Check today first, then go backwards
-  for (let i = 0; i < 365; i++) {
-    const d = new Date(now);
-    d.setDate(d.getDate() - i);
-    const key = `${d.getFullYear()}-${d.getMonth()}-${d.getDate()}`;
-    if (daySet.has(key)) {
-      streak++;
-    } else {
-      // Allow skipping today if no reviews yet
-      if (i === 0) continue;
-      break;
-    }
-  }
-  return streak;
-}
-
-function countTodayReviews(dustParticles: DustParticle[]): number {
-  const now = new Date();
-  const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
-  return dustParticles.filter((p) => p.createdAt >= startOfDay).length;
-}
-
 export default function DashboardHome() {
-  const { user, refreshKey } = useUser();
+  const { user } = useUser();
 
   const [decks, setDecks] = useState<Deck[]>([]);
   const [dueCount, setDueCount] = useState(0);
   const [deckDueCounts, setDeckDueCounts] = useState<DeckDueCounts>({});
   const [activeGoalCount, setActiveGoalCount] = useState(0);
-  const [activeConstellation, setActiveConstellation] = useState<Constellation | null>(null);
-  const [dustParticles, setDustParticles] = useState<DustParticle[]>([]);
+  const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<DashboardFeedback | null>(null);
@@ -111,21 +79,12 @@ export default function DashboardHome() {
       setDueCount(count);
       setDeckDueCounts(nextDeckDueCounts);
 
-      const [constellations, goalsSnapshot, dustSnap] = await Promise.all([
-        ensureConstellationSetup(uid).catch(() => [] as Constellation[]),
+      const [goalsSnapshot, activity] = await Promise.all([
         getDocs(collection(db, "users", uid, "goals")).catch(() => null),
-        getDocs(collection(db, "users", uid, "dust")).catch(() => null),
+        loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
       ]);
 
-      const active = getActiveConstellation(constellations);
-      setActiveConstellation(active);
-
-      const allDust = dustSnap
-        ? dustSnap.docs.map((d) =>
-            normalizeDust(d.id, d.data() as Record<string, unknown>)
-          )
-        : [];
-      setDustParticles(allDust);
+      setStudyActivity(activity);
 
       if (goalsSnapshot) {
         const now2 = Date.now();
@@ -145,7 +104,7 @@ export default function DashboardHome() {
   useEffect(() => {
     setIsLoading(true);
     void loadAll(user.uid);
-  }, [user.uid, loadAll, refreshKey]);
+  }, [user.uid, loadAll]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -176,8 +135,10 @@ export default function DashboardHome() {
     }
   }, [user.uid, loadAll]);
 
-  const streak = useMemo(() => computeStreak(dustParticles), [dustParticles]);
-  const todayReviews = useMemo(() => countTodayReviews(dustParticles), [dustParticles]);
+  const todayReviews = useMemo(
+    () => countTodayReviews(studyActivity),
+    [studyActivity]
+  );
 
   // Find the deck with the most due cards for the quick-study hero
   const mostDueDeck = useMemo(() => {
@@ -193,150 +154,118 @@ export default function DashboardHome() {
     return best ? { deck: best, count: bestCount } : null;
   }, [decks, deckDueCounts]);
 
-  // Progress for the "Cards due" summary: reviewed / (reviewed + due)
-  const reviewProgress = todayReviews > 0 || dueCount > 0
-    ? Math.round((todayReviews / (todayReviews + dueCount)) * 100)
-    : 0;
-
   return (
     <Refreshable onRefresh={handleRefresh}>
-      <main
-        data-app-surface="true"
-        className="min-h-screen px-3 py-2 text-white sm:px-4 sm:py-3 md:px-6 md:py-4"
+      <AppPage
+        title="Dashboard"
+        width="2xl"
+        action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
+        contentClassName="space-y-6"
       >
-        <div className="mx-auto max-w-3xl">
-          {/* ── Header ── */}
-          <div className="mb-3 flex items-center justify-between sm:mb-4">
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl font-bold">Dashboard</h1>
-              {!isLoading && todayReviews > 0 ? (
-                <span className="rounded-full bg-warm-glow px-2.5 py-0.5 text-xs font-semibold text-warm-accent">
-                  {todayReviews} card{todayReviews === 1 ? "" : "s"} today
-                </span>
-              ) : null}
-            </div>
-            <RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />
-          </div>
+        {feedback ? (
+          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
+        ) : null}
 
-          {/* ── Streak ── */}
-          {!isLoading && streak > 0 ? (
-            <div className="mb-3 text-sm font-semibold text-warm-accent sm:mb-4">
-              🔥 {streak} day{streak === 1 ? "" : "s"} streak
-            </div>
-          ) : null}
-
-          {/* ── Feedback ── */}
-          {feedback ? (
-            <div
-              className={`mb-3 flex items-center justify-between gap-4 rounded-xl p-2.5 text-sm sm:mb-4 sm:p-3 ${
-                feedback.type === "error"
-                  ? "bg-error-muted text-red-200"
-                  : "bg-success-muted text-emerald-200"
-              }`}
-            >
-              <div>{feedback.message}</div>
-              <button
-                onClick={() => setFeedback(null)}
-                className="rounded-md bg-glass-medium px-3 py-1 text-xs hover:bg-glass-strong active:scale-[0.97]"
-              >
-                Dismiss
-              </button>
-            </div>
-          ) : null}
-
-          {/* ── Quick-study hero ── */}
-          {!isLoading ? (
-            <div
-              className="mb-4 animate-slide-up rounded-xl border border-white/[0.07] p-3 sm:mb-5 sm:p-4"
-              style={{ backgroundImage: "var(--gradient-card)" }}
-            >
-              {decks.length === 0 ? (
-                <>
-                  <h2 className="mb-1 text-lg font-bold">Get started</h2>
-                  <p className="mb-3 text-sm text-text-secondary">
-                    Create your first deck to start studying.
-                  </p>
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_320px]">
+          <Card className="animate-slide-up overflow-hidden" padding="lg">
+            {!isLoading && decks.length === 0 ? (
+              <>
+                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                  Start here
+                </div>
+                <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+                  Build your first deck.
+                </h2>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
+                  Add a topic, write a few cards, and let Jami turn repetition into a steady study rhythm.
+                </p>
+                <Link
+                  href="/dashboard/decks"
+                  className="mt-8 inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
+                >
+                  Create a deck
+                </Link>
+              </>
+            ) : !isLoading && mostDueDeck ? (
+              <>
+                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                  Ready to study
+                </div>
+                <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+                  {mostDueDeck.deck.name}
+                </h2>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
+                  {mostDueDeck.count} card{mostDueDeck.count === 1 ? "" : "s"} are ready now. Keep the rhythm going while the session is fresh.
+                </p>
+                <div className="mt-8 flex flex-wrap gap-3">
                   <Link
-                    href="/dashboard/decks"
-                    className="inline-block rounded-md bg-accent px-4 py-2 text-sm font-semibold transition duration-fast hover:bg-accent-hover active:scale-[0.97]"
-                  >
-                    Go to Decks
-                  </Link>
-                </>
-              ) : mostDueDeck ? (
-                <>
-                  <div className="mb-1 text-xs font-semibold uppercase tracking-wider text-text-muted">
-                    Ready to study
-                  </div>
-                  <h2 className="mb-1 text-lg font-bold">{mostDueDeck.deck.name}</h2>
-                  <p className="mb-3 text-sm text-text-secondary">
-                    {mostDueDeck.count} card{mostDueDeck.count === 1 ? "" : "s"} due — keep your streak going.
-                  </p>
-                  <Link
-                    href={`/deck/${mostDueDeck.deck.id}/study`}
-                    className="inline-block rounded-md bg-accent px-4 py-2 text-sm font-semibold transition duration-fast hover:bg-accent-hover active:scale-[0.97]"
+                    href={getDeckStudyHref(mostDueDeck.deck.id)}
+                    className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
                   >
                     Study now
                   </Link>
-                </>
-              ) : (
-                <>
-                  <h2 className="mb-1 text-lg font-bold">All caught up!</h2>
-                  <p className="text-sm text-text-secondary">
-                    No cards are due right now. Add new cards or set a goal to keep progressing.
-                  </p>
-                </>
-              )}
-            </div>
-          ) : null}
-
-          {/* ── Summary rail ── */}
-          <div className="mb-4 grid animate-fade-in gap-2.5 grid-cols-1 sm:mb-5 sm:grid-cols-3 sm:gap-3">
-            <Link
-              href="/dashboard/decks"
-              className="rounded-xl border border-white/[0.07] p-3 transition duration-fast hover:shadow-card active:scale-[0.98] sm:p-4"
-              style={{ backgroundImage: "var(--gradient-card)" }}
-            >
-              <div className="mb-1 text-xs font-semibold text-text-muted">Cards due</div>
-              <div className="text-2xl font-bold">
-                {isLoading ? "…" : dueCount}
-              </div>
-              {!isLoading && (todayReviews > 0 || dueCount > 0) ? (
-                <div className="mt-2 h-1.5 rounded-full bg-glass-medium">
-                  <div
-                    className="h-1.5 rounded-full bg-gradient-to-r from-accent to-success transition-all duration-slow"
-                    style={{ width: `${reviewProgress}%` }}
-                  />
+                  <Link
+                    href="/dashboard/decks"
+                    className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+                  >
+                    View decks
+                  </Link>
                 </div>
-              ) : null}
-            </Link>
+              </>
+            ) : (
+              <>
+                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                  Today looks clear
+                </div>
+                <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+                  You are caught up.
+                </h2>
+                <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
+                  Nothing is due right now. Add cards, set a goal, or revisit a deck on your own schedule.
+                </p>
+              </>
+            )}
+          </Card>
 
-            <Link
-              href="/dashboard/goals"
-              className="rounded-xl border border-warm-border p-3 transition duration-fast hover:shadow-card active:scale-[0.98] sm:p-4"
-              style={{ backgroundImage: "var(--gradient-card)" }}
-            >
-              <div className="mb-1 text-xs font-semibold text-text-muted">Active goals</div>
-              <div className="text-2xl font-bold">
-                {isLoading ? "…" : activeGoalCount}
+          <div className="grid gap-4">
+            <Card tone="warm" padding="md">
+              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                Today
               </div>
-            </Link>
-
-            <Link
-              href="/dashboard/constellation"
-              className="rounded-xl border border-warm-border p-3 transition duration-fast hover:shadow-card active:scale-[0.98] sm:p-4"
-              style={{ backgroundImage: "var(--gradient-card)" }}
-            >
-              <div className="mb-1 text-xs font-semibold text-text-muted">Constellation</div>
-              {activeConstellation ? (
-                <div className="text-sm font-semibold">{activeConstellation.name}</div>
-              ) : (
-                <div className="text-sm text-text-muted">None active</div>
-              )}
-            </Link>
+              <div className="mt-3">
+                <div className="text-xs text-text-muted">Cards reviewed</div>
+                <div className="mt-1 text-3xl font-semibold">{isLoading ? "…" : todayReviews}</div>
+              </div>
+            </Card>
           </div>
         </div>
-      </main>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <Link
+            href="/dashboard/decks"
+            className="app-panel block p-6 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
+          >
+            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+              Cards due
+            </div>
+            <div className="mt-3 text-3xl font-semibold">{isLoading ? "…" : dueCount}</div>
+          </Link>
+
+          <Link
+            href="/dashboard/goals"
+            className="app-panel-warm block p-6 transition duration-fast hover:-translate-y-0.5 hover:shadow-shell"
+          >
+            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+              Active goals
+            </div>
+            <div className="mt-3 text-3xl font-semibold">{isLoading ? "…" : activeGoalCount}</div>
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              Keep your targets visible and let each finished session feed the reward loop.
+            </p>
+          </Link>
+        </div>
+      </AppPage>
     </Refreshable>
   );
 }
+

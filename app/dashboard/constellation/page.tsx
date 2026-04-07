@@ -2,69 +2,65 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { collection, getDocs } from "firebase/firestore";
-import { useUser } from "@/lib/user-context";
-import { db } from "@/services/firebase";
+import { useUser } from "@/lib/auth/user-context";
+import { db } from "@/services/firebase/client";
 import {
-  buildConstellationProgressMap,
   getActiveConstellation,
   getFallbackConstellation,
+  isConstellationReadyToFinish,
   type Constellation,
-  type ConstellationProgress,
-} from "@/lib/constellations";
+} from "@/lib/constellation/constellations";
 import {
   createConstellation,
   ensureConstellationSetup,
   finishConstellation,
-} from "@/services/constellations";
-import type { DustParticle } from "@/lib/dust";
-import { normalizeDust } from "@/lib/dust";
+  renameConstellation,
+} from "@/services/constellation/constellations";
 import {
+  readConstellationBackgroundConstellationId,
+  readConstellationBackgroundEnabled,
   setConstellationBackgroundConstellationId,
   setConstellationBackgroundEnabled,
-  readConstellationBackgroundEnabled,
-  readConstellationBackgroundConstellationId,
-} from "@/lib/constellation-background";
+} from "@/lib/constellation/background";
 import {
   parseStarData,
   spreadBackfilledStars,
   type NormalizedStar,
-} from "@/lib/stars";
-import { backfillStarPositions, saveStarPosition } from "@/services/stars";
-import ConstellationDust from "@/components/ConstellationDust";
-import ConstellationStar from "@/components/constellation-star";
-import Refreshable, { RefreshIconButton } from "@/components/Refreshable";
+} from "@/lib/constellation/stars";
+import { backfillStarPositions, saveStarPosition } from "@/services/constellation/stars";
+import AppPage from "@/components/layout/AppPage";
+import { Button, Card, FeedbackBanner, Input, Skeleton } from "@/components/ui";
+import ConstellationStar from "@/components/constellation/ConstellationStar";
+import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
+
+type Feedback = { type: "success" | "error"; message: string };
 
 function clampPercentage(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
-type Feedback = { type: "success" | "error"; message: string };
-
 export default function ConstellationDashboardPage() {
-  const { user, refreshKey } = useUser();
+  const { user } = useUser();
 
   const [constellations, setConstellations] = useState<Constellation[]>([]);
-  const [constellationProgress, setConstellationProgress] = useState<
-    Record<string, ConstellationProgress>
-  >({});
   const [allStars, setAllStars] = useState<NormalizedStar[]>([]);
-  const [allDustParticles, setAllDustParticles] = useState<DustParticle[]>([]);
   const [selectedConstellationId, setSelectedConstellationId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [draggingStarId, setDraggingStarId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [starsExpanded, setStarsExpanded] = useState(false);
-
-  // Management state
   const [constellationName, setConstellationName] = useState("");
   const [isCreatingConstellation, setIsCreatingConstellation] = useState(false);
   const [isFinishingConstellation, setIsFinishingConstellation] = useState(false);
+  const [renamingConstellationId, setRenamingConstellationId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
   const [isConstellationBackgroundEnabled, setIsConstellationBackgroundEnabled] =
     useState(false);
   const [backgroundConstellationId, setBackgroundConstellationId] = useState("");
 
   const lastForegroundRefreshAtRef = useRef(0);
+  const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
 
   useEffect(() => {
     setIsConstellationBackgroundEnabled(readConstellationBackgroundEnabled());
@@ -75,39 +71,22 @@ export default function ConstellationDashboardPage() {
     setIsLoading(true);
     try {
       const nextConstellations = await ensureConstellationSetup(uid);
-      const [starsSnapshot, dustSnapshot] = await Promise.all([
-        getDocs(collection(db, "users", uid, "stars")),
-        getDocs(collection(db, "users", uid, "dust")),
-      ]);
-
-      const normalizedStars = starsSnapshot.docs.map((starDoc) =>
-        parseStarData(starDoc.id, starDoc.data() as Record<string, unknown>)
-      );
-      const adjustedStars = spreadBackfilledStars(normalizedStars).sort(
-        (a, b) => b.createdAt - a.createdAt
-      );
-      const nextDustParticles = dustSnapshot.docs
-        .map((dustDoc) =>
-          normalizeDust(dustDoc.id, dustDoc.data() as Record<string, unknown>)
+      const starsSnapshot = await getDocs(collection(db, "users", uid, "stars"));
+      const adjustedStars = spreadBackfilledStars(
+        starsSnapshot.docs.map((starDoc) =>
+          parseStarData(starDoc.id, starDoc.data() as Record<string, unknown>)
         )
-        .sort((a, b) => a.createdAt - b.createdAt);
-
-      const progressMap = buildConstellationProgressMap(
-        nextConstellations.map((c) => c.id),
-        adjustedStars,
-        nextDustParticles
-      );
-      const fallback = getFallbackConstellation(nextConstellations);
+      ).sort((left, right) => right.createdAt - left.createdAt);
+      const fallbackConstellation = getFallbackConstellation(nextConstellations);
 
       setConstellations(nextConstellations);
-      setConstellationProgress(progressMap);
       setAllStars(adjustedStars);
-      setAllDustParticles(nextDustParticles);
       setSelectedConstellationId((currentId) => {
-        if (currentId && nextConstellations.some((c) => c.id === currentId)) {
+        if (currentId && nextConstellations.some((constellation) => constellation.id === currentId)) {
           return currentId;
         }
-        return fallback?.id ?? "";
+
+        return fallbackConstellation?.id ?? "";
       });
 
       if (adjustedStars.some((star) => star.needsBackfill)) {
@@ -118,12 +97,15 @@ export default function ConstellationDashboardPage() {
           )
         );
       }
-    } catch (e) {
-      console.error(e);
+    } catch (error) {
+      console.error(error);
       setConstellations([]);
-      setConstellationProgress({});
       setAllStars([]);
-      setAllDustParticles([]);
+      setSelectedConstellationId("");
+      setFeedback({
+        type: "error",
+        message: "Failed to load your constellation.",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -131,7 +113,7 @@ export default function ConstellationDashboardPage() {
 
   useEffect(() => {
     void loadAll(user.uid);
-  }, [user.uid, loadAll, refreshKey]);
+  }, [loadAll, user.uid]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -144,13 +126,15 @@ export default function ConstellationDashboardPage() {
         void loadAll(user.uid);
       }
     };
+
     window.addEventListener("focus", handleFocus);
     document.addEventListener("visibilitychange", handleFocus);
+
     return () => {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
     };
-  }, [user.uid, loadAll]);
+  }, [loadAll, user.uid]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
@@ -160,12 +144,11 @@ export default function ConstellationDashboardPage() {
     } finally {
       setRefreshing(false);
     }
-  }, [user.uid, loadAll]);
+  }, [loadAll, user.uid]);
 
-  // ── Derived state ──
   const selectedConstellation = useMemo(
     () =>
-      constellations.find((c) => c.id === selectedConstellationId) ??
+      constellations.find((constellation) => constellation.id === selectedConstellationId) ??
       getFallbackConstellation(constellations),
     [constellations, selectedConstellationId]
   );
@@ -175,90 +158,66 @@ export default function ConstellationDashboardPage() {
     [constellations]
   );
 
-  const selectedConstellationProg = selectedConstellation
-    ? constellationProgress[selectedConstellation.id] ?? { starCount: 0, dustCount: 0 }
-    : null;
-
-  const activeConstellationProg = activeConstellation
-    ? constellationProgress[activeConstellation.id] ?? { starCount: 0, dustCount: 0 }
-    : null;
-
-  const canFinishActiveConstellation =
-    activeConstellation &&
-    activeConstellationProg &&
-    activeConstellationProg.dustCount >= activeConstellation.maxDust &&
-    activeConstellationProg.starCount >= activeConstellation.maxStars;
+  const canFinishActiveConstellation = activeConstellation
+    ? isConstellationReadyToFinish(activeConstellation)
+    : false;
+  const canEditSelectedConstellation =
+    selectedConstellation?.status === "active";
 
   const visibleStars = useMemo(
     () =>
       selectedConstellation
-        ? allStars.filter((s) => s.constellationId === selectedConstellation.id)
+        ? allStars.filter(
+            (star) => star.constellationId === selectedConstellation.id
+          )
         : [],
     [allStars, selectedConstellation]
   );
 
-  const visibleDustParticles = useMemo(
-    () =>
-      selectedConstellation
-        ? allDustParticles.filter(
-            (p) => p.constellationId === selectedConstellation.id
-          )
-        : [],
-    [allDustParticles, selectedConstellation]
-  );
-
-  const canEditSelectedConstellation =
-    selectedConstellation?.status === "active";
-
-  // ── Drag handling ──
-  const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
-
   useEffect(() => {
-    if (!draggingStarId || !canEditSelectedConstellation) return;
+    if (!draggingStarId || !canEditSelectedConstellation) {
+      return;
+    }
 
     const container = document.getElementById("constellation-container");
-    if (!container) return;
+    if (!container) {
+      return;
+    }
 
-    const handleMouseMove = (event: MouseEvent) => {
+    const updateDragPosition = (clientX: number, clientY: number) => {
       const rect = container.getBoundingClientRect();
-      const x = clampPercentage(
-        ((event.clientX - rect.left) / rect.width) * 100
-      );
-      const y = clampPercentage(
-        ((event.clientY - rect.top) / rect.height) * 100
-      );
+      const x = clampPercentage(((clientX - rect.left) / rect.width) * 100);
+      const y = clampPercentage(((clientY - rect.top) / rect.height) * 100);
+
       dragPositionRef.current = { x, y };
       setAllStars((prev) =>
         prev.map((star) =>
           star.id === draggingStarId ? { ...star, position: { x, y } } : star
         )
       );
+    };
+
+    const handleMouseMove = (event: MouseEvent) => {
+      updateDragPosition(event.clientX, event.clientY);
     };
 
     const handleTouchMove = (event: TouchEvent) => {
       event.preventDefault();
       const touch = event.touches[0];
-      const rect = container.getBoundingClientRect();
-      const x = clampPercentage(
-        ((touch.clientX - rect.left) / rect.width) * 100
-      );
-      const y = clampPercentage(
-        ((touch.clientY - rect.top) / rect.height) * 100
-      );
-      dragPositionRef.current = { x, y };
-      setAllStars((prev) =>
-        prev.map((star) =>
-          star.id === draggingStarId ? { ...star, position: { x, y } } : star
-        )
-      );
+      updateDragPosition(touch.clientX, touch.clientY);
     };
 
     const handleEnd = () => {
       const position = dragPositionRef.current;
+      const starId = draggingStarId;
       setDraggingStarId(null);
       dragPositionRef.current = null;
-      if (!position) return;
-      void saveStarPosition(user.uid, draggingStarId, position);
+
+      if (!position || !starId) {
+        return;
+      }
+
+      void saveStarPosition(user.uid, starId, position);
     };
 
     window.addEventListener("mousemove", handleMouseMove);
@@ -276,30 +235,41 @@ export default function ConstellationDashboardPage() {
     };
   }, [canEditSelectedConstellation, draggingStarId, user.uid]);
 
-  // ── Handlers ──
   const handleCreateConstellation = async () => {
-    const trimmed = constellationName.trim();
-    if (!trimmed) return;
+    const trimmedName = constellationName.trim();
+    if (!trimmedName) {
+      return;
+    }
 
     setIsCreatingConstellation(true);
     setFeedback(null);
 
     try {
-      await createConstellation(user.uid, trimmed);
+      await createConstellation(user.uid, trimmedName);
       setConstellationName("");
       await loadAll(user.uid);
-      setFeedback({ type: "success", message: `Created constellation ${trimmed}.` });
-    } catch (e) {
-      console.error(e);
-      const message = e instanceof Error ? e.message : "Failed to create constellation.";
-      setFeedback({ type: "error", message });
+      setFeedback({
+        type: "success",
+        message: `Created constellation ${trimmedName}.`,
+      });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Failed to create constellation.",
+      });
     } finally {
       setIsCreatingConstellation(false);
     }
   };
 
   const handleFinishConstellation = async () => {
-    if (!activeConstellation || !canFinishActiveConstellation) return;
+    if (!activeConstellation || !canFinishActiveConstellation) {
+      return;
+    }
 
     setIsFinishingConstellation(true);
     setFeedback(null);
@@ -311,307 +281,375 @@ export default function ConstellationDashboardPage() {
         type: "success",
         message: `${activeConstellation.name} is now finished.`,
       });
-    } catch (e) {
-      console.error(e);
-      setFeedback({ type: "error", message: "Failed to finish constellation." });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: "Failed to finish constellation.",
+      });
     } finally {
       setIsFinishingConstellation(false);
     }
   };
 
+  const startRename = (constellation: Constellation) => {
+    setRenamingConstellationId(constellation.id);
+    setRenameValue(constellation.name);
+  };
+
+  const handleRename = async () => {
+    if (!renamingConstellationId) return;
+    const trimmed = renameValue.trim();
+    if (!trimmed) return;
+
+    try {
+      const finalName = await renameConstellation(user.uid, renamingConstellationId, trimmed);
+      setConstellations((prev) =>
+        prev.map((c) =>
+          c.id === renamingConstellationId ? { ...c, name: finalName } : c
+        )
+      );
+      setRenamingConstellationId(null);
+      setRenameValue("");
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to rename constellation.",
+      });
+    }
+  };
+
+  const cancelRename = () => {
+    setRenamingConstellationId(null);
+    setRenameValue("");
+  };
+
   return (
     <Refreshable onRefresh={handleRefresh}>
-      <main
-        data-app-surface="true"
-        className="min-h-screen px-3 py-2 text-white sm:px-4 sm:py-3 md:px-6 md:py-4"
+      <AppPage
+        title="Constellation"
+        backHref="/dashboard"
+        backLabel="Dashboard"
+        width="3xl"
+        action={
+          <RefreshIconButton
+            refreshing={refreshing}
+            onClick={() => void handleRefresh()}
+          />
+        }
+        contentClassName="space-y-6"
       >
-        <div className="mx-auto max-w-3xl">
-        {/* ── Header ── */}
-        <div className="mb-3 flex items-center justify-between sm:mb-4">
-          <h1 className="text-xl font-bold">Constellation</h1>
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              disabled={!selectedConstellation}
-              onClick={() => {
-                if (!selectedConstellation) return;
-                setConstellationBackgroundEnabled(true);
-                setConstellationBackgroundConstellationId(selectedConstellation.id);
-              }}
-              className="rounded-md bg-glass-medium px-3 py-2 text-sm hover:bg-glass-strong active:scale-[0.97] disabled:opacity-50"
-            >
-              Use as BG
-            </button>
-            <RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />
-          </div>
-        </div>
-
-        {/* ── Feedback ── */}
         {feedback ? (
-          <div
-            className={`mb-3 flex items-center justify-between gap-4 rounded-xl p-2.5 text-sm sm:mb-4 sm:p-3 ${
-              feedback.type === "error"
-                ? "bg-error-muted text-red-200"
-                : "bg-success-muted text-emerald-200"
-            }`}
-          >
-            <div>{feedback.message}</div>
-            <button
-              onClick={() => setFeedback(null)}
-              className="rounded-md bg-glass-medium px-3 py-1 text-xs hover:bg-glass-strong active:scale-[0.97]"
-            >
-              Dismiss
-            </button>
-          </div>
+          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        {/* ── Management: Active constellation card ── */}
-        {!isLoading ? (
-          activeConstellation ? (
-            <div
-              className="mb-4 rounded-xl border border-warm-border p-3 sm:p-4"
-              style={{ backgroundImage: "var(--gradient-card)" }}
-            >
-              <div className="mb-3 flex items-start justify-between gap-4">
-                <div>
-                  <div className="font-medium">{activeConstellation.name}</div>
-                  <div className="mt-1 text-sm text-text-muted">Active</div>
-                </div>
-                <button
+        {!isLoading && activeConstellation ? (
+          <Card tone="warm" padding="md">
+            <div className="mb-4 flex flex-wrap items-start justify-between gap-4">
+              <div>
+                {renamingConstellationId === activeConstellation.id ? (
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={renameValue}
+                      onChange={(e) => setRenameValue(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") void handleRename();
+                        if (e.key === "Escape") cancelRename();
+                      }}
+                      containerClassName="w-full max-w-[12rem]"
+                      autoFocus
+                    />
+                    <Button size="sm" onClick={() => void handleRename()} disabled={!renameValue.trim()}>Save</Button>
+                    <Button size="sm" variant="ghost" onClick={cancelRename}>Cancel</Button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    className="group flex items-center gap-1.5 font-medium"
+                    onClick={() => startRename(activeConstellation)}
+                  >
+                    {activeConstellation.name}
+                    <span className="text-text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-label="Rename">
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    </span>
+                  </button>
+                )}
+                <div className="mt-1 text-sm text-text-muted">Active</div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
                   type="button"
-                  disabled={!canFinishActiveConstellation || isFinishingConstellation}
+                  disabled={
+                    !canFinishActiveConstellation || isFinishingConstellation
+                  }
                   onClick={() => void handleFinishConstellation()}
-                  className="rounded-md bg-accent px-3 py-1.5 text-sm font-medium active:scale-[0.97] disabled:opacity-50"
                 >
-                  {isFinishingConstellation ? "Finishing…" : "Finish"}
-                </button>
+                  {isFinishingConstellation ? "Finishing..." : "Finish"}
+                </Button>
               </div>
-
-              {/* Progress bars */}
-              <div className="space-y-2">
-                <div>
-                  <div className="mb-1 flex justify-between text-xs text-text-muted">
-                    <span>Dust</span>
-                    <span>
-                      {activeConstellationProg?.dustCount ?? 0} / {activeConstellation.maxDust}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-glass-medium">
-                    <div
-                      className="h-2 rounded-full bg-accent transition-all duration-slow"
-                      style={{
-                        width: `${Math.min(100, ((activeConstellationProg?.dustCount ?? 0) / activeConstellation.maxDust) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-                <div>
-                  <div className="mb-1 flex justify-between text-xs text-text-muted">
-                    <span>Stars</span>
-                    <span>
-                      {activeConstellationProg?.starCount ?? 0} / {activeConstellation.maxStars}
-                    </span>
-                  </div>
-                  <div className="h-2 rounded-full bg-glass-medium">
-                    <div
-                      className="h-2 rounded-full bg-success transition-all duration-slow"
-                      style={{
-                        width: `${Math.min(100, ((activeConstellationProg?.starCount ?? 0) / activeConstellation.maxStars) * 100)}%`,
-                      }}
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {!canFinishActiveConstellation ? (
-                <p className="mt-3 text-xs text-text-muted">
-                  Collect enough dust and stars to finish this constellation.
-                </p>
-              ) : null}
             </div>
-          ) : (
-            <div
-              className="mb-4 rounded-xl border border-warm-border bg-warm-glow p-3 sm:p-4"
-              style={{ backgroundImage: "var(--gradient-card)" }}
-            >
-              <p className="mb-3 text-sm text-text-secondary">
-                No active constellation. Create one to start collecting stars and dust.
+
+            <div className="space-y-3">
+              <div>
+                <div className="mb-1 flex justify-between text-xs text-text-muted">
+                  <span>Stars</span>
+                  <span>
+                    {activeConstellation.starCount} / {activeConstellation.maxStars}
+                  </span>
+                </div>
+                <div className="h-2.5 rounded-full bg-glass-medium">
+                  <div
+                    className="h-2.5 rounded-full bg-success transition-all duration-slow"
+                    style={{
+                      width: `${Math.min(
+                        100,
+                        (activeConstellation.starCount /
+                          activeConstellation.maxStars) *
+                          100
+                      )}%`,
+                    }}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {!canFinishActiveConstellation ? (
+              <p className="mt-3 text-xs text-text-muted">
+                Complete goals to fill this constellation with stars, then
+                finish it once the star cap is full.
               </p>
-              <div className="flex gap-2">
-                <input
-                  placeholder="Constellation name"
-                  value={constellationName}
-                  onChange={(e) => setConstellationName(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter") void handleCreateConstellation();
-                  }}
-                  className="w-full max-w-xs rounded-md border border-border bg-glass-medium px-3 py-2 text-sm text-white placeholder:text-text-muted outline-none transition duration-fast focus:border-accent focus:ring-2 focus:ring-warm-accent/20"
-                />
-                <button
-                  disabled={isCreatingConstellation || !!activeConstellation || !constellationName.trim()}
-                  onClick={() => void handleCreateConstellation()}
-                  className="rounded-md bg-accent px-4 py-2 text-sm font-medium text-white transition duration-fast hover:bg-accent-hover active:scale-[0.97] disabled:opacity-50"
-                >
-                  {isCreatingConstellation ? "Creating…" : "Create"}
-                </button>
-              </div>
-            </div>
-          )
+            ) : null}
+          </Card>
         ) : null}
 
-        {/* ── Constellation viewer ── */}
+        {!isLoading && !activeConstellation ? (
+          <Card tone="warm" padding="md">
+            <p className="mb-3 text-sm text-text-secondary">
+              No active constellation. Create one to keep turning review
+              sessions into a growing sky.
+            </p>
+            <div className="flex flex-wrap gap-3">
+              <Input
+                placeholder="Constellation name"
+                value={constellationName}
+                onChange={(event) => setConstellationName(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    void handleCreateConstellation();
+                  }
+                }}
+                containerClassName="w-full max-w-xs"
+              />
+              <Button
+                type="button"
+                disabled={isCreatingConstellation || !constellationName.trim()}
+                onClick={() => void handleCreateConstellation()}
+              >
+                {isCreatingConstellation ? "Creating..." : "Create"}
+              </Button>
+            </div>
+          </Card>
+        ) : null}
+
         {isLoading ? (
-          <div className="text-sm text-text-muted">Loading constellation…</div>
+          <div className="space-y-4">
+            <Skeleton className="h-12 w-48" />
+            <Skeleton className="h-80" />
+            <Skeleton className="h-36" />
+          </div>
         ) : (
           <>
-            <div className="mb-4 flex flex-wrap items-center gap-3 text-sm">
-              <select
-                value={selectedConstellation?.id ?? ""}
-                onChange={(e) => setSelectedConstellationId(e.target.value)}
-                className="rounded-md border border-border bg-glass-medium px-3 py-2 text-white"
-              >
-                {constellations.map((constellation) => (
-                  <option
-                    key={constellation.id}
-                    value={constellation.id}
-                    className="text-black"
-                  >
-                    {constellation.name} ({constellation.status})
-                  </option>
-                ))}
-              </select>
+            <Card padding="md" className="space-y-4">
+              <div className="flex flex-wrap items-center gap-3 text-sm">
+                <select
+                  value={selectedConstellation?.id ?? ""}
+                  onChange={(event) =>
+                    setSelectedConstellationId(event.target.value)
+                  }
+                  className="max-w-[14rem] truncate rounded-2xl border border-border bg-surface-panel py-3 pr-8 pl-4 text-white appearance-none bg-[length:1rem] bg-[position:right_0.6rem_center] bg-no-repeat"
+                  style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}
+                >
+                  {constellations.map((constellation) => (
+                    <option
+                      key={constellation.id}
+                      value={constellation.id}
+                      className="text-black"
+                    >
+                      {constellation.name} ({constellation.status})
+                    </option>
+                  ))}
+                </select>
 
-              {selectedConstellation ? (
-                <>
-                  <div>Status: {selectedConstellation.status}</div>
-                  <div>
-                    Dust: {selectedConstellationProg?.dustCount ?? 0} /{" "}
-                    {selectedConstellation.maxDust}
-                  </div>
-                  <div>
-                    Stars: {selectedConstellationProg?.starCount ?? 0} /{" "}
-                    {selectedConstellation.maxStars}
-                  </div>
-                  {!canEditSelectedConstellation ? (
-                    <div className="text-text-muted">
-                      Finished constellations are view-only.
+                {selectedConstellation ? (
+                  <>
+                    <div>Status: {selectedConstellation.status}</div>
+                    <div>
+                      Stars: {selectedConstellation.starCount} /{" "}
+                      {selectedConstellation.maxStars}
                     </div>
-                  ) : null}
-                </>
-              ) : null}
-            </div>
-
-            <div
-              id="constellation-container"
-              className="relative mb-4 h-[60vh] w-full select-none overflow-hidden rounded-xl border border-white/[0.07] bg-surface-base sm:h-[500px]"
-              style={{
-                backgroundImage: `
-                  radial-gradient(circle at 20% 20%, rgba(88, 164, 255, 0.16), transparent 30%),
-                  radial-gradient(circle at 80% 30%, rgba(120, 220, 255, 0.1), transparent 28%),
-                  radial-gradient(circle at 50% 80%, rgba(120, 180, 255, 0.08), transparent 32%)
-                `,
-                backgroundSize: "auto",
-                backgroundPosition: "center",
-              }}
-            >
-              <ConstellationDust
-                particles={visibleDustParticles}
-                constellationId={selectedConstellation?.id}
-                status={selectedConstellation?.status}
-                maxDust={selectedConstellation?.maxDust}
-                mode="page"
-                className="z-0"
-              />
-              <div className="absolute inset-0 z-10">
-                {visibleStars.map((star) => (
-                  <ConstellationStar
-                    key={star.id}
-                    star={star}
-                    onDragStart={
-                      canEditSelectedConstellation
-                        ? () => setDraggingStarId(star.id)
-                        : undefined
-                    }
-                  />
-                ))}
-              </div>
-            </div>
-
-            {/* Constellation history */}
-            {constellations.length > 1 ||
-            (constellations.length === 1 && !activeConstellation) ? (
-              <div className="mb-4 grid gap-2.5 sm:gap-3">
-                {constellations
-                  .filter((c) => c.id !== activeConstellation?.id)
-                  .map((constellation) => {
-                    const progress = constellationProgress[constellation.id] ?? {
-                      starCount: 0,
-                      dustCount: 0,
-                    };
-                    return (
-                      <div
-                        key={constellation.id}
-                        className="rounded-xl border border-white/[0.07] p-2.5 text-sm sm:p-3"
-                        style={{ backgroundImage: "var(--gradient-card)" }}
-                      >
-                        <div className="flex items-center justify-between">
-                          <span className="font-medium">{constellation.name}</span>
-                          <span className="rounded-md bg-glass-medium px-2 py-0.5 text-xs capitalize">
-                            {constellation.status}
-                          </span>
-                        </div>
-                        <div className="mt-1 text-xs text-text-muted">
-                          {progress.dustCount} dust · {progress.starCount} stars
-                        </div>
+                    {!canEditSelectedConstellation ? (
+                      <div className="text-text-muted">
+                        Finished constellations are view-only.
                       </div>
-                    );
-                  })}
+                    ) : null}
+                  </>
+                ) : null}
+              </div>
+
+              <div
+                id="constellation-container"
+                className="relative h-[60vh] w-full select-none overflow-hidden rounded-[2rem] border border-white/[0.07] bg-surface-base sm:h-[560px]"
+                style={{
+                  backgroundColor: "#090413",
+                }}
+              >
+                <div className="absolute inset-0 z-10">
+                  {visibleStars.map((star) => (
+                    <ConstellationStar
+                      key={star.id}
+                      star={star}
+                      onDragStart={
+                        canEditSelectedConstellation
+                          ? () => setDraggingStarId(star.id)
+                          : undefined
+                      }
+                    />
+                  ))}
+                </div>
+              </div>
+            </Card>
+
+            {constellations.length > 1 ? (
+              <div className="grid gap-4 xl:grid-cols-2">
+                {constellations
+                  .filter((constellation) => constellation.id !== activeConstellation?.id)
+                  .map((constellation) => (
+                    <div key={constellation.id} className="app-panel p-4 text-sm">
+                      <div className="flex items-center justify-between">
+                        {renamingConstellationId === constellation.id ? (
+                          <div className="flex items-center gap-2">
+                            <Input
+                              value={renameValue}
+                              onChange={(e) => setRenameValue(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") void handleRename();
+                                if (e.key === "Escape") cancelRename();
+                              }}
+                              containerClassName="w-full max-w-[10rem]"
+                              autoFocus
+                            />
+                            <Button size="sm" onClick={() => void handleRename()} disabled={!renameValue.trim()}>Save</Button>
+                            <Button size="sm" variant="ghost" onClick={cancelRename}>Cancel</Button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className="group flex items-center gap-1.5 font-medium"
+                            onClick={() => startRename(constellation)}
+                          >
+                            {constellation.name}
+                            <span className="text-text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-label="Rename">
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                            </span>
+                          </button>
+                        )}
+                        <span className="rounded-lg bg-glass-medium px-2 py-1 text-xs capitalize">
+                          {constellation.status}
+                        </span>
+                      </div>
+                      <div className="mt-1 text-xs text-text-muted">
+                        {constellation.starCount} stars
+                      </div>
+                    </div>
+                  ))}
               </div>
             ) : null}
 
-            {/* Background toggle */}
-            <div className="flex flex-wrap items-center gap-4 text-sm">
-              <label className="flex items-center gap-2 text-text-secondary">
-                <input
-                  type="checkbox"
-                  checked={isConstellationBackgroundEnabled}
-                  onChange={(e) => {
-                    const enabled = e.target.checked;
-                    setIsConstellationBackgroundEnabled(enabled);
-                    setConstellationBackgroundEnabled(enabled);
+            <Card
+              padding="md"
+              className="space-y-4 text-sm"
+            >
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <div className="font-medium text-white">Background</div>
+                  <p className="mt-1 text-xs text-text-muted">
+                    Pick one constellation to show behind the app.
+                  </p>
+                </div>
+
+                <Button
+                  type="button"
+                  variant={isConstellationBackgroundEnabled ? "secondary" : "primary"}
+                  onClick={() => {
+                    if (isConstellationBackgroundEnabled) {
+                      setIsConstellationBackgroundEnabled(false);
+                      setConstellationBackgroundEnabled(false);
+                      return;
+                    }
+
+                    const nextId =
+                      backgroundConstellationId ||
+                      selectedConstellation?.id ||
+                      activeConstellation?.id ||
+                      "";
+
+                    setBackgroundConstellationId(nextId);
+                    setConstellationBackgroundConstellationId(nextId);
+                    setIsConstellationBackgroundEnabled(true);
+                    setConstellationBackgroundEnabled(true);
                   }}
-                  className="h-4 w-4 accent-accent"
-                />
-                <span>Constellation background</span>
-              </label>
+                >
+                  {isConstellationBackgroundEnabled
+                    ? "Turn Background Off"
+                    : "Use As Background"}
+                </Button>
+              </div>
 
-              <select
-                value={backgroundConstellationId}
-                onChange={(e) => {
-                  const nextId = e.target.value;
-                  setBackgroundConstellationId(nextId);
-                  setConstellationBackgroundConstellationId(nextId);
-                }}
-                className="rounded-md border border-border bg-glass-medium px-3 py-1.5 text-sm text-white"
-              >
-                <option value="" className="text-black">
-                  Active or latest
-                </option>
-                {constellations.map((c) => (
-                  <option key={c.id} value={c.id} className="text-black">
-                    {c.name} ({c.status})
+              <div className="flex flex-wrap items-center gap-3">
+                <select
+                  value={backgroundConstellationId}
+                  onChange={(event) => {
+                    const nextId = event.target.value;
+                    setBackgroundConstellationId(nextId);
+                    setConstellationBackgroundConstellationId(nextId);
+                  }}
+                  className="max-w-[14rem] truncate rounded-[1.7rem] border border-border bg-surface-panel py-3 pr-8 pl-4 text-sm text-white appearance-none bg-[length:1rem] bg-[position:right_0.6rem_center] bg-no-repeat"
+                  style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}
+                >
+                  <option value="" className="text-black">
+                    Active or latest
                   </option>
-                ))}
-              </select>
-            </div>
+                  {constellations.map((constellation) => (
+                    <option
+                      key={constellation.id}
+                      value={constellation.id}
+                      className="text-black"
+                    >
+                      {constellation.name} ({constellation.status})
+                    </option>
+                  ))}
+                </select>
 
-            {/* ── Earned Stars (collapsible) ── */}
+                <div className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-medium text-text-secondary">
+                  {isConstellationBackgroundEnabled
+                    ? `Showing ${
+                        constellations.find(
+                          (constellation) =>
+                            constellation.id === backgroundConstellationId
+                        )?.name ?? "active constellation"
+                      }`
+                    : "Background currently off"}
+                </div>
+              </div>
+            </Card>
+
             {allStars.length > 0 ? (
               <div className="mt-4">
                 <button
                   type="button"
                   onClick={() => setStarsExpanded((prev) => !prev)}
-                  className="mb-2 flex w-full items-center justify-between rounded-xl border border-warm-border bg-warm-glow p-3 text-sm font-semibold transition duration-fast hover:bg-glass-medium active:scale-[0.98]"
+                  className="mb-2 flex w-full items-center justify-between rounded-[1.7rem] border border-warm-border bg-warm-glow p-4 text-sm font-semibold transition duration-fast hover:bg-glass-medium active:scale-[0.98]"
                 >
                   <span>Earned Stars ({allStars.length})</span>
                   <svg
@@ -621,19 +659,17 @@ export default function ConstellationDashboardPage() {
                     strokeWidth={2}
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    className={`h-4 w-4 transition-transform duration-fast ${starsExpanded ? "rotate-180" : ""}`}
+                    className={`h-4 w-4 transition-transform duration-fast ${
+                      starsExpanded ? "rotate-180" : ""
+                    }`}
                   >
                     <path d="M6 9l6 6 6-6" />
                   </svg>
                 </button>
                 {starsExpanded ? (
-                  <div className="grid gap-2 animate-fade-in">
+                  <div className="grid gap-3 animate-fade-in xl:grid-cols-2">
                     {allStars.map((star) => (
-                      <div
-                        key={star.id}
-                        className="rounded-xl border border-border bg-glass-subtle p-2.5 text-sm"
-                        style={{ backgroundImage: "var(--gradient-card)" }}
-                      >
+                      <div key={star.id} className="app-panel p-4 text-sm">
                         <div className="flex items-center gap-3">
                           <div
                             className="h-3 w-3 rounded-full"
@@ -655,8 +691,8 @@ export default function ConstellationDashboardPage() {
             ) : null}
           </>
         )}
-        </div>
-      </main>
+      </AppPage>
     </Refreshable>
   );
 }
+
