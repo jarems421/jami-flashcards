@@ -18,7 +18,9 @@
 
 | Area | Details |
 |------|---------|
-| **Flashcards** | Create decks, write cards, tag them, and study with spaced repetition scheduling |
+| **Flashcards** | Create decks, write cards, tag them, and study with FSRS spaced-repetition scheduling |
+| **AI Study Assistant** | Context-aware AI tutor during study sessions — auto-explains wrong answers, supports follow-up chat |
+| **Weak Points** | FSRS-powered analysis surfaces your weakest cards so you can focus where it matters |
 | **Goals** | Set study targets with deadlines — earn a constellation star when you complete one |
 | **Constellations** | Visual star map that grows as you hit goals — set one as your live background |
 | **Statistics** | Track reviews per day, accuracy, and study streaks over time |
@@ -31,6 +33,9 @@
 - **UI** — React 19, Tailwind CSS 4
 - **Auth** — Firebase Authentication (Google sign-in)
 - **Database** — Cloud Firestore with per-user security rules
+- **Storage** — Firebase Storage (profile photos)
+- **AI** — Google Gemini 2.5 Flash (study explanations and chat)
+- **Scheduling** — FSRS (Free Spaced Repetition Scheduler) via ts-fsrs
 - **Testing** — Vitest + Firebase Emulator Suite
 - **Deployment** — Vercel
 
@@ -40,14 +45,23 @@
 app/                    → Pages and API routes (App Router)
   dashboard/            → Authenticated app screens
   deck/[id]/            → Deck detail and study pages
-  api/                  → Notification endpoints
+  api/ai/               → AI explain and chat endpoints
+  api/notifications/    → Push notification endpoints
 components/
-  constellation/        → Star rendering, background, dust effects
-  decks/                → Deck and card management UI
+  constellation/        → Star rendering, background effects
+  decks/                → Deck detail, study, tag input
   layout/               → AppPage, AppTopBar, TabBar shell
+  study/                → AI study assistant panel
   ui/                   → Button, Card, Input, EmptyState, etc.
-lib/                    → Pure logic (scheduling, goals, stars, time)
-services/               → Firebase reads/writes (auth, decks, stars, etc.)
+lib/
+  ai/                   → Rate limiting
+  auth/                 → Auth listener, bearer token, user context
+  constellation/        → Background, constellations, stars logic
+  study/                → Scheduler, goals, cards, activity, weak points
+services/
+  ai/                   → Chat and explain API clients
+  firebase/             → Client, admin, Firestore helpers
+  study/                → Deck, activity, tag reads/writes
 tests/                  → Unit and Firestore rules tests
 ```
 
@@ -70,7 +84,7 @@ npm run dev                   # http://localhost:3000
 
 ### Environment variables
 
-See [`.env.example`](.env.example) for all required values. The client-side Firebase keys are prefixed with `NEXT_PUBLIC_FIREBASE_*`. Server-side variables are only needed for push notifications.
+See [`.env.example`](.env.example) for all required values. The client-side Firebase keys are prefixed with `NEXT_PUBLIC_FIREBASE_*`. Server-side variables are only needed for push notifications and AI features (`GEMINI_API_KEY`).
 
 ## Scripts
 
@@ -91,7 +105,7 @@ See [`.env.example`](.env.example) for all required values. The client-side Fire
 3. Add `NEXT_PUBLIC_FIREBASE_*` environment variables
 4. Deploy
 
-For push notifications, also add the server-side notification variables (`FIREBASE_ADMIN_*`, `WEB_PUSH_*`, `CRON_SECRET`).
+For push notifications, also add the server-side notification variables (`FIREBASE_ADMIN_*`, `WEB_PUSH_*`, `CRON_SECRET`). For AI study assistant features, add `GEMINI_API_KEY`.
 
 ## License
 

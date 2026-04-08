@@ -19,6 +19,8 @@ import {
   type DailyStudyActivity,
 } from "@/lib/study/activity";
 import { loadStudyActivity } from "@/services/study/activity";
+import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
+import { getWeakPoints, type WeakArea } from "@/lib/study/weak-points";
 import AppPage from "@/components/layout/AppPage";
 import { Card, FeedbackBanner } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
@@ -37,6 +39,7 @@ export default function DashboardHome() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<DashboardFeedback | null>(null);
+  const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
   const lastForegroundRefreshAtRef = useRef(0);
 
   const loadAll = useCallback(async (uid: string) => {
@@ -62,9 +65,11 @@ export default function DashboardHome() {
       const snapshot = await getDocs(cardsQuery);
       const now = Date.now();
       const nextDeckDueCounts: DeckDueCounts = {};
+      const allCards: StudyCard[] = [];
       let count = 0;
       for (const cardDoc of snapshot.docs) {
         const data = cardDoc.data();
+        allCards.push(mapCardData(cardDoc.id, data as Record<string, unknown>));
         const dueDate = data.dueDate;
         const deckId =
           typeof data.deckId === "string" && data.deckId.trim() ? data.deckId : null;
@@ -78,6 +83,11 @@ export default function DashboardHome() {
       }
       setDueCount(count);
       setDeckDueCounts(nextDeckDueCounts);
+
+      const deckNamesById = Object.fromEntries(
+        fetchedDecks.map((d) => [d.id, d.name]),
+      );
+      setWeakAreas(getWeakPoints(allCards, deckNamesById));
 
       const [goalsSnapshot, activity] = await Promise.all([
         getDocs(collection(db, "users", uid, "goals")).catch(() => null),
@@ -166,7 +176,7 @@ export default function DashboardHome() {
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_320px]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <Card className="animate-slide-up overflow-hidden" padding="lg">
             {!isLoading && decks.length === 0 ? (
               <>
@@ -264,6 +274,49 @@ export default function DashboardHome() {
             </p>
           </Link>
         </div>
+
+        {!isLoading && weakAreas.length > 0 ? (
+          <Card padding="lg">
+            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+              Weak areas
+            </div>
+            <p className="mt-1 text-sm text-text-secondary">
+              Decks and tags where you struggle the most, based on difficulty and how often you forget.
+            </p>
+            <div className="mt-4 space-y-3">
+              {weakAreas.map((area) => {
+                const pct = Math.round((area.avgDifficulty / 10) * 100);
+                const tierColor =
+                  area.avgDifficulty >= 7
+                    ? "bg-rose-500"
+                    : area.avgDifficulty >= 4
+                      ? "bg-amber-500"
+                      : "bg-emerald-500";
+                return (
+                  <div key={`${area.kind}:${area.name}`}>
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="font-medium text-white">
+                        {area.name}
+                        <span className="ml-2 text-xs text-text-muted">
+                          {area.cardCount} card{area.cardCount === 1 ? "" : "s"} · {area.totalLapses} lapse{area.totalLapses === 1 ? "" : "s"}
+                        </span>
+                      </span>
+                      <span className="text-xs text-text-muted">
+                        {area.avgDifficulty.toFixed(1)}/10
+                      </span>
+                    </div>
+                    <div className="mt-1.5 h-2 rounded-full bg-white/[0.06]">
+                      <div
+                        className={`h-full rounded-full transition-all ${tierColor}`}
+                        style={{ width: `${Math.max(pct, 4)}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        ) : null}
       </AppPage>
     </Refreshable>
   );

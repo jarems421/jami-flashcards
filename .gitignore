@@ -35,6 +35,12 @@ firestore-debug.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# typescript
+tsconfig.tsbuildinfo
+
+# dev logs
+.next-dev.log
+
 # vercel
 .vercel
 

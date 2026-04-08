@@ -1,5 +1,6 @@
 import { db } from "../firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { FSRS_RESET_FIELDS } from "@/lib/study/scheduler";
 import {
   addDoc,
   collection,
@@ -316,9 +317,7 @@ export const reattemptDeck = async (
     Promise.all(
       cardsSnapshot.docs.map((cardDoc) =>
         updateDoc(cardDoc.ref, {
-          interval: 1,
-          repetitions: 0,
-          easeFactor: 2.5,
+          ...FSRS_RESET_FIELDS,
           dueDate: now,
         })
       )

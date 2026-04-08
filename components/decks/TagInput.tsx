@@ -109,7 +109,7 @@ export default function TagInput({
               setLocalError(null);
             }
           }}
-          className="w-full rounded-xl border border-border bg-surface-panel px-4 py-3 text-sm text-white placeholder:text-text-muted shadow-card outline-none transition duration-fast focus:border-accent focus:ring-2 focus:ring-accent/20"
+          className="w-full rounded-[2rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-[1rem] text-sm text-white placeholder:text-text-muted shadow-[0_14px_28px_rgba(8,2,24,0.28)] outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18"
         />
         <Button
           type="button"

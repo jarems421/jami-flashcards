@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, deleteDoc, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { getDecks, type Deck } from "@/services/study/decks";
@@ -47,6 +47,13 @@ export default function CardsSearchPage() {
   const [editingPendingTag, setEditingPendingTag] = useState("");
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [showAddForm, setShowAddForm] = useState(false);
+  const [addDeckId, setAddDeckId] = useState("");
+  const [addFront, setAddFront] = useState("");
+  const [addBack, setAddBack] = useState("");
+  const [addTags, setAddTags] = useState<string[]>([]);
+  const [addPendingTag, setAddPendingTag] = useState("");
+  const [addingCard, setAddingCard] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -206,6 +213,70 @@ export default function CardsSearchPage() {
     }
   };
 
+  const handleAddCard = async () => {
+    const nextFront = addFront.trim();
+    const nextBack = addBack.trim();
+    if (!addDeckId) {
+      setFeedback({ type: "error", message: "Select a deck first." });
+      return;
+    }
+    if (!nextFront || !nextBack) {
+      setFeedback({ type: "error", message: "Both front and back are required." });
+      return;
+    }
+    if (nextFront.length > MAX_FRONT_LENGTH || nextBack.length > MAX_BACK_LENGTH) {
+      setFeedback({ type: "error", message: `Cards must stay under ${MAX_FRONT_LENGTH} / ${MAX_BACK_LENGTH} characters.` });
+      return;
+    }
+    const tagResult = addCardTag(addTags, addPendingTag);
+    if (tagResult.error) {
+      setFeedback({ type: "error", message: tagResult.error });
+      return;
+    }
+
+    setAddingCard(true);
+    setFeedback(null);
+
+    try {
+      const createdAt = Date.now();
+      const nextTags = tagResult.nextTags;
+      const ref = await addDoc(collection(db, "cards"), {
+        deckId: addDeckId,
+        userId: user.uid,
+        front: nextFront,
+        back: nextBack,
+        tags: nextTags,
+        createdAt,
+      });
+
+      setCards((prev) => [
+        {
+          id: ref.id,
+          deckId: addDeckId,
+          userId: user.uid,
+          front: nextFront,
+          back: nextBack,
+          tags: nextTags,
+          createdAt,
+        },
+        ...prev,
+      ]);
+      setAddFront("");
+      setAddBack("");
+      setAddTags([]);
+      setAddPendingTag("");
+      setAvailableTags((prev) =>
+        Array.from(new Set([...prev, ...nextTags])).sort((a, b) => a.localeCompare(b))
+      );
+      setFeedback({ type: "success", message: "Card added." });
+    } catch (error) {
+      console.error(error);
+      setFeedback({ type: "error", message: "Failed to add card." });
+    } finally {
+      setAddingCard(false);
+    }
+  };
+
   return (
     <AppPage
       title="Cards"
@@ -218,8 +289,67 @@ export default function CardsSearchPage() {
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
 
+      {/* Quick add card */}
+      <div className="rounded-[2rem] border border-white/[0.10] bg-white/[0.03] p-4">
+        <button
+          type="button"
+          onClick={() => setShowAddForm((prev) => !prev)}
+          className="flex w-full items-center justify-between text-left"
+        >
+          <span className="text-sm font-semibold text-white">Quick add card</span>
+          <span className="text-xs text-text-muted">{showAddForm ? "Hide" : "Show"}</span>
+        </button>
+
+        {showAddForm ? (
+          <div className="mt-4 space-y-3">
+            <select
+              value={addDeckId}
+              onChange={(e) => setAddDeckId(e.target.value)}
+              className="w-full appearance-none rounded-[2rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-[1rem] text-sm text-white outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18"
+              style={{
+                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+                backgroundRepeat: "no-repeat",
+                backgroundPosition: "right 1rem center",
+                paddingRight: "2.5rem",
+              }}
+            >
+              <option value="" disabled>Select a deck</option>
+              {decks.map((d) => (
+                <option key={d.id} value={d.id}>{d.name}</option>
+              ))}
+            </select>
+            <Input
+              placeholder="Front"
+              value={addFront}
+              onChange={(e) => setAddFront(e.target.value)}
+              maxLength={MAX_FRONT_LENGTH}
+            />
+            <Input
+              placeholder="Back"
+              value={addBack}
+              onChange={(e) => setAddBack(e.target.value)}
+              maxLength={MAX_BACK_LENGTH}
+            />
+            <TagInput
+              tags={addTags}
+              pendingTag={addPendingTag}
+              availableTags={availableTags}
+              onTagsChange={setAddTags}
+              onPendingTagChange={setAddPendingTag}
+              disabled={addingCard}
+            />
+            <Button
+              disabled={addingCard || !addDeckId || !addFront.trim() || !addBack.trim()}
+              onClick={() => void handleAddCard()}
+            >
+              {addingCard ? "Adding…" : "Add card"}
+            </Button>
+          </div>
+        ) : null}
+      </div>
+
       {/* Sticky search bar */}
-      <div className="sticky top-0 z-20 -mx-1 px-1 pb-2 pt-1 backdrop-blur-lg" style={{ background: "linear-gradient(180deg, rgba(16,9,29,0.92) 60%, transparent)" }}>
+      <div className="sticky top-0 z-20 -mx-1 px-1 pb-2 pt-1">
         <Input
           placeholder="Search cards by front, back, or tag..."
           value={searchTerm}
@@ -228,7 +358,7 @@ export default function CardsSearchPage() {
       </div>
 
       {loading ? (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           <Skeleton className="h-32" />
           <Skeleton className="h-32" />
           <Skeleton className="h-32" />
@@ -253,7 +383,7 @@ export default function CardsSearchPage() {
             {hasMore ? ` (showing first ${MAX_VISIBLE_RESULTS})` : ""}
           </p>
 
-          <div className="grid animate-slide-up gap-4 xl:grid-cols-2">
+          <div className="grid animate-slide-up gap-4 lg:grid-cols-2">
             {visibleCards.map((card) => (
               <section key={card.id} className="app-panel p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell">
                 {expandedCardId === card.id ? (

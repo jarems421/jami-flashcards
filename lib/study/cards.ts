@@ -11,10 +11,20 @@ export type Card = {
   back: string;
   createdAt: number;
   tags: string[];
+  // Legacy SM-2 fields (kept for backward compat)
   interval?: number;
   repetitions?: number;
   easeFactor?: number;
   dueDate?: number;
+  // FSRS fields
+  stability?: number;
+  difficulty?: number;
+  fsrsState?: number; // 0=New, 1=Learning, 2=Review, 3=Relearning
+  lapses?: number;
+  reps?: number;
+  lastReview?: number; // epoch ms
+  scheduledDays?: number;
+  elapsedDays?: number;
 };
 
 function normalizeSingleTag(value: string): string {
@@ -197,5 +207,13 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
     repetitions: typeof data.repetitions === "number" ? data.repetitions : undefined,
     easeFactor: typeof data.easeFactor === "number" ? data.easeFactor : undefined,
     dueDate: typeof data.dueDate === "number" ? data.dueDate : undefined,
+    stability: typeof data.stability === "number" ? data.stability : undefined,
+    difficulty: typeof data.difficulty === "number" ? data.difficulty : undefined,
+    fsrsState: typeof data.fsrsState === "number" ? data.fsrsState : undefined,
+    lapses: typeof data.lapses === "number" ? data.lapses : undefined,
+    reps: typeof data.reps === "number" ? data.reps : undefined,
+    lastReview: typeof data.lastReview === "number" ? data.lastReview : undefined,
+    scheduledDays: typeof data.scheduledDays === "number" ? data.scheduledDays : undefined,
+    elapsedDays: typeof data.elapsedDays === "number" ? data.elapsedDays : undefined,
   };
 }

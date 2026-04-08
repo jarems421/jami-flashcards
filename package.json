@@ -17,12 +17,14 @@
     "firebase:rules:deploy": "firebase deploy --only firestore"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "firebase": "^12.11.0",
     "firebase-admin": "^13.7.0",
     "next": "^16.2.1",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "recharts": "^3.8.1",
+    "ts-fsrs": "^5.3.2",
     "web-push": "^3.6.7"
   },
   "devDependencies": {

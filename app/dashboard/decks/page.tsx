@@ -23,7 +23,7 @@ import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import { db } from "@/services/firebase/client";
 import { FirebaseError } from "firebase/app";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, Skeleton } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { removeUserTag, renameUserTag } from "@/services/study/tags";
 
@@ -37,7 +37,6 @@ export default function DecksPage() {
   const { user } = useUser();
 
   const [decks, setDecks] = useState<Deck[]>([]);
-  const [dueCount, setDueCount] = useState(0);
   const [deckDueCounts, setDeckDueCounts] = useState<DeckDueCounts>({});
   const [deckTotalCounts, setDeckTotalCounts] = useState<DeckTotalCounts>({});
   const [availableTags, setAvailableTags] = useState<string[]>([]);
@@ -56,6 +55,7 @@ export default function DecksPage() {
   const [savingTag, setSavingTag] = useState<string | null>(null);
   const [removingTag, setRemovingTag] = useState<string | null>(null);
   const [reattemptingDeckId, setReattemptingDeckId] = useState<string | null>(null);
+  const [showTagSection, setShowTagSection] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const lastForegroundRefreshAtRef = useRef(0);
@@ -90,7 +90,6 @@ export default function DecksPage() {
       const nextTagDueCounts: TagCounts = {};
       const nextTagTotalCounts: TagCounts = {};
       const nextAvailableTags = new Set<string>();
-      let count = 0;
       for (const cardDoc of snapshot.docs) {
         const data = cardDoc.data();
         const dueDate = data.dueDate;
@@ -106,7 +105,6 @@ export default function DecksPage() {
           nextTagTotalCounts[tag] = (nextTagTotalCounts[tag] ?? 0) + 1;
         }
         if (isDue) {
-          count++;
           if (deckId) {
             nextDeckDueCounts[deckId] = (nextDeckDueCounts[deckId] ?? 0) + 1;
           }
@@ -115,7 +113,6 @@ export default function DecksPage() {
           }
         }
       }
-      setDueCount(count);
       setDeckDueCounts(nextDeckDueCounts);
       setDeckTotalCounts(nextDeckTotalCounts);
       setAvailableTags(Array.from(nextAvailableTags).sort((a, b) => a.localeCompare(b)));
@@ -124,7 +121,6 @@ export default function DecksPage() {
       setSelectedTags((prev) => prev.filter((tag) => nextAvailableTags.has(tag)));
     } catch (e) {
       console.error(e);
-      setDueCount(0);
       setDeckDueCounts({});
       setDeckTotalCounts({});
       setAvailableTags([]);
@@ -312,7 +308,6 @@ export default function DecksPage() {
         delete next[deck.id];
         return next;
       });
-      setDueCount((prev) => Math.max(0, prev - (deckDueCounts[deck.id] ?? 0)));
       if (editingDeckId === deck.id) resetDeckEditing();
       setFeedback({ type: "success", message: `Deleted deck ${deck.name}.` });
     } catch (e) {
@@ -352,61 +347,48 @@ export default function DecksPage() {
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_320px]">
-          <Card padding="lg">
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Build your library
-            </div>
-            <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-3xl">
-              Create and organize decks.
-            </h2>
-            <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-              Keep subjects clean, add tags for cross-deck study, and return to any topic when you need a deeper pass.
-            </p>
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <Input
-                placeholder="New deck name"
-                value={name}
-                onChange={(e) => setName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && name.trim()) {
-                    e.preventDefault();
-                    void handleCreate();
-                  }
-                }}
-                containerClassName="w-full"
-                className="sm:max-w-md"
-              />
-              <Button
-                disabled={isCreatingDeck || !name.trim()}
-                onClick={() => void handleCreate()}
-                size="lg"
-                className="sm:min-w-[9rem]"
-              >
-                {isCreatingDeck ? "Creating…" : "Create"}
-              </Button>
-            </div>
-          </Card>
-
-          <Card tone="warm" padding="md">
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Queue
-            </div>
-            <div className="mt-3 text-3xl font-semibold">{dueCount}</div>
-            <p className="mt-3 text-sm leading-6 text-text-secondary">
-              Cards are waiting across your deck library. Study by deck or narrow by tag when you want a tighter session.
-            </p>
-          </Card>
+        {/* Create deck */}
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Input
+            placeholder="New deck name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && name.trim()) {
+                e.preventDefault();
+                void handleCreate();
+              }
+            }}
+            containerClassName="w-full"
+          />
+          <Button
+            disabled={isCreatingDeck || !name.trim()}
+            onClick={() => void handleCreate()}
+            className="sm:min-w-[9rem]"
+          >
+            {isCreatingDeck ? "Creating…" : "Create deck"}
+          </Button>
         </div>
 
-        <Card padding="lg">
+        {/* Tags */}
+        <div className="rounded-[2rem] border border-white/[0.10] bg-white/[0.03] p-4">
+          <button
+            type="button"
+            onClick={() => setShowTagSection((prev) => !prev)}
+            className="flex w-full items-center justify-between text-left"
+          >
+            <div>
+              <span className="text-sm font-semibold text-white">Study by tag</span>
+              {selectedTags.length > 0 ? (
+                <span className="ml-2 text-xs text-accent">{selectedTags.length} selected</span>
+              ) : null}
+            </div>
+            <span className="text-xs text-text-muted">{showTagSection ? "Hide" : "Show"}</span>
+          </button>
+
+          {showTagSection ? (
+            <div className="mt-4">
             <div className="flex flex-wrap items-start justify-between gap-3">
-              <div className="space-y-1">
-                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Study by tag</div>
-                <p className="text-sm text-text-secondary">
-                  Group cards from different decks by topic, then study only those tags.
-                </p>
-              </div>
               <div className="flex flex-wrap gap-2">
                 {selectedTags.length > 0 ? (
                   <Button
@@ -569,11 +551,13 @@ export default function DecksPage() {
                 </div>
               </div>
             )}
-        </Card>
+            </div>
+          ) : null}
+        </div>
 
           {/* ── Deck list ── */}
           {isLoadingDecks ? (
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid gap-4 lg:grid-cols-2">
               <Skeleton className="h-28" />
               <Skeleton className="h-28" />
               <Skeleton className="h-28" />
@@ -585,12 +569,10 @@ export default function DecksPage() {
               description="Create your first deck above to get started."
             />
           ) : (
-            <div className="grid animate-slide-up gap-4 xl:grid-cols-2">
+            <div className="grid animate-slide-up gap-4 lg:grid-cols-2">
               {decks.map((deck) => {
                 const due = deckDueCounts[deck.id] ?? 0;
                 const total = deckTotalCounts[deck.id] ?? 0;
-                const reviewed = total - due;
-                const progressPct = total > 0 ? Math.round((reviewed / total) * 100) : 0;
 
                 return (
                   <div
@@ -631,8 +613,7 @@ export default function DecksPage() {
                           >
                             <div className="font-semibold">{deck.name}</div>
                             <div className="text-sm text-text-muted">
-                              {due} card{due === 1 ? "" : "s"} due
-                              {total > 0 ? ` · ${total} total` : ""}
+                              {due} due · {total} total
                             </div>
                           </Link>
                         )}
@@ -678,11 +659,6 @@ export default function DecksPage() {
                         </Button>
                       </div>
                     </div>
-
-                    {/* Due progress bar */}
-                    {total > 0 ? (
-                      <ProgressBar progress={progressPct} className="mt-4" />
-                    ) : null}
                   </div>
                 );
               })}

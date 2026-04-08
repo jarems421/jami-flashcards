@@ -258,14 +258,14 @@ export default function GoalsPage() {
           <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
             New goal
           </h3>
-          <div className="grid gap-2 sm:grid-cols-2 lg:flex lg:flex-wrap">
+          <div className="grid gap-2 grid-cols-1 md:grid-cols-2 xl:flex xl:flex-wrap">
             <Input
               type="number"
               min="1"
               placeholder="Target cards"
               value={targetCards}
               onChange={(event) => setTargetCards(event.target.value)}
-              containerClassName="sm:min-w-[10.5rem] lg:flex-[1_1_10.5rem]"
+              containerClassName="xl:flex-[1_1_10.5rem]"
             />
             <Input
               type="number"
@@ -275,19 +275,19 @@ export default function GoalsPage() {
               placeholder="Accuracy %"
               value={targetAccuracy}
               onChange={(event) => setTargetAccuracy(event.target.value)}
-              containerClassName="sm:min-w-[11rem] lg:flex-[1_1_11rem]"
+              containerClassName="xl:flex-[1_1_11rem]"
             />
             <Input
               type="date"
               value={deadlineDate}
               onChange={(event) => setDeadlineDate(event.target.value)}
-              containerClassName="sm:min-w-[10rem] lg:flex-[1_1_10rem]"
+              containerClassName="xl:flex-[1_1_10rem]"
             />
             <Input
               type="time"
               value={deadlineTime}
               onChange={(event) => setDeadlineTime(event.target.value)}
-              containerClassName="sm:min-w-[9rem] lg:flex-[1_1_9rem]"
+              containerClassName="xl:flex-[1_1_9rem]"
             />
             <Button
               disabled={isCreatingGoal}
@@ -334,7 +334,7 @@ export default function GoalsPage() {
         </Card>
 
         {isLoadingGoals ? (
-          <div className="grid gap-4 xl:grid-cols-2">
+          <div className="grid gap-4 lg:grid-cols-2">
             <Skeleton className="h-28" />
             <Skeleton className="h-28" />
           </div>
@@ -347,7 +347,7 @@ export default function GoalsPage() {
                 description="Create one to start earning stars."
               />
             ) : (
-              <div className="grid animate-slide-up gap-4 xl:grid-cols-2">
+              <div className="grid animate-slide-up gap-4 lg:grid-cols-2">
                 {activeGoals.map((goal) => {
                   const progressPct =
                     goal.targetCards > 0
@@ -392,7 +392,7 @@ export default function GoalsPage() {
               historicalGoals.length === 0 ? (
                 <EmptyState emoji="📜" title="No past goals yet" />
               ) : (
-                <div className="grid gap-4 xl:grid-cols-2">
+                <div className="grid gap-4 lg:grid-cols-2">
                   {historicalGoals.map((goal) => (
                     <div
                       key={goal.id}

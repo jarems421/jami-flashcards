@@ -521,7 +521,7 @@ export default function ConstellationDashboardPage() {
             </Card>
 
             {constellations.length > 1 ? (
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-4 lg:grid-cols-2">
                 {constellations
                   .filter((constellation) => constellation.id !== activeConstellation?.id)
                   .map((constellation) => (
@@ -667,7 +667,7 @@ export default function ConstellationDashboardPage() {
                   </svg>
                 </button>
                 {starsExpanded ? (
-                  <div className="grid gap-3 animate-fade-in xl:grid-cols-2">
+                  <div className="grid gap-3 animate-fade-in lg:grid-cols-2">
                     {allStars.map((star) => (
                       <div key={star.id} className="app-panel p-4 text-sm">
                         <div className="flex items-center gap-3">

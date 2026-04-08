@@ -5,6 +5,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
+import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
 import { Button, Card } from "@/components/ui";
 import { logout, deleteAccount } from "@/services/auth";
@@ -20,8 +21,6 @@ export default function ProfilePage() {
   const displayName =
     user.displayName ||
     (user.email ? user.email.split("@")[0] : "User");
-
-  const initial = displayName.charAt(0).toUpperCase();
 
   const handleSignOut = async () => {
     await logout();
@@ -49,19 +48,14 @@ export default function ProfilePage() {
 
   return (
     <AppPage title="Profile" backHref="/dashboard" backLabel="Dashboard" width="xl" contentClassName="space-y-6">
-      <Card tone="warm" className="flex items-center gap-4 sm:p-6" padding="md">
-          {user.photoURL ? (
-            <div
-              aria-hidden="true"
-              className="h-16 w-16 rounded-full bg-cover bg-center"
-              style={{ backgroundImage: `url(${user.photoURL})` }}
-            />
-          ) : (
-            <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-warm-accent to-accent text-xl font-bold text-surface-base shadow-[var(--shadow-accent)]">
-              {initial}
-            </div>
-          )}
-          <div className="min-w-0">
+      <Card tone="warm" className="sm:p-6" padding="md">
+        <div className="flex flex-col items-center gap-4">
+          <ProfilePhotoEditor
+            userId={user.uid}
+            displayName={displayName}
+            fallbackPhotoURL={user.photoURL}
+          />
+          <div className="min-w-0 text-center">
             <div className="truncate text-xl font-semibold">{displayName}</div>
             {user.email ? (
               <div className="mt-1 truncate text-sm text-text-muted">
@@ -69,6 +63,7 @@ export default function ProfilePage() {
               </div>
             ) : null}
           </div>
+        </div>
       </Card>
 
       <Button

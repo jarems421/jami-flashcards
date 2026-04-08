@@ -1,52 +1,146 @@
+import {
+  fsrs,
+  createEmptyCard,
+  Rating,
+  type Card as FSRSCard,
+  type Grade,
+} from "ts-fsrs";
+
 export type CardRating = "wrong" | "right" | "again";
 
 type SchedulableCard = {
   interval?: number;
   repetitions?: number;
   easeFactor?: number;
+  dueDate?: number;
+  stability?: number;
+  difficulty?: number;
+  fsrsState?: number;
+  lapses?: number;
+  reps?: number;
+  lastReview?: number;
+  scheduledDays?: number;
+  elapsedDays?: number;
 };
 
 type CardSchedule = {
+  // Legacy fields (kept for backward compat with existing code/queries)
   interval: number;
   repetitions: number;
   easeFactor: number;
   dueDate: number;
+  // FSRS fields
+  stability: number;
+  difficulty: number;
+  fsrsState: number;
+  lapses: number;
+  reps: number;
+  lastReview: number;
+  scheduledDays: number;
+  elapsedDays: number;
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
+const scheduler = fsrs();
+
+const RATING_MAP: Record<CardRating, Grade> = {
+  wrong: Rating.Again,
+  again: Rating.Hard,
+  right: Rating.Good,
+};
+
+function toFSRSCard(card: SchedulableCard): FSRSCard {
+  // If the card has FSRS fields, reconstruct the FSRS card
+  if (typeof card.stability === "number" && card.stability > 0) {
+    return {
+      due: card.dueDate ? new Date(card.dueDate) : new Date(),
+      stability: Math.max(0, card.stability),
+      difficulty: Math.min(10, Math.max(0, card.difficulty ?? 0)),
+      elapsed_days: Math.max(0, card.elapsedDays ?? 0),
+      scheduled_days: Math.max(0, card.scheduledDays ?? 0),
+      reps: Math.max(0, card.reps ?? 0),
+      lapses: Math.max(0, card.lapses ?? 0),
+      state: ([0, 1, 2, 3].includes(card.fsrsState ?? 0)
+        ? card.fsrsState ?? 0
+        : 0) as FSRSCard["state"],
+      last_review: card.lastReview ? new Date(card.lastReview) : undefined,
+      learning_steps: 0,
+    };
+  }
+
+  // Legacy card or brand-new card — start fresh for FSRS
+  return createEmptyCard();
+}
 
 export function updateCardSchedule(
   card: SchedulableCard,
   rating: CardRating
 ): CardSchedule {
-  const currentInterval = card.interval && card.interval > 0 ? card.interval : 1;
-  const currentEaseFactor = typeof card.easeFactor === "number" ? card.easeFactor : 2.5;
+  const fsrsCard = toFSRSCard(card);
+  const fsrsRating = RATING_MAP[rating];
+  const now = new Date();
 
-  let interval = currentInterval;
-  let repetitions = typeof card.repetitions === "number" ? card.repetitions : 0;
-  let easeFactor = currentEaseFactor;
-
-  if (rating === "wrong") {
-    interval = 1;
-    repetitions = 0;
-    easeFactor = Math.max(1.3, currentEaseFactor - 0.1);
+  let next: FSRSCard;
+  try {
+    const result = scheduler.next(fsrsCard, now, fsrsRating);
+    next = result.card;
+  } catch {
+    // Fallback: reset to new card and reschedule
+    const fresh = createEmptyCard();
+    const result = scheduler.next(fresh, now, fsrsRating);
+    next = result.card;
   }
 
-  if (rating === "right") {
-    interval = Math.max(1, Math.round(currentInterval * 2));
-    repetitions += 1;
-    easeFactor = currentEaseFactor;
-  }
-
-  if (rating === "again") {
-    interval = 1;
-    easeFactor = currentEaseFactor;
-  }
+  const dueDateMs = next.due.getTime();
 
   return {
-    interval,
-    repetitions,
-    easeFactor,
-    dueDate: Date.now() + interval * DAY_MS,
+    // Legacy fields
+    interval: Math.max(1, next.scheduled_days || 1),
+    repetitions: next.reps,
+    easeFactor: 2.5, // kept constant for backward compat
+    dueDate: dueDateMs,
+    // FSRS fields
+    stability: next.stability,
+    difficulty: next.difficulty,
+    fsrsState: next.state,
+    lapses: next.lapses,
+    reps: next.reps,
+    lastReview: now.getTime(),
+    scheduledDays: next.scheduled_days,
+    elapsedDays: next.elapsed_days,
   };
 }
+
+/**
+ * Returns the FSRS difficulty as a human-readable label and color tier.
+ * Difficulty ranges from ~0 (easiest) to ~10 (hardest).
+ */
+export function getDifficultyInfo(difficulty: number | undefined): {
+  label: string;
+  tier: "easy" | "medium" | "hard";
+} {
+  if (difficulty === undefined || difficulty === 0) {
+    return { label: "New", tier: "easy" };
+  }
+  if (difficulty < 4) {
+    return { label: "Easy", tier: "easy" };
+  }
+  if (difficulty < 7) {
+    return { label: "Medium", tier: "medium" };
+  }
+  return { label: "Hard", tier: "hard" };
+}
+
+export const FSRS_RESET_FIELDS = {
+  interval: 1,
+  repetitions: 0,
+  easeFactor: 2.5,
+  dueDate: Date.now(),
+  stability: 0,
+  difficulty: 0,
+  fsrsState: 0,
+  lapses: 0,
+  reps: 0,
+  lastReview: 0,
+  scheduledDays: 0,
+  elapsedDays: 0,
+} as const;

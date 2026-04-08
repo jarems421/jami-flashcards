@@ -1,24 +1,12 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { getBearerToken } from "@/lib/auth/bearer";
 import {
   isExpiredPushSubscriptionError,
   sendPushNotification,
 } from "@/services/notifications/web-push";
 
 export const runtime = "nodejs";
-
-function getBearerToken(header: string | null) {
-  if (!header) {
-    return null;
-  }
-
-  const [scheme, token] = header.split(" ");
-  if (scheme !== "Bearer" || !token) {
-    return null;
-  }
-
-  return token;
-}
 
 function hasValidSubscription(data: Record<string, unknown>) {
   return (

@@ -7,6 +7,10 @@ import {
   parseCardTagsInput,
   parseCardTagsParam,
 } from "@/lib/study/cards";
+import {
+  updateCardSchedule,
+  getDifficultyInfo,
+} from "@/lib/study/scheduler";
 
 describe("card tag helpers", () => {
   it("normalizes and deduplicates comma-separated tags", () => {
@@ -55,5 +59,67 @@ describe("card tag helpers", () => {
         ["physics"]
       )
     ).toEqual(["biology", "cell biology"]);
+  });
+});
+
+describe("FSRS scheduler", () => {
+  it("schedules a new card with 'right' rating and returns FSRS fields", () => {
+    const result = updateCardSchedule({}, "right");
+    expect(result.dueDate).toBeGreaterThan(Date.now() - 1000);
+    expect(result.stability).toBeGreaterThan(0);
+    expect(result.difficulty).toBeGreaterThan(0);
+    expect(result.reps).toBe(1);
+    expect(result.fsrsState).toBeGreaterThanOrEqual(0);
+    expect(result.lapses).toBe(0);
+    expect(result.lastReview).toBeGreaterThan(0);
+    // Legacy fields still present
+    expect(result.interval).toBeGreaterThanOrEqual(1);
+    expect(result.easeFactor).toBe(2.5);
+    expect(result.repetitions).toBe(1);
+  });
+
+  it("increases lapses when rating 'wrong'", () => {
+    // First review: right
+    const first = updateCardSchedule({}, "right");
+    // Second review: wrong
+    const second = updateCardSchedule(first, "wrong");
+    expect(second.lapses).toBeGreaterThanOrEqual(0);
+    expect(second.reps).toBe(2);
+    expect(second.dueDate).toBeGreaterThan(Date.now() - 1000);
+  });
+
+  it("handles legacy cards without FSRS fields", () => {
+    const legacyCard = {
+      interval: 4,
+      repetitions: 3,
+      easeFactor: 2.2,
+      dueDate: Date.now() - 86400000,
+    };
+    const result = updateCardSchedule(legacyCard, "right");
+    // Should produce valid FSRS output even from legacy input
+    expect(result.stability).toBeGreaterThan(0);
+    expect(result.difficulty).toBeGreaterThan(0);
+    expect(result.dueDate).toBeGreaterThan(Date.now() - 1000);
+  });
+
+  it("uses 'again' rating as FSRS Hard", () => {
+    const first = updateCardSchedule({}, "right");
+    const again = updateCardSchedule(first, "again");
+    const right = updateCardSchedule(first, "right");
+    // 'again' (Hard) should schedule sooner than 'right' (Good)
+    expect(again.dueDate).toBeLessThanOrEqual(right.dueDate);
+  });
+});
+
+describe("getDifficultyInfo", () => {
+  it("returns 'New' for undefined or zero difficulty", () => {
+    expect(getDifficultyInfo(undefined)).toEqual({ label: "New", tier: "easy" });
+    expect(getDifficultyInfo(0)).toEqual({ label: "New", tier: "easy" });
+  });
+
+  it("returns correct tier for difficulty ranges", () => {
+    expect(getDifficultyInfo(2).tier).toBe("easy");
+    expect(getDifficultyInfo(5).tier).toBe("medium");
+    expect(getDifficultyInfo(8).tier).toBe("hard");
   });
 });

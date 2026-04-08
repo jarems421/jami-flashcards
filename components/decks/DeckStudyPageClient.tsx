@@ -14,7 +14,7 @@ import {
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
-import { updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
+import { updateCardSchedule, getDifficultyInfo, type CardRating } from "@/lib/study/scheduler";
 import { getUpdatedGoalAfterAnswer, normalizeGoal } from "@/lib/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
 import { createStarForGoalIfMissing } from "@/services/constellation/stars";
@@ -26,6 +26,7 @@ import {
   type Card,
 } from "@/lib/study/cards";
 import { getDeckHref } from "@/lib/app/routes";
+import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, ProgressBar } from "@/components/ui";
 
@@ -115,6 +116,8 @@ export default function DeckStudyPageClient() {
     message: string;
   } | null>(null);
   const flipTimestampRef = useRef<number>(0);
+  const [showExplanation, setShowExplanation] = useState(false);
+  const explanationCache = useRef<Map<string, string>>(new Map());
 
   useEffect(() => {
     if (!deckId) {
@@ -247,6 +250,7 @@ export default function DeckStudyPageClient() {
   const goNext = () => {
     setIndex((value) => value + 1);
     setFlipped(false);
+    setShowExplanation(false);
   };
 
   const handleRating = async (rating: CardRating) => {
@@ -333,7 +337,11 @@ export default function DeckStudyPageClient() {
         },
       }));
 
-      goNext();
+      if (rating === "wrong") {
+        setShowExplanation(true);
+      } else {
+        goNext();
+      }
     } catch (error) {
       console.error(error);
       setFeedback({
@@ -412,7 +420,7 @@ export default function DeckStudyPageClient() {
       ) : null}
 
       {deck ? (
-        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_300px]">
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.12fr)_300px]">
           <SurfaceCard padding="md">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
@@ -618,6 +626,15 @@ export default function DeckStudyPageClient() {
                 >
                   <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] sm:p-8 lg:p-10">
                     <div className="flex flex-wrap gap-2">
+                      {(() => {
+                        const diff = getDifficultyInfo(current.difficulty);
+                        const tierColors = { easy: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300", medium: "border-amber-500/30 bg-amber-500/10 text-amber-300", hard: "border-rose-500/30 bg-rose-500/10 text-rose-300" };
+                        return (
+                          <span className={`rounded-full border px-3 py-1.5 text-xs font-medium ${tierColors[diff.tier]}`}>
+                            {diff.label}
+                          </span>
+                        );
+                      })()}
                       {current.tags.map((tag) => (
                         <span
                           key={tag}
@@ -679,24 +696,41 @@ export default function DeckStudyPageClient() {
                 <div className="text-center text-sm text-text-muted">Saving...</div>
               ) : null}
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                {([
-                  { rating: "wrong" as CardRating, label: "Wrong", key: "1", color: "border border-transparent bg-error text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
-                  { rating: "again" as CardRating, label: "Again", key: "2", color: "border border-border bg-white/[0.06] text-white hover:border-border-strong hover:bg-white/[0.10]" },
-                  { rating: "right" as CardRating, label: "Right", key: "3", color: "border border-transparent bg-success text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
-                ]).map(({ rating, label, key, color }) => (
-                  <button
-                    key={rating}
-                    type="button"
-                    disabled={savingRating !== null}
-                    className={`flex min-h-[5.25rem] flex-col items-center justify-center gap-1 rounded-[1.75rem] px-4 py-4 text-sm font-semibold shadow-card transition duration-fast ease-spring active:scale-[0.98] disabled:opacity-50 ${color}`}
-                    onClick={() => void handleRating(rating)}
-                  >
-                    <span>{label}</span>
-                    <span className="text-xs opacity-70">{key}</span>
-                  </button>
-                ))}
-              </div>
+              {showExplanation ? (
+                <StudyAssistant
+                  card={current}
+                  autoExplain
+                  onContinue={goNext}
+                  explanationCache={explanationCache}
+                />
+              ) : (
+                <div className="space-y-3">
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {([
+                      { rating: "wrong" as CardRating, label: "Wrong", key: "1", color: "border border-transparent bg-error text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
+                      { rating: "again" as CardRating, label: "Again", key: "2", color: "border border-border bg-white/[0.06] text-white hover:border-border-strong hover:bg-white/[0.10]" },
+                      { rating: "right" as CardRating, label: "Right", key: "3", color: "border border-transparent bg-success text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
+                    ]).map(({ rating, label, key, color }) => (
+                      <button
+                        key={rating}
+                        type="button"
+                        disabled={savingRating !== null}
+                        className={`flex min-h-[5.25rem] flex-col items-center justify-center gap-1 rounded-[1.75rem] px-4 py-4 text-sm font-semibold shadow-card transition duration-fast ease-spring active:scale-[0.98] disabled:opacity-50 ${color}`}
+                        onClick={() => void handleRating(rating)}
+                      >
+                        <span>{label}</span>
+                        <span className="text-xs opacity-70">{key}</span>
+                      </button>
+                    ))}
+                  </div>
+                  <StudyAssistant
+                    card={current}
+                    autoExplain={false}
+                    onContinue={goNext}
+                    explanationCache={explanationCache}
+                  />
+                </div>
+              )}
             </div>
           ) : null}
         </div>

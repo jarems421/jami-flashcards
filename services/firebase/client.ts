@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
 const FIREBASE_ENV = {
   NEXT_PUBLIC_FIREBASE_API_KEY: process.env.NEXT_PUBLIC_FIREBASE_API_KEY ?? "",
@@ -100,5 +101,9 @@ export const auth = app
 export const db = app
   ? getFirestore(app)
   : createUninitializedProxy<ReturnType<typeof getFirestore>>("db");
+
+export const storage = app
+  ? getStorage(app)
+  : createUninitializedProxy<ReturnType<typeof getStorage>>("storage");
 
 export { validateFirebaseConfig, getFirebaseEnvIssues };

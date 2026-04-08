@@ -366,7 +366,7 @@ export default function DeckDetailPageClient() {
 
       {deck ? (
         <>
-          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.12fr)_320px]">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.12fr)_320px]">
             <SurfaceCard padding="lg">
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 Deck editor
@@ -473,7 +473,7 @@ export default function DeckDetailPageClient() {
       ) : null}
 
       {deck && loadingCards ? (
-        <div className="grid gap-4 xl:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-2">
           <Skeleton className="h-28" />
           <Skeleton className="h-28" />
         </div>
@@ -512,7 +512,7 @@ export default function DeckDetailPageClient() {
             }
 
             return (
-              <div className="grid gap-4 xl:grid-cols-2">
+              <div className="grid gap-4 lg:grid-cols-2">
                 {filteredCards.map((card) => (
             <section key={card.id} className="app-panel p-4">
               {editingCardId === card.id ? (
