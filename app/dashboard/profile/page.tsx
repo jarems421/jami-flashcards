@@ -88,8 +88,7 @@ export default function ProfilePage() {
         <Card tone="subtle" className="border-error-muted bg-error-muted/20 sm:p-6" padding="md">
           <h2 className="mb-1 text-sm font-bold text-rose-200">Danger Zone</h2>
           <p className="mb-3 text-xs text-text-muted">
-            Permanently delete your account and all associated data. This
-            cannot be undone.
+            Permanently delete your account and data.
           </p>
 
           {error ? (
@@ -110,7 +109,7 @@ export default function ProfilePage() {
                 onClick={() => void handleDeleteAccount()}
                 variant="danger"
               >
-                {isDeleting ? "Deleting…" : "Yes, delete everything"}
+                {isDeleting ? "Deleting..." : "Yes, delete everything"}
               </Button>
               <Button
                 onClick={() => setShowDeleteConfirm(false)}

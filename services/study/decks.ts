@@ -1,6 +1,5 @@
 import { db } from "../firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
-import { FSRS_RESET_FIELDS } from "@/lib/study/scheduler";
 import {
   addDoc,
   collection,
@@ -9,7 +8,6 @@ import {
   getDoc,
   getDocs,
   query,
-  setDoc,
   updateDoc,
   where,
   writeBatch,
@@ -253,77 +251,6 @@ export const deleteDeck = async (
     deleteDoc(doc(db, "decks", normalizedDeckId)),
     DELETE_MS,
     "Delete deck"
-  );
-};
-
-export const reattemptDeck = async (
-  userId: string,
-  deckId: string
-): Promise<void> => {
-  const normalizedUserId = userId.trim();
-  const normalizedDeckId = deckId.trim();
-
-  if (!normalizedUserId) throw new Error("Missing userId");
-  if (!normalizedDeckId) throw new Error("Missing deckId");
-
-  await requireOwnedDeck(normalizedUserId, normalizedDeckId);
-
-  const userDeckRef = doc(db, "users", normalizedUserId, "decks", normalizedDeckId);
-  await withTimeout(
-    setDoc(
-      userDeckRef,
-      {
-        deckId: normalizedDeckId,
-        updatedAt: Date.now(),
-      },
-      { merge: true }
-    ),
-    UPDATE_MS,
-    "Ensure user deck record"
-  );
-
-  const attemptsSnapshot = await withTimeout(
-    getDocs(collection(db, "users", normalizedUserId, "decks", normalizedDeckId, "attempts")),
-    LOAD_MS,
-    "Load deck attempts"
-  );
-
-  const attemptNumber = attemptsSnapshot.size + 1;
-  await withTimeout(
-    addDoc(collection(db, "users", normalizedUserId, "decks", normalizedDeckId, "attempts"), {
-      attemptNumber,
-      startedAt: Date.now(),
-      deckId: normalizedDeckId,
-    }),
-    CREATE_MS,
-    "Create deck attempt"
-  );
-
-  // Reset scheduling on all cards in this deck
-  const cardsSnapshot = await withTimeout(
-    getDocs(
-      query(
-        collection(db, "cards"),
-        where("deckId", "==", normalizedDeckId),
-        where("userId", "==", normalizedUserId)
-      )
-    ),
-    LOAD_MS,
-    "Load deck cards for reattempt"
-  );
-
-  const now = Date.now();
-  await withTimeout(
-    Promise.all(
-      cardsSnapshot.docs.map((cardDoc) =>
-        updateDoc(cardDoc.ref, {
-          ...FSRS_RESET_FIELDS,
-          dueDate: now,
-        })
-      )
-    ),
-    UPDATE_MS,
-    "Reset card scheduling"
   );
 };
 

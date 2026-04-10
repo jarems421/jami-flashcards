@@ -5,9 +5,34 @@ export type ChatMessage = {
   text: string;
 };
 
+export type StudyChatContext = {
+  mode: "clue" | "review";
+  front: string;
+  back: string;
+  deckId?: string;
+  deckName?: string;
+  tags?: string[];
+  difficulty?: number;
+  lapses?: number;
+  reps?: number;
+  scheduledDays?: number;
+  elapsedDays?: number;
+};
+
+export type StudyChatIntent =
+  | "clue"
+  | "strong-clue"
+  | "self-test"
+  | "explain-simple"
+  | "mnemonic"
+  | "why-wrong"
+  | "follow-up";
+
 export async function sendChatMessage(
   message: string,
   history: ChatMessage[],
+  studyContext?: StudyChatContext,
+  intent?: StudyChatIntent,
 ): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
@@ -20,7 +45,7 @@ export async function sendChatMessage(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ message, history }),
+    body: JSON.stringify({ message, history, studyContext, intent }),
   });
 
   if (!res.ok) {

@@ -1,8 +1,20 @@
 import { auth } from "@/services/firebase/client";
 
+export type ExplanationContext = {
+  deckId?: string;
+  deckName?: string;
+  tags?: string[];
+  difficulty?: number;
+  lapses?: number;
+  reps?: number;
+  scheduledDays?: number;
+  elapsedDays?: number;
+};
+
 export async function getExplanation(
   front: string,
   back: string,
+  context?: ExplanationContext,
 ): Promise<string> {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
@@ -15,7 +27,7 @@ export async function getExplanation(
       "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({ front, back }),
+    body: JSON.stringify({ front, back, context }),
   });
 
   if (!res.ok) {

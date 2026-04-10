@@ -2,10 +2,10 @@ import { collection, doc, getDocs, increment, setDoc } from "firebase/firestore"
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import {
-  getLocalDayKey,
   normalizeDailyStudyActivity,
   type DailyStudyActivity,
 } from "@/lib/study/activity";
+import { getStudyDayKey } from "@/lib/study/day";
 
 const QUERY_MS = 30_000;
 const UPDATE_MS = 30_000;
@@ -15,7 +15,7 @@ export async function recordStudyReview(
   reviewedAt = Date.now(),
   options: { isCorrect?: boolean; durationMs?: number } = {}
 ) {
-  const dayKey = getLocalDayKey(reviewedAt);
+  const dayKey = getStudyDayKey(reviewedAt);
   const updates: Record<string, unknown> = {
     dayKey,
     reviewCount: increment(1),
@@ -57,4 +57,3 @@ export async function loadStudyActivity(userId: string): Promise<DailyStudyActiv
     )
     .sort((left, right) => left.dayKey.localeCompare(right.dayKey));
 }
-

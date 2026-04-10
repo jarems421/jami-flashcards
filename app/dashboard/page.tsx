@@ -13,7 +13,7 @@ import { getDecks, type Deck } from "@/services/study/decks";
 import { db } from "@/services/firebase/client";
 import { FirebaseError } from "firebase/app";
 import { normalizeGoal } from "@/lib/study/goals";
-import { getDeckStudyHref } from "@/lib/app/routes";
+import { getCustomStudyHref } from "@/lib/app/routes";
 import {
   countTodayReviews,
   type DailyStudyActivity,
@@ -21,6 +21,8 @@ import {
 import { loadStudyActivity } from "@/services/study/activity";
 import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { getWeakPoints, type WeakArea } from "@/lib/study/weak-points";
+import { buildLearningInsights } from "@/lib/study/insights";
+import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
 import AppPage from "@/components/layout/AppPage";
 import { Card, FeedbackBanner } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
@@ -36,6 +38,8 @@ export default function DashboardHome() {
   const [deckDueCounts, setDeckDueCounts] = useState<DeckDueCounts>({});
   const [activeGoalCount, setActiveGoalCount] = useState(0);
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
+  const [cards, setCards] = useState<StudyCard[]>([]);
+  const [remainingRequiredCards, setRemainingRequiredCards] = useState<StudyCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<DashboardFeedback | null>(null);
@@ -44,6 +48,8 @@ export default function DashboardHome() {
 
   const loadAll = useCallback(async (uid: string) => {
     try {
+      await ensureStudyStateSetup(uid);
+
       const [fetchedDecks] = await Promise.all([
         getDecks(uid).catch((e) => {
           console.error(e);
@@ -64,25 +70,28 @@ export default function DashboardHome() {
       );
       const snapshot = await getDocs(cardsQuery);
       const now = Date.now();
-      const nextDeckDueCounts: DeckDueCounts = {};
       const allCards: StudyCard[] = [];
-      let count = 0;
       for (const cardDoc of snapshot.docs) {
         const data = cardDoc.data();
         allCards.push(mapCardData(cardDoc.id, data as Record<string, unknown>));
-        const dueDate = data.dueDate;
-        const deckId =
-          typeof data.deckId === "string" && data.deckId.trim() ? data.deckId : null;
-        const isDue = typeof dueDate !== "number" || dueDate <= now;
-        if (isDue) {
-          count++;
-          if (deckId) {
-            nextDeckDueCounts[deckId] = (nextDeckDueCounts[deckId] ?? 0) + 1;
-          }
-        }
       }
-      setDueCount(count);
+
+      const dailyReviewState = await ensureDailyReviewState(uid, allCards, now);
+      const completedRequiredIds = new Set(dailyReviewState.completedRequiredCardIds);
+      const cardsById = new Map(allCards.map((card) => [card.id, card]));
+      const requiredCards = dailyReviewState.requiredCardIds
+        .map((cardId) => cardsById.get(cardId) ?? null)
+        .filter((card): card is StudyCard => card !== null)
+        .filter((card) => !completedRequiredIds.has(card.id));
+      const nextDeckDueCounts: DeckDueCounts = {};
+      for (const card of requiredCards) {
+        nextDeckDueCounts[card.deckId] = (nextDeckDueCounts[card.deckId] ?? 0) + 1;
+      }
+
+      setDueCount(requiredCards.length);
       setDeckDueCounts(nextDeckDueCounts);
+      setCards(allCards);
+      setRemainingRequiredCards(requiredCards);
 
       const deckNamesById = Object.fromEntries(
         fetchedDecks.map((d) => [d.id, d.name]),
@@ -149,6 +158,15 @@ export default function DashboardHome() {
     () => countTodayReviews(studyActivity),
     [studyActivity]
   );
+  const learningInsights = useMemo(
+    () =>
+      buildLearningInsights({
+        cards,
+        requiredCards: remainingRequiredCards,
+        weakAreas,
+      }),
+    [cards, remainingRequiredCards, weakAreas]
+  );
 
   // Find the deck with the most due cards for the quick-study hero
   const mostDueDeck = useMemo(() => {
@@ -187,7 +205,7 @@ export default function DashboardHome() {
                   Build your first deck.
                 </h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                  Add a topic, write a few cards, and let Jami turn repetition into a steady study rhythm.
+                  Add a topic and write a few cards.
                 </p>
                 <Link
                   href="/dashboard/decks"
@@ -199,26 +217,26 @@ export default function DashboardHome() {
             ) : !isLoading && mostDueDeck ? (
               <>
                 <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Ready to study
+                  Ready to review
                 </div>
                 <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-                  {mostDueDeck.deck.name}
+                  Start reviewing.
                 </h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                  {mostDueDeck.count} card{mostDueDeck.count === 1 ? "" : "s"} are ready now. Keep the rhythm going while the session is fresh.
+                  Daily first. Custom after.
                 </p>
                 <div className="mt-8 flex flex-wrap gap-3">
                   <Link
-                    href={getDeckStudyHref(mostDueDeck.deck.id)}
+                    href={getCustomStudyHref({ mode: "daily" })}
                     className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
                   >
-                    Study now
+                    Daily Review
                   </Link>
                   <Link
-                    href="/dashboard/decks"
+                    href={getCustomStudyHref({ mode: "custom" })}
                     className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
                   >
-                    View decks
+                    Custom Review
                   </Link>
                 </div>
               </>
@@ -231,8 +249,22 @@ export default function DashboardHome() {
                   You are caught up.
                 </h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                  Nothing is due right now. Add cards, set a goal, or revisit a deck on your own schedule.
+                  Custom Review is open.
                 </p>
+                <div className="mt-8 flex flex-wrap gap-3">
+                  <Link
+                    href={getCustomStudyHref({ mode: "custom" })}
+                    className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
+                  >
+                    Custom Review
+                  </Link>
+                  <Link
+                    href="/dashboard/decks"
+                    className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+                  >
+                    Manage decks
+                  </Link>
+                </div>
               </>
             )}
           </Card>
@@ -244,7 +276,7 @@ export default function DashboardHome() {
               </div>
               <div className="mt-3">
                 <div className="text-xs text-text-muted">Cards reviewed</div>
-                <div className="mt-1 text-3xl font-semibold">{isLoading ? "…" : todayReviews}</div>
+                <div className="mt-1 text-3xl font-semibold">{isLoading ? "..." : todayReviews}</div>
               </div>
             </Card>
           </div>
@@ -252,13 +284,16 @@ export default function DashboardHome() {
 
         <div className="grid gap-4 md:grid-cols-2">
           <Link
-            href="/dashboard/decks"
+            href={getCustomStudyHref({ mode: "daily" })}
             className="app-panel block p-6 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
           >
             <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Cards due
+              Daily Review
             </div>
-            <div className="mt-3 text-3xl font-semibold">{isLoading ? "…" : dueCount}</div>
+            <div className="mt-3 text-3xl font-semibold">{isLoading ? "..." : dueCount}</div>
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              Required cards left today.
+            </p>
           </Link>
 
           <Link
@@ -268,12 +303,41 @@ export default function DashboardHome() {
             <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
               Active goals
             </div>
-            <div className="mt-3 text-3xl font-semibold">{isLoading ? "…" : activeGoalCount}</div>
+            <div className="mt-3 text-3xl font-semibold">{isLoading ? "..." : activeGoalCount}</div>
             <p className="mt-3 text-sm leading-6 text-text-secondary">
-              Keep your targets visible and let each finished session feed the reward loop.
+              Active study targets.
             </p>
           </Link>
         </div>
+
+        {!isLoading && learningInsights.length > 0 ? (
+          <Card padding="lg">
+            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+              Today&apos;s plan
+            </div>
+            <p className="mt-1 text-sm text-text-secondary">
+              What needs attention next.
+            </p>
+            <div className="mt-4 grid gap-4 lg:grid-cols-3">
+              {learningInsights.map((insight) => (
+                <div
+                  key={insight.title}
+                  className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4"
+                >
+                  <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">
+                    {insight.eyebrow}
+                  </div>
+                  <div className="mt-2 text-base font-semibold text-white">
+                    {insight.title}
+                  </div>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">
+                    {insight.description}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ) : null}
 
         {!isLoading && weakAreas.length > 0 ? (
           <Card padding="lg">
@@ -281,7 +345,7 @@ export default function DashboardHome() {
               Weak areas
             </div>
             <p className="mt-1 text-sm text-text-secondary">
-              Decks and tags where you struggle the most, based on difficulty and how often you forget.
+              Decks and tags causing the most friction.
             </p>
             <div className="mt-4 space-y-3">
               {weakAreas.map((area) => {
@@ -298,7 +362,7 @@ export default function DashboardHome() {
                       <span className="font-medium text-white">
                         {area.name}
                         <span className="ml-2 text-xs text-text-muted">
-                          {area.cardCount} card{area.cardCount === 1 ? "" : "s"} · {area.totalLapses} lapse{area.totalLapses === 1 ? "" : "s"}
+                          {area.cardCount} card{area.cardCount === 1 ? "" : "s"} - {area.totalLapses} lapse{area.totalLapses === 1 ? "" : "s"}
                         </span>
                       </span>
                       <span className="text-xs text-text-muted">

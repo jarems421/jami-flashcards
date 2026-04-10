@@ -22,9 +22,9 @@ import {
   type Card,
 } from "@/lib/study/cards";
 import { useUser } from "@/lib/auth/user-context";
-import { getDeckStudyHref } from "@/lib/app/routes";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
+import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
 import { db } from "@/services/firebase/client";
@@ -350,7 +350,6 @@ export default function DeckDetailPageClient() {
   };
 
   const deckTagCount = Array.from(new Set(cards.flatMap((card) => card.tags))).length;
-  const deckStudyHref = deckId ? getDeckStudyHref(deckId) : "/dashboard/decks";
 
   return (
     <AppPage
@@ -375,14 +374,14 @@ export default function DeckDetailPageClient() {
                 {deck.name}
               </h1>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                Add new prompts, tighten the wording of existing cards, and reuse tags so this deck stays easy to study and easy to slice by topic later.
+                Edit prompts, answers, and tags.
               </p>
               <div className="mt-8 flex flex-wrap gap-3">
                 <Link
-                  href={deckStudyHref}
+                  href="/dashboard/study?mode=custom"
                   className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
                 >
-                  Study this deck
+                  Open study hub
                 </Link>
                 <Link
                   href="/dashboard/decks"
@@ -403,12 +402,9 @@ export default function DeckDetailPageClient() {
                   <div className="mt-1 text-3xl font-semibold">{cards.length}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-text-muted">Topics</div>
+                  <div className="text-xs text-text-muted">Tags</div>
                   <div className="mt-1 text-3xl font-semibold">{deckTagCount}</div>
                 </div>
-                <p className="text-sm leading-6 text-text-secondary">
-                  Use tags to create tighter topic sessions later without breaking the structure of this deck.
-                </p>
               </div>
             </SurfaceCard>
           </div>
@@ -420,7 +416,7 @@ export default function DeckDetailPageClient() {
                   Add a card
                 </div>
                 <p className="mt-3 text-sm leading-7 text-text-secondary sm:text-base">
-                  Write a prompt, add the answer, and optionally tag the card so it can be pulled into topic study later.
+                  Add the prompt, answer, and any tags.
                 </p>
               </div>
 
@@ -515,8 +511,11 @@ export default function DeckDetailPageClient() {
               <div className="grid gap-4 lg:grid-cols-2">
                 {filteredCards.map((card) => (
             <section key={card.id} className="app-panel p-4">
-              {editingCardId === card.id ? (
+                {editingCardId === card.id ? (
                 <div className="space-y-4">
+                  <div className="flex flex-wrap gap-2">
+                    <CardDifficultyBadge card={card} />
+                  </div>
                   <Input
                     label="Front"
                     value={editingFront}
@@ -585,19 +584,21 @@ export default function DeckDetailPageClient() {
                     </div>
                   </div>
 
-                  {card.tags.length > 0 ? (
-                    <div className="flex flex-wrap gap-2 pt-1">
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <CardDifficultyBadge card={card} />
+                    {card.tags.length > 0 ? (
+                      <>
                       {card.tags.map((tag) => (
-                        <Link
+                        <span
                           key={tag}
-                          href={getDeckStudyHref(deckId, tag)}
-                          className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition duration-fast hover:bg-accent/20"
+                          className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
                         >
                           #{tag}
-                        </Link>
+                        </span>
                       ))}
-                    </div>
-                  ) : null}
+                      </>
+                    ) : null}
+                  </div>
                 </div>
               )}
             </section>
@@ -610,4 +611,3 @@ export default function DeckDetailPageClient() {
     </AppPage>
   );
 }
-

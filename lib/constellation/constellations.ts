@@ -1,5 +1,4 @@
 export const MAX_STARS_PER_CONSTELLATION = 40;
-export const MAX_NEBULA_PROGRESS_PER_CONSTELLATION = 400;
 
 export type ConstellationStatus = "active" | "finished";
 
@@ -8,9 +7,7 @@ export type Constellation = {
   name: string;
   status: ConstellationStatus;
   maxStars: number;
-  maxNebulaProgress: number;
   starCount: number;
-  nebulaProgressCount: number;
   createdAt: number;
   finishedAt?: number;
 };
@@ -30,23 +27,11 @@ export function normalizeConstellation(
       typeof data.maxStars === "number" && data.maxStars > 0
         ? data.maxStars
         : MAX_STARS_PER_CONSTELLATION,
-    maxNebulaProgress:
-      typeof data.maxNebulaProgress === "number" && data.maxNebulaProgress > 0
-        ? data.maxNebulaProgress
-        : typeof data.maxDust === "number" && data.maxDust > 0
-          ? data.maxDust
-          : MAX_NEBULA_PROGRESS_PER_CONSTELLATION,
     starCount:
       typeof data.starCount === "number" && data.starCount >= 0
         ? data.starCount
         : typeof data.awardedStarsCount === "number" && data.awardedStarsCount >= 0
           ? data.awardedStarsCount
-          : 0,
-    nebulaProgressCount:
-      typeof data.nebulaProgressCount === "number" && data.nebulaProgressCount >= 0
-        ? data.nebulaProgressCount
-        : typeof data.awardedDustCount === "number" && data.awardedDustCount >= 0
-          ? data.awardedDustCount
           : 0,
     createdAt: typeof data.createdAt === "number" ? data.createdAt : Date.now(),
     finishedAt:

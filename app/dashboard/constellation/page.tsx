@@ -366,12 +366,13 @@ export default function ConstellationDashboardPage() {
                 ) : (
                   <button
                     type="button"
-                    className="group flex items-center gap-1.5 font-medium"
+                    className="flex items-center gap-1.5 font-medium hover:text-accent focus:text-accent transition-colors"
                     onClick={() => startRename(activeConstellation)}
+                    aria-label="Rename constellation"
                   >
                     {activeConstellation.name}
-                    <span className="text-text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-label="Rename">
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                    <span className="text-text-muted" aria-label="Rename">
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline', verticalAlign: 'middle' }}><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
                     </span>
                   </button>
                 )}
@@ -416,8 +417,7 @@ export default function ConstellationDashboardPage() {
 
             {!canFinishActiveConstellation ? (
               <p className="mt-3 text-xs text-text-muted">
-                Complete goals to fill this constellation with stars, then
-                finish it once the star cap is full.
+                Earn stars from goals to finish it.
               </p>
             ) : null}
           </Card>
@@ -426,8 +426,7 @@ export default function ConstellationDashboardPage() {
         {!isLoading && !activeConstellation ? (
           <Card tone="warm" padding="md">
             <p className="mb-3 text-sm text-text-secondary">
-              No active constellation. Create one to keep turning review
-              sessions into a growing sky.
+              Create one to start collecting stars.
             </p>
             <div className="flex flex-wrap gap-3">
               <Input
@@ -490,7 +489,7 @@ export default function ConstellationDashboardPage() {
                     </div>
                     {!canEditSelectedConstellation ? (
                       <div className="text-text-muted">
-                        Finished constellations are view-only.
+                        View-only.
                       </div>
                     ) : null}
                   </>
@@ -574,7 +573,7 @@ export default function ConstellationDashboardPage() {
                 <div>
                   <div className="font-medium text-white">Background</div>
                   <p className="mt-1 text-xs text-text-muted">
-                    Pick one constellation to show behind the app.
+                    Show a constellation behind the app.
                   </p>
                 </div>
 
@@ -601,8 +600,8 @@ export default function ConstellationDashboardPage() {
                   }}
                 >
                   {isConstellationBackgroundEnabled
-                    ? "Turn Background Off"
-                    : "Use As Background"}
+                    ? "Turn off"
+                    : "Use background"}
                 </Button>
               </div>
 
@@ -639,7 +638,7 @@ export default function ConstellationDashboardPage() {
                             constellation.id === backgroundConstellationId
                         )?.name ?? "active constellation"
                       }`
-                    : "Background currently off"}
+                    : "Off"}
                 </div>
               </div>
             </Card>
@@ -678,10 +677,7 @@ export default function ConstellationDashboardPage() {
                               boxShadow: `0 0 6px ${star.color}`,
                             }}
                           />
-                          <span className="text-text-secondary">
-                            Size {star.size.toFixed(2)} · Glow{" "}
-                            {Math.round(star.glow * 100)}%
-                          </span>
+                          <span className="text-text-secondary">Earned star</span>
                         </div>
                       </div>
                     ))}
@@ -695,4 +691,3 @@ export default function ConstellationDashboardPage() {
     </Refreshable>
   );
 }
-

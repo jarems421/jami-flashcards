@@ -1,16 +1,12 @@
 import {
   collection,
-  deleteDoc,
   deleteField,
   doc,
   getDoc,
   getDocs,
-  query,
   runTransaction,
   setDoc,
   updateDoc,
-  where,
-  writeBatch,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
@@ -18,7 +14,6 @@ import { withTimeout } from "@/services/firebase/firestore";
 import {
   getActiveConstellation,
   MAX_STARS_PER_CONSTELLATION,
-  MAX_NEBULA_PROGRESS_PER_CONSTELLATION,
   normalizeConstellation,
   type Constellation,
 } from "@/lib/constellation/constellations";
@@ -26,9 +21,9 @@ import {
 const QUERY_MS = 30_000;
 const CREATE_MS = 30_000;
 const UPDATE_MS = 30_000;
-const BATCH_DELETE_LIMIT = 400;
 export const INITIAL_CONSTELLATION_ID = "initial";
 const ACTIVE_CONSTELLATION_STATE_DOC_ID = "active";
+const MAX_NAME_LENGTH = 40;
 
 function getActiveConstellationStateRef(userId: string) {
   return doc(
@@ -44,80 +39,30 @@ function getConstellationsCollection(userId: string) {
   return collection(db, "users", userId, "constellations");
 }
 
-function getDefaultConstellationName(existingCount: number) {
-  return `Constellation ${existingCount + 1}`;
-}
-
 function sortConstellations(constellations: Constellation[]) {
   return [...constellations].sort((a, b) => b.createdAt - a.createdAt);
 }
 
-async function deleteSnapshotsInBatches(
-  snapshots: QueryDocumentSnapshot[],
-  label: string
-) {
-  if (snapshots.length === 0) {
-    return;
-  }
-
-  for (let index = 0; index < snapshots.length; index += BATCH_DELETE_LIMIT) {
-    const batch = writeBatch(db);
-    const chunk = snapshots.slice(index, index + BATCH_DELETE_LIMIT);
-
-    for (const snapshot of chunk) {
-      batch.delete(snapshot.ref);
-    }
-
-    await withTimeout(batch.commit(), UPDATE_MS, label);
-  }
-}
-
-function countLegacyNebulaByConstellation(
-  snapshots: QueryDocumentSnapshot[],
-  fallbackConstellationId: string
-) {
-  const counts: Record<string, number> = {};
-
-  for (const snapshot of snapshots) {
-    const data = snapshot.data() as Record<string, unknown>;
-    const constellationId =
-      typeof data.constellationId === "string" && data.constellationId.trim()
-        ? data.constellationId
-        : fallbackConstellationId;
-
-    if (!constellationId) {
-      continue;
-    }
-
-    counts[constellationId] = (counts[constellationId] ?? 0) + 1;
-  }
-
-  return counts;
+function getDefaultConstellationName(existingCount: number) {
+  return `Constellation ${existingCount + 1}`;
 }
 
 async function migrateConstellationSchema(
   userId: string,
-  constellationDocs: QueryDocumentSnapshot[],
-  legacyNebulaCounts: Record<string, number>
+  constellationDocs: QueryDocumentSnapshot[]
 ) {
-  const migratedConstellations = constellationDocs.map((constellationDoc) => {
-    const data = constellationDoc.data() as Record<string, unknown>;
-    const normalized = normalizeConstellation(constellationDoc.id, data);
-    const legacyNebulaProgress = legacyNebulaCounts[constellationDoc.id] ?? 0;
-
-    if (legacyNebulaProgress <= normalized.nebulaProgressCount) {
-      return normalized;
-    }
-
-    return {
-      ...normalized,
-      nebulaProgressCount: legacyNebulaProgress,
-    };
-  });
+  const normalizedConstellations = sortConstellations(
+    constellationDocs.map((constellationDoc) =>
+      normalizeConstellation(
+        constellationDoc.id,
+        constellationDoc.data() as Record<string, unknown>
+      )
+    )
+  );
 
   const updates = constellationDocs.flatMap((constellationDoc) => {
     const data = constellationDoc.data() as Record<string, unknown>;
-    const normalized = migratedConstellations.find(
+    const normalized = normalizedConstellations.find(
       (constellation) => constellation.id === constellationDoc.id
     );
 
@@ -126,12 +71,9 @@ async function migrateConstellationSchema(
     }
 
     const needsMigration =
-      typeof data.maxNebulaProgress !== "number" ||
+      typeof data.maxStars !== "number" ||
       typeof data.starCount !== "number" ||
-      typeof data.nebulaProgressCount !== "number" ||
-      "maxDust" in data ||
-      "awardedStarsCount" in data ||
-      "awardedDustCount" in data;
+      "awardedStarsCount" in data;
 
     if (!needsMigration) {
       return [];
@@ -141,13 +83,9 @@ async function migrateConstellationSchema(
       name: normalized.name,
       status: normalized.status,
       maxStars: normalized.maxStars,
-      maxNebulaProgress: normalized.maxNebulaProgress,
       starCount: normalized.starCount,
-      nebulaProgressCount: normalized.nebulaProgressCount,
       createdAt: normalized.createdAt,
-      maxDust: deleteField(),
       awardedStarsCount: deleteField(),
-      awardedDustCount: deleteField(),
     };
 
     if (normalized.finishedAt !== undefined) {
@@ -172,31 +110,7 @@ async function migrateConstellationSchema(
     );
   }
 
-  return sortConstellations(migratedConstellations);
-}
-
-async function cleanupLegacyDust(
-  userId: string,
-  fallbackConstellationId: string
-) {
-  const snapshot = await withTimeout(
-    getDocs(collection(db, "users", userId, "dust")),
-    QUERY_MS,
-    "Load legacy dust"
-  );
-
-  if (snapshot.empty) {
-    return {};
-  }
-
-  const counts = countLegacyNebulaByConstellation(
-    snapshot.docs,
-    fallbackConstellationId
-  );
-
-  await deleteSnapshotsInBatches(snapshot.docs, "Delete legacy dust");
-
-  return counts;
+  return normalizedConstellations;
 }
 
 async function enforceSingleActiveConstellation(
@@ -274,9 +188,7 @@ async function createInitialConstellation(userId: string) {
     name: getDefaultConstellationName(0),
     status: "active" as const,
     maxStars: MAX_STARS_PER_CONSTELLATION,
-    maxNebulaProgress: MAX_NEBULA_PROGRESS_PER_CONSTELLATION,
     starCount: 0,
-    nebulaProgressCount: 0,
     createdAt: Date.now(),
   };
   const initialConstellationRef = doc(
@@ -330,19 +242,17 @@ async function createInitialConstellation(userId: string) {
 }
 
 export async function createConstellation(userId: string, name: string) {
-  await getConstellations(userId);
+  const existingConstellations = await getConstellations(userId);
 
   const trimmedName = name.trim();
   const constellationRef = doc(getConstellationsCollection(userId));
   const activeStateRef = getActiveConstellationStateRef(userId);
   const createdAt = Date.now();
   const constellation = {
-    name: trimmedName || getDefaultConstellationName(0),
+    name: trimmedName || getDefaultConstellationName(existingConstellations.length),
     status: "active" as const,
     maxStars: MAX_STARS_PER_CONSTELLATION,
-    maxNebulaProgress: MAX_NEBULA_PROGRESS_PER_CONSTELLATION,
     starCount: 0,
-    nebulaProgressCount: 0,
     createdAt,
   };
 
@@ -442,8 +352,6 @@ export async function finishConstellation(userId: string, constellationId: strin
   return finishedAt;
 }
 
-const MAX_NAME_LENGTH = 40;
-
 export async function renameConstellation(
   userId: string,
   constellationId: string,
@@ -453,6 +361,7 @@ export async function renameConstellation(
   if (!trimmed) {
     throw new Error("Constellation name cannot be empty.");
   }
+
   const constellationRef = doc(
     db,
     "users",
@@ -480,74 +389,12 @@ export async function getConstellations(userId: string) {
     return [initialConstellation];
   }
 
-  const initiallyNormalized = sortConstellations(
-    snapshot.docs.map((constellationDoc) =>
-      normalizeConstellation(
-        constellationDoc.id,
-        constellationDoc.data() as Record<string, unknown>
-      )
-    )
-  );
-  const fallbackConstellationId =
-    getActiveConstellation(initiallyNormalized)?.id ??
-    initiallyNormalized[0]?.id ??
-    INITIAL_CONSTELLATION_ID;
-  const legacyNebulaCounts = await cleanupLegacyDust(
-    userId,
-    fallbackConstellationId
-  );
   const normalizedConstellations = await migrateConstellationSchema(
     userId,
-    snapshot.docs,
-    legacyNebulaCounts
+    snapshot.docs
   );
 
   return enforceSingleActiveConstellation(userId, normalizedConstellations);
-}
-
-async function deleteFinishedConstellations(
-  userId: string,
-  constellations: Constellation[]
-) {
-  const finishedConstellations = constellations.filter(
-    (c) => c.status === "finished"
-  );
-
-  if (finishedConstellations.length === 0) {
-    return constellations;
-  }
-
-  const starsCollection = collection(db, "users", userId, "stars");
-
-  await Promise.all(
-    finishedConstellations.map(async (constellation) => {
-      const starsSnapshot = await withTimeout(
-        getDocs(
-          query(
-            starsCollection,
-            where("constellationId", "==", constellation.id)
-          )
-        ),
-        QUERY_MS,
-        "Load finished constellation stars"
-      );
-
-      await deleteSnapshotsInBatches(
-        starsSnapshot.docs,
-        "Delete finished constellation stars"
-      );
-
-      await withTimeout(
-        deleteDoc(
-          doc(db, "users", userId, "constellations", constellation.id)
-        ),
-        UPDATE_MS,
-        "Delete finished constellation"
-      );
-    })
-  );
-
-  return constellations.filter((c) => c.status !== "finished");
 }
 
 export async function getActiveOrCreateInitialConstellation(userId: string) {
@@ -591,19 +438,11 @@ export async function backfillLegacyStarsToConstellation(
 
 export async function ensureConstellationSetup(userId: string) {
   const constellations = await getConstellations(userId);
-  const cleaned = await deleteFinishedConstellations(userId, constellations);
-
-  // If all constellations were finished and deleted, re-query to trigger
-  // initial constellation creation (getConstellations auto-creates when empty).
-  const result =
-    cleaned.length > 0 ? cleaned : await getConstellations(userId);
-
-  const activeConstellation = getActiveConstellation(result);
+  const activeConstellation = getActiveConstellation(constellations);
 
   if (activeConstellation) {
     await backfillLegacyStarsToConstellation(userId, activeConstellation.id);
   }
 
-  return result;
+  return constellations;
 }
-

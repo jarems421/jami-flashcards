@@ -24,7 +24,7 @@ type SchedulableCard = {
 };
 
 type CardSchedule = {
-  // Legacy fields (kept for backward compat with existing code/queries)
+  // Legacy SM-2 fields (kept for backward compatibility with old cards. Remove when all cards are migrated to FSRS.)
   interval: number;
   repetitions: number;
   easeFactor: number;
@@ -130,17 +130,3 @@ export function getDifficultyInfo(difficulty: number | undefined): {
   return { label: "Hard", tier: "hard" };
 }
 
-export const FSRS_RESET_FIELDS = {
-  interval: 1,
-  repetitions: 0,
-  easeFactor: 2.5,
-  dueDate: Date.now(),
-  stability: 0,
-  difficulty: 0,
-  fsrsState: 0,
-  lapses: 0,
-  reps: 0,
-  lastReview: 0,
-  scheduledDays: 0,
-  elapsedDays: 0,
-} as const;

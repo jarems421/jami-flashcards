@@ -1,3 +1,5 @@
+import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
+
 export type DailyStudyActivity = {
   id: string;
   dayKey: string;
@@ -6,17 +8,6 @@ export type DailyStudyActivity = {
   totalDurationMs: number;
   updatedAt: number;
 };
-
-function padDayPart(value: number) {
-  return String(value).padStart(2, "0");
-}
-
-export function getLocalDayKey(timestamp = Date.now()) {
-  const date = new Date(timestamp);
-  return `${date.getFullYear()}-${padDayPart(date.getMonth() + 1)}-${padDayPart(
-    date.getDate()
-  )}`;
-}
 
 export function normalizeDailyStudyActivity(
   id: string,
@@ -45,7 +36,7 @@ export function countTodayReviews(
   activity: DailyStudyActivity[],
   timestamp = Date.now()
 ) {
-  const todayKey = getLocalDayKey(timestamp);
+  const todayKey = getStudyDayKey(timestamp);
   return (
     activity.find((entry) => entry.dayKey === todayKey)?.reviewCount ?? 0
   );
@@ -69,12 +60,11 @@ export function computeStudyStreak(
   }
 
   const now = new Date(timestamp);
+  const todayKey = getStudyDayKey(now.getTime());
   let streak = 0;
 
   for (let index = 0; index < 365; index += 1) {
-    const date = new Date(now);
-    date.setDate(now.getDate() - index);
-    const dayKey = getLocalDayKey(date.getTime());
+    const dayKey = shiftStudyDayKey(todayKey, -index);
 
     if (reviewDays.has(dayKey)) {
       streak += 1;
@@ -106,11 +96,10 @@ export function computeLongestStreak(activity: DailyStudyActivity[]) {
   let current = 1;
 
   for (let i = 1; i < sortedDays.length; i += 1) {
-    const prev = new Date(sortedDays[i - 1] + "T00:00:00");
-    const curr = new Date(sortedDays[i] + "T00:00:00");
-    const diffDays = (curr.getTime() - prev.getTime()) / (24 * 60 * 60 * 1000);
+    const prev = sortedDays[i - 1];
+    const expectedNext = shiftStudyDayKey(prev, 1);
 
-    if (diffDays === 1) {
+    if (sortedDays[i] === expectedNext) {
       current += 1;
       longest = Math.max(longest, current);
     } else {

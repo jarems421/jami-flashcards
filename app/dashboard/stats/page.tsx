@@ -12,29 +12,34 @@ import {
   Tooltip,
   CartesianGrid,
 } from "recharts";
-import type { ValueType } from "recharts/types/component/DefaultTooltipContent";
 import { useUser } from "@/lib/auth/user-context";
 import { loadStudyActivity } from "@/services/study/activity";
+import { ensureStudyStateSetup } from "@/services/study/daily-review";
 import {
   computeStudyStreak,
   computeLongestStreak,
-  getLocalDayKey,
   type DailyStudyActivity,
 } from "@/lib/study/activity";
+import { formatStudyDayLabel, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, Skeleton } from "@/components/ui";
 
 type TimeRange = "7d" | "30d" | "all";
 
-function getDaysAgoKey(daysAgo: number, now = Date.now()) {
-  const date = new Date(now);
-  date.setDate(date.getDate() - daysAgo);
-  return getLocalDayKey(date.getTime());
+function formatTooltipNumber(value: unknown, suffix = "") {
+  if (typeof value === "number" && Number.isFinite(value)) {
+    return `${value}${suffix}`;
+  }
+
+  if (typeof value === "string" && value.trim()) {
+    return suffix ? `${value}${suffix}` : value;
+  }
+
+  return `0${suffix}`;
 }
 
-function formatDayLabel(dayKey: string) {
-  const [, month, day] = dayKey.split("-");
-  return `${month}/${day}`;
+function getDaysAgoKey(daysAgo: number, now = Date.now()) {
+  return shiftStudyDayKey(getStudyDayKey(now), -daysAgo);
 }
 
 function filterByRange(
@@ -58,7 +63,7 @@ function buildAccuracyData(
     return filtered
       .filter((entry) => entry.reviewCount > 0)
       .map((entry) => ({
-        day: formatDayLabel(entry.dayKey),
+        day: formatStudyDayLabel(entry.dayKey),
         accuracy:
           entry.reviewCount > 0
             ? Math.round((entry.correctCount / entry.reviewCount) * 100)
@@ -74,7 +79,7 @@ function buildAccuracyData(
     const key = getDaysAgoKey(i, now);
     const entry = activityMap.get(key);
     points.push({
-      day: formatDayLabel(key),
+      day: formatStudyDayLabel(key),
       accuracy:
         entry && entry.reviewCount > 0
           ? Math.round((entry.correctCount / entry.reviewCount) * 100)
@@ -95,7 +100,7 @@ function buildTimeData(
     return filtered
       .filter((entry) => entry.totalDurationMs > 0)
       .map((entry) => ({
-        day: formatDayLabel(entry.dayKey),
+        day: formatStudyDayLabel(entry.dayKey),
         minutes: Math.round(entry.totalDurationMs / 60_000),
       }));
   }
@@ -108,7 +113,7 @@ function buildTimeData(
     const key = getDaysAgoKey(i, now);
     const entry = activityMap.get(key);
     points.push({
-      day: formatDayLabel(key),
+      day: formatStudyDayLabel(key),
       minutes: entry ? Math.round(entry.totalDurationMs / 60_000) : 0,
     });
   }
@@ -133,6 +138,7 @@ export default function StatsPage() {
 
     void (async () => {
       try {
+        await ensureStudyStateSetup(user.uid);
         const data = await loadStudyActivity(user.uid);
         if (!cancelled) setActivity(data);
       } catch (error) {
@@ -245,9 +251,6 @@ export default function StatsPage() {
             <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
               Accuracy over time
             </div>
-            <p className="mt-1 text-sm text-text-secondary">
-              Percentage of correct answers per day
-            </p>
             <div className="mt-4 h-64 w-full">
               {accuracyData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -279,7 +282,7 @@ export default function StatsPage() {
                         color: "#fff",
                         fontSize: 13,
                       }}
-                      formatter={(value?: ValueType) => [`${value ?? 0}%`, "Accuracy"]}
+                      formatter={(value: unknown) => [formatTooltipNumber(value, "%"), "Accuracy"]}
                     />
                     <Line
                       type="monotone"
@@ -306,9 +309,6 @@ export default function StatsPage() {
             <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
               Time spent studying
             </div>
-            <p className="mt-1 text-sm text-text-secondary">
-              Minutes studied per day
-            </p>
             <div className="mt-4 h-64 w-full">
               {timeData.some((d) => d.minutes > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -339,7 +339,7 @@ export default function StatsPage() {
                         color: "#fff",
                         fontSize: 13,
                       }}
-                      formatter={(value?: ValueType) => [`${value ?? 0} min`, "Time"]}
+                      formatter={(value: unknown) => [formatTooltipNumber(value, " min"), "Time"]}
                     />
                     <Bar
                       dataKey="minutes"
@@ -350,7 +350,7 @@ export default function StatsPage() {
                 </ResponsiveContainer>
               ) : (
                 <p className="flex h-full items-center justify-center text-sm text-text-muted">
-                  No time tracking data yet. Study some cards to start tracking.
+                  No time data yet.
                 </p>
               )}
             </div>

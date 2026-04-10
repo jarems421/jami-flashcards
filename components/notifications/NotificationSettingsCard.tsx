@@ -6,8 +6,8 @@ import {
   isAppleMobileDevice,
   isPushSupported,
   isStandaloneApp,
+  type NotificationMode,
   type NotificationPreferences,
-  type NotificationPreferenceField,
 } from "@/lib/app/notifications";
 import {
   getCurrentDevicePushSubscription,
@@ -35,28 +35,6 @@ type BeforeInstallPromptEvent = Event & {
     platform: string;
   }>;
 };
-
-const TOGGLE_FIELDS: Array<{
-  field: NotificationPreferenceField;
-  label: string;
-  description: string;
-}> = [
-  {
-    field: "dueCardDigest",
-    label: "Include due cards",
-    description: "Summarize how many review cards are waiting for you.",
-  },
-  {
-    field: "goalDigest",
-    label: "Include urgent goals",
-    description: "Call out active goals that are due soon or due today.",
-  },
-  {
-    field: "dailyNudge",
-    label: "Fallback daily nudge",
-    description: "Send a light study prompt when nothing urgent is waiting.",
-  },
-];
 
 export default function NotificationSettingsCard({
   userId,
@@ -174,10 +152,7 @@ export default function NotificationSettingsCard({
   const canSubscribe =
     isSupported && (!isAppleMobile || isStandalone) && permission !== "denied";
 
-  const persistPreferences = async (
-    updates: Partial<NotificationPreferences>,
-    savingKey: string
-  ) => {
+  const persistPreferences = async (updates: Partial<NotificationPreferences>, savingKey: string) => {
     setSavingField(savingKey);
     setFeedback(null);
 
@@ -208,13 +183,12 @@ export default function NotificationSettingsCard({
     );
   };
 
-  const handleFieldToggle = async (field: NotificationPreferenceField) => {
-    await persistPreferences(
-      {
-        [field]: !preferences[field],
-      },
-      field
-    );
+  const handleModeChange = async (mode: NotificationMode) => {
+    if (preferences.mode === mode) {
+      return;
+    }
+
+    await persistPreferences({ mode }, "mode");
   };
 
   const handleInstallApp = async () => {
@@ -353,7 +327,7 @@ export default function NotificationSettingsCard({
           <div>
             <h2 className="text-sm font-semibold">App install</h2>
             <p className="mt-1 text-xs leading-6 text-text-muted">
-              Keep the install flow separate from notification settings. Install the app first when you want a more native push setup on mobile.
+              Install for a more native mobile feel.
             </p>
           </div>
           <div className="rounded-full border border-border bg-white/[0.04] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
@@ -367,10 +341,10 @@ export default function NotificationSettingsCard({
           </div>
           <div className="mt-2 text-sm leading-6 text-white">
             {isStandalone
-              ? "This device is already using the installed app shell."
+              ? "Installed on this device."
               : isAppleMobile
-                ? "On iPhone or iPad, open Share and choose Add to Home Screen first."
-                : "Install the app from your browser so it feels like a normal app instead of a browser tab."}
+                ? "On iPhone or iPad, use Share, then Add to Home Screen."
+                : "Install from your browser menu."}
           </div>
 
           {!isStandalone && !installPromptEvent && !isAppleMobile ? (
@@ -386,7 +360,7 @@ export default function NotificationSettingsCard({
               onClick={() => void handleInstallApp()}
               className="mt-4"
             >
-              {installBusy ? "Opening install prompt…" : "Install app"}
+              {installBusy ? "Opening install prompt..." : "Install app"}
             </Button>
           ) : null}
         </div>
@@ -408,7 +382,7 @@ export default function NotificationSettingsCard({
         <div>
           <h2 className="text-sm font-semibold">Notifications</h2>
           <p className="mt-1 text-xs leading-6 text-text-muted">
-            Enable push on this device and tune the once-daily digest separately from the install flow.
+            One daily reminder at 4pm London.
           </p>
         </div>
 
@@ -438,7 +412,7 @@ export default function NotificationSettingsCard({
                     onClick={() => void handleDisableNotifications()}
                     variant="secondary"
                   >
-                    {subscriptionBusy ? "Updating…" : "Disable on this device"}
+                    {subscriptionBusy ? "Updating..." : "Disable on this device"}
                   </Button>
                   <Button
                     type="button"
@@ -446,7 +420,7 @@ export default function NotificationSettingsCard({
                     onClick={() => void handleSendTestPush()}
                     variant="secondary"
                   >
-                    {testingPush ? "Sending test…" : "Send test push"}
+                    {testingPush ? "Sending test..." : "Send test push"}
                   </Button>
                 </>
               ) : (
@@ -455,7 +429,7 @@ export default function NotificationSettingsCard({
                   disabled={subscriptionBusy || !canSubscribe}
                   onClick={() => void handleEnableNotifications()}
                 >
-                  {subscriptionBusy ? "Enabling…" : "Enable on this device"}
+                  {subscriptionBusy ? "Enabling..." : "Enable on this device"}
                 </Button>
               )}
             </div>
@@ -479,10 +453,10 @@ export default function NotificationSettingsCard({
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-white">
-                  Daily digest reminders
+                  Daily reminder
                 </div>
                 <p className="mt-1 text-xs text-text-muted">
-                  Vercel Hobby sends these once per day in an approximate window, not at an exact minute.
+                  <span className="font-semibold">4pm Europe/London</span>. One notification per study day.
                 </p>
               </div>
               <label className="inline-flex items-center gap-2 text-sm text-white">
@@ -493,31 +467,56 @@ export default function NotificationSettingsCard({
                   onChange={() => void handleMasterToggle()}
                   className="h-4 w-4 rounded border-border bg-glass-subtle"
                 />
-                {savingField === "enabled" ? "Saving…" : "Enabled"}
+                {savingField === "enabled" ? "Saving..." : "Enabled"}
               </label>
             </div>
 
             <div className="mt-4 space-y-3">
-              {TOGGLE_FIELDS.map(({ field, label, description }) => (
-                <label
-                  key={field}
-                  className={`flex items-start justify-between gap-3 rounded-[1.05rem] border border-white/[0.06] p-3 ${
-                    preferences.enabled ? "bg-black/10" : "bg-black/5 opacity-70"
-                  }`}
-                >
-                  <div>
-                    <div className="text-sm font-medium text-white">{label}</div>
-                    <p className="mt-1 text-xs text-text-muted">{description}</p>
-                  </div>
-                  <input
-                    type="checkbox"
-                    checked={preferences[field]}
-                    disabled={loading || savingField === field}
-                    onChange={() => void handleFieldToggle(field)}
-                    className="mt-1 h-4 w-4 rounded border-border bg-glass-subtle"
-                  />
-                </label>
-              ))}
+              <div
+                className={`rounded-[1.05rem] border border-white/[0.06] p-3 ${
+                  preferences.enabled ? "bg-black/10" : "bg-black/5 opacity-70"
+                }`}
+              >
+                <div className="text-sm font-medium text-white">Reminder mode</div>
+                <p className="mt-1 text-xs text-text-muted">
+                  Choose when Jami nudges you.
+                </p>
+                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                  {([
+                    {
+                      value: "smart" as NotificationMode,
+                      label: "Smart",
+                      description: "Only when work is waiting.",
+                    },
+                    {
+                      value: "always" as NotificationMode,
+                      label: "Always",
+                      description: "Daily nudge, even when clear.",
+                    },
+                  ]).map((option) => {
+                    const selected = preferences.mode === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={loading || !preferences.enabled || savingField === "mode"}
+                        onClick={() => void handleModeChange(option.value)}
+                        className={`rounded-[1rem] border px-4 py-3 text-left transition duration-fast ${
+                          selected
+                            ? "border-accent bg-accent/20 text-white"
+                            : "border-white/[0.08] bg-white/[0.03] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]"
+                        } disabled:cursor-not-allowed disabled:opacity-60`}
+                      >
+                        <div className="text-sm font-semibold">{option.label}</div>
+                        <div className="mt-1 text-xs leading-5 text-inherit/80">{option.description}</div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {savingField === "mode" ? (
+                  <p className="mt-3 text-xs text-text-muted">Saving reminder mode...</p>
+                ) : null}
+              </div>
             </div>
           </div>
         </div>

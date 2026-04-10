@@ -68,11 +68,11 @@ service cloud.firestore {
         allow read, create, update, delete: if isSelf(userId);
       }
 
-      match /dust/{dustId} {
+      match /studyActivity/{dayKey} {
         allow read, create, update, delete: if isSelf(userId);
       }
 
-      match /studyActivity/{dayKey} {
+      match /studyState/{documentId} {
         allow read, create, update, delete: if isSelf(userId);
       }
 

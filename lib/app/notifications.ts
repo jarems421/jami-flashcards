@@ -1,18 +1,12 @@
+export type NotificationMode = "smart" | "always";
+
 export type NotificationPreferences = {
   enabled: boolean;
-  dueCardDigest: boolean;
-  goalDigest: boolean;
-  dailyNudge: boolean;
-  timezone: string;
+  mode: NotificationMode;
   updatedAt: number;
-  lastDigestDayKey: string | null;
+  lastDigestStudyDayKey: string | null;
   lastDigestSentAt: number | null;
 };
-
-export type NotificationPreferenceField = Exclude<
-  keyof NotificationPreferences,
-  "timezone" | "updatedAt" | "lastDigestDayKey" | "lastDigestSentAt"
->;
 
 export type StoredPushSubscription = {
   id: string;
@@ -30,12 +24,9 @@ export type StoredPushSubscription = {
 
 export const DEFAULT_NOTIFICATION_PREFERENCES: NotificationPreferences = {
   enabled: true,
-  dueCardDigest: true,
-  goalDigest: true,
-  dailyNudge: false,
-  timezone: "UTC",
+  mode: "smart",
   updatedAt: 0,
-  lastDigestDayKey: null,
+  lastDigestStudyDayKey: null,
   lastDigestSentAt: null,
 };
 
@@ -50,27 +41,26 @@ function asNumber(value: unknown): number | null {
 export function normalizeNotificationPreferences(
   data: Record<string, unknown> | null | undefined
 ): NotificationPreferences {
+  const legacyAlwaysMode =
+    typeof data?.mode === "string"
+      ? data.mode
+      : asBoolean(data?.dailyNudge, false)
+        ? "always"
+        : "smart";
+
   return {
     enabled: asBoolean(data?.enabled, DEFAULT_NOTIFICATION_PREFERENCES.enabled),
-    dueCardDigest: asBoolean(
-      data?.dueCardDigest,
-      DEFAULT_NOTIFICATION_PREFERENCES.dueCardDigest
-    ),
-    goalDigest: asBoolean(
-      data?.goalDigest,
-      DEFAULT_NOTIFICATION_PREFERENCES.goalDigest
-    ),
-    dailyNudge: asBoolean(
-      data?.dailyNudge,
-      DEFAULT_NOTIFICATION_PREFERENCES.dailyNudge
-    ),
-    timezone:
-      typeof data?.timezone === "string" && data.timezone.trim()
-        ? data.timezone
-        : DEFAULT_NOTIFICATION_PREFERENCES.timezone,
+    mode:
+      legacyAlwaysMode === "always"
+        ? "always"
+        : DEFAULT_NOTIFICATION_PREFERENCES.mode,
     updatedAt: asNumber(data?.updatedAt) ?? 0,
-    lastDigestDayKey:
-      typeof data?.lastDigestDayKey === "string" ? data.lastDigestDayKey : null,
+    lastDigestStudyDayKey:
+      typeof data?.lastDigestStudyDayKey === "string"
+        ? data.lastDigestStudyDayKey
+        : typeof data?.lastDigestDayKey === "string"
+          ? data.lastDigestDayKey
+          : null,
     lastDigestSentAt: asNumber(data?.lastDigestSentAt),
   };
 }

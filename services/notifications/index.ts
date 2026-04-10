@@ -37,15 +37,6 @@ async function ensureUserProfileDocument(userId: string) {
 }
 
 export async function ensureServiceWorkerRegistration() {
-  if (process.env.NODE_ENV !== "production") {
-    if ("serviceWorker" in navigator) {
-      const registrations = await navigator.serviceWorker.getRegistrations();
-      await Promise.all(registrations.map((registration) => registration.unregister()));
-    }
-
-    return null;
-  }
-
   if (!isPushSupported()) {
     return null;
   }
@@ -59,6 +50,7 @@ export async function ensureServiceWorkerRegistration() {
     });
   }
 
+  await registration.update().catch(() => undefined);
   await navigator.serviceWorker.ready;
   return registration;
 }
@@ -80,10 +72,6 @@ export async function loadNotificationPreferences(userId: string) {
   if (!snapshot.exists()) {
     return {
       ...DEFAULT_NOTIFICATION_PREFERENCES,
-      timezone:
-        typeof Intl !== "undefined"
-          ? Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC"
-          : "UTC",
     } satisfies NotificationPreferences;
   }
 

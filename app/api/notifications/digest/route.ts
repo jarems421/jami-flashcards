@@ -1,6 +1,16 @@
 import type { NextRequest } from "next/server";
 import { normalizeGoal } from "@/lib/study/goals";
-import { normalizeNotificationPreferences } from "@/lib/app/notifications";
+import {
+  normalizeNotificationPreferences,
+  type NotificationMode,
+} from "@/lib/app/notifications";
+import { buildDailyReviewQueues } from "@/lib/study/daily-review";
+import {
+  getStudyDayKey,
+  getStudyDayWindow,
+  isWithinStudyDayBoundaryWindow,
+} from "@/lib/study/day";
+import { mapCardData } from "@/lib/study/cards";
 import { getAdminDb } from "@/services/firebase/admin";
 import {
   isExpiredPushSubscriptionError,
@@ -9,17 +19,16 @@ import {
 
 export const runtime = "nodejs";
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 const DIGEST_CLAIM_TTL_MS = 10 * 60 * 1000;
-
-function getUtcDayKey(timestamp: number) {
-  return new Date(timestamp).toISOString().slice(0, 10);
-}
 
 function getDigestClaim(data: Record<string, unknown>) {
   return {
-    dayKey:
-      typeof data.digestClaimDayKey === "string" ? data.digestClaimDayKey : null,
+    studyDayKey:
+      typeof data.digestClaimStudyDayKey === "string"
+        ? data.digestClaimStudyDayKey
+        : typeof data.digestClaimDayKey === "string"
+          ? data.digestClaimDayKey
+          : null,
     claimId: typeof data.digestClaimId === "string" ? data.digestClaimId : null,
     claimedAt:
       typeof data.digestClaimedAt === "number" && Number.isFinite(data.digestClaimedAt)
@@ -56,41 +65,43 @@ function toPushRecord(data: Record<string, unknown>) {
 }
 
 function buildDigestPayload(
-  dueCount: number,
+  requiredDailyCount: number,
   urgentGoalCount: number,
-  includeDailyNudge: boolean
+  mode: NotificationMode
 ) {
   const parts: string[] = [];
 
-  if (dueCount > 0) {
-    parts.push(`${dueCount} card${dueCount === 1 ? "" : "s"} due`);
+  if (requiredDailyCount > 0) {
+    parts.push(
+      `${requiredDailyCount} required Daily Review card${requiredDailyCount === 1 ? "" : "s"}`
+    );
   }
 
   if (urgentGoalCount > 0) {
     parts.push(
-      `${urgentGoalCount} goal${urgentGoalCount === 1 ? "" : "s"} need${urgentGoalCount === 1 ? "s" : ""} attention`
+      `${urgentGoalCount} urgent goal${urgentGoalCount === 1 ? "" : "s"}`
     );
   }
 
   if (parts.length > 0) {
     return {
-      title: "Daily study digest",
-      body: parts.join(" • "),
-      url: dueCount > 0 ? "/dashboard" : "/dashboard/goals",
+      title: "Daily Review is ready",
+      body: parts.join(" · "),
+      url: requiredDailyCount > 0 ? "/dashboard/study?mode=daily" : "/dashboard/goals",
       tag: "daily-digest",
       icon: "/icons/notification-icon-192.png",
       badge: "/icons/notification-icon-192.png",
     };
   }
 
-  if (!includeDailyNudge) {
+  if (mode !== "always") {
     return null;
   }
 
   return {
-    title: "Time to study",
-    body: "Take a few minutes to review today.",
-    url: "/dashboard",
+    title: "Study window is open",
+    body: "Daily Review is clear. Use Custom Review or tidy up your decks.",
+    url: "/dashboard/study?mode=custom",
     tag: "daily-digest",
     icon: "/icons/notification-icon-192.png",
     badge: "/icons/notification-icon-192.png",
@@ -100,7 +111,7 @@ function buildDigestPayload(
 async function claimDigestWindow(
   adminDb: ReturnType<typeof getAdminDb>,
   preferencesRef: FirebaseFirestore.DocumentReference,
-  dayKey: string,
+  studyDayKey: string,
   claimId: string,
   now: number
 ) {
@@ -110,12 +121,12 @@ async function claimDigestWindow(
     const preferences = normalizeNotificationPreferences(data);
     const digestClaim = getDigestClaim(data);
 
-    if (preferences.lastDigestDayKey === dayKey) {
+    if (preferences.lastDigestStudyDayKey === studyDayKey) {
       return "already-sent" as const;
     }
 
     if (
-      digestClaim.dayKey === dayKey &&
+      digestClaim.studyDayKey === studyDayKey &&
       digestClaim.claimId &&
       digestClaim.claimedAt !== null &&
       now - digestClaim.claimedAt < DIGEST_CLAIM_TTL_MS
@@ -126,7 +137,8 @@ async function claimDigestWindow(
     transaction.set(
       preferencesRef,
       {
-        digestClaimDayKey: dayKey,
+        digestClaimStudyDayKey: studyDayKey,
+        digestClaimDayKey: null,
         digestClaimId: claimId,
         digestClaimedAt: now,
         updatedAt: now,
@@ -141,7 +153,7 @@ async function claimDigestWindow(
 async function finalizeDigestWindow(
   adminDb: ReturnType<typeof getAdminDb>,
   preferencesRef: FirebaseFirestore.DocumentReference,
-  dayKey: string,
+  studyDayKey: string,
   claimId: string,
   now: number,
   markSent: boolean
@@ -151,18 +163,25 @@ async function finalizeDigestWindow(
     const data = (snapshot.data() as Record<string, unknown> | undefined) ?? {};
     const digestClaim = getDigestClaim(data);
 
-    if (digestClaim.dayKey !== dayKey || digestClaim.claimId !== claimId) {
+    if (digestClaim.studyDayKey !== studyDayKey || digestClaim.claimId !== claimId) {
       return false;
     }
 
     transaction.set(
       preferencesRef,
       {
+        digestClaimStudyDayKey: null,
         digestClaimDayKey: null,
         digestClaimId: null,
         digestClaimedAt: null,
-        lastDigestDayKey: markSent ? dayKey : data.lastDigestDayKey ?? null,
-        lastDigestSentAt: markSent ? now : data.lastDigestSentAt ?? null,
+        lastDigestStudyDayKey: markSent
+          ? studyDayKey
+          : data.lastDigestStudyDayKey ?? data.lastDigestDayKey ?? null,
+        lastDigestSentAt: markSent
+          ? now
+          : typeof data.lastDigestSentAt === "number"
+            ? data.lastDigestSentAt
+            : null,
         updatedAt: now,
       },
       { merge: true }
@@ -172,27 +191,23 @@ async function finalizeDigestWindow(
   });
 }
 
-async function countDueCards(userId: string, now: number) {
+async function countRequiredDailyReviewCards(userId: string, now: number) {
   const adminDb = getAdminDb();
   const cardsSnapshot = await adminDb
     .collection("cards")
     .where("userId", "==", userId)
     .get();
 
-  let dueCount = 0;
+  const cards = cardsSnapshot.docs.map((cardDoc) =>
+    mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
+  );
 
-  for (const cardDoc of cardsSnapshot.docs) {
-    const dueDate = cardDoc.get("dueDate");
-    if (typeof dueDate !== "number" || dueDate <= now) {
-      dueCount += 1;
-    }
-  }
-
-  return dueCount;
+  return buildDailyReviewQueues(cards, now).requiredCards.length;
 }
 
 async function countUrgentGoals(userId: string, now: number) {
   const adminDb = getAdminDb();
+  const { end } = getStudyDayWindow(now);
   const goalsSnapshot = await adminDb
     .collection("users")
     .doc(userId)
@@ -208,7 +223,7 @@ async function countUrgentGoals(userId: string, now: number) {
       goalDoc.data() as Record<string, unknown>
     );
 
-    if (goal.deadline <= now + DAY_MS) {
+    if (goal.deadline <= end) {
       urgentGoalCount += 1;
     }
   }
@@ -222,7 +237,16 @@ export async function GET(request: NextRequest) {
   }
 
   const now = Date.now();
-  const dayKey = getUtcDayKey(now);
+  const studyDayKey = getStudyDayKey(now);
+
+  if (!isWithinStudyDayBoundaryWindow(now, 20 * 60 * 1000)) {
+    return Response.json({
+      ok: true,
+      skipped: true,
+      reason: "outside-study-window",
+      studyDayKey,
+    });
+  }
 
   try {
     const adminDb = getAdminDb();
@@ -252,16 +276,17 @@ export async function GET(request: NextRequest) {
         preferencesDoc.data() as Record<string, unknown>
       );
 
-      const [dueCount, urgentGoalCount, subscriptionsSnapshot] = await Promise.all([
-        countDueCards(userId, now),
-        countUrgentGoals(userId, now),
-        adminDb.collection("users").doc(userId).collection("pushSubscriptions").get(),
-      ]);
+      const [requiredDailyCount, urgentGoalCount, subscriptionsSnapshot] =
+        await Promise.all([
+          countRequiredDailyReviewCards(userId, now),
+          countUrgentGoals(userId, now),
+          adminDb.collection("users").doc(userId).collection("pushSubscriptions").get(),
+        ]);
 
       const payload = buildDigestPayload(
-        preferences.dueCardDigest ? dueCount : 0,
-        preferences.goalDigest ? urgentGoalCount : 0,
-        preferences.dailyNudge
+        requiredDailyCount,
+        urgentGoalCount,
+        preferences.mode
       );
 
       if (!payload || subscriptionsSnapshot.empty) {
@@ -273,10 +298,11 @@ export async function GET(request: NextRequest) {
       const claimResult = await claimDigestWindow(
         adminDb,
         preferencesDoc.ref,
-        dayKey,
+        studyDayKey,
         claimId,
         now
       );
+
       if (claimResult !== "claimed") {
         skipped += 1;
         continue;
@@ -287,7 +313,6 @@ export async function GET(request: NextRequest) {
 
       for (const subscriptionDoc of subscriptionsSnapshot.docs) {
         const subscriptionData = subscriptionDoc.data() as Record<string, unknown>;
-
         const subscription = toPushRecord(subscriptionData);
 
         if (!subscription) {
@@ -298,14 +323,13 @@ export async function GET(request: NextRequest) {
 
         try {
           await sendPushNotification(subscription, payload);
-
           sent += 1;
 
           if (!markedSent) {
             const finalized = await finalizeDigestWindow(
               adminDb,
               preferencesDoc.ref,
-              dayKey,
+              studyDayKey,
               claimId,
               Date.now(),
               true
@@ -327,7 +351,7 @@ export async function GET(request: NextRequest) {
         await finalizeDigestWindow(
           adminDb,
           preferencesDoc.ref,
-          dayKey,
+          studyDayKey,
           claimId,
           Date.now(),
           false
@@ -337,7 +361,7 @@ export async function GET(request: NextRequest) {
 
     return Response.json({
       ok: true,
-      dayKey,
+      studyDayKey,
       considered,
       claimed,
       sent,

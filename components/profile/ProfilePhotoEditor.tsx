@@ -143,7 +143,7 @@ export default function ProfilePhotoEditor({
         }}
       >
         {currentUrl ? (
-          /* eslint-disable-next-line @next/next/no-img-element */
+          /* eslint-disable-next-line @next/next/no-img-element -- Custom image cropping requires direct <img> usage for drag-to-reposition and cropping. Next/Image is not suitable here. */
           <img
             src={currentUrl}
             alt="Profile"
@@ -178,7 +178,7 @@ export default function ProfilePhotoEditor({
           disabled={uploading}
           onClick={() => fileInputRef.current?.click()}
         >
-          {uploading ? "Uploading…" : hasCustomPhoto ? "Change photo" : "Upload photo"}
+          {uploading ? "Uploading..." : hasCustomPhoto ? "Change photo" : "Upload photo"}
         </Button>
 
         {dirty && hasCustomPhoto ? (
@@ -186,7 +186,7 @@ export default function ProfilePhotoEditor({
             disabled={saving}
             onClick={() => void handleSavePosition()}
           >
-            {saving ? "Saving…" : "Save position"}
+            {saving ? "Saving..." : "Save position"}
           </Button>
         ) : null}
       </div>

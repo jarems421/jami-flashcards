@@ -3,7 +3,11 @@
   "crons": [
     {
       "path": "/api/notifications/digest",
-      "schedule": "0 18 * * *"
+      "schedule": "0 15 * * *"
+    },
+    {
+      "path": "/api/notifications/digest",
+      "schedule": "0 16 * * *"
     }
   ]
 }

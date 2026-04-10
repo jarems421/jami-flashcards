@@ -31,7 +31,17 @@ export default async function DeckStudyRedirectPage({
 }: DeckStudyRedirectPageProps) {
   const { id } = await params;
   const resolvedSearchParams = await searchParams;
-  redirect(
-    `/dashboard/decks/${encodeURIComponent(id)}/study${buildSearchString(resolvedSearchParams)}`
-  );
+  const nextSearchParams = new URLSearchParams();
+  nextSearchParams.set("mode", "custom");
+  nextSearchParams.set("decks", id);
+
+  const searchString = buildSearchString(resolvedSearchParams);
+  if (searchString) {
+    const currentSearchParams = new URLSearchParams(searchString.slice(1));
+    for (const [key, value] of currentSearchParams.entries()) {
+      nextSearchParams.set(key, value);
+    }
+  }
+
+  redirect(`/dashboard/study?${nextSearchParams.toString()}`);
 }

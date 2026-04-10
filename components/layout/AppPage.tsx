@@ -46,9 +46,9 @@ export default function AppPage({
   const handleScroll = useCallback(() => {
     const y = window.scrollY;
     if (y > lastScrollY.current && y > SCROLL_THRESHOLD) {
-      setHidden(true);
-    } else {
-      setHidden(false);
+      setHidden(true); // scrolling down, hide
+    } else if (y < lastScrollY.current) {
+      setHidden(false); // scrolling up, show
     }
     lastScrollY.current = y;
   }, []);

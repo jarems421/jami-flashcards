@@ -16,6 +16,7 @@ import {
 import { getDeckHref } from "@/lib/app/routes";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
+import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import Link from "next/link";
 
@@ -289,14 +290,13 @@ export default function CardsSearchPage() {
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
 
-      {/* Quick add card */}
       <div className="rounded-[2rem] border border-white/[0.10] bg-white/[0.03] p-4">
         <button
           type="button"
           onClick={() => setShowAddForm((prev) => !prev)}
           className="flex w-full items-center justify-between text-left"
         >
-          <span className="text-sm font-semibold text-white">Quick add card</span>
+          <span className="text-sm font-semibold text-white">Add card</span>
           <span className="text-xs text-text-muted">{showAddForm ? "Hide" : "Show"}</span>
         </button>
 
@@ -342,16 +342,15 @@ export default function CardsSearchPage() {
               disabled={addingCard || !addDeckId || !addFront.trim() || !addBack.trim()}
               onClick={() => void handleAddCard()}
             >
-              {addingCard ? "Adding…" : "Add card"}
+              {addingCard ? "Adding..." : "Add card"}
             </Button>
           </div>
         ) : null}
       </div>
 
-      {/* Sticky search bar */}
       <div className="sticky top-0 z-20 -mx-1 px-1 pb-2 pt-1">
         <Input
-          placeholder="Search cards by front, back, or tag..."
+          placeholder="Search cards..."
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
         />
@@ -388,6 +387,9 @@ export default function CardsSearchPage() {
               <section key={card.id} className="app-panel p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell">
                 {expandedCardId === card.id ? (
                   <div className="space-y-4">
+                    <div className="flex flex-wrap gap-2">
+                      <CardDifficultyBadge card={card} />
+                    </div>
                     <Input
                       label="Front"
                       value={editingFront}
@@ -458,6 +460,7 @@ export default function CardsSearchPage() {
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">
+                      <CardDifficultyBadge card={card} />
                       {deckNamesById[card.deckId] ? (
                         <Link
                           href={getDeckHref(card.deckId)}

@@ -161,8 +161,8 @@ export const deleteAccount = async () => {
   await deleteUserOwnedCardDocs(uid);
   await deleteUserOwnedDeckDocs(uid);
   await deleteCollectionDocs(["users", uid, "stars"]);
-  await deleteCollectionDocs(["users", uid, "dust"]);
   await deleteCollectionDocs(["users", uid, "studyActivity"]);
+  await deleteCollectionDocs(["users", uid, "studyState"]);
   await deleteCollectionDocs(["users", uid, "goals"]);
   await deleteCollectionDocs(["users", uid, "notificationPreferences"]);
   await deleteCollectionDocs(["users", uid, "pushSubscriptions"]);

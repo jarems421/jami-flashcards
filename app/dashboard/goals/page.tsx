@@ -258,14 +258,14 @@ export default function GoalsPage() {
           <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
             New goal
           </h3>
-          <div className="grid gap-2 grid-cols-1 md:grid-cols-2 xl:flex xl:flex-wrap">
+          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
             <Input
               type="number"
               min="1"
               placeholder="Target cards"
               value={targetCards}
               onChange={(event) => setTargetCards(event.target.value)}
-              containerClassName="xl:flex-[1_1_10.5rem]"
+              label="Target cards"
             />
             <Input
               type="number"
@@ -275,28 +275,31 @@ export default function GoalsPage() {
               placeholder="Accuracy %"
               value={targetAccuracy}
               onChange={(event) => setTargetAccuracy(event.target.value)}
-              containerClassName="xl:flex-[1_1_11rem]"
+              label="Accuracy %"
             />
             <Input
               type="date"
               value={deadlineDate}
               onChange={(event) => setDeadlineDate(event.target.value)}
-              containerClassName="xl:flex-[1_1_10rem]"
+              label="Due date"
             />
             <Input
               type="time"
               value={deadlineTime}
               onChange={(event) => setDeadlineTime(event.target.value)}
-              containerClassName="xl:flex-[1_1_9rem]"
+              label="Due time"
             />
-            <Button
-              disabled={isCreatingGoal}
-              onClick={() => void handleCreateGoal()}
-              variant="warm"
-              size="lg"
-            >
-              {isCreatingGoal ? "Creating..." : "Create goal"}
-            </Button>
+            <div className="md:col-span-2 xl:col-span-4">
+              <Button
+                disabled={isCreatingGoal}
+                onClick={() => void handleCreateGoal()}
+                variant="warm"
+                size="lg"
+                className="w-full md:w-auto"
+              >
+                {isCreatingGoal ? "Creating..." : "Create goal"}
+              </Button>
+            </div>
           </div>
         </Card>
 
@@ -304,7 +307,7 @@ export default function GoalsPage() {
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
             <h3 className="text-sm font-medium">Reward preview</h3>
             <p className="text-xs text-text-muted">
-              Based on goal inputs. Defaults: 10 cards, 100% accuracy.
+              Updates from your goal.
             </p>
           </div>
 
@@ -314,13 +317,9 @@ export default function GoalsPage() {
                 {previewTargetCards}-card goal at{" "}
                 {Math.round(previewTargetAccuracy * 100)}% accuracy
               </div>
-              <div>
-                Star size preview: {getEffectiveStarVisualSize(previewStar).toFixed(1)}px | Glow:{" "}
-                {Math.round(previewStar.glow * 100)}%
-              </div>
               <div className="grid gap-2 text-xs text-text-muted sm:grid-cols-2">
+                <div>Star size: {getEffectiveStarVisualSize(previewStar).toFixed(1)}px</div>
                 <div>Glow: {Math.round(previewStar.glow * 100)}%</div>
-                <div>Preview updates from your goal inputs.</div>
               </div>
             </div>
 
@@ -426,4 +425,3 @@ export default function GoalsPage() {
     </Refreshable>
   );
 }
-
