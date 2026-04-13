@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Tab = {
   href: string;
@@ -69,6 +69,8 @@ function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
 export default function TabBar() {
   const pathname = usePathname();
   const mobileNavRef = useRef<HTMLElement>(null);
+  const touchStartYRef = useRef<number | null>(null);
+  const [mobileHidden, setMobileHidden] = useState(false);
 
   useEffect(() => {
     const nav = mobileNavRef.current;
@@ -77,15 +79,38 @@ export default function TabBar() {
     active?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
   }, [pathname]);
 
+  const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+    touchStartYRef.current = event.touches[0]?.clientY ?? null;
+  };
+
+  const handleTouchEnd = (event: React.TouchEvent<HTMLElement>) => {
+    const startY = touchStartYRef.current;
+    touchStartYRef.current = null;
+    const endY = event.changedTouches[0]?.clientY ?? null;
+
+    if (startY === null || endY === null) {
+      return;
+    }
+
+    if (endY - startY > 36) {
+      setMobileHidden(true);
+    }
+  };
+
   return (
     <>
       {/* Bottom tab bar (phone) */}
       <nav
         ref={mobileNavRef}
         aria-label="Primary"
-        className="app-nav fixed inset-x-3 z-30 flex snap-x snap-mandatory overflow-x-auto scrollbar-hide rounded-[2.6rem] border-[1.5px] border-white/[0.18] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.94))] p-2.5 shadow-[0_18px_42px_rgba(7,2,22,0.3)] backdrop-blur-xl md:hidden"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+        className={`app-nav fixed inset-x-3 z-30 flex snap-x snap-mandatory overflow-x-auto rounded-[2.6rem] border-[1.5px] border-white/[0.18] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.94))] p-2.5 shadow-[0_18px_42px_rgba(7,2,22,0.3)] backdrop-blur-xl transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
+        <div className="pointer-events-none sticky left-0 z-10 -ml-2 mr-1 flex w-10 shrink-0 items-center justify-center bg-[linear-gradient(90deg,rgba(18,11,34,0.98),rgba(18,11,34,0))] text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+          drag
+        </div>
         {tabs.map((tab) => {
           const active = isActive(pathname, tab.href);
           return (
@@ -114,7 +139,22 @@ export default function TabBar() {
             </Link>
           );
         })}
+        <div className="pointer-events-none sticky right-0 z-10 -mr-2 ml-1 flex w-10 shrink-0 items-center justify-center bg-[linear-gradient(270deg,rgba(18,11,34,0.98),rgba(18,11,34,0))] text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
+          more
+        </div>
       </nav>
+
+      {mobileHidden ? (
+        <button
+          type="button"
+          aria-label="Show navigation"
+          onClick={() => setMobileHidden(false)}
+          className="fixed inset-x-0 z-30 mx-auto flex h-8 w-28 items-center justify-center rounded-t-[1.4rem] border border-b-0 border-white/[0.16] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.96))] text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted shadow-[0_12px_28px_rgba(7,2,22,0.26)] backdrop-blur-xl md:hidden"
+          style={{ bottom: "env(safe-area-inset-bottom, 0px)" }}
+        >
+          Nav
+        </button>
+      ) : null}
 
       {/* Sidebar (iPad / md+) */}
       <nav

@@ -68,7 +68,7 @@ export default function TagInput({
               key={tag}
               className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
             >
-              <span>#{tag}</span>
+              <span>{tag}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -135,7 +135,7 @@ export default function TagInput({
               disabled={disabled}
               className="rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-xs text-text-muted transition duration-fast hover:border-border-strong hover:bg-white/[0.08] disabled:opacity-50"
             >
-              Use #{tag}
+              Use {tag}
             </button>
           ))}
         </div>

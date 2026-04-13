@@ -14,7 +14,7 @@ import {
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
-import { updateCardSchedule, getDifficultyInfo, type CardRating } from "@/lib/study/scheduler";
+import { isStruggleRating, isSuccessfulRating, updateCardSchedule, getDifficultyInfo, type CardRating } from "@/lib/study/scheduler";
 import { getUpdatedGoalAfterAnswer, normalizeGoal } from "@/lib/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
 import { createStarForGoalIfMissing } from "@/services/constellation/stars";
@@ -38,6 +38,13 @@ type SessionStats = {
   completedGoals: number;
   starsEarned: number;
   ratings: Record<CardRating, number>;
+};
+
+const RATING_LABELS: Record<CardRating, string> = {
+  again: "Again",
+  hard: "Hard",
+  good: "Good",
+  easy: "Easy",
 };
 
 function buildVisibleCards(
@@ -83,9 +90,10 @@ function createEmptySessionStats(): SessionStats {
     completedGoals: 0,
     starsEarned: 0,
     ratings: {
-      wrong: 0,
-      right: 0,
       again: 0,
+      hard: 0,
+      good: 0,
+      easy: 0,
     },
   };
 }
@@ -264,7 +272,7 @@ export default function DeckStudyPageClient() {
     try {
       const now = Date.now();
       const schedule = updateCardSchedule(current, rating);
-      const isCorrect = rating === "right";
+      const isCorrect = isSuccessfulRating(rating);
       const goalsCollection = collection(db, "users", user.uid, "goals");
       const activeGoalsSnapshot = await getDocs(
         query(goalsCollection, where("status", "==", "active"))
@@ -301,6 +309,7 @@ export default function DeckStudyPageClient() {
         updateDoc(doc(db, "cards", current.id), schedule),
         recordStudyReview(user.uid, now, {
           isCorrect,
+          sessionKind: "custom",
           durationMs: flipTimestampRef.current > 0
             ? now - flipTimestampRef.current
             : undefined,
@@ -337,7 +346,7 @@ export default function DeckStudyPageClient() {
         },
       }));
 
-      if (rating === "wrong") {
+      if (isStruggleRating(rating)) {
         setShowExplanation(true);
       } else {
         goNext();
@@ -389,9 +398,10 @@ export default function DeckStudyPageClient() {
       }
 
       const ratingMap: Record<string, CardRating> = {
-        "1": "wrong",
-        "2": "again",
-        "3": "right",
+        "1": "again",
+        "2": "hard",
+        "3": "good",
+        "4": "easy",
       };
       const mappedRating = ratingMap[event.key];
       if (mappedRating) {
@@ -460,7 +470,7 @@ export default function DeckStudyPageClient() {
                           : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"
                       }`}
                     >
-                      #{tag}
+                      {tag}
                     </button>
                   );
                 })}
@@ -524,7 +534,7 @@ export default function DeckStudyPageClient() {
             title="No cards to study"
             description={
               selectedTags.length > 0
-                ? `No ${studyMode === "due" ? "due " : ""}cards in this deck match ${selectedTags.map((tag) => `#${tag}`).join(", ")}.`
+                ? `No ${studyMode === "due" ? "due " : ""}cards in this deck match ${selectedTags.join(", ")}.`
                 : studyMode === "due"
                   ? "No cards are due right now. Check back later or switch to all cards."
                   : "This deck has no cards yet. Add some from the deck page."
@@ -554,8 +564,12 @@ export default function DeckStudyPageClient() {
               </div>
               <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
                 <div className="text-xs text-text-muted">Ratings</div>
-                <div className="mt-2 text-sm text-text-secondary">
-                  {sessionStats.ratings.wrong}w | {sessionStats.ratings.right}r | {sessionStats.ratings.again}a
+                <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-text-secondary">
+                  {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => (
+                    <span key={rating} className="rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1">
+                      {RATING_LABELS[rating]} {sessionStats.ratings[rating]}
+                    </span>
+                  ))}
                 </div>
               </div>
               <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
@@ -640,7 +654,7 @@ export default function DeckStudyPageClient() {
                           key={tag}
                           className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
                         >
-                          #{tag}
+                          {tag}
                         </span>
                       ))}
                     </div>
@@ -661,7 +675,7 @@ export default function DeckStudyPageClient() {
                           key={tag}
                           className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
                         >
-                          #{tag}
+                          {tag}
                         </span>
                       ))}
                     </div>
@@ -705,12 +719,13 @@ export default function DeckStudyPageClient() {
                 />
               ) : (
                 <div className="space-y-3">
-                  <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="grid gap-3 sm:grid-cols-4">
                     {([
-                      { rating: "wrong" as CardRating, label: "Wrong", key: "1", color: "border border-transparent bg-error text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
-                      { rating: "again" as CardRating, label: "Again", key: "2", color: "border border-border bg-white/[0.06] text-white hover:border-border-strong hover:bg-white/[0.10]" },
-                      { rating: "right" as CardRating, label: "Right", key: "3", color: "border border-transparent bg-success text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
-                    ]).map(({ rating, label, key, color }) => (
+                      { rating: "again" as CardRating, key: "1", hint: "Missed it", color: "border border-transparent bg-error text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
+                      { rating: "hard" as CardRating, key: "2", hint: "Barely recalled", color: "border border-amber-400/35 bg-amber-500/15 text-amber-100 hover:border-amber-300/60 hover:bg-amber-500/20" },
+                      { rating: "good" as CardRating, key: "3", hint: "Recalled", color: "border border-border bg-white/[0.06] text-white hover:border-border-strong hover:bg-white/[0.10]" },
+                      { rating: "easy" as CardRating, key: "4", hint: "Instant", color: "border border-transparent bg-success text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
+                    ]).map(({ rating, key, hint, color }) => (
                       <button
                         key={rating}
                         type="button"
@@ -718,7 +733,8 @@ export default function DeckStudyPageClient() {
                         className={`flex min-h-[5.25rem] flex-col items-center justify-center gap-1 rounded-[1.75rem] px-4 py-4 text-sm font-semibold shadow-card transition duration-fast ease-spring active:scale-[0.98] disabled:opacity-50 ${color}`}
                         onClick={() => void handleRating(rating)}
                       >
-                        <span>{label}</span>
+                        <span>{RATING_LABELS[rating]}</span>
+                        <span className="text-xs opacity-70">{hint}</span>
                         <span className="text-xs opacity-70">{key}</span>
                       </button>
                     ))}
@@ -738,4 +754,3 @@ export default function DeckStudyPageClient() {
     </AppPage>
   );
 }
-

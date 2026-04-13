@@ -24,6 +24,7 @@ import {
 import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
+import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
@@ -370,9 +371,12 @@ export default function DeckDetailPageClient() {
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 Deck editor
               </div>
-              <h1 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
-                {deck.name}
-              </h1>
+              <div className="mt-3 flex items-center gap-4">
+                <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} className="h-16 w-16" />
+                <h1 className="min-w-0 truncate text-3xl font-bold tracking-tight sm:text-4xl">
+                  {deck.name}
+                </h1>
+              </div>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                 Edit prompts, answers, and tags.
               </p>
@@ -593,7 +597,7 @@ export default function DeckDetailPageClient() {
                           key={tag}
                           className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
                         >
-                          #{tag}
+                          {tag}
                         </span>
                       ))}
                       </>

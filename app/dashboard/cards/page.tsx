@@ -474,7 +474,7 @@ export default function CardsSearchPage() {
                           key={tag}
                           className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
                         >
-                          #{tag}
+                          {tag}
                         </span>
                       ))}
                     </div>

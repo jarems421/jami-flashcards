@@ -8,9 +8,14 @@ import {
   parseCardTagsParam,
 } from "@/lib/study/cards";
 import {
+  buildDailyReviewQueues,
+  getDailyReviewBucket,
+} from "@/lib/study/daily-review";
+import {
   updateCardSchedule,
   getDifficultyInfo,
 } from "@/lib/study/scheduler";
+import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 
 describe("card tag helpers", () => {
   it("normalizes and deduplicates comma-separated tags", () => {
@@ -63,8 +68,8 @@ describe("card tag helpers", () => {
 });
 
 describe("FSRS scheduler", () => {
-  it("schedules a new card with 'right' rating and returns FSRS fields", () => {
-    const result = updateCardSchedule({}, "right");
+  it("schedules a new card with 'good' rating and returns FSRS fields", () => {
+    const result = updateCardSchedule({}, "good");
     expect(result.dueDate).toBeGreaterThan(Date.now() - 1000);
     expect(result.stability).toBeGreaterThan(0);
     expect(result.difficulty).toBeGreaterThan(0);
@@ -78,11 +83,9 @@ describe("FSRS scheduler", () => {
     expect(result.repetitions).toBe(1);
   });
 
-  it("increases lapses when rating 'wrong'", () => {
-    // First review: right
-    const first = updateCardSchedule({}, "right");
-    // Second review: wrong
-    const second = updateCardSchedule(first, "wrong");
+  it("increases review pressure when rating 'again'", () => {
+    const first = updateCardSchedule({}, "good");
+    const second = updateCardSchedule(first, "again");
     expect(second.lapses).toBeGreaterThanOrEqual(0);
     expect(second.reps).toBe(2);
     expect(second.dueDate).toBeGreaterThan(Date.now() - 1000);
@@ -95,19 +98,33 @@ describe("FSRS scheduler", () => {
       easeFactor: 2.2,
       dueDate: Date.now() - 86400000,
     };
-    const result = updateCardSchedule(legacyCard, "right");
+    const result = updateCardSchedule(legacyCard, "good");
     // Should produce valid FSRS output even from legacy input
     expect(result.stability).toBeGreaterThan(0);
     expect(result.difficulty).toBeGreaterThan(0);
     expect(result.dueDate).toBeGreaterThan(Date.now() - 1000);
   });
 
-  it("uses 'again' rating as FSRS Hard", () => {
-    const first = updateCardSchedule({}, "right");
+  it("uses the four standard FSRS ratings", () => {
+    const first = updateCardSchedule({}, "good");
     const again = updateCardSchedule(first, "again");
-    const right = updateCardSchedule(first, "right");
-    // 'again' (Hard) should schedule sooner than 'right' (Good)
-    expect(again.dueDate).toBeLessThanOrEqual(right.dueDate);
+    const hard = updateCardSchedule(first, "hard");
+    const good = updateCardSchedule(first, "good");
+    const easy = updateCardSchedule(first, "easy");
+
+    expect(again.dueDate).toBeLessThanOrEqual(hard.dueDate);
+    expect(hard.dueDate).toBeLessThanOrEqual(good.dueDate);
+    expect(good.dueDate).toBeLessThanOrEqual(easy.dueDate);
+  });
+
+  it("repeated 'again' answers make the memory risk high", () => {
+    let card = updateCardSchedule({}, "again");
+    for (let index = 0; index < 4; index += 1) {
+      card = updateCardSchedule(card, "again");
+    }
+
+    expect(card.difficulty).toBeGreaterThanOrEqual(7);
+    expect(getMemoryRiskInfo(card).tier).toBe("high");
   });
 });
 
@@ -121,5 +138,72 @@ describe("getDifficultyInfo", () => {
     expect(getDifficultyInfo(2).tier).toBe("easy");
     expect(getDifficultyInfo(5).tier).toBe("medium");
     expect(getDifficultyInfo(8).tier).toBe("hard");
+  });
+});
+
+describe("daily review memory risk", () => {
+  it("keeps new cards in required medium review", () => {
+    const now = Date.now();
+    expect(
+      getDailyReviewBucket({
+        id: "new",
+        deckId: "deck",
+        userId: "user",
+        front: "front",
+        back: "back",
+        createdAt: now,
+        tags: [],
+      })
+    ).toBe("medium");
+  });
+
+  it("pulls easy due cards into required review when memory risk is high", () => {
+    const now = Date.now();
+    const { requiredCards, optionalCards } = buildDailyReviewQueues(
+      [
+        {
+          id: "risky-easy",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now,
+          tags: [],
+          difficulty: 2,
+          reps: 5,
+          lapses: 3,
+          dueDate: now - 1000,
+        },
+      ],
+      now
+    );
+
+    expect(requiredCards.map((card) => card.id)).toEqual(["risky-easy"]);
+    expect(optionalCards).toHaveLength(0);
+  });
+
+  it("includes custom struggles on their override study day even if not due", () => {
+    const now = Date.UTC(2026, 0, 2, 17);
+    const { requiredCards } = buildDailyReviewQueues(
+      [
+        {
+          id: "custom-struggle",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now,
+          tags: [],
+          difficulty: 2,
+          reps: 5,
+          lapses: 0,
+          dueDate: now + 7 * 24 * 60 * 60 * 1000,
+          memoryRiskOverrideDayKey: "2026-01-02",
+        },
+      ],
+      now
+    );
+
+    expect(requiredCards.map((card) => card.id)).toEqual(["custom-struggle"]);
   });
 });

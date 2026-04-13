@@ -4,12 +4,19 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
-import { createDeck, deleteDeck, getDecks, renameDeck, type Deck } from "@/services/study/decks";
+import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckStyle, type Deck } from "@/services/study/decks";
+import {
+  DECK_COLOR_PRESETS,
+  DECK_ICON_PRESETS,
+  type DeckColorPresetId,
+  type DeckIconPresetId,
+} from "@/lib/study/deck-style";
 import { db } from "@/services/firebase/client";
 import AppPage from "@/components/layout/AppPage";
 import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDeckHref } from "@/lib/app/routes";
+import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 
 type DeckCounts = Record<string, { due: number; total: number }>;
 type Feedback = { type: "success" | "error"; message: string };
@@ -23,6 +30,8 @@ export default function DecksPage() {
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
   const [editingDeckName, setEditingDeckName] = useState("");
+  const [editingDeckColor, setEditingDeckColor] = useState<DeckColorPresetId>("aurora");
+  const [editingDeckIcon, setEditingDeckIcon] = useState<DeckIconPresetId>("book");
   const [savingDeckId, setSavingDeckId] = useState<string | null>(null);
   const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -101,6 +110,8 @@ export default function DecksPage() {
   const resetDeckEditing = () => {
     setEditingDeckId(null);
     setEditingDeckName("");
+    setEditingDeckColor("aurora");
+    setEditingDeckIcon("book");
   };
 
   const handleCreate = async () => {
@@ -126,9 +137,12 @@ export default function DecksPage() {
     setFeedback(null);
     try {
       await renameDeck(user.uid, deck.id, editingDeckName.trim());
+      await updateDeckStyle(user.uid, deck.id, {
+        colorPreset: editingDeckColor,
+        iconPreset: editingDeckIcon,
+      });
       await loadAll();
-      setEditingDeckId(null);
-      setEditingDeckName("");
+      resetDeckEditing();
       setFeedback({ type: "success", message: `Renamed deck to ${editingDeckName.trim()}.` });
     } catch (error) {
       console.error(error);
@@ -223,22 +237,54 @@ export default function DecksPage() {
                       {editingDeckId === deck.id ? (
                         <div className="space-y-2">
                           <Input value={editingDeckName} onChange={(event) => setEditingDeckName(event.target.value)} placeholder="Deck name" />
+                          <div className="space-y-3 rounded-[1.4rem] border border-white/[0.07] bg-white/[0.04] p-3">
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Cover</div>
+                            <div className="flex flex-wrap gap-2">
+                              {DECK_COLOR_PRESETS.map((preset) => (
+                                <button
+                                  key={preset.id}
+                                  type="button"
+                                  aria-label={`Use ${preset.label} deck color`}
+                                  onClick={() => setEditingDeckColor(preset.id)}
+                                  className={`h-9 w-9 rounded-full border-2 ${preset.swatchClassName} ${editingDeckColor === preset.id ? "border-white" : "border-white/20"}`}
+                                />
+                              ))}
+                            </div>
+                            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                              {DECK_ICON_PRESETS.map((preset) => (
+                                <button
+                                  key={preset.id}
+                                  type="button"
+                                  onClick={() => setEditingDeckIcon(preset.id)}
+                                  className={`flex h-10 items-center justify-center rounded-[0.9rem] border text-white transition ${editingDeckIcon === preset.id ? "border-accent bg-accent/20" : "border-white/[0.08] bg-white/[0.04] hover:border-border-strong"}`}
+                                  title={preset.label}
+                                >
+                                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
+                                    <path d={preset.path} />
+                                  </svg>
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                           <div className="flex flex-wrap gap-2">
                             <Button type="button" disabled={savingDeckId === deck.id || !editingDeckName.trim()} onClick={() => void handleDeckRename(deck)}>{savingDeckId === deck.id ? "Saving..." : "Save"}</Button>
                             <Button type="button" disabled={savingDeckId === deck.id} onClick={resetDeckEditing} variant="secondary">Cancel</Button>
                           </div>
                         </div>
                       ) : (
-                        <Link href={getDeckHref(deck.id)} className="block transition duration-fast hover:opacity-80">
-                          <div className="font-semibold">{deck.name}</div>
-                          <div className="text-sm text-text-muted">{counts.total} cards · {counts.due} currently due</div>
+                        <Link href={getDeckHref(deck.id)} className="flex items-center gap-3 transition duration-fast hover:opacity-80">
+                          <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} />
+                          <div className="min-w-0">
+                            <div className="truncate font-semibold">{deck.name}</div>
+                            <div className="text-sm text-text-muted">{counts.total} cards · {counts.due} currently due</div>
+                          </div>
                         </Link>
                       )}
                     </div>
 
                     <div className="flex flex-wrap gap-2">
-                      <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setFeedback(null); }} variant="secondary">
-                        Rename
+                      <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setFeedback(null); }} variant="secondary">
+                        Customise
                       </Button>
                       <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => void handleDeckDelete(deck)} variant="danger">
                         {deletingDeckId === deck.id ? "Deleting..." : "Delete"}

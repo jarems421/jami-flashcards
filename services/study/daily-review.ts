@@ -6,6 +6,7 @@ import {
   getDoc,
   getDocs,
   query,
+  runTransaction,
   setDoc,
   where,
 } from "firebase/firestore";
@@ -14,6 +15,7 @@ import { withTimeout } from "@/services/firebase/firestore";
 import {
   buildDailyReviewQueues,
   DAILY_REVIEW_STATE_DOC_ID,
+  DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
   normalizeDailyReviewState,
   STUDY_ACTIVITY_SCHEMA_VERSION,
   STUDY_STATE_META_DOC_ID,
@@ -133,6 +135,8 @@ export async function ensureDailyReviewState(
     optionalCardIds: optionalCards.map((card) => card.id),
     completedRequiredCardIds: [] as string[],
     completedOptionalCardIds: [] as string[],
+    parkedRequiredCardIds: [] as string[],
+    requiredRetryCounts: {} as Record<string, number>,
     updatedAt: now,
   };
 
@@ -146,6 +150,51 @@ export async function ensureDailyReviewState(
     id: DAILY_REVIEW_STATE_DOC_ID,
     ...nextState,
   };
+}
+
+export async function recordDailyReviewWeakAttempt(
+  userId: string,
+  cardId: string,
+  now = Date.now()
+) {
+  const stateRef = getStudyStateDoc(userId, DAILY_REVIEW_STATE_DOC_ID);
+
+  return withTimeout(
+    runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(stateRef);
+      const state = snapshot.exists()
+        ? normalizeDailyReviewState(
+            snapshot.id,
+            snapshot.data() as Record<string, unknown>
+          )
+        : null;
+      const currentAttempts = state?.requiredRetryCounts[cardId] ?? 0;
+      const attemptCount = currentAttempts + 1;
+      const parked = attemptCount >= DAILY_REVIEW_MAX_WEAK_ATTEMPTS;
+      const nextRetryCounts = {
+        ...(state?.requiredRetryCounts ?? {}),
+        [cardId]: attemptCount,
+      };
+      const nextParkedCardIds =
+        parked && state && !state.parkedRequiredCardIds.includes(cardId)
+          ? [...state.parkedRequiredCardIds, cardId]
+          : state?.parkedRequiredCardIds ?? (parked ? [cardId] : []);
+
+      transaction.set(
+        stateRef,
+        {
+          requiredRetryCounts: nextRetryCounts,
+          parkedRequiredCardIds: nextParkedCardIds,
+          updatedAt: now,
+        },
+        { merge: true }
+      );
+
+      return { attemptCount, parked };
+    }),
+    SAVE_MS,
+    "Update daily review retry"
+  );
 }
 
 export async function markDailyReviewCardComplete(

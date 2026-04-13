@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import AppTopBar from "@/components/layout/AppTopBar";
 
 type AppPageWidth = "sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "study";
@@ -27,7 +27,7 @@ const widthClasses: Record<AppPageWidth, string> = {
   study: "max-w-[88rem]",
 };
 
-const SCROLL_THRESHOLD = 0;
+const TOP_BAR_HIDE_OFFSET = 12;
 
 export default function AppPage({
   title,
@@ -41,16 +41,9 @@ export default function AppPage({
   topBarClassName = "",
 }: AppPageProps) {
   const [hidden, setHidden] = useState(false);
-  const lastScrollY = useRef(0);
 
   const handleScroll = useCallback(() => {
-    const y = window.scrollY;
-    if (y > lastScrollY.current && y > SCROLL_THRESHOLD) {
-      setHidden(true); // scrolling down, hide
-    } else if (y < lastScrollY.current) {
-      setHidden(false); // scrolling up, show
-    }
-    lastScrollY.current = y;
+    setHidden(window.scrollY > TOP_BAR_HIDE_OFFSET);
   }, []);
 
   useEffect(() => {

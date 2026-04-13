@@ -6,7 +6,7 @@ import {
   type Grade,
 } from "ts-fsrs";
 
-export type CardRating = "wrong" | "right" | "again";
+export type CardRating = "again" | "hard" | "good" | "easy";
 
 type SchedulableCard = {
   interval?: number;
@@ -40,13 +40,24 @@ type CardSchedule = {
   elapsedDays: number;
 };
 
-const scheduler = fsrs();
+const scheduler = fsrs({
+  request_retention: 0.92,
+});
 
 const RATING_MAP: Record<CardRating, Grade> = {
-  wrong: Rating.Again,
-  again: Rating.Hard,
-  right: Rating.Good,
+  again: Rating.Again,
+  hard: Rating.Hard,
+  good: Rating.Good,
+  easy: Rating.Easy,
 };
+
+export function isStruggleRating(rating: CardRating) {
+  return rating === "again" || rating === "hard";
+}
+
+export function isSuccessfulRating(rating: CardRating) {
+  return rating === "good" || rating === "easy";
+}
 
 function toFSRSCard(card: SchedulableCard): FSRSCard {
   // If the card has FSRS fields, reconstruct the FSRS card

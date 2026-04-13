@@ -25,6 +25,10 @@ export type Card = {
   lastReview?: number; // epoch ms
   scheduledDays?: number;
   elapsedDays?: number;
+  lastStruggleAt?: number;
+  lastStruggleStudyDayKey?: string;
+  memoryRiskOverrideDayKey?: string;
+  customStruggleCount?: number;
 };
 
 function normalizeSingleTag(value: string): string {
@@ -215,5 +219,18 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
     lastReview: typeof data.lastReview === "number" ? data.lastReview : undefined,
     scheduledDays: typeof data.scheduledDays === "number" ? data.scheduledDays : undefined,
     elapsedDays: typeof data.elapsedDays === "number" ? data.elapsedDays : undefined,
+    lastStruggleAt: typeof data.lastStruggleAt === "number" ? data.lastStruggleAt : undefined,
+    lastStruggleStudyDayKey:
+      typeof data.lastStruggleStudyDayKey === "string"
+        ? data.lastStruggleStudyDayKey
+        : undefined,
+    memoryRiskOverrideDayKey:
+      typeof data.memoryRiskOverrideDayKey === "string"
+        ? data.memoryRiskOverrideDayKey
+        : undefined,
+    customStruggleCount:
+      typeof data.customStruggleCount === "number"
+        ? data.customStruggleCount
+        : undefined,
   };
 }

@@ -170,3 +170,19 @@ export async function saveStarPosition(
   );
 }
 
+export async function saveStarName(
+  userId: string,
+  starId: string,
+  name: string
+) {
+  const trimmedName = name.trim();
+
+  await withTimeout(
+    updateDoc(doc(db, "users", userId, "stars", starId), {
+      name: trimmedName || null,
+    }),
+    UPDATE_MS,
+    "Save star name"
+  );
+}
+

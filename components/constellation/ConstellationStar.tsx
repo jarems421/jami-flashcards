@@ -11,6 +11,7 @@ type ConstellationStarProps = {
   star: NormalizedStar;
   onDragStart?: () => void;
   variant?: "default" | "background" | "preview";
+  highlighted?: boolean;
 };
 
 const DEFAULT_STAR_ICON = "/images/constellation/star.png";
@@ -50,6 +51,7 @@ export default function ConstellationStar({
   star,
   onDragStart,
   variant = "default",
+  highlighted = false,
 }: ConstellationStarProps) {
   const isBackground = variant === "background";
   const isPreview = variant === "preview";
@@ -72,7 +74,11 @@ export default function ConstellationStar({
         width: `${starSize}px`,
         height: `${starSize}px`,
       }}
+      title={star.name || "Earned star"}
     >
+      {highlighted ? (
+        <div className="absolute inset-[-10px] rounded-full border border-warm-accent/70 bg-warm-accent/10 shadow-[0_0_22px_rgba(255,214,246,0.28)]" />
+      ) : null}
       <div
         className="pointer-events-none relative h-full w-full"
         style={{
@@ -110,4 +116,3 @@ export default function ConstellationStar({
     </div>
   );
 }
-

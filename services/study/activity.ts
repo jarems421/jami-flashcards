@@ -13,7 +13,11 @@ const UPDATE_MS = 30_000;
 export async function recordStudyReview(
   userId: string,
   reviewedAt = Date.now(),
-  options: { isCorrect?: boolean; durationMs?: number } = {}
+  options: {
+    isCorrect?: boolean;
+    durationMs?: number;
+    sessionKind?: "daily" | "custom";
+  } = {}
 ) {
   const dayKey = getStudyDayKey(reviewedAt);
   const updates: Record<string, unknown> = {
@@ -24,6 +28,20 @@ export async function recordStudyReview(
 
   if (options.isCorrect) {
     updates.correctCount = increment(1);
+  }
+
+  if (options.sessionKind === "daily") {
+    updates.dailyReviewCount = increment(1);
+    if (options.isCorrect) {
+      updates.dailyCorrectCount = increment(1);
+    }
+  }
+
+  if (options.sessionKind === "custom") {
+    updates.customReviewCount = increment(1);
+    if (options.isCorrect) {
+      updates.customCorrectCount = increment(1);
+    }
   }
 
   if (typeof options.durationMs === "number" && options.durationMs > 0) {

@@ -3,16 +3,15 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { doc, updateDoc } from "firebase/firestore";
+import { deleteField, doc, increment, updateDoc } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import { isDailyReviewRequiredComplete, type DailyReviewState } from "@/lib/study/daily-review";
-import { getMsUntilNextStudyBoundary } from "@/lib/study/day";
-import { updateCardSchedule, getDifficultyInfo, type CardRating } from "@/lib/study/scheduler";
+import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
+import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
 import { parseCardTagsParam, type Card } from "@/lib/study/cards";
-import { getStudyReason } from "@/lib/study/insights";
-import { ensureDailyReviewState, ensureStudyStateSetup, loadUserCards, markDailyReviewCardComplete } from "@/services/study/daily-review";
+import { ensureDailyReviewState, ensureStudyStateSetup, loadUserCards, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
@@ -22,6 +21,7 @@ import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, ProgressBar, S
 
 type SessionKind = "daily-required" | "daily-optional" | "custom";
 type SessionStats = { reviewedCards: number; correctAnswers: number; completedGoals: number; starsEarned: number; ratings: Record<CardRating, number>; };
+const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
 
 function parseDeckIdsParam(value: string | null) {
   if (!value) return [];
@@ -38,7 +38,7 @@ function formatCountdown(ms: number) {
 }
 
 function createEmptySessionStats(): SessionStats {
-  return { reviewedCards: 0, correctAnswers: 0, completedGoals: 0, starsEarned: 0, ratings: { wrong: 0, right: 0, again: 0 } };
+  return { reviewedCards: 0, correctAnswers: 0, completedGoals: 0, starsEarned: 0, ratings: { again: 0, hard: 0, good: 0, easy: 0 } };
 }
 
 function getCardsByIds(cards: Card[], ids: string[]) {
@@ -144,7 +144,8 @@ export default function StudyPage() {
   const remainingRequiredCards = useMemo(() => {
     if (!dailyReviewState) return [];
     const completed = new Set(dailyReviewState.completedRequiredCardIds);
-    return requiredDailyCards.filter((card) => !completed.has(card.id));
+    const parked = new Set(dailyReviewState.parkedRequiredCardIds);
+    return requiredDailyCards.filter((card) => !completed.has(card.id) && !parked.has(card.id));
   }, [dailyReviewState, requiredDailyCards]);
   const remainingOptionalCards = useMemo(() => {
     if (!dailyReviewState) return [];
@@ -202,18 +203,6 @@ export default function StudyPage() {
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
-  const currentStudyReason = useMemo(
-    () =>
-      current && sessionKind
-        ? getStudyReason({
-            card: current,
-            sessionKind,
-            selectedDeckIds,
-            selectedTags,
-          })
-        : null,
-    [current, selectedDeckIds, selectedTags, sessionKind]
-  );
   const totalCards = sessionCards.length;
   const currentCardNumber = current ? index + 1 : 0;
   const accuracyPercentage = sessionStats.reviewedCards > 0 ? Math.round((sessionStats.correctAnswers / sessionStats.reviewedCards) * 100) : 0;
@@ -225,32 +214,107 @@ export default function StudyPage() {
     setShowExplanation(false);
   };
 
+  const requeueCurrentCard = (nextCard: Card) => {
+    setSessionCards((prev) => {
+      const before = prev.slice(0, index);
+      const after = prev.slice(index + 1);
+      return [...before, ...after, nextCard];
+    });
+    setFlipped(false);
+    setShowExplanation(false);
+  };
+
   const handleRating = async (rating: CardRating) => {
     if (!current || !sessionKind) return;
     setSavingRating(rating);
     setFeedback(null);
     try {
       const now = Date.now();
-      const isCorrect = rating === "right";
+      const isCorrect = isSuccessfulRating(rating);
+      const isStruggle = isStruggleRating(rating);
       const schedule = sessionKind === "custom" ? null : updateCardSchedule(current, rating);
-      const reviewPromise = recordStudyReview(user.uid, now, { isCorrect, durationMs: flipTimestampRef.current > 0 ? now - flipTimestampRef.current : undefined });
+      const cardUpdates: Record<string, unknown> = {};
+      if (schedule) {
+        Object.assign(cardUpdates, schedule);
+        if (isCorrect) {
+          cardUpdates.memoryRiskOverrideDayKey = deleteField();
+        }
+      } else if (isStruggle) {
+        const studyDayKey = getStudyDayKey(now);
+        cardUpdates.lastStruggleAt = now;
+        cardUpdates.lastStruggleStudyDayKey = studyDayKey;
+        cardUpdates.memoryRiskOverrideDayKey = shiftStudyDayKey(studyDayKey, 1);
+        cardUpdates.customStruggleCount = increment(1);
+      }
+
+      const reviewPromise = recordStudyReview(user.uid, now, {
+        isCorrect,
+        durationMs: flipTimestampRef.current > 0 ? now - flipTimestampRef.current : undefined,
+        sessionKind: sessionKind === "custom" ? "custom" : "daily",
+      });
       const goalProgressPromise = applyGoalProgressForAnswer(user.uid, isCorrect, now);
       const remainingPromises: Promise<unknown>[] = [];
-      if (schedule) remainingPromises.push(updateDoc(doc(db, "cards", current.id), schedule));
-      if (sessionKind === "daily-required") remainingPromises.push(markDailyReviewCardComplete(user.uid, current.id, "required"));
+      if (Object.keys(cardUpdates).length > 0) remainingPromises.push(updateDoc(doc(db, "cards", current.id), cardUpdates));
+      let retryResultPromise: Promise<{ attemptCount: number; parked: boolean }> | null = null;
+      if (sessionKind === "daily-required" && isStruggle) {
+        retryResultPromise = recordDailyReviewWeakAttempt(user.uid, current.id, now);
+        remainingPromises.push(retryResultPromise);
+      } else if (sessionKind === "daily-required") {
+        remainingPromises.push(markDailyReviewCardComplete(user.uid, current.id, "required"));
+      }
       if (sessionKind === "daily-optional") remainingPromises.push(markDailyReviewCardComplete(user.uid, current.id, "optional"));
       const [, goalProgress] = await Promise.all([reviewPromise, goalProgressPromise, ...remainingPromises]);
-      if (schedule) {
-        setCards((prev) => prev.map((card) => (card.id === current.id ? { ...card, ...schedule } : card)));
+      const retryResult = retryResultPromise ? await retryResultPromise : null;
+      const parkedRiskUpdates =
+        sessionKind === "daily-required" && isStruggle && retryResult?.parked
+          ? {
+              lastStruggleAt: now,
+              lastStruggleStudyDayKey: getStudyDayKey(now),
+              memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
+            }
+          : null;
+      if (parkedRiskUpdates) {
+        await updateDoc(doc(db, "cards", current.id), parkedRiskUpdates);
+      }
+      const nextCard: Card = {
+        ...current,
+        ...(schedule ?? {}),
+        ...(parkedRiskUpdates ?? {}),
+        ...(sessionKind === "custom" && isStruggle
+          ? {
+              lastStruggleAt: now,
+              lastStruggleStudyDayKey: getStudyDayKey(now),
+              memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
+              customStruggleCount: (current.customStruggleCount ?? 0) + 1,
+            }
+          : {}),
+        ...(schedule && isCorrect ? { memoryRiskOverrideDayKey: undefined } : {}),
+      };
+      if (schedule || (sessionKind === "custom" && isStruggle)) {
+        setCards((prev) => prev.map((card) => (card.id === current.id ? nextCard : card)));
       }
       if (sessionKind === "daily-required") {
-        setDailyReviewState((prev) => prev ? { ...prev, completedRequiredCardIds: prev.completedRequiredCardIds.includes(current.id) ? prev.completedRequiredCardIds : [...prev.completedRequiredCardIds, current.id], updatedAt: now } : prev);
+        if (isStruggle && retryResult) {
+          setDailyReviewState((prev) => prev ? {
+            ...prev,
+            requiredRetryCounts: { ...prev.requiredRetryCounts, [current.id]: retryResult.attemptCount },
+            parkedRequiredCardIds: retryResult.parked && !prev.parkedRequiredCardIds.includes(current.id) ? [...prev.parkedRequiredCardIds, current.id] : prev.parkedRequiredCardIds,
+            updatedAt: now,
+          } : prev);
+        } else {
+          setDailyReviewState((prev) => prev ? { ...prev, completedRequiredCardIds: prev.completedRequiredCardIds.includes(current.id) ? prev.completedRequiredCardIds : [...prev.completedRequiredCardIds, current.id], updatedAt: now } : prev);
+        }
       } else if (sessionKind === "daily-optional") {
         setDailyReviewState((prev) => prev ? { ...prev, completedOptionalCardIds: prev.completedOptionalCardIds.includes(current.id) ? prev.completedOptionalCardIds : [...prev.completedOptionalCardIds, current.id], updatedAt: now } : prev);
       }
       setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals + goalProgress.completedGoals, starsEarned: prev.starsEarned + goalProgress.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
-      if (rating === "wrong") setShowExplanation(true);
-      else goNext();
+      if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
+        requeueCurrentCard(nextCard);
+      } else if (isStruggle && sessionKind !== "daily-required") {
+        setShowExplanation(true);
+      } else {
+        goNext();
+      }
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "Failed to save that answer. Please try again." });
@@ -279,7 +343,7 @@ export default function StudyPage() {
         return;
       }
       if (!flipped || savingRating !== null || !current) return;
-      const ratingMap: Record<string, CardRating> = { "1": "wrong", "2": "again", "3": "right" };
+      const ratingMap: Record<string, CardRating> = { "1": "again", "2": "hard", "3": "good", "4": "easy" };
       const mappedRating = ratingMap[event.key];
       if (mappedRating) {
         event.preventDefault();
@@ -374,7 +438,7 @@ export default function StudyPage() {
                               setSelectedTags((prev) => prev.includes(tag) ? prev.filter((currentTag) => currentTag !== tag) : [...prev, tag]);
                             }}
                           >
-                            #{tag}
+                            {tag}
                           </button>
                         );
                       })}
@@ -407,7 +471,16 @@ export default function StudyPage() {
                 </div>
                 <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Accuracy</div><div className="mt-2 text-2xl font-semibold">{accuracyPercentage}%</div></div>
-                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Ratings</div><div className="mt-2 text-sm text-text-secondary">{sessionStats.ratings.wrong}w · {sessionStats.ratings.right}r · {sessionStats.ratings.again}a</div></div>
+                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
+                    <div className="text-xs text-text-muted">Ratings</div>
+                    <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-text-secondary">
+                      {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => (
+                        <span key={rating} className="rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1">
+                          {RATING_LABELS[rating]} {sessionStats.ratings[rating]}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
                   <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Goals completed</div><div className="mt-2 text-2xl font-semibold">{sessionStats.completedGoals}</div></div>
                   <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Rewards</div><div className="mt-2 text-sm text-text-secondary">{sessionStats.starsEarned} star{sessionStats.starsEarned === 1 ? "" : "s"}</div></div>
                 </div>
@@ -433,28 +506,13 @@ export default function StudyPage() {
                     <div className={`relative aspect-[4/3] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/11] xl:aspect-[16/10] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
                       <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] sm:p-8 lg:p-10">
                         <div className="flex flex-wrap gap-2">
-                          {(() => {
-                            const difficulty = getDifficultyInfo(current.difficulty);
-                            const tierColors = { easy: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300", medium: "border-amber-500/30 bg-amber-500/10 text-amber-300", hard: "border-rose-500/30 bg-rose-500/10 text-rose-300" };
-                            return <span className={`rounded-full border px-3 py-1.5 text-xs font-medium ${tierColors[difficulty.tier]}`}>{difficulty.label}</span>;
-                          })()}
-                          {current.tags.map((tag) => <span key={tag} className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">#{tag}</span>)}
+                          {current.tags.map((tag) => <span key={tag} className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">{tag}</span>)}
                         </div>
-                        {currentStudyReason ? (
-                          <div className="mt-4 rounded-[1.4rem] border border-accent/15 bg-accent/10 p-4">
-                            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">
-                              Why this card now
-                            </div>
-                            <p className="mt-2 text-sm leading-6 text-text-secondary">
-                              {currentStudyReason}
-                            </p>
-                          </div>
-                        ) : null}
                         <div className="flex flex-1 items-center justify-center py-6"><p className="max-w-4xl text-center text-2xl font-bold leading-tight sm:text-3xl xl:text-[2.65rem]">{current.front}</p></div>
                         <div className="text-center text-xs uppercase tracking-[0.2em] text-text-muted">{flipped ? "" : "Tap or press Space to reveal the answer"}</div>
                       </div>
                       <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-accent/30 bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
-                        <div className="flex flex-wrap gap-2">{current.tags.map((tag) => <span key={tag} className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">#{tag}</span>)}</div>
+                        <div className="flex flex-wrap gap-2">{current.tags.map((tag) => <span key={tag} className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">{tag}</span>)}</div>
                         <div className="flex flex-1 items-center justify-center py-6"><p className="max-w-4xl text-center text-2xl font-bold leading-tight text-white sm:text-3xl xl:text-[2.65rem]">{current.back}</p></div>
                         <div className="text-center text-xs uppercase tracking-[0.2em] text-text-muted">How well did you recall this?</div>
                       </div>
@@ -481,12 +539,13 @@ export default function StudyPage() {
                     <StudyAssistant card={current} autoExplain mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} explanationCache={explanationCache} />
                   ) : (
                     <div className="space-y-3">
-                      <div className="grid gap-3 sm:grid-cols-3">
+                      <div className="grid gap-3 sm:grid-cols-4">
                         {([
-                          { rating: "wrong" as CardRating, label: "Wrong", key: "1", color: "border border-transparent bg-error text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
-                          { rating: "again" as CardRating, label: "Again", key: "2", color: "border border-border bg-white/[0.06] text-white hover:border-border-strong hover:bg-white/[0.10]" },
-                          { rating: "right" as CardRating, label: "Right", key: "3", color: "border border-transparent bg-success text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
-                        ]).map(({ rating, label, key, color }) => (
+                          { rating: "again" as CardRating, key: "1", hint: "Missed it", color: "border border-transparent bg-error text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
+                          { rating: "hard" as CardRating, key: "2", hint: "Barely recalled", color: "border border-amber-400/35 bg-amber-500/15 text-amber-100 hover:border-amber-300/60 hover:bg-amber-500/20" },
+                          { rating: "good" as CardRating, key: "3", hint: "Recalled", color: "border border-border bg-white/[0.06] text-white hover:border-border-strong hover:bg-white/[0.10]" },
+                          { rating: "easy" as CardRating, key: "4", hint: "Instant", color: "border border-transparent bg-success text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
+                        ]).map(({ rating, key, hint, color }) => (
                           <button
                             key={rating}
                             type="button"
@@ -494,7 +553,8 @@ export default function StudyPage() {
                             className={`flex min-h-[5.25rem] flex-col items-center justify-center gap-1 rounded-[1.75rem] px-4 py-4 text-sm font-semibold shadow-card transition duration-fast ease-spring active:scale-[0.98] disabled:opacity-50 ${color}`}
                             onClick={() => void handleRating(rating)}
                           >
-                            <span>{label}</span>
+                            <span>{RATING_LABELS[rating]}</span>
+                            <span className="text-xs opacity-70">{hint}</span>
                             <span className="text-xs opacity-70">{key}</span>
                           </button>
                         ))}

@@ -76,12 +76,6 @@ export default function ProfilePage() {
       </Button>
 
       <div className="space-y-4">
-        <Card className="flex items-center justify-between opacity-60" padding="md">
-            <span className="text-sm">Theme</span>
-            <span className="rounded-lg bg-glass-medium px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
-              Coming soon
-            </span>
-        </Card>
         <NotificationSettingsCard userId={user.uid} />
       </div>
 

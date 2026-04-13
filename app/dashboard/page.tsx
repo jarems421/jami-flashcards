@@ -78,11 +78,12 @@ export default function DashboardHome() {
 
       const dailyReviewState = await ensureDailyReviewState(uid, allCards, now);
       const completedRequiredIds = new Set(dailyReviewState.completedRequiredCardIds);
+      const parkedRequiredIds = new Set(dailyReviewState.parkedRequiredCardIds);
       const cardsById = new Map(allCards.map((card) => [card.id, card]));
       const requiredCards = dailyReviewState.requiredCardIds
         .map((cardId) => cardsById.get(cardId) ?? null)
         .filter((card): card is StudyCard => card !== null)
-        .filter((card) => !completedRequiredIds.has(card.id));
+        .filter((card) => !completedRequiredIds.has(card.id) && !parkedRequiredIds.has(card.id));
       const nextDeckDueCounts: DeckDueCounts = {};
       for (const card of requiredCards) {
         nextDeckDueCounts[card.deckId] = (nextDeckDueCounts[card.deckId] ?? 0) + 1;

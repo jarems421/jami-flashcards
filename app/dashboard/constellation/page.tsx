@@ -27,7 +27,7 @@ import {
   spreadBackfilledStars,
   type NormalizedStar,
 } from "@/lib/constellation/stars";
-import { backfillStarPositions, saveStarPosition } from "@/services/constellation/stars";
+import { backfillStarPositions, saveStarName, saveStarPosition } from "@/services/constellation/stars";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
@@ -50,6 +50,9 @@ export default function ConstellationDashboardPage() {
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [starsExpanded, setStarsExpanded] = useState(false);
+  const [focusedStarId, setFocusedStarId] = useState<string | null>(null);
+  const [renamingStarId, setRenamingStarId] = useState<string | null>(null);
+  const [starNameValue, setStarNameValue] = useState("");
   const [constellationName, setConstellationName] = useState("");
   const [isCreatingConstellation, setIsCreatingConstellation] = useState(false);
   const [isFinishingConstellation, setIsFinishingConstellation] = useState(false);
@@ -325,6 +328,42 @@ export default function ConstellationDashboardPage() {
     setRenameValue("");
   };
 
+  const focusStar = (star: NormalizedStar) => {
+    setSelectedConstellationId(star.constellationId);
+    setFocusedStarId(star.id);
+    document.getElementById("constellation-container")?.scrollIntoView({
+      block: "center",
+      behavior: "smooth",
+    });
+  };
+
+  const startStarRename = (star: NormalizedStar) => {
+    setRenamingStarId(star.id);
+    setStarNameValue(star.name ?? "");
+  };
+
+  const handleStarRename = async () => {
+    if (!renamingStarId) return;
+    const nextName = starNameValue.trim();
+
+    try {
+      await saveStarName(user.uid, renamingStarId, nextName);
+      setAllStars((prev) =>
+        prev.map((star) =>
+          star.id === renamingStarId ? { ...star, name: nextName || undefined } : star
+        )
+      );
+      setRenamingStarId(null);
+      setStarNameValue("");
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: "Failed to rename star.",
+      });
+    }
+  };
+
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
@@ -508,6 +547,7 @@ export default function ConstellationDashboardPage() {
                     <ConstellationStar
                       key={star.id}
                       star={star}
+                      highlighted={focusedStarId === star.id}
                       onDragStart={
                         canEditSelectedConstellation
                           ? () => setDraggingStarId(star.id)
@@ -669,15 +709,47 @@ export default function ConstellationDashboardPage() {
                   <div className="grid gap-3 animate-fade-in lg:grid-cols-2">
                     {allStars.map((star) => (
                       <div key={star.id} className="app-panel p-4 text-sm">
-                        <div className="flex items-center gap-3">
-                          <div
-                            className="h-3 w-3 rounded-full"
-                            style={{
-                              backgroundColor: star.color,
-                              boxShadow: `0 0 6px ${star.color}`,
-                            }}
-                          />
-                          <span className="text-text-secondary">Earned star</span>
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <button
+                            type="button"
+                            onClick={() => focusStar(star)}
+                            className="flex min-w-0 items-center gap-3 text-left transition hover:text-warm-accent"
+                          >
+                            <div
+                              className="h-3 w-3 rounded-full"
+                              style={{
+                                backgroundColor: star.color,
+                                boxShadow: `0 0 6px ${star.color}`,
+                              }}
+                            />
+                            <span className="min-w-0 truncate text-text-secondary">
+                              {star.name || "Unnamed star"}
+                            </span>
+                          </button>
+                          {renamingStarId === star.id ? (
+                            <div className="flex flex-wrap gap-2">
+                              <Input
+                                value={starNameValue}
+                                onChange={(event) => setStarNameValue(event.target.value)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") void handleStarRename();
+                                  if (event.key === "Escape") {
+                                    setRenamingStarId(null);
+                                    setStarNameValue("");
+                                  }
+                                }}
+                                placeholder="Star name"
+                                containerClassName="w-40"
+                              />
+                              <Button type="button" size="sm" onClick={() => void handleStarRename()}>
+                                Save
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button type="button" size="sm" variant="secondary" onClick={() => startStarRename(star)}>
+                              Name
+                            </Button>
+                          )}
                         </div>
                       </div>
                     ))}

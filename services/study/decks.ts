@@ -1,6 +1,12 @@
 import { db } from "../firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import {
+  DEFAULT_DECK_COLOR_PRESET,
+  DEFAULT_DECK_ICON_PRESET,
+  type DeckColorPresetId,
+  type DeckIconPresetId,
+} from "@/lib/study/deck-style";
+import {
   addDoc,
   collection,
   deleteDoc,
@@ -20,6 +26,8 @@ export type Deck = {
   name: string;
   userId: string;
   createdAt: number;
+  colorPreset: DeckColorPresetId;
+  iconPreset: DeckIconPresetId;
 };
 
 type DeckDoc = {
@@ -27,6 +35,8 @@ type DeckDoc = {
   userId?: string;
   uid?: string;
   createdAt?: number;
+  colorPreset?: string;
+  iconPreset?: string;
 };
 
 const LOAD_MS = 30_000;
@@ -48,12 +58,22 @@ function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
 
   const name = typeof data.name === "string" && data.name.trim() ? data.name.trim() : "Untitled";
   const createdAt = typeof data.createdAt === "number" ? data.createdAt : 0;
+  const colorPreset =
+    typeof data.colorPreset === "string"
+      ? (data.colorPreset as DeckColorPresetId)
+      : DEFAULT_DECK_COLOR_PRESET;
+  const iconPreset =
+    typeof data.iconPreset === "string"
+      ? (data.iconPreset as DeckIconPresetId)
+      : DEFAULT_DECK_ICON_PRESET;
 
   return {
     id: docSnap.id,
     name,
     userId: owner,
     createdAt,
+    colorPreset,
+    iconPreset,
   };
 }
 
@@ -143,6 +163,8 @@ export const createDeck = async (userId: string, name: string): Promise<Deck> =>
       name: deckName,
       userId: normalizedUserId,
       createdAt,
+      colorPreset: DEFAULT_DECK_COLOR_PRESET,
+      iconPreset: DEFAULT_DECK_ICON_PRESET,
     }),
     CREATE_MS,
     "Create deck"
@@ -153,6 +175,8 @@ export const createDeck = async (userId: string, name: string): Promise<Deck> =>
     name: deckName,
     userId: normalizedUserId,
     createdAt,
+    colorPreset: DEFAULT_DECK_COLOR_PRESET,
+    iconPreset: DEFAULT_DECK_ICON_PRESET,
   };
 };
 
@@ -213,6 +237,27 @@ export const renameDeck = async (
   );
 
   return deckName;
+};
+
+export const updateDeckStyle = async (
+  userId: string,
+  deckId: string,
+  style: {
+    colorPreset: DeckColorPresetId;
+    iconPreset: DeckIconPresetId;
+  }
+): Promise<void> => {
+  const normalizedDeckId = deckId.trim();
+  await requireOwnedDeck(userId, normalizedDeckId);
+
+  await withTimeout(
+    updateDoc(doc(db, "decks", normalizedDeckId), {
+      colorPreset: style.colorPreset,
+      iconPreset: style.iconPreset,
+    }),
+    UPDATE_MS,
+    "Update deck style"
+  );
 };
 
 export const deleteDeck = async (

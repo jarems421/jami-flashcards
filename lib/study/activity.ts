@@ -5,6 +5,10 @@ export type DailyStudyActivity = {
   dayKey: string;
   reviewCount: number;
   correctCount: number;
+  dailyReviewCount: number;
+  dailyCorrectCount: number;
+  customReviewCount: number;
+  customCorrectCount: number;
   totalDurationMs: number;
   updatedAt: number;
 };
@@ -23,6 +27,22 @@ export function normalizeDailyStudyActivity(
     correctCount:
       typeof data.correctCount === "number" && data.correctCount >= 0
         ? data.correctCount
+        : 0,
+    dailyReviewCount:
+      typeof data.dailyReviewCount === "number" && data.dailyReviewCount >= 0
+        ? data.dailyReviewCount
+        : 0,
+    dailyCorrectCount:
+      typeof data.dailyCorrectCount === "number" && data.dailyCorrectCount >= 0
+        ? data.dailyCorrectCount
+        : 0,
+    customReviewCount:
+      typeof data.customReviewCount === "number" && data.customReviewCount >= 0
+        ? data.customReviewCount
+        : 0,
+    customCorrectCount:
+      typeof data.customCorrectCount === "number" && data.customCorrectCount >= 0
+        ? data.customCorrectCount
         : 0,
     totalDurationMs:
       typeof data.totalDurationMs === "number" && data.totalDurationMs >= 0
