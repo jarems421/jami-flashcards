@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useEffect, useRef, useState } from "react";
+import { type TouchEvent, useEffect, useRef, useState } from "react";
 
 type Tab = {
   href: string;
@@ -79,11 +79,11 @@ export default function TabBar() {
     active?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
   }, [pathname]);
 
-  const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+  const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
     touchStartYRef.current = event.touches[0]?.clientY ?? null;
   };
 
-  const handleTouchEnd = (event: React.TouchEvent<HTMLElement>) => {
+  const handleTouchEnd = (event: TouchEvent<HTMLElement>) => {
     const startY = touchStartYRef.current;
     touchStartYRef.current = null;
     const endY = event.changedTouches[0]?.clientY ?? null;

@@ -258,7 +258,7 @@ export default function GoalsPage() {
           <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
             New goal
           </h3>
-          <div className="grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+          <div className="grid gap-4 md:grid-cols-2">
             <Input
               type="number"
               min="1"
@@ -277,19 +277,31 @@ export default function GoalsPage() {
               onChange={(event) => setTargetAccuracy(event.target.value)}
               label="Accuracy %"
             />
-            <Input
-              type="date"
-              value={deadlineDate}
-              onChange={(event) => setDeadlineDate(event.target.value)}
-              label="Due date"
-            />
-            <Input
-              type="time"
-              value={deadlineTime}
-              onChange={(event) => setDeadlineTime(event.target.value)}
-              label="Due time"
-            />
-            <div className="md:col-span-2 xl:col-span-4">
+            <div className="md:col-span-2">
+              <div className="rounded-[1.6rem] border border-white/[0.10] bg-white/[0.04] p-4">
+                <div className="mb-4">
+                  <div className="text-sm font-semibold text-white">Deadline</div>
+                  <p className="mt-1 text-xs leading-5 text-text-muted">
+                    Choose the date and time you want this goal finished by.
+                  </p>
+                </div>
+                <div className="grid gap-5 sm:grid-cols-2 lg:gap-7">
+                  <Input
+                    type="date"
+                    value={deadlineDate}
+                    onChange={(event) => setDeadlineDate(event.target.value)}
+                    label="Finish by date"
+                  />
+                  <Input
+                    type="time"
+                    value={deadlineTime}
+                    onChange={(event) => setDeadlineTime(event.target.value)}
+                    label="Finish by time"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="md:col-span-2">
               <Button
                 disabled={isCreatingGoal}
                 onClick={() => void handleCreateGoal()}

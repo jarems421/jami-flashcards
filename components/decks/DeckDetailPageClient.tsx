@@ -25,6 +25,7 @@ import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
+import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
@@ -441,6 +442,16 @@ export default function DeckDetailPageClient() {
                 />
               </div>
 
+              <CardBackAutocomplete
+                front={front}
+                currentBack={back}
+                deckId={deckId}
+                deckName={deck.name}
+                tags={cardTags}
+                disabled={adding}
+                onApply={setBack}
+              />
+
               <TagInput
                 tags={cardTags}
                 pendingTag={pendingTag}
@@ -529,6 +540,15 @@ export default function DeckDetailPageClient() {
                     label="Back"
                     value={editingBack}
                     onChange={(event) => setEditingBack(event.target.value)}
+                  />
+                  <CardBackAutocomplete
+                    front={editingFront}
+                    currentBack={editingBack}
+                    deckId={deckId}
+                    deckName={deck.name}
+                    tags={editingTags}
+                    disabled={savingCardId === card.id}
+                    onApply={setEditingBack}
                   />
                   <TagInput
                     tags={editingTags}

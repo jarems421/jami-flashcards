@@ -20,6 +20,7 @@ import {
 
 const LOAD_MS = 15_000;
 const SAVE_MS = 15_000;
+const SERVICE_WORKER_READY_MS = 10_000;
 
 async function ensureUserProfileDocument(userId: string) {
   const userRef = doc(db, "users", userId);
@@ -41,7 +42,7 @@ export async function ensureServiceWorkerRegistration() {
     return null;
   }
 
-  let registration = await navigator.serviceWorker.getRegistration();
+  let registration = await navigator.serviceWorker.getRegistration("/");
 
   if (!registration) {
     registration = await navigator.serviceWorker.register("/sw.js", {
@@ -51,8 +52,11 @@ export async function ensureServiceWorkerRegistration() {
   }
 
   await registration.update().catch(() => undefined);
-  await navigator.serviceWorker.ready;
-  return registration;
+  return withTimeout(
+    navigator.serviceWorker.ready,
+    SERVICE_WORKER_READY_MS,
+    "Wait for service worker"
+  );
 }
 
 export async function loadNotificationPreferences(userId: string) {
@@ -174,6 +178,9 @@ export async function subscribeCurrentDevice(userId: string) {
   const endpoint = payload.endpoint ?? subscription.endpoint;
   if (!endpoint) {
     throw new Error("The browser did not return a valid push subscription endpoint.");
+  }
+  if (!payload.keys?.auth || !payload.keys?.p256dh) {
+    throw new Error("The browser returned an incomplete push subscription. Reinstall the app and try again.");
   }
 
   const subscriptionId = await createPushSubscriptionId(endpoint);

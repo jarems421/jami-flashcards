@@ -276,7 +276,7 @@ export default function DecksPage() {
                           <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} />
                           <div className="min-w-0">
                             <div className="truncate font-semibold">{deck.name}</div>
-                            <div className="text-sm text-text-muted">{counts.total} cards · {counts.due} currently due</div>
+                            <div className="text-sm text-text-muted">{counts.total} cards | {counts.due} currently due</div>
                           </div>
                         </Link>
                       )}

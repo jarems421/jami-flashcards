@@ -69,10 +69,15 @@ export function isPushSupported() {
   return (
     typeof window !== "undefined" &&
     typeof navigator !== "undefined" &&
+    window.isSecureContext &&
     "serviceWorker" in navigator &&
     "PushManager" in window &&
     "Notification" in window
   );
+}
+
+export function isSecureNotificationContext() {
+  return typeof window !== "undefined" && window.isSecureContext;
 }
 
 export function isAppleMobileDevice() {
@@ -80,7 +85,11 @@ export function isAppleMobileDevice() {
     return false;
   }
 
-  return /iphone|ipad|ipod/i.test(navigator.userAgent);
+  const platform = navigator.platform ?? "";
+  return (
+    /iphone|ipad|ipod/i.test(navigator.userAgent) ||
+    (platform === "MacIntel" && navigator.maxTouchPoints > 1)
+  );
 }
 
 export function isStandaloneApp() {

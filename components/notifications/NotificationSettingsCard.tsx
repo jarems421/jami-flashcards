@@ -5,6 +5,7 @@ import {
   DEFAULT_NOTIFICATION_PREFERENCES,
   isAppleMobileDevice,
   isPushSupported,
+  isSecureNotificationContext,
   isStandaloneApp,
   type NotificationMode,
   type NotificationPreferences,
@@ -54,6 +55,7 @@ export default function NotificationSettingsCard({
     useState<BeforeInstallPromptEvent | null>(null);
   const [isStandalone, setIsStandalone] = useState(false);
   const [isAppleMobile, setIsAppleMobile] = useState(false);
+  const [isSecureContext, setIsSecureContext] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [hasSubscription, setHasSubscription] = useState(false);
   const [clientStateError, setClientStateError] = useState<string | null>(null);
@@ -63,6 +65,7 @@ export default function NotificationSettingsCard({
 
   const refreshClientState = useCallback(async () => {
     const supported = isPushSupported();
+    setIsSecureContext(isSecureNotificationContext());
     setIsSupported(supported);
     setIsAppleMobile(isAppleMobileDevice());
     setIsStandalone(isStandaloneApp());
@@ -343,7 +346,7 @@ export default function NotificationSettingsCard({
             {isStandalone
               ? "Installed on this device."
               : isAppleMobile
-                ? "On iPhone or iPad, use Share, then Add to Home Screen."
+                ? "On iPhone or iPad, open this site in Safari, tap Share, then Add to Home Screen. Reopen Jami from that Home Screen icon before enabling notifications."
                 : "Install from your browser menu."}
           </div>
 
@@ -399,6 +402,9 @@ export default function NotificationSettingsCard({
                 Push support: <span className="text-white">{isSupported ? "available" : "not available"}</span>
               </div>
               <div>
+                Secure page: <span className="text-white">{isSecureContext ? "yes" : "no"}</span>
+              </div>
+              <div>
                 This device: <span className="text-white">{hasSubscription ? "subscribed" : "not subscribed"}</span>
               </div>
             </div>
@@ -441,7 +447,12 @@ export default function NotificationSettingsCard({
             ) : null}
             {!canSubscribe && isAppleMobile && !isStandalone ? (
               <p className="mt-3 text-xs text-text-muted">
-                iPhone and iPad can only request permission after the app has been added to the Home Screen.
+                iPhone and iPad can only request permission from the installed Home Screen app, not the normal Safari tab.
+              </p>
+            ) : null}
+            {!isSecureContext ? (
+              <p className="mt-3 text-xs text-rose-200">
+                Push needs HTTPS, or localhost during development.
               </p>
             ) : null}
             {clientStateError ? (

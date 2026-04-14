@@ -16,6 +16,7 @@ import {
 import { getDeckHref } from "@/lib/app/routes";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
+import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import Link from "next/link";
@@ -330,6 +331,15 @@ export default function CardsSearchPage() {
               onChange={(e) => setAddBack(e.target.value)}
               maxLength={MAX_BACK_LENGTH}
             />
+            <CardBackAutocomplete
+              front={addFront}
+              currentBack={addBack}
+              deckId={addDeckId || undefined}
+              deckName={addDeckId ? deckNamesById[addDeckId] : undefined}
+              tags={addTags}
+              disabled={addingCard}
+              onApply={setAddBack}
+            />
             <TagInput
               tags={addTags}
               pendingTag={addPendingTag}
@@ -401,6 +411,15 @@ export default function CardsSearchPage() {
                       value={editingBack}
                       onChange={(e) => setEditingBack(e.target.value)}
                       maxLength={MAX_BACK_LENGTH}
+                    />
+                    <CardBackAutocomplete
+                      front={editingFront}
+                      currentBack={editingBack}
+                      deckId={card.deckId}
+                      deckName={deckNamesById[card.deckId]}
+                      tags={editingTags}
+                      disabled={savingCardId === card.id}
+                      onApply={setEditingBack}
                     />
                     <TagInput
                       tags={editingTags}
