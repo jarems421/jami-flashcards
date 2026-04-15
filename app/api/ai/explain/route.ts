@@ -147,7 +147,7 @@ export async function POST(request: NextRequest) {
                   : "new"
             : "unknown"
         }
-- Lapses: ${context.lapses ?? 0}
+- Times struggled: ${context.lapses ?? 0}
 - Successful reps: ${context.reps ?? 0}
 - Current interval: ${context.scheduledDays ?? 0} day(s)
 - Days since last review window: ${context.elapsedDays ?? 0}

@@ -21,7 +21,6 @@ export type Star = {
   color: string;
   position: StarPosition;
   createdAt: number;
-  name?: string;
   presetId?: StarPresetId;
 };
 
@@ -224,7 +223,6 @@ export function normalizeStar(star: {
   createdAt: number;
   position?: Partial<StarPosition>;
   presetId?: StarPresetId;
-  name?: string;
 }): NormalizedStar {
   const hasValidPosition =
     typeof star.position?.x === "number" &&
@@ -242,7 +240,6 @@ export function normalizeStar(star: {
     constellationId: typeof star.constellationId === "string" ? star.constellationId : "",
     position,
     needsBackfill: !hasValidPosition,
-    name: typeof star.name === "string" ? star.name : undefined,
     isLegacyStar: star.presetId === undefined,
     presetId:
       star.presetId ?? inferStarPresetIdFromLegacyValues(star.size, star.glow),
@@ -262,7 +259,6 @@ export function parseStarData(
     glow: typeof data.glow === "number" ? data.glow : 0,
     color: typeof data.color === "string" ? data.color : "white",
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
-    name: typeof data.name === "string" ? data.name : undefined,
     position:
       typeof data.position === "object" && data.position !== null
         ? (data.position as Partial<StarPosition>)

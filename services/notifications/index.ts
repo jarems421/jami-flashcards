@@ -22,6 +22,26 @@ const LOAD_MS = 15_000;
 const SAVE_MS = 15_000;
 const SERVICE_WORKER_READY_MS = 10_000;
 
+function hasCompletePushKeys(subscription: PushSubscriptionJSON) {
+  return Boolean(subscription.keys?.auth && subscription.keys.p256dh);
+}
+
+function applicationServerKeysMatch(
+  existingKey: ArrayBuffer | null,
+  expectedKey: Uint8Array
+) {
+  if (!existingKey) {
+    return true;
+  }
+
+  const existingBytes = new Uint8Array(existingKey);
+  if (existingBytes.length !== expectedKey.length) {
+    return false;
+  }
+
+  return existingBytes.every((value, index) => value === expectedKey[index]);
+}
+
 async function ensureUserProfileDocument(userId: string) {
   const userRef = doc(db, "users", userId);
   const snapshot = await withTimeout(getDoc(userRef), LOAD_MS, "Load user profile");
@@ -59,6 +79,34 @@ export async function ensureServiceWorkerRegistration() {
   );
 }
 
+async function ensureNotificationPreferencesDocument(userId: string) {
+  const preferencesRef = doc(
+    db,
+    "users",
+    userId,
+    "notificationPreferences",
+    "config"
+  );
+  const snapshot = await withTimeout(
+    getDoc(preferencesRef),
+    LOAD_MS,
+    "Load notification preferences"
+  );
+
+  if (snapshot.exists()) {
+    return;
+  }
+
+  await withTimeout(
+    setDoc(preferencesRef, {
+      ...DEFAULT_NOTIFICATION_PREFERENCES,
+      updatedAt: Date.now(),
+    }),
+    SAVE_MS,
+    "Create notification preferences"
+  );
+}
+
 export async function loadNotificationPreferences(userId: string) {
   const preferencesRef = doc(
     db,
@@ -74,9 +122,19 @@ export async function loadNotificationPreferences(userId: string) {
   );
 
   if (!snapshot.exists()) {
-    return {
+    const nextPreferences = {
       ...DEFAULT_NOTIFICATION_PREFERENCES,
+      updatedAt: Date.now(),
     } satisfies NotificationPreferences;
+
+    await ensureUserProfileDocument(userId);
+    await withTimeout(
+      setDoc(preferencesRef, nextPreferences),
+      SAVE_MS,
+      "Create notification preferences"
+    );
+
+    return nextPreferences;
   }
 
   return normalizeNotificationPreferences(
@@ -128,6 +186,9 @@ export async function getCurrentDevicePushSubscription() {
   if (!endpoint) {
     return null;
   }
+  if (!hasCompletePushKeys(payload)) {
+    return null;
+  }
 
   const subscriptionId = await createPushSubscriptionId(endpoint);
 
@@ -166,11 +227,29 @@ export async function subscribeCurrentDevice(userId: string) {
     throw new Error("Service worker registration is unavailable on this device.");
   }
 
+  const applicationServerKey = urlBase64ToUint8Array(vapidPublicKey);
   let subscription = await registration.pushManager.getSubscription();
+
+  if (
+    subscription &&
+    !applicationServerKeysMatch(
+      subscription.options.applicationServerKey,
+      applicationServerKey
+    )
+  ) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+
+  if (subscription && !hasCompletePushKeys(subscription.toJSON())) {
+    await subscription.unsubscribe();
+    subscription = null;
+  }
+
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(vapidPublicKey),
+      applicationServerKey,
     });
   }
 
@@ -179,7 +258,7 @@ export async function subscribeCurrentDevice(userId: string) {
   if (!endpoint) {
     throw new Error("The browser did not return a valid push subscription endpoint.");
   }
-  if (!payload.keys?.auth || !payload.keys?.p256dh) {
+  if (!hasCompletePushKeys(payload)) {
     throw new Error("The browser returned an incomplete push subscription. Reinstall the app and try again.");
   }
 
@@ -192,6 +271,7 @@ export async function subscribeCurrentDevice(userId: string) {
   );
 
   await ensureUserProfileDocument(userId);
+  await ensureNotificationPreferencesDocument(userId);
   await withTimeout(
     setDoc(
       doc(db, "users", userId, "pushSubscriptions", subscriptionId),

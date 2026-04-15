@@ -196,7 +196,7 @@ describe("Firestore security rules", () => {
     await assertSucceeds(
       setDoc(doc(aliceDb, "users", ALICE, "notificationPreferences", "config"), {
         enabled: true,
-        dueCardDigest: true,
+        mode: "smart",
         updatedAt: 1,
       })
     );
@@ -212,7 +212,7 @@ describe("Firestore security rules", () => {
     await assertFails(
       setDoc(doc(bobDb, "users", ALICE, "notificationPreferences", "config"), {
         enabled: true,
-        dueCardDigest: true,
+        mode: "smart",
         updatedAt: 1,
       })
     );

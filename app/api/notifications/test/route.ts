@@ -37,7 +37,22 @@ function toPushRecord(data: Record<string, unknown>) {
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
-    return error.message;
+    const statusCode =
+      typeof error === "object" &&
+      error !== null &&
+      "statusCode" in error &&
+      typeof (error as { statusCode?: unknown }).statusCode === "number"
+        ? ` (${(error as { statusCode: number }).statusCode})`
+        : "";
+    const body =
+      typeof error === "object" &&
+      error !== null &&
+      "body" in error &&
+      typeof (error as { body?: unknown }).body === "string"
+        ? `: ${(error as { body: string }).body.slice(0, 180)}`
+        : "";
+
+    return `${error.message}${statusCode}${body}`;
   }
 
   return "Unknown notification error";
@@ -61,12 +76,78 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    let requestedSubscriptionId: string | null = null;
+    try {
+      const body = (await request.json()) as Record<string, unknown>;
+      requestedSubscriptionId =
+        typeof body.subscriptionId === "string" && body.subscriptionId.trim()
+          ? body.subscriptionId.trim()
+          : null;
+    } catch {
+      requestedSubscriptionId = null;
+    }
+
     const adminDb = getAdminDb();
-    const subscriptionsSnapshot = await adminDb
+    const subscriptionsCollection = adminDb
       .collection("users")
       .doc(uid)
-      .collection("pushSubscriptions")
-      .get();
+      .collection("pushSubscriptions");
+
+    if (requestedSubscriptionId) {
+      const subscriptionDoc = await subscriptionsCollection
+        .doc(requestedSubscriptionId)
+        .get();
+
+      if (!subscriptionDoc.exists) {
+        return Response.json(
+          { error: "This device is not subscribed anymore. Enable notifications again.", sent: 0 },
+          { status: 400 }
+        );
+      }
+
+      const subscription = toPushRecord(
+        subscriptionDoc.data() as Record<string, unknown>
+      );
+
+      if (!subscription) {
+        await subscriptionDoc.ref.delete();
+        return Response.json(
+          { error: "This device had an invalid subscription. Enable notifications again.", sent: 0, removed: 1 },
+          { status: 400 }
+        );
+      }
+
+      try {
+        await sendPushNotification(
+          subscription,
+          {
+            title: "Jami Flashcards",
+            body: "Test notification from this device.",
+            url: "/dashboard/profile",
+            tag: "notification-test",
+            icon: "/icons/notification-icon-192.png",
+            badge: "/icons/notification-icon-192.png",
+          }
+        );
+
+        return Response.json({ ok: true, sent: 1, removed: 0, failed: 0 });
+      } catch (error) {
+        if (isExpiredPushSubscriptionError(error)) {
+          await subscriptionDoc.ref.delete();
+          return Response.json(
+            { error: "This device subscription expired. Enable notifications again.", sent: 0, removed: 1, failed: 0 },
+            { status: 400 }
+          );
+        }
+
+        return Response.json(
+          { error: getErrorMessage(error), sent: 0, removed: 0, failed: 1 },
+          { status: 502 }
+        );
+      }
+    }
+
+    const subscriptionsSnapshot = await subscriptionsCollection.get();
 
     if (subscriptionsSnapshot.empty) {
       return Response.json(

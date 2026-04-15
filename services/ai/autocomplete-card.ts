@@ -1,13 +1,7 @@
 import { auth } from "@/services/firebase/client";
+import type { CardBackAutocompleteStyle } from "@/lib/ai/card-autocomplete";
 
-export type CardBackAutocompleteStyle =
-  | "auto"
-  | "definition"
-  | "equation"
-  | "explanation"
-  | "steps"
-  | "example"
-  | "compare";
+export type { CardBackAutocompleteStyle };
 
 export type CardBackAutocompleteInput = {
   front: string;

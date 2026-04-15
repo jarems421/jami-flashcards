@@ -363,11 +363,15 @@ export default function DashboardHome() {
                       <span className="font-medium text-white">
                         {area.name}
                         <span className="ml-2 text-xs text-text-muted">
-                          {area.cardCount} card{area.cardCount === 1 ? "" : "s"} - {area.totalLapses} lapse{area.totalLapses === 1 ? "" : "s"}
+                          {area.cardCount} card{area.cardCount === 1 ? "" : "s"} - {area.totalLapses} struggle{area.totalLapses === 1 ? "" : "s"}
                         </span>
                       </span>
                       <span className="text-xs text-text-muted">
-                        {area.avgDifficulty.toFixed(1)}/10
+                        {area.avgDifficulty >= 7
+                          ? "Needs focus"
+                          : area.avgDifficulty >= 4
+                            ? "Warming up"
+                            : "Comfortable"}
                       </span>
                     </div>
                     <div className="mt-1.5 h-2 rounded-full bg-white/[0.06]">

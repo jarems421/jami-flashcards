@@ -91,10 +91,10 @@ export function getMemoryRiskInfo(
       tier: "high",
       score: normalizedScore,
       reason: hasOverride
-        ? "Custom Review struggle"
+        ? "Struggled in Custom Review"
         : lapses > 0
-          ? "Repeated lapses"
-          : "High forgetting risk",
+          ? "Struggled more than once"
+          : "Needs attention soon",
     };
   }
 
@@ -103,7 +103,7 @@ export function getMemoryRiskInfo(
       label: "Medium",
       tier: "medium",
       score: normalizedScore,
-      reason: overdueDays > 0 ? "Due pressure" : "Still settling",
+      reason: overdueDays > 0 ? "Ready to review" : "Still settling",
     };
   }
 

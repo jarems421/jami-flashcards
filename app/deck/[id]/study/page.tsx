@@ -5,7 +5,7 @@ type DeckStudyRedirectPageProps = {
   searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
 };
 
-function buildSearchString(searchParams: {
+function copySearchParams(searchParams: {
   [key: string]: string | string[] | undefined;
 }) {
   const nextSearchParams = new URLSearchParams();
@@ -21,8 +21,7 @@ function buildSearchString(searchParams: {
     }
   }
 
-  const queryString = nextSearchParams.toString();
-  return queryString ? `?${queryString}` : "";
+  return nextSearchParams;
 }
 
 export default async function DeckStudyRedirectPage({
@@ -31,17 +30,9 @@ export default async function DeckStudyRedirectPage({
 }: DeckStudyRedirectPageProps) {
   const { id } = await params;
   const resolvedSearchParams = await searchParams;
-  const nextSearchParams = new URLSearchParams();
+  const nextSearchParams = copySearchParams(resolvedSearchParams);
   nextSearchParams.set("mode", "custom");
   nextSearchParams.set("decks", id);
-
-  const searchString = buildSearchString(resolvedSearchParams);
-  if (searchString) {
-    const currentSearchParams = new URLSearchParams(searchString.slice(1));
-    for (const [key, value] of currentSearchParams.entries()) {
-      nextSearchParams.set(key, value);
-    }
-  }
 
   redirect(`/dashboard/study?${nextSearchParams.toString()}`);
 }

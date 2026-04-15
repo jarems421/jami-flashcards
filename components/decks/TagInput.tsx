@@ -79,7 +79,7 @@ export default function TagInput({
                 aria-label={`Remove tag ${tag}`}
                 className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white transition duration-fast hover:bg-white/20 disabled:opacity-50"
               >
-                ×
+                x
               </button>
             </span>
           ))}

@@ -8,6 +8,7 @@ import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckStyle, type Dec
 import {
   DECK_COLOR_PRESETS,
   DECK_ICON_PRESETS,
+  getDeckColorPreset,
   type DeckColorPresetId,
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
@@ -231,7 +232,13 @@ export default function DecksPage() {
             {decks.map((deck) => {
               const counts = deckCounts[deck.id] ?? { due: 0, total: 0 };
               return (
-                <div key={deck.id} className="app-panel p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell">
+                <div
+                  key={deck.id}
+                  className="app-panel p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
+                  style={{
+                    backgroundImage: getDeckColorPreset(deck.colorPreset).cardTint,
+                  }}
+                >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       {editingDeckId === deck.id ? (
@@ -239,6 +246,21 @@ export default function DecksPage() {
                           <Input value={editingDeckName} onChange={(event) => setEditingDeckName(event.target.value)} placeholder="Deck name" />
                           <div className="space-y-3 rounded-[1.4rem] border border-white/[0.07] bg-white/[0.04] p-3">
                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Cover</div>
+                            <div className="flex items-center gap-3 rounded-[1rem] border border-white/[0.08] bg-black/10 p-3">
+                              <DeckCoverIcon
+                                colorPreset={editingDeckColor}
+                                iconPreset={editingDeckIcon}
+                                className="h-12 w-12"
+                              />
+                              <div className="min-w-0">
+                                <div className="truncate text-sm font-semibold text-white">
+                                  {editingDeckName.trim() || "Deck preview"}
+                                </div>
+                                <div className="text-xs text-text-muted">
+                                  Live cover preview
+                                </div>
+                              </div>
+                            </div>
                             <div className="flex flex-wrap gap-2">
                               {DECK_COLOR_PRESETS.map((preset) => (
                                 <button
@@ -246,22 +268,23 @@ export default function DecksPage() {
                                   type="button"
                                   aria-label={`Use ${preset.label} deck color`}
                                   onClick={() => setEditingDeckColor(preset.id)}
-                                  className={`h-9 w-9 rounded-full border-2 ${preset.swatchClassName} ${editingDeckColor === preset.id ? "border-white" : "border-white/20"}`}
+                                  className={`h-9 w-9 rounded-full border-2 ${editingDeckColor === preset.id ? "border-white" : "border-white/20"}`}
+                                  style={{ backgroundImage: preset.iconGradient }}
                                 />
                               ))}
                             </div>
-                            <div className="grid grid-cols-3 gap-2 sm:grid-cols-6">
+                            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                               {DECK_ICON_PRESETS.map((preset) => (
                                 <button
                                   key={preset.id}
                                   type="button"
                                   onClick={() => setEditingDeckIcon(preset.id)}
-                                  className={`flex h-10 items-center justify-center rounded-[0.9rem] border text-white transition ${editingDeckIcon === preset.id ? "border-accent bg-accent/20" : "border-white/[0.08] bg-white/[0.04] hover:border-border-strong"}`}
-                                  title={preset.label}
+                                  className={`flex min-h-12 items-center gap-2 rounded-[0.9rem] border px-3 text-left text-white transition ${editingDeckIcon === preset.id ? "border-accent bg-accent/20" : "border-white/[0.08] bg-white/[0.04] hover:border-border-strong"}`}
                                 >
                                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5">
                                     <path d={preset.path} />
                                   </svg>
+                                  <span className="truncate text-xs font-semibold">{preset.label}</span>
                                 </button>
                               ))}
                             </div>

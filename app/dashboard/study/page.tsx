@@ -181,6 +181,26 @@ export default function StudyPage() {
     setFeedback(null);
   }, [customPreviewCards, remainingOptionalCards, remainingRequiredCards]);
 
+  const handleCustomReviewClick = useCallback(() => {
+    if (!customUnlocked) {
+      setFeedback({
+        type: "error",
+        message: "Complete your required Daily Review first to unlock Custom Review.",
+      });
+      return;
+    }
+
+    if (customPreviewCards.length === 0) {
+      setFeedback({
+        type: "error",
+        message: "Choose at least one deck or tag to start Custom Review.",
+      });
+      return;
+    }
+
+    startSession("custom");
+  }, [customPreviewCards.length, customUnlocked, startSession]);
+
   useEffect(() => {
     if (!loaded || autoStartHandledRef.current) return;
     if (requestedMode === "daily") {
@@ -395,13 +415,33 @@ export default function StudyPage() {
                   </div>
                 </SurfaceCard>
               </div>
-              <SurfaceCard padding="lg">
+              <SurfaceCard padding="lg" className="relative">
+                {!customUnlocked ? (
+                  <button
+                    type="button"
+                    onClick={handleCustomReviewClick}
+                    className="absolute inset-0 z-20 flex items-center justify-center bg-[rgba(12,7,25,0.58)] p-5 text-left backdrop-blur-[2px]"
+                    aria-label="Custom Review is locked"
+                  >
+                    <span className="max-w-md rounded-[1.6rem] border border-warm-border bg-[rgba(32,20,56,0.94)] p-5 text-center shadow-bubble">
+                      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+                        Lock
+                      </span>
+                      <span className="mt-3 block text-lg font-bold text-white">
+                        Custom Review is locked
+                      </span>
+                      <span className="mt-2 block text-sm leading-6 text-text-secondary">
+                        Complete your required Daily Review first.
+                      </span>
+                    </span>
+                  </button>
+                ) : null}
                 <div className="flex flex-wrap items-start justify-between gap-4">
                   <div>
                     <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Custom review</div>
                     <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Pick decks, tags, or both. Custom practice does not change scheduling.</p>
                   </div>
-                  <Button type="button" onClick={() => startSession("custom")} disabled={!customUnlocked || customPreviewCards.length === 0} size="lg">Start custom review</Button>
+                  <Button type="button" onClick={handleCustomReviewClick} disabled={customUnlocked && customPreviewCards.length === 0} size="lg">Start custom review</Button>
                 </div>
                 <div className="mt-6 grid gap-4 lg:grid-cols-2">
                   <div>

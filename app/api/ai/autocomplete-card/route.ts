@@ -2,6 +2,14 @@ import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
+import {
+  cleanGeneratedCardBack,
+  detectCardBackSubject,
+  getStylePrompt,
+  getSubjectPrompt,
+  isCardBackAutocompleteStyle,
+  type CardBackAutocompleteStyle,
+} from "@/lib/ai/card-autocomplete";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
@@ -11,30 +19,6 @@ const MAX_AUTOCOMPLETE_PER_HOUR = 50;
 const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_RELATED_CARDS = 5;
 const MAX_BACK_OUTPUT_LENGTH = 2000;
-
-const answerStyles = [
-  "auto",
-  "definition",
-  "equation",
-  "explanation",
-  "steps",
-  "example",
-  "compare",
-] as const;
-
-type AnswerStyle = (typeof answerStyles)[number];
-
-function isAnswerStyle(value: unknown): value is AnswerStyle {
-  return typeof value === "string" && answerStyles.includes(value as AnswerStyle);
-}
-
-function cleanGeneratedBack(text: string) {
-  return text
-    .replace(/^```(?:\w+)?\s*/i, "")
-    .replace(/```$/i, "")
-    .replace(/^(answer|back)\s*:\s*/i, "")
-    .trim();
-}
 
 async function withRequestTimeout<T>(promise: Promise<T>) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -46,50 +30,6 @@ async function withRequestTimeout<T>(promise: Promise<T>) {
     return await Promise.race([promise, timeoutPromise]);
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
-  }
-}
-
-function getStylePrompt(style: AnswerStyle) {
-  switch (style) {
-    case "definition":
-      return `Definition-focused:
-- Start with the clearest definition or identity.
-- Include the minimum context needed to distinguish it from similar terms.
-- Avoid long paragraphs.`;
-    case "equation":
-      return `Equation-focused:
-- Give the key formula/equation first.
-- Define every symbol briefly.
-- Add units or conditions if they matter.
-- Include one tiny note about when to use it.`;
-    case "explanation":
-      return `Explanation-focused:
-- Explain the idea in plain language.
-- Use cause/effect or intuition where helpful.
-- Keep it compact enough to review quickly.`;
-    case "steps":
-      return `Process/steps-focused:
-- Use a short numbered or line-broken sequence.
-- Make each step actionable and memorable.
-- Do not add unnecessary theory.`;
-    case "example":
-      return `Example-focused:
-- Give the answer plus one concise example.
-- Make the example concrete and easy to review.
-- Avoid turning the back into a full lesson.`;
-    case "compare":
-      return `Comparison-focused:
-- State the key distinction from the closest confusing idea.
-- Use "X is..., while Y is..." if useful.
-- Keep the contrast sharp and testable.`;
-    case "auto":
-    default:
-      return `Auto-detect the best flashcard back style:
-- If the front asks "what is/define", write a definition.
-- If it contains symbols, numbers, units, or asks "calculate", write an equation/formula answer.
-- If it asks "why/how", write a short explanation.
-- If it asks for a method/process, write concise steps.
-- If it asks for differences, write a compact comparison.`;
   }
 }
 
@@ -128,7 +68,7 @@ export async function POST(request: NextRequest) {
   let deckId: string | undefined;
   let deckName: string | undefined;
   let tags: string[];
-  let style: AnswerStyle;
+  let style: CardBackAutocompleteStyle;
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
@@ -142,7 +82,7 @@ export async function POST(request: NextRequest) {
           .map((tag) => tag.trim().slice(0, 60))
           .slice(0, 10)
       : [];
-    style = isAnswerStyle(body.style) ? body.style : "auto";
+    style = isCardBackAutocompleteStyle(body.style) ? body.style : "auto";
 
     if (!front) {
       return Response.json({ error: "front is required" }, { status: 400 });
@@ -194,18 +134,24 @@ ${relatedCards
   .join("\n")}`
       : "No nearby cards are available.";
 
-    const systemPrompt = `You write the BACK side of a flashcard.
+    const subject = detectCardBackSubject({ front, deckName, tags, style });
+    const subjectPrompt = getSubjectPrompt(subject);
+    const systemPrompt = `You write the BACK side of a flashcard for a student.
 
 Non-negotiable rules:
 - Return only the finished back-of-card text. No labels, no preamble, no markdown fence.
-- Be accurate, compact, and easy to review.
+- Be accurate, compact, and easy to review during active recall.
 - Prefer one strong answer over a mini textbook section.
 - Use line breaks or bullets only when they make the card easier to scan.
 - If the front is ambiguous, give the most likely useful answer and include the key assumption in a short phrase.
-- If equations are useful, keep symbols readable and define them briefly.
+- If equations are useful, keep symbols readable, define them briefly, and avoid malformed characters.
+- Never output raw HTML entities, literal unicode escape codes, or broken symbol substitutes.
 - Do not invent niche facts that are not implied by the front, deck, tags, or related cards.
+- Match the user's existing card style when nearby cards give a clear pattern.
 
-${getStylePrompt(style)}`;
+${getStylePrompt(style)}
+
+${subjectPrompt}`;
 
     const userPrompt = `Deck: ${deckName ?? "Unknown"}
 Tags: ${tags.length ? tags.join(", ") : "None"}
@@ -221,14 +167,21 @@ ${relatedCardsPrompt}
 Write the best flashcard back. If there is already a draft, improve or complete it without making it bloated.`;
 
     const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
+    const model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig: {
+        temperature: 0.2,
+        topP: 0.85,
+        maxOutputTokens: 650,
+      },
+    });
     const result = await withRequestTimeout(
       model.generateContent({
         systemInstruction: systemPrompt,
         contents: [{ role: "user", parts: [{ text: userPrompt }] }],
       })
     );
-    const reply = cleanGeneratedBack(result.response.text());
+    const reply = cleanGeneratedCardBack(result.response.text());
 
     if (!reply) {
       return Response.json({ error: "Empty response from AI" }, { status: 502 });

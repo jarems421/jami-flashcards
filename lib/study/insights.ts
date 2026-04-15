@@ -42,7 +42,7 @@ export function getMemoryStatus(card: Pick<Card, "difficulty" | "lapses" | "reps
     return {
       label: "Fragile",
       tone: "fragile",
-      description: "Recall is still unreliable, so the model keeps this memory on a short leash.",
+      description: "This still needs regular practice before it feels secure.",
     };
   }
 
@@ -100,11 +100,11 @@ export function getStudyReason({
   }
 
   if ((card.reps ?? 0) === 0) {
-    return "This card is still new, so Daily Review uses it to teach the memory model where it should land.";
+    return "This card is still new, so Daily Review checks how well it is sticking.";
   }
 
   if ((card.lapses ?? 0) >= 2) {
-    return "You have forgotten this card more than once recently, so it stays in today's required queue.";
+    return "You have struggled with this card more than once recently, so it stays in today's required queue.";
   }
 
   if ((card.dueDate ?? now) < now) {
@@ -161,7 +161,7 @@ export function buildLearningInsights({
     insights.push({
       eyebrow: "Watch this area",
       title: weakestArea.name,
-      description: `${weakestArea.cardCount} card${weakestArea.cardCount === 1 ? "" : "s"} here are causing the most friction, with ${weakestArea.totalLapses} recent lapse${weakestArea.totalLapses === 1 ? "" : "s"}.`,
+      description: `${weakestArea.cardCount} card${weakestArea.cardCount === 1 ? "" : "s"} here are causing the most friction, with ${weakestArea.totalLapses} recent struggle${weakestArea.totalLapses === 1 ? "" : "s"}.`,
     });
   }
 

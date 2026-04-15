@@ -86,7 +86,7 @@ function buildDigestPayload(
   if (parts.length > 0) {
     return {
       title: "Daily Review is ready",
-      body: parts.join(" · "),
+      body: parts.join(" | "),
       url: requiredDailyCount > 0 ? "/dashboard/study?mode=daily" : "/dashboard/goals",
       tag: "daily-digest",
       icon: "/icons/notification-icon-192.png",

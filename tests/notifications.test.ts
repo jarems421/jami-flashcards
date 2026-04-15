@@ -37,12 +37,9 @@ describe("notification helpers", () => {
       })
     ).toEqual({
       enabled: false,
-      dueCardDigest: false,
-      goalDigest: false,
-      dailyNudge: true,
-      timezone: "America/New_York",
+      mode: "always",
       updatedAt: 123,
-      lastDigestDayKey: "2026-04-04",
+      lastDigestStudyDayKey: "2026-04-04",
       lastDigestSentAt: 456,
     });
   });

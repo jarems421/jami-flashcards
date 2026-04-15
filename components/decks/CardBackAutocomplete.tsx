@@ -20,7 +20,7 @@ type Props = {
 const STYLE_OPTIONS: { value: CardBackAutocompleteStyle; label: string }[] = [
   { value: "auto", label: "Auto" },
   { value: "definition", label: "Definition" },
-  { value: "equation", label: "Equation" },
+  { value: "equation", label: "Maths / formula" },
   { value: "explanation", label: "Explain" },
   { value: "steps", label: "Steps" },
   { value: "example", label: "Example" },
@@ -71,7 +71,7 @@ export default function CardBackAutocomplete({
         <div className="min-w-0">
           <div className="text-sm font-semibold text-white">AI answer draft</div>
           <div className="mt-0.5 text-xs leading-5 text-text-muted">
-            Pick the answer shape, then let Gemini draft the back.
+            Pick the answer shape. Maths mode prefers clean symbols and compact formulas.
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

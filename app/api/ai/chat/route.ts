@@ -265,12 +265,12 @@ ${relatedCards
                   : "new"
             : "unknown"
         }
-- Lapses: ${studyContext.lapses ?? 0}
+- Times struggled: ${studyContext.lapses ?? 0}
 - Successful reps: ${studyContext.reps ?? 0}
 - Current interval: ${studyContext.scheduledDays ?? 0} day(s)
 - Days since last review window: ${studyContext.elapsedDays ?? 0}
 
-If this profile looks shaky (high difficulty, repeated lapses, short intervals), give more scaffolding, point out likely confusion, and prefer compact memory hooks.
+If this profile looks shaky (hard card, repeated struggles, short review gaps), give more scaffolding, point out likely confusion, and prefer compact memory hooks.
 If it looks stable, keep the answer concise and avoid overexplaining.`
       : "";
 

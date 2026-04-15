@@ -55,6 +55,7 @@ export default function CardsSearchPage() {
   const [addBack, setAddBack] = useState("");
   const [addTags, setAddTags] = useState<string[]>([]);
   const [addPendingTag, setAddPendingTag] = useState("");
+  const [showAddExtras, setShowAddExtras] = useState(false);
   const [addingCard, setAddingCard] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -267,6 +268,7 @@ export default function CardsSearchPage() {
       setAddBack("");
       setAddTags([]);
       setAddPendingTag("");
+      setShowAddExtras(false);
       setAvailableTags((prev) =>
         Array.from(new Set([...prev, ...nextTags])).sort((a, b) => a.localeCompare(b))
       );
@@ -291,14 +293,26 @@ export default function CardsSearchPage() {
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
 
-      <div className="rounded-[2rem] border border-white/[0.10] bg-white/[0.03] p-4">
+      <div className="app-panel p-4">
         <button
           type="button"
           onClick={() => setShowAddForm((prev) => !prev)}
-          className="flex w-full items-center justify-between text-left"
+          className="flex w-full items-center justify-between gap-4 text-left"
         >
-          <span className="text-sm font-semibold text-white">Add card</span>
-          <span className="text-xs text-text-muted">{showAddForm ? "Hide" : "Show"}</span>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+              +
+            </div>
+            <div className="min-w-0">
+              <div className="text-sm font-bold text-white">Add card</div>
+              <div className="mt-0.5 truncate text-xs text-text-muted">
+                {showAddForm ? "Create across any deck" : "Open quick add"}
+              </div>
+            </div>
+          </div>
+          <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-semibold text-text-muted">
+            {showAddForm ? "Close" : "Open"}
+          </span>
         </button>
 
         {showAddForm ? (
@@ -331,23 +345,37 @@ export default function CardsSearchPage() {
               onChange={(e) => setAddBack(e.target.value)}
               maxLength={MAX_BACK_LENGTH}
             />
-            <CardBackAutocomplete
-              front={addFront}
-              currentBack={addBack}
-              deckId={addDeckId || undefined}
-              deckName={addDeckId ? deckNamesById[addDeckId] : undefined}
-              tags={addTags}
-              disabled={addingCard}
-              onApply={setAddBack}
-            />
-            <TagInput
-              tags={addTags}
-              pendingTag={addPendingTag}
-              availableTags={availableTags}
-              onTagsChange={setAddTags}
-              onPendingTagChange={setAddPendingTag}
-              disabled={addingCard}
-            />
+            <button
+              type="button"
+              onClick={() => setShowAddExtras((value) => !value)}
+              className="flex w-full items-center justify-between rounded-[1.5rem] border border-white/[0.10] bg-white/[0.04] px-4 py-3 text-left text-sm font-semibold text-white transition duration-fast hover:bg-white/[0.07]"
+            >
+              <span>AI and tags</span>
+              <span className="text-xs text-text-muted">
+                {showAddExtras ? "Hide" : "Show"}
+              </span>
+            </button>
+            {showAddExtras ? (
+              <div className="space-y-4 rounded-[1.6rem] border border-white/[0.08] bg-black/10 p-4">
+                <CardBackAutocomplete
+                  front={addFront}
+                  currentBack={addBack}
+                  deckId={addDeckId || undefined}
+                  deckName={addDeckId ? deckNamesById[addDeckId] : undefined}
+                  tags={addTags}
+                  disabled={addingCard}
+                  onApply={setAddBack}
+                />
+                <TagInput
+                  tags={addTags}
+                  pendingTag={addPendingTag}
+                  availableTags={availableTags}
+                  onTagsChange={setAddTags}
+                  onPendingTagChange={setAddPendingTag}
+                  disabled={addingCard}
+                />
+              </div>
+            ) : null}
             <Button
               disabled={addingCard || !addDeckId || !addFront.trim() || !addBack.trim()}
               onClick={() => void handleAddCard()}

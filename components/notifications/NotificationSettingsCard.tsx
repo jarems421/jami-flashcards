@@ -58,6 +58,7 @@ export default function NotificationSettingsCard({
   const [isSecureContext, setIsSecureContext] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [hasSubscription, setHasSubscription] = useState(false);
+  const [currentSubscriptionId, setCurrentSubscriptionId] = useState<string | null>(null);
   const [clientStateError, setClientStateError] = useState<string | null>(null);
   const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
     "unsupported"
@@ -73,6 +74,7 @@ export default function NotificationSettingsCard({
 
     if (!supported) {
       setHasSubscription(false);
+      setCurrentSubscriptionId(null);
       setClientStateError(null);
       return;
     }
@@ -80,10 +82,12 @@ export default function NotificationSettingsCard({
     try {
       const subscription = await getCurrentDevicePushSubscription();
       setHasSubscription(Boolean(subscription));
+      setCurrentSubscriptionId(subscription?.id ?? null);
       setClientStateError(null);
     } catch (error) {
       console.error(error);
       setHasSubscription(false);
+      setCurrentSubscriptionId(null);
       setClientStateError(
         "This device could not finish notification setup. Reload the app and try again."
       );
@@ -289,14 +293,22 @@ export default function NotificationSettingsCard({
       const response = await fetch("/api/notifications/test", {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({
+          subscriptionId: currentSubscriptionId,
+        }),
       });
       const payload = (await response.json().catch(() => null)) as
-        | { error?: string; sent?: number }
+        | { error?: string; sent?: number; removed?: number }
         | null;
 
       if (!response.ok) {
+        if (response.status === 400) {
+          await unsubscribeCurrentDevice(userId).catch(() => undefined);
+          await refreshClientState();
+        }
         throw new Error(payload?.error || "Failed to send the test notification.");
       }
 
@@ -304,8 +316,8 @@ export default function NotificationSettingsCard({
         type: "success",
         message:
           payload?.sent && payload.sent > 0
-            ? "Test notification sent. Check your device now."
-            : "The request finished, but no subscribed device received the test notification.",
+            ? "Test notification sent to this device. Check it now."
+            : "This device did not receive a test notification. Re-enable notifications here and try again.",
         section: "notifications",
       });
     } catch (error) {

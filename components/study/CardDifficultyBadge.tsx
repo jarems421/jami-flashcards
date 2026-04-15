@@ -28,31 +28,58 @@ const RISK_CLASSES = {
   high: "text-rose-300",
 } as const;
 
+function getLearningLabel(label: string) {
+  if (label === "Easy") {
+    return "Comfortable";
+  }
+
+  if (label === "Hard") {
+    return "Needs practice";
+  }
+
+  if (label === "Medium") {
+    return "Getting there";
+  }
+
+  return label;
+}
+
+function getPriorityLabel(label: string) {
+  if (label === "High") {
+    return "Review soon";
+  }
+
+  if (label === "Medium") {
+    return "Keep warm";
+  }
+
+  if (label === "Low") {
+    return "Comfortable";
+  }
+
+  return "New";
+}
+
 export default function CardDifficultyBadge({ card }: Props) {
   const difficulty = getDifficultyInfo(card.difficulty);
   const memoryRisk = getMemoryRiskInfo(card);
-  const numericDifficulty =
-    typeof card.difficulty === "number" && card.difficulty > 0
-      ? card.difficulty.toFixed(1)
-      : null;
   const reviewCount = card.reps ?? 0;
   const lapses = card.lapses ?? 0;
+  const learningLabel = getLearningLabel(difficulty.label);
+  const priorityLabel = getPriorityLabel(memoryRisk.label);
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ${TIER_CLASSES[difficulty.tier]}`}
       title={
-        numericDifficulty
-          ? `FSRS difficulty ${numericDifficulty}/10, memory risk ${memoryRisk.label} (${memoryRisk.reason}), ${reviewCount} review${reviewCount === 1 ? "" : "s"}, ${lapses} lapse${lapses === 1 ? "" : "s"}`
+        reviewCount > 0
+          ? `${learningLabel}. ${priorityLabel}. Reviewed ${reviewCount} time${reviewCount === 1 ? "" : "s"}${lapses > 0 ? `, struggled ${lapses} time${lapses === 1 ? "" : "s"}` : ""}.`
           : "New card with no review history yet"
       }
     >
-      FSRS {difficulty.label}
-      {numericDifficulty ? (
-        <span className="opacity-70">{numericDifficulty}/10</span>
-      ) : null}
+      Learning: {learningLabel}
       <span className={`opacity-90 ${RISK_CLASSES[memoryRisk.tier]}`}>
-        Risk {memoryRisk.label}
+        Priority: {priorityLabel}
       </span>
     </span>
   );

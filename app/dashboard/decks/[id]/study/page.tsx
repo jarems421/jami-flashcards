@@ -13,9 +13,6 @@ export default async function DashboardDeckStudyRedirectPage({
   const resolvedSearchParams = await searchParams;
   const nextSearchParams = new URLSearchParams();
 
-  nextSearchParams.set("mode", "custom");
-  nextSearchParams.set("decks", id);
-
   for (const [key, value] of Object.entries(resolvedSearchParams)) {
     if (Array.isArray(value)) {
       value.forEach((item) => nextSearchParams.append(key, item));
@@ -26,6 +23,9 @@ export default async function DashboardDeckStudyRedirectPage({
       nextSearchParams.set(key, value);
     }
   }
+
+  nextSearchParams.set("mode", "custom");
+  nextSearchParams.set("decks", id);
 
   redirect(`/dashboard/study?${nextSearchParams.toString()}`);
 }
