@@ -49,13 +49,11 @@ export default function CardsSearchPage() {
   const [editingPendingTag, setEditingPendingTag] = useState("");
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
-  const [showAddForm, setShowAddForm] = useState(false);
   const [addDeckId, setAddDeckId] = useState("");
   const [addFront, setAddFront] = useState("");
   const [addBack, setAddBack] = useState("");
   const [addTags, setAddTags] = useState<string[]>([]);
   const [addPendingTag, setAddPendingTag] = useState("");
-  const [showAddExtras, setShowAddExtras] = useState(false);
   const [addingCard, setAddingCard] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -268,7 +266,6 @@ export default function CardsSearchPage() {
       setAddBack("");
       setAddTags([]);
       setAddPendingTag("");
-      setShowAddExtras(false);
       setAvailableTags((prev) =>
         Array.from(new Set([...prev, ...nextTags])).sort((a, b) => a.localeCompare(b))
       );
@@ -294,96 +291,78 @@ export default function CardsSearchPage() {
       ) : null}
 
       <div className="app-panel p-4">
-        <button
-          type="button"
-          onClick={() => setShowAddForm((prev) => !prev)}
-          className="flex w-full items-center justify-between gap-4 text-left"
-        >
-          <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
-              +
-            </div>
-            <div className="min-w-0">
-              <div className="text-sm font-bold text-white">Add card</div>
-              <div className="mt-0.5 truncate text-xs text-text-muted">
-                {showAddForm ? "Create across any deck" : "Open quick add"}
-              </div>
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+            +
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-bold text-white">Add card</div>
+            <div className="mt-0.5 truncate text-xs text-text-muted">
+              Create across any deck
             </div>
           </div>
-          <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-semibold text-text-muted">
-            {showAddForm ? "Close" : "Open"}
-          </span>
-        </button>
+        </div>
 
-        {showAddForm ? (
-          <div className="mt-4 space-y-3">
-            <select
-              value={addDeckId}
-              onChange={(e) => setAddDeckId(e.target.value)}
-              className="w-full appearance-none rounded-[2rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-[1rem] text-sm text-white outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18"
-              style={{
-                backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-                backgroundRepeat: "no-repeat",
-                backgroundPosition: "right 1rem center",
-                paddingRight: "2.5rem",
-              }}
-            >
-              <option value="" disabled>Select a deck</option>
-              {decks.map((d) => (
-                <option key={d.id} value={d.id}>{d.name}</option>
-              ))}
-            </select>
+        <div className="mt-4 space-y-3">
+          <select
+            value={addDeckId}
+            onChange={(e) => setAddDeckId(e.target.value)}
+            className="w-full appearance-none rounded-[2rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-[1rem] text-sm text-white outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18"
+            style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+              backgroundRepeat: "no-repeat",
+              backgroundPosition: "right 1rem center",
+              paddingRight: "2.5rem",
+            }}
+          >
+            <option value="" disabled>Select a deck</option>
+            {decks.map((d) => (
+              <option key={d.id} value={d.id}>{d.name}</option>
+            ))}
+          </select>
+
+          <div className="grid gap-3 lg:grid-cols-2">
             <Input
               placeholder="Front"
               value={addFront}
               onChange={(e) => setAddFront(e.target.value)}
               maxLength={MAX_FRONT_LENGTH}
             />
-            <Input
-              placeholder="Back"
-              value={addBack}
-              onChange={(e) => setAddBack(e.target.value)}
-              maxLength={MAX_BACK_LENGTH}
-            />
-            <button
-              type="button"
-              onClick={() => setShowAddExtras((value) => !value)}
-              className="flex w-full items-center justify-between rounded-[1.5rem] border border-white/[0.10] bg-white/[0.04] px-4 py-3 text-left text-sm font-semibold text-white transition duration-fast hover:bg-white/[0.07]"
-            >
-              <span>AI and tags</span>
-              <span className="text-xs text-text-muted">
-                {showAddExtras ? "Hide" : "Show"}
-              </span>
-            </button>
-            {showAddExtras ? (
-              <div className="space-y-4 rounded-[1.6rem] border border-white/[0.08] bg-black/10 p-4">
-                <CardBackAutocomplete
-                  front={addFront}
-                  currentBack={addBack}
-                  deckId={addDeckId || undefined}
-                  deckName={addDeckId ? deckNamesById[addDeckId] : undefined}
-                  tags={addTags}
-                  disabled={addingCard}
-                  onApply={setAddBack}
-                />
-                <TagInput
-                  tags={addTags}
-                  pendingTag={addPendingTag}
-                  availableTags={availableTags}
-                  onTagsChange={setAddTags}
-                  onPendingTagChange={setAddPendingTag}
-                  disabled={addingCard}
-                />
-              </div>
-            ) : null}
-            <Button
-              disabled={addingCard || !addDeckId || !addFront.trim() || !addBack.trim()}
-              onClick={() => void handleAddCard()}
-            >
-              {addingCard ? "Adding..." : "Add card"}
-            </Button>
+            <div className="space-y-3">
+              <Input
+                placeholder="Back"
+                value={addBack}
+                onChange={(e) => setAddBack(e.target.value)}
+                maxLength={MAX_BACK_LENGTH}
+              />
+              <CardBackAutocomplete
+                front={addFront}
+                currentBack={addBack}
+                deckId={addDeckId || undefined}
+                deckName={addDeckId ? deckNamesById[addDeckId] : undefined}
+                tags={addTags}
+                disabled={addingCard}
+                onApply={setAddBack}
+              />
+            </div>
           </div>
-        ) : null}
+
+          <TagInput
+            tags={addTags}
+            pendingTag={addPendingTag}
+            availableTags={availableTags}
+            onTagsChange={setAddTags}
+            onPendingTagChange={setAddPendingTag}
+            disabled={addingCard}
+          />
+
+          <Button
+            disabled={addingCard || !addDeckId || !addFront.trim() || !addBack.trim()}
+            onClick={() => void handleAddCard()}
+          >
+            {addingCard ? "Adding..." : "Add card"}
+          </Button>
+        </div>
       </div>
 
       <div className="sticky top-0 z-20 -mx-1 px-1 pb-2 pt-1">

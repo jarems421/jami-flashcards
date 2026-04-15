@@ -25,53 +25,155 @@ type SubjectInput = {
   style: CardBackAutocompleteStyle;
 };
 
-const SUPERSCRIPT_DIGITS: Record<string, string> = {
-  "0": "⁰",
-  "1": "¹",
-  "2": "²",
-  "3": "³",
-  "4": "⁴",
-  "5": "⁵",
-  "6": "⁶",
-  "7": "⁷",
-  "8": "⁸",
-  "9": "⁹",
+type CleanGeneratedStudyTextOptions = {
+  stripLeadingLabel?: boolean;
 };
 
-const SIMPLE_LATEX_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/\\times\b/g, "×"],
-  [/\\cdot\b/g, "·"],
-  [/\\div\b/g, "÷"],
-  [/\\pm\b/g, "±"],
-  [/\\leq?\b/g, "≤"],
-  [/\\geq?\b/g, "≥"],
-  [/\\neq\b/g, "≠"],
-  [/\\approx\b/g, "≈"],
-  [/\\propto\b/g, "∝"],
-  [/\\infty\b/g, "∞"],
-  [/\\degree\b/g, "°"],
-  [/\\pi\b/g, "π"],
-  [/\\theta\b/g, "θ"],
-  [/\\alpha\b/g, "α"],
-  [/\\beta\b/g, "β"],
-  [/\\gamma\b/g, "γ"],
-  [/\\lambda\b/g, "λ"],
-  [/\\mu\b/g, "μ"],
-  [/\\Delta\b/g, "Δ"],
-  [/\\Sigma\b/g, "Σ"],
-  [/\\sum\b/g, "Σ"],
-  [/\\int\b/g, "∫"],
-  [/\\partial\b/g, "∂"],
+const SUPERSCRIPT_CHARS: Record<string, string> = {
+  "0": "\u2070",
+  "1": "\u00b9",
+  "2": "\u00b2",
+  "3": "\u00b3",
+  "4": "\u2074",
+  "5": "\u2075",
+  "6": "\u2076",
+  "7": "\u2077",
+  "8": "\u2078",
+  "9": "\u2079",
+  "+": "\u207a",
+  "-": "\u207b",
+  "=": "\u207c",
+  "(": "\u207d",
+  ")": "\u207e",
+  n: "\u207f",
+  i: "\u2071",
+};
+
+const SUBSCRIPT_CHARS: Record<string, string> = {
+  "0": "\u2080",
+  "1": "\u2081",
+  "2": "\u2082",
+  "3": "\u2083",
+  "4": "\u2084",
+  "5": "\u2085",
+  "6": "\u2086",
+  "7": "\u2087",
+  "8": "\u2088",
+  "9": "\u2089",
+  "+": "\u208a",
+  "-": "\u208b",
+  "=": "\u208c",
+  "(": "\u208d",
+  ")": "\u208e",
+};
+
+const LATEX_SYMBOL_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/\\times\b/g, "\u00d7"],
+  [/\\cdot\b/g, "\u00b7"],
+  [/\\div\b/g, "\u00f7"],
+  [/\\pm\b/g, "\u00b1"],
+  [/\\mp\b/g, "\u2213"],
+  [/\\leq?\b/g, "\u2264"],
+  [/\\geq?\b/g, "\u2265"],
+  [/\\neq\b/g, "\u2260"],
+  [/\\approx\b/g, "\u2248"],
+  [/\\sim\b/g, "\u223c"],
+  [/\\propto\b/g, "\u221d"],
+  [/\\infty\b/g, "\u221e"],
+  [/\\degree\b/g, "\u00b0"],
+  [/\\circ\b/g, "\u00b0"],
+  [/\\to\b/g, "\u2192"],
+  [/\\rightarrow\b/g, "\u2192"],
+  [/\\leftarrow\b/g, "\u2190"],
+  [/\\leftrightarrow\b/g, "\u2194"],
+  [/\\implies\b/g, "\u21d2"],
+  [/\\iff\b/g, "\u21d4"],
+  [/\\pi\b/g, "\u03c0"],
+  [/\\theta\b/g, "\u03b8"],
+  [/\\alpha\b/g, "\u03b1"],
+  [/\\beta\b/g, "\u03b2"],
+  [/\\gamma\b/g, "\u03b3"],
+  [/\\delta\b/g, "\u03b4"],
+  [/\\epsilon\b/g, "\u03b5"],
+  [/\\zeta\b/g, "\u03b6"],
+  [/\\eta\b/g, "\u03b7"],
+  [/\\iota\b/g, "\u03b9"],
+  [/\\kappa\b/g, "\u03ba"],
+  [/\\lambda\b/g, "\u03bb"],
+  [/\\mu\b/g, "\u03bc"],
+  [/\\nu\b/g, "\u03bd"],
+  [/\\xi\b/g, "\u03be"],
+  [/\\rho\b/g, "\u03c1"],
+  [/\\sigma\b/g, "\u03c3"],
+  [/\\tau\b/g, "\u03c4"],
+  [/\\phi\b/g, "\u03c6"],
+  [/\\varphi\b/g, "\u03d5"],
+  [/\\chi\b/g, "\u03c7"],
+  [/\\psi\b/g, "\u03c8"],
+  [/\\omega\b/g, "\u03c9"],
+  [/\\Delta\b/g, "\u0394"],
+  [/\\Gamma\b/g, "\u0393"],
+  [/\\Lambda\b/g, "\u039b"],
+  [/\\Omega\b/g, "\u03a9"],
+  [/\\Theta\b/g, "\u0398"],
+  [/\\Sigma\b/g, "\u03a3"],
+  [/\\sum\b/g, "\u03a3"],
+  [/\\prod\b/g, "\u03a0"],
+  [/\\int\b/g, "\u222b"],
+  [/\\partial\b/g, "\u2202"],
+  [/\\nabla\b/g, "\u2207"],
+];
+
+const HTML_ENTITY_REPLACEMENTS: Array<[RegExp, string]> = [
+  [/&le;/gi, "\u2264"],
+  [/&ge;/gi, "\u2265"],
+  [/&lt;/gi, "<"],
+  [/&gt;/gi, ">"],
+  [/&ne;/gi, "\u2260"],
+  [/&times;/gi, "\u00d7"],
+  [/&pi;/gi, "\u03c0"],
+  [/&theta;/gi, "\u03b8"],
+  [/&alpha;/gi, "\u03b1"],
+  [/&beta;/gi, "\u03b2"],
+  [/&gamma;/gi, "\u03b3"],
+  [/&delta;/gi, "\u03b4"],
+  [/&sigma;/gi, "\u03c3"],
+  [/&lambda;/gi, "\u03bb"],
+  [/&mu;/gi, "\u03bc"],
 ];
 
 const COMMON_WORD_SYMBOL_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/\bpi\b/gi, "π"],
-  [/\btheta\b/gi, "θ"],
-  [/\balpha\b/gi, "α"],
-  [/\bbeta\b/gi, "β"],
-  [/\bgamma\b/gi, "γ"],
-  [/\blambda\b/gi, "λ"],
-  [/\bdelta\b/gi, "δ"],
+  [/\bpi\b/gi, "\u03c0"],
+  [/\btheta\b/gi, "\u03b8"],
+  [/\balpha\b/gi, "\u03b1"],
+  [/\bbeta\b/gi, "\u03b2"],
+  [/\bgamma\b/gi, "\u03b3"],
+  [/\bdelta\b/gi, "\u03b4"],
+  [/\bepsilon\b/gi, "\u03b5"],
+  [/\bzeta\b/gi, "\u03b6"],
+  [/\beta\b/gi, "\u03b7"],
+  [/\biota\b/gi, "\u03b9"],
+  [/\bkappa\b/gi, "\u03ba"],
+  [/\bnu\b/gi, "\u03bd"],
+  [/\bxi\b/gi, "\u03be"],
+  [/\brho\b/gi, "\u03c1"],
+  [/\btau\b/gi, "\u03c4"],
+  [/\bphi\b/gi, "\u03c6"],
+  [/\bvarphi\b/gi, "\u03d5"],
+  [/\bchi\b/gi, "\u03c7"],
+  [/\bpsi\b/gi, "\u03c8"],
+  [/\bomega\b/gi, "\u03c9"],
+  [/\bDelta\b/g, "\u0394"],
+  [/\bGamma\b/g, "\u0393"],
+  [/\bLambda\b/g, "\u039b"],
+  [/\bOmega\b/g, "\u03a9"],
+  [/\bTheta\b/g, "\u0398"],
+  [/\bSigma\b/g, "\u03a3"],
+  [/\bsigma\b/gi, "\u03c3"],
+  [/\blambda\b/gi, "\u03bb"],
+  [/\bmu\b/gi, "\u03bc"],
+  [/\binfinity\b/gi, "\u221e"],
+  [/\bdegree\b/gi, "\u00b0"],
 ];
 
 function decodeLiteralUnicodeEscapes(text: string) {
@@ -83,42 +185,136 @@ function decodeLiteralUnicodeEscapes(text: string) {
 function toSuperscript(value: string) {
   return value
     .split("")
-    .map((digit) => SUPERSCRIPT_DIGITS[digit] ?? digit)
+    .map((char) => SUPERSCRIPT_CHARS[char] ?? char)
     .join("");
+}
+
+function toSubscript(value: string) {
+  return value
+    .split("")
+    .map((char) => SUBSCRIPT_CHARS[char] ?? char)
+    .join("");
+}
+
+function stripLatexMathDelimiters(text: string) {
+  return text
+    .replace(/\$\$([\s\S]+?)\$\$/g, "$1")
+    .replace(/\$([^$]+)\$/g, "$1")
+    .replace(/\\\(([\s\S]+?)\\\)/g, "$1")
+    .replace(/\\\[([\s\S]+?)\\\]/g, "$1");
+}
+
+function normalizeMarkdownSyntax(text: string) {
+  return text
+    .replace(/^```(?:\w+)?\s*/i, "")
+    .replace(/```$/i, "")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*>\s?/gm, "")
+    .replace(/^\s*[-*]\s+$/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "- ")
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,;:!?]|$)/g, "$1$2")
+    .replace(/(^|[\s(])_([^_\n]+)_(?=[\s).,;:!?]|$)/g, "$1$2");
+}
+
+function normalizeLatexStructures(text: string) {
+  let next = text
+    .replace(/\\sqrt\{([^{}]+)\}/g, "\u221a($1)")
+    .replace(/\\sqrt\[([^\]]+)\]\{([^{}]+)\}/g, "root_$1($2)");
+
+  for (let index = 0; index < 6; index += 1) {
+    const replaced = next.replace(
+      /\\frac\{((?:[^{}]|\{[^{}]*\})+)\}\{((?:[^{}]|\{[^{}]*\})+)\}/g,
+      "($1)/($2)"
+    );
+
+    if (replaced === next) {
+      break;
+    }
+
+    next = replaced;
+  }
+
+  return next
+    .replace(/\\text\{([^{}]+)\}/g, "$1")
+    .replace(/\\operatorname\{([^{}]+)\}/g, "$1")
+    .replace(/\\left/g, "")
+    .replace(/\\right/g, "")
+    .replace(/\\,/g, " ")
+    .replace(/\\!/g, "")
+    .replace(/\\([()[\]{}])/g, "$1");
+}
+
+function normalizeMathOperators(text: string) {
+  return text
+    .replace(/\s*<->\s*/g, " \u2194 ")
+    .replace(/\s*->\s*/g, " \u2192 ")
+    .replace(/\s*<-\s*/g, " \u2190 ")
+    .replace(/\bcbrt\(([^()]+)\)/gi, "\u221b($1)")
+    .replace(/\bsqrt\(([^()]+)\)/gi, "\u221a($1)")
+    .replace(/([A-Za-z0-9)\]])\*\*([+\-]?\d{1,3})\b/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
+    .replace(/([A-Za-z0-9)\]])\^([+\-]?\d{1,3})\b/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
+    .replace(/([A-Za-z0-9)\]])\^\{([+\-]?\d{1,3})\}/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
+    .replace(/([A-Za-z])_([0-9]{1,3})\b/g, (_match, base: string, subscript: string) => `${base}${toSubscript(subscript)}`)
+    .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z([])/g, "$1 \u00d7 $2")
+    .replace(/(\d)\s*\(/g, "$1 \u00d7 (")
+    .replace(/\)\s*\(/g, ") \u00d7 (")
+    .replace(/(\d)\s*([A-Za-z\u0370-\u03ff])(?![A-Za-z])/g, (_match, value: string, symbol: string, offset: number, source: string) => {
+      const nextChar = source[offset + _match.length] ?? "";
+      if ((symbol === "e" || symbol === "E") && /[0-9+\-]/.test(nextChar)) {
+        return `${value}${symbol}`;
+      }
+      return `${value} \u00d7 ${symbol}`;
+    })
+    .replace(/<=(?!=)/g, "\u2264")
+    .replace(/>=(?!=)/g, "\u2265")
+    .replace(/!=/g, "\u2260")
+    .replace(/\+-/g, "\u00b1");
 }
 
 export function normalizeMathNotation(text: string) {
   let next = decodeLiteralUnicodeEscapes(text);
+  next = stripLatexMathDelimiters(next);
+  next = normalizeLatexStructures(next);
 
-  SIMPLE_LATEX_REPLACEMENTS.forEach(([pattern, replacement]) => {
+  LATEX_SYMBOL_REPLACEMENTS.forEach(([pattern, replacement]) => {
+    next = next.replace(pattern, replacement);
+  });
+  HTML_ENTITY_REPLACEMENTS.forEach(([pattern, replacement]) => {
     next = next.replace(pattern, replacement);
   });
   COMMON_WORD_SYMBOL_REPLACEMENTS.forEach(([pattern, replacement]) => {
     next = next.replace(pattern, replacement);
   });
 
-  next = next
-    .replace(/\\sqrt\{([^{}]+)\}/g, "√($1)")
-    .replace(/\\frac\{([^{}]+)\}\{([^{}]+)\}/g, "($1)/($2)")
-    .replace(/([A-Za-z0-9)\]])\^([0-9]{1,3})\b/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
-    .replace(/([A-Za-z0-9)\]])\^\{([0-9]{1,3})\}/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
-    .replace(/<=(?!=)/g, "≤")
-    .replace(/>=(?!=)/g, "≥")
-    .replace(/\+-/g, "±")
-    .replace(/\s+([,.;:])/g, "$1")
-    .replace(/[ \t]{2,}/g, " ");
+  next = normalizeMathOperators(next);
 
-  return next;
+  return next
+    .replace(/\$/g, "")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\s+([,.;:])/g, "$1")
+    .replace(/[ \t]{2,}/g, " ")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
+export function cleanGeneratedStudyText(
+  text: string,
+  options: CleanGeneratedStudyTextOptions = {}
+) {
+  let next = normalizeMarkdownSyntax(text);
+  next = normalizeMathNotation(next);
+
+  if (options.stripLeadingLabel) {
+    next = next.replace(/^(answer|back|explanation|result)\s*:\s*/i, "");
+  }
+
+  return next.trim();
 }
 
 export function cleanGeneratedCardBack(text: string) {
-  return normalizeMathNotation(text)
-    .replace(/^```(?:\w+)?\s*/i, "")
-    .replace(/```$/i, "")
-    .replace(/^(answer|back)\s*:\s*/i, "")
-    .replace(/\*\*([^*]+)\*\*/g, "$1")
-    .replace(/^\s*[-*]\s*$/gm, "")
-    .trim();
+  return cleanGeneratedStudyText(text, { stripLeadingLabel: true });
 }
 
 export function isCardBackAutocompleteStyle(
@@ -140,7 +336,7 @@ export function detectCardBackSubject({
 
   if (
     style === "equation" ||
-    /[=+\-*/^√πθΔΣ∫≤≥<>]/.test(front) ||
+    /[=+\-*/^\u221a\u03c0\u03b8\u0394\u03a3\u222b\u2264\u2265<>]/.test(front) ||
     /\b(math|maths|algebra|geometry|calculus|trig|trigonometry|equation|formula|solve|differentiate|integrate|gradient|probability|statistics|mechanics)\b/.test(haystack)
   ) {
     return "maths";
@@ -177,7 +373,7 @@ export function getStylePrompt(style: CardBackAutocompleteStyle) {
     case "equation":
       return `Maths/formula-focused:
 - Put the key formula, identity, or final result first.
-- Use real symbols where they are clearer: ×, ÷, ±, √, π, θ, Δ, ≤, ≥.
+- Use real symbols where they are clearer: \u00d7, \u00f7, \u00b1, \u221a, \u03c0, \u03b8, \u0394, \u2264, \u2265.
 - Define every variable briefly.
 - Include units, domains, or conditions if they matter.
 - If a derivation is needed, show only the essential steps.`;
@@ -217,7 +413,7 @@ export function getSubjectPrompt(subject: SubjectHint) {
     case "maths":
       return `Maths accuracy rules:
 - Preserve the variables and notation used on the front unless a standard symbol is clearly better.
-- Prefer readable plain text maths, e.g. "x = (-b ± √(b² - 4ac)) / 2a".
+- Prefer readable plain text maths, e.g. "x = (-b \u00b1 \u221a(b\u00b2 - 4ac)) / 2a".
 - Use Unicode symbols for common notation, not broken character codes, HTML entities, or weird substitutions.
 - For complex expressions, use compact LaTeX-style plain text only if Unicode would be unclear.
 - Do not invent extra cases, constants, or methods unless the card asks for them.

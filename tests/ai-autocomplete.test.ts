@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   cleanGeneratedCardBack,
+  cleanGeneratedStudyText,
   detectCardBackSubject,
   normalizeMathNotation,
 } from "@/lib/ai/card-autocomplete";
@@ -11,12 +12,45 @@ describe("card autocomplete helpers", () => {
       normalizeMathNotation(
         "x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}, where x >= 0 and theta <= pi"
       )
-    ).toBe("x = (-b ± √(b² - 4ac))/(2a), where x ≥ 0 and θ ≤ π");
+    ).toBe(
+      "x = (-b \u00b1 \u221a(b\u00b2 - 4ac))/(2 \u00d7 a), where x \u2265 0 and \u03b8 \u2264 \u03c0"
+    );
+  });
+
+  it("normalizes latex wrappers and markdown emphasis from AI output", () => {
+    expect(
+      cleanGeneratedStudyText(
+        "**Result:** $\\theta >= \\frac{pi}{2}$ and 3 * 4 = 12\n*Use this when* x**2 <= 9"
+      )
+    ).toBe(
+      "Result: \u03b8 \u2265 (\u03c0)/(2) and 3 \u00d7 4 = 12\nUse this when x\u00b2 \u2264 9"
+    );
+  });
+
+  it("converts plain-word greek symbols and infinity", () => {
+    expect(
+      cleanGeneratedStudyText(
+        "alpha + beta + gamma -> theta, and radius goes to infinity"
+      )
+    ).toBe(
+      "\u03b1 + \u03b2 + \u03b3 \u2192 \u03b8, and radius goes to \u221e"
+    );
+  });
+
+  it("normalizes roots and implicit multiplication safely", () => {
+    expect(
+      cleanGeneratedStudyText(
+        "sqrt(x+1) + cbrt(8), and 2x + 3(4 + y) + (a+b)(c+d)"
+      )
+    ).toBe(
+      "\u221a(x+1) + \u221b(8), and 2 \u00d7 x + 3 \u00d7 (4 + y) + (a+b) \u00d7 (c+d)"
+    );
   });
 
   it("cleans model wrappers without stripping the actual answer", () => {
-    expect(cleanGeneratedCardBack("```text\nAnswer: F = ma, where F = force\n```"))
-      .toBe("F = ma, where F = force");
+    expect(cleanGeneratedCardBack("```text\nAnswer: F = ma, where F = force\n```")).toBe(
+      "F = ma, where F = force"
+    );
   });
 
   it("detects maths cards from formula style or symbols", () => {

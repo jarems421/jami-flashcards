@@ -44,8 +44,6 @@ export default function DeckDetailPageClient() {
   const [back, setBack] = useState("");
   const [cardTags, setCardTags] = useState<string[]>([]);
   const [pendingTag, setPendingTag] = useState("");
-  const [showAddCardForm, setShowAddCardForm] = useState(false);
-  const [showAddCardExtras, setShowAddCardExtras] = useState(false);
   const [adding, setAdding] = useState(false);
   const [loadingCards, setLoadingCards] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -238,7 +236,6 @@ export default function DeckDetailPageClient() {
       setBack("");
       setCardTags([]);
       setPendingTag("");
-      setShowAddCardExtras(false);
       setAvailableTags((prev) =>
         Array.from(new Set([...prev, ...nextTags])).sort((left, right) =>
           left.localeCompare(right)
@@ -418,39 +415,30 @@ export default function DeckDetailPageClient() {
           </div>
 
           <section className="app-panel p-4 sm:p-5">
-            <button
-              type="button"
-              onClick={() => setShowAddCardForm((value) => !value)}
-              className="flex w-full items-center justify-between gap-4 text-left"
-            >
-              <div className="flex min-w-0 items-center gap-3">
-                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
-                  +
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+                +
+              </div>
+              <div className="min-w-0">
+                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                  Add card
                 </div>
-                <div className="min-w-0">
-                  <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                    Add card
-                  </div>
-                  <div className="mt-1 truncate text-lg font-bold text-white">
-                    {showAddCardForm ? "Draft a new flashcard" : "Open quick add"}
-                  </div>
+                <div className="mt-1 truncate text-lg font-bold text-white">
+                  Draft a new flashcard
                 </div>
               </div>
-              <span className="rounded-full border border-white/10 bg-white/[0.06] px-3 py-1 text-xs font-semibold text-text-muted">
-                {showAddCardForm ? "Close" : "Open"}
-              </span>
-            </button>
+            </div>
 
-            {showAddCardForm ? (
-              <div className="mt-5 space-y-4 animate-fade-in">
-                <div className="grid gap-4 lg:grid-cols-2">
-                  <Input
-                    label="Front"
-                    placeholder="Question, prompt, or cue"
-                    value={front}
-                    onChange={(event) => setFront(event.target.value)}
-                    maxLength={MAX_FRONT_LENGTH}
-                  />
+            <div className="mt-5 space-y-4 animate-fade-in">
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Input
+                  label="Front"
+                  placeholder="Question, prompt, or cue"
+                  value={front}
+                  onChange={(event) => setFront(event.target.value)}
+                  maxLength={MAX_FRONT_LENGTH}
+                />
+                <div className="space-y-3">
                   <Input
                     label="Back"
                     placeholder="Answer or explanation"
@@ -458,55 +446,39 @@ export default function DeckDetailPageClient() {
                     onChange={(event) => setBack(event.target.value)}
                     maxLength={MAX_BACK_LENGTH}
                   />
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowAddCardExtras((value) => !value)}
-                  className="flex w-full items-center justify-between rounded-[1.5rem] border border-white/[0.10] bg-white/[0.04] px-4 py-3 text-left text-sm font-semibold text-white transition duration-fast hover:bg-white/[0.07]"
-                >
-                  <span>AI and tags</span>
-                  <span className="text-xs text-text-muted">
-                    {showAddCardExtras ? "Hide" : "Show"}
-                  </span>
-                </button>
-
-                {showAddCardExtras ? (
-                  <div className="space-y-4 rounded-[1.6rem] border border-white/[0.08] bg-black/10 p-4">
-                    <CardBackAutocomplete
-                      front={front}
-                      currentBack={back}
-                      deckId={deckId}
-                      deckName={deck.name}
-                      tags={cardTags}
-                      disabled={adding}
-                      onApply={setBack}
-                    />
-
-                    <TagInput
-                      tags={cardTags}
-                      pendingTag={pendingTag}
-                      availableTags={availableTags}
-                      onTagsChange={setCardTags}
-                      onPendingTagChange={setPendingTag}
-                      helperText="Reuse existing topics as you type, or add a new one for this card."
-                      disabled={adding}
-                    />
-                  </div>
-                ) : null}
-
-                <div className="flex flex-wrap gap-3">
-                  <Button
-                    type="button"
-                    disabled={adding || !deckId || !deck}
-                    onClick={() => void handleAddCard()}
-                    size="lg"
-                  >
-                    {adding ? "Adding..." : "Add card"}
-                  </Button>
+                  <CardBackAutocomplete
+                    front={front}
+                    currentBack={back}
+                    deckId={deckId}
+                    deckName={deck.name}
+                    tags={cardTags}
+                    disabled={adding}
+                    onApply={setBack}
+                  />
                 </div>
               </div>
-            ) : null}
+
+              <TagInput
+                tags={cardTags}
+                pendingTag={pendingTag}
+                availableTags={availableTags}
+                onTagsChange={setCardTags}
+                onPendingTagChange={setPendingTag}
+                helperText="Reuse existing topics as you type, or add a new one for this card."
+                disabled={adding}
+              />
+
+              <div className="flex flex-wrap gap-3">
+                <Button
+                  type="button"
+                  disabled={adding || !deckId || !deck}
+                  onClick={() => void handleAddCard()}
+                  size="lg"
+                >
+                  {adding ? "Adding..." : "Add card"}
+                </Button>
+              </div>
+            </div>
           </section>
         </>
       ) : !loadingCards ? (
@@ -526,7 +498,7 @@ export default function DeckDetailPageClient() {
         <EmptyState
           emoji="📚"
           title="No cards yet"
-          description="Open quick add above to start shaping this deck."
+          description="Use Add card above to start shaping this deck."
         />
       ) : deck ? (
         <>

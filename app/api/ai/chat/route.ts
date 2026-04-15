@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
+import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
@@ -353,7 +354,7 @@ Under 120 words. Be conversational, specific, and useful for flashcard study.`;
         systemInstruction: systemPrompt,
         contents,
       });
-      reply = result.response.text().trim();
+      reply = cleanGeneratedStudyText(result.response.text());
     } finally {
       clearTimeout(timeout);
     }

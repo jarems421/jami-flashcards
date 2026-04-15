@@ -424,8 +424,20 @@ export default function StudyPage() {
                     aria-label="Custom Review is locked"
                   >
                     <span className="max-w-md rounded-[1.6rem] border border-warm-border bg-[rgba(32,20,56,0.94)] p-5 text-center shadow-bubble">
-                      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
-                        Lock
+                      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+                        <svg
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          className="h-6 w-6"
+                          aria-hidden="true"
+                        >
+                          <rect x="4" y="11" width="16" height="9" rx="2" />
+                          <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+                        </svg>
                       </span>
                       <span className="mt-3 block text-lg font-bold text-white">
                         Custom Review is locked

@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
+import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
@@ -231,7 +232,7 @@ Use these only to infer likely confusion patterns or useful distinctions.`;
           },
         ],
       });
-      text = result.response.text().trim();
+      text = cleanGeneratedStudyText(result.response.text());
     } finally {
       clearTimeout(timeout);
     }

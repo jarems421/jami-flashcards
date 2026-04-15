@@ -22,42 +22,32 @@ const TIER_CLASSES = {
   hard: "border-rose-500/30 bg-rose-500/10 text-rose-300",
 } as const;
 
-const RISK_CLASSES = {
-  low: "text-emerald-300",
-  medium: "text-amber-300",
-  high: "text-rose-300",
-} as const;
-
-function getLearningLabel(label: string) {
-  if (label === "Easy") {
-    return "Comfortable";
+function getStatusLabel({
+  learningTier,
+  riskTier,
+  reviewCount,
+}: {
+  learningTier: "easy" | "medium" | "hard";
+  riskTier: "low" | "medium" | "high";
+  reviewCount: number;
+}) {
+  if (reviewCount === 0) {
+    return "New card";
   }
 
-  if (label === "Hard") {
+  if (riskTier === "high") {
+    return "Needs focus";
+  }
+
+  if (learningTier === "hard") {
     return "Needs practice";
   }
 
-  if (label === "Medium") {
-    return "Getting there";
+  if (riskTier === "medium" || learningTier === "medium") {
+    return "Still building";
   }
 
-  return label;
-}
-
-function getPriorityLabel(label: string) {
-  if (label === "High") {
-    return "Review soon";
-  }
-
-  if (label === "Medium") {
-    return "Keep warm";
-  }
-
-  if (label === "Low") {
-    return "Comfortable";
-  }
-
-  return "New";
+  return "Looking strong";
 }
 
 export default function CardDifficultyBadge({ card }: Props) {
@@ -65,22 +55,22 @@ export default function CardDifficultyBadge({ card }: Props) {
   const memoryRisk = getMemoryRiskInfo(card);
   const reviewCount = card.reps ?? 0;
   const lapses = card.lapses ?? 0;
-  const learningLabel = getLearningLabel(difficulty.label);
-  const priorityLabel = getPriorityLabel(memoryRisk.label);
+  const statusLabel = getStatusLabel({
+    learningTier: difficulty.tier,
+    riskTier: memoryRisk.tier,
+    reviewCount,
+  });
 
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium ${TIER_CLASSES[difficulty.tier]}`}
       title={
         reviewCount > 0
-          ? `${learningLabel}. ${priorityLabel}. Reviewed ${reviewCount} time${reviewCount === 1 ? "" : "s"}${lapses > 0 ? `, struggled ${lapses} time${lapses === 1 ? "" : "s"}` : ""}.`
+          ? `${statusLabel}. Reviewed ${reviewCount} time${reviewCount === 1 ? "" : "s"}${lapses > 0 ? `, struggled ${lapses} time${lapses === 1 ? "" : "s"}` : ""}.`
           : "New card with no review history yet"
       }
     >
-      Learning: {learningLabel}
-      <span className={`opacity-90 ${RISK_CLASSES[memoryRisk.tier]}`}>
-        Priority: {priorityLabel}
-      </span>
+      Status: {statusLabel}
     </span>
   );
 }
