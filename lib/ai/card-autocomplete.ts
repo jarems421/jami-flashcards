@@ -68,7 +68,7 @@ const SUBSCRIPT_CHARS: Record<string, string> = {
 };
 
 const LATEX_SYMBOL_REPLACEMENTS: Array<[RegExp, string]> = [
-  [/\\times\b/g, "\u00d7"],
+  [/\\times\b/g, "\u00b7"],
   [/\\cdot\b/g, "\u00b7"],
   [/\\div\b/g, "\u00f7"],
   [/\\pm\b/g, "\u00b1"],
@@ -130,7 +130,7 @@ const HTML_ENTITY_REPLACEMENTS: Array<[RegExp, string]> = [
   [/&lt;/gi, "<"],
   [/&gt;/gi, ">"],
   [/&ne;/gi, "\u2260"],
-  [/&times;/gi, "\u00d7"],
+  [/&times;/gi, "\u00b7"],
   [/&pi;/gi, "\u03c0"],
   [/&theta;/gi, "\u03b8"],
   [/&alpha;/gi, "\u03b1"],
@@ -257,15 +257,15 @@ function normalizeMathOperators(text: string) {
     .replace(/([A-Za-z0-9)\]])\^([+\-]?\d{1,3})\b/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
     .replace(/([A-Za-z0-9)\]])\^\{([+\-]?\d{1,3})\}/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
     .replace(/([A-Za-z])_([0-9]{1,3})\b/g, (_match, base: string, subscript: string) => `${base}${toSubscript(subscript)}`)
-    .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z([])/g, "$1 \u00d7 $2")
-    .replace(/(\d)\s*\(/g, "$1 \u00d7 (")
-    .replace(/\)\s*\(/g, ") \u00d7 (")
+    .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z([])/g, "$1 \u00b7 $2")
+    .replace(/(\d)\s*\(/g, "$1 \u00b7 (")
+    .replace(/\)\s*\(/g, ") \u00b7 (")
     .replace(/(\d)\s*([A-Za-z\u0370-\u03ff])(?![A-Za-z])/g, (_match, value: string, symbol: string, offset: number, source: string) => {
       const nextChar = source[offset + _match.length] ?? "";
       if ((symbol === "e" || symbol === "E") && /[0-9+\-]/.test(nextChar)) {
         return `${value}${symbol}`;
       }
-      return `${value} \u00d7 ${symbol}`;
+      return `${value} \u00b7 ${symbol}`;
     })
     .replace(/<=(?!=)/g, "\u2264")
     .replace(/>=(?!=)/g, "\u2265")
@@ -373,7 +373,7 @@ export function getStylePrompt(style: CardBackAutocompleteStyle) {
     case "equation":
       return `Maths/formula-focused:
 - Put the key formula, identity, or final result first.
-- Use real symbols where they are clearer: \u00d7, \u00f7, \u00b1, \u221a, \u03c0, \u03b8, \u0394, \u2264, \u2265.
+- Use real symbols where they are clearer: \u00b7, \u00f7, \u00b1, \u221a, \u03c0, \u03b8, \u0394, \u2264, \u2265.
 - Define every variable briefly.
 - Include units, domains, or conditions if they matter.
 - If a derivation is needed, show only the essential steps.`;

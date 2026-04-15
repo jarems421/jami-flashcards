@@ -19,6 +19,7 @@ const MAX_AUTOCOMPLETE_PER_HOUR = 50;
 const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_RELATED_CARDS = 5;
 const MAX_BACK_OUTPUT_LENGTH = 2000;
+const MIN_COMPLETE_BACK_LENGTH = 42;
 
 async function withRequestTimeout<T>(promise: Promise<T>) {
   let timeoutId: ReturnType<typeof setTimeout> | undefined;
@@ -31,6 +32,56 @@ async function withRequestTimeout<T>(promise: Promise<T>) {
   } finally {
     if (timeoutId) clearTimeout(timeoutId);
   }
+}
+
+function hasBalancedPairs(text: string, left: string, right: string) {
+  let depth = 0;
+  for (const char of text) {
+    if (char === left) {
+      depth += 1;
+    } else if (char === right) {
+      depth -= 1;
+      if (depth < 0) {
+        return false;
+      }
+    }
+  }
+  return depth === 0;
+}
+
+function isLikelyIncompleteBack(text: string, front: string) {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return true;
+  }
+
+  if (
+    !hasBalancedPairs(trimmed, "(", ")") ||
+    !hasBalancedPairs(trimmed, "[", "]") ||
+    !hasBalancedPairs(trimmed, "{", "}")
+  ) {
+    return true;
+  }
+
+  if (/[:;,(\[{/\-]$/.test(trimmed)) {
+    return true;
+  }
+
+  if (/\b(?:etc|e\.g)\.?$/i.test(trimmed)) {
+    return true;
+  }
+
+  if (trimmed.length < MIN_COMPLETE_BACK_LENGTH) {
+    return true;
+  }
+
+  const frontWords = front.trim().split(/\s+/).filter(Boolean).length;
+  const backWords = trimmed.split(/\s+/).filter(Boolean).length;
+  if (frontWords >= 8 && backWords < 7) {
+    return true;
+  }
+
+  return false;
 }
 
 export async function POST(request: NextRequest) {
@@ -170,18 +221,44 @@ Write the best flashcard back. If there is already a draft, improve or complete 
     const model = genAI.getGenerativeModel({
       model: "gemini-2.5-flash",
       generationConfig: {
-        temperature: 0.2,
+        temperature: 0.15,
         topP: 0.85,
-        maxOutputTokens: 650,
+        maxOutputTokens: 900,
       },
     });
-    const result = await withRequestTimeout(
-      model.generateContent({
-        systemInstruction: systemPrompt,
-        contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      })
-    );
-    const reply = cleanGeneratedCardBack(result.response.text());
+    const generateDraft = async (prompt: string) => {
+      const result = await withRequestTimeout(
+        model.generateContent({
+          systemInstruction: systemPrompt,
+          contents: [{ role: "user", parts: [{ text: prompt }] }],
+        })
+      );
+      return cleanGeneratedCardBack(result.response.text());
+    };
+
+    let reply = await generateDraft(userPrompt);
+
+    if (isLikelyIncompleteBack(reply, front)) {
+      const retryPrompt = `The previous draft looks incomplete.
+
+Front:
+${front}
+
+Previous draft:
+${reply || "(empty)"}
+
+Rewrite the complete final back in one concise response.
+- Keep it accurate and fully usable as the back of a flashcard.
+- Finish all equations/sentences.
+- Do not output placeholders like "etc." or unfinished fragments.`;
+      const retriedReply = await generateDraft(retryPrompt);
+      if (
+        !isLikelyIncompleteBack(retriedReply, front) ||
+        retriedReply.length > reply.length
+      ) {
+        reply = retriedReply;
+      }
+    }
 
     if (!reply) {
       return Response.json({ error: "Empty response from AI" }, { status: 502 });

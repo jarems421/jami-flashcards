@@ -132,11 +132,13 @@ export default function Home() {
               padding="sm"
               style={{ animationDelay: `${(index + 1) * 90}ms` }}
             >
-              <div className="text-[0.7rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                {item.step}
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.1rem] border border-warm-border bg-[linear-gradient(180deg,rgba(255,248,253,0.22),rgba(183,124,255,0.24))] text-[0.82rem] font-black leading-none text-warm-accent shadow-[0_8px_18px_rgba(183,124,255,0.25),inset_0_1px_0_rgba(255,255,255,0.18)]">
+                  {item.step}
+                </div>
+                <h3 className="text-base font-bold tracking-tight">{item.title}</h3>
               </div>
-              <h3 className="mt-3 text-base font-semibold">{item.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">{item.desc}</p>
+              <p className="mt-3 text-sm leading-6 text-text-secondary">{item.desc}</p>
             </Card>
           ))}
         </div>
@@ -144,4 +146,3 @@ export default function Home() {
     </AppPage>
   );
 }
-

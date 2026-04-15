@@ -50,7 +50,8 @@ export async function sendPushNotification(
     {
       TTL: 60 * 60 * 12,
       urgency: "normal",
-      topic: typeof payload.tag === "string" ? payload.tag : undefined,
+      // Keep notification grouping inside the service worker payload. Safari/iPad
+      // can reject the optional Web Push Topic header with BadWebPushTopic.
     }
   );
 }

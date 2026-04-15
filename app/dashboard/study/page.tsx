@@ -152,17 +152,13 @@ export default function StudyPage() {
     const completed = new Set(dailyReviewState.completedOptionalCardIds);
     return optionalDailyCards.filter((card) => !completed.has(card.id));
   }, [dailyReviewState, optionalDailyCards]);
+  const hasCards = cards.length > 0;
   const customUnlocked = useMemo(() => {
-    if (!dailyReviewState) {
-      return remainingRequiredCards.length === 0;
-    }
-
-    if (dailyReviewState.requiredCardIds.length === 0) {
-      return true;
-    }
-
+    if (!hasCards) return true;
+    if (remainingRequiredCards.length === 0) return true;
+    if (!dailyReviewState) return false;
     return isDailyReviewRequiredComplete(dailyReviewState);
-  }, [dailyReviewState, remainingRequiredCards.length]);
+  }, [dailyReviewState, hasCards, remainingRequiredCards.length]);
   const customPreviewCards = useMemo(() => buildCustomReviewCards(cards, selectedDeckIds, selectedTags), [cards, selectedDeckIds, selectedTags]);
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
@@ -182,6 +178,14 @@ export default function StudyPage() {
   }, [customPreviewCards, remainingOptionalCards, remainingRequiredCards]);
 
   const handleCustomReviewClick = useCallback(() => {
+    if (!hasCards) {
+      setFeedback({
+        type: "error",
+        message: "Create at least one card first, then Custom Review will be ready.",
+      });
+      return;
+    }
+
     if (!customUnlocked) {
       setFeedback({
         type: "error",
@@ -199,7 +203,7 @@ export default function StudyPage() {
     }
 
     startSession("custom");
-  }, [customPreviewCards.length, customUnlocked, startSession]);
+  }, [customPreviewCards.length, customUnlocked, hasCards, startSession]);
 
   useEffect(() => {
     if (!loaded || autoStartHandledRef.current) return;
@@ -411,99 +415,122 @@ export default function StudyPage() {
                   <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Study day</div>
                   <div className="mt-4 grid gap-4">
                     <div><div className="text-xs text-text-muted">Next reset</div><div className="mt-1 text-2xl font-semibold">{formatCountdown(countdownMs)}</div></div>
-                    <div><div className="text-xs text-text-muted">Custom Review</div><div className="mt-1 text-sm font-medium text-white">{customUnlocked ? "Unlocked" : "Locked until required review is done"}</div></div>
+                    <div><div className="text-xs text-text-muted">Custom Review</div><div className="mt-1 text-sm font-medium text-white">{!hasCards ? "Add cards first" : customUnlocked ? "Unlocked" : "Locked until required review is done"}</div></div>
                   </div>
                 </SurfaceCard>
               </div>
-              <SurfaceCard padding="lg" className="relative">
-                {!customUnlocked ? (
-                  <button
-                    type="button"
-                    onClick={handleCustomReviewClick}
-                    className="absolute inset-0 z-20 flex items-center justify-center bg-[rgba(12,7,25,0.58)] p-5 text-left backdrop-blur-[2px]"
-                    aria-label="Custom Review is locked"
-                  >
-                    <span className="max-w-md rounded-[1.6rem] border border-warm-border bg-[rgba(32,20,56,0.94)] p-5 text-center shadow-bubble">
-                      <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
-                        <svg
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth="2"
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          className="h-6 w-6"
-                          aria-hidden="true"
-                        >
-                          <rect x="4" y="11" width="16" height="9" rx="2" />
-                          <path d="M8 11V8a4 4 0 1 1 8 0v3" />
-                        </svg>
-                      </span>
-                      <span className="mt-3 block text-lg font-bold text-white">
-                        Custom Review is locked
-                      </span>
-                      <span className="mt-2 block text-sm leading-6 text-text-secondary">
-                        Complete your required Daily Review first.
-                      </span>
-                    </span>
-                  </button>
-                ) : null}
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div>
-                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Custom review</div>
-                    <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Pick decks, tags, or both. Custom practice does not change scheduling.</p>
+              {!hasCards ? (
+                <SurfaceCard padding="lg">
+                  <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                    Start here
                   </div>
-                  <Button type="button" onClick={handleCustomReviewClick} disabled={customUnlocked && customPreviewCards.length === 0} size="lg">Start custom review</Button>
-                </div>
-                <div className="mt-6 grid gap-4 lg:grid-cols-2">
-                  <div>
-                    <div className="mb-3 text-sm font-semibold text-white">Choose decks</div>
-                    <div className="flex flex-wrap gap-2">
-                      {decks.map((deck) => {
-                        const selected = selectedDeckIds.includes(deck.id);
-                        return (
-                          <button
-                            key={deck.id}
-                            type="button"
-                            className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
-                            onClick={() => {
-                              setSelectedDeckIds((prev) => prev.includes(deck.id) ? prev.filter((currentId) => currentId !== deck.id) : [...prev, deck.id]);
-                            }}
-                          >
-                            {deck.name}
-                          </button>
-                        );
-                      })}
-                    </div>
+                  <h3 className="mt-3 text-2xl font-bold tracking-tight">
+                    Add your first cards
+                  </h3>
+                  <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
+                    You do not have any cards yet. Create cards first, then Daily Review and Custom Review will work automatically.
+                  </p>
+                  <div className="mt-5 flex flex-wrap gap-3">
+                    <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">
+                      Create cards
+                    </Link>
+                    <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">
+                      Open decks
+                    </Link>
                   </div>
-                  <div>
-                    <div className="mb-3 text-sm font-semibold text-white">Choose tags</div>
-                    <div className="flex flex-wrap gap-2">
-                      {availableTags.map((tag) => {
-                        const selected = selectedTags.includes(tag);
-                        return (
-                          <button
-                            key={tag}
-                            type="button"
-                            className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
-                            onClick={() => {
-                              setSelectedTags((prev) => prev.includes(tag) ? prev.filter((currentTag) => currentTag !== tag) : [...prev, tag]);
-                            }}
-                          >
-                            {tag}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-6 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-                  <span>{customPreviewCards.length} selected</span>
+                </SurfaceCard>
+              ) : null}
+              {hasCards ? (
+                <SurfaceCard padding="lg" className="relative">
                   {!customUnlocked ? (
-                    <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Finish required Daily Review first</span>
+                    <button
+                      type="button"
+                      onClick={handleCustomReviewClick}
+                      className="absolute inset-0 z-20 flex items-center justify-center bg-[rgba(12,7,25,0.58)] p-5 text-left backdrop-blur-[2px]"
+                      aria-label="Custom Review is locked"
+                    >
+                      <span className="max-w-md rounded-[1.6rem] border border-warm-border bg-[rgba(32,20,56,0.94)] p-5 text-center shadow-bubble">
+                        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+                          <svg
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            className="h-6 w-6"
+                            aria-hidden="true"
+                          >
+                            <rect x="4" y="11" width="16" height="9" rx="2" />
+                            <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+                          </svg>
+                        </span>
+                        <span className="mt-3 block text-lg font-bold text-white">
+                          Custom Review is locked
+                        </span>
+                        <span className="mt-2 block text-sm leading-6 text-text-secondary">
+                          Complete your required Daily Review first.
+                        </span>
+                      </span>
+                    </button>
                   ) : null}
-                </div>
-              </SurfaceCard>
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div>
+                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Custom review</div>
+                      <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Pick decks, tags, or both. Custom practice does not change scheduling.</p>
+                    </div>
+                    <Button type="button" onClick={handleCustomReviewClick} disabled={customUnlocked && customPreviewCards.length === 0} size="lg">Start custom review</Button>
+                  </div>
+                  <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                    <div>
+                      <div className="mb-3 text-sm font-semibold text-white">Choose decks</div>
+                      <div className="flex flex-wrap gap-2">
+                        {decks.map((deck) => {
+                          const selected = selectedDeckIds.includes(deck.id);
+                          return (
+                            <button
+                              key={deck.id}
+                              type="button"
+                              className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                              onClick={() => {
+                                setSelectedDeckIds((prev) => prev.includes(deck.id) ? prev.filter((currentId) => currentId !== deck.id) : [...prev, deck.id]);
+                              }}
+                            >
+                              {deck.name}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div>
+                      <div className="mb-3 text-sm font-semibold text-white">Choose tags</div>
+                      <div className="flex flex-wrap gap-2">
+                        {availableTags.map((tag) => {
+                          const selected = selectedTags.includes(tag);
+                          return (
+                            <button
+                              key={tag}
+                              type="button"
+                              className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                              onClick={() => {
+                                setSelectedTags((prev) => prev.includes(tag) ? prev.filter((currentTag) => currentTag !== tag) : [...prev, tag]);
+                              }}
+                            >
+                              {tag}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-6 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
+                    <span>{customPreviewCards.length} selected</span>
+                    {!customUnlocked ? (
+                      <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Finish required Daily Review first</span>
+                    ) : null}
+                  </div>
+                </SurfaceCard>
+              ) : null}
             </>
           ) : null}
           {sessionKind === null ? null : done ? (

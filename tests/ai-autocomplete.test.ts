@@ -13,7 +13,7 @@ describe("card autocomplete helpers", () => {
         "x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}, where x >= 0 and theta <= pi"
       )
     ).toBe(
-      "x = (-b \u00b1 \u221a(b\u00b2 - 4ac))/(2 \u00d7 a), where x \u2265 0 and \u03b8 \u2264 \u03c0"
+      "x = (-b \u00b1 \u221a(b\u00b2 - 4ac))/(2 \u00b7 a), where x \u2265 0 and \u03b8 \u2264 \u03c0"
     );
   });
 
@@ -23,7 +23,7 @@ describe("card autocomplete helpers", () => {
         "**Result:** $\\theta >= \\frac{pi}{2}$ and 3 * 4 = 12\n*Use this when* x**2 <= 9"
       )
     ).toBe(
-      "Result: \u03b8 \u2265 (\u03c0)/(2) and 3 \u00d7 4 = 12\nUse this when x\u00b2 \u2264 9"
+      "Result: \u03b8 \u2265 (\u03c0)/(2) and 3 \u00b7 4 = 12\nUse this when x\u00b2 \u2264 9"
     );
   });
 
@@ -43,7 +43,7 @@ describe("card autocomplete helpers", () => {
         "sqrt(x+1) + cbrt(8), and 2x + 3(4 + y) + (a+b)(c+d)"
       )
     ).toBe(
-      "\u221a(x+1) + \u221b(8), and 2 \u00d7 x + 3 \u00d7 (4 + y) + (a+b) \u00d7 (c+d)"
+      "\u221a(x+1) + \u221b(8), and 2 \u00b7 x + 3 \u00b7 (4 + y) + (a+b) \u00b7 (c+d)"
     );
   });
 

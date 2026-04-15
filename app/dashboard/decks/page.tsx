@@ -273,18 +273,18 @@ export default function DecksPage() {
                                 />
                               ))}
                             </div>
-                            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                            <div className="grid grid-cols-1 gap-2 min-[520px]:grid-cols-2">
                               {DECK_ICON_PRESETS.map((preset) => (
                                 <button
                                   key={preset.id}
                                   type="button"
                                   onClick={() => setEditingDeckIcon(preset.id)}
-                                  className={`flex min-h-12 w-full items-center gap-2.5 rounded-[0.9rem] border px-3 py-2 text-left text-white transition ${editingDeckIcon === preset.id ? "border-accent bg-accent/20" : "border-white/[0.08] bg-white/[0.04] hover:border-border-strong"}`}
+                                  className={`flex min-h-[3.25rem] w-full items-center gap-2.5 rounded-[1rem] border px-3 py-2 text-left text-white transition ${editingDeckIcon === preset.id ? "border-accent bg-accent/20 shadow-[0_0_0_3px_rgba(255,214,246,0.08)]" : "border-white/[0.08] bg-white/[0.04] hover:border-border-strong"}`}
                                 >
                                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 shrink-0">
                                     <path d={preset.path} />
                                   </svg>
-                                  <span className="min-w-0 whitespace-normal text-[0.78rem] font-semibold leading-4">
+                                  <span className="min-w-0 text-wrap break-words text-[0.78rem] font-semibold leading-4 [overflow-wrap:anywhere]">
                                     {preset.label}
                                   </span>
                                 </button>
