@@ -47,6 +47,16 @@ describe("card autocomplete helpers", () => {
     );
   });
 
+  it("removes visible latex backslashes and underscore notation", () => {
+    expect(
+      cleanGeneratedStudyText(
+        "$F_{net} = m \\cdot a$, with x_1 = \\alpha and \\mathrm{rate} = \\frac{\\Delta y}{\\Delta x}"
+      )
+    ).toBe(
+      "F\u2099\u2091\u209c = m \u00b7 a, with x\u2081 = \u03b1 and rate = (\u0394 y)/(\u0394 x)"
+    );
+  });
+
   it("cleans model wrappers without stripping the actual answer", () => {
     expect(cleanGeneratedCardBack("```text\nAnswer: F = ma, where F = force\n```")).toBe(
       "F = ma, where F = force"

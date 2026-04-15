@@ -57,11 +57,27 @@ export async function sendPushNotification(
 }
 
 export function isExpiredPushSubscriptionError(error: unknown) {
-  return (
+  const statusCode =
     typeof error === "object" &&
     error !== null &&
     "statusCode" in error &&
-    (((error as { statusCode?: number }).statusCode ?? 0) === 404 ||
-      ((error as { statusCode?: number }).statusCode ?? 0) === 410)
+    typeof (error as { statusCode?: unknown }).statusCode === "number"
+      ? (error as { statusCode: number }).statusCode
+      : 0;
+  const body =
+    typeof error === "object" &&
+    error !== null &&
+    "body" in error &&
+    typeof (error as { body?: unknown }).body === "string"
+      ? (error as { body: string }).body.toLowerCase()
+      : "";
+
+  return (
+    statusCode === 404 ||
+    statusCode === 410 ||
+    (statusCode === 400 &&
+      (body.includes("badwebpushtopic") ||
+        body.includes("baddevicetoken") ||
+        body.includes("badpushtype")))
   );
 }

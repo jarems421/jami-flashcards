@@ -74,7 +74,7 @@ export const DECK_ICON_PRESETS: DeckIconPreset[] = [
   },
   {
     id: "calculator",
-    label: "Calculator",
+    label: "Calc",
     path: "M7 3h10a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm1.5 2.5v3h7V5.5h-7Zm0 6h2v2h-2v-2Zm3.5 0h2v2h-2v-2Zm3.5 0h2v2h-2v-2Zm-7 3.5h2v2h-2v-2Zm3.5 0h2v2h-2v-2Zm3.5 0h2v2h-2v-2Z",
   },
   {

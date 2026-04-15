@@ -65,6 +65,23 @@ const SUBSCRIPT_CHARS: Record<string, string> = {
   "=": "\u208c",
   "(": "\u208d",
   ")": "\u208e",
+  a: "\u2090",
+  e: "\u2091",
+  h: "\u2095",
+  i: "\u1d62",
+  j: "\u2c7c",
+  k: "\u2096",
+  l: "\u2097",
+  m: "\u2098",
+  n: "\u2099",
+  o: "\u2092",
+  p: "\u209a",
+  r: "\u1d63",
+  s: "\u209b",
+  t: "\u209c",
+  u: "\u1d64",
+  v: "\u1d65",
+  x: "\u2093",
 };
 
 const LATEX_SYMBOL_REPLACEMENTS: Array<[RegExp, string]> = [
@@ -122,6 +139,11 @@ const LATEX_SYMBOL_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\\int\b/g, "\u222b"],
   [/\\partial\b/g, "\u2202"],
   [/\\nabla\b/g, "\u2207"],
+  [/\\sin\b/g, "sin"],
+  [/\\cos\b/g, "cos"],
+  [/\\tan\b/g, "tan"],
+  [/\\log\b/g, "log"],
+  [/\\ln\b/g, "ln"],
 ];
 
 const HTML_ENTITY_REPLACEMENTS: Array<[RegExp, string]> = [
@@ -221,7 +243,7 @@ function normalizeMarkdownSyntax(text: string) {
 function normalizeLatexStructures(text: string) {
   let next = text
     .replace(/\\sqrt\{([^{}]+)\}/g, "\u221a($1)")
-    .replace(/\\sqrt\[([^\]]+)\]\{([^{}]+)\}/g, "root_$1($2)");
+    .replace(/\\sqrt\[([^\]]+)\]\{([^{}]+)\}/g, "root $1($2)");
 
   for (let index = 0; index < 6; index += 1) {
     const replaced = next.replace(
@@ -239,11 +261,35 @@ function normalizeLatexStructures(text: string) {
   return next
     .replace(/\\text\{([^{}]+)\}/g, "$1")
     .replace(/\\operatorname\{([^{}]+)\}/g, "$1")
+    .replace(/\\mathrm\{([^{}]+)\}/g, "$1")
+    .replace(/\\mathbf\{([^{}]+)\}/g, "$1")
+    .replace(/\\mathit\{([^{}]+)\}/g, "$1")
     .replace(/\\left/g, "")
     .replace(/\\right/g, "")
+    .replace(/\\quad/g, " ")
+    .replace(/\\qquad/g, " ")
     .replace(/\\,/g, " ")
     .replace(/\\!/g, "")
     .replace(/\\([()[\]{}])/g, "$1");
+}
+
+function normalizeSubscriptNotation(text: string) {
+  return text
+    .replace(
+      /([A-Za-z])_\{([A-Za-z0-9+\-=()]{1,6})\}/g,
+      (_match, base: string, subscript: string) => {
+        const converted = toSubscript(subscript);
+        return converted === subscript ? `${base} ${subscript}` : `${base}${converted}`;
+      }
+    )
+    .replace(
+      /([A-Za-z])_([A-Za-z0-9+\-=()]{1,3})\b/g,
+      (_match, base: string, subscript: string) => {
+        const converted = toSubscript(subscript);
+        return converted === subscript ? `${base} ${subscript}` : `${base}${converted}`;
+      }
+    )
+    .replace(/([A-Za-z])_([A-Za-z][A-Za-z0-9]{2,})\b/g, "$1 $2");
 }
 
 function normalizeMathOperators(text: string) {
@@ -256,7 +302,6 @@ function normalizeMathOperators(text: string) {
     .replace(/([A-Za-z0-9)\]])\*\*([+\-]?\d{1,3})\b/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
     .replace(/([A-Za-z0-9)\]])\^([+\-]?\d{1,3})\b/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
     .replace(/([A-Za-z0-9)\]])\^\{([+\-]?\d{1,3})\}/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
-    .replace(/([A-Za-z])_([0-9]{1,3})\b/g, (_match, base: string, subscript: string) => `${base}${toSubscript(subscript)}`)
     .replace(/([0-9A-Za-z)\]])\s*\*\s*([0-9A-Za-z([])/g, "$1 \u00b7 $2")
     .replace(/(\d)\s*\(/g, "$1 \u00b7 (")
     .replace(/\)\s*\(/g, ") \u00b7 (")
@@ -289,9 +334,13 @@ export function normalizeMathNotation(text: string) {
   });
 
   next = normalizeMathOperators(next);
+  next = normalizeSubscriptNotation(next);
 
   return next
     .replace(/\$/g, "")
+    .replace(/\\([A-Za-z]+)\b/g, "$1")
+    .replace(/\\+/g, "")
+    .replace(/_/g, " ")
     .replace(/[ \t]+\n/g, "\n")
     .replace(/\s+([,.;:])/g, "$1")
     .replace(/[ \t]{2,}/g, " ")
@@ -374,6 +423,7 @@ export function getStylePrompt(style: CardBackAutocompleteStyle) {
       return `Maths/formula-focused:
 - Put the key formula, identity, or final result first.
 - Use real symbols where they are clearer: \u00b7, \u00f7, \u00b1, \u221a, \u03c0, \u03b8, \u0394, \u2264, \u2265.
+- Avoid raw LaTeX. Do not write backslashes, dollar signs, or underscores like "\\frac", "$x$", or "x_1".
 - Define every variable briefly.
 - Include units, domains, or conditions if they matter.
 - If a derivation is needed, show only the essential steps.`;
@@ -414,8 +464,9 @@ export function getSubjectPrompt(subject: SubjectHint) {
       return `Maths accuracy rules:
 - Preserve the variables and notation used on the front unless a standard symbol is clearly better.
 - Prefer readable plain text maths, e.g. "x = (-b \u00b1 \u221a(b\u00b2 - 4ac)) / 2a".
-- Use Unicode symbols for common notation, not broken character codes, HTML entities, or weird substitutions.
-- For complex expressions, use compact LaTeX-style plain text only if Unicode would be unclear.
+- Use Unicode symbols for common notation, not LaTeX, broken character codes, HTML entities, or weird substitutions.
+- Never output visible backslashes, dollar-delimited maths, or underscore subscripts; write x\u2081, a\u2099, \u03c0, \u221a(x), and \u00b7 instead.
+- For complex expressions, use compact plain text with clear brackets if Unicode would be unclear.
 - Do not invent extra cases, constants, or methods unless the card asks for them.
 - Sanity-check signs, powers, brackets, and units before answering.`;
     case "science":
