@@ -26,6 +26,7 @@ import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/
 import AppPage from "@/components/layout/AppPage";
 import { Card, FeedbackBanner } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
+import { loadInAppUsername } from "@/services/profile";
 
 type DeckDueCounts = Record<string, number>;
 type DashboardFeedback = { type: "success" | "error"; message: string };
@@ -43,6 +44,7 @@ export default function DashboardHome() {
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<DashboardFeedback | null>(null);
+  const [inAppUsername, setInAppUsername] = useState<string | null>(null);
   const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
   const lastForegroundRefreshAtRef = useRef(0);
 
@@ -61,6 +63,8 @@ export default function DashboardHome() {
           return [] as Deck[];
         }),
       ]);
+      const username = await loadInAppUsername(uid).catch(() => null);
+      setInAppUsername(username);
 
       setDecks(fetchedDecks);
 
@@ -197,6 +201,11 @@ export default function DashboardHome() {
 
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <Card className="animate-slide-up overflow-hidden" padding="lg">
+            <p className="mb-4 text-sm text-text-secondary">
+              {inAppUsername
+                ? `Welcome back, ${inAppUsername}.`
+                : "Welcome back. Let's make today count."}
+            </p>
             {!isLoading && decks.length === 0 ? (
               <>
                 <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">

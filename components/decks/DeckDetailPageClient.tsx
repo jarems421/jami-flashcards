@@ -25,9 +25,10 @@ import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
+import BackFormatPresets from "@/components/decks/BackFormatPresets";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
-import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
+import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton, Textarea } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
 import { db } from "@/services/firebase/client";
 
@@ -439,12 +440,18 @@ export default function DeckDetailPageClient() {
                   maxLength={MAX_FRONT_LENGTH}
                 />
                 <div className="space-y-3">
-                  <Input
+                  <Textarea
                     label="Back"
                     placeholder="Answer or explanation"
                     value={back}
                     onChange={(event) => setBack(event.target.value)}
                     maxLength={MAX_BACK_LENGTH}
+                    rows={6}
+                  />
+                  <BackFormatPresets
+                    currentBack={back}
+                    onApply={setBack}
+                    disabled={adding}
                   />
                   <CardBackAutocomplete
                     front={front}
@@ -542,10 +549,17 @@ export default function DeckDetailPageClient() {
                     value={editingFront}
                     onChange={(event) => setEditingFront(event.target.value)}
                   />
-                  <Input
+                  <Textarea
                     label="Back"
                     value={editingBack}
                     onChange={(event) => setEditingBack(event.target.value)}
+                    maxLength={MAX_BACK_LENGTH}
+                    rows={6}
+                  />
+                  <BackFormatPresets
+                    currentBack={editingBack}
+                    onApply={setEditingBack}
+                    disabled={savingCardId === card.id}
                   />
                   <CardBackAutocomplete
                     front={editingFront}

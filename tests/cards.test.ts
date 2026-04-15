@@ -20,9 +20,9 @@ import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 describe("card tag helpers", () => {
   it("normalizes and deduplicates comma-separated tags", () => {
     expect(parseCardTagsInput("Biology, cells, biology, Cell Biology")).toEqual([
-      "biology",
+      "Biology",
       "cells",
-      "cell biology",
+      "Cell Biology",
     ]);
   });
 
@@ -39,18 +39,21 @@ describe("card tag helpers", () => {
     expect(cardMatchesAnyTag({ tags: ["biology", "cells"] }, ["physics"])).toBe(
       false
     );
+    expect(
+      cardMatchesAnyTag({ tags: ["Biology", "Cells"] }, ["biology"])
+    ).toBe(true);
   });
 
   it("parses tag query params with the same normalization as card input", () => {
     expect(parseCardTagsParam("Anatomy,  cell biology,anatomy")).toEqual([
-      "anatomy",
+      "Anatomy",
       "cell biology",
     ]);
   });
 
   it("adds a normalized pending tag to the current tag list", () => {
-    expect(addCardTag(["biology"], " Cell Biology ")).toEqual({
-      nextTags: ["biology", "cell biology"],
+    expect(addCardTag(["Biology"], " Cell Biology ")).toEqual({
+      nextTags: ["Biology", "Cell Biology"],
       added: true,
       error: null,
     });

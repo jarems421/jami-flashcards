@@ -1,6 +1,6 @@
 import { db } from "../firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
-import { normalizeCardTags } from "@/lib/study/cards";
+import { getTagKey, normalizeCardTags } from "@/lib/study/cards";
 import {
   collection,
   getDocs,
@@ -67,13 +67,14 @@ async function loadTagUpdates(
 
   return snapshot.docs.flatMap((cardSnapshot) => {
     const currentTags = normalizeCardTags(cardSnapshot.data().tags);
-    if (!currentTags.includes(normalizedSourceTag)) {
+    const sourceKey = getTagKey(normalizedSourceTag);
+    if (!currentTags.some((tag) => getTagKey(tag) === sourceKey)) {
       return [];
     }
 
     const nextTags = normalizeCardTags(
       currentTags.flatMap((tag) => {
-        if (tag !== normalizedSourceTag) {
+        if (getTagKey(tag) !== sourceKey) {
           return [tag];
         }
 

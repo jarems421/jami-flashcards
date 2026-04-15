@@ -31,8 +31,16 @@ export type Card = {
   customStruggleCount?: number;
 };
 
+function normalizeTagText(value: string): string {
+  return value.trim().replace(/\s+/g, " ");
+}
+
+export function getTagKey(value: string): string {
+  return normalizeTagText(value).toLowerCase();
+}
+
 function normalizeSingleTag(value: string): string {
-  return value.trim().toLowerCase().replace(/\s+/g, " ");
+  return normalizeTagText(value);
 }
 
 export function normalizeCardTags(value: unknown): string[] {
@@ -41,7 +49,7 @@ export function normalizeCardTags(value: unknown): string[] {
   }
 
   const normalized: string[] = [];
-  const seen = new Set<string>();
+  const seenKeys = new Set<string>();
 
   for (const entry of value) {
     if (typeof entry !== "string") {
@@ -49,11 +57,12 @@ export function normalizeCardTags(value: unknown): string[] {
     }
 
     const nextTag = normalizeSingleTag(entry);
-    if (!nextTag || nextTag.length > MAX_CARD_TAG_LENGTH || seen.has(nextTag)) {
+    const nextKey = getTagKey(nextTag);
+    if (!nextTag || nextTag.length > MAX_CARD_TAG_LENGTH || seenKeys.has(nextKey)) {
       continue;
     }
 
-    seen.add(nextTag);
+    seenKeys.add(nextKey);
     normalized.push(nextTag);
 
     if (normalized.length >= MAX_CARD_TAGS) {
@@ -99,7 +108,8 @@ export function addCardTag(
     };
   }
 
-  if (normalizedTags.includes(nextTag)) {
+  const nextTagKey = getTagKey(nextTag);
+  if (normalizedTags.some((tag) => getTagKey(tag) === nextTagKey)) {
     return {
       nextTags: normalizedTags,
       added: false,
@@ -123,12 +133,14 @@ export function addCardTag(
 }
 
 export function removeCardTag(tags: string[], value: string): string[] {
-  const nextTag = normalizeSingleTag(value);
-  if (!nextTag) {
+  const nextTagKey = getTagKey(value);
+  if (!nextTagKey) {
     return normalizeCardTags(tags);
   }
 
-  return normalizeCardTags(tags.filter((tag) => tag !== nextTag));
+  return normalizeCardTags(
+    tags.filter((tag) => getTagKey(tag) !== nextTagKey)
+  );
 }
 
 export function getTagSuggestions(
@@ -137,14 +149,17 @@ export function getTagSuggestions(
   selectedTags: string[],
   limit = 8
 ): string[] {
-  const query = normalizeSingleTag(value);
-  const selected = new Set(normalizeCardTags(selectedTags));
+  const queryKey = getTagKey(value);
+  const selected = new Set(normalizeCardTags(selectedTags).map(getTagKey));
 
   return normalizeCardTags(availableTags)
-    .filter((tag) => !selected.has(tag) && (!query || tag.includes(query)))
+    .filter((tag) => {
+      const key = getTagKey(tag);
+      return !selected.has(key) && (!queryKey || key.includes(queryKey));
+    })
     .sort((left, right) => {
-      const leftStartsWith = query ? left.startsWith(query) : false;
-      const rightStartsWith = query ? right.startsWith(query) : false;
+      const leftStartsWith = queryKey ? getTagKey(left).startsWith(queryKey) : false;
+      const rightStartsWith = queryKey ? getTagKey(right).startsWith(queryKey) : false;
 
       if (leftStartsWith !== rightStartsWith) {
         return leftStartsWith ? -1 : 1;
@@ -156,7 +171,7 @@ export function getTagSuggestions(
 }
 
 export function getCardTagsInputError(value: string): string | null {
-  const seen = new Set<string>();
+  const seenKeys = new Set<string>();
 
   for (const rawTag of value.split(",")) {
     const normalized = normalizeSingleTag(rawTag);
@@ -168,8 +183,8 @@ export function getCardTagsInputError(value: string): string | null {
       return `Each tag must be ${MAX_CARD_TAG_LENGTH} characters or less.`;
     }
 
-    seen.add(normalized);
-    if (seen.size > MAX_CARD_TAGS) {
+    seenKeys.add(getTagKey(normalized));
+    if (seenKeys.size > MAX_CARD_TAGS) {
       return `Use up to ${MAX_CARD_TAGS} tags per card.`;
     }
   }
@@ -185,12 +200,12 @@ export function cardMatchesAnyTag(
     return true;
   }
 
-  const allowedTags = new Set(normalizeCardTags(selectedTags));
+  const allowedTags = new Set(normalizeCardTags(selectedTags).map(getTagKey));
   if (allowedTags.size === 0) {
     return true;
   }
 
-  return card.tags.some((tag) => allowedTags.has(tag));
+  return card.tags.some((tag) => allowedTags.has(getTagKey(tag)));
 }
 
 export function mapCardData(id: string, data: Record<string, unknown>): Card {

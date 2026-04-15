@@ -10,7 +10,7 @@ import { ensureConstellationSetup } from "@/services/constellation/constellation
 import { type DailyReviewState } from "@/lib/study/daily-review";
 import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
-import { parseCardTagsParam, type Card } from "@/lib/study/cards";
+import { getTagKey, parseCardTagsParam, type Card } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup, loadUserCards, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
@@ -49,10 +49,12 @@ function getCardsByIds(cards: Card[], ids: string[]) {
 function buildCustomReviewCards(cards: Card[], selectedDeckIds: string[], selectedTags: string[]) {
   if (selectedDeckIds.length === 0 && selectedTags.length === 0) return cards;
   const selectedDeckIdSet = new Set(selectedDeckIds);
-  const selectedTagSet = new Set(selectedTags);
+  const selectedTagSet = new Set(selectedTags.map(getTagKey));
   return cards.filter((card) => {
     const matchesDeck = selectedDeckIdSet.size > 0 && selectedDeckIdSet.has(card.deckId);
-    const matchesTag = selectedTagSet.size > 0 && card.tags.some((tag) => selectedTagSet.has(tag));
+    const matchesTag =
+      selectedTagSet.size > 0 &&
+      card.tags.some((tag) => selectedTagSet.has(getTagKey(tag)));
     return matchesDeck || matchesTag;
   });
 }
