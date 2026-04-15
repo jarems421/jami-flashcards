@@ -54,11 +54,11 @@ export default function AppPage({
   return (
     <main
       data-app-surface="true"
-      className={`min-h-screen px-5 pb-10 pt-3 text-white sm:px-6 lg:px-8 ${className}`}
+      className={`min-h-screen px-3 pb-28 pt-2 text-white sm:px-6 sm:pb-12 sm:pt-3 lg:px-8 ${className}`}
     >
       <div className={`mx-auto ${widthClasses[width]}`}>
         <div
-          className={`sticky top-0 z-40 mb-6 transition-transform duration-150 ease-out ${hidden ? "-translate-y-full" : "translate-y-0"} ${topBarClassName}`}
+          className={`sticky top-0 z-40 mb-4 transition-transform duration-150 ease-out sm:mb-6 ${hidden ? "-translate-y-full" : "translate-y-0"} ${topBarClassName}`}
         >
           <AppTopBar
             title={title}

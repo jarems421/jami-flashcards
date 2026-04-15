@@ -69,7 +69,9 @@ function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
 export default function TabBar() {
   const pathname = usePathname();
   const mobileNavRef = useRef<HTMLElement>(null);
+  const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
+  const swipeHandledRef = useRef(false);
   const [mobileHidden, setMobileHidden] = useState(false);
 
   useEffect(() => {
@@ -80,19 +82,58 @@ export default function TabBar() {
   }, [pathname]);
 
   const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
+    touchStartXRef.current = event.touches[0]?.clientX ?? null;
     touchStartYRef.current = event.touches[0]?.clientY ?? null;
+    swipeHandledRef.current = false;
   };
 
-  const handleTouchEnd = (event: TouchEvent<HTMLElement>) => {
-    const startY = touchStartYRef.current;
-    touchStartYRef.current = null;
-    const endY = event.changedTouches[0]?.clientY ?? null;
-
-    if (startY === null || endY === null) {
+  const handleTouchMove = (event: TouchEvent<HTMLElement>) => {
+    if (mobileHidden || swipeHandledRef.current) {
       return;
     }
 
-    if (endY - startY > 36) {
+    const startX = touchStartXRef.current;
+    const startY = touchStartYRef.current;
+    const moveX = event.touches[0]?.clientX ?? null;
+    const moveY = event.touches[0]?.clientY ?? null;
+
+    if (startX === null || startY === null || moveX === null || moveY === null) {
+      return;
+    }
+
+    const deltaX = moveX - startX;
+    const deltaY = moveY - startY;
+    const mostlyVertical = Math.abs(deltaY) > Math.abs(deltaX) + 10;
+
+    if (deltaY > 26 && mostlyVertical) {
+      swipeHandledRef.current = true;
+      setMobileHidden(true);
+    }
+  };
+
+  const handleTouchEnd = (event: TouchEvent<HTMLElement>) => {
+    const startX = touchStartXRef.current;
+    const startY = touchStartYRef.current;
+    touchStartXRef.current = null;
+    touchStartYRef.current = null;
+    const endY = event.changedTouches[0]?.clientY ?? null;
+    const endX = event.changedTouches[0]?.clientX ?? null;
+
+    if (
+      swipeHandledRef.current ||
+      startX === null ||
+      startY === null ||
+      endX === null ||
+      endY === null
+    ) {
+      return;
+    }
+
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+    const mostlyVertical = Math.abs(deltaY) > Math.abs(deltaX) + 10;
+
+    if (deltaY > 36 && mostlyVertical) {
       setMobileHidden(true);
     }
   };
@@ -104,13 +145,11 @@ export default function TabBar() {
         ref={mobileNavRef}
         aria-label="Primary"
         onTouchStart={handleTouchStart}
+        onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className={`app-nav fixed inset-x-3 z-30 flex snap-x snap-mandatory overflow-x-auto rounded-[2.6rem] border-[1.5px] border-white/[0.18] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.94))] p-2.5 shadow-[0_18px_42px_rgba(7,2,22,0.3)] backdrop-blur-xl transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
+        className={`app-nav fixed inset-x-2 z-30 flex snap-x snap-mandatory overflow-x-auto rounded-[2rem] border-[1.5px] border-white/[0.18] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.94))] px-1.5 py-2 shadow-[0_18px_42px_rgba(7,2,22,0.3)] backdrop-blur-xl scrollbar-hide transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
-        <div className="pointer-events-none sticky left-0 z-10 -ml-2 mr-1 flex w-10 shrink-0 items-center justify-center bg-[linear-gradient(90deg,rgba(18,11,34,0.98),rgba(18,11,34,0))] text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
-          drag
-        </div>
         {tabs.map((tab) => {
           const active = isActive(pathname, tab.href);
           return (
@@ -118,7 +157,7 @@ export default function TabBar() {
               key={tab.href}
               href={tab.href}
               aria-current={active ? "page" : undefined}
-              className={`flex min-h-[56px] min-w-[4.2rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-[1.5rem] px-2 text-[11px] transition duration-fast ease-spring ${
+              className={`flex min-h-[54px] min-w-[4.35rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-[1.25rem] px-1.5 text-[10px] leading-tight transition duration-fast ease-spring ${
                 active
                   ? "scale-[1.02] text-white"
                   : "text-text-muted active:text-white"
@@ -139,9 +178,6 @@ export default function TabBar() {
             </Link>
           );
         })}
-        <div className="pointer-events-none sticky right-0 z-10 -mr-2 ml-1 flex w-10 shrink-0 items-center justify-center bg-[linear-gradient(270deg,rgba(18,11,34,0.98),rgba(18,11,34,0))] text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted">
-          more
-        </div>
       </nav>
 
       {mobileHidden ? (
@@ -152,7 +188,7 @@ export default function TabBar() {
           className="fixed inset-x-0 z-30 mx-auto flex h-8 w-28 items-center justify-center rounded-t-[1.4rem] border border-b-0 border-white/[0.16] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.96))] text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted shadow-[0_12px_28px_rgba(7,2,22,0.26)] backdrop-blur-xl md:hidden"
           style={{ bottom: "env(safe-area-inset-bottom, 0px)" }}
         >
-          Nav
+          Show nav
         </button>
       ) : null}
 

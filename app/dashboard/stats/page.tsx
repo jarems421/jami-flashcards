@@ -174,10 +174,10 @@ export default function StatsPage() {
       backHref="/dashboard"
       backLabel="Home"
       width="2xl"
-      contentClassName="space-y-6"
+      contentClassName="space-y-4 sm:space-y-6"
     >
       {loading ? (
-        <div className="space-y-6">
+        <div className="space-y-4 sm:space-y-6">
           <div className="grid gap-4 sm:grid-cols-3">
             <Skeleton className="h-24" />
             <Skeleton className="h-24" />
@@ -200,7 +200,7 @@ export default function StatsPage() {
                   Current streak
                 </div>
               </div>
-              <div className="mt-3 text-4xl font-bold">
+              <div className="mt-3 text-3xl font-bold sm:text-4xl">
                 {currentStreak} <span className="text-base font-normal text-text-secondary">day{currentStreak === 1 ? "" : "s"}</span>
               </div>
             </Card>
@@ -213,7 +213,7 @@ export default function StatsPage() {
                   Longest streak
                 </div>
               </div>
-              <div className="mt-3 text-4xl font-bold">
+              <div className="mt-3 text-3xl font-bold sm:text-4xl">
                 {longestStreak} <span className="text-base font-normal text-text-secondary">day{longestStreak === 1 ? "" : "s"}</span>
               </div>
             </Card>
@@ -226,7 +226,7 @@ export default function StatsPage() {
                   Total reviews
                 </div>
               </div>
-              <div className="mt-3 text-4xl font-bold">
+              <div className="mt-3 text-3xl font-bold sm:text-4xl">
                 {totalReviews.toLocaleString()}
               </div>
             </Card>

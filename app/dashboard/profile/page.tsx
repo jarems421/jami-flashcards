@@ -47,7 +47,7 @@ export default function ProfilePage() {
   };
 
   return (
-    <AppPage title="Profile" backHref="/dashboard" backLabel="Dashboard" width="xl" contentClassName="space-y-6">
+    <AppPage title="Profile" backHref="/dashboard" backLabel="Dashboard" width="xl" contentClassName="space-y-4 sm:space-y-6">
       <Card tone="warm" className="sm:p-6" padding="md">
         <div className="flex flex-col items-center gap-4">
           <ProfilePhotoEditor

@@ -176,16 +176,16 @@ export default function DecksPage() {
         backLabel="Dashboard"
         width="2xl"
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
-        contentClassName="space-y-6"
+        contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
-          <div className="app-panel-warm p-6">
+        <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
+          <div className="app-panel-warm p-4 sm:p-6">
             <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Deck management</div>
-            <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Organize your cards.</h2>
+            <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">Organize your cards.</h2>
             <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Decks are for editing. Study lives in the Study tab.</p>
-            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+            <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
               <Input
                 placeholder="New deck name"
                 value={name}
@@ -207,7 +207,7 @@ export default function DecksPage() {
           <div className="grid gap-4">
             <div className="app-panel p-5">
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Decks</div>
-              <div className="mt-3 text-3xl font-semibold">{decks.length}</div>
+              <div className="mt-3 text-2xl font-semibold sm:text-3xl">{decks.length}</div>
             </div>
             <div className="app-panel p-5">
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Cards</div>
@@ -228,13 +228,13 @@ export default function DecksPage() {
         ) : decks.length === 0 ? (
           <EmptyState emoji="📦" title="No decks yet" description="Create your first deck above to get started." />
         ) : (
-          <div className="grid animate-slide-up gap-4 lg:grid-cols-2">
+          <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
             {decks.map((deck) => {
               const counts = deckCounts[deck.id] ?? { due: 0, total: 0 };
               return (
                 <div
                   key={deck.id}
-                  className="app-panel p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
+                  className="app-panel p-3 sm:p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
                   style={{
                     backgroundImage: getDeckColorPreset(deck.colorPreset).cardTint,
                   }}
@@ -242,11 +242,11 @@ export default function DecksPage() {
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 flex-1">
                       {editingDeckId === deck.id ? (
-                        <div className="space-y-2">
+                        <div className="space-y-3">
                           <Input value={editingDeckName} onChange={(event) => setEditingDeckName(event.target.value)} placeholder="Deck name" />
                           <div className="space-y-3 rounded-[1.4rem] border border-white/[0.07] bg-white/[0.04] p-3">
                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Cover</div>
-                            <div className="flex items-center gap-3 rounded-[1rem] border border-white/[0.08] bg-black/10 p-3">
+                            <div className="flex flex-wrap items-center gap-3 rounded-[1rem] border border-white/[0.08] bg-black/10 p-3 sm:flex-nowrap">
                               <DeckCoverIcon
                                 colorPreset={editingDeckColor}
                                 iconPreset={editingDeckIcon}
@@ -268,32 +268,47 @@ export default function DecksPage() {
                                   type="button"
                                   aria-label={`Use ${preset.label} deck color`}
                                   onClick={() => setEditingDeckColor(preset.id)}
-                                  className={`h-9 w-9 rounded-full border-2 ${editingDeckColor === preset.id ? "border-white" : "border-white/20"}`}
+                                  className={`h-8 w-8 rounded-full border-2 sm:h-9 sm:w-9 ${editingDeckColor === preset.id ? "border-white" : "border-white/20"}`}
                                   style={{ backgroundImage: preset.iconGradient }}
                                 />
                               ))}
                             </div>
-                            <div className="grid grid-cols-1 gap-2 min-[520px]:grid-cols-2">
+                            <div className="grid grid-cols-2 gap-2">
                               {DECK_ICON_PRESETS.map((preset) => (
                                 <button
                                   key={preset.id}
                                   type="button"
                                   onClick={() => setEditingDeckIcon(preset.id)}
-                                  className={`flex min-h-[3.25rem] w-full items-center gap-2.5 rounded-[1rem] border px-3 py-2 text-left text-white transition ${editingDeckIcon === preset.id ? "border-accent bg-accent/20 shadow-[0_0_0_3px_rgba(255,214,246,0.08)]" : "border-white/[0.08] bg-white/[0.04] hover:border-border-strong"}`}
+                                  className={`flex min-h-[3rem] w-full items-center gap-2 rounded-[1rem] border px-2.5 py-2 text-left text-white transition sm:min-h-[3.25rem] sm:gap-2.5 sm:px-3 ${editingDeckIcon === preset.id ? "border-accent bg-accent/20 shadow-[0_0_0_3px_rgba(255,214,246,0.08)]" : "border-white/[0.08] bg-white/[0.04] hover:border-border-strong"}`}
                                 >
                                   <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 shrink-0">
                                     <path d={preset.path} />
                                   </svg>
-                                  <span className="min-w-0 text-wrap break-words text-[0.78rem] font-semibold leading-4 [overflow-wrap:anywhere]">
+                                  <span className="min-w-0 text-wrap break-words text-[0.72rem] font-semibold leading-4 [overflow-wrap:anywhere] sm:text-[0.78rem]">
                                     {preset.label}
                                   </span>
                                 </button>
                               ))}
                             </div>
                           </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button type="button" disabled={savingDeckId === deck.id || !editingDeckName.trim()} onClick={() => void handleDeckRename(deck)}>{savingDeckId === deck.id ? "Saving..." : "Save"}</Button>
-                            <Button type="button" disabled={savingDeckId === deck.id} onClick={resetDeckEditing} variant="secondary">Cancel</Button>
+                          <div className="flex flex-col gap-2 sm:flex-row">
+                            <Button
+                              type="button"
+                              disabled={savingDeckId === deck.id || !editingDeckName.trim()}
+                              onClick={() => void handleDeckRename(deck)}
+                              className="w-full sm:w-auto"
+                            >
+                              {savingDeckId === deck.id ? "Saving..." : "Save"}
+                            </Button>
+                            <Button
+                              type="button"
+                              disabled={savingDeckId === deck.id}
+                              onClick={resetDeckEditing}
+                              variant="secondary"
+                              className="w-full sm:w-auto"
+                            >
+                              Cancel
+                            </Button>
                           </div>
                         </div>
                       ) : (
@@ -307,11 +322,11 @@ export default function DecksPage() {
                       )}
                     </div>
 
-                    <div className="flex flex-wrap gap-2">
-                      <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setFeedback(null); }} variant="secondary">
+                    <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                      <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
                         Customise
                       </Button>
-                      <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => void handleDeckDelete(deck)} variant="danger">
+                      <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => void handleDeckDelete(deck)} variant="danger" className="flex-1 sm:flex-none">
                         {deletingDeckId === deck.id ? "Deleting..." : "Delete"}
                       </Button>
                     </div>

@@ -15,9 +15,9 @@ const toneClasses: Record<CardTone, string> = {
 };
 
 const paddingClasses: Record<CardPadding, string> = {
-  sm: "p-4",
-  md: "p-6",
-  lg: "p-8",
+  sm: "p-3 sm:p-4",
+  md: "p-4 sm:p-6",
+  lg: "p-5 sm:p-8",
 };
 
 export default function Card({
@@ -29,7 +29,7 @@ export default function Card({
 }: CardProps) {
   return (
     <div
-      className={`relative overflow-hidden rounded-[2.8rem] backdrop-blur-md transition duration-fast ${toneClasses[tone]} ${paddingClasses[padding]} ${className}`}
+      className={`relative overflow-hidden rounded-[1.8rem] backdrop-blur-md transition duration-fast sm:rounded-[2.8rem] ${toneClasses[tone]} ${paddingClasses[padding]} ${className}`}
       {...props}
     >
       {children}

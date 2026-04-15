@@ -284,13 +284,13 @@ export default function CardsSearchPage() {
       backHref="/dashboard"
       backLabel="Home"
       width="2xl"
-      contentClassName="space-y-6"
+      contentClassName="space-y-4 sm:space-y-6"
     >
       {feedback ? (
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
 
-      <div className="app-panel p-4">
+      <div className="app-panel p-3 sm:p-4">
         <div className="flex min-w-0 items-center gap-3">
           <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
             +
@@ -303,7 +303,7 @@ export default function CardsSearchPage() {
           </div>
         </div>
 
-        <div className="mt-4 space-y-3">
+        <div className="mt-3 space-y-3 sm:mt-4">
           <select
             value={addDeckId}
             onChange={(e) => setAddDeckId(e.target.value)}
@@ -399,9 +399,9 @@ export default function CardsSearchPage() {
             {hasMore ? ` (showing first ${MAX_VISIBLE_RESULTS})` : ""}
           </p>
 
-          <div className="grid animate-slide-up gap-4 lg:grid-cols-2">
+          <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
             {visibleCards.map((card) => (
-              <section key={card.id} className="app-panel p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell">
+              <section key={card.id} className="app-panel p-3 sm:p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell">
                 {expandedCardId === card.id ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap gap-2">
@@ -458,7 +458,7 @@ export default function CardsSearchPage() {
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="min-w-0 flex-1 space-y-1">
-                        <div className="text-base font-semibold leading-7 text-white">
+                        <div className="text-[0.95rem] font-semibold leading-6 text-white sm:text-base sm:leading-7">
                           {card.front}
                         </div>
                         <div className="text-sm leading-6 text-text-secondary">

@@ -248,7 +248,7 @@ export default function GoalsPage() {
             onClick={() => void handleRefresh()}
           />
         }
-        contentClassName="space-y-6"
+        contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? (
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
@@ -258,7 +258,7 @@ export default function GoalsPage() {
           <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
             New goal
           </h3>
-          <div className="grid gap-4 md:grid-cols-2">
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
             <Input
               type="number"
               min="1"
@@ -285,7 +285,7 @@ export default function GoalsPage() {
                     Choose the date and time you want this goal finished by.
                   </p>
                 </div>
-                <div className="grid gap-5 sm:grid-cols-2 lg:gap-7">
+                <div className="grid gap-4 sm:grid-cols-2 lg:gap-7">
                   <Input
                     type="date"
                     value={deadlineDate}
@@ -323,7 +323,7 @@ export default function GoalsPage() {
             </p>
           </div>
 
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <div className="space-y-2 text-sm text-text-secondary">
               <div>
                 {previewTargetCards}-card goal at{" "}
@@ -335,7 +335,7 @@ export default function GoalsPage() {
               </div>
             </div>
 
-            <div className="relative h-56 overflow-hidden rounded-xl border border-border bg-surface-base">
+            <div className="relative h-44 overflow-hidden rounded-xl border border-border bg-surface-base sm:h-56">
               <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(9,7,20,0.12),rgba(9,7,20,0.34))]" />
               <div className="absolute inset-0 z-10">
                 <ConstellationStar star={previewStar} variant="preview" />
@@ -358,7 +358,7 @@ export default function GoalsPage() {
                 description="Create one to start earning stars."
               />
             ) : (
-              <div className="grid animate-slide-up gap-4 lg:grid-cols-2">
+              <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
                 {activeGoals.map((goal) => {
                   const progressPct =
                     goal.targetCards > 0
@@ -403,7 +403,7 @@ export default function GoalsPage() {
               historicalGoals.length === 0 ? (
                 <EmptyState emoji="📜" title="No past goals yet" />
               ) : (
-                <div className="grid gap-4 lg:grid-cols-2">
+                <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
                   {historicalGoals.map((goal) => (
                     <div
                       key={goal.id}

@@ -389,7 +389,7 @@ export default function StudyPage() {
   };
 
   return (
-    <AppPage title="Study" backHref="/dashboard" backLabel="Dashboard" width="study" contentClassName="space-y-6">
+    <AppPage title="Study" backHref="/dashboard" backLabel="Dashboard" width="study" contentClassName="space-y-4 sm:space-y-6">
       {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
       {!loaded ? (
         <div className="space-y-4"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-72" /></div>
@@ -397,14 +397,14 @@ export default function StudyPage() {
         <>
           {sessionKind === null ? (
             <>
-              <div className="grid gap-4 lg:grid-cols-[minmax(0,1.15fr)_320px]">
+              <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.15fr)_320px]">
                 <SurfaceCard tone="warm" padding="lg">
                   <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Daily review</div>
-                  <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">Daily first.</h2>
+                  <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">Daily first.</h2>
                   <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Clear required cards to unlock Custom Review. Easy cards are optional.</p>
                   <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Required remaining</div><div className="mt-2 text-3xl font-semibold">{remainingRequiredCards.length}</div></div>
-                    <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Optional easy remaining</div><div className="mt-2 text-3xl font-semibold">{remainingOptionalCards.length}</div></div>
+                    <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Required remaining</div><div className="mt-2 text-2xl font-semibold sm:text-3xl">{remainingRequiredCards.length}</div></div>
+                    <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Optional easy remaining</div><div className="mt-2 text-2xl font-semibold sm:text-3xl">{remainingOptionalCards.length}</div></div>
                   </div>
                   <div className="mt-6 flex flex-wrap gap-3">
                     <Button type="button" onClick={() => startSession("daily-required")} disabled={remainingRequiredCards.length === 0} variant="warm" size="lg">{remainingRequiredCards.length > 0 ? "Start required" : "Required complete"}</Button>
@@ -424,7 +424,7 @@ export default function StudyPage() {
                   <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                     Start here
                   </div>
-                  <h3 className="mt-3 text-2xl font-bold tracking-tight">
+                  <h3 className="mt-3 text-xl font-bold tracking-tight sm:text-2xl">
                     Add your first cards
                   </h3>
                   <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
@@ -449,7 +449,7 @@ export default function StudyPage() {
                       className="absolute inset-0 z-20 flex items-center justify-center bg-[rgba(12,7,25,0.58)] p-5 text-left backdrop-blur-[2px]"
                       aria-label="Custom Review is locked"
                     >
-                      <span className="max-w-md rounded-[1.6rem] border border-warm-border bg-[rgba(32,20,56,0.94)] p-5 text-center shadow-bubble">
+                      <span className="max-w-md rounded-[1.4rem] border border-warm-border bg-[rgba(32,20,56,0.94)] p-4 text-center shadow-bubble sm:rounded-[1.6rem] sm:p-5">
                         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
                           <svg
                             viewBox="0 0 24 24"
@@ -465,9 +465,9 @@ export default function StudyPage() {
                             <path d="M8 11V8a4 4 0 1 1 8 0v3" />
                           </svg>
                         </span>
-                        <span className="mt-3 block text-lg font-bold text-white">
-                          Custom Review is locked
-                        </span>
+                      <span className="mt-3 block text-base font-bold text-white sm:text-lg">
+                        Custom Review is locked
+                      </span>
                         <span className="mt-2 block text-sm leading-6 text-text-secondary">
                           Complete your required Daily Review first.
                         </span>
@@ -582,17 +582,17 @@ export default function StudyPage() {
                   </div>
                   <ProgressBar progress={progressPercent} />
                   <div className="mx-auto w-full max-w-[58rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
-                    <div className={`relative aspect-[4/3] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/11] xl:aspect-[16/10] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
+                    <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/11] xl:aspect-[16/10] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
                       <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] sm:p-8 lg:p-10">
                         <div className="flex flex-wrap gap-2">
                           {current.tags.map((tag) => <span key={tag} className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">{tag}</span>)}
                         </div>
-                        <div className="flex flex-1 items-center justify-center py-6"><p className="max-w-4xl text-center text-2xl font-bold leading-tight sm:text-3xl xl:text-[2.65rem]">{current.front}</p></div>
+                        <div className="flex flex-1 items-center justify-center py-6"><p className="max-w-4xl text-center text-xl font-bold leading-tight sm:text-3xl xl:text-[2.65rem]">{current.front}</p></div>
                         <div className="text-center text-xs uppercase tracking-[0.2em] text-text-muted">{flipped ? "" : "Tap or press Space to reveal the answer"}</div>
                       </div>
                       <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-accent/30 bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
                         <div className="flex flex-wrap gap-2">{current.tags.map((tag) => <span key={tag} className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">{tag}</span>)}</div>
-                        <div className="flex flex-1 items-center justify-center py-6"><p className="max-w-4xl text-center text-2xl font-bold leading-tight text-white sm:text-3xl xl:text-[2.65rem]">{current.back}</p></div>
+                        <div className="flex flex-1 items-center justify-center py-6"><p className="max-w-4xl text-center text-xl font-bold leading-tight text-white sm:text-3xl xl:text-[2.65rem]">{current.back}</p></div>
                         <div className="text-center text-xs uppercase tracking-[0.2em] text-text-muted">How well did you recall this?</div>
                       </div>
                     </div>

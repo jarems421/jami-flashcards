@@ -337,7 +337,7 @@ export default function ConstellationDashboardPage() {
             onClick={() => void handleRefresh()}
           />
         }
-        contentClassName="space-y-6"
+        contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? (
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />

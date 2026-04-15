@@ -189,20 +189,20 @@ export default function DashboardHome() {
         title="Dashboard"
         width="2xl"
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
-        contentClassName="space-y-6"
+        contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? (
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
+        <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <Card className="animate-slide-up overflow-hidden" padding="lg">
             {!isLoading && decks.length === 0 ? (
               <>
                 <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                   Start here
                 </div>
-                <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+                <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">
                   Build your first deck.
                 </h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
@@ -210,7 +210,7 @@ export default function DashboardHome() {
                 </p>
                 <Link
                   href="/dashboard/decks"
-                  className="mt-8 inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
+                  className="mt-6 inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)] sm:mt-8"
                 >
                   Create a deck
                 </Link>
@@ -220,13 +220,13 @@ export default function DashboardHome() {
                 <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                   Ready to review
                 </div>
-                <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+                <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">
                   Start reviewing.
                 </h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                   Daily first. Custom after.
                 </p>
-                <div className="mt-8 flex flex-wrap gap-3">
+                <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
                   <Link
                     href={getCustomStudyHref({ mode: "daily" })}
                     className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
@@ -246,13 +246,13 @@ export default function DashboardHome() {
                 <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                   Today looks clear
                 </div>
-                <h2 className="mt-3 text-3xl font-bold tracking-tight sm:text-4xl">
+                <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">
                   You are caught up.
                 </h2>
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                   Custom Review is open.
                 </p>
-                <div className="mt-8 flex flex-wrap gap-3">
+                <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
                   <Link
                     href={getCustomStudyHref({ mode: "custom" })}
                     className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
@@ -283,15 +283,15 @@ export default function DashboardHome() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
           <Link
             href={getCustomStudyHref({ mode: "daily" })}
-            className="app-panel block p-6 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
+            className="app-panel block p-4 sm:p-6 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
           >
             <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
               Daily Review
             </div>
-            <div className="mt-3 text-3xl font-semibold">{isLoading ? "..." : dueCount}</div>
+            <div className="mt-3 text-2xl font-semibold sm:text-3xl">{isLoading ? "..." : dueCount}</div>
             <p className="mt-3 text-sm leading-6 text-text-secondary">
               Required cards left today.
             </p>
@@ -299,12 +299,12 @@ export default function DashboardHome() {
 
           <Link
             href="/dashboard/goals"
-            className="app-panel-warm block p-6 transition duration-fast hover:-translate-y-0.5 hover:shadow-shell"
+            className="app-panel-warm block p-4 sm:p-6 transition duration-fast hover:-translate-y-0.5 hover:shadow-shell"
           >
             <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
               Active goals
             </div>
-            <div className="mt-3 text-3xl font-semibold">{isLoading ? "..." : activeGoalCount}</div>
+            <div className="mt-3 text-2xl font-semibold sm:text-3xl">{isLoading ? "..." : activeGoalCount}</div>
             <p className="mt-3 text-sm leading-6 text-text-secondary">
               Active study targets.
             </p>

@@ -359,7 +359,7 @@ export default function DeckDetailPageClient() {
       backHref="/dashboard/decks"
       backLabel="Decks"
       width="2xl"
-      contentClassName="space-y-6"
+      contentClassName="space-y-4 sm:space-y-6"
     >
       {feedback ? (
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
@@ -367,21 +367,21 @@ export default function DeckDetailPageClient() {
 
       {deck ? (
         <>
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.12fr)_320px]">
+          <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.12fr)_320px]">
             <SurfaceCard padding="lg">
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 Deck editor
               </div>
               <div className="mt-3 flex items-center gap-4">
                 <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} className="h-16 w-16" />
-                <h1 className="min-w-0 truncate text-3xl font-bold tracking-tight sm:text-4xl">
+                <h1 className="min-w-0 truncate text-2xl font-bold tracking-tight sm:text-4xl">
                   {deck.name}
                 </h1>
               </div>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                 Edit prompts, answers, and tags.
               </p>
-              <div className="mt-8 flex flex-wrap gap-3">
+              <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
                 <Link
                   href="/dashboard/study?mode=custom"
                   className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
@@ -404,11 +404,11 @@ export default function DeckDetailPageClient() {
               <div className="mt-4 grid gap-4">
                 <div>
                   <div className="text-xs text-text-muted">Cards</div>
-                  <div className="mt-1 text-3xl font-semibold">{cards.length}</div>
+                  <div className="mt-1 text-2xl font-semibold sm:text-3xl">{cards.length}</div>
                 </div>
                 <div>
                   <div className="text-xs text-text-muted">Tags</div>
-                  <div className="mt-1 text-3xl font-semibold">{deckTagCount}</div>
+                  <div className="mt-1 text-2xl font-semibold sm:text-3xl">{deckTagCount}</div>
                 </div>
               </div>
             </SurfaceCard>

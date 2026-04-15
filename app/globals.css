@@ -269,6 +269,21 @@ body.constellation-background-enabled::before {
 
 /* ─── Reduced-motion fallback ─── */
 
+@media (max-width: 640px) {
+  .app-panel,
+  .app-panel-warm {
+    border-radius: 1.8rem;
+  }
+
+  .app-topbar {
+    border-radius: 1.6rem !important;
+  }
+
+  .app-nav {
+    border-radius: 1.9rem !important;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
