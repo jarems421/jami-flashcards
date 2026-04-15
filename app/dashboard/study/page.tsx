@@ -7,7 +7,7 @@ import { deleteField, doc, increment, updateDoc } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
-import { isDailyReviewRequiredComplete, type DailyReviewState } from "@/lib/study/daily-review";
+import { type DailyReviewState } from "@/lib/study/daily-review";
 import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
 import { parseCardTagsParam, type Card } from "@/lib/study/cards";
@@ -47,7 +47,7 @@ function getCardsByIds(cards: Card[], ids: string[]) {
 }
 
 function buildCustomReviewCards(cards: Card[], selectedDeckIds: string[], selectedTags: string[]) {
-  if (selectedDeckIds.length === 0 && selectedTags.length === 0) return [];
+  if (selectedDeckIds.length === 0 && selectedTags.length === 0) return cards;
   const selectedDeckIdSet = new Set(selectedDeckIds);
   const selectedTagSet = new Set(selectedTags);
   return cards.filter((card) => {
@@ -153,12 +153,7 @@ export default function StudyPage() {
     return optionalDailyCards.filter((card) => !completed.has(card.id));
   }, [dailyReviewState, optionalDailyCards]);
   const hasCards = cards.length > 0;
-  const customUnlocked = useMemo(() => {
-    if (!hasCards) return true;
-    if (remainingRequiredCards.length === 0) return true;
-    if (!dailyReviewState) return false;
-    return isDailyReviewRequiredComplete(dailyReviewState);
-  }, [dailyReviewState, hasCards, remainingRequiredCards.length]);
+  const customLocked = hasCards && remainingRequiredCards.length > 0;
   const customPreviewCards = useMemo(() => buildCustomReviewCards(cards, selectedDeckIds, selectedTags), [cards, selectedDeckIds, selectedTags]);
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
@@ -186,7 +181,7 @@ export default function StudyPage() {
       return;
     }
 
-    if (!customUnlocked) {
+    if (customLocked) {
       setFeedback({
         type: "error",
         message: "Complete your required Daily Review first to unlock Custom Review.",
@@ -194,16 +189,8 @@ export default function StudyPage() {
       return;
     }
 
-    if (customPreviewCards.length === 0) {
-      setFeedback({
-        type: "error",
-        message: "Choose at least one deck or tag to start Custom Review.",
-      });
-      return;
-    }
-
     startSession("custom");
-  }, [customPreviewCards.length, customUnlocked, hasCards, startSession]);
+  }, [customLocked, hasCards, startSession]);
 
   useEffect(() => {
     if (!loaded || autoStartHandledRef.current) return;
@@ -212,18 +199,13 @@ export default function StudyPage() {
       if (remainingRequiredCards.length > 0) startSession("daily-required");
       return;
     }
-    if (
-      requestedMode === "custom" &&
-      customUnlocked &&
-      customPreviewCards.length > 0 &&
-      (selectedDeckIds.length > 0 || selectedTags.length > 0)
-    ) {
+    if (requestedMode === "custom" && !customLocked && customPreviewCards.length > 0) {
       autoStartHandledRef.current = true;
       startSession("custom");
       return;
     }
     autoStartHandledRef.current = true;
-  }, [customPreviewCards.length, customUnlocked, loaded, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, startSession]);
+  }, [customLocked, customPreviewCards.length, loaded, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, startSession]);
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
@@ -408,14 +390,14 @@ export default function StudyPage() {
                   </div>
                   <div className="mt-6 flex flex-wrap gap-3">
                     <Button type="button" onClick={() => startSession("daily-required")} disabled={remainingRequiredCards.length === 0} variant="warm" size="lg">{remainingRequiredCards.length > 0 ? "Start required" : "Required complete"}</Button>
-                    <Button type="button" onClick={() => startSession("daily-optional")} disabled={!customUnlocked || remainingOptionalCards.length === 0} variant="secondary" size="lg">Optional easy</Button>
+                    <Button type="button" onClick={() => startSession("daily-optional")} disabled={customLocked || remainingOptionalCards.length === 0} variant="secondary" size="lg">Optional easy</Button>
                   </div>
                 </SurfaceCard>
                 <SurfaceCard padding="md">
                   <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Study day</div>
                   <div className="mt-4 grid gap-4">
                     <div><div className="text-xs text-text-muted">Next reset</div><div className="mt-1 text-2xl font-semibold">{formatCountdown(countdownMs)}</div></div>
-                    <div><div className="text-xs text-text-muted">Custom Review</div><div className="mt-1 text-sm font-medium text-white">{!hasCards ? "Add cards first" : customUnlocked ? "Unlocked" : "Locked until required review is done"}</div></div>
+                    <div><div className="text-xs text-text-muted">Custom Review</div><div className="mt-1 text-sm font-medium text-white">{!hasCards ? "Add cards first" : customLocked ? "Locked until required review is done" : "Unlocked"}</div></div>
                   </div>
                 </SurfaceCard>
               </div>
@@ -442,7 +424,7 @@ export default function StudyPage() {
               ) : null}
               {hasCards ? (
                 <SurfaceCard padding="lg" className="relative">
-                  {!customUnlocked ? (
+                  {customLocked ? (
                     <button
                       type="button"
                       onClick={handleCustomReviewClick}
@@ -477,9 +459,9 @@ export default function StudyPage() {
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div>
                       <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Custom review</div>
-                      <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Pick decks, tags, or both. Custom practice does not change scheduling.</p>
+                    <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Pick decks, tags, or both. Leave both blank to review all cards.</p>
                     </div>
-                    <Button type="button" onClick={handleCustomReviewClick} disabled={customUnlocked && customPreviewCards.length === 0} size="lg">Start custom review</Button>
+                    <Button type="button" onClick={handleCustomReviewClick} disabled={!customLocked && customPreviewCards.length === 0} size="lg">Start custom review</Button>
                   </div>
                   <div className="mt-6 grid gap-4 lg:grid-cols-2">
                     <div>
@@ -525,7 +507,7 @@ export default function StudyPage() {
                   </div>
                   <div className="mt-6 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
                     <span>{customPreviewCards.length} selected</span>
-                    {!customUnlocked ? (
+                    {customLocked ? (
                       <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Finish required Daily Review first</span>
                     ) : null}
                   </div>
