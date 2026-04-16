@@ -16,10 +16,10 @@ import {
 import { getDeckHref } from "@/lib/app/routes";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
-import BackFormatPresets from "@/components/decks/BackFormatPresets";
+import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
-import { Button, EmptyState, FeedbackBanner, Input, Skeleton, Textarea } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import Link from "next/link";
 
 function cardMatchesSearch(card: Card, term: string, deckName?: string) {
@@ -330,17 +330,13 @@ export default function CardsSearchPage() {
               maxLength={MAX_FRONT_LENGTH}
             />
             <div className="space-y-3">
-              <Textarea
+              <CardBackEditor
                 label="Back"
                 placeholder="Answer"
                 value={addBack}
-                onChange={(e) => setAddBack(e.target.value)}
+                onChange={setAddBack}
                 maxLength={MAX_BACK_LENGTH}
                 rows={6}
-              />
-              <BackFormatPresets
-                currentBack={addBack}
-                onApply={setAddBack}
                 disabled={addingCard}
               />
               <CardBackAutocomplete
@@ -421,16 +417,12 @@ export default function CardsSearchPage() {
                       onChange={(e) => setEditingFront(e.target.value)}
                       maxLength={MAX_FRONT_LENGTH}
                     />
-                    <Textarea
+                    <CardBackEditor
                       label="Back"
                       value={editingBack}
-                      onChange={(e) => setEditingBack(e.target.value)}
+                      onChange={setEditingBack}
                       maxLength={MAX_BACK_LENGTH}
                       rows={6}
-                    />
-                    <BackFormatPresets
-                      currentBack={editingBack}
-                      onApply={setEditingBack}
                       disabled={savingCardId === card.id}
                     />
                     <CardBackAutocomplete
