@@ -83,7 +83,6 @@ export default function StudyPage() {
   const [countdownMs, setCountdownMs] = useState(getMsUntilNextStudyBoundary());
   const [showExplanation, setShowExplanation] = useState(false);
   const flipTimestampRef = useRef(0);
-  const explanationCache = useRef<Map<string, string>>(new Map());
   const autoStartHandledRef = useRef(false);
 
   useEffect(() => {
@@ -591,7 +590,6 @@ export default function StudyPage() {
                     mode="clue"
                     deckName={deckNamesById[current.deckId]}
                     onContinue={goNext}
-                    explanationCache={explanationCache}
                   />
                 </div>
               ) : null}
@@ -599,7 +597,7 @@ export default function StudyPage() {
                 <div className="animate-fade-in space-y-3">
                   {savingRating ? <div className="text-center text-sm text-text-muted">Saving...</div> : null}
                   {showExplanation ? (
-                    <StudyAssistant card={current} autoExplain mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} explanationCache={explanationCache} />
+                    <StudyAssistant card={current} autoExplain mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
                   ) : (
                     <div className="space-y-3">
                       <div className="grid gap-3 sm:grid-cols-4">
@@ -622,7 +620,7 @@ export default function StudyPage() {
                           </button>
                         ))}
                       </div>
-                      <StudyAssistant card={current} autoExplain={false} mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} explanationCache={explanationCache} />
+                      <StudyAssistant card={current} autoExplain={false} mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
                     </div>
                   )}
                 </div>

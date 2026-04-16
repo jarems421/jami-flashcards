@@ -250,7 +250,7 @@ ${relatedCards
               : intent === "mnemonic"
                 ? "Give one compact mnemonic, memory hook, or vivid association tied to this card."
                 : intent === "why-wrong"
-                  ? "Explain the most likely confusion or trap behind getting this card wrong, then clarify the key distinction."
+                  ? "Use the student's own description of what went wrong as the main evidence. Do not assume their mistake. Explain the specific confusion they described, then clarify the key distinction."
                   : "Answer the student's follow-up directly and helpfully, keeping it concise and study-focused.";
 
     const memoryProfilePrompt = studyContext

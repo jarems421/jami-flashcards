@@ -2,7 +2,7 @@
 
 import { useId, useRef, useState, type KeyboardEvent } from "react";
 
-type FormatMode = "plain" | "bullet" | "numbered" | "definition" | "formula" | "compare";
+type FormatMode = "plain" | "bullet" | "numbered" | "definition" | "compare";
 
 type CardBackEditorProps = {
   label?: string;
@@ -43,12 +43,6 @@ const FORMAT_ACTIONS: Array<{
     label: "Definition",
     starter: "Definition: ",
     hint: "Then add short supporting points",
-  },
-  {
-    mode: "formula",
-    label: "Formula",
-    starter: "Formula: ",
-    hint: "Then add variables or notes",
   },
   {
     mode: "compare",
@@ -99,12 +93,48 @@ function isOnlyNumberMarker(lineBeforeCursor: string) {
   return /^\s*\d+\.\s*$/.test(lineBeforeCursor);
 }
 
-function isBulletLine(lineBeforeCursor: string) {
-  return /^\s*-\s/.test(lineBeforeCursor);
-}
-
 function startsWithLabel(lineBeforeCursor: string, label: string) {
   return lineBeforeCursor.trimStart().startsWith(label);
+}
+
+function getFormatPreview(mode: FormatMode, value: string, cursor: number) {
+  if (mode === "plain") {
+    return null;
+  }
+
+  const { lineBeforeCursor } = getLineInfo(value, cursor);
+
+  if (mode === "bullet") {
+    return ["- another point"];
+  }
+
+  if (mode === "numbered") {
+    return [`${getNextNumber(value, cursor)}. next step`];
+  }
+
+  if (mode === "definition") {
+    return startsWithLabel(lineBeforeCursor, "Definition:")
+      ? ["- what it means in simple words"]
+      : ["- another useful detail"];
+  }
+
+  if (mode === "compare") {
+    if (startsWithLabel(lineBeforeCursor, "A:")) {
+      return ["B: the thing you are comparing it with", "Key difference: "];
+    }
+
+    if (startsWithLabel(lineBeforeCursor, "B:")) {
+      return ["Key difference: the main contrast"];
+    }
+
+    if (startsWithLabel(lineBeforeCursor, "Key difference:")) {
+      return ["- why that difference matters"];
+    }
+
+    return ["B: ", "Key difference: "];
+  }
+
+  return null;
 }
 
 export default function CardBackEditor({
@@ -119,6 +149,15 @@ export default function CardBackEditor({
   const textareaId = useId();
   const textareaRef = useRef<HTMLTextAreaElement | null>(null);
   const [formatMode, setFormatMode] = useState<FormatMode>("plain");
+  const [cursorPosition, setCursorPosition] = useState(0);
+  const previewLines = getFormatPreview(formatMode, value, cursorPosition);
+
+  const syncCursorPosition = () => {
+    const textarea = textareaRef.current;
+    if (!textarea) return;
+
+    setCursorPosition(textarea.selectionStart);
+  };
 
   const commitValue = (nextValue: string, cursor: number) => {
     const limitedValue =
@@ -126,6 +165,7 @@ export default function CardBackEditor({
     const nextCursor = Math.min(cursor, limitedValue.length);
 
     onChange(limitedValue);
+    setCursorPosition(nextCursor);
 
     window.requestAnimationFrame(() => {
       const textarea = textareaRef.current;
@@ -251,21 +291,6 @@ export default function CardBackEditor({
       insertion = startsWithLabel(lineBeforeCursor, "Definition:") ? "\n- " : "\n- ";
     }
 
-    if (formatMode === "formula") {
-      if (isOnlyBulletMarker(lineBeforeCursor)) {
-        event.preventDefault();
-        exitEmptyMarker(lineStart, cursor);
-        return;
-      }
-      if (startsWithLabel(lineBeforeCursor, "Formula:")) {
-        insertion = "\nVariables:\n- ";
-      } else if (startsWithLabel(lineBeforeCursor, "Variables:")) {
-        insertion = "\n- ";
-      } else {
-        insertion = isBulletLine(lineBeforeCursor) ? "\n- " : "\nNote: ";
-      }
-    }
-
     if (formatMode === "compare") {
       if (isOnlyBulletMarker(lineBeforeCursor)) {
         event.preventDefault();
@@ -306,10 +331,31 @@ export default function CardBackEditor({
           placeholder={placeholder}
           maxLength={maxLength}
           disabled={disabled}
-          onChange={(event) => onChange(event.target.value)}
+          onChange={(event) => {
+            onChange(event.target.value);
+            setCursorPosition(event.target.selectionStart);
+          }}
           onKeyDown={continueFormat}
+          onClick={syncCursorPosition}
+          onKeyUp={syncCursorPosition}
+          onSelect={syncCursorPosition}
           className="w-full rounded-[1.5rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-4 text-sm text-white placeholder:text-text-muted shadow-[0_14px_28px_rgba(8,2,24,0.28)] outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18 focus:shadow-[0_18px_36px_rgba(183,124,255,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
         />
+        {previewLines ? (
+          <div
+            className="mt-2 rounded-[1.15rem] border border-dashed border-white/[0.12] bg-white/[0.035] px-4 py-3 text-sm text-text-muted"
+            aria-hidden="true"
+          >
+            <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-text-muted/80">
+              Preview on Return
+            </div>
+            <div className="space-y-1 font-medium opacity-75">
+              {previewLines.map((line, index) => (
+                <div key={`${line}-${index}`}>{line}</div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="rounded-[1.35rem] border border-white/[0.10] bg-white/[0.035] p-3">

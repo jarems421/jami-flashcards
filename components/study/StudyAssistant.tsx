@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { getExplanation } from "@/services/ai/explain";
 import {
   sendChatMessage,
   type ChatMessage,
@@ -14,7 +13,6 @@ type Props = {
   card: Card;
   autoExplain: boolean;
   onContinue: () => void;
-  explanationCache: React.RefObject<Map<string, string>>;
   mode?: "clue" | "review";
   deckName?: string;
 };
@@ -56,7 +54,6 @@ export default function StudyAssistant({
   card,
   autoExplain,
   onContinue,
-  explanationCache,
   mode = "review",
   deckName,
 }: Props) {
@@ -102,58 +99,22 @@ export default function StudyAssistant({
     if (!autoExplain) setOpen(false);
   }, [card.id, autoExplain]);
 
-  // Auto-explain on wrong answer
+  // After a struggle, ask what happened first instead of guessing the mistake.
   useEffect(() => {
     if (!autoExplain) return;
 
-    const cached = explanationCache.current?.get(card.id);
-    if (cached) {
-      const msg: ChatMessage = { role: "model", text: cached };
-      setMessages([msg]);
-      chatHistoryRef.current = [msg];
-      return;
-    }
+    const msg: ChatMessage = {
+      role: "model",
+      text:
+        "What went wrong there? Tell me what happened, like what you mixed up, forgot, or nearly got right, and I’ll help from that.",
+    };
 
-    setLoading(true);
-    getExplanation(card.front, card.back, {
-      deckId: card.deckId,
-      deckName,
-      tags: card.tags,
-      difficulty: card.difficulty,
-      lapses: card.lapses,
-      reps: card.reps,
-      scheduledDays: card.scheduledDays,
-      elapsedDays: card.elapsedDays,
-    })
-      .then((text) => {
-        explanationCache.current?.set(card.id, text);
-        const msg: ChatMessage = { role: "model", text };
-        setMessages([msg]);
-        chatHistoryRef.current = [msg];
-      })
-      .catch(() => {
-        const msg: ChatMessage = {
-          role: "model",
-          text: "Could not load explanation.",
-        };
-        setMessages([msg]);
-        chatHistoryRef.current = [msg];
-      })
-      .finally(() => setLoading(false));
+    setMessages([msg]);
+    chatHistoryRef.current = [msg];
+    setLoading(false);
   }, [
     autoExplain,
-    card.back,
-    card.difficulty,
-    card.deckId,
-    card.elapsedDays,
-    card.front,
     card.id,
-    card.lapses,
-    card.reps,
-    card.scheduledDays,
-    card.tags,
-    deckName,
-    explanationCache,
   ]);
 
   const runPrompt = async (text: string, intent: StudyChatIntent) => {
@@ -194,7 +155,7 @@ export default function StudyAssistant({
     const text = input.trim();
     if (!text || loading) return;
 
-    await runPrompt(text, isClueMode ? "clue" : "follow-up");
+    await runPrompt(text, isClueMode ? "clue" : autoExplain ? "why-wrong" : "follow-up");
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
@@ -282,6 +243,8 @@ export default function StudyAssistant({
             placeholder={
               isClueMode
                 ? "Ask for a clue without revealing the answer"
+                : autoExplain
+                  ? "Tell me what went wrong..."
                 : "Ask for a follow-up or explanation"
             }
             disabled={loading}
