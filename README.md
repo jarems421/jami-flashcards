@@ -162,4 +162,4 @@ npm run build
 
 ## License
 
-Private project. Not currently open source.
+MIT License. See [LICENSE](LICENSE) for details.
