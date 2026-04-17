@@ -381,9 +381,9 @@ export default function CardBackEditor({
                 disabled={disabled}
                 title={action.hint}
                 onClick={() => applyFormat(action.mode, action.starter)}
-                className={`shrink-0 rounded-full border px-3 py-2 text-xs font-semibold transition duration-fast disabled:opacity-50 ${
+                className={`shrink-0 rounded-full border px-3 py-2 text-xs font-medium transition duration-fast disabled:opacity-50 ${
                   isActive
-                    ? "border-warm-accent/70 bg-warm-accent/18 text-white shadow-[0_8px_18px_rgba(255,196,135,0.16)]"
+                    ? "border-warm-accent/45 bg-warm-accent/[0.10] text-white"
                     : "border-white/[0.12] bg-white/[0.055] text-text-secondary hover:border-white/[0.22] hover:bg-white/[0.08] hover:text-white"
                 }`}
               >

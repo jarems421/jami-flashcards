@@ -24,7 +24,7 @@ export default function StatTile({
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
         {label}
       </div>
-      <div className="mt-3 text-3xl font-semibold tracking-tight text-white">
+      <div className="mt-3 text-xl font-medium tracking-[0.01em] text-white sm:text-2xl">
         {value}
       </div>
       {detail ? (

@@ -282,7 +282,7 @@ export default function GoalsPage() {
             <div className="md:col-span-2">
               <div className="rounded-[1.6rem] border border-white/[0.10] bg-white/[0.04] p-4">
                 <div className="mb-4">
-                  <div className="text-sm font-semibold text-white">Deadline</div>
+                  <div className="text-sm font-medium text-white">Deadline</div>
                   <p className="mt-1 text-xs leading-5 text-text-muted">
                     Choose the date and time you want this goal finished by.
                   </p>

@@ -281,7 +281,7 @@ export default function StudyAssistant({
         <button
           type="button"
           disabled={loading && messages.length === 0}
-          className="flex w-full min-h-[3.5rem] items-center justify-center rounded-[1.75rem] border border-border bg-white/[0.06] px-4 py-3 text-sm font-semibold text-white shadow-card transition duration-fast ease-spring hover:border-border-strong hover:bg-white/[0.10] active:scale-[0.98] disabled:opacity-50"
+          className="flex w-full min-h-[3.5rem] items-center justify-center rounded-[1.75rem] border border-border bg-white/[0.06] px-4 py-3 text-sm font-medium text-white shadow-card transition duration-fast ease-spring hover:border-border-strong hover:bg-white/[0.10] active:scale-[0.98] disabled:opacity-50"
           onClick={onContinue}
         >
           Continue

@@ -17,7 +17,7 @@ import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
 import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, PageHero, ProgressBar, Skeleton, StatTile } from "@/components/ui";
+import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, PageHero, ProgressBar, Skeleton } from "@/components/ui";
 
 type SessionKind = "daily-required" | "daily-optional" | "custom";
 type SessionStats = { reviewedCards: number; correctAnswers: number; completedGoals: number; starsEarned: number; ratings: Record<CardRating, number>; };
@@ -122,6 +122,52 @@ function formatCountdown(ms: number) {
 
 function createEmptySessionStats(): SessionStats {
   return { reviewedCards: 0, correctAnswers: 0, completedGoals: 0, starsEarned: 0, ratings: { again: 0, hard: 0, good: 0, easy: 0 } };
+}
+
+function StudyStatCard({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string | number;
+  detail: string;
+}) {
+  return (
+    <SurfaceCard padding="md" className="text-center">
+      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+        {label}
+      </div>
+      <div className="mt-3 flex min-h-[2rem] items-center justify-center text-xl font-semibold leading-none tabular-nums text-white sm:text-2xl">
+        {value}
+      </div>
+      <p className="mx-auto mt-2 max-w-[16rem] text-sm leading-6 text-text-secondary">
+        {detail}
+      </p>
+    </SurfaceCard>
+  );
+}
+
+function StepLabel({ step, children }: { step: number; children: string }) {
+  return (
+    <div className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
+      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.06] text-[0.68rem] leading-none tabular-nums text-text-secondary">
+        {step}
+      </span>
+      <span>{children}</span>
+    </div>
+  );
+}
+
+function CountPill({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex min-w-[7rem] flex-1 items-center justify-between gap-3 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.045] px-3 py-2 sm:flex-none">
+      <span className="text-xs leading-5 text-text-muted">{label}</span>
+      <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white/[0.08] px-2 text-sm font-semibold leading-none tabular-nums text-white">
+        {value}
+      </span>
+    </div>
+  );
 }
 
 function getCardsByIds(cards: Card[], ids: string[]) {
@@ -501,19 +547,21 @@ export default function StudyPage() {
                       : "Add a few cards first, then Daily Review and Custom Review will be ready."
                 }
                 aside={
-                  <div className="rounded-[1.5rem] border border-white/[0.09] bg-white/[0.045] px-4 py-3 text-sm text-text-secondary">
+                  <div className="rounded-[1.5rem] border border-white/[0.09] bg-white/[0.045] px-4 py-3 text-center text-sm text-text-secondary">
                     <div className="text-xs text-text-muted">Next reset</div>
-                    <div className="mt-1 text-xl font-bold text-white">{formatCountdown(countdownMs)}</div>
+                    <div className="mt-1 flex min-h-6 items-center justify-center text-base font-medium leading-none tabular-nums text-white">
+                      {formatCountdown(countdownMs)}
+                    </div>
                   </div>
                 }
               />
               <div className="grid gap-3 sm:grid-cols-2">
-                <StatTile
+                <StudyStatCard
                   label="Daily Review"
                   value={remainingRequiredCards.length + remainingOptionalCards.length}
                   detail={`${remainingRequiredCards.length} priority, ${remainingOptionalCards.length} maintenance`}
                 />
-                <StatTile
+                <StudyStatCard
                   label="Custom Review"
                   value={!hasCards ? "Set up" : "Open"}
                   detail={!hasCards ? "Create cards first" : `${customPreviewCards.length} cards ready`}
@@ -525,20 +573,28 @@ export default function StudyPage() {
                   eyebrow="Start here"
                   title="Create a few cards first"
                   description="There is nothing to review yet, which is completely fine. Add your first flashcards and Jami will build the right study queue from them."
-                  action={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create cards</Link>}
+                  action={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create cards</Link>}
                   secondaryAction={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Open decks</Link>}
                 />
               ) : null}
               {hasCards ? (
                 <div className="grid gap-3">
-                  <SurfaceCard padding="sm" className="space-y-2.5">
-                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">1. Daily Review</div>
-                    <h3 className="text-xl font-semibold text-white">
-                      {remainingRequiredCards.length + remainingOptionalCards.length > 0
-                        ? `${remainingRequiredCards.length + remainingOptionalCards.length} cards available`
-                        : "Daily Review complete"}
-                    </h3>
-                    <p className="text-sm leading-6 text-text-secondary">
+                  <SurfaceCard padding="md" className="space-y-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <StepLabel step={1}>Daily Review</StepLabel>
+                        <h3 className="mt-3 text-lg font-semibold leading-tight text-white">
+                          {remainingRequiredCards.length + remainingOptionalCards.length > 0
+                            ? `${remainingRequiredCards.length + remainingOptionalCards.length} cards available`
+                            : "Daily Review complete"}
+                        </h3>
+                      </div>
+                      <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
+                        <CountPill value={remainingRequiredCards.length} label="Priority" />
+                        <CountPill value={remainingOptionalCards.length} label="Maintenance" />
+                      </div>
+                    </div>
+                    <p className="max-w-3xl text-sm leading-6 text-text-secondary">
                       {remainingRequiredCards.length > 0 && remainingOptionalCards.length > 0
                         ? "Start with Priority Review first, then use Maintenance Review for extra reps if you want more practice."
                         : remainingRequiredCards.length > 0
@@ -547,18 +603,18 @@ export default function StudyPage() {
                             ? "Priority Review is clear. Maintenance Review cards are still available for light extra practice."
                             : "No Daily Review cards right now. Custom Review is open whenever you want focused practice."}
                     </p>
-                    <div className="flex flex-wrap gap-3">
-                      <div className="w-full max-w-[16.5rem] space-y-1.5">
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="space-y-1.5">
                         <Button type="button" onClick={() => startSession("daily-required")} disabled={remainingRequiredCards.length === 0} variant="warm" size="md" className="w-full justify-center">
                           {remainingRequiredCards.length > 0 ? "Priority Review" : "No priority cards"}
                         </Button>
-                        <div className="text-xs leading-5 text-text-muted">The cards you&apos;ve been struggling with</div>
+                        <div className="text-center text-xs leading-5 text-text-muted">The cards you&apos;ve been struggling with</div>
                       </div>
-                      <div className="w-full max-w-[16.5rem] space-y-1.5">
+                      <div className="space-y-1.5">
                         <Button type="button" onClick={() => startSession("daily-optional")} disabled={remainingOptionalCards.length === 0} variant="secondary" size="md" className="w-full justify-center">
                           {remainingOptionalCards.length > 0 ? "Maintenance Review" : "No maintenance cards"}
                         </Button>
-                        <div className="text-xs leading-5 text-text-muted">The cards you&apos;ve been recalling well</div>
+                        <div className="text-center text-xs leading-5 text-text-muted">The cards you&apos;ve been recalling well</div>
                       </div>
                     </div>
                   </SurfaceCard>
@@ -566,17 +622,17 @@ export default function StudyPage() {
               ) : null}
               {hasCards ? (
                 <SurfaceCard padding="lg" className="relative space-y-5">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="max-w-2xl">
-                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">2. Custom Review</div>
-                      <h3 className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                      <StepLabel step={2}>Custom Review</StepLabel>
+                      <h3 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">
                         Build your own session
                       </h3>
                       <p className="mt-2 text-sm leading-7 text-text-secondary sm:text-base">
                         Pick decks, tags, or both. Matching is flexible, so selected decks and selected tags are combined.
                       </p>
                     </div>
-                    <Button type="button" onClick={handleCustomReviewClick} disabled={customPreviewCards.length === 0} size="lg">
+                    <Button type="button" onClick={handleCustomReviewClick} disabled={customPreviewCards.length === 0} size="lg" className="w-full sm:w-auto">
                       Start custom review
                     </Button>
                   </div>
@@ -596,14 +652,14 @@ export default function StudyPage() {
                         </svg>
                       </span>
                       <span>
-                        <span className="block font-semibold text-white">Daily Review is recommended today.</span>
+                        <span className="block text-sm font-medium text-white">Daily Review is recommended today.</span>
                         <span className="mt-0.5 block text-text-secondary">Custom Review stays open for exam practice. Struggles here still help tomorrow&apos;s memory ranking.</span>
                       </span>
                     </div>
                   ) : null}
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div>
-                      <div className="mb-3 text-sm font-semibold text-white">Choose decks</div>
+                      <div className="mb-3 text-sm font-medium text-white">Choose decks</div>
                       <div className="flex flex-wrap gap-2">
                         {decks.map((deck) => {
                           const selected = selectedDeckIds.includes(deck.id);
@@ -623,7 +679,7 @@ export default function StudyPage() {
                       </div>
                     </div>
                     <div>
-                      <div className="mb-3 text-sm font-semibold text-white">Choose tags</div>
+                      <div className="mb-3 text-sm font-medium text-white">Choose tags</div>
                       <div className="flex flex-wrap gap-2">
                         {availableTags.map((tag) => {
                           const selected = selectedTags.includes(tag);
@@ -654,8 +710,13 @@ export default function StudyPage() {
                       secondaryAction={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Manage cards</Link>}
                     />
                   ) : null}
-                  <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-                    <span>{customPreviewCards.length} card{customPreviewCards.length === 1 ? "" : "s"} selected</span>
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-sm text-text-secondary">
+                    <span className="inline-flex items-center gap-2">
+                      <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/[0.08] px-2 text-xs font-semibold leading-none tabular-nums text-white">
+                        {customPreviewCards.length}
+                      </span>
+                      <span>card{customPreviewCards.length === 1 ? "" : "s"} selected</span>
+                    </span>
                     {hasRecommendedDailyCards ? (
                       <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Daily Review recommended</span>
                     ) : null}
@@ -680,33 +741,43 @@ export default function StudyPage() {
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
                     <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
-                    <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">Good work.</h2>
+                    <h2 className="mt-3 text-xl font-semibold leading-tight tracking-tight text-white sm:text-2xl">Good work.</h2>
                     <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                       You reviewed {sessionStats.reviewedCards} of {totalCards} card{totalCards === 1 ? "" : "s"}. Your next best step is ready below.
                     </p>
                   </div>
                   <div className="rounded-[1.4rem] border border-white/[0.12] bg-white/[0.08] px-4 py-3 text-sm text-text-secondary">
-                    <span className="font-semibold text-white">{accuracyPercentage}%</span> accuracy
+                    <span className="text-sm font-semibold text-white">{accuracyPercentage}%</span> accuracy
                   </div>
                 </div>
                 <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Reviewed</div><div className="mt-2 text-2xl font-semibold">{sessionStats.reviewedCards}</div></div>
+                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-center text-sm">
+                    <div className="text-xs text-text-muted">Reviewed</div>
+                    <div className="mt-2 flex min-h-7 items-center justify-center text-lg font-semibold leading-none tabular-nums text-white">{sessionStats.reviewedCards}</div>
+                  </div>
                   <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
-                    <div className="text-xs text-text-muted">Ratings</div>
-                    <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-text-secondary">
+                    <div className="text-center text-xs text-text-muted">Ratings</div>
+                    <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs text-text-secondary">
                       {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => (
-                        <span key={rating} className="rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1">
-                          {RATING_LABELS[rating]} {sessionStats.ratings[rating]}
+                        <span key={rating} className="inline-flex items-center justify-between gap-2 rounded-full border border-white/[0.08] bg-white/[0.05] px-2.5 py-1">
+                          <span>{RATING_LABELS[rating]}</span>
+                          <span className="font-semibold tabular-nums text-white">{sessionStats.ratings[rating]}</span>
                         </span>
                       ))}
                     </div>
                   </div>
-                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Goals completed</div><div className="mt-2 text-2xl font-semibold">{sessionStats.completedGoals}</div></div>
-                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Rewards</div><div className="mt-2 text-sm text-text-secondary">{sessionStats.starsEarned} star{sessionStats.starsEarned === 1 ? "" : "s"}</div></div>
+                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-center text-sm">
+                    <div className="text-xs text-text-muted">Goals completed</div>
+                    <div className="mt-2 flex min-h-7 items-center justify-center text-lg font-semibold leading-none tabular-nums text-white">{sessionStats.completedGoals}</div>
+                  </div>
+                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-center text-sm">
+                    <div className="text-xs text-text-muted">Rewards</div>
+                    <div className="mt-2 text-sm text-text-secondary"><span className="font-semibold tabular-nums text-white">{sessionStats.starsEarned}</span> star{sessionStats.starsEarned === 1 ? "" : "s"}</div>
+                  </div>
                 </div>
                 <div className="mt-6 rounded-[1.6rem] border border-white/[0.10] bg-white/[0.06] p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Next best step</div>
-                  <div className="mt-2 text-lg font-semibold text-white">
+                  <div className="mt-2 text-base font-semibold text-white sm:text-lg">
                     {sessionKind === "daily-required" && remainingOptionalCards.length > 0
                       ? "Optional easy cards are ready"
                       : hasCards && customPreviewCards.length > 0
@@ -745,13 +816,21 @@ export default function StudyPage() {
               <InlineStudyFeedback feedback={answerFeedback} />
               <SurfaceCard padding="lg" className="overflow-hidden">
                 <div className="space-y-5">
-                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-                    <div>
+                  <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
+                    <div className="min-w-0">
                       <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">{getSessionLabel(sessionKind)}</div>
-                      <div className="mt-2 text-sm leading-6 text-text-secondary">Card {currentCardNumber} of {totalCards}</div>
+                      <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/[0.10] bg-white/[0.05] px-3 py-1.5 text-sm leading-none text-text-secondary">
+                        <span className="font-semibold tabular-nums text-white">{currentCardNumber}</span>
+                        <span className="text-text-muted">/</span>
+                        <span className="tabular-nums">{totalCards}</span>
+                        <span>cards</span>
+                      </div>
                     </div>
-                    <div className="min-w-[8rem]">
-                      <div className="mb-2 text-right text-xs font-semibold text-text-muted">{progressPercent}% complete</div>
+                    <div className="min-w-0 lg:min-w-[12rem]">
+                      <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
+                        <span>Progress</span>
+                        <span className="tabular-nums">{progressPercent}%</span>
+                      </div>
                       <ProgressBar progress={progressPercent} />
                     </div>
                   </div>
@@ -774,14 +853,14 @@ export default function StudyPage() {
                           ) : null}
                         </div>
                         <div className="flex flex-1 items-center justify-center py-6">
-                          <p className="max-w-4xl text-center text-2xl font-medium leading-tight tracking-tight sm:text-4xl xl:text-[3rem]">{current.front}</p>
+                          <p className="max-w-4xl text-center text-lg font-medium leading-snug tracking-[0.01em] sm:text-2xl xl:text-[2.15rem]">{current.front}</p>
                         </div>
                         <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Tap or press Space to reveal</div>
                       </div>
                       <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(35,25,62,0.98),rgba(17,11,34,0.98))] p-5 shadow-[0_22px_54px_rgba(8,2,26,0.28)] [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
-                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Answer</div>
+                        <div className="text-xs font-normal tracking-[0.06em] text-text-muted">Answer</div>
                         <div className="flex flex-1 items-center justify-center py-6">
-                          <p className="max-w-4xl whitespace-pre-wrap text-center text-2xl font-medium leading-tight tracking-tight text-white sm:text-4xl xl:text-[3rem]">{current.back}</p>
+                          <p className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-white sm:text-2xl xl:text-[2.15rem]">{current.back}</p>
                         </div>
                         <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">How well did you recall this?</div>
                       </div>
@@ -815,12 +894,12 @@ export default function StudyPage() {
                             key={rating}
                             type="button"
                             disabled={savingRating !== null}
-                            className={`flex min-h-[4.8rem] flex-col items-center justify-center gap-1 rounded-[1.55rem] border px-4 py-4 text-sm font-bold shadow-[0_12px_24px_rgba(8,2,26,0.16)] transition duration-fast ease-spring hover:-translate-y-[1px] active:scale-[0.98] disabled:opacity-50 ${meta.classes}`}
+                            className={`flex min-h-[4.8rem] flex-col items-center justify-center gap-1.5 rounded-[1.55rem] border px-4 py-4 text-center text-sm font-semibold shadow-[0_12px_24px_rgba(8,2,26,0.16)] transition duration-fast ease-spring hover:-translate-y-[1px] active:scale-[0.98] disabled:opacity-50 ${meta.classes}`}
                             onClick={() => void handleRating(rating)}
                           >
                             <span>{RATING_LABELS[rating]}</span>
-                            <span className="text-xs font-medium opacity-75">{meta.hint}</span>
-                            <span className="rounded-full border border-white/10 bg-black/10 px-2 py-0.5 text-[0.68rem] opacity-75">{meta.shortcut}</span>
+                            <span className="text-[0.7rem] font-normal opacity-75">{meta.hint}</span>
+                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-black/10 px-2 text-[0.68rem] leading-none tabular-nums opacity-75">{meta.shortcut}</span>
                           </button>
                           );
                         })}

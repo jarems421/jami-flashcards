@@ -390,7 +390,7 @@ export default function CardsSearchPage() {
           title="No cards yet"
           description="Cards are the fuel for Daily Review and Custom Review. Add a question and answer above to create your first one."
           helperText={decks.length === 0 ? "You will need a deck first, then cards can be added here." : "Once saved, new cards appear in study automatically."}
-          action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
+          action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
         />
       ) : filtered.length === 0 ? (
         <EmptyState
@@ -468,7 +468,7 @@ export default function CardsSearchPage() {
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="min-w-0 flex-1 space-y-1">
-                        <div className="text-[0.95rem] font-semibold leading-6 text-white sm:text-base sm:leading-7">
+                        <div className="text-[0.9rem] font-normal leading-6 text-white sm:text-[0.95rem] sm:leading-7">
                           {card.front}
                         </div>
                         <div className="text-sm leading-6 text-text-secondary">

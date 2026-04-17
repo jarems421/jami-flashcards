@@ -413,7 +413,7 @@ export default function ConstellationDashboardPage() {
                 <div className="flex items-baseline justify-between gap-4">
                   <div>
                     <div className="text-xs text-text-muted">Stars earned</div>
-                    <div className="mt-1 text-3xl font-semibold text-white">
+                    <div className="mt-1 text-xl font-medium text-white sm:text-2xl">
                       {activeConstellation.starCount}
                     </div>
                   </div>
@@ -558,7 +558,7 @@ export default function ConstellationDashboardPage() {
                         action={
                           <Link
                             href="/dashboard/goals"
-                            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover"
+                            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover"
                           >
                             Create a goal
                           </Link>

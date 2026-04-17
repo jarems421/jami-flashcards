@@ -39,7 +39,7 @@ export default function AppTopBar({
             <span className="text-[0.82rem] font-bold text-warm-accent sm:text-[0.95rem]">
               Jami
             </span>
-            <div className="mt-1.5 truncate text-sm font-semibold text-white sm:mt-2 sm:text-base">
+            <div className="mt-1.5 truncate text-sm font-medium text-white sm:mt-2 sm:text-base">
               {title}
             </div>
           </div>

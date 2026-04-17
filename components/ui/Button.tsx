@@ -45,7 +45,7 @@ export default function Button({
 }: ButtonProps) {
   return (
     <button
-      className={`relative inline-flex items-center justify-center overflow-hidden rounded-[2rem] font-bold tracking-[0.01em] transition duration-fast ease-spring ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={`relative inline-flex items-center justify-center overflow-hidden rounded-[2rem] font-medium tracking-[0.01em] transition duration-fast ease-spring ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
       {...props}
     >
       {children}
