@@ -77,7 +77,7 @@ export function getStudyReason({
   now = Date.now(),
 }: StudyReasonOptions) {
   if (sessionKind === "daily-optional") {
-    return "This card is currently classed as easy, so it stays optional after the required queue is done.";
+    return "This card is currently classed as easy, so it stays in the optional Daily Review queue.";
   }
 
   if (sessionKind === "custom") {
@@ -104,18 +104,18 @@ export function getStudyReason({
   }
 
   if ((card.lapses ?? 0) >= 2) {
-    return "You have struggled with this card more than once recently, so it stays in today's required queue.";
+    return "You have struggled with this card more than once recently, so Daily Review recommends it today.";
   }
 
   if ((card.dueDate ?? now) < now) {
-    return "This card is overdue and at higher forgetting risk, so it needs attention before Custom Review.";
+    return "This card is overdue and at higher forgetting risk, so Daily Review recommends it today.";
   }
 
   if (getDailyReviewBucket(card) === "weak") {
-    return "Its recent review pattern still looks weak, so it has been pulled into the required part of Daily Review.";
+    return "Its recent review pattern still looks weak, so it has been pulled into recommended Daily Review.";
   }
 
-  return "This card is due today and still needs reinforcement before it can move out of the required queue.";
+  return "This card is due today and still needs reinforcement, so Daily Review is prioritising it.";
 }
 
 export function buildLearningInsights({
@@ -141,18 +141,18 @@ export function buildLearningInsights({
   if (requiredCards.length > 0) {
     insights.push({
       eyebrow: "Next step",
-      title: `Finish ${requiredCards.length} required card${requiredCards.length === 1 ? "" : "s"}`,
+      title: `Review ${requiredCards.length} recommended card${requiredCards.length === 1 ? "" : "s"}`,
       description:
         weakRequiredCount > 0
-          ? `${weakRequiredCount} weak and ${mediumRequiredCount} medium card${mediumRequiredCount === 1 ? "" : "s"} are waiting. Clear these first to unlock Custom Review.`
-          : `${mediumRequiredCount} medium card${mediumRequiredCount === 1 ? "" : "s"} are waiting. Clear these first to unlock Custom Review.`,
+          ? `${weakRequiredCount} weak and ${mediumRequiredCount} medium card${mediumRequiredCount === 1 ? "" : "s"} are worth protecting today. Custom Review is still open for focused practice.`
+          : `${mediumRequiredCount} medium card${mediumRequiredCount === 1 ? "" : "s"} are worth protecting today. Custom Review is still open for focused practice.`,
     });
   } else {
     insights.push({
       eyebrow: "Next step",
       title: "Custom Review is open",
       description:
-        "Your required Daily Review is clear, so you can choose any decks or tags and practise freely.",
+        "Daily Review is clear, so you can choose any decks or tags and practise freely.",
     });
   }
 
@@ -171,17 +171,17 @@ export function buildLearningInsights({
 
   if (requiredCards.length > 0) {
     insights.push({
-      eyebrow: "Why daily first",
-      title: "Custom Review waits until required is done",
+      eyebrow: "Why Daily Review helps",
+      title: "Smart practice, not a blocker",
       description:
-        "Daily Review handles the cards most likely to slip first. Easy cards stay optional, and custom practice opens after the required queue.",
+        "Daily Review handles the cards most likely to slip first. Custom Review stays open when you need exam-focused practice.",
     });
   } else if (stableCards > 0) {
     insights.push({
       eyebrow: "Progress",
       title: `${stableCards} card${stableCards === 1 ? "" : "s"} are staying stable`,
       description:
-        "These cards are holding up well enough to stay out of the required queue for now.",
+        "These cards are holding up well enough to stay out of the recommended queue for now.",
     });
   }
 

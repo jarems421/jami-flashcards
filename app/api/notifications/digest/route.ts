@@ -73,7 +73,7 @@ function buildDigestPayload(
 
   if (requiredDailyCount > 0) {
     parts.push(
-      `${requiredDailyCount} required Daily Review card${requiredDailyCount === 1 ? "" : "s"}`
+      `${requiredDailyCount} recommended Daily Review card${requiredDailyCount === 1 ? "" : "s"}`
     );
   }
 

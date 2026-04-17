@@ -252,7 +252,7 @@ export default function DecksPage() {
                                 className="h-12 w-12"
                               />
                               <div className="min-w-0">
-                                <div className="truncate text-sm font-semibold text-white">
+                                <div className="truncate text-sm font-medium text-white">
                                   {editingDeckName.trim() || "Deck preview"}
                                 </div>
                                 <div className="text-xs text-text-muted">
@@ -314,7 +314,7 @@ export default function DecksPage() {
                         <Link href={getDeckHref(deck.id)} className="flex items-center gap-3 transition duration-fast hover:opacity-80">
                           <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} />
                           <div className="min-w-0">
-                            <div className="truncate font-semibold">{deck.name}</div>
+                            <div className="truncate font-medium">{deck.name}</div>
                             <div className="text-sm text-text-muted">{counts.total} cards | {counts.due} currently due</div>
                           </div>
                         </Link>

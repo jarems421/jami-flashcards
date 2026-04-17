@@ -375,7 +375,7 @@ export default function DeckDetailPageClient() {
               </div>
               <div className="mt-3 flex items-center gap-4">
                 <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} className="h-16 w-16" />
-                <h1 className="min-w-0 truncate text-2xl font-bold tracking-tight sm:text-4xl">
+                <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight sm:text-4xl">
                   {deck.name}
                 </h1>
               </div>
@@ -424,7 +424,7 @@ export default function DeckDetailPageClient() {
                 <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                   Add card
                 </div>
-                <div className="mt-1 truncate text-lg font-bold text-white">
+                <div className="mt-1 truncate text-lg font-semibold text-white">
                   Draft a new flashcard
                 </div>
               </div>
@@ -599,7 +599,7 @@ export default function DeckDetailPageClient() {
                 <div className="space-y-4">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="min-w-0 flex-1 space-y-2">
-                      <div className="text-lg font-semibold leading-7 text-white">
+                      <div className="text-lg font-medium leading-7 text-white">
                         {card.front}
                       </div>
                       <div className="text-sm leading-6 text-text-secondary">

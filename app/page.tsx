@@ -58,7 +58,7 @@ export default function Home() {
             />
             Study that sticks
           </div>
-          <h1 className="max-w-xl text-4xl font-bold tracking-tight sm:text-5xl">
+          <h1 className="max-w-xl text-4xl font-semibold tracking-tight sm:text-5xl">
             Jami Flashcards
           </h1>
           <p className="mt-4 max-w-2xl text-base leading-7 text-text-secondary sm:text-lg">
@@ -136,7 +136,7 @@ export default function Home() {
                 <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.1rem] border border-warm-border bg-[linear-gradient(180deg,rgba(255,248,253,0.22),rgba(183,124,255,0.24))] text-[0.82rem] font-black leading-none text-warm-accent shadow-[0_8px_18px_rgba(183,124,255,0.25),inset_0_1px_0_rgba(255,255,255,0.18)]">
                   {item.step}
                 </div>
-                <h3 className="text-base font-bold tracking-tight">{item.title}</h3>
+                <h3 className="text-base font-semibold tracking-tight">{item.title}</h3>
               </div>
               <p className="mt-3 text-sm leading-6 text-text-secondary">{item.desc}</p>
             </Card>

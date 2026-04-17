@@ -50,7 +50,7 @@ const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classe
 function getSessionLabel(kind: SessionKind | null) {
   if (kind === "custom") return "Custom Review";
   if (kind === "daily-optional") return "Optional Daily Review";
-  return "Required Daily Review";
+  return "Recommended Daily Review";
 }
 
 function getAnswerFeedback(rating: CardRating, sessionKind: SessionKind, parked: boolean) {
@@ -245,7 +245,7 @@ export default function StudyPage() {
     return optionalDailyCards.filter((card) => !completed.has(card.id));
   }, [dailyReviewState, optionalDailyCards]);
   const hasCards = cards.length > 0;
-  const customLocked = hasCards && remainingRequiredCards.length > 0;
+  const hasRecommendedDailyCards = hasCards && remainingRequiredCards.length > 0;
   const customPreviewCards = useMemo(() => buildCustomReviewCards(cards, selectedDeckIds, selectedTags), [cards, selectedDeckIds, selectedTags]);
   const hasCustomFilters = selectedDeckIds.length > 0 || selectedTags.length > 0;
   const customSelectionEmpty = hasCards && customPreviewCards.length === 0;
@@ -276,14 +276,6 @@ export default function StudyPage() {
       return;
     }
 
-    if (customLocked) {
-      setFeedback({
-        type: "error",
-        message: "Complete your required Daily Review first to unlock Custom Review.",
-      });
-      return;
-    }
-
     if (customPreviewCards.length === 0) {
       setFeedback({
         type: "error",
@@ -295,7 +287,7 @@ export default function StudyPage() {
     }
 
     startSession("custom");
-  }, [customLocked, customPreviewCards.length, hasCards, hasCustomFilters, startSession]);
+  }, [customPreviewCards.length, hasCards, hasCustomFilters, startSession]);
 
   const clearCustomFilters = useCallback(() => {
     setSelectedDeckIds([]);
@@ -310,13 +302,13 @@ export default function StudyPage() {
       if (remainingRequiredCards.length > 0) startSession("daily-required");
       return;
     }
-    if (requestedMode === "custom" && !customLocked && customPreviewCards.length > 0) {
+    if (requestedMode === "custom" && customPreviewCards.length > 0) {
       autoStartHandledRef.current = true;
       startSession("custom");
       return;
     }
     autoStartHandledRef.current = true;
-  }, [customLocked, customPreviewCards.length, loaded, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, startSession]);
+  }, [customPreviewCards.length, loaded, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, startSession]);
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
@@ -496,17 +488,17 @@ export default function StudyPage() {
                 eyebrow="Study"
                 title={
                   remainingRequiredCards.length > 0
-                    ? "Clear today first."
+                    ? "Recommended review is ready."
                     : hasCards
-                      ? "You are clear to choose."
+                      ? "Choose your study path."
                       : "Start with your first cards."
                 }
                 description={
                   remainingRequiredCards.length > 0
-                    ? "Required Daily Review keeps your weakest and due cards moving. Custom Review unlocks after that."
+                    ? "Daily Review uses your memory signals to protect the cards most likely to slip. Custom Review is still open when you need focused exam practice."
                     : hasCards
                       ? "Daily Review is clear. Use optional easy cards or build your own Custom Review."
-                      : "Add a few cards first, then Daily Review and Custom Review will unlock automatically."
+                      : "Add a few cards first, then Daily Review and Custom Review will be ready."
                 }
                 aside={
                   <div className="rounded-[1.5rem] border border-white/[0.09] bg-white/[0.045] px-4 py-3 text-sm text-text-secondary">
@@ -515,13 +507,16 @@ export default function StudyPage() {
                   </div>
                 }
               />
-              <div className="grid gap-3 sm:grid-cols-3">
-                <StatTile label="Required" value={remainingRequiredCards.length} detail="Needed before Custom Review" />
-                <StatTile label="Optional easy" value={remainingOptionalCards.length} detail="Extra practice after required" />
+              <div className="grid gap-3 sm:grid-cols-2">
+                <StatTile
+                  label="Daily Review"
+                  value={remainingRequiredCards.length + remainingOptionalCards.length}
+                  detail={`${remainingRequiredCards.length} priority, ${remainingOptionalCards.length} maintenance`}
+                />
                 <StatTile
                   label="Custom Review"
-                  value={!hasCards ? "Set up" : customLocked ? "Locked" : "Open"}
-                  detail={!hasCards ? "Create cards first" : customLocked ? "Finish required cards" : `${customPreviewCards.length} cards ready`}
+                  value={!hasCards ? "Set up" : "Open"}
+                  detail={!hasCards ? "Create cards first" : `${customPreviewCards.length} cards ready`}
                 />
               </div>
               {!hasCards ? (
@@ -535,33 +530,37 @@ export default function StudyPage() {
                 />
               ) : null}
               {hasCards ? (
-                <div className="grid gap-3 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
-                  <SurfaceCard padding="md" className="space-y-3">
-                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">1. Required Daily Review</div>
-                    <h3 className="text-xl font-bold text-white">
-                      {remainingRequiredCards.length > 0 ? `${remainingRequiredCards.length} cards need you` : "Required review complete"}
+                <div className="grid gap-3">
+                  <SurfaceCard padding="sm" className="space-y-2.5">
+                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">1. Daily Review</div>
+                    <h3 className="text-xl font-semibold text-white">
+                      {remainingRequiredCards.length + remainingOptionalCards.length > 0
+                        ? `${remainingRequiredCards.length + remainingOptionalCards.length} cards available`
+                        : "Daily Review complete"}
                     </h3>
                     <p className="text-sm leading-6 text-text-secondary">
-                      {remainingRequiredCards.length > 0
-                        ? "Do these first. They include weak, medium, due, or risky cards."
-                        : "Nothing required right now. Custom Review is available."}
+                      {remainingRequiredCards.length > 0 && remainingOptionalCards.length > 0
+                        ? "Start with Priority Review first, then use Maintenance Review for extra reps if you want more practice."
+                        : remainingRequiredCards.length > 0
+                          ? "Start with Priority Review cards ranked by your memory signals."
+                          : remainingOptionalCards.length > 0
+                            ? "Priority Review is clear. Maintenance Review cards are still available for light extra practice."
+                            : "No Daily Review cards right now. Custom Review is open whenever you want focused practice."}
                     </p>
-                    <Button type="button" onClick={() => startSession("daily-required")} disabled={remainingRequiredCards.length === 0} variant="warm" size="lg" className="w-full sm:w-auto">
-                      {remainingRequiredCards.length > 0 ? "Start required" : "Required complete"}
-                    </Button>
-                  </SurfaceCard>
-
-                  <SurfaceCard padding="md" className="space-y-3">
-                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">2. Optional Easy</div>
-                    <h3 className="text-xl font-bold text-white">
-                      {remainingOptionalCards.length > 0 ? `${remainingOptionalCards.length} easy cards available` : "No optional cards"}
-                    </h3>
-                    <p className="text-sm leading-6 text-text-secondary">
-                      These are extra. They never block Custom Review.
-                    </p>
-                    <Button type="button" onClick={() => startSession("daily-optional")} disabled={customLocked || remainingOptionalCards.length === 0} variant="secondary" size="lg" className="w-full sm:w-auto">
-                      Optional easy
-                    </Button>
+                    <div className="flex flex-wrap gap-3">
+                      <div className="w-full max-w-[16.5rem] space-y-1.5">
+                        <Button type="button" onClick={() => startSession("daily-required")} disabled={remainingRequiredCards.length === 0} variant="warm" size="md" className="w-full justify-center">
+                          {remainingRequiredCards.length > 0 ? "Priority Review" : "No priority cards"}
+                        </Button>
+                        <div className="text-xs leading-5 text-text-muted">The cards you&apos;ve been struggling with</div>
+                      </div>
+                      <div className="w-full max-w-[16.5rem] space-y-1.5">
+                        <Button type="button" onClick={() => startSession("daily-optional")} disabled={remainingOptionalCards.length === 0} variant="secondary" size="md" className="w-full justify-center">
+                          {remainingOptionalCards.length > 0 ? "Maintenance Review" : "No maintenance cards"}
+                        </Button>
+                        <div className="text-xs leading-5 text-text-muted">The cards you&apos;ve been recalling well</div>
+                      </div>
+                    </div>
                   </SurfaceCard>
                 </div>
               ) : null}
@@ -569,35 +568,38 @@ export default function StudyPage() {
                 <SurfaceCard padding="lg" className="relative space-y-5">
                   <div className="flex flex-wrap items-start justify-between gap-4">
                     <div className="max-w-2xl">
-                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">3. Custom Review</div>
-                      <h3 className="mt-2 text-xl font-bold tracking-tight text-white sm:text-2xl">
-                        {customLocked ? "Locked until required is clear" : "Build your own session"}
+                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">2. Custom Review</div>
+                      <h3 className="mt-2 text-xl font-semibold tracking-tight text-white sm:text-2xl">
+                        Build your own session
                       </h3>
                       <p className="mt-2 text-sm leading-7 text-text-secondary sm:text-base">
                         Pick decks, tags, or both. Matching is flexible, so selected decks and selected tags are combined.
                       </p>
                     </div>
-                    <Button type="button" onClick={handleCustomReviewClick} disabled={!customLocked && customPreviewCards.length === 0} size="lg">
-                      {customLocked ? "Locked" : "Start custom review"}
+                    <Button type="button" onClick={handleCustomReviewClick} disabled={customPreviewCards.length === 0} size="lg">
+                      Start custom review
                     </Button>
                   </div>
-                  {customLocked ? (
-                    <button
-                      type="button"
-                      onClick={handleCustomReviewClick}
-                      className="flex w-full items-center gap-3 rounded-[1.4rem] border border-warm-border bg-warm-glow px-4 py-3 text-left text-sm text-warm-accent transition hover:bg-white/[0.08]"
-                    >
+                  {hasRecommendedDailyCards ? (
+                    <div className="flex w-full items-center gap-3 rounded-[1.4rem] border border-warm-border bg-warm-glow px-4 py-3 text-left text-sm text-warm-accent">
                       <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-[#10091d]">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
-                          <rect x="4" y="11" width="16" height="9" rx="2" />
-                          <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+                          <path d="M12 3v3" />
+                          <path d="M12 18v3" />
+                          <path d="m4.9 4.9 2.1 2.1" />
+                          <path d="m17 17 2.1 2.1" />
+                          <path d="M3 12h3" />
+                          <path d="M18 12h3" />
+                          <path d="m4.9 19.1 2.1-2.1" />
+                          <path d="m17 7 2.1-2.1" />
+                          <circle cx="12" cy="12" r="2.5" />
                         </svg>
                       </span>
                       <span>
-                        <span className="block font-bold text-white">Complete required Daily Review first.</span>
-                        <span className="mt-0.5 block text-text-secondary">Then Custom Review opens for free practice.</span>
+                        <span className="block font-semibold text-white">Daily Review is recommended today.</span>
+                        <span className="mt-0.5 block text-text-secondary">Custom Review stays open for exam practice. Struggles here still help tomorrow&apos;s memory ranking.</span>
                       </span>
-                    </button>
+                    </div>
                   ) : null}
                   <div className="grid gap-4 lg:grid-cols-2">
                     <div>
@@ -654,8 +656,8 @@ export default function StudyPage() {
                   ) : null}
                   <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
                     <span>{customPreviewCards.length} card{customPreviewCards.length === 1 ? "" : "s"} selected</span>
-                    {customLocked ? (
-                      <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Finish required Daily Review first</span>
+                    {hasRecommendedDailyCards ? (
+                      <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Daily Review recommended</span>
                     ) : null}
                   </div>
                 </SurfaceCard>
@@ -668,7 +670,7 @@ export default function StudyPage() {
                 emoji="Review"
                 eyebrow="Nothing to study"
                 title="No cards in this session"
-                description={sessionKind === "daily-required" ? "Your required Daily Review is clear right now." : sessionKind === "daily-optional" ? "There are no optional easy cards left right now." : "This Custom Review does not match any cards yet."}
+                description={sessionKind === "daily-required" ? "Your recommended Daily Review is clear right now." : sessionKind === "daily-optional" ? "There are no optional easy cards left right now." : "This Custom Review does not match any cards yet."}
                 helperText="That is not a bug, it just means this queue is empty for the current selection."
                 action={<Button type="button" onClick={exitSession}>Back to study modes</Button>}
                 secondaryAction={sessionKind === "custom" ? <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Manage cards</Link> : undefined}
@@ -678,13 +680,13 @@ export default function StudyPage() {
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
                     <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
-                    <h2 className="mt-3 text-3xl font-bold leading-tight tracking-tight sm:text-5xl">Good work.</h2>
+                    <h2 className="mt-3 text-3xl font-semibold leading-tight tracking-tight sm:text-5xl">Good work.</h2>
                     <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                       You reviewed {sessionStats.reviewedCards} of {totalCards} card{totalCards === 1 ? "" : "s"}. Your next best step is ready below.
                     </p>
                   </div>
                   <div className="rounded-[1.4rem] border border-white/[0.12] bg-white/[0.08] px-4 py-3 text-sm text-text-secondary">
-                    <span className="font-bold text-white">{accuracyPercentage}%</span> accuracy
+                    <span className="font-semibold text-white">{accuracyPercentage}%</span> accuracy
                   </div>
                 </div>
                 <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
@@ -704,10 +706,10 @@ export default function StudyPage() {
                 </div>
                 <div className="mt-6 rounded-[1.6rem] border border-white/[0.10] bg-white/[0.06] p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Next best step</div>
-                  <div className="mt-2 text-lg font-bold text-white">
+                  <div className="mt-2 text-lg font-semibold text-white">
                     {sessionKind === "daily-required" && remainingOptionalCards.length > 0
                       ? "Optional easy cards are ready"
-                      : hasCards && !customLocked && customPreviewCards.length > 0
+                      : hasCards && customPreviewCards.length > 0
                         ? "Custom Review is open"
                         : sessionStats.completedGoals > 0
                           ? "Check your new star"
@@ -716,8 +718,8 @@ export default function StudyPage() {
                   <p className="mt-1 text-sm leading-6 text-text-secondary">
                     {sessionKind === "daily-required" && remainingOptionalCards.length > 0
                       ? "These are extra practice cards. They are optional, so do them only if you want a little more today."
-                      : hasCards && !customLocked && customPreviewCards.length > 0
-                        ? "Build a focused session from any decks or tags now that required review is clear."
+                      : hasCards && customPreviewCards.length > 0
+                        ? "Build a focused session from any decks or tags whenever you want targeted practice."
                         : sessionStats.completedGoals > 0
                           ? "Goal rewards become stars in your constellation."
                           : "Review is done for now. Add, fix, or tidy cards whenever something feels off."}
@@ -726,7 +728,7 @@ export default function StudyPage() {
                 <div className="mt-6 flex flex-wrap gap-3">
                   {sessionKind === "daily-required" && remainingOptionalCards.length > 0 ? (
                     <Button type="button" onClick={() => startSession("daily-optional")} size="lg" variant="warm">Do optional easy</Button>
-                  ) : hasCards && !customLocked && customPreviewCards.length > 0 ? (
+                  ) : hasCards && customPreviewCards.length > 0 ? (
                     <Button type="button" onClick={() => startSession("custom")} size="lg" variant="warm">Start custom review</Button>
                   ) : sessionStats.completedGoals > 0 ? (
                     <Link href="/dashboard/constellation" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-bold text-[#10091d] shadow-[0_14px_28px_rgba(255,214,246,0.22)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">View constellation</Link>
@@ -772,14 +774,14 @@ export default function StudyPage() {
                           ) : null}
                         </div>
                         <div className="flex flex-1 items-center justify-center py-6">
-                          <p className="max-w-4xl text-center text-2xl font-semibold leading-tight tracking-tight sm:text-4xl xl:text-[3rem]">{current.front}</p>
+                          <p className="max-w-4xl text-center text-2xl font-medium leading-tight tracking-tight sm:text-4xl xl:text-[3rem]">{current.front}</p>
                         </div>
                         <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Tap or press Space to reveal</div>
                       </div>
                       <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(35,25,62,0.98),rgba(17,11,34,0.98))] p-5 shadow-[0_22px_54px_rgba(8,2,26,0.28)] [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
                         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Answer</div>
                         <div className="flex flex-1 items-center justify-center py-6">
-                          <p className="max-w-4xl whitespace-pre-wrap text-center text-2xl font-semibold leading-tight tracking-tight text-white sm:text-4xl xl:text-[3rem]">{current.back}</p>
+                          <p className="max-w-4xl whitespace-pre-wrap text-center text-2xl font-medium leading-tight tracking-tight text-white sm:text-4xl xl:text-[3rem]">{current.back}</p>
                         </div>
                         <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">How well did you recall this?</div>
                       </div>

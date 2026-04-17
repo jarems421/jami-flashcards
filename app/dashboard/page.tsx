@@ -200,13 +200,13 @@ export default function DashboardHome() {
 
     if (dueCount > 0) {
       return {
-        eyebrow: "Daily first",
-        title: `Clear ${dueCount} required card${dueCount === 1 ? "" : "s"}.`,
-        description: "These are the cards most worth protecting today. Finish them to unlock free Custom Review.",
+        eyebrow: "Recommended today",
+        title: `${dueCount} memory card${dueCount === 1 ? "" : "s"} worth protecting.`,
+        description: "Daily Review is the smartest place to start, but Custom Review stays open for focused exam practice.",
         href: getCustomStudyHref({ mode: "daily" }),
         label: "Start Daily Review",
-        secondaryHref: "/dashboard/study",
-        secondaryLabel: "View study modes",
+        secondaryHref: getCustomStudyHref({ mode: "custom" }),
+        secondaryLabel: "Start Custom Review",
       };
     }
 
@@ -214,7 +214,7 @@ export default function DashboardHome() {
       return {
         eyebrow: "Daily is clear",
         title: `${remainingOptionalCount} optional easy card${remainingOptionalCount === 1 ? "" : "s"} waiting.`,
-        description: "You have done the required work. These are light extras if you want a little more practice.",
+        description: "These are light extras if you want a little more practice.",
         href: "/dashboard/study",
         label: "Do optional easy",
         secondaryHref: getCustomStudyHref({ mode: "custom" }),
@@ -283,12 +283,12 @@ export default function DashboardHome() {
             <div className="grid min-w-[14rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
               <div>
                 <div className="text-xs text-text-muted">Reviewed today</div>
-                <div className="mt-1 text-3xl font-bold text-white">{isLoading ? "..." : todayReviews}</div>
+                <div className="mt-1 text-3xl font-semibold text-white">{isLoading ? "..." : todayReviews}</div>
               </div>
               <div className="h-px bg-white/[0.08]" />
               <div>
-                <div className="text-xs text-text-muted">Required left</div>
-                <div className="mt-1 text-2xl font-bold text-white">{isLoading ? "..." : dueCount}</div>
+                <div className="text-xs text-text-muted">Recommended left</div>
+                <div className="mt-1 text-2xl font-semibold text-white">{isLoading ? "..." : dueCount}</div>
               </div>
             </div>
           }
@@ -298,7 +298,7 @@ export default function DashboardHome() {
           <StatTile
             label="Daily Review"
             value={isLoading ? "..." : dueCount}
-            detail={dueCount > 0 ? "Required cards before Custom Review." : "Required queue is clear."}
+            detail={dueCount > 0 ? "Memory-ranked cards for today." : "Recommended queue is clear."}
             href="/dashboard/study"
           />
           <StatTile
@@ -313,7 +313,7 @@ export default function DashboardHome() {
               className="app-panel-warm block p-4 transition duration-fast hover:-translate-y-0.5 hover:shadow-shell sm:p-5"
             >
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Goal due soon</div>
-              <div className="mt-3 text-xl font-semibold tracking-tight text-white">
+              <div className="mt-3 text-xl font-medium tracking-tight text-white">
                 {urgentGoal.progress.cardsCompleted} / {urgentGoal.targetCards} cards
               </div>
               <p className="mt-2 text-sm leading-6 text-text-secondary">
@@ -329,8 +329,8 @@ export default function DashboardHome() {
           ) : (
             <StatTile
               label="Custom Review"
-              value={isLoading ? "..." : cards.length > 0 && dueCount === 0 ? "Open" : "After daily"}
-              detail={cards.length === 0 ? "Add cards first." : dueCount > 0 ? "Unlocks after required review." : "Free practice is available."}
+              value={isLoading ? "..." : cards.length > 0 ? "Open" : "Set up"}
+              detail={cards.length === 0 ? "Add cards first." : dueCount > 0 ? "Available even with Daily Review waiting." : "Free practice is available."}
               href="/dashboard/study"
             />
           )}

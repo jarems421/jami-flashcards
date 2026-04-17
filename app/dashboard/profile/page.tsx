@@ -110,7 +110,7 @@ export default function ProfilePage() {
             fallbackPhotoURL={user.photoURL}
           />
           <div className="min-w-0 text-center">
-            <div className="truncate text-xl font-semibold">{displayName}</div>
+            <div className="truncate text-xl font-medium">{displayName}</div>
             {user.email ? (
               <div className="mt-1 truncate text-sm text-text-muted">
                 {user.email}
