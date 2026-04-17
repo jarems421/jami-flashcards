@@ -8,7 +8,7 @@ module.exports = {
   theme: {
     extend: {
       fontFamily: {
-        sans: ["var(--font-nunito)", "ui-rounded", "SF Pro Rounded", "Avenir Next Rounded", "Trebuchet MS", "Arial", "sans-serif"],
+        sans: ["var(--font-nunito-sans)", "ui-sans-serif", "system-ui", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "Arial", "sans-serif"],
       },
       colors: {
         surface: {

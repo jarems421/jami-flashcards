@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from "next";
-import { Nunito } from "next/font/google";
+import { Nunito_Sans } from "next/font/google";
 
-const nunito = Nunito({
+const nunitoSans = Nunito_Sans({
   subsets: ["latin"],
   display: "swap",
-  variable: "--font-nunito",
+  variable: "--font-nunito-sans",
 });
 import ConstellationBackgroundShell from "@/components/constellation/ConstellationBackgroundShell";
 import PwaBootstrap from "@/components/layout/PwaBootstrap";
@@ -40,7 +40,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${nunito.variable} h-full antialiased`}
+      className={`${nunitoSans.variable} h-full antialiased`}
     >
       <body className="min-h-full bg-surface-base text-text-primary">
         <PwaBootstrap />

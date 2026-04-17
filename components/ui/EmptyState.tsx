@@ -33,7 +33,7 @@ export default function EmptyState({
     <>
       {emoji ? (
         <div
-          className={`${iconAlign} flex ${isCompact ? "h-11 min-w-11" : "h-14 min-w-14"} ${isWordIcon ? "px-3 text-[0.68rem] font-black uppercase tracking-[0.14em] text-warm-accent" : isCompact ? "w-11 text-2xl" : "w-14 text-3xl"} items-center justify-center rounded-[1.4rem] border border-white/15 bg-white/[0.07] shadow-[0_10px_24px_rgba(8,2,26,0.18)]`}
+          className={`${iconAlign} flex ${isCompact ? "h-11 min-w-11" : "h-14 min-w-14"} ${isWordIcon ? "px-3 text-[0.68rem] font-bold uppercase tracking-[0.14em] text-warm-accent" : isCompact ? "w-11 text-2xl" : "w-14 text-3xl"} items-center justify-center rounded-[1.4rem] border border-white/15 bg-white/[0.07] shadow-[0_10px_24px_rgba(8,2,26,0.18)]`}
         >
           {emoji}
         </div>
@@ -43,7 +43,7 @@ export default function EmptyState({
           {eyebrow}
         </div>
       ) : null}
-      <h3 className={`${eyebrow || emoji ? "mt-3" : ""} ${isCompact ? "text-base" : "text-xl sm:text-2xl"} font-bold tracking-tight text-white`}>
+      <h3 className={`${eyebrow || emoji ? "mt-3" : ""} ${isCompact ? "text-base" : "text-xl sm:text-2xl"} font-semibold tracking-tight text-white`}>
         {title}
       </h3>
       {description ? (

@@ -678,7 +678,7 @@ export default function StudyPage() {
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
                     <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
-                    <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Good work.</h2>
+                    <h2 className="mt-3 text-3xl font-bold leading-tight tracking-tight sm:text-5xl">Good work.</h2>
                     <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                       You reviewed {sessionStats.reviewedCards} of {totalCards} card{totalCards === 1 ? "" : "s"}. Your next best step is ready below.
                     </p>
@@ -772,14 +772,14 @@ export default function StudyPage() {
                           ) : null}
                         </div>
                         <div className="flex flex-1 items-center justify-center py-6">
-                          <p className="max-w-4xl text-center text-2xl font-black leading-tight tracking-tight sm:text-4xl xl:text-[3rem]">{current.front}</p>
+                          <p className="max-w-4xl text-center text-2xl font-semibold leading-tight tracking-tight sm:text-4xl xl:text-[3rem]">{current.front}</p>
                         </div>
                         <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Tap or press Space to reveal</div>
                       </div>
                       <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(35,25,62,0.98),rgba(17,11,34,0.98))] p-5 shadow-[0_22px_54px_rgba(8,2,26,0.28)] [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
                         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Answer</div>
                         <div className="flex flex-1 items-center justify-center py-6">
-                          <p className="max-w-4xl whitespace-pre-wrap text-center text-2xl font-black leading-tight tracking-tight text-white sm:text-4xl xl:text-[3rem]">{current.back}</p>
+                          <p className="max-w-4xl whitespace-pre-wrap text-center text-2xl font-semibold leading-tight tracking-tight text-white sm:text-4xl xl:text-[3rem]">{current.back}</p>
                         </div>
                         <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">How well did you recall this?</div>
                       </div>

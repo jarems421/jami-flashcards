@@ -283,7 +283,7 @@ export default function DashboardHome() {
             <div className="grid min-w-[14rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
               <div>
                 <div className="text-xs text-text-muted">Reviewed today</div>
-                <div className="mt-1 text-3xl font-black text-white">{isLoading ? "..." : todayReviews}</div>
+                <div className="mt-1 text-3xl font-bold text-white">{isLoading ? "..." : todayReviews}</div>
               </div>
               <div className="h-px bg-white/[0.08]" />
               <div>
@@ -313,7 +313,7 @@ export default function DashboardHome() {
               className="app-panel-warm block p-4 transition duration-fast hover:-translate-y-0.5 hover:shadow-shell sm:p-5"
             >
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Goal due soon</div>
-              <div className="mt-3 text-xl font-black tracking-tight text-white">
+              <div className="mt-3 text-xl font-semibold tracking-tight text-white">
                 {urgentGoal.progress.cardsCompleted} / {urgentGoal.targetCards} cards
               </div>
               <p className="mt-2 text-sm leading-6 text-text-secondary">

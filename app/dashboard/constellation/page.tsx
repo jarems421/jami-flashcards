@@ -413,7 +413,7 @@ export default function ConstellationDashboardPage() {
                 <div className="flex items-baseline justify-between gap-4">
                   <div>
                     <div className="text-xs text-text-muted">Stars earned</div>
-                    <div className="mt-1 text-3xl font-black text-white">
+                    <div className="mt-1 text-3xl font-bold text-white">
                       {activeConstellation.starCount}
                     </div>
                   </div>
