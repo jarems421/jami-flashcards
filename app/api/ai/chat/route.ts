@@ -44,6 +44,46 @@ type StudyChatIntent =
   | "why-wrong"
   | "follow-up";
 
+async function withRequestTimeout<T>(promise: Promise<T>) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error("Request timed out")),
+      REQUEST_TIMEOUT_MS,
+    );
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function getFallbackReply(intent: StudyChatIntent, studyContext: { front: string } | null) {
+  const front = studyContext?.front?.trim();
+
+  if (intent === "clue" || intent === "strong-clue") {
+    return front
+      ? `AI is taking longer than usual, so here is a quick study move: reread the question and ask yourself what the key term is really pointing to. For this card, focus on "${front.slice(0, 90)}" and try to name the core idea before flipping.`
+      : "AI is taking longer than usual, so here is a quick study move: identify the key term, say what it means in your own words, then check the answer.";
+  }
+
+  if (intent === "self-test") {
+    return "AI is taking longer than usual, so try this quick check: cover the answer, say the main idea out loud, then give one example or one reason why it matters.";
+  }
+
+  if (intent === "why-wrong") {
+    return "AI is taking longer than usual, but you can still recover the card: write down what you mixed up, compare it with the correct answer, then make one tiny rule that separates the two.";
+  }
+
+  if (intent === "explain-simple") {
+    return "AI is taking longer than usual. For now, shrink the card to one sentence: what is the idea, what does it do, and what is the easiest example?";
+  }
+
+  return "AI is taking longer than usual. You can keep studying for now, or ask again in a moment if you want a fuller explanation.";
+}
+
 export async function POST(request: NextRequest) {
   if (!GEMINI_API_KEY) {
     return Response.json(
@@ -69,7 +109,7 @@ export async function POST(request: NextRequest) {
   const allowed = await checkRateLimit(uid, "chat", MAX_CHAT_PER_HOUR);
   if (!allowed) {
     return Response.json(
-      { error: "Rate limit exceeded. Try again later." },
+      { error: "AI limit reached for now." },
       { status: 429 },
     );
   }
@@ -345,36 +385,37 @@ Under 120 words. Be conversational, specific, and useful for flashcard study.`;
       },
     ];
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const generateReply = async (nextContents: typeof contents) => {
+      const result = await withRequestTimeout(
+        model.generateContent({
+          systemInstruction: systemPrompt,
+          contents: nextContents,
+        })
+      );
 
-    let reply: string;
-    try {
-      const result = await model.generateContent({
-        systemInstruction: systemPrompt,
-        contents,
-      });
-      reply = cleanGeneratedStudyText(result.response.text());
-    } finally {
-      clearTimeout(timeout);
-    }
+      return cleanGeneratedStudyText(result.response.text());
+    };
+
+    let reply = await generateReply(contents).catch(async (error) => {
+      console.warn("Gemini chat first attempt failed:", error);
+      return generateReply([
+        {
+          role: "user" as const,
+          parts: [{ text: message }],
+        },
+      ]);
+    });
 
     if (!reply) {
-      return Response.json(
-        { error: "Empty response from AI" },
-        { status: 502 },
-      );
+      reply = getFallbackReply(intent, studyContext);
     }
 
     return Response.json({ reply });
   } catch (error) {
     console.error("Gemini chat error:", error);
-    const message = error instanceof Error && error.name === "AbortError"
-      ? "Request timed out"
-      : "Failed to generate response";
-    return Response.json(
-      { error: message },
-      { status: 502 },
-    );
+    return Response.json({
+      reply: getFallbackReply(intent, studyContext),
+      fallback: true,
+    });
   }
 }

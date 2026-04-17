@@ -106,7 +106,7 @@ export default function StudyAssistant({
     const msg: ChatMessage = {
       role: "model",
       text:
-        "What went wrong there? Tell me what happened, like what you mixed up, forgot, or nearly got right, and I’ll help from that.",
+        "What went wrong there? Tell me what happened, like what you mixed up, forgot, or nearly got right, and I'll help from that.",
     };
 
     setMessages([msg]);
@@ -137,9 +137,9 @@ export default function StudyAssistant({
       setMessages((prev) => [...prev, modelMsg]);
       chatHistoryRef.current = [...chatHistoryRef.current, modelMsg];
     } catch (err) {
-      const errText = err instanceof Error && err.message.includes("Rate limit")
-        ? "You\u2019ve hit the limit. Take a break and try again later."
-        : "Sorry, something went wrong. Try again.";
+      const errText = err instanceof Error
+        ? err.message
+        : "AI is taking longer than usual. Keep studying, or ask again in a moment.";
       const errMsg: ChatMessage = {
         role: "model",
         text: errText,

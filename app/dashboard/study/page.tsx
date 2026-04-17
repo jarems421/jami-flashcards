@@ -17,11 +17,94 @@ import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
 import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, ProgressBar, Skeleton } from "@/components/ui";
+import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, PageHero, ProgressBar, Skeleton, StatTile } from "@/components/ui";
 
 type SessionKind = "daily-required" | "daily-optional" | "custom";
 type SessionStats = { reviewedCards: number; correctAnswers: number; completedGoals: number; starsEarned: number; ratings: Record<CardRating, number>; };
 const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
+type AnswerFeedback = { tone: "error" | "warm" | "good" | "calm"; message: string };
+
+const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classes: string }> = {
+  again: {
+    hint: "Missed it",
+    shortcut: "1",
+    classes: "border-rose-300/30 bg-rose-400/[0.12] text-rose-100 hover:border-rose-200/55 hover:bg-rose-400/[0.18]",
+  },
+  hard: {
+    hint: "Barely recalled",
+    shortcut: "2",
+    classes: "border-amber-300/30 bg-amber-300/[0.12] text-amber-100 hover:border-amber-200/55 hover:bg-amber-300/[0.18]",
+  },
+  good: {
+    hint: "Recalled",
+    shortcut: "3",
+    classes: "border-sky-200/25 bg-white/[0.06] text-white hover:border-sky-100/45 hover:bg-white/[0.10]",
+  },
+  easy: {
+    hint: "Instant",
+    shortcut: "4",
+    classes: "border-emerald-300/30 bg-emerald-400/[0.12] text-emerald-100 hover:border-emerald-200/55 hover:bg-emerald-400/[0.18]",
+  },
+};
+
+function getSessionLabel(kind: SessionKind | null) {
+  if (kind === "custom") return "Custom Review";
+  if (kind === "daily-optional") return "Optional Daily Review";
+  return "Required Daily Review";
+}
+
+function getAnswerFeedback(rating: CardRating, sessionKind: SessionKind, parked: boolean) {
+  if (rating === "again") {
+    return {
+      tone: "error" as const,
+      message: parked
+        ? "Marked for tomorrow so you do not get stuck."
+        : sessionKind === "daily-required"
+          ? "Requeued for another try."
+          : "Marked for tomorrow.",
+    };
+  }
+
+  if (rating === "hard") {
+    return {
+      tone: "warm" as const,
+      message: parked
+        ? "Parked for tomorrow after a tough run."
+        : sessionKind === "daily-required"
+          ? "Requeued once more for practice."
+          : "Marked as worth revisiting tomorrow.",
+    };
+  }
+
+  if (rating === "good") {
+    return { tone: "good" as const, message: "Nice recall." };
+  }
+
+  return { tone: "good" as const, message: "Easy win." };
+}
+
+function InlineStudyFeedback({ feedback }: { feedback: AnswerFeedback | null }) {
+  if (!feedback) return null;
+
+  const toneClass =
+    feedback.tone === "error"
+      ? "border-rose-300/20 bg-rose-400/[0.10] text-rose-100"
+      : feedback.tone === "warm"
+        ? "border-amber-300/20 bg-amber-300/[0.10] text-amber-100"
+        : feedback.tone === "good"
+          ? "border-emerald-300/20 bg-emerald-400/[0.10] text-emerald-100"
+          : "border-white/[0.12] bg-white/[0.06] text-text-secondary";
+
+  return (
+    <div
+      className={`mx-auto w-fit rounded-full border px-3.5 py-2 text-sm font-semibold shadow-[0_12px_24px_rgba(8,2,26,0.18)] animate-fade-in ${toneClass}`}
+      role="status"
+      aria-live="polite"
+    >
+      {feedback.message}
+    </div>
+  );
+}
 
 function parseDeckIdsParam(value: string | null) {
   if (!value) return [];
@@ -80,6 +163,7 @@ export default function StudyPage() {
   const [savingRating, setSavingRating] = useState<CardRating | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>(createEmptySessionStats());
   const [feedback, setFeedback] = useState<{ type: "error" | "success"; message: string } | null>(null);
+  const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null);
   const [countdownMs, setCountdownMs] = useState(getMsUntilNextStudyBoundary());
   const [showExplanation, setShowExplanation] = useState(false);
   const flipTimestampRef = useRef(0);
@@ -93,6 +177,7 @@ export default function StudyPage() {
     setIndex(0);
     setFlipped(false);
     setShowExplanation(false);
+    setAnswerFeedback(null);
     setSessionStats(createEmptySessionStats());
     autoStartHandledRef.current = false;
   }, [requestedDeckIds, requestedTags, requestedMode]);
@@ -101,6 +186,12 @@ export default function StudyPage() {
     const interval = setInterval(() => setCountdownMs(getMsUntilNextStudyBoundary()), 1000);
     return () => clearInterval(interval);
   }, []);
+
+  useEffect(() => {
+    if (!answerFeedback) return;
+    const timeout = window.setTimeout(() => setAnswerFeedback(null), 2400);
+    return () => window.clearTimeout(timeout);
+  }, [answerFeedback]);
 
   const loadAll = useCallback(async () => {
     setLoaded(false);
@@ -156,6 +247,8 @@ export default function StudyPage() {
   const hasCards = cards.length > 0;
   const customLocked = hasCards && remainingRequiredCards.length > 0;
   const customPreviewCards = useMemo(() => buildCustomReviewCards(cards, selectedDeckIds, selectedTags), [cards, selectedDeckIds, selectedTags]);
+  const hasCustomFilters = selectedDeckIds.length > 0 || selectedTags.length > 0;
+  const customSelectionEmpty = hasCards && customPreviewCards.length === 0;
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
     [decks]
@@ -170,6 +263,7 @@ export default function StudyPage() {
     setFlipped(false);
     setSavingRating(null);
     setShowExplanation(false);
+    setAnswerFeedback(null);
     setFeedback(null);
   }, [customPreviewCards, remainingOptionalCards, remainingRequiredCards]);
 
@@ -190,8 +284,24 @@ export default function StudyPage() {
       return;
     }
 
+    if (customPreviewCards.length === 0) {
+      setFeedback({
+        type: "error",
+        message: hasCustomFilters
+          ? "No cards match that Custom Review. Clear filters or choose another deck or tag."
+          : "Add cards first, then Custom Review will be ready.",
+      });
+      return;
+    }
+
     startSession("custom");
-  }, [customLocked, hasCards, startSession]);
+  }, [customLocked, customPreviewCards.length, hasCards, hasCustomFilters, startSession]);
+
+  const clearCustomFilters = useCallback(() => {
+    setSelectedDeckIds([]);
+    setSelectedTags([]);
+    setFeedback(null);
+  }, []);
 
   useEffect(() => {
     if (!loaded || autoStartHandledRef.current) return;
@@ -315,6 +425,7 @@ export default function StudyPage() {
         setDailyReviewState((prev) => prev ? { ...prev, completedOptionalCardIds: prev.completedOptionalCardIds.includes(current.id) ? prev.completedOptionalCardIds : [...prev.completedOptionalCardIds, current.id], updatedAt: now } : prev);
       }
       setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals + goalProgress.completedGoals, starsEarned: prev.starsEarned + goalProgress.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
+      setAnswerFeedback(getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)));
       if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
         requeueCurrentCard(nextCard);
       } else if (isStruggle && sessionKind !== "daily-required") {
@@ -369,6 +480,7 @@ export default function StudyPage() {
     setFlipped(false);
     setSavingRating(null);
     setShowExplanation(false);
+    setAnswerFeedback(null);
   };
 
   return (
@@ -380,91 +492,114 @@ export default function StudyPage() {
         <>
           {sessionKind === null ? (
             <>
-              <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.15fr)_320px]">
-                <SurfaceCard tone="warm" padding="lg">
-                  <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Daily review</div>
-                  <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">Daily first.</h2>
-                  <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Clear required cards to unlock Custom Review. Easy cards are optional.</p>
-                  <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Required remaining</div><div className="mt-2 text-2xl font-semibold sm:text-3xl">{remainingRequiredCards.length}</div></div>
-                    <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Optional easy remaining</div><div className="mt-2 text-2xl font-semibold sm:text-3xl">{remainingOptionalCards.length}</div></div>
+              <PageHero
+                eyebrow="Study"
+                title={
+                  remainingRequiredCards.length > 0
+                    ? "Clear today first."
+                    : hasCards
+                      ? "You are clear to choose."
+                      : "Start with your first cards."
+                }
+                description={
+                  remainingRequiredCards.length > 0
+                    ? "Required Daily Review keeps your weakest and due cards moving. Custom Review unlocks after that."
+                    : hasCards
+                      ? "Daily Review is clear. Use optional easy cards or build your own Custom Review."
+                      : "Add a few cards first, then Daily Review and Custom Review will unlock automatically."
+                }
+                aside={
+                  <div className="rounded-[1.5rem] border border-white/[0.09] bg-white/[0.045] px-4 py-3 text-sm text-text-secondary">
+                    <div className="text-xs text-text-muted">Next reset</div>
+                    <div className="mt-1 text-xl font-bold text-white">{formatCountdown(countdownMs)}</div>
                   </div>
-                  <div className="mt-6 flex flex-wrap gap-3">
-                    <Button type="button" onClick={() => startSession("daily-required")} disabled={remainingRequiredCards.length === 0} variant="warm" size="lg">{remainingRequiredCards.length > 0 ? "Start required" : "Required complete"}</Button>
-                    <Button type="button" onClick={() => startSession("daily-optional")} disabled={customLocked || remainingOptionalCards.length === 0} variant="secondary" size="lg">Optional easy</Button>
-                  </div>
-                </SurfaceCard>
-                <SurfaceCard padding="md">
-                  <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Study day</div>
-                  <div className="mt-4 grid gap-4">
-                    <div><div className="text-xs text-text-muted">Next reset</div><div className="mt-1 text-2xl font-semibold">{formatCountdown(countdownMs)}</div></div>
-                    <div><div className="text-xs text-text-muted">Custom Review</div><div className="mt-1 text-sm font-medium text-white">{!hasCards ? "Add cards first" : customLocked ? "Locked until required review is done" : "Unlocked"}</div></div>
-                  </div>
-                </SurfaceCard>
+                }
+              />
+              <div className="grid gap-3 sm:grid-cols-3">
+                <StatTile label="Required" value={remainingRequiredCards.length} detail="Needed before Custom Review" />
+                <StatTile label="Optional easy" value={remainingOptionalCards.length} detail="Extra practice after required" />
+                <StatTile
+                  label="Custom Review"
+                  value={!hasCards ? "Set up" : customLocked ? "Locked" : "Open"}
+                  detail={!hasCards ? "Create cards first" : customLocked ? "Finish required cards" : `${customPreviewCards.length} cards ready`}
+                />
               </div>
               {!hasCards ? (
-                <SurfaceCard padding="lg">
-                  <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                    Start here
-                  </div>
-                  <h3 className="mt-3 text-xl font-bold tracking-tight sm:text-2xl">
-                    Add your first cards
-                  </h3>
-                  <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                    You do not have any cards yet. Create cards first, then Daily Review and Custom Review will work automatically.
-                  </p>
-                  <div className="mt-5 flex flex-wrap gap-3">
-                    <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">
-                      Create cards
-                    </Link>
-                    <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">
-                      Open decks
-                    </Link>
-                  </div>
-                </SurfaceCard>
+                <EmptyState
+                  emoji="Cards"
+                  eyebrow="Start here"
+                  title="Create a few cards first"
+                  description="There is nothing to review yet, which is completely fine. Add your first flashcards and Jami will build the right study queue from them."
+                  action={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create cards</Link>}
+                  secondaryAction={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Open decks</Link>}
+                />
               ) : null}
               {hasCards ? (
-                <SurfaceCard padding="lg" className="relative">
+                <div className="grid gap-3 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)]">
+                  <SurfaceCard padding="md" className="space-y-3">
+                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">1. Required Daily Review</div>
+                    <h3 className="text-xl font-bold text-white">
+                      {remainingRequiredCards.length > 0 ? `${remainingRequiredCards.length} cards need you` : "Required review complete"}
+                    </h3>
+                    <p className="text-sm leading-6 text-text-secondary">
+                      {remainingRequiredCards.length > 0
+                        ? "Do these first. They include weak, medium, due, or risky cards."
+                        : "Nothing required right now. Custom Review is available."}
+                    </p>
+                    <Button type="button" onClick={() => startSession("daily-required")} disabled={remainingRequiredCards.length === 0} variant="warm" size="lg" className="w-full sm:w-auto">
+                      {remainingRequiredCards.length > 0 ? "Start required" : "Required complete"}
+                    </Button>
+                  </SurfaceCard>
+
+                  <SurfaceCard padding="md" className="space-y-3">
+                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">2. Optional Easy</div>
+                    <h3 className="text-xl font-bold text-white">
+                      {remainingOptionalCards.length > 0 ? `${remainingOptionalCards.length} easy cards available` : "No optional cards"}
+                    </h3>
+                    <p className="text-sm leading-6 text-text-secondary">
+                      These are extra. They never block Custom Review.
+                    </p>
+                    <Button type="button" onClick={() => startSession("daily-optional")} disabled={customLocked || remainingOptionalCards.length === 0} variant="secondary" size="lg" className="w-full sm:w-auto">
+                      Optional easy
+                    </Button>
+                  </SurfaceCard>
+                </div>
+              ) : null}
+              {hasCards ? (
+                <SurfaceCard padding="lg" className="relative space-y-5">
+                  <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="max-w-2xl">
+                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">3. Custom Review</div>
+                      <h3 className="mt-2 text-xl font-bold tracking-tight text-white sm:text-2xl">
+                        {customLocked ? "Locked until required is clear" : "Build your own session"}
+                      </h3>
+                      <p className="mt-2 text-sm leading-7 text-text-secondary sm:text-base">
+                        Pick decks, tags, or both. Matching is flexible, so selected decks and selected tags are combined.
+                      </p>
+                    </div>
+                    <Button type="button" onClick={handleCustomReviewClick} disabled={!customLocked && customPreviewCards.length === 0} size="lg">
+                      {customLocked ? "Locked" : "Start custom review"}
+                    </Button>
+                  </div>
                   {customLocked ? (
                     <button
                       type="button"
                       onClick={handleCustomReviewClick}
-                      className="absolute inset-0 z-20 flex items-center justify-center bg-[rgba(12,7,25,0.58)] p-5 text-left backdrop-blur-[2px]"
-                      aria-label="Custom Review is locked"
+                      className="flex w-full items-center gap-3 rounded-[1.4rem] border border-warm-border bg-warm-glow px-4 py-3 text-left text-sm text-warm-accent transition hover:bg-white/[0.08]"
                     >
-                      <span className="max-w-md rounded-[1.4rem] border border-warm-border bg-[rgba(32,20,56,0.94)] p-4 text-center shadow-bubble sm:rounded-[1.6rem] sm:p-5">
-                        <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-[1.1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
-                          <svg
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="h-6 w-6"
-                            aria-hidden="true"
-                          >
-                            <rect x="4" y="11" width="16" height="9" rx="2" />
-                            <path d="M8 11V8a4 4 0 1 1 8 0v3" />
-                          </svg>
-                        </span>
-                      <span className="mt-3 block text-base font-bold text-white sm:text-lg">
-                        Custom Review is locked
+                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-[#10091d]">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
+                          <rect x="4" y="11" width="16" height="9" rx="2" />
+                          <path d="M8 11V8a4 4 0 1 1 8 0v3" />
+                        </svg>
                       </span>
-                        <span className="mt-2 block text-sm leading-6 text-text-secondary">
-                          Complete your required Daily Review first.
-                        </span>
+                      <span>
+                        <span className="block font-bold text-white">Complete required Daily Review first.</span>
+                        <span className="mt-0.5 block text-text-secondary">Then Custom Review opens for free practice.</span>
                       </span>
                     </button>
                   ) : null}
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div>
-                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Custom review</div>
-                    <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Pick decks, tags, or both. Leave both blank to review all cards.</p>
-                    </div>
-                    <Button type="button" onClick={handleCustomReviewClick} disabled={!customLocked && customPreviewCards.length === 0} size="lg">Start custom review</Button>
-                  </div>
-                  <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                  <div className="grid gap-4 lg:grid-cols-2">
                     <div>
                       <div className="mb-3 text-sm font-semibold text-white">Choose decks</div>
                       <div className="flex flex-wrap gap-2">
@@ -506,8 +641,19 @@ export default function StudyPage() {
                       </div>
                     </div>
                   </div>
-                  <div className="mt-6 flex flex-wrap items-center gap-3 text-sm text-text-secondary">
-                    <span>{customPreviewCards.length} selected</span>
+                  {customSelectionEmpty ? (
+                    <EmptyState
+                      variant="compact"
+                      align="left"
+                      emoji="Search"
+                      title="No cards match this Custom Review"
+                      description={hasCustomFilters ? "Your selected decks and tags do not currently match any cards. Clear the filters or pick a different combination." : "There are no cards available for Custom Review yet."}
+                      action={hasCustomFilters ? <Button type="button" variant="secondary" onClick={clearCustomFilters}>Clear filters</Button> : undefined}
+                      secondaryAction={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Manage cards</Link>}
+                    />
+                  ) : null}
+                  <div className="flex flex-wrap items-center gap-3 text-sm text-text-secondary">
+                    <span>{customPreviewCards.length} card{customPreviewCards.length === 1 ? "" : "s"} selected</span>
                     {customLocked ? (
                       <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Finish required Daily Review first</span>
                     ) : null}
@@ -519,20 +665,30 @@ export default function StudyPage() {
           {sessionKind === null ? null : done ? (
             totalCards === 0 ? (
               <EmptyState
-                emoji="Cards"
-
+                emoji="Review"
+                eyebrow="Nothing to study"
                 title="No cards in this session"
-                description={sessionKind === "daily-required" ? "You have no required daily cards left right now." : sessionKind === "daily-optional" ? "There are no optional easy cards left right now." : "Choose at least one deck or tag to start a custom review."}
+                description={sessionKind === "daily-required" ? "Your required Daily Review is clear right now." : sessionKind === "daily-optional" ? "There are no optional easy cards left right now." : "This Custom Review does not match any cards yet."}
+                helperText="That is not a bug, it just means this queue is empty for the current selection."
                 action={<Button type="button" onClick={exitSession}>Back to study modes</Button>}
+                secondaryAction={sessionKind === "custom" ? <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Manage cards</Link> : undefined}
               />
             ) : (
               <SurfaceCard tone="warm" padding="lg" className="animate-warm-glow-pulse">
-                <div>
-                  <h2 className="text-2xl font-bold tracking-tight">Session complete</h2>
-                  <p className="mt-3 text-sm leading-7 text-text-secondary sm:text-base">You reviewed {sessionStats.reviewedCards} of {totalCards} card{totalCards === 1 ? "" : "s"}.</p>
+                <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+                  <div>
+                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
+                    <h2 className="mt-3 text-3xl font-black tracking-tight sm:text-5xl">Good work.</h2>
+                    <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
+                      You reviewed {sessionStats.reviewedCards} of {totalCards} card{totalCards === 1 ? "" : "s"}. Your next best step is ready below.
+                    </p>
+                  </div>
+                  <div className="rounded-[1.4rem] border border-white/[0.12] bg-white/[0.08] px-4 py-3 text-sm text-text-secondary">
+                    <span className="font-bold text-white">{accuracyPercentage}%</span> accuracy
+                  </div>
                 </div>
                 <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Accuracy</div><div className="mt-2 text-2xl font-semibold">{accuracyPercentage}%</div></div>
+                  <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Reviewed</div><div className="mt-2 text-2xl font-semibold">{sessionStats.reviewedCards}</div></div>
                   <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
                     <div className="text-xs text-text-muted">Ratings</div>
                     <div className="mt-2 flex flex-wrap gap-1.5 text-xs text-text-secondary">
@@ -546,37 +702,86 @@ export default function StudyPage() {
                   <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Goals completed</div><div className="mt-2 text-2xl font-semibold">{sessionStats.completedGoals}</div></div>
                   <div className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm"><div className="text-xs text-text-muted">Rewards</div><div className="mt-2 text-sm text-text-secondary">{sessionStats.starsEarned} star{sessionStats.starsEarned === 1 ? "" : "s"}</div></div>
                 </div>
+                <div className="mt-6 rounded-[1.6rem] border border-white/[0.10] bg-white/[0.06] p-4">
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Next best step</div>
+                  <div className="mt-2 text-lg font-bold text-white">
+                    {sessionKind === "daily-required" && remainingOptionalCards.length > 0
+                      ? "Optional easy cards are ready"
+                      : hasCards && !customLocked && customPreviewCards.length > 0
+                        ? "Custom Review is open"
+                        : sessionStats.completedGoals > 0
+                          ? "Check your new star"
+                          : "Keep your cards tidy"}
+                  </div>
+                  <p className="mt-1 text-sm leading-6 text-text-secondary">
+                    {sessionKind === "daily-required" && remainingOptionalCards.length > 0
+                      ? "These are extra practice cards. They are optional, so do them only if you want a little more today."
+                      : hasCards && !customLocked && customPreviewCards.length > 0
+                        ? "Build a focused session from any decks or tags now that required review is clear."
+                        : sessionStats.completedGoals > 0
+                          ? "Goal rewards become stars in your constellation."
+                          : "Review is done for now. Add, fix, or tidy cards whenever something feels off."}
+                  </p>
+                </div>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  <Button type="button" onClick={() => startSession(sessionKind)} size="lg" variant="warm">Study again</Button>
+                  {sessionKind === "daily-required" && remainingOptionalCards.length > 0 ? (
+                    <Button type="button" onClick={() => startSession("daily-optional")} size="lg" variant="warm">Do optional easy</Button>
+                  ) : hasCards && !customLocked && customPreviewCards.length > 0 ? (
+                    <Button type="button" onClick={() => startSession("custom")} size="lg" variant="warm">Start custom review</Button>
+                  ) : sessionStats.completedGoals > 0 ? (
+                    <Link href="/dashboard/constellation" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-bold text-[#10091d] shadow-[0_14px_28px_rgba(255,214,246,0.22)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">View constellation</Link>
+                  ) : (
+                    <Link href="/dashboard/cards" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-bold text-[#10091d] shadow-[0_14px_28px_rgba(255,214,246,0.22)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">Manage cards</Link>
+                  )}
+                  <Button type="button" onClick={() => startSession(sessionKind)} size="lg" variant="secondary">Study again</Button>
                   <Button type="button" onClick={exitSession} variant="secondary" size="lg">Back to study modes</Button>
                 </div>
               </SurfaceCard>
             )
           ) : current ? (
-            <div key={current.id} className="animate-slide-up space-y-6">
+            <div key={current.id} className="animate-slide-up space-y-4 sm:space-y-5">
+              <InlineStudyFeedback feedback={answerFeedback} />
               <SurfaceCard padding="lg" className="overflow-hidden">
-                <div className="space-y-6">
-                  <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
                     <div>
-                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">{sessionKind === "custom" ? "Custom review" : sessionKind === "daily-optional" ? "Optional daily review" : "Required daily review"}</div>
-                      <div className="mt-2 text-sm leading-6 text-text-secondary sm:text-base">Card {currentCardNumber} of {totalCards}</div>
+                      <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">{getSessionLabel(sessionKind)}</div>
+                      <div className="mt-2 text-sm leading-6 text-text-secondary">Card {currentCardNumber} of {totalCards}</div>
                     </div>
-                    <div className="text-sm font-semibold text-text-secondary">{progressPercent}% complete</div>
+                    <div className="min-w-[8rem]">
+                      <div className="mb-2 text-right text-xs font-semibold text-text-muted">{progressPercent}% complete</div>
+                      <ProgressBar progress={progressPercent} />
+                    </div>
                   </div>
-                  <ProgressBar progress={progressPercent} />
-                  <div className="mx-auto w-full max-w-[58rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
-                    <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/11] xl:aspect-[16/10] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
-                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] sm:p-8 lg:p-10">
-                        <div className="flex flex-wrap gap-2">
-                          {current.tags.map((tag) => <span key={tag} className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">{tag}</span>)}
+                  <div className="mx-auto w-full max-w-[62rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
+                    <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
+                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(31,22,54,0.96),rgba(15,10,30,0.96))] p-5 shadow-[0_22px_54px_rgba(8,2,26,0.28)] [backface-visibility:hidden] sm:p-8 lg:p-10">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="min-w-0 text-xs font-medium text-text-muted">
+                            {deckNamesById[current.deckId] ?? "Flashcard"}
+                          </div>
+                          {current.tags.length > 0 ? (
+                            <div className="flex max-w-[60%] flex-wrap justify-end gap-1.5">
+                              {current.tags.slice(0, 2).map((tag) => (
+                                <span key={tag} className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] font-medium text-text-secondary">{tag}</span>
+                              ))}
+                              {current.tags.length > 2 ? (
+                                <span className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] font-medium text-text-muted">+{current.tags.length - 2}</span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
-                        <div className="flex flex-1 items-center justify-center py-6"><p className="max-w-4xl text-center text-xl font-bold leading-tight sm:text-3xl xl:text-[2.65rem]">{current.front}</p></div>
-                        <div className="text-center text-xs uppercase tracking-[0.2em] text-text-muted">{flipped ? "" : "Tap or press Space to reveal the answer"}</div>
+                        <div className="flex flex-1 items-center justify-center py-6">
+                          <p className="max-w-4xl text-center text-2xl font-black leading-tight tracking-tight sm:text-4xl xl:text-[3rem]">{current.front}</p>
+                        </div>
+                        <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Tap or press Space to reveal</div>
                       </div>
-                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-accent/30 bg-surface-panel p-6 shadow-shell [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
-                        <div className="flex flex-wrap gap-2">{current.tags.map((tag) => <span key={tag} className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent">{tag}</span>)}</div>
-                        <div className="flex flex-1 items-center justify-center py-6"><p className="max-w-4xl text-center text-xl font-bold leading-tight text-white sm:text-3xl xl:text-[2.65rem]">{current.back}</p></div>
-                        <div className="text-center text-xs uppercase tracking-[0.2em] text-text-muted">How well did you recall this?</div>
+                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(35,25,62,0.98),rgba(17,11,34,0.98))] p-5 shadow-[0_22px_54px_rgba(8,2,26,0.28)] [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
+                        <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Answer</div>
+                        <div className="flex flex-1 items-center justify-center py-6">
+                          <p className="max-w-4xl whitespace-pre-wrap text-center text-2xl font-black leading-tight tracking-tight text-white sm:text-4xl xl:text-[3rem]">{current.back}</p>
+                        </div>
+                        <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">How well did you recall this?</div>
                       </div>
                     </div>
                   </div>
@@ -600,25 +805,23 @@ export default function StudyPage() {
                     <StudyAssistant card={current} autoExplain mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
                   ) : (
                     <div className="space-y-3">
-                      <div className="grid gap-3 sm:grid-cols-4">
-                        {([
-                          { rating: "again" as CardRating, key: "1", hint: "Missed it", color: "border border-transparent bg-error text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
-                          { rating: "hard" as CardRating, key: "2", hint: "Barely recalled", color: "border border-amber-400/35 bg-amber-500/15 text-amber-100 hover:border-amber-300/60 hover:bg-amber-500/20" },
-                          { rating: "good" as CardRating, key: "3", hint: "Recalled", color: "border border-border bg-white/[0.06] text-white hover:border-border-strong hover:bg-white/[0.10]" },
-                          { rating: "easy" as CardRating, key: "4", hint: "Instant", color: "border border-transparent bg-success text-white shadow-card hover:-translate-y-[1px] hover:brightness-110" },
-                        ]).map(({ rating, key, hint, color }) => (
+                      <div className="grid gap-2 sm:grid-cols-4 sm:gap-3">
+                        {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => {
+                          const meta = RATING_STYLES[rating];
+                          return (
                           <button
                             key={rating}
                             type="button"
                             disabled={savingRating !== null}
-                            className={`flex min-h-[5.25rem] flex-col items-center justify-center gap-1 rounded-[1.75rem] px-4 py-4 text-sm font-semibold shadow-card transition duration-fast ease-spring active:scale-[0.98] disabled:opacity-50 ${color}`}
+                            className={`flex min-h-[4.8rem] flex-col items-center justify-center gap-1 rounded-[1.55rem] border px-4 py-4 text-sm font-bold shadow-[0_12px_24px_rgba(8,2,26,0.16)] transition duration-fast ease-spring hover:-translate-y-[1px] active:scale-[0.98] disabled:opacity-50 ${meta.classes}`}
                             onClick={() => void handleRating(rating)}
                           >
                             <span>{RATING_LABELS[rating]}</span>
-                            <span className="text-xs opacity-70">{hint}</span>
-                            <span className="text-xs opacity-70">{key}</span>
+                            <span className="text-xs font-medium opacity-75">{meta.hint}</span>
+                            <span className="rounded-full border border-white/10 bg-black/10 px-2 py-0.5 text-[0.68rem] opacity-75">{meta.shortcut}</span>
                           </button>
-                        ))}
+                          );
+                        })}
                       </div>
                       <StudyAssistant card={current} autoExplain={false} mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
                     </div>

@@ -28,6 +28,22 @@ export type StudyChatIntent =
   | "why-wrong"
   | "follow-up";
 
+function getFriendlyChatError(status: number, message?: string) {
+  if (status === 429) {
+    return "AI help is taking a short break. Keep studying, or ask again in a little while.";
+  }
+
+  if (status === 503) {
+    return "AI help is not available in this deployment yet.";
+  }
+
+  if (status >= 500) {
+    return "AI is taking longer than usual. Keep studying, or ask again in a moment.";
+  }
+
+  return message || "AI could not answer that just now.";
+}
+
 export async function sendChatMessage(
   message: string,
   history: ChatMessage[],
@@ -50,11 +66,11 @@ export async function sendChatMessage(
 
   if (!res.ok) {
     const data = await res.json().catch(() => null);
-    throw new Error(data?.error ?? `Request failed (${res.status})`);
+    throw new Error(getFriendlyChatError(res.status, data?.error));
   }
 
   const data = await res.json();
   const text = typeof data.reply === "string" ? data.reply.trim() : "";
-  if (!text) throw new Error("Empty reply received");
+  if (!text) throw new Error("AI is taking longer than usual. Keep studying, or ask again in a moment.");
   return text;
 }

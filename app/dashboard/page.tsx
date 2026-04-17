@@ -12,7 +12,7 @@ import { useUser } from "@/lib/auth/user-context";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { db } from "@/services/firebase/client";
 import { FirebaseError } from "firebase/app";
-import { normalizeGoal } from "@/lib/study/goals";
+import { getGoalAccuracy, normalizeGoal, type Goal } from "@/lib/study/goals";
 import { getCustomStudyHref } from "@/lib/app/routes";
 import {
   countTodayReviews,
@@ -20,32 +20,50 @@ import {
 } from "@/lib/study/activity";
 import { loadStudyActivity } from "@/services/study/activity";
 import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
-import { getWeakPoints, type WeakArea } from "@/lib/study/weak-points";
-import { buildLearningInsights } from "@/lib/study/insights";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
 import AppPage from "@/components/layout/AppPage";
-import { Card, FeedbackBanner } from "@/components/ui";
+import { FeedbackBanner, PageHero, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { loadInAppUsername } from "@/services/profile";
+import { formatTimeRemaining } from "@/lib/study/time";
 
-type DeckDueCounts = Record<string, number>;
 type DashboardFeedback = { type: "success" | "error"; message: string };
+const URGENT_GOAL_WINDOW_MS = 48 * 60 * 60 * 1000;
+
+type DashboardAction = {
+  eyebrow: string;
+  title: string;
+  description: string;
+  href: string;
+  label: string;
+  secondaryHref?: string;
+  secondaryLabel?: string;
+};
+
+function getGoalProgressPercent(goal: Goal) {
+  if (goal.targetCards <= 0) return 0;
+  return Math.min(100, Math.round((goal.progress.cardsCompleted / goal.targetCards) * 100));
+}
+
+function getUrgentGoal(goals: Goal[], now: number) {
+  return goals
+    .filter((goal) => goal.deadline > now && goal.deadline - now <= URGENT_GOAL_WINDOW_MS)
+    .sort((left, right) => left.deadline - right.deadline)[0] ?? null;
+}
 
 export default function DashboardHome() {
   const { user } = useUser();
 
   const [decks, setDecks] = useState<Deck[]>([]);
   const [dueCount, setDueCount] = useState(0);
-  const [deckDueCounts, setDeckDueCounts] = useState<DeckDueCounts>({});
-  const [activeGoalCount, setActiveGoalCount] = useState(0);
+  const [remainingOptionalCount, setRemainingOptionalCount] = useState(0);
+  const [urgentGoal, setUrgentGoal] = useState<Goal | null>(null);
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
-  const [remainingRequiredCards, setRemainingRequiredCards] = useState<StudyCard[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<DashboardFeedback | null>(null);
   const [inAppUsername, setInAppUsername] = useState<string | null>(null);
-  const [weakAreas, setWeakAreas] = useState<WeakArea[]>([]);
   const lastForegroundRefreshAtRef = useRef(0);
 
   const loadAll = useCallback(async (uid: string) => {
@@ -88,20 +106,15 @@ export default function DashboardHome() {
         .map((cardId) => cardsById.get(cardId) ?? null)
         .filter((card): card is StudyCard => card !== null)
         .filter((card) => !completedRequiredIds.has(card.id) && !parkedRequiredIds.has(card.id));
-      const nextDeckDueCounts: DeckDueCounts = {};
-      for (const card of requiredCards) {
-        nextDeckDueCounts[card.deckId] = (nextDeckDueCounts[card.deckId] ?? 0) + 1;
-      }
+      const completedOptionalIds = new Set(dailyReviewState.completedOptionalCardIds);
+      const optionalCards = dailyReviewState.optionalCardIds
+        .map((cardId) => cardsById.get(cardId) ?? null)
+        .filter((card): card is StudyCard => card !== null)
+        .filter((card) => !completedOptionalIds.has(card.id));
 
       setDueCount(requiredCards.length);
-      setDeckDueCounts(nextDeckDueCounts);
+      setRemainingOptionalCount(optionalCards.length);
       setCards(allCards);
-      setRemainingRequiredCards(requiredCards);
-
-      const deckNamesById = Object.fromEntries(
-        fetchedDecks.map((d) => [d.id, d.name]),
-      );
-      setWeakAreas(getWeakPoints(allCards, deckNamesById));
 
       const [goalsSnapshot, activity] = await Promise.all([
         getDocs(collection(db, "users", uid, "goals")).catch(() => null),
@@ -112,13 +125,12 @@ export default function DashboardHome() {
 
       if (goalsSnapshot) {
         const now2 = Date.now();
-        const activeGoals = goalsSnapshot.docs.filter((d) => {
-          const goal = normalizeGoal(d.id, d.data() as Record<string, unknown>);
-          return goal.status === "active" && goal.deadline > now2;
-        });
-        setActiveGoalCount(activeGoals.length);
+        const activeGoals = goalsSnapshot.docs
+          .map((d) => normalizeGoal(d.id, d.data() as Record<string, unknown>))
+          .filter((goal) => goal.status === "active" && goal.deadline > now2);
+        setUrgentGoal(getUrgentGoal(activeGoals, now2));
       } else {
-        setActiveGoalCount(0);
+        setUrgentGoal(null);
       }
     } finally {
       setIsLoading(false);
@@ -163,29 +175,63 @@ export default function DashboardHome() {
     () => countTodayReviews(studyActivity),
     [studyActivity]
   );
-  const learningInsights = useMemo(
-    () =>
-      buildLearningInsights({
-        cards,
-        requiredCards: remainingRequiredCards,
-        weakAreas,
-      }),
-    [cards, remainingRequiredCards, weakAreas]
-  );
-
-  // Find the deck with the most due cards for the quick-study hero
-  const mostDueDeck = useMemo(() => {
-    let best: Deck | null = null;
-    let bestCount = 0;
-    for (const deck of decks) {
-      const c = deckDueCounts[deck.id] ?? 0;
-      if (c > bestCount) {
-        best = deck;
-        bestCount = c;
-      }
+  const dashboardAction = useMemo<DashboardAction>(() => {
+    if (decks.length === 0) {
+      return {
+        eyebrow: "Start here",
+        title: "Create your first deck.",
+        description: "Add one subject area first. After that, you can write cards and Jami will build your study path.",
+        href: "/dashboard/decks",
+        label: "Create a deck",
+      };
     }
-    return best ? { deck: best, count: bestCount } : null;
-  }, [decks, deckDueCounts]);
+
+    if (cards.length === 0) {
+      return {
+        eyebrow: "Next step",
+        title: "Add your first cards.",
+        description: "Your decks are ready. Add a few questions and answers so Daily Review has something to schedule.",
+        href: "/dashboard/cards",
+        label: "Create cards",
+        secondaryHref: "/dashboard/decks",
+        secondaryLabel: "Manage decks",
+      };
+    }
+
+    if (dueCount > 0) {
+      return {
+        eyebrow: "Daily first",
+        title: `Clear ${dueCount} required card${dueCount === 1 ? "" : "s"}.`,
+        description: "These are the cards most worth protecting today. Finish them to unlock free Custom Review.",
+        href: getCustomStudyHref({ mode: "daily" }),
+        label: "Start Daily Review",
+        secondaryHref: "/dashboard/study",
+        secondaryLabel: "View study modes",
+      };
+    }
+
+    if (remainingOptionalCount > 0) {
+      return {
+        eyebrow: "Daily is clear",
+        title: `${remainingOptionalCount} optional easy card${remainingOptionalCount === 1 ? "" : "s"} waiting.`,
+        description: "You have done the required work. These are light extras if you want a little more practice.",
+        href: "/dashboard/study",
+        label: "Do optional easy",
+        secondaryHref: getCustomStudyHref({ mode: "custom" }),
+        secondaryLabel: "Start Custom Review",
+      };
+    }
+
+    return {
+      eyebrow: "Open practice",
+      title: "Custom Review is open.",
+      description: "Daily Review is clear. Choose any decks or tags and practise on your own terms.",
+      href: getCustomStudyHref({ mode: "custom" }),
+      label: "Start Custom Review",
+      secondaryHref: "/dashboard/cards",
+      secondaryLabel: "Manage cards",
+    };
+  }, [cards.length, decks.length, dueCount, remainingOptionalCount]);
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -199,202 +245,96 @@ export default function DashboardHome() {
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
-          <Card className="animate-slide-up overflow-hidden" padding="lg">
-            <p className="mb-4 text-sm text-text-secondary">
-              {inAppUsername
-                ? `Welcome back, ${inAppUsername}.`
-                : "Welcome back. Let's make today count."}
-            </p>
-            {!isLoading && decks.length === 0 ? (
-              <>
-                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Start here
-                </div>
-                <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">
-                  Build your first deck.
-                </h2>
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                  Add a topic and write a few cards.
-                </p>
+        <PageHero
+          className="animate-slide-up"
+          eyebrow={isLoading ? "Getting ready" : dashboardAction.eyebrow}
+          title={isLoading ? "Checking today." : dashboardAction.title}
+          description={
+            <>
+              <span className="mb-3 block text-sm text-text-secondary">
+                {inAppUsername
+                  ? `Welcome back, ${inAppUsername}.`
+                  : "Welcome back. Let's keep it simple."}
+              </span>
+              {isLoading
+                ? "Jami is loading your decks, cards, review queue, and goals."
+                : dashboardAction.description}
+            </>
+          }
+          action={
+            <Link
+              href={isLoading ? "/dashboard/study" : dashboardAction.href}
+              className="inline-flex min-h-[3.15rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
+            >
+              {isLoading ? "Open Study" : dashboardAction.label}
+            </Link>
+          }
+          secondaryAction={
+            !isLoading && dashboardAction.secondaryHref ? (
                 <Link
-                  href="/dashboard/decks"
-                  className="mt-6 inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)] sm:mt-8"
+                  href={dashboardAction.secondaryHref}
+                  className="inline-flex min-h-[3.15rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
                 >
-                  Create a deck
+                  {dashboardAction.secondaryLabel}
                 </Link>
-              </>
-            ) : !isLoading && mostDueDeck ? (
-              <>
-                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Ready to review
-                </div>
-                <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">
-                  Start reviewing.
-                </h2>
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                  Daily first. Custom after.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
-                  <Link
-                    href={getCustomStudyHref({ mode: "daily" })}
-                    className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
-                  >
-                    Daily Review
-                  </Link>
-                  <Link
-                    href={getCustomStudyHref({ mode: "custom" })}
-                    className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
-                  >
-                    Custom Review
-                  </Link>
-                </div>
-              </>
-            ) : (
-              <>
-                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Today looks clear
-                </div>
-                <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">
-                  You are caught up.
-                </h2>
-                <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                  Custom Review is open.
-                </p>
-                <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
-                  <Link
-                    href={getCustomStudyHref({ mode: "custom" })}
-                    className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
-                  >
-                    Custom Review
-                  </Link>
-                  <Link
-                    href="/dashboard/decks"
-                    className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
-                  >
-                    Manage decks
-                  </Link>
-                </div>
-              </>
-            )}
-          </Card>
-
-          <div className="grid gap-4">
-            <Card tone="warm" padding="md">
-              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                Today
+            ) : null
+          }
+          aside={
+            <div className="grid min-w-[14rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
+              <div>
+                <div className="text-xs text-text-muted">Reviewed today</div>
+                <div className="mt-1 text-3xl font-black text-white">{isLoading ? "..." : todayReviews}</div>
               </div>
-              <div className="mt-3">
-                <div className="text-xs text-text-muted">Cards reviewed</div>
-                <div className="mt-1 text-3xl font-semibold">{isLoading ? "..." : todayReviews}</div>
+              <div className="h-px bg-white/[0.08]" />
+              <div>
+                <div className="text-xs text-text-muted">Required left</div>
+                <div className="mt-1 text-2xl font-bold text-white">{isLoading ? "..." : dueCount}</div>
               </div>
-            </Card>
-          </div>
-        </div>
-
-        <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
-          <Link
-            href={getCustomStudyHref({ mode: "daily" })}
-            className="app-panel block p-4 sm:p-6 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
-          >
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Daily Review
             </div>
-            <div className="mt-3 text-2xl font-semibold sm:text-3xl">{isLoading ? "..." : dueCount}</div>
-            <p className="mt-3 text-sm leading-6 text-text-secondary">
-              Required cards left today.
-            </p>
-          </Link>
+          }
+        />
 
-          <Link
-            href="/dashboard/goals"
-            className="app-panel-warm block p-4 sm:p-6 transition duration-fast hover:-translate-y-0.5 hover:shadow-shell"
-          >
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Active goals
-            </div>
-            <div className="mt-3 text-2xl font-semibold sm:text-3xl">{isLoading ? "..." : activeGoalCount}</div>
-            <p className="mt-3 text-sm leading-6 text-text-secondary">
-              Active study targets.
-            </p>
-          </Link>
-        </div>
-
-        {!isLoading && learningInsights.length > 0 ? (
-          <Card padding="lg">
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Today&apos;s plan
-            </div>
-            <p className="mt-1 text-sm text-text-secondary">
-              What needs attention next.
-            </p>
-            <div className="mt-4 grid gap-4 lg:grid-cols-3">
-              {learningInsights.map((insight) => (
+        <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
+          <StatTile
+            label="Daily Review"
+            value={isLoading ? "..." : dueCount}
+            detail={dueCount > 0 ? "Required cards before Custom Review." : "Required queue is clear."}
+            href="/dashboard/study"
+          />
+          <StatTile
+            label="Library"
+            value={isLoading ? "..." : cards.length}
+            detail={`${decks.length} deck${decks.length === 1 ? "" : "s"} organised for study.`}
+            href="/dashboard/cards"
+          />
+          {urgentGoal ? (
+            <Link
+              href="/dashboard/goals"
+              className="app-panel-warm block p-4 transition duration-fast hover:-translate-y-0.5 hover:shadow-shell sm:p-5"
+            >
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Goal due soon</div>
+              <div className="mt-3 text-xl font-black tracking-tight text-white">
+                {urgentGoal.progress.cardsCompleted} / {urgentGoal.targetCards} cards
+              </div>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                {formatTimeRemaining(urgentGoal.deadline)} left at {Math.round(getGoalAccuracy(urgentGoal.progress) * 100)}% accuracy.
+              </p>
+              <div className="mt-4 h-2 rounded-full bg-white/[0.08]">
                 <div
-                  key={insight.title}
-                  className="rounded-[1.6rem] border border-white/[0.07] bg-white/[0.05] p-4"
-                >
-                  <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">
-                    {insight.eyebrow}
-                  </div>
-                  <div className="mt-2 text-base font-semibold text-white">
-                    {insight.title}
-                  </div>
-                  <p className="mt-2 text-sm leading-6 text-text-secondary">
-                    {insight.description}
-                  </p>
-                </div>
-              ))}
-            </div>
-          </Card>
-        ) : null}
-
-        {!isLoading && weakAreas.length > 0 ? (
-          <Card padding="lg">
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Weak areas
-            </div>
-            <p className="mt-1 text-sm text-text-secondary">
-              Decks and tags causing the most friction.
-            </p>
-            <div className="mt-4 space-y-3">
-              {weakAreas.map((area) => {
-                const pct = Math.round((area.avgDifficulty / 10) * 100);
-                const tierColor =
-                  area.avgDifficulty >= 7
-                    ? "bg-rose-500"
-                    : area.avgDifficulty >= 4
-                      ? "bg-amber-500"
-                      : "bg-emerald-500";
-                return (
-                  <div key={`${area.kind}:${area.name}`}>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="font-medium text-white">
-                        {area.name}
-                        <span className="ml-2 text-xs text-text-muted">
-                          {area.cardCount} card{area.cardCount === 1 ? "" : "s"} - {area.totalLapses} struggle{area.totalLapses === 1 ? "" : "s"}
-                        </span>
-                      </span>
-                      <span className="text-xs text-text-muted">
-                        {area.avgDifficulty >= 7
-                          ? "Needs focus"
-                          : area.avgDifficulty >= 4
-                            ? "Warming up"
-                            : "Comfortable"}
-                      </span>
-                    </div>
-                    <div className="mt-1.5 h-2 rounded-full bg-white/[0.06]">
-                      <div
-                        className={`h-full rounded-full transition-all ${tierColor}`}
-                        style={{ width: `${Math.max(pct, 4)}%` }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        ) : null}
+                  className="h-full rounded-full bg-warm-accent transition-all"
+                  style={{ width: `${Math.max(getGoalProgressPercent(urgentGoal), 4)}%` }}
+                />
+              </div>
+            </Link>
+          ) : (
+            <StatTile
+              label="Custom Review"
+              value={isLoading ? "..." : cards.length > 0 && dueCount === 0 ? "Open" : "After daily"}
+              detail={cards.length === 0 ? "Add cards first." : dueCount > 0 ? "Unlocks after required review." : "Free practice is available."}
+              href="/dashboard/study"
+            />
+          )}
+        </div>
       </AppPage>
     </Refreshable>
   );

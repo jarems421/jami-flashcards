@@ -14,7 +14,7 @@ import {
 } from "@/lib/study/deck-style";
 import { db } from "@/services/firebase/client";
 import AppPage from "@/components/layout/AppPage";
-import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDeckHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
@@ -181,11 +181,12 @@ export default function DecksPage() {
         {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
 
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
-          <div className="app-panel-warm p-4 sm:p-6">
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Deck management</div>
-            <h2 className="mt-3 text-2xl font-bold tracking-tight sm:text-4xl">Organize your cards.</h2>
-            <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">Decks are for editing. Study lives in the Study tab.</p>
-            <div className="mt-6 flex flex-col gap-3 sm:mt-8 sm:flex-row">
+          <PageHero
+            eyebrow="Deck management"
+            title="Organize your cards."
+            description="Decks are for editing and structure. Study lives in the Study tab."
+            action={
+              <div className="flex w-full flex-col gap-3 sm:flex-row">
               <Input
                 placeholder="New deck name"
                 value={name}
@@ -201,21 +202,13 @@ export default function DecksPage() {
               <Button disabled={isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="sm:min-w-[9rem]">
                 {isCreatingDeck ? "Creating..." : "Create deck"}
               </Button>
-            </div>
-          </div>
+              </div>
+            }
+          />
 
           <div className="grid gap-4">
-            <div className="app-panel p-5">
-              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Decks</div>
-              <div className="mt-3 text-2xl font-semibold sm:text-3xl">{decks.length}</div>
-            </div>
-            <div className="app-panel p-5">
-              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Cards</div>
-              <p className="mt-3 text-sm leading-6 text-text-secondary">Search and edit across decks.</p>
-              <Link href="/dashboard/cards" className="mt-4 inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">
-                Open cards
-              </Link>
-            </div>
+            <StatTile label="Decks" value={decks.length} detail="Organised subject groups." />
+            <StatTile label="Cards" value="Manage" detail="Search and edit across decks." href="/dashboard/cards" />
           </div>
         </div>
 
@@ -226,7 +219,13 @@ export default function DecksPage() {
             <Skeleton className="h-28" />
           </div>
         ) : decks.length === 0 ? (
-          <EmptyState emoji="📦" title="No decks yet" description="Create your first deck above to get started." />
+          <EmptyState
+            emoji="Deck"
+            eyebrow="Start here"
+            title="Create your first deck"
+            description="Decks keep your cards organised by subject. Add one topic now, then start filling it with flashcards."
+            action={<Button type="button" onClick={() => document.querySelector<HTMLInputElement>("input[placeholder='New deck name']")?.focus()} variant="warm">Name a deck</Button>}
+          />
         ) : (
           <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
             {decks.map((deck) => {

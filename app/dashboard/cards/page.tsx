@@ -19,7 +19,7 @@ import TagInput from "@/components/decks/TagInput";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
-import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, Input, SectionHeader, Skeleton } from "@/components/ui";
 import Link from "next/link";
 
 function cardMatchesSearch(card: Card, term: string, deckName?: string) {
@@ -292,17 +292,16 @@ export default function CardsSearchPage() {
       ) : null}
 
       <div className="app-panel p-3 sm:p-4">
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
-            +
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm font-bold text-white">Add card</div>
-            <div className="mt-0.5 truncate text-xs text-text-muted">
-              Create across any deck
+        <SectionHeader
+          eyebrow="Create"
+          title="Add card"
+          description="Write the front and back, then add tags only if they help you find it later."
+          action={
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+              +
             </div>
-          </div>
-        </div>
+          }
+        />
 
         <div className="mt-3 space-y-3 sm:mt-4">
           <select
@@ -387,14 +386,19 @@ export default function CardsSearchPage() {
       ) : cards.length === 0 ? (
         <EmptyState
           emoji="📚"
+          eyebrow="No cards yet"
           title="No cards yet"
-          description="Create a deck and add some cards to get started."
+          description="Cards are the fuel for Daily Review and Custom Review. Add a question and answer above to create your first one."
+          helperText={decks.length === 0 ? "You will need a deck first, then cards can be added here." : "Once saved, new cards appear in study automatically."}
+          action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
         />
       ) : filtered.length === 0 ? (
         <EmptyState
           emoji="🔍"
+          eyebrow="No match"
           title="No cards match"
-          description={`No cards match \u201c${debouncedTerm}\u201d. Try a different search term.`}
+          description={`No cards match "${debouncedTerm}". Try a shorter search, another deck name, or a tag you remember.`}
+          action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
         />
       ) : (
         <>

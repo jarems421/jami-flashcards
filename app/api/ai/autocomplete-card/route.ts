@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
   const allowed = await checkRateLimit(uid, "autocomplete-card", MAX_AUTOCOMPLETE_PER_HOUR);
   if (!allowed) {
     return Response.json(
-      { error: "Rate limit exceeded. Try again later." },
+      { error: "AI limit reached for now." },
       { status: 429 },
     );
   }
@@ -236,7 +236,19 @@ Write the best flashcard back. If there is already a draft, improve or complete 
       return cleanGeneratedCardBack(result.response.text());
     };
 
-    let reply = await generateDraft(userPrompt);
+    let reply = await generateDraft(userPrompt).catch(async (error) => {
+      console.warn("Gemini card autocomplete first attempt failed:", error);
+      const quickPrompt = `Write a complete, concise flashcard back for this front.
+
+Front:
+${front}
+
+Current draft:
+${currentBack || "(empty)"}
+
+Return only the finished back text.`;
+      return generateDraft(quickPrompt);
+    });
 
     if (isLikelyIncompleteBack(reply, front)) {
       const retryPrompt = `The previous draft looks incomplete.
@@ -261,7 +273,7 @@ Rewrite the complete final back in one concise response.
     }
 
     if (!reply) {
-      return Response.json({ error: "Empty response from AI" }, { status: 502 });
+      return Response.json({ error: "AI could not return a usable answer right now." }, { status: 502 });
     }
 
     return Response.json({ back: reply.slice(0, MAX_BACK_OUTPUT_LENGTH) });
@@ -269,8 +281,8 @@ Rewrite the complete final back in one concise response.
     console.error("Gemini card autocomplete error:", error);
     const message =
       error instanceof Error && error.message === "Request timed out"
-        ? error.message
-        : "Failed to draft card back";
+        ? "AI is taking longer than usual."
+        : "AI could not complete the draft right now.";
     return Response.json({ error: message }, { status: 502 });
   }
 }

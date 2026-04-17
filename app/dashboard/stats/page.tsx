@@ -22,7 +22,7 @@ import {
 } from "@/lib/study/activity";
 import { formatStudyDayLabel, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, Skeleton } from "@/components/ui";
+import { Button, Card, EmptyState, SectionHeader, Skeleton, StatTile } from "@/components/ui";
 
 type TimeRange = "7d" | "30d" | "all";
 
@@ -189,50 +189,27 @@ export default function StatsPage() {
         </div>
       ) : (
         <>
-          {/* Stat cards */}
           <div className="grid animate-slide-up gap-4 sm:grid-cols-3">
-            <Card tone="warm" padding="md">
-              <div className="flex items-center gap-2.5">
-                <svg viewBox="0 0 24 24" fill="none" className="h-7 w-7 text-[#ff9b5c]">
-                  <path d="M12 2c.5 3.5 4.8 6 4.8 10a5 5 0 01-9.6 0C7.2 8 11.5 5.5 12 2z" fill="currentColor" />
-                </svg>
-                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Current streak
-                </div>
-              </div>
-              <div className="mt-3 text-3xl font-bold sm:text-4xl">
-                {currentStreak} <span className="text-base font-normal text-text-secondary">day{currentStreak === 1 ? "" : "s"}</span>
-              </div>
-            </Card>
-            <Card tone="warm" padding="md">
-              <div className="flex items-center gap-2.5">
-                <svg viewBox="0 0 24 24" fill="none" className="h-7 w-7 text-[#ffd36b]">
-                  <path d="M11.049 2.927a1 1 0 011.902 0l1.718 4.134 4.456.357a1 1 0 01.617 1.732l-3.392 2.908 1.036 4.345a1 1 0 01-1.525 1.084L12 15.347l-3.861 2.14a1 1 0 01-1.525-1.084l1.036-4.345-3.392-2.908a1 1 0 01.617-1.732l4.456-.357 1.718-4.134z" fill="currentColor" />
-                </svg>
-                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Longest streak
-                </div>
-              </div>
-              <div className="mt-3 text-3xl font-bold sm:text-4xl">
-                {longestStreak} <span className="text-base font-normal text-text-secondary">day{longestStreak === 1 ? "" : "s"}</span>
-              </div>
-            </Card>
-            <Card tone="warm" padding="md">
-              <div className="flex items-center gap-2.5">
-                <svg viewBox="0 0 24 24" fill="none" className="h-7 w-7 text-[#b77cff]">
-                  <path d="M9 12.75L11.25 15 15 9.75M21 12a9 9 0 11-18 0 9 9 0 0118 0z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
-                <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                  Total reviews
-                </div>
-              </div>
-              <div className="mt-3 text-3xl font-bold sm:text-4xl">
-                {totalReviews.toLocaleString()}
-              </div>
-            </Card>
+            <StatTile
+              tone="warm"
+              label="Current streak"
+              value={`${currentStreak} day${currentStreak === 1 ? "" : "s"}`}
+              detail="Your active study rhythm."
+            />
+            <StatTile
+              tone="warm"
+              label="Longest streak"
+              value={`${longestStreak} day${longestStreak === 1 ? "" : "s"}`}
+              detail="Your best run so far."
+            />
+            <StatTile
+              tone="warm"
+              label="Total reviews"
+              value={totalReviews.toLocaleString()}
+              detail="All completed study answers."
+            />
           </div>
 
-          {/* Range selector */}
           <div className="flex flex-wrap gap-2">
             {TIME_RANGE_OPTIONS.map((option) => (
               <Button
@@ -246,11 +223,8 @@ export default function StatsPage() {
             ))}
           </div>
 
-          {/* Accuracy chart */}
           <Card padding="lg" className="animate-fade-in">
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Accuracy over time
-            </div>
+            <SectionHeader title="Accuracy over time" description="How consistently you are recalling cards across the selected range." />
             <div className="mt-4 h-64 w-full">
               {accuracyData.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -297,18 +271,21 @@ export default function StatsPage() {
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="flex h-full items-center justify-center text-sm text-text-muted">
-                  No review data for this period yet.
-                </p>
+                <div className="flex h-full items-center justify-center">
+                  <EmptyState
+                    variant="plain"
+                    emoji="Stats"
+                    eyebrow="No review data"
+                    title="No reviews in this range"
+                    description="Study a few cards and your accuracy trend will appear here."
+                  />
+                </div>
               )}
             </div>
           </Card>
 
-          {/* Time chart */}
           <Card padding="lg" className="animate-fade-in">
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Time spent studying
-            </div>
+            <SectionHeader title="Time spent studying" description="A calm view of how much time your sessions are taking." />
             <div className="mt-4 h-64 w-full">
               {timeData.some((d) => d.minutes > 0) ? (
                 <ResponsiveContainer width="100%" height="100%">
@@ -349,9 +326,15 @@ export default function StatsPage() {
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
-                <p className="flex h-full items-center justify-center text-sm text-text-muted">
-                  No time data yet.
-                </p>
+                <div className="flex h-full items-center justify-center">
+                  <EmptyState
+                    variant="plain"
+                    emoji="Time"
+                    eyebrow="No time data"
+                    title="No study time yet"
+                    description="Once you complete sessions, this chart will show how much time you spent studying."
+                  />
+                </div>
               )}
             </div>
           </Card>

@@ -33,6 +33,26 @@ type ExplanationContext = {
   elapsedDays?: unknown;
 };
 
+async function withRequestTimeout<T>(promise: Promise<T>) {
+  let timeoutId: ReturnType<typeof setTimeout> | undefined;
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeoutId = setTimeout(
+      () => reject(new Error("Request timed out")),
+      REQUEST_TIMEOUT_MS,
+    );
+  });
+
+  try {
+    return await Promise.race([promise, timeoutPromise]);
+  } finally {
+    if (timeoutId) clearTimeout(timeoutId);
+  }
+}
+
+function getFallbackExplanation(front: string, back: string) {
+  return `AI is taking longer than usual. Quick recovery: compare what you answered with the correct answer, then make one small rule that separates them. For this card, the answer to "${front.slice(0, 90)}" is: ${back.slice(0, 220)}`;
+}
+
 export async function POST(request: NextRequest) {
   if (!GEMINI_API_KEY) {
     return Response.json(
@@ -58,7 +78,7 @@ export async function POST(request: NextRequest) {
   const allowed = await checkRateLimit(uid, "explain", MAX_EXPLAIN_PER_HOUR);
   if (!allowed) {
     return Response.json(
-      { error: "Rate limit exceeded. Try again later." },
+      { error: "AI limit reached for now." },
       { status: 429 },
     );
   }
@@ -214,45 +234,41 @@ Use these only to infer likely confusion patterns or useful distinctions.`;
       }
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const generateExplanation = async () => {
+      const result = await withRequestTimeout(
+        model.generateContent({
+          systemInstruction: `${BASE_SYSTEM_PROMPT}\n\n${memoryProfilePrompt}${relatedCardsPrompt}`.trim(),
+          contents: [
+            {
+              role: "user",
+              parts: [
+                {
+                  text: `Flashcard front (question): ${front}\nFlashcard back (answer): ${back}`,
+                },
+              ],
+            },
+          ],
+        })
+      );
 
-    let text: string;
-    try {
-      const result = await model.generateContent({
-        systemInstruction: `${BASE_SYSTEM_PROMPT}\n\n${memoryProfilePrompt}${relatedCardsPrompt}`.trim(),
-        contents: [
-          {
-            role: "user",
-            parts: [
-              {
-                text: `Flashcard front (question): ${front}\nFlashcard back (answer): ${back}`,
-              },
-            ],
-          },
-        ],
-      });
-      text = cleanGeneratedStudyText(result.response.text());
-    } finally {
-      clearTimeout(timeout);
-    }
+      return cleanGeneratedStudyText(result.response.text());
+    };
+
+    let text = await generateExplanation().catch(async (error) => {
+      console.warn("Gemini explanation first attempt failed:", error);
+      return generateExplanation();
+    });
 
     if (!text) {
-      return Response.json(
-        { error: "Empty response from AI" },
-        { status: 502 },
-      );
+      text = getFallbackExplanation(front, back);
     }
 
     return Response.json({ explanation: text });
   } catch (error) {
     console.error("Gemini API error:", error);
-    const message = error instanceof Error && error.name === "AbortError"
-      ? "Request timed out"
-      : "Failed to generate explanation";
-    return Response.json(
-      { error: message },
-      { status: 502 },
-    );
+    return Response.json({
+      explanation: getFallbackExplanation(front, back),
+      fallback: true,
+    });
   }
 }

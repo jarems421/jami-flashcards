@@ -22,33 +22,33 @@ const FORMAT_ACTIONS: Array<{
 }> = [
   {
     mode: "plain",
-    label: "Paragraph",
+    label: "Normal",
     starter: "",
-    hint: "Normal answer text",
+    hint: "Write freely",
   },
   {
     mode: "bullet",
-    label: "Bullets",
+    label: "Bullet list",
     starter: "- ",
-    hint: "Enter creates the next bullet",
+    hint: "Enter adds the next bullet",
   },
   {
     mode: "numbered",
-    label: "Numbered",
+    label: "Numbered list",
     starter: "1. ",
-    hint: "Enter creates the next step",
+    hint: "Enter adds the next number",
   },
   {
     mode: "definition",
     label: "Definition",
     starter: "Definition: ",
-    hint: "Then add short supporting points",
+    hint: "Start with the meaning, then add details",
   },
   {
     mode: "compare",
-    label: "Compare",
+    label: "Compare two things",
     starter: "A: ",
-    hint: "Then B and the key difference",
+    hint: "A, B, then the main difference",
   },
 ];
 
@@ -105,36 +105,38 @@ function getFormatPreview(mode: FormatMode, value: string, cursor: number) {
   const { lineBeforeCursor } = getLineInfo(value, cursor);
 
   if (mode === "bullet") {
-    return ["- another point"];
+    return ["- "];
   }
 
   if (mode === "numbered") {
-    return [`${getNextNumber(value, cursor)}. next step`];
+    return [`${getNextNumber(value, cursor)}. `];
   }
 
   if (mode === "definition") {
-    return startsWithLabel(lineBeforeCursor, "Definition:")
-      ? ["- what it means in simple words"]
-      : ["- another useful detail"];
+    return startsWithLabel(lineBeforeCursor, "Definition:") ? ["- "] : ["- "];
   }
 
   if (mode === "compare") {
     if (startsWithLabel(lineBeforeCursor, "A:")) {
-      return ["B: the thing you are comparing it with", "Key difference: "];
+      return ["B: "];
     }
 
     if (startsWithLabel(lineBeforeCursor, "B:")) {
-      return ["Key difference: the main contrast"];
+      return ["Key difference: "];
     }
 
     if (startsWithLabel(lineBeforeCursor, "Key difference:")) {
-      return ["- why that difference matters"];
+      return ["- "];
     }
 
-    return ["B: ", "Key difference: "];
+    return ["B: "];
   }
 
   return null;
+}
+
+function getActiveFormatHint(mode: FormatMode) {
+  return FORMAT_ACTIONS.find((action) => action.mode === mode)?.hint ?? "";
 }
 
 export default function CardBackEditor({
@@ -151,6 +153,7 @@ export default function CardBackEditor({
   const [formatMode, setFormatMode] = useState<FormatMode>("plain");
   const [cursorPosition, setCursorPosition] = useState(0);
   const previewLines = getFormatPreview(formatMode, value, cursorPosition);
+  const activeFormatHint = getActiveFormatHint(formatMode);
 
   const syncCursorPosition = () => {
     const textarea = textareaRef.current;
@@ -323,48 +326,48 @@ export default function CardBackEditor({
             {label}
           </label>
         ) : null}
-        <textarea
-          ref={textareaRef}
-          id={textareaId}
-          rows={rows}
-          value={value}
-          placeholder={placeholder}
-          maxLength={maxLength}
-          disabled={disabled}
-          onChange={(event) => {
-            onChange(event.target.value);
-            setCursorPosition(event.target.selectionStart);
-          }}
-          onKeyDown={continueFormat}
-          onClick={syncCursorPosition}
-          onKeyUp={syncCursorPosition}
-          onSelect={syncCursorPosition}
-          className="w-full rounded-[1.5rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-4 text-sm text-white placeholder:text-text-muted shadow-[0_14px_28px_rgba(8,2,24,0.28)] outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18 focus:shadow-[0_18px_36px_rgba(183,124,255,0.2)] disabled:cursor-not-allowed disabled:opacity-60"
-        />
-        {previewLines ? (
-          <div
-            className="mt-2 rounded-[1.15rem] border border-dashed border-white/[0.12] bg-white/[0.035] px-4 py-3 text-sm text-text-muted"
-            aria-hidden="true"
-          >
-            <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-text-muted/80">
-              Preview on Return
-            </div>
-            <div className="space-y-1 font-medium opacity-75">
+        <div className="rounded-[1.5rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong shadow-[0_14px_28px_rgba(8,2,24,0.28)] transition duration-fast focus-within:border-warm-accent focus-within:ring-4 focus-within:ring-accent/18 focus-within:shadow-[0_18px_36px_rgba(183,124,255,0.2)] hover:border-white/[0.20]">
+          <textarea
+            ref={textareaRef}
+            id={textareaId}
+            rows={rows}
+            value={value}
+            placeholder={placeholder}
+            maxLength={maxLength}
+            disabled={disabled}
+            onChange={(event) => {
+              onChange(event.target.value);
+              setCursorPosition(event.target.selectionStart);
+            }}
+            onKeyDown={continueFormat}
+            onClick={syncCursorPosition}
+            onKeyUp={syncCursorPosition}
+            onSelect={syncCursorPosition}
+            className="w-full resize-y rounded-[1.5rem] bg-transparent px-5 py-4 text-sm text-white placeholder:text-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          />
+          {previewLines ? (
+            <div
+              className="border-t border-white/[0.06] px-5 pb-4 pt-2 text-sm font-medium text-text-muted/70"
+              aria-hidden="true"
+            >
               {previewLines.map((line, index) => (
-                <div key={`${line}-${index}`}>{line}</div>
+                <div key={`${line}-${index}`} className="min-h-[1.25rem]">
+                  {line}
+                  <span className="ml-1 text-text-muted/35">next line</span>
+                </div>
               ))}
             </div>
-          </div>
-        ) : null}
+          ) : null}
+        </div>
       </div>
 
       <div className="rounded-[1.35rem] border border-white/[0.10] bg-white/[0.035] p-3">
         <div className="mb-2 flex items-center justify-between gap-3">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-            Answer shape
+            Answer style
           </div>
           <div className="hidden text-xs text-text-muted sm:block">
-            Press Return to continue the active format.
+            {activeFormatHint}
           </div>
         </div>
         <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">

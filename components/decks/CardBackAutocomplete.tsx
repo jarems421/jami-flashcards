@@ -20,9 +20,9 @@ type Props = {
 const STYLE_OPTIONS: { value: CardBackAutocompleteStyle; label: string }[] = [
   { value: "auto", label: "Auto" },
   { value: "definition", label: "Definition" },
-  { value: "equation", label: "Maths / formula" },
-  { value: "explanation", label: "Explain" },
-  { value: "steps", label: "Steps" },
+  { value: "equation", label: "Maths" },
+  { value: "explanation", label: "Simple explanation" },
+  { value: "steps", label: "Step by step" },
   { value: "example", label: "Example" },
   { value: "compare", label: "Compare" },
 ];
@@ -59,7 +59,11 @@ export default function CardBackAutocomplete({
       });
       onApply(back);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to draft an answer.");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "AI could not finish the draft just now. Keep typing, or draft again in a moment."
+      );
     } finally {
       setLoading(false);
     }
@@ -69,9 +73,9 @@ export default function CardBackAutocomplete({
     <div className="rounded-[1.4rem] border border-accent/18 bg-accent/[0.055] p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-white">AI answer draft</div>
+          <div className="text-sm font-semibold text-white">Draft the answer with AI</div>
           <div className="mt-0.5 text-xs leading-5 text-text-muted">
-            Pick the answer shape. Maths mode prefers clean symbols and compact formulas.
+            Choose the kind of answer you want. Maths keeps symbols clean and formulas short.
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -98,7 +102,7 @@ export default function CardBackAutocomplete({
             disabled={!canDraft}
             onClick={() => void handleDraft()}
           >
-            {loading ? "Drafting..." : "AI draft back"}
+            {loading ? "Drafting..." : "Draft answer"}
           </Button>
         </div>
       </div>
@@ -109,7 +113,7 @@ export default function CardBackAutocomplete({
       ) : null}
       {!front.trim() ? (
         <div className="mt-2 text-xs text-text-muted">
-          Add the front of the card first so the AI has something to answer.
+          Add the front of the card first, then AI can help write the answer.
         </div>
       ) : null}
     </div>

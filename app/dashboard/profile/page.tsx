@@ -7,7 +7,7 @@ import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
-import { Button, Card, Input } from "@/components/ui";
+import { Button, Card, Input, SectionHeader } from "@/components/ui";
 import { logout, deleteAccount } from "@/services/auth";
 import {
   loadInAppUsername,
@@ -168,24 +168,25 @@ export default function ProfilePage() {
       </div>
 
         <Card tone="subtle" className="border-error-muted bg-error-muted/20 sm:p-6" padding="md">
-          <h2 className="mb-1 text-sm font-bold text-rose-200">Danger Zone</h2>
-          <p className="mb-3 text-xs text-text-muted">
-            Permanently delete your account and data.
-          </p>
+          <SectionHeader
+            title={<span className="text-rose-200">Danger zone</span>}
+            description="Permanently delete your account and data."
+          />
 
           {error ? (
-            <p className="mb-2 text-xs text-rose-200">{error}</p>
+            <p className="mt-3 text-xs text-rose-200">{error}</p>
           ) : null}
 
           {!showDeleteConfirm ? (
             <Button
               onClick={() => setShowDeleteConfirm(true)}
               variant="danger"
+              className="mt-4"
             >
               Delete Account
             </Button>
           ) : (
-            <div className="flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               <Button
                 disabled={isDeleting}
                 onClick={() => void handleDeleteAccount()}

@@ -1,76 +1,114 @@
 <p align="center">
-  <img src="public/icon-512.png" alt="Jami" width="120" height="120" style="border-radius: 24px;" />
+  <img src="public/icons/icon-512.png" alt="Jami app icon" width="112" height="112" style="border-radius: 24px;" />
 </p>
 
 <h1 align="center">Jami Flashcards</h1>
 
 <p align="center">
-  A spaced-repetition study app that turns daily review sessions into a growing constellation of stars.
+  A mobile-first flashcard app that combines spaced repetition, AI study support, goals, and constellation-style progress rewards.
 </p>
 
 <p align="center">
-  <strong>Next.js</strong> · <strong>React</strong> · <strong>TypeScript</strong> · <strong>Firebase</strong> · <strong>Tailwind CSS</strong>
+  <strong>Next.js 16</strong> | <strong>React 19</strong> | <strong>TypeScript</strong> | <strong>Firebase</strong> | <strong>Tailwind CSS</strong>
 </p>
 
 ---
 
-## Features
+## 30 Second Overview
 
-| Area | Details |
-|------|---------|
-| **Flashcards** | Create decks, write cards, tag them, and study with FSRS spaced-repetition scheduling |
-| **AI Study Assistant** | Context-aware AI tutor during study sessions — auto-explains wrong answers, supports follow-up chat |
-| **Weak Points** | FSRS-powered analysis surfaces your weakest cards so you can focus where it matters |
-| **Goals** | Set study targets with deadlines — earn a constellation star when you complete one |
-| **Constellations** | Visual star map that grows as you hit goals — set one as your live background |
-| **Statistics** | Track reviews per day, accuracy, and study streaks over time |
-| **Push notifications** | Daily digest reminders (PWA — add to Home Screen on iOS) |
-| **PWA** | Installable on mobile and desktop with offline-ready service worker |
+Jami is designed around one clear study loop: required Daily Review comes first, then flexible Custom Review unlocks. The app uses spaced-repetition scheduling plus a memory-risk layer so repeated struggles, overdue cards, and recent Custom Review mistakes can pull cards back into the required queue.
 
-## Tech stack
+The product also includes AI-assisted card creation, in-session AI hints and reflection, profile photos through Firebase Storage, PWA push notification infrastructure, goal tracking, study statistics, and a constellation reward page where completed goals become stars.
 
-- **Framework** — Next.js 16 (App Router)
-- **UI** — React 19, Tailwind CSS 4
-- **Auth** — Firebase Authentication (Google sign-in)
-- **Database** — Cloud Firestore with per-user security rules
-- **Storage** — Firebase Storage (profile photos)
-- **AI** — Google Gemini 2.5 Flash (study explanations and chat)
-- **Scheduling** — FSRS (Free Spaced Repetition Scheduler) via ts-fsrs
-- **Testing** — Vitest + Firebase Emulator Suite
-- **Deployment** — Vercel
+## Product Highlights
 
-## Project structure
+| Area | What it does |
+| --- | --- |
+| Study loop | Daily Review separates required weak/medium cards from optional easy cards. Custom Review unlocks once required cards are complete. |
+| Memory model | FSRS handles due scheduling, while a memory-risk layer considers lapses, overdue pressure, and recent struggles. |
+| Custom Review | Users can practise any selected decks or tags with OR-union matching. Custom Review records progress but does not push due dates later. |
+| AI support | Gemini helps draft card backs, offers clues before the card is flipped, and asks what went wrong after a struggle before explaining. |
+| Goals and rewards | Goals track card count, accuracy, and deadlines. Completed goals award stars into a constellation. |
+| Management | Decks provide organization and cover customization. The Cards page is the full search/edit surface. |
+| Notifications | PWA push subscription and digest routes support a single daily reminder window at 4pm Europe/London. |
+| Mobile polish | The interface is built for iPad and mobile first, with large controls, calmer screens, and clear empty states. |
 
-```
-app/                    → Pages and API routes (App Router)
-  dashboard/            → Authenticated app screens
-  deck/[id]/            → Deck detail and study pages
-  api/ai/               → AI explain and chat endpoints
-  api/notifications/    → Push notification endpoints
+## Technical Decisions
+
+### Study System
+
+- Daily Review uses a user-scoped snapshot document so the required queue remains stable for the study day.
+- The study day rolls over at 4pm Europe/London, keeping dashboard counts, streaks, Daily Review, and notification timing consistent.
+- Required cards are weak and medium priority cards. Easy cards are optional and never block Custom Review.
+- Daily Review updates official scheduling. Custom Review only creates tomorrow pressure when the user answers Again or Hard.
+- A five-attempt cap parks repeated weak Daily Review cards for tomorrow so users are not trapped.
+
+### AI Layer
+
+- Server routes keep the Gemini API key off the client.
+- AI card-back autocomplete uses structured prompts for definition, explanation, comparison, and math-heavy cards.
+- Generated math text is cleaned to reduce raw Markdown/LaTeX artifacts and prefer readable symbols where appropriate.
+- During study, AI is secondary to the card. Before flipping it can give clues; after a struggle it asks the user what went wrong first.
+
+### Firebase and Data
+
+- Firebase Authentication handles sign-in.
+- Cloud Firestore stores user decks, cards, goals, study activity, daily review state, constellations, stars, and notification preferences.
+- Firebase Storage powers profile photo uploads.
+- Firestore rules keep user data scoped to the authenticated user.
+- Server-side Firebase Admin is used for notification digest routes and account cleanup paths.
+
+## Tech Stack
+
+- Framework: Next.js 16 App Router
+- UI: React 19, TypeScript, Tailwind CSS
+- Auth: Firebase Authentication
+- Database: Cloud Firestore
+- Storage: Firebase Storage
+- AI: Google Gemini via `@google/generative-ai`
+- Scheduling: FSRS via `ts-fsrs`
+- Charts: Recharts
+- Notifications: Web Push, service worker, Vercel cron route
+- Tests: Vitest and Firebase rules testing
+- Deployment: Vercel
+
+## Project Structure
+
+```text
+app/
+  api/ai/                AI explain, chat, and card autocomplete routes
+  api/notifications/     Daily digest and test push routes
+  dashboard/             Authenticated app screens
 components/
-  constellation/        → Star rendering, background effects
-  decks/                → Deck detail, study, tag input
-  layout/               → AppPage, AppTopBar, TabBar shell
-  study/                → AI study assistant panel
-  ui/                   → Button, Card, Input, EmptyState, etc.
+  constellation/         Star rendering and reward visuals
+  decks/                 Deck detail, card editor, tags, AI autocomplete
+  layout/                App shell, top bar, bottom tab bar
+  notifications/         PWA install and push preference UI
+  profile/               Profile photo and account UI
+  study/                 Study assistant and difficulty badges
+  ui/                    Shared Button, Card, EmptyState, PageHero, StatTile
 lib/
-  ai/                   → Rate limiting
-  auth/                 → Auth listener, bearer token, user context
-  constellation/        → Background, constellations, stars logic
-  study/                → Scheduler, goals, cards, activity, weak points
+  ai/                    AI prompt helpers and output cleanup
+  auth/                  Auth listener and user context
+  constellation/         Background, constellation, and star logic
+  study/                 Cards, scheduler, memory risk, goals, activity
 services/
-  ai/                   → Chat and explain API clients
-  firebase/             → Client, admin, Firestore helpers
-  study/                → Deck, activity, tag reads/writes
-tests/                  → Unit and Firestore rules tests
+  ai/                    Client helpers for AI routes
+  auth/                  Sign-in, logout, account deletion
+  firebase/              Client/admin Firebase setup
+  notifications/         Push subscription and preference services
+  study/                 Decks, goals, daily review, activity
+tests/                   Unit and Firestore rules tests
 ```
 
-## Getting started
+## Getting Started
 
 ### Prerequisites
 
 - Node.js 20+
-- A Firebase project with **Authentication** and **Firestore** enabled
+- Firebase project with Authentication, Firestore, and Storage enabled
+- Gemini API key for AI features
+- Web Push VAPID keys if testing push notifications
 
 ### Setup
 
@@ -78,35 +116,50 @@ tests/                  → Unit and Firestore rules tests
 git clone https://github.com/jarems421/jami-flashcards.git
 cd jami-flashcards
 npm install
-cp .env.example .env.local   # Fill in your Firebase config
-npm run dev                   # http://localhost:3000
+cp .env.example .env.local
+npm run dev
 ```
 
-### Environment variables
+Local app URL:
 
-See [`.env.example`](.env.example) for all required values. The client-side Firebase keys are prefixed with `NEXT_PUBLIC_FIREBASE_*`. Server-side variables are only needed for push notifications and AI features (`GEMINI_API_KEY`).
+```text
+http://localhost:3000
+```
+
+### Environment Variables
+
+See [`.env.example`](.env.example) for the full list. Client Firebase variables use the `NEXT_PUBLIC_FIREBASE_*` prefix. Server-only values include Firebase Admin credentials, Web Push keys, the cron secret, and `GEMINI_API_KEY`.
 
 ## Scripts
 
 | Command | Purpose |
-|---------|---------|
-| `npm run dev` | Start dev server |
-| `npm run build` | Production build |
-| `npm run lint` | ESLint |
-| `npm run typecheck` | TypeScript check |
-| `npm run test` | Unit tests (Vitest) |
-| `npm run test:rules` | Firestore security rules tests (requires Java) |
+| --- | --- |
+| `npm run dev` | Start the local dev server |
+| `npm run dev:clean` | Clear `.next` and start the dev server |
+| `npm run build` | Create a production build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | Run TypeScript without emitting |
+| `npm test` | Run Vitest unit tests |
+| `npm run test:rules` | Run Firestore security rule tests through the emulator |
 | `npm run firebase:rules:deploy` | Deploy Firestore rules |
 
-## Deployment
+## Verification
 
-1. Push to GitHub
-2. Import into [Vercel](https://vercel.com)
-3. Add `NEXT_PUBLIC_FIREBASE_*` environment variables
-4. Deploy
+Recommended checks before review or deployment:
 
-For push notifications, also add the server-side notification variables (`FIREBASE_ADMIN_*`, `WEB_PUSH_*`, `CRON_SECRET`). For AI study assistant features, add `GEMINI_API_KEY`.
+```bash
+npm run typecheck
+npm run lint
+npm test
+npm run build
+```
+
+## Future Improvements
+
+- Add a seeded demo mode so recruiters can explore the full authenticated app without using personal data.
+- Add end-to-end tests for the Daily Review gate, Custom Review unlock, and PWA notification setup.
+- Continue simplifying dense management screens once the core study loop has been validated with users.
 
 ## License
 
-Private project — not open source.
+Private project. Not currently open source.

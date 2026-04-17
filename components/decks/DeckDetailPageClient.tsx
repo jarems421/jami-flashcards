@@ -485,11 +485,13 @@ export default function DeckDetailPageClient() {
           </section>
         </>
       ) : !loadingCards ? (
-        <SurfaceCard tone="warm" padding="md">
-          <p className="text-sm leading-6 text-text-secondary">
-            This deck does not exist or is no longer available.
-          </p>
-        </SurfaceCard>
+        <EmptyState
+          emoji="Deck"
+          eyebrow="Deck unavailable"
+          title="This deck is not available"
+          description="It may have been deleted or moved. Go back to your deck list to keep organising cards."
+          action={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Back to decks</Link>}
+        />
       ) : null}
 
       {deck && loadingCards ? (
@@ -500,8 +502,10 @@ export default function DeckDetailPageClient() {
       ) : deck && cards.length === 0 ? (
         <EmptyState
           emoji="📚"
+          eyebrow="Empty deck"
           title="No cards yet"
-          description="Use Add card above to start shaping this deck."
+          description="This deck is ready, it just needs its first flashcards. Add a front and back above to make it available for study."
+          helperText="New cards automatically join Daily Review when they need practice."
         />
       ) : deck ? (
         <>
@@ -525,8 +529,10 @@ export default function DeckDetailPageClient() {
               return (
                 <EmptyState
                   emoji="🔍"
+                  eyebrow="No match"
                   title="No cards match"
-                  description={`No cards match \u201c${searchTerm.trim()}\u201d.`}
+                  description={`No cards match "${searchTerm.trim()}". Try a shorter search or check the global Cards page.`}
+                  action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
                 />
               );
             }

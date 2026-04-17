@@ -27,7 +27,7 @@ import {
 } from "@/lib/constellation/stars";
 import { formatTimeRemaining } from "@/lib/study/time";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, Skeleton } from "@/components/ui";
+import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, SectionHeader, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
@@ -255,10 +255,12 @@ export default function GoalsPage() {
         ) : null}
 
         <Card tone="warm" padding="lg">
-          <h3 className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-            New goal
-          </h3>
-          <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+          <SectionHeader
+            eyebrow="New goal"
+            title="Set a clear target."
+            description="Choose a card count, accuracy, date, and time. Completing goals earns stars for your constellation."
+          />
+          <div className="mt-5 grid gap-3 sm:gap-4 md:grid-cols-2">
             <Input
               type="number"
               min="1"
@@ -316,14 +318,13 @@ export default function GoalsPage() {
         </Card>
 
         <Card tone="warm" padding="lg">
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h3 className="text-sm font-medium">Reward preview</h3>
-            <p className="text-xs text-text-muted">
-              Updates from your goal.
-            </p>
-          </div>
+          <SectionHeader
+            eyebrow="Reward preview"
+            title="See the star before you commit."
+            description="The preview updates from your goal details above."
+          />
 
-          <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div className="mt-5 grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
             <div className="space-y-2 text-sm text-text-secondary">
               <div>
                 {previewTargetCards}-card goal at{" "}
@@ -354,8 +355,10 @@ export default function GoalsPage() {
             {activeGoals.length === 0 ? (
               <EmptyState
                 emoji="🎯"
+                eyebrow="No active goals"
                 title="No active goals"
-                description="Create one to start earning stars."
+                description="Goals give your study sessions a target and turn completed effort into constellation stars."
+                helperText="Set a card target, accuracy target, date, and time above to create your first one."
               />
             ) : (
               <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
@@ -401,7 +404,13 @@ export default function GoalsPage() {
 
             {showGoalHistory ? (
               historicalGoals.length === 0 ? (
-                <EmptyState emoji="📜" title="No past goals yet" />
+                <EmptyState
+                  emoji="History"
+                  eyebrow="Goal history"
+                  title="No past goals yet"
+                  description="Completed and expired goals will appear here once you have run a few targets."
+                  variant="compact"
+                />
               ) : (
                 <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
                   {historicalGoals.map((goal) => (
