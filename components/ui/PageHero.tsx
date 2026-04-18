@@ -29,7 +29,7 @@ export default function PageHero({
           <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
             {eyebrow}
           </div>
-          <h2 className="mt-3 text-[1.35rem] font-semibold leading-tight tracking-tight text-white sm:text-2xl xl:text-3xl">
+          <h2 className="mt-3 text-[1.3rem] font-medium leading-tight tracking-tight text-white sm:text-[1.55rem] xl:text-[1.85rem]">
             {title}
           </h2>
           {description ? (

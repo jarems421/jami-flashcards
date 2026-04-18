@@ -331,8 +331,8 @@ export default function GoalsPage() {
                 {Math.round(previewTargetAccuracy * 100)}% accuracy
               </div>
               <div className="grid gap-2 text-xs text-text-muted sm:grid-cols-2">
-                <div>Star size: {getEffectiveStarVisualSize(previewStar).toFixed(1)}px</div>
-                <div>Glow: {Math.round(previewStar.glow * 100)}%</div>
+                <div>Reward scale: {getEffectiveStarVisualSize(previewStar) >= 18 ? "large" : "subtle"}</div>
+                <div>Star glow: {previewStar.glow >= 0.8 ? "bright" : "soft"}</div>
               </div>
             </div>
 
@@ -354,7 +354,7 @@ export default function GoalsPage() {
           <>
             {activeGoals.length === 0 ? (
               <EmptyState
-                emoji="🎯"
+                emoji="Goal"
                 eyebrow="No active goals"
                 title="No active goals"
                 description="Goals give your study sessions a target and turn completed effort into constellation stars."

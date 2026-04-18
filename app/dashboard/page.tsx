@@ -283,12 +283,12 @@ export default function DashboardHome() {
             <div className="grid min-w-[14rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
               <div>
                 <div className="text-xs text-text-muted">Reviewed today</div>
-                <div className="mt-1 text-xl font-semibold text-white sm:text-2xl">{isLoading ? "..." : todayReviews}</div>
+                <div className="mt-1 text-xl font-medium text-white sm:text-2xl">{isLoading ? "..." : todayReviews}</div>
               </div>
               <div className="h-px bg-white/[0.08]" />
               <div>
                 <div className="text-xs text-text-muted">Recommended left</div>
-                <div className="mt-1 text-lg font-semibold text-white sm:text-xl">{isLoading ? "..." : dueCount}</div>
+                <div className="mt-1 text-lg font-medium text-white sm:text-xl">{isLoading ? "..." : dueCount}</div>
               </div>
             </div>
           }

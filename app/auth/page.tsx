@@ -79,7 +79,7 @@ export default function AuthPage() {
           <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-warm-accent">
             Account access
           </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-tight">
+          <h1 className="mt-3 text-[1.75rem] font-medium tracking-tight sm:text-3xl">
             {isSignInMode ? "Welcome back" : "Start building your study sky"}
           </h1>
           <p className="mt-3 text-sm leading-6 text-text-secondary sm:text-base">
@@ -167,4 +167,3 @@ function friendlyAuthError(code: string | undefined): string {
       return code ?? "Something went wrong. Please try again.";
   }
 }
-

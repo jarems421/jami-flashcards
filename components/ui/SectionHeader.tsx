@@ -21,7 +21,7 @@ export default function SectionHeader({
             {eyebrow}
           </div>
         ) : null}
-        <h3 className="mt-1 text-lg font-semibold tracking-tight text-white sm:text-xl">
+        <h3 className="mt-1 text-[1.05rem] font-medium tracking-tight text-white sm:text-lg">
           {title}
         </h3>
         {description ? (

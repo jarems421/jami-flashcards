@@ -326,7 +326,7 @@ export default function CardBackEditor({
             {label}
           </label>
         ) : null}
-        <div className="rounded-[1.5rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong shadow-[0_14px_28px_rgba(8,2,24,0.28)] transition duration-fast focus-within:border-warm-accent focus-within:ring-4 focus-within:ring-accent/18 focus-within:shadow-[0_18px_36px_rgba(183,124,255,0.2)] hover:border-white/[0.20]">
+        <div className="rounded-[1.5rem] border-[1.5px] border-white/[0.12] bg-surface-panel-strong shadow-[0_12px_24px_rgba(8,2,24,0.22)] transition duration-fast focus-within:border-warm-accent/75 focus-within:ring-4 focus-within:ring-accent/14 hover:border-white/[0.18]">
           <textarea
             ref={textareaRef}
             id={textareaId}
@@ -347,13 +347,12 @@ export default function CardBackEditor({
           />
           {previewLines ? (
             <div
-              className="border-t border-white/[0.06] px-5 pb-4 pt-2 text-sm font-medium text-text-muted/70"
+              className="border-t border-white/[0.06] px-5 pb-4 pt-2 text-sm font-medium text-text-muted/55"
               aria-hidden="true"
             >
               {previewLines.map((line, index) => (
                 <div key={`${line}-${index}`} className="min-h-[1.25rem]">
-                  {line}
-                  <span className="ml-1 text-text-muted/35">next line</span>
+                  <span className="text-text-muted/40">{line}</span>
                 </div>
               ))}
             </div>
@@ -361,16 +360,16 @@ export default function CardBackEditor({
         </div>
       </div>
 
-      <div className="rounded-[1.35rem] border border-white/[0.10] bg-white/[0.035] p-3">
-        <div className="mb-2 flex items-center justify-between gap-3">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-            Answer style
+      <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] p-2.5">
+        <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
+            Style
           </div>
-          <div className="hidden text-xs text-text-muted sm:block">
+          <div className="rounded-full border border-white/[0.08] bg-white/[0.035] px-2.5 py-1 text-[0.68rem] text-text-muted">
             {activeFormatHint}
           </div>
         </div>
-        <div className="flex gap-2 overflow-x-auto pb-1 sm:flex-wrap">
+        <div className="flex gap-1.5 overflow-x-auto pb-1 sm:flex-wrap">
           {FORMAT_ACTIONS.map((action) => {
             const isActive = action.mode === formatMode;
 
@@ -381,10 +380,10 @@ export default function CardBackEditor({
                 disabled={disabled}
                 title={action.hint}
                 onClick={() => applyFormat(action.mode, action.starter)}
-                className={`shrink-0 rounded-full border px-3 py-2 text-xs font-medium transition duration-fast disabled:opacity-50 ${
+                className={`shrink-0 rounded-[1rem] border px-3 py-2 text-xs font-medium transition duration-fast disabled:opacity-50 ${
                   isActive
-                    ? "border-warm-accent/45 bg-warm-accent/[0.10] text-white"
-                    : "border-white/[0.12] bg-white/[0.055] text-text-secondary hover:border-white/[0.22] hover:bg-white/[0.08] hover:text-white"
+                    ? "border-warm-accent/35 bg-white/[0.075] text-warm-accent ring-1 ring-warm-accent/15"
+                    : "border-transparent bg-transparent text-text-secondary hover:border-white/[0.12] hover:bg-white/[0.055] hover:text-white"
                 }`}
               >
                 {action.label}

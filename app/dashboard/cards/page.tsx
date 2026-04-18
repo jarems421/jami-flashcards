@@ -297,7 +297,7 @@ export default function CardsSearchPage() {
           title="Add card"
           description="Write the front and back, then add tags only if they help you find it later."
           action={
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-semibold text-[#10091d] shadow-[0_10px_20px_rgba(255,214,246,0.16)]">
               +
             </div>
           }
@@ -385,7 +385,7 @@ export default function CardsSearchPage() {
         </div>
       ) : cards.length === 0 ? (
         <EmptyState
-          emoji="📚"
+          emoji="Cards"
           eyebrow="No cards yet"
           title="No cards yet"
           description="Cards are the fuel for Daily Review and Custom Review. Add a question and answer above to create your first one."
@@ -394,7 +394,7 @@ export default function CardsSearchPage() {
         />
       ) : filtered.length === 0 ? (
         <EmptyState
-          emoji="🔍"
+          emoji="Search"
           eyebrow="No match"
           title="No cards match"
           description={`No cards match "${debouncedTerm}". Try a shorter search, another deck name, or a tag you remember.`}

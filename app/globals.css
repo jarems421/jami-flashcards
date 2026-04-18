@@ -2,11 +2,11 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ─── Design tokens ─── */
+/* Design tokens */
 
 @layer base {
   :root {
-    /* Surface colors – starry night palette */
+    /* Surface colors - starry night palette */
     --color-surface-base: #10091d;
     --color-surface-raised: #170f29;
     --color-surface-overlay: #201536;
@@ -56,7 +56,7 @@
       rgba(255, 255, 255, 0.02)
     );
 
-    /* Radius — bubbly / pill-forward */
+    /* Radius - soft and pill-forward */
     --radius-sm: 0.75rem;
     --radius-md: 1.2rem;
     --radius-lg: 1.6rem;
@@ -64,13 +64,13 @@
     --radius-2xl: 2.8rem;
 
     /* Shadows */
-    --shadow-glass: 0 18px 50px rgba(4, 0, 18, 0.44);
-    --shadow-card: 0 18px 34px rgba(10, 4, 24, 0.24);
-    --shadow-shell: 0 20px 38px rgba(8, 3, 20, 0.28);
-    --shadow-accent: 0 16px 28px rgba(157, 99, 223, 0.2);
-    --shadow-warm: 0 14px 28px rgba(255, 214, 246, 0.18);
-    --shadow-bubble: 0 4px 0 rgba(0, 0, 0, 0.18), 0 12px 28px rgba(10, 4, 24, 0.22);
-    --shadow-button-3d: 0 3px 0 rgba(0, 0, 0, 0.22), 0 8px 20px rgba(10, 4, 24, 0.18);
+    --shadow-glass: 0 18px 50px rgba(4, 0, 18, 0.38);
+    --shadow-card: 0 18px 34px rgba(10, 4, 24, 0.2);
+    --shadow-shell: 0 20px 38px rgba(8, 3, 20, 0.24);
+    --shadow-accent: 0 16px 28px rgba(157, 99, 223, 0.18);
+    --shadow-warm: 0 14px 28px rgba(255, 214, 246, 0.16);
+    --shadow-bubble: 0 18px 34px rgba(10, 4, 24, 0.2);
+    --shadow-button-3d: 0 10px 22px rgba(10, 4, 24, 0.18);
 
     /* Motion */
     --duration-fast: 160ms;
@@ -82,7 +82,10 @@
 
   body {
     min-height: 100vh;
-    background: linear-gradient(180deg, #0e0820 0%, #110b1f 38%, #150d26 100%);
+    background:
+      radial-gradient(circle at 16% -8%, rgba(255, 214, 246, 0.12), transparent 28rem),
+      radial-gradient(circle at 88% 8%, rgba(157, 99, 223, 0.14), transparent 30rem),
+      linear-gradient(180deg, #0e0820 0%, #110b1f 38%, #150d26 100%);
     color: var(--color-text-primary);
     font-family:
       var(--font-nunito-sans),
@@ -102,7 +105,9 @@
     pointer-events: none;
     position: fixed;
     inset: 0;
-    background: rgba(160, 120, 255, 0.025);
+    background:
+      radial-gradient(circle at 50% 12%, rgba(255, 255, 255, 0.028), transparent 34rem),
+      rgba(160, 120, 255, 0.02);
     z-index: 0;
   }
 
@@ -135,8 +140,10 @@
     overflow: hidden;
     border: 1.5px solid var(--color-border-strong);
     background-color: var(--color-surface-panel);
-    background-image: var(--gradient-card);
-    border-radius: 2.6rem;
+    background-image:
+      radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.08), transparent 18rem),
+      var(--gradient-card);
+    border-radius: 2.15rem;
     box-shadow: var(--shadow-bubble);
   }
 
@@ -145,13 +152,15 @@
     overflow: hidden;
     border: 1.5px solid var(--color-warm-border);
     background-color: rgba(43, 29, 72, 0.82);
-    background-image: var(--gradient-card);
-    border-radius: 2.6rem;
+    background-image:
+      radial-gradient(circle at 20% 0%, rgba(255, 214, 246, 0.12), transparent 18rem),
+      var(--gradient-card);
+    border-radius: 2.15rem;
     box-shadow: var(--shadow-bubble);
   }
 }
 
-/* ─── Constellation background overrides ─── */
+/* Constellation background overrides */
 
 body.constellation-background-enabled {
   background: #060311;
@@ -215,7 +224,7 @@ body.constellation-background-enabled::before {
   opacity: 0.02;
 }
 
-/* ─── Constellation keyframes ─── */
+/* Constellation keyframes */
 
 @keyframes constellation-twinkle {
   0%,
@@ -268,7 +277,7 @@ body.constellation-background-enabled::before {
 
 
 
-/* ─── Reduced-motion fallback ─── */
+/* Reduced-motion fallback */
 
 @media (max-width: 640px) {
   .app-panel,

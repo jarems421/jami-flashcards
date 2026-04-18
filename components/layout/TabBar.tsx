@@ -147,7 +147,7 @@ export default function TabBar() {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className={`app-nav fixed inset-x-2 z-30 flex snap-x snap-mandatory overflow-x-auto rounded-[2rem] border-[1.5px] border-white/[0.18] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.94))] px-1.5 py-2 shadow-[0_18px_42px_rgba(7,2,22,0.3)] backdrop-blur-xl scrollbar-hide transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
+        className={`app-nav fixed left-3 right-3 z-30 mx-auto flex max-w-[28rem] snap-x snap-mandatory overflow-x-auto rounded-[1.75rem] border-[1.5px] border-white/[0.16] bg-[linear-gradient(180deg,rgba(28,18,48,0.92),rgba(18,11,34,0.94))] px-1.5 py-2 shadow-[0_16px_34px_rgba(7,2,22,0.26)] backdrop-blur-xl scrollbar-hide transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
         {tabs.map((tab) => {
@@ -157,7 +157,7 @@ export default function TabBar() {
               key={tab.href}
               href={tab.href}
               aria-current={active ? "page" : undefined}
-              className={`flex min-h-[54px] min-w-[4.35rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-[1.25rem] px-1.5 text-[10px] leading-tight transition duration-fast ease-spring ${
+              className={`flex min-h-[54px] min-w-[4.25rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-[1.2rem] px-1.5 text-[10px] leading-tight transition duration-fast ease-spring ${
                 active
                   ? "scale-[1.02] text-white"
                   : "text-text-muted active:text-white"
@@ -166,7 +166,7 @@ export default function TabBar() {
               <div
                 className={`rounded-xl px-2.5 py-1.5 ${
                   active
-                    ? "border border-white/14 bg-[linear-gradient(180deg,rgba(255,228,244,0.16),rgba(157,99,223,0.24))] shadow-[0_14px_24px_rgba(157,99,223,0.24)]"
+                    ? "border border-white/14 bg-[linear-gradient(180deg,rgba(255,228,244,0.14),rgba(157,99,223,0.20))] shadow-[0_12px_22px_rgba(157,99,223,0.18)]"
                     : ""
                 }`}
               >
@@ -195,10 +195,10 @@ export default function TabBar() {
       {/* Sidebar (iPad / md+) */}
       <nav
         aria-label="Primary"
-        className="app-nav fixed inset-y-4 left-4 z-30 hidden w-24 flex-col rounded-[2.4rem] border-[1.5px] border-white/[0.16] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.94))] shadow-[0_20px_42px_rgba(7,2,22,0.3)] backdrop-blur-xl md:flex"
+        className="app-nav fixed inset-y-4 left-4 z-30 hidden w-24 flex-col rounded-[2rem] border-[1.5px] border-white/[0.14] bg-[linear-gradient(180deg,rgba(28,18,48,0.92),rgba(18,11,34,0.94))] shadow-[0_18px_36px_rgba(7,2,22,0.26)] backdrop-blur-xl md:flex"
       >
         <div className="flex items-center justify-center border-b border-white/[0.06] px-2 py-4">
-          <span className="text-sm font-bold text-warm-accent">
+          <span className="text-sm font-semibold text-warm-accent">
             Jami
           </span>
         </div>

@@ -29,7 +29,7 @@ export default function Textarea({
       <textarea
         id={textareaId}
         rows={rows}
-        className={`w-full rounded-[1.5rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-4 text-sm text-white placeholder:text-text-muted shadow-[0_14px_28px_rgba(8,2,24,0.28)] outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18 focus:shadow-[0_18px_36px_rgba(183,124,255,0.2)] ${className}`}
+        className={`w-full rounded-[1.5rem] border-[1.5px] border-white/[0.12] bg-surface-panel-strong px-5 py-4 text-sm text-white placeholder:text-text-muted shadow-[0_10px_22px_rgba(8,2,24,0.18)] outline-none transition duration-fast hover:border-white/[0.18] focus:border-warm-accent/80 focus:ring-4 focus:ring-accent/14 ${className}`}
         {...props}
       />
     </div>

@@ -375,7 +375,7 @@ export default function DeckDetailPageClient() {
               </div>
               <div className="mt-3 flex items-center gap-4">
                 <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} className="h-16 w-16" />
-                <h1 className="min-w-0 truncate text-2xl font-semibold tracking-tight sm:text-4xl">
+                <h1 className="min-w-0 truncate text-2xl font-medium tracking-tight sm:text-3xl">
                   {deck.name}
                 </h1>
               </div>
@@ -405,11 +405,11 @@ export default function DeckDetailPageClient() {
               <div className="mt-4 grid gap-4">
                 <div>
                   <div className="text-xs text-text-muted">Cards</div>
-                  <div className="mt-1 text-2xl font-semibold sm:text-3xl">{cards.length}</div>
+                  <div className="mt-1 text-2xl font-medium sm:text-3xl">{cards.length}</div>
                 </div>
                 <div>
                   <div className="text-xs text-text-muted">Tags</div>
-                  <div className="mt-1 text-2xl font-semibold sm:text-3xl">{deckTagCount}</div>
+                  <div className="mt-1 text-2xl font-medium sm:text-3xl">{deckTagCount}</div>
                 </div>
               </div>
             </SurfaceCard>
@@ -417,7 +417,7 @@ export default function DeckDetailPageClient() {
 
           <section className="app-panel p-4 sm:p-5">
             <div className="flex min-w-0 items-center gap-3">
-              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-black text-[#10091d] shadow-[0_4px_0_rgba(0,0,0,0.18)]">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-[1.25rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-semibold text-[#10091d] shadow-[0_10px_20px_rgba(255,214,246,0.16)]">
                 +
               </div>
               <div className="min-w-0">
@@ -501,7 +501,7 @@ export default function DeckDetailPageClient() {
         </div>
       ) : deck && cards.length === 0 ? (
         <EmptyState
-          emoji="📚"
+          emoji="Cards"
           eyebrow="Empty deck"
           title="No cards yet"
           description="This deck is ready, it just needs its first flashcards. Add a front and back above to make it available for study."
@@ -528,7 +528,7 @@ export default function DeckDetailPageClient() {
             if (filteredCards.length === 0) {
               return (
                 <EmptyState
-                  emoji="🔍"
+                  emoji="Search"
                   eyebrow="No match"
                   title="No cards match"
                   description={`No cards match "${searchTerm.trim()}". Try a shorter search or check the global Cards page.`}

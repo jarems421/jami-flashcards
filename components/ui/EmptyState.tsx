@@ -43,7 +43,7 @@ export default function EmptyState({
           {eyebrow}
         </div>
       ) : null}
-      <h3 className={`${eyebrow || emoji ? "mt-3" : ""} ${isCompact ? "text-base" : "text-lg sm:text-xl"} font-semibold tracking-tight text-white`}>
+      <h3 className={`${eyebrow || emoji ? "mt-3" : ""} ${isCompact ? "text-base" : "text-lg sm:text-xl"} font-medium tracking-tight text-white`}>
         {title}
       </h3>
       {description ? (

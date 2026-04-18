@@ -28,22 +28,22 @@ const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classe
   again: {
     hint: "Missed it",
     shortcut: "1",
-    classes: "border-rose-300/30 bg-rose-400/[0.12] text-rose-100 hover:border-rose-200/55 hover:bg-rose-400/[0.18]",
+    classes: "border-rose-300/25 bg-rose-400/[0.08] text-rose-100 hover:border-rose-200/45 hover:bg-rose-400/[0.12]",
   },
   hard: {
     hint: "Barely recalled",
     shortcut: "2",
-    classes: "border-amber-300/30 bg-amber-300/[0.12] text-amber-100 hover:border-amber-200/55 hover:bg-amber-300/[0.18]",
+    classes: "border-amber-300/25 bg-amber-300/[0.08] text-amber-100 hover:border-amber-200/45 hover:bg-amber-300/[0.12]",
   },
   good: {
     hint: "Recalled",
     shortcut: "3",
-    classes: "border-sky-200/25 bg-white/[0.06] text-white hover:border-sky-100/45 hover:bg-white/[0.10]",
+    classes: "border-sky-200/20 bg-white/[0.045] text-white hover:border-sky-100/38 hover:bg-white/[0.075]",
   },
   easy: {
     hint: "Instant",
     shortcut: "4",
-    classes: "border-emerald-300/30 bg-emerald-400/[0.12] text-emerald-100 hover:border-emerald-200/55 hover:bg-emerald-400/[0.18]",
+    classes: "border-emerald-300/25 bg-emerald-400/[0.08] text-emerald-100 hover:border-emerald-200/45 hover:bg-emerald-400/[0.12]",
   },
 };
 
@@ -138,7 +138,7 @@ function StudyStatCard({
       <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
         {label}
       </div>
-      <div className="mt-3 flex min-h-[2rem] items-center justify-center text-xl font-semibold leading-none tabular-nums text-white sm:text-2xl">
+      <div className="mt-3 flex min-h-[2rem] items-center justify-center text-xl font-medium leading-none tabular-nums text-white sm:text-2xl">
         {value}
       </div>
       <p className="mx-auto mt-2 max-w-[16rem] text-sm leading-6 text-text-secondary">
@@ -163,7 +163,7 @@ function CountPill({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex min-w-[7rem] flex-1 items-center justify-between gap-3 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.045] px-3 py-2 sm:flex-none">
       <span className="text-xs leading-5 text-text-muted">{label}</span>
-      <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white/[0.08] px-2 text-sm font-semibold leading-none tabular-nums text-white">
+      <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white/[0.08] px-2 text-sm font-medium leading-none tabular-nums text-white">
         {value}
       </span>
     </div>
@@ -741,7 +741,7 @@ export default function StudyPage() {
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
                     <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
-                    <h2 className="mt-3 text-xl font-semibold leading-tight tracking-tight text-white sm:text-2xl">Good work.</h2>
+                    <h2 className="mt-3 text-xl font-medium leading-tight tracking-tight text-white sm:text-2xl">Good work.</h2>
                     <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                       You reviewed {sessionStats.reviewedCards} of {totalCards} card{totalCards === 1 ? "" : "s"}. Your next best step is ready below.
                     </p>
@@ -802,9 +802,9 @@ export default function StudyPage() {
                   ) : hasCards && customPreviewCards.length > 0 ? (
                     <Button type="button" onClick={() => startSession("custom")} size="lg" variant="warm">Start custom review</Button>
                   ) : sessionStats.completedGoals > 0 ? (
-                    <Link href="/dashboard/constellation" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-bold text-[#10091d] shadow-[0_14px_28px_rgba(255,214,246,0.22)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">View constellation</Link>
+                    <Link href="/dashboard/constellation" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">View constellation</Link>
                   ) : (
-                    <Link href="/dashboard/cards" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-bold text-[#10091d] shadow-[0_14px_28px_rgba(255,214,246,0.22)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">Manage cards</Link>
+                    <Link href="/dashboard/cards" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">Manage cards</Link>
                   )}
                   <Button type="button" onClick={() => startSession(sessionKind)} size="lg" variant="secondary">Study again</Button>
                   <Button type="button" onClick={exitSession} variant="secondary" size="lg">Back to study modes</Button>
@@ -836,7 +836,7 @@ export default function StudyPage() {
                   </div>
                   <div className="mx-auto w-full max-w-[62rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
                     <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
-                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-[linear-gradient(180deg,rgba(31,22,54,0.96),rgba(15,10,30,0.96))] p-5 shadow-[0_22px_54px_rgba(8,2,26,0.28)] [backface-visibility:hidden] sm:p-8 lg:p-10">
+                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.08),transparent_34%),linear-gradient(180deg,rgba(31,22,54,0.96),rgba(15,10,30,0.96))] p-5 shadow-[0_18px_44px_rgba(8,2,26,0.24)] [backface-visibility:hidden] sm:p-8 lg:p-10">
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0 text-xs font-medium text-text-muted">
                             {deckNamesById[current.deckId] ?? "Flashcard"}
@@ -855,14 +855,14 @@ export default function StudyPage() {
                         <div className="flex flex-1 items-center justify-center py-6">
                           <p className="max-w-4xl text-center text-lg font-medium leading-snug tracking-[0.01em] sm:text-2xl xl:text-[2.15rem]">{current.front}</p>
                         </div>
-                        <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Tap or press Space to reveal</div>
+                        <div className="text-center text-xs font-medium text-text-muted">Tap card or press Space to reveal</div>
                       </div>
-                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.12] bg-[linear-gradient(180deg,rgba(35,25,62,0.98),rgba(17,11,34,0.98))] p-5 shadow-[0_22px_54px_rgba(8,2,26,0.28)] [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
+                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.12] bg-[radial-gradient(circle_at_50%_18%,rgba(255,199,234,0.09),transparent_36%),linear-gradient(180deg,rgba(35,25,62,0.98),rgba(17,11,34,0.98))] p-5 shadow-[0_18px_44px_rgba(8,2,26,0.24)] [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
                         <div className="text-xs font-normal tracking-[0.06em] text-text-muted">Answer</div>
                         <div className="flex flex-1 items-center justify-center py-6">
                           <p className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-white sm:text-2xl xl:text-[2.15rem]">{current.back}</p>
                         </div>
-                        <div className="text-center text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">How well did you recall this?</div>
+                        <div className="text-center text-xs font-medium text-text-muted">How well did you recall this?</div>
                       </div>
                     </div>
                   </div>
@@ -894,7 +894,7 @@ export default function StudyPage() {
                             key={rating}
                             type="button"
                             disabled={savingRating !== null}
-                            className={`flex min-h-[4.8rem] flex-col items-center justify-center gap-1.5 rounded-[1.55rem] border px-4 py-4 text-center text-sm font-semibold shadow-[0_12px_24px_rgba(8,2,26,0.16)] transition duration-fast ease-spring hover:-translate-y-[1px] active:scale-[0.98] disabled:opacity-50 ${meta.classes}`}
+                            className={`flex min-h-[4.35rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border px-4 py-3.5 text-center text-sm font-medium shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:opacity-50 ${meta.classes}`}
                             onClick={() => void handleRating(rating)}
                           >
                             <span>{RATING_LABELS[rating]}</span>

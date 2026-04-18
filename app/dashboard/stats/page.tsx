@@ -22,7 +22,7 @@ import {
 } from "@/lib/study/activity";
 import { formatStudyDayLabel, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, EmptyState, SectionHeader, Skeleton, StatTile } from "@/components/ui";
+import { Button, Card, EmptyState, PageHero, SectionHeader, Skeleton, StatTile } from "@/components/ui";
 
 type TimeRange = "7d" | "30d" | "all";
 
@@ -121,6 +121,15 @@ function buildTimeData(
   return points;
 }
 
+function formatStudyTime(totalMs: number) {
+  const minutes = Math.round(totalMs / 60_000);
+  if (minutes < 60) return `${minutes} min`;
+
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
 const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: "7d", label: "7 days" },
   { value: "30d", label: "30 days" },
@@ -159,6 +168,19 @@ export default function StatsPage() {
     () => activity.reduce((sum, e) => sum + e.reviewCount, 0),
     [activity]
   );
+  const studiedDays = useMemo(
+    () => activity.filter((entry) => entry.reviewCount > 0).length,
+    [activity]
+  );
+  const totalStudyTime = useMemo(
+    () => activity.reduce((sum, e) => sum + e.totalDurationMs, 0),
+    [activity]
+  );
+  const averageAccuracy = useMemo(() => {
+    if (totalReviews === 0) return 0;
+    const correctCount = activity.reduce((sum, e) => sum + e.correctCount, 0);
+    return Math.round((correctCount / totalReviews) * 100);
+  }, [activity, totalReviews]);
   const accuracyData = useMemo(
     () => buildAccuracyData(activity, range),
     [activity, range]
@@ -189,6 +211,33 @@ export default function StatsPage() {
         </div>
       ) : (
         <>
+          <PageHero
+            eyebrow="Study stats"
+            title={totalReviews > 0 ? "Your study rhythm." : "Stats will grow with you."}
+            description={
+              totalReviews > 0
+                ? "A calm snapshot of consistency, accuracy, and time spent learning."
+                : "Complete a few reviews and this page will turn into a useful progress map."
+            }
+            tone="warm"
+            aside={
+              <div className="grid grid-cols-3 gap-2 text-center sm:min-w-[20rem]">
+                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
+                  <div className="text-lg font-medium tabular-nums text-white sm:text-xl">{averageAccuracy}%</div>
+                  <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Accuracy</div>
+                </div>
+                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
+                  <div className="text-lg font-medium tabular-nums text-white sm:text-xl">{studiedDays}</div>
+                  <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Days</div>
+                </div>
+                <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
+                  <div className="text-lg font-medium tabular-nums text-white sm:text-xl">{formatStudyTime(totalStudyTime)}</div>
+                  <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Time</div>
+                </div>
+              </div>
+            }
+          />
+
           <div className="grid animate-slide-up gap-4 sm:grid-cols-3">
             <StatTile
               tone="warm"
