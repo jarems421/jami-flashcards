@@ -136,6 +136,7 @@ export default function CardCreationPanel({
 
   const [notesDeckId, setNotesDeckId] = useState(fallbackDeckId);
   const [notesText, setNotesText] = useState("");
+  const [notesFileName, setNotesFileName] = useState("");
   const [notesCardCount, setNotesCardCount] = useState(8);
   const [generatingCards, setGeneratingCards] = useState(false);
   const [savingGeneratedCards, setSavingGeneratedCards] = useState(false);
@@ -457,6 +458,39 @@ export default function CardCreationPanel({
     }
   };
 
+  const handleNotesFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const trimmedText = text.trim();
+      if (!trimmedText) {
+        onFeedback({ type: "error", message: "That file did not contain readable notes." });
+        return;
+      }
+
+      const limitedText = trimmedText.slice(0, MAX_NOTES_FOR_CARD_GENERATION);
+      setNotesText(limitedText);
+      setNotesFileName(file.name);
+      onFeedback({
+        type: "success",
+        message:
+          trimmedText.length > MAX_NOTES_FOR_CARD_GENERATION
+            ? `Loaded the first ${MAX_NOTES_FOR_CARD_GENERATION.toLocaleString()} characters from ${file.name}.`
+            : `Loaded notes from ${file.name}.`,
+      });
+    } catch (error) {
+      console.error(error);
+      onFeedback({ type: "error", message: "Failed to read that notes file." });
+    } finally {
+      input.value = "";
+    }
+  };
+
   const updateGeneratedCard = (
     index: number,
     field: "front" | "back" | "selected",
@@ -752,6 +786,36 @@ export default function CardCreationPanel({
             rows={8}
             disabled={generatingCards || savingGeneratedCards}
           />
+          <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
+                  Notes upload
+                </div>
+                <p className="mt-2 text-sm leading-6 text-text-secondary">
+                  Upload plain text or markdown notes, or paste them above. No special format is needed for notes.
+                </p>
+                <p className="mt-2 text-xs leading-5 text-text-muted">
+                  For now, copy text out of PDF or Word files before adding it here.
+                </p>
+                {notesFileName ? (
+                  <p className="mt-3 text-xs font-medium text-warm-accent">
+                    Loaded {notesFileName}
+                  </p>
+                ) : null}
+              </div>
+              <label className="inline-flex min-h-[2.5rem] cursor-pointer items-center justify-center rounded-[1.4rem] border border-white/14 bg-white/[0.05] px-3 py-2 text-sm font-medium text-white transition duration-fast hover:border-white/22 hover:bg-white/[0.08]">
+                Upload notes
+                <input
+                  type="file"
+                  accept=".txt,.md,.markdown,text/plain,text/markdown,text/x-markdown"
+                  className="sr-only"
+                  disabled={generatingCards || savingGeneratedCards}
+                  onChange={(event) => void handleNotesFileChange(event)}
+                />
+              </label>
+            </div>
+          </div>
           <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-text-muted">
             <span>
               {notesText.trim().length.toLocaleString()} / {MAX_NOTES_FOR_CARD_GENERATION.toLocaleString()} characters
@@ -789,6 +853,7 @@ export default function CardCreationPanel({
               disabled={generatingCards || savingGeneratedCards || (!notesText && generatedCards.length === 0)}
               onClick={() => {
                 setNotesText("");
+                setNotesFileName("");
                 setGeneratedCards([]);
               }}
               variant="ghost"

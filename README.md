@@ -32,7 +32,7 @@ For larger workflows, the Cards page and deck pages share one clean add-card flo
 
 ### 2. Generate Cards From Notes
 
-Users can paste lecture notes, textbook summaries, or revision bullet points into the deck editor and ask AI to produce draft flashcards. The generated cards are not saved automatically: each draft can be edited, selected, rejected, tagged, and then saved in a batch. This keeps AI useful while leaving the learner in control of quality.
+Users can paste lecture notes, textbook summaries, or revision bullet points into the deck editor, or upload plain text/markdown notes, and ask AI to produce draft flashcards. The generated cards are not saved automatically: each draft can be edited, selected, rejected, tagged, and then saved in a batch. This keeps AI useful while leaving the learner in control of quality.
 
 ### 3. Study With Guidance
 
