@@ -17,9 +17,7 @@ import {
   type ImportedCardDraft,
 } from "@/lib/study/cards";
 import {
-  MAX_GENERATED_CARDS,
   MAX_NOTES_FOR_CARD_GENERATION,
-  MIN_GENERATED_CARDS,
   MIN_NOTES_FOR_CARD_GENERATION,
   type GeneratedCardDraft,
 } from "@/lib/ai/card-generation";
@@ -137,7 +135,6 @@ export default function CardCreationPanel({
   const [notesDeckId, setNotesDeckId] = useState(fallbackDeckId);
   const [notesText, setNotesText] = useState("");
   const [notesFileName, setNotesFileName] = useState("");
-  const [notesCardCount, setNotesCardCount] = useState(8);
   const [generatingCards, setGeneratingCards] = useState(false);
   const [savingGeneratedCards, setSavingGeneratedCards] = useState(false);
   const [generatedCards, setGeneratedCards] = useState<GeneratedReviewCard[]>([]);
@@ -437,7 +434,6 @@ export default function CardCreationPanel({
       const drafts = await generateCardsFromNotes({
         notes: notesText,
         deckName: deckNamesById[notesDeckId],
-        count: notesCardCount,
       });
       setGeneratedCards(drafts.map((draft) => ({ ...draft, selected: true })));
       onFeedback({
@@ -833,20 +829,6 @@ export default function CardCreationPanel({
               Minimum {MIN_NOTES_FOR_CARD_GENERATION} characters.
             </span>
           </div>
-
-          <Input
-            label="Draft count"
-            type="number"
-            min={MIN_GENERATED_CARDS}
-            max={MAX_GENERATED_CARDS}
-            value={notesCardCount}
-            onChange={(event) => {
-              const nextCount = Number(event.target.value);
-              setNotesCardCount(Number.isFinite(nextCount) ? nextCount : 8);
-            }}
-            disabled={generatingCards || savingGeneratedCards}
-            containerClassName="max-w-[12rem]"
-          />
 
           <div className="flex flex-wrap gap-3">
             <Button

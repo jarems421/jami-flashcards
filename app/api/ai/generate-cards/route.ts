@@ -4,7 +4,6 @@ import { getAdminAuth } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 import {
-  getGeneratedCardCount,
   MAX_NOTES_FOR_CARD_GENERATION,
   MIN_NOTES_FOR_CARD_GENERATION,
   parseGeneratedCardDrafts,
@@ -58,7 +57,6 @@ export async function POST(request: NextRequest) {
   let notes: string;
   let deckName: string | undefined;
   let tags: string[];
-  let count: number;
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
@@ -70,7 +68,6 @@ export async function POST(request: NextRequest) {
           .map((tag) => tag.trim().slice(0, 60))
           .slice(0, 10)
       : [];
-    count = getGeneratedCardCount(body.count);
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
@@ -101,7 +98,6 @@ Each array item must be an object with exactly these string fields:
 - "back": a concise answer that is accurate and easy to review
 
 Rules:
-- Make ${count} cards unless the notes cannot support that many.
 - Prefer testable concepts, definitions, causes, steps, formulas, dates, and contrasts.
 - Do not invent facts that are not in the notes.
 - Keep fronts under 160 characters where possible.
@@ -121,7 +117,7 @@ ${notes}`;
       })
     );
 
-    const cards = parseGeneratedCardDrafts(result.response.text()).slice(0, count);
+    const cards = parseGeneratedCardDrafts(result.response.text());
     if (cards.length === 0) {
       return Response.json(
         { error: "AI could not turn those notes into usable cards." },
