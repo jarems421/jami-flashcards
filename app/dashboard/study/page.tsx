@@ -11,6 +11,7 @@ import {
   buildDailyReviewQueues,
   DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
   DAILY_REVIEW_STATE_DOC_ID,
+  sortCardsByStudyPriority,
   type DailyReviewState,
 } from "@/lib/study/daily-review";
 import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
@@ -188,16 +189,21 @@ function getCardsByIds(cards: Card[], ids: string[]) {
 }
 
 function buildCustomReviewCards(cards: Card[], selectedDeckIds: string[], selectedTags: string[]) {
-  if (selectedDeckIds.length === 0 && selectedTags.length === 0) return cards;
   const selectedDeckIdSet = new Set(selectedDeckIds);
   const selectedTagSet = new Set(selectedTags.map(getTagKey));
-  return cards.filter((card) => {
-    const matchesDeck = selectedDeckIdSet.size > 0 && selectedDeckIdSet.has(card.deckId);
-    const matchesTag =
-      selectedTagSet.size > 0 &&
-      card.tags.some((tag) => selectedTagSet.has(getTagKey(tag)));
-    return matchesDeck || matchesTag;
-  });
+  const filteredCards =
+    selectedDeckIds.length === 0 && selectedTags.length === 0
+      ? cards
+      : cards.filter((card) => {
+          const matchesDeck =
+            selectedDeckIdSet.size > 0 && selectedDeckIdSet.has(card.deckId);
+          const matchesTag =
+            selectedTagSet.size > 0 &&
+            card.tags.some((tag) => selectedTagSet.has(getTagKey(tag)));
+          return matchesDeck || matchesTag;
+        });
+
+  return sortCardsByStudyPriority(filteredCards);
 }
 
 export default function StudyPage() {
@@ -271,8 +277,9 @@ export default function StudyPage() {
       });
 
       const [nextDecks, nextCards] = await Promise.all([getDecks(user.uid), loadUserCards(user.uid)]);
-      const sortedCards = [...nextCards].sort((left, right) => right.createdAt - left.createdAt);
-      const nextDailyReviewState = await ensureDailyReviewState(user.uid, sortedCards, Date.now());
+      const now = Date.now();
+      const sortedCards = sortCardsByStudyPriority(nextCards, now);
+      const nextDailyReviewState = await ensureDailyReviewState(user.uid, sortedCards, now);
       setDecks(nextDecks);
       setCards(sortedCards);
       setDailyReviewState(nextDailyReviewState);
@@ -284,13 +291,14 @@ export default function StudyPage() {
       const snapshot = loadOfflineStudySnapshot(user.uid);
 
       if (snapshot) {
-        const sortedCards = [...snapshot.cards].sort((left, right) => right.createdAt - left.createdAt);
-        const queues = buildDailyReviewQueues(sortedCards, Date.now());
+        const now = Date.now();
+        const sortedCards = sortCardsByStudyPriority(snapshot.cards, now);
+        const queues = buildDailyReviewQueues(sortedCards, now);
         setDecks(snapshot.decks);
         setCards(sortedCards);
         setDailyReviewState({
           id: DAILY_REVIEW_STATE_DOC_ID,
-          studyDayKey: getStudyDayKey(Date.now()),
+          studyDayKey: getStudyDayKey(now),
           generatedAt: snapshot.savedAt,
           requiredCardIds: queues.requiredCards.map((card) => card.id),
           optionalCardIds: queues.optionalCards.map((card) => card.id),

@@ -1,8 +1,8 @@
 import type { NextRequest } from "next/server";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 import { getAdminAuth } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
+import { generateGeminiText, isGeminiTimeoutError } from "@/lib/ai/gemini";
 import {
   MAX_NOTES_FOR_CARD_GENERATION,
   MIN_NOTES_FOR_CARD_GENERATION,
@@ -14,19 +14,6 @@ export const runtime = "nodejs";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
 const MAX_GENERATE_CARDS_PER_HOUR = 25;
 const REQUEST_TIMEOUT_MS = 20_000;
-
-async function withRequestTimeout<T>(promise: Promise<T>) {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error("Request timed out")), REQUEST_TIMEOUT_MS);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
 
 export async function POST(request: NextRequest) {
   if (!GEMINI_API_KEY) {
@@ -80,16 +67,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      generationConfig: {
-        temperature: 0.2,
-        topP: 0.85,
-        maxOutputTokens: 2600,
-      },
-    });
-
     const systemPrompt = `You turn student notes into import-ready flashcards.
 
 Return only a JSON array. No markdown, no preamble.
@@ -110,14 +87,27 @@ Tags: ${tags.length ? tags.join(", ") : "None"}
 Notes:
 ${notes}`;
 
-    const result = await withRequestTimeout(
-      model.generateContent({
+    const text = await generateGeminiText({
+      apiKey: GEMINI_API_KEY,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      generationConfig: {
+        temperature: 0.2,
+        topP: 0.85,
+        maxOutputTokens: 2600,
+      },
+      request: {
         systemInstruction: systemPrompt,
         contents: [{ role: "user", parts: [{ text: userPrompt }] }],
-      })
-    );
+      },
+      onRetry: ({ error, modelName, nextModelName }) => {
+        console.warn(
+          `Gemini card generation failed on ${modelName}; retrying with ${nextModelName}.`,
+          error,
+        );
+      },
+    });
 
-    const cards = parseGeneratedCardDrafts(result.response.text());
+    const cards = parseGeneratedCardDrafts(text);
     if (cards.length === 0) {
       return Response.json(
         { error: "AI could not turn those notes into usable cards." },
@@ -129,7 +119,7 @@ ${notes}`;
   } catch (error) {
     console.error("Gemini card generation error:", error);
     const message =
-      error instanceof Error && error.message === "Request timed out"
+      isGeminiTimeoutError(error)
         ? "AI is taking longer than usual."
         : "AI could not generate cards right now.";
     return Response.json({ error: message }, { status: 502 });

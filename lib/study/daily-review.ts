@@ -88,44 +88,54 @@ export function getDailyReviewBucket(card: Card, now = Date.now()): DailyReviewB
   return "easy";
 }
 
-function compareDueOrder(a: Card, b: Card) {
-  const aHasDueDate = typeof a.dueDate === "number";
-  const bHasDueDate = typeof b.dueDate === "number";
-
-  if (!aHasDueDate && !bHasDueDate) {
-    return b.createdAt - a.createdAt;
-  }
-  if (!aHasDueDate) {
-    return -1;
-  }
-  if (!bHasDueDate) {
-    return 1;
-  }
-  const aDueDate = a.dueDate ?? 0;
-  const bDueDate = b.dueDate ?? 0;
-  if (aDueDate !== bDueDate) {
-    return aDueDate - bDueDate;
+function getStudyPriorityTime(card: Card) {
+  if (typeof card.dueDate === "number") {
+    return card.dueDate;
   }
 
-  return b.createdAt - a.createdAt;
+  if (typeof card.lastReview === "number") {
+    return card.lastReview;
+  }
+
+  return card.createdAt;
+}
+
+function compareStudyPriority(a: Card, b: Card, now: number) {
+  const riskScoreDelta =
+    getMemoryRiskInfo(b, now).score - getMemoryRiskInfo(a, now).score;
+  if (riskScoreDelta !== 0) {
+    return riskScoreDelta;
+  }
+
+  const priorityTimeDelta = getStudyPriorityTime(a) - getStudyPriorityTime(b);
+  if (priorityTimeDelta !== 0) {
+    return priorityTimeDelta;
+  }
+
+  return a.createdAt - b.createdAt;
 }
 
 export function sortCardsForDailyReview(cards: Card[], now = Date.now()) {
   const weakCards = cards
     .filter((card) => getDailyReviewBucket(card, now) === "weak")
-    .sort(compareDueOrder);
+    .sort((left, right) => compareStudyPriority(left, right, now));
   const mediumCards = cards
     .filter((card) => getDailyReviewBucket(card, now) === "medium")
-    .sort(compareDueOrder);
+    .sort((left, right) => compareStudyPriority(left, right, now));
   const easyCards = cards
     .filter((card) => getDailyReviewBucket(card, now) === "easy")
-    .sort(compareDueOrder);
+    .sort((left, right) => compareStudyPriority(left, right, now));
 
   return {
     weakCards,
     mediumCards,
     easyCards,
   };
+}
+
+export function sortCardsByStudyPriority(cards: Card[], now = Date.now()) {
+  const { weakCards, mediumCards, easyCards } = sortCardsForDailyReview(cards, now);
+  return [...weakCards, ...mediumCards, ...easyCards];
 }
 
 export function buildDailyReviewQueues(cards: Card[], now: number) {

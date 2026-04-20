@@ -31,6 +31,78 @@ function getStudyStateDoc(userId: string, docId: string) {
   return doc(db, "users", userId, "studyState", docId);
 }
 
+function areSameIds(left: string[], right: string[]) {
+  return (
+    left.length === right.length &&
+    left.every((id, index) => id === right[index])
+  );
+}
+
+function keepKnownIds(ids: string[], allowedIds: Set<string>) {
+  return ids.filter((id) => allowedIds.has(id));
+}
+
+function keepKnownRetryCounts(
+  retryCounts: Record<string, number>,
+  allowedIds: Set<string>
+) {
+  return Object.fromEntries(
+    Object.entries(retryCounts).filter(([cardId]) => allowedIds.has(cardId))
+  );
+}
+
+function refreshCurrentDailyReviewState(
+  state: DailyReviewState,
+  cards: Card[],
+  now: number
+) {
+  const { requiredCards, optionalCards } = buildDailyReviewQueues(cards, now);
+  const requiredCardIds = requiredCards.map((card) => card.id);
+  const optionalCardIds = optionalCards.map((card) => card.id);
+  const requiredIdSet = new Set(requiredCardIds);
+  const optionalIdSet = new Set(optionalCardIds);
+  const completedRequiredCardIds = keepKnownIds(
+    state.completedRequiredCardIds,
+    requiredIdSet
+  );
+  const completedOptionalCardIds = keepKnownIds(
+    state.completedOptionalCardIds,
+    optionalIdSet
+  );
+  const parkedRequiredCardIds = keepKnownIds(
+    state.parkedRequiredCardIds,
+    requiredIdSet
+  );
+  const requiredRetryCounts = keepKnownRetryCounts(
+    state.requiredRetryCounts,
+    requiredIdSet
+  );
+
+  const changed =
+    !areSameIds(state.requiredCardIds, requiredCardIds) ||
+    !areSameIds(state.optionalCardIds, optionalCardIds) ||
+    !areSameIds(state.completedRequiredCardIds, completedRequiredCardIds) ||
+    !areSameIds(state.completedOptionalCardIds, completedOptionalCardIds) ||
+    !areSameIds(state.parkedRequiredCardIds, parkedRequiredCardIds) ||
+    Object.keys(state.requiredRetryCounts).length !==
+      Object.keys(requiredRetryCounts).length;
+
+  if (!changed) {
+    return null;
+  }
+
+  return {
+    ...state,
+    requiredCardIds,
+    optionalCardIds,
+    completedRequiredCardIds,
+    completedOptionalCardIds,
+    parkedRequiredCardIds,
+    requiredRetryCounts,
+    updatedAt: now,
+  };
+}
+
 export async function resetStudyActivityHistory(userId: string) {
   const snapshot = await withTimeout(
     getDocs(collection(db, "users", userId, "studyActivity")),
@@ -124,7 +196,19 @@ export async function ensureDailyReviewState(
   const existingState = await loadDailyReviewState(userId);
 
   if (existingState?.studyDayKey === currentStudyDayKey) {
-    return existingState;
+    const refreshedState = refreshCurrentDailyReviewState(existingState, cards, now);
+    if (!refreshedState) {
+      return existingState;
+    }
+
+    const { id, ...stateToSave } = refreshedState;
+    await withTimeout(
+      setDoc(getStudyStateDoc(userId, id), stateToSave),
+      SAVE_MS,
+      "Refresh daily review state"
+    );
+
+    return refreshedState;
   }
 
   const { requiredCards, optionalCards } = buildDailyReviewQueues(cards, now);

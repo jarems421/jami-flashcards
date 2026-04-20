@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
+import { generateGeminiText, isGeminiTimeoutError } from "@/lib/ai/gemini";
 import {
   cleanGeneratedCardBack,
   detectCardBackSubject,
@@ -10,7 +11,6 @@ import {
   isCardBackAutocompleteStyle,
   type CardBackAutocompleteStyle,
 } from "@/lib/ai/card-autocomplete";
-import { GoogleGenerativeAI } from "@google/generative-ai";
 
 export const runtime = "nodejs";
 
@@ -20,19 +20,6 @@ const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_RELATED_CARDS = 5;
 const MAX_BACK_OUTPUT_LENGTH = 2000;
 const MIN_COMPLETE_BACK_LENGTH = 42;
-
-async function withRequestTimeout<T>(promise: Promise<T>) {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error("Request timed out")), REQUEST_TIMEOUT_MS);
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
 
 function hasBalancedPairs(text: string, left: string, right: string) {
   let depth = 0;
@@ -217,23 +204,27 @@ ${relatedCardsPrompt}
 
 Write the best flashcard back. If there is already a draft, improve or complete it without making it bloated.`;
 
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
-      generationConfig: {
-        temperature: 0.15,
-        topP: 0.85,
-        maxOutputTokens: 900,
-      },
-    });
     const generateDraft = async (prompt: string) => {
-      const result = await withRequestTimeout(
-        model.generateContent({
+      const text = await generateGeminiText({
+        apiKey: GEMINI_API_KEY,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        generationConfig: {
+          temperature: 0.15,
+          topP: 0.85,
+          maxOutputTokens: 900,
+        },
+        request: {
           systemInstruction: systemPrompt,
           contents: [{ role: "user", parts: [{ text: prompt }] }],
-        })
-      );
-      return cleanGeneratedCardBack(result.response.text());
+        },
+        onRetry: ({ error, modelName, nextModelName }) => {
+          console.warn(
+            `Gemini card autocomplete failed on ${modelName}; retrying with ${nextModelName}.`,
+            error,
+          );
+        },
+      });
+      return cleanGeneratedCardBack(text);
     };
 
     let reply = await generateDraft(userPrompt).catch(async (error) => {
@@ -280,7 +271,7 @@ Rewrite the complete final back in one concise response.
   } catch (error) {
     console.error("Gemini card autocomplete error:", error);
     const message =
-      error instanceof Error && error.message === "Request timed out"
+      isGeminiTimeoutError(error)
         ? "AI is taking longer than usual."
         : "AI could not complete the draft right now.";
     return Response.json({ error: message }, { status: 502 });

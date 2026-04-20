@@ -3,7 +3,7 @@ import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { checkRateLimit } from "@/lib/ai/rate-limit";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { generateGeminiText } from "@/lib/ai/gemini";
 
 export const runtime = "nodejs";
 
@@ -32,22 +32,6 @@ type ExplanationContext = {
   scheduledDays?: unknown;
   elapsedDays?: unknown;
 };
-
-async function withRequestTimeout<T>(promise: Promise<T>) {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(
-      () => reject(new Error("Request timed out")),
-      REQUEST_TIMEOUT_MS,
-    );
-  });
-
-  try {
-    return await Promise.race([promise, timeoutPromise]);
-  } finally {
-    if (timeoutId) clearTimeout(timeoutId);
-  }
-}
 
 function getFallbackExplanation(front: string, back: string) {
   return `AI is taking longer than usual. Quick recovery: compare what you answered with the correct answer, then make one small rule that separates them. For this card, the answer to "${front.slice(0, 90)}" is: ${back.slice(0, 220)}`;
@@ -151,8 +135,6 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const genAI = new GoogleGenerativeAI(GEMINI_API_KEY);
-    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const memoryProfilePrompt = context
       ? `Card context:
 - Deck: ${context.deckName ?? "Unknown"}
@@ -235,8 +217,10 @@ Use these only to infer likely confusion patterns or useful distinctions.`;
     }
 
     const generateExplanation = async () => {
-      const result = await withRequestTimeout(
-        model.generateContent({
+      const text = await generateGeminiText({
+        apiKey: GEMINI_API_KEY,
+        timeoutMs: REQUEST_TIMEOUT_MS,
+        request: {
           systemInstruction: `${BASE_SYSTEM_PROMPT}\n\n${memoryProfilePrompt}${relatedCardsPrompt}`.trim(),
           contents: [
             {
@@ -248,10 +232,16 @@ Use these only to infer likely confusion patterns or useful distinctions.`;
               ],
             },
           ],
-        })
-      );
+        },
+        onRetry: ({ error, modelName, nextModelName }) => {
+          console.warn(
+            `Gemini explanation failed on ${modelName}; retrying with ${nextModelName}.`,
+            error,
+          );
+        },
+      });
 
-      return cleanGeneratedStudyText(result.response.text());
+      return cleanGeneratedStudyText(text);
     };
 
     let text = await generateExplanation().catch(async (error) => {

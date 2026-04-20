@@ -299,4 +299,66 @@ describe("daily review memory risk", () => {
 
     expect(requiredCards.map((card) => card.id)).toEqual(["custom-struggle"]);
   });
+
+  it("puts older unreviewed cards before newly created cards", () => {
+    const now = Date.UTC(2026, 0, 3, 12);
+    const { requiredCards } = buildDailyReviewQueues(
+      [
+        {
+          id: "newest",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now,
+          tags: [],
+        },
+        {
+          id: "oldest",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now - 7 * 24 * 60 * 60 * 1000,
+          tags: [],
+        },
+      ],
+      now
+    );
+
+    expect(requiredCards.map((card) => card.id)).toEqual(["oldest", "newest"]);
+  });
+
+  it("keeps weak cards ahead of ordinary new cards", () => {
+    const now = Date.UTC(2026, 0, 3, 12);
+    const { requiredCards } = buildDailyReviewQueues(
+      [
+        {
+          id: "old-new",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now - 7 * 24 * 60 * 60 * 1000,
+          tags: [],
+        },
+        {
+          id: "weak",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now,
+          tags: [],
+          difficulty: 8,
+          reps: 5,
+          lapses: 2,
+          dueDate: now - 60 * 60 * 1000,
+        },
+      ],
+      now
+    );
+
+    expect(requiredCards.map((card) => card.id)).toEqual(["weak", "old-new"]);
+  });
 });
