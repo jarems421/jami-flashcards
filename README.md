@@ -16,7 +16,7 @@
 
 ## 30 Second Overview
 
-Jami is a polished study app built around a simple loop: create cards, generate cards from notes, import large card sets, review what matters, and see progress become visible. It combines FSRS spaced repetition with a memory-risk layer so difficult, overdue, or recently missed cards are prioritised without making the app feel stressful.
+Jami is a polished study app built around a simple loop: create cards, generate cards from notes, add large card sets, review what matters, and see progress become visible. It combines FSRS spaced repetition with a memory-risk layer so difficult, overdue, or recently missed cards are prioritised without making the app feel stressful.
 
 The product is designed for iPad and mobile first. The interface uses large touch targets, calm glass surfaces, clear empty states, and an offline-ready Study page so users can keep learning even when the network disappears.
 
@@ -28,7 +28,7 @@ Users create decks to organise subjects, then add cards through either the globa
 
 AI autocomplete can draft the back of a card from the front prompt. The prompt system asks Gemini to choose the right answer style, keep explanations concise, and clean up maths output so symbols such as pi, roots, multiplication dots, and exponents are easier to read.
 
-For larger workflows, deck pages support Anki/Quizlet-style bulk import from pasted text or `.txt`, `.tsv`, and `.csv` files. The importer validates rows, skips duplicate cards, previews the first cards, downloads an error report, applies shared tags, and writes cards in Firestore batches. Decks can also be exported back to TSV or CSV for portability.
+For larger workflows, the Cards page and deck pages share one clean add-card flow: add one card, paste a question-and-answer list, upload a file, or generate draft cards from notes. Batch adding validates rows, skips duplicate cards, previews the first cards, saves issue reports, and writes cards in Firestore batches. Newly added batch cards are selected automatically so users can add tags only to the cards that need them.
 
 ### 2. Generate Cards From Notes
 
@@ -73,7 +73,7 @@ The Stats page shows study rhythm, average accuracy, studied days, time spent, s
 - Gemini API routes keep AI keys server-side while supporting autocomplete, notes-to-cards generation, explanations, and study chat.
 - FSRS via `ts-fsrs` handles spaced-repetition scheduling.
 - A memory-risk layer ranks cards using scheduling state, lapses, overdue pressure, and recent struggles.
-- Bulk import/export supports TSV, CSV, row validation, duplicate detection, error reports, shared tags, and batched Firestore writes.
+- Bulk card creation supports pasted lists, uploaded files, row validation, duplicate detection, issue reports, automatic post-add selection, bulk tagging, and batched Firestore writes.
 - Offline study uses local snapshots, a queued review log, service-worker app-shell caching, and sync-back when the browser returns online.
 - PWA notification infrastructure supports a single daily digest window at 4pm Europe/London.
 - Vitest covers study-day logic, scheduling, memory risk, card utilities, and notification helpers.
@@ -82,7 +82,7 @@ The Stats page shows study rhythm, average accuracy, studied days, time spent, s
 
 - Built a full-stack AI-powered flashcard PWA using Next.js 16, React 19, TypeScript, Firebase, Firestore, Tailwind CSS, and Gemini.
 - Implemented FSRS spaced repetition with a custom memory-risk layer that prioritises overdue, difficult, and recently missed cards.
-- Shipped robust Anki/Quizlet-style import/export with preview, validation, duplicate detection, downloadable error reports, tags, and batched Firestore writes.
+- Shipped robust batch card creation with preview, validation, duplicate detection, issue reports, post-add bulk tagging, and batched Firestore writes.
 - Added AI notes-to-flashcards generation with human-in-the-loop editing, selection, and batch saving.
 - Built offline-ready study sessions with cached decks/cards, queued ratings, and automatic sync to Firebase when the network returns.
 - Designed analytics for retention, weak areas, hardest cards, study time, accuracy, streaks, and next recommended review.
@@ -105,7 +105,7 @@ app/
   dashboard/             Authenticated app screens
 components/
   constellation/         Star rendering and constellation background
-  decks/                 Deck editor, card editor, tags, import/export, AI drafting
+  decks/                 Deck editor, card editor, tags, batch add tools, AI drafting
   layout/                App shell, top bar, bottom navigation
   notifications/         PWA install and push preference UI
   profile/               Profile photo, username, and account UI

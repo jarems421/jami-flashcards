@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { getDecks, type Deck } from "@/services/study/decks";
@@ -16,10 +16,12 @@ import {
 import { getDeckHref } from "@/lib/app/routes";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
+import CardCreationPanel from "@/components/decks/CardCreationPanel";
+import BulkTagToolbar from "@/components/decks/BulkTagToolbar";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
-import { Button, EmptyState, FeedbackBanner, Input, SectionHeader, Skeleton } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import Link from "next/link";
 
 function cardMatchesSearch(card: Card, term: string, deckName?: string) {
@@ -50,12 +52,10 @@ export default function CardsSearchPage() {
   const [editingPendingTag, setEditingPendingTag] = useState("");
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
-  const [addDeckId, setAddDeckId] = useState("");
-  const [addFront, setAddFront] = useState("");
-  const [addBack, setAddBack] = useState("");
-  const [addTags, setAddTags] = useState<string[]>([]);
-  const [addPendingTag, setAddPendingTag] = useState("");
-  const [addingCard, setAddingCard] = useState(false);
+  const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  const [bulkTags, setBulkTags] = useState<string[]>([]);
+  const [bulkPendingTag, setBulkPendingTag] = useState("");
+  const [applyingBulkTags, setApplyingBulkTags] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -129,6 +129,7 @@ export default function CardsSearchPage() {
 
   const visibleCards = filtered.slice(0, MAX_VISIBLE_RESULTS);
   const hasMore = filtered.length > MAX_VISIBLE_RESULTS;
+  const selectedCardIdSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
 
   const startEditing = (card: Card) => {
     setExpandedCardId(card.id);
@@ -213,6 +214,7 @@ export default function CardsSearchPage() {
     try {
       await deleteDoc(doc(db, "cards", cardId));
       setCards((prev) => prev.filter((card) => card.id !== cardId));
+      setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
       if (expandedCardId === cardId) cancelEditing();
       setFeedback({ type: "success", message: "Card deleted." });
     } catch (error) {
@@ -223,70 +225,103 @@ export default function CardsSearchPage() {
     }
   };
 
-  const handleAddCard = async () => {
-    const nextFront = addFront.trim();
-    const nextBack = addBack.trim();
-    if (!addDeckId) {
-      setFeedback({ type: "error", message: "Select a deck first." });
+  const handleCardsCreated = (
+    createdCards: Card[],
+    meta: { selectCreated: boolean }
+  ) => {
+    if (createdCards.length === 0) {
       return;
     }
-    if (!nextFront || !nextBack) {
-      setFeedback({ type: "error", message: "Both front and back are required." });
-      return;
+
+    setCards((prev) => {
+      const existingIds = new Set(prev.map((card) => card.id));
+      const freshCards = createdCards.filter((card) => !existingIds.has(card.id));
+      return [...freshCards, ...prev];
+    });
+    setAvailableTags((prev) =>
+      Array.from(new Set([...prev, ...createdCards.flatMap((card) => card.tags)])).sort((a, b) =>
+        a.localeCompare(b)
+      )
+    );
+
+    if (meta.selectCreated) {
+      setSelectedCardIds(createdCards.map((card) => card.id));
+      setBulkTags([]);
+      setBulkPendingTag("");
     }
-    if (nextFront.length > MAX_FRONT_LENGTH || nextBack.length > MAX_BACK_LENGTH) {
-      setFeedback({
-        type: "error",
-        message: `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`,
-      });
-      return;
-    }
-    const tagResult = addCardTag(addTags, addPendingTag);
+  };
+
+  const toggleCardSelection = (cardId: string) => {
+    setSelectedCardIds((prev) =>
+      prev.includes(cardId)
+        ? prev.filter((selectedId) => selectedId !== cardId)
+        : [...prev, cardId]
+    );
+  };
+
+  const selectVisibleCards = () => {
+    setSelectedCardIds((prev) =>
+      Array.from(new Set([...prev, ...visibleCards.map((card) => card.id)]))
+    );
+  };
+
+  const handleAddTagsToSelectedCards = async () => {
+    const tagResult = addCardTag(bulkTags, bulkPendingTag);
     if (tagResult.error) {
       setFeedback({ type: "error", message: tagResult.error });
       return;
     }
 
-    setAddingCard(true);
+    const nextBulkTags = tagResult.nextTags;
+    if (selectedCardIds.length === 0 || nextBulkTags.length === 0) {
+      setFeedback({ type: "error", message: "Select cards and add at least one tag first." });
+      return;
+    }
+
+    const selected = new Set(selectedCardIds);
+    const cardsToUpdate = cards
+      .filter((card) => selected.has(card.id))
+      .map((card) => ({
+        id: card.id,
+        tags: normalizeCardTags([...card.tags, ...nextBulkTags]),
+      }));
+
+    setApplyingBulkTags(true);
     setFeedback(null);
 
     try {
-      const createdAt = Date.now();
-      const nextTags = tagResult.nextTags;
-      const ref = await addDoc(collection(db, "cards"), {
-        deckId: addDeckId,
-        userId: user.uid,
-        front: nextFront,
-        back: nextBack,
-        tags: nextTags,
-        createdAt,
-      });
+      for (let start = 0; start < cardsToUpdate.length; start += 450) {
+        const batch = writeBatch(db);
+        const chunk = cardsToUpdate.slice(start, start + 450);
+        for (const card of chunk) {
+          batch.update(doc(db, "cards", card.id), { tags: card.tags });
+        }
+        await batch.commit();
+      }
 
-      setCards((prev) => [
-        {
-          id: ref.id,
-          deckId: addDeckId,
-          userId: user.uid,
-          front: nextFront,
-          back: nextBack,
-          tags: nextTags,
-          createdAt,
-        },
-        ...prev,
-      ]);
-      setAddFront("");
-      setAddBack("");
-      setAddTags([]);
-      setAddPendingTag("");
-      setAvailableTags((prev) =>
-        Array.from(new Set([...prev, ...nextTags])).sort((a, b) => a.localeCompare(b))
+      const tagsByCardId = new Map(cardsToUpdate.map((card) => [card.id, card.tags]));
+      setCards((prev) =>
+        prev.map((card) =>
+          tagsByCardId.has(card.id)
+            ? { ...card, tags: tagsByCardId.get(card.id) ?? card.tags }
+            : card
+        )
       );
-      setFeedback({ type: "success", message: "Card added." });
+      setAvailableTags((prev) =>
+        Array.from(new Set([...prev, ...nextBulkTags])).sort((a, b) => a.localeCompare(b))
+      );
+      setBulkTags([]);
+      setBulkPendingTag("");
+      setSelectedCardIds([]);
+      setFeedback({
+        type: "success",
+        message: `Added tags to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`,
+      });
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to add card." });
+      setFeedback({ type: "error", message: "Failed to add tags to the selected cards." });
     } finally {
-      setAddingCard(false);
+      setApplyingBulkTags(false);
     }
   };
 
@@ -302,82 +337,14 @@ export default function CardsSearchPage() {
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
 
-      <div className="app-panel p-3 sm:p-4">
-        <SectionHeader
-          eyebrow="Create"
-          title="Add card"
-          description="Write the front and back, then add tags only if they help you find it later."
-          action={
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-2xl font-semibold text-[#10091d] shadow-[0_10px_20px_rgba(255,214,246,0.16)]">
-              +
-            </div>
-          }
-        />
-
-        <div className="mt-3 space-y-3 sm:mt-4">
-          <select
-            value={addDeckId}
-            onChange={(e) => setAddDeckId(e.target.value)}
-            className="w-full appearance-none rounded-[2rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-[1rem] text-sm text-white outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18"
-            style={{
-              backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
-              backgroundRepeat: "no-repeat",
-              backgroundPosition: "right 1rem center",
-              paddingRight: "2.5rem",
-            }}
-          >
-            <option value="" disabled>Select a deck</option>
-            {decks.map((d) => (
-              <option key={d.id} value={d.id}>{d.name}</option>
-            ))}
-          </select>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <Input
-              placeholder="Front"
-              value={addFront}
-              onChange={(e) => setAddFront(e.target.value)}
-              maxLength={MAX_FRONT_LENGTH}
-            />
-            <div className="space-y-3">
-              <CardBackEditor
-                label="Back"
-                placeholder="Answer"
-                value={addBack}
-                onChange={setAddBack}
-                maxLength={MAX_BACK_LENGTH}
-                rows={6}
-                disabled={addingCard}
-              />
-              <CardBackAutocomplete
-                front={addFront}
-                currentBack={addBack}
-                deckId={addDeckId || undefined}
-                deckName={addDeckId ? deckNamesById[addDeckId] : undefined}
-                tags={addTags}
-                disabled={addingCard}
-                onApply={setAddBack}
-              />
-            </div>
-          </div>
-
-          <TagInput
-            tags={addTags}
-            pendingTag={addPendingTag}
-            availableTags={availableTags}
-            onTagsChange={setAddTags}
-            onPendingTagChange={setAddPendingTag}
-            disabled={addingCard}
-          />
-
-          <Button
-            disabled={addingCard || !addDeckId || !addFront.trim() || !addBack.trim()}
-            onClick={() => void handleAddCard()}
-          >
-            {addingCard ? "Adding..." : "Add card"}
-          </Button>
-        </div>
-      </div>
+      <CardCreationPanel
+        userId={user.uid}
+        decks={decks}
+        existingCards={cards}
+        availableTags={availableTags}
+        onCardsCreated={handleCardsCreated}
+        onFeedback={setFeedback}
+      />
 
       <div className="sticky top-0 z-20 -mx-1 px-1 pb-2 pt-1">
         <Input
@@ -413,6 +380,32 @@ export default function CardsSearchPage() {
         />
       ) : (
         <>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={selectVisibleCards}
+              disabled={visibleCards.length === 0}
+            >
+              Select shown cards
+            </Button>
+            <span className="text-sm text-text-muted">
+              {selectedCardIds.length} selected
+            </span>
+          </div>
+
+          <BulkTagToolbar
+            selectedCount={selectedCardIds.length}
+            tags={bulkTags}
+            pendingTag={bulkPendingTag}
+            availableTags={availableTags}
+            disabled={applyingBulkTags}
+            onTagsChange={setBulkTags}
+            onPendingTagChange={setBulkPendingTag}
+            onApply={() => void handleAddTagsToSelectedCards()}
+            onClearSelection={() => setSelectedCardIds([])}
+          />
+
           <p className="text-sm text-text-secondary">
             {filtered.length} card{filtered.length === 1 ? "" : "s"} found
             {hasMore ? ` (showing first ${MAX_VISIBLE_RESULTS})` : ""}
@@ -421,6 +414,15 @@ export default function CardsSearchPage() {
           <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
             {visibleCards.map((card) => (
               <section key={card.id} className="app-panel p-3 sm:p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell">
+                <label className="mb-3 flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                  <input
+                    type="checkbox"
+                    checked={selectedCardIdSet.has(card.id)}
+                    onChange={() => toggleCardSelection(card.id)}
+                    className="h-4 w-4 accent-[var(--color-accent)]"
+                  />
+                  Select
+                </label>
                 {expandedCardId === card.id ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap gap-2">
