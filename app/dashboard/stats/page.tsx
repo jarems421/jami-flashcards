@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   ResponsiveContainer,
@@ -14,13 +15,18 @@ import {
 } from "recharts";
 import { useUser } from "@/lib/auth/user-context";
 import { loadStudyActivity } from "@/services/study/activity";
-import { ensureStudyStateSetup } from "@/services/study/daily-review";
+import { ensureStudyStateSetup, loadUserCards } from "@/services/study/daily-review";
+import { getDecks, type Deck } from "@/services/study/decks";
 import {
   computeStudyStreak,
   computeLongestStreak,
   type DailyStudyActivity,
 } from "@/lib/study/activity";
 import { formatStudyDayLabel, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
+import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
+import { getWeakPoints } from "@/lib/study/weak-points";
+import type { Card as StudyCard } from "@/lib/study/cards";
+import { getDeckStudyHref } from "@/lib/app/routes";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, EmptyState, PageHero, SectionHeader, Skeleton, StatTile } from "@/components/ui";
 
@@ -130,6 +136,20 @@ function formatStudyTime(totalMs: number) {
   return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
 }
 
+function formatDueStatus(card: StudyCard, now = Date.now()) {
+  if (typeof card.dueDate !== "number") {
+    return "Not scheduled yet";
+  }
+
+  const days = Math.ceil((card.dueDate - now) / 86_400_000);
+  if (card.dueDate < now) {
+    const overdueDays = Math.max(1, Math.ceil((now - card.dueDate) / 86_400_000));
+    return `${overdueDays} day${overdueDays === 1 ? "" : "s"} overdue`;
+  }
+  if (days === 0) return "Due today";
+  return `Due in ${days} day${days === 1 ? "" : "s"}`;
+}
+
 const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
   { value: "7d", label: "7 days" },
   { value: "30d", label: "30 days" },
@@ -139,6 +159,8 @@ const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
 export default function StatsPage() {
   const { user } = useUser();
   const [activity, setActivity] = useState<DailyStudyActivity[]>([]);
+  const [cards, setCards] = useState<StudyCard[]>([]);
+  const [decks, setDecks] = useState<Deck[]>([]);
   const [loading, setLoading] = useState(true);
   const [range, setRange] = useState<TimeRange>("30d");
 
@@ -148,8 +170,16 @@ export default function StatsPage() {
     void (async () => {
       try {
         await ensureStudyStateSetup(user.uid);
-        const data = await loadStudyActivity(user.uid);
-        if (!cancelled) setActivity(data);
+        const [data, nextCards, nextDecks] = await Promise.all([
+          loadStudyActivity(user.uid),
+          loadUserCards(user.uid),
+          getDecks(user.uid),
+        ]);
+        if (!cancelled) {
+          setActivity(data);
+          setCards(nextCards);
+          setDecks(nextDecks);
+        }
       } catch (error) {
         console.error(error);
       } finally {
@@ -189,6 +219,75 @@ export default function StatsPage() {
     () => buildTimeData(activity, range),
     [activity, range]
   );
+  const deckNamesById = useMemo(
+    () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
+    [decks]
+  );
+  const weakAreas = useMemo(
+    () => getWeakPoints(cards, deckNamesById, 5),
+    [cards, deckNamesById]
+  );
+  const retentionSummary = useMemo(() => {
+    const summary = { high: 0, medium: 0, low: 0, new: 0, overdue: 0 };
+    const now = Date.now();
+
+    cards.forEach((card) => {
+      const risk = getMemoryRiskInfo(card, now);
+      if (risk.label === "New") {
+        summary.new += 1;
+      } else {
+        summary[risk.tier] += 1;
+      }
+
+      if (typeof card.dueDate === "number" && card.dueDate < now) {
+        summary.overdue += 1;
+      }
+    });
+
+    return summary;
+  }, [cards]);
+  const hardestCards = useMemo(() => {
+    const now = Date.now();
+    return [...cards]
+      .map((card) => ({
+        card,
+        risk: getMemoryRiskInfo(card, now),
+      }))
+      .filter(({ card }) => (card.reps ?? 0) > 0)
+      .sort((left, right) => right.risk.score - left.risk.score)
+      .slice(0, 5);
+  }, [cards]);
+  const nextStudyHref = useMemo(() => {
+    const firstDeckWeakArea = weakAreas.find((area) => area.kind === "deck");
+    const deck = firstDeckWeakArea
+      ? decks.find((candidate) => candidate.name === firstDeckWeakArea.name)
+      : null;
+
+    if (deck) {
+      return getDeckStudyHref(deck.id);
+    }
+
+    return "/dashboard/study?mode=daily";
+  }, [decks, weakAreas]);
+  const nextStudyMessage = useMemo(() => {
+    if (retentionSummary.high > 0) {
+      return `${retentionSummary.high} high-risk card${retentionSummary.high === 1 ? "" : "s"} should be protected first.`;
+    }
+
+    if (retentionSummary.overdue > 0) {
+      return `${retentionSummary.overdue} overdue card${retentionSummary.overdue === 1 ? " is" : "s are"} ready for recall.`;
+    }
+
+    if (weakAreas[0]) {
+      return `${weakAreas[0].name} is the weakest pattern in your review history.`;
+    }
+
+    if (cards.length > 0) {
+      return "Daily Review is clear enough for focused Custom Review.";
+    }
+
+    return "Add a deck and a few cards to unlock learning analytics.";
+  }, [cards.length, retentionSummary.high, retentionSummary.overdue, weakAreas]);
 
   return (
     <AppPage
@@ -259,6 +358,29 @@ export default function StatsPage() {
             />
           </div>
 
+          <div className="grid animate-slide-up gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <StatTile
+              label="High risk"
+              value={retentionSummary.high}
+              detail="Cards most likely to slip."
+            />
+            <StatTile
+              label="Overdue"
+              value={retentionSummary.overdue}
+              detail="Scheduled before now."
+            />
+            <StatTile
+              label="New cards"
+              value={retentionSummary.new}
+              detail="No review signal yet."
+            />
+            <StatTile
+              label="Stable"
+              value={retentionSummary.low}
+              detail="Currently holding well."
+            />
+          </div>
+
           <div className="flex flex-wrap gap-2">
             {TIME_RANGE_OPTIONS.map((option) => (
               <Button
@@ -270,6 +392,127 @@ export default function StatsPage() {
                 {option.label}
               </Button>
             ))}
+          </div>
+
+          <Card padding="lg" className="animate-fade-in">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div>
+                <SectionHeader
+                  title="What to study next"
+                  description={nextStudyMessage}
+                />
+                <div className="mt-4 grid gap-2 sm:grid-cols-4">
+                  {[
+                    { label: "High", value: retentionSummary.high },
+                    { label: "Medium", value: retentionSummary.medium },
+                    { label: "Low", value: retentionSummary.low },
+                    { label: "New", value: retentionSummary.new },
+                  ].map((item) => (
+                    <div
+                      key={item.label}
+                      className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] px-3 py-3 text-center"
+                    >
+                      <div className="text-lg font-semibold tabular-nums text-white">
+                        {item.value}
+                      </div>
+                      <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">
+                        {item.label}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <Link
+                href={nextStudyHref}
+                className="inline-flex min-h-[3rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-sm font-semibold text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105"
+              >
+                Study recommended cards
+              </Link>
+            </div>
+          </Card>
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card padding="lg" className="animate-fade-in">
+              <SectionHeader
+                title="Weakest areas"
+                description="Decks and tags with the toughest review pattern."
+              />
+              <div className="mt-4 space-y-3">
+                {weakAreas.length > 0 ? (
+                  weakAreas.map((area) => (
+                    <div
+                      key={`${area.kind}-${area.name}`}
+                      className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <div className="text-sm font-semibold text-white">{area.name}</div>
+                          <div className="mt-1 text-xs text-text-muted">
+                            {area.kind === "deck" ? "Deck" : "Tag"} - {area.cardCount} reviewed card{area.cardCount === 1 ? "" : "s"}
+                          </div>
+                        </div>
+                        <div className="rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
+                          {area.score.toFixed(1)}
+                        </div>
+                      </div>
+                      <div className="mt-3 text-sm leading-6 text-text-secondary">
+                        Difficulty {area.avgDifficulty.toFixed(1)} / 10 with {area.totalLapses} lapse{area.totalLapses === 1 ? "" : "s"}.
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState
+                    variant="plain"
+                    emoji="Tags"
+                    eyebrow="No weak areas yet"
+                    title="Review more cards"
+                    description="Weak areas appear after cards have enough review history."
+                  />
+                )}
+              </div>
+            </Card>
+
+            <Card padding="lg" className="animate-fade-in">
+              <SectionHeader
+                title="Hardest cards"
+                description="The cards with the strongest memory-risk signal."
+              />
+              <div className="mt-4 space-y-3">
+                {hardestCards.length > 0 ? (
+                  hardestCards.map(({ card, risk }) => (
+                    <div
+                      key={card.id}
+                      className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] p-4"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-white">
+                            {card.front}
+                          </div>
+                          <div className="mt-1 text-xs text-text-muted">
+                            {deckNamesById[card.deckId] ?? "Unknown deck"} - {formatDueStatus(card)}
+                          </div>
+                        </div>
+                        <div className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
+                          {risk.label}
+                        </div>
+                      </div>
+                      <div className="mt-3 text-sm leading-6 text-text-secondary">
+                        {risk.reason}. {card.lapses ?? 0} lapse{(card.lapses ?? 0) === 1 ? "" : "s"} across {card.reps ?? 0} review{(card.reps ?? 0) === 1 ? "" : "s"}.
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <EmptyState
+                    variant="plain"
+                    emoji="Cards"
+                    eyebrow="No hard cards yet"
+                    title="Difficulty needs review data"
+                    description="Once you rate a few cards, the toughest ones will appear here."
+                  />
+                )}
+              </div>
+            </Card>
           </div>
 
           <Card padding="lg" className="animate-fade-in">

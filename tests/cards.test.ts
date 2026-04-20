@@ -2,10 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   addCardTag,
   cardMatchesAnyTag,
+  exportCardsToSeparatedText,
+  getCardContentKey,
   getTagSuggestions,
   getCardTagsInputError,
+  parseCardImportText,
   parseCardTagsInput,
   parseCardTagsParam,
+  MAX_FRONT_LENGTH,
 } from "@/lib/study/cards";
 import {
   buildDailyReviewQueues,
@@ -67,6 +71,68 @@ describe("card tag helpers", () => {
         ["physics"]
       )
     ).toEqual(["biology", "cell biology"]);
+  });
+});
+
+describe("card import parser", () => {
+  it("parses Front | Back rows and skips an optional header", () => {
+    expect(
+      parseCardImportText("Front | Back\nCapital of Japan | Tokyo\n2 + 2 | 4")
+    ).toEqual({
+      cards: [
+        { front: "Capital of Japan", back: "Tokyo" },
+        { front: "2 + 2", back: "4" },
+      ],
+      errors: [],
+      skippedRows: 0,
+    });
+  });
+
+  it("parses tab-separated Anki-style rows", () => {
+    expect(parseCardImportText("mitosis\tcell division\nosmosis\twater movement").cards).toEqual([
+      { front: "mitosis", back: "cell division" },
+      { front: "osmosis", back: "water movement" },
+    ]);
+  });
+
+  it("reports invalid and overlong rows without dropping valid rows", () => {
+    const overlongFront = "x".repeat(MAX_FRONT_LENGTH + 1);
+    const result = parseCardImportText(
+      `Valid | Card\nMissing delimiter\n${overlongFront} | Back`
+    );
+
+    expect(result.cards).toEqual([{ front: "Valid", back: "Card" }]);
+    expect(result.skippedRows).toBe(2);
+    expect(result.errors).toEqual([
+      "Line 2: use Front | Back, Front<Tab>Back, or two CSV columns.",
+      `Line 3: front must be ${MAX_FRONT_LENGTH} characters or less.`,
+    ]);
+  });
+});
+
+describe("card import/export helpers", () => {
+  it("builds stable duplicate keys from normalized card text", () => {
+    expect(getCardContentKey("  Capital   ", " Tokyo ")).toBe(
+      getCardContentKey("capital", "tokyo")
+    );
+  });
+
+  it("exports cards as re-importable tsv", () => {
+    expect(
+      exportCardsToSeparatedText([
+        { front: "Capital of Japan", back: "Tokyo" },
+        { front: "Line\nbreak", back: "Tabbed\tanswer" },
+      ])
+    ).toBe("Front\tBack\nCapital of Japan\tTokyo\nLine break\tTabbed answer");
+  });
+
+  it("exports csv with quoted commas and quotes", () => {
+    expect(
+      exportCardsToSeparatedText(
+        [{ front: 'Define "osmosis"', back: "Water, through a membrane" }],
+        "csv"
+      )
+    ).toBe('Front,Back\n"Define ""osmosis""","Water, through a membrane"');
   });
 });
 

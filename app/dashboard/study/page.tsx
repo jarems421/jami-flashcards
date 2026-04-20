@@ -7,11 +7,23 @@ import { deleteField, doc, increment, updateDoc } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
-import { type DailyReviewState } from "@/lib/study/daily-review";
+import {
+  buildDailyReviewQueues,
+  DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
+  DAILY_REVIEW_STATE_DOC_ID,
+  type DailyReviewState,
+} from "@/lib/study/daily-review";
 import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
 import { getTagKey, parseCardTagsParam, type Card } from "@/lib/study/cards";
+import {
+  getOfflineQueuedReviews,
+  loadOfflineStudySnapshot,
+  queueOfflineStudyReview,
+  saveOfflineStudySnapshot,
+} from "@/lib/study/offline-study";
 import { ensureDailyReviewState, ensureStudyStateSetup, loadUserCards, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
+import { syncOfflineStudyReviews } from "@/services/study/offline";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
@@ -212,6 +224,9 @@ export default function StudyPage() {
   const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null);
   const [countdownMs, setCountdownMs] = useState(getMsUntilNextStudyBoundary());
   const [showExplanation, setShowExplanation] = useState(false);
+  const [offlineMode, setOfflineMode] = useState(false);
+  const [offlineSnapshotAt, setOfflineSnapshotAt] = useState<number | null>(null);
+  const [pendingOfflineReviews, setPendingOfflineReviews] = useState(0);
   const flipTimestampRef = useRef(0);
   const autoStartHandledRef = useRef(false);
 
@@ -261,12 +276,39 @@ export default function StudyPage() {
       setDecks(nextDecks);
       setCards(sortedCards);
       setDailyReviewState(nextDailyReviewState);
+      saveOfflineStudySnapshot(user.uid, { cards: sortedCards, decks: nextDecks });
+      setOfflineMode(false);
+      setOfflineSnapshotAt(Date.now());
     } catch (error) {
       console.error(error);
-      setDecks([]);
-      setCards([]);
-      setDailyReviewState(null);
-      setFeedback({ type: "error", message: "Failed to load your study queue." });
+      const snapshot = loadOfflineStudySnapshot(user.uid);
+
+      if (snapshot) {
+        const sortedCards = [...snapshot.cards].sort((left, right) => right.createdAt - left.createdAt);
+        const queues = buildDailyReviewQueues(sortedCards, Date.now());
+        setDecks(snapshot.decks);
+        setCards(sortedCards);
+        setDailyReviewState({
+          id: DAILY_REVIEW_STATE_DOC_ID,
+          studyDayKey: getStudyDayKey(Date.now()),
+          generatedAt: snapshot.savedAt,
+          requiredCardIds: queues.requiredCards.map((card) => card.id),
+          optionalCardIds: queues.optionalCards.map((card) => card.id),
+          completedRequiredCardIds: [],
+          completedOptionalCardIds: [],
+          parkedRequiredCardIds: [],
+          requiredRetryCounts: {},
+          updatedAt: snapshot.savedAt,
+        });
+        setOfflineMode(true);
+        setOfflineSnapshotAt(snapshot.savedAt);
+        setFeedback({ type: "success", message: "Using your offline study cache. Answers will sync when you are back online." });
+      } else {
+        setDecks([]);
+        setCards([]);
+        setDailyReviewState(null);
+        setFeedback({ type: "error", message: "Failed to load your study queue." });
+      }
     } finally {
       setLoaded(true);
     }
@@ -275,6 +317,59 @@ export default function StudyPage() {
   useEffect(() => {
     void loadAll();
   }, [loadAll]);
+
+  const refreshPendingOfflineReviews = useCallback(() => {
+    setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
+  }, [user.uid]);
+
+  const syncPendingOfflineReviews = useCallback(async () => {
+    if (typeof navigator !== "undefined" && !navigator.onLine) {
+      setOfflineMode(true);
+      return;
+    }
+
+    const pending = getOfflineQueuedReviews(user.uid).length;
+    if (pending === 0) {
+      setPendingOfflineReviews(0);
+      return;
+    }
+
+    const result = await syncOfflineStudyReviews(user.uid);
+    setPendingOfflineReviews(result.remaining);
+
+    if (result.synced > 0) {
+      setFeedback({
+        type: "success",
+        message: `Synced ${result.synced} offline review${result.synced === 1 ? "" : "s"}.`,
+      });
+      await loadAll();
+    }
+  }, [loadAll, user.uid]);
+
+  useEffect(() => {
+    refreshPendingOfflineReviews();
+
+    const handleOnline = () => {
+      setOfflineMode(false);
+      void syncPendingOfflineReviews();
+    };
+    const handleOffline = () => setOfflineMode(true);
+
+    window.addEventListener("online", handleOnline);
+    window.addEventListener("offline", handleOffline);
+
+    if (typeof navigator !== "undefined") {
+      setOfflineMode(!navigator.onLine);
+      if (navigator.onLine) {
+        void syncPendingOfflineReviews();
+      }
+    }
+
+    return () => {
+      window.removeEventListener("online", handleOnline);
+      window.removeEventListener("offline", handleOffline);
+    };
+  }, [refreshPendingOfflineReviews, syncPendingOfflineReviews]);
 
   const availableTags = useMemo(() => Array.from(new Set(cards.flatMap((card) => card.tags))).sort((left, right) => left.localeCompare(right)), [cards]);
   const requiredDailyCards = useMemo(() => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.requiredCardIds) : []), [cards, dailyReviewState]);
@@ -379,11 +474,123 @@ export default function StudyPage() {
     setShowExplanation(false);
   };
 
+  const handleOfflineRating = async (rating: CardRating) => {
+    if (!current || !sessionKind) return;
+
+    const now = Date.now();
+    const durationMs = flipTimestampRef.current > 0 ? now - flipTimestampRef.current : undefined;
+    const isCorrect = isSuccessfulRating(rating);
+    const isStruggle = isStruggleRating(rating);
+    const schedule = sessionKind === "custom" ? null : updateCardSchedule(current, rating);
+    const cardUpdates: Record<string, number | string> = {};
+    let retryResult: { attemptCount: number; parked: boolean } | null = null;
+
+    if (schedule) {
+      Object.assign(cardUpdates, schedule);
+    } else if (isStruggle) {
+      const studyDayKey = getStudyDayKey(now);
+      cardUpdates.lastStruggleAt = now;
+      cardUpdates.lastStruggleStudyDayKey = studyDayKey;
+      cardUpdates.memoryRiskOverrideDayKey = shiftStudyDayKey(studyDayKey, 1);
+      cardUpdates.customStruggleCount = (current.customStruggleCount ?? 0) + 1;
+    }
+
+    if (sessionKind === "daily-required" && isStruggle) {
+      const currentAttempts = dailyReviewState?.requiredRetryCounts[current.id] ?? 0;
+      const attemptCount = currentAttempts + 1;
+      retryResult = {
+        attemptCount,
+        parked: attemptCount >= DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
+      };
+    }
+
+    const parkedRiskUpdates =
+      sessionKind === "daily-required" && isStruggle && retryResult?.parked
+        ? {
+            lastStruggleAt: now,
+            lastStruggleStudyDayKey: getStudyDayKey(now),
+            memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
+          }
+        : null;
+
+    if (parkedRiskUpdates) {
+      Object.assign(cardUpdates, parkedRiskUpdates);
+    }
+
+    queueOfflineStudyReview({
+      userId: user.uid,
+      cardId: current.id,
+      rating,
+      reviewedAt: now,
+      studyDayKey: getStudyDayKey(now),
+      isCorrect,
+      durationMs,
+      sessionKind,
+      cardUpdates,
+      clearMemoryRiskOverrideDayKey: Boolean(schedule && isCorrect),
+    });
+    refreshPendingOfflineReviews();
+
+    const nextCard: Card = {
+      ...current,
+      ...(schedule ?? {}),
+      ...(parkedRiskUpdates ?? {}),
+      ...(sessionKind === "custom" && isStruggle
+        ? {
+            lastStruggleAt: now,
+            lastStruggleStudyDayKey: getStudyDayKey(now),
+            memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
+            customStruggleCount: (current.customStruggleCount ?? 0) + 1,
+          }
+        : {}),
+      ...(schedule && isCorrect ? { memoryRiskOverrideDayKey: undefined } : {}),
+    };
+    const nextCardsSnapshot = cards.map((card) => (card.id === current.id ? nextCard : card));
+
+    if (schedule || (sessionKind === "custom" && isStruggle)) {
+      setCards(nextCardsSnapshot);
+      saveOfflineStudySnapshot(user.uid, { cards: nextCardsSnapshot, decks });
+    }
+
+    if (sessionKind === "daily-required") {
+      if (isStruggle && retryResult) {
+        setDailyReviewState((prev) => prev ? {
+          ...prev,
+          requiredRetryCounts: { ...prev.requiredRetryCounts, [current.id]: retryResult.attemptCount },
+          parkedRequiredCardIds: retryResult.parked && !prev.parkedRequiredCardIds.includes(current.id) ? [...prev.parkedRequiredCardIds, current.id] : prev.parkedRequiredCardIds,
+          updatedAt: now,
+        } : prev);
+      } else {
+        setDailyReviewState((prev) => prev ? { ...prev, completedRequiredCardIds: prev.completedRequiredCardIds.includes(current.id) ? prev.completedRequiredCardIds : [...prev.completedRequiredCardIds, current.id], updatedAt: now } : prev);
+      }
+    } else if (sessionKind === "daily-optional") {
+      setDailyReviewState((prev) => prev ? { ...prev, completedOptionalCardIds: prev.completedOptionalCardIds.includes(current.id) ? prev.completedOptionalCardIds : [...prev.completedOptionalCardIds, current.id], updatedAt: now } : prev);
+    }
+
+    setOfflineMode(true);
+    setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals, starsEarned: prev.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
+    setAnswerFeedback(getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)));
+    setFeedback({ type: "success", message: "Saved offline. This answer will sync when you are back online." });
+
+    if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
+      requeueCurrentCard(nextCard);
+    } else if (isStruggle && sessionKind !== "daily-required") {
+      setShowExplanation(true);
+    } else {
+      goNext();
+    }
+  };
+
   const handleRating = async (rating: CardRating) => {
     if (!current || !sessionKind) return;
     setSavingRating(rating);
     setFeedback(null);
     try {
+      if (offlineMode || (typeof navigator !== "undefined" && !navigator.onLine)) {
+        await handleOfflineRating(rating);
+        return;
+      }
+
       const now = Date.now();
       const isCorrect = isSuccessfulRating(rating);
       const isStruggle = isStruggleRating(rating);
@@ -524,6 +731,32 @@ export default function StudyPage() {
   return (
     <AppPage title="Study" backHref="/dashboard" backLabel="Dashboard" width="study" contentClassName="space-y-4 sm:space-y-6">
       {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
+      {offlineMode || pendingOfflineReviews > 0 ? (
+        <div className="rounded-[1.5rem] border border-warm-border bg-warm-glow p-4 text-sm text-text-secondary">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <div className="font-semibold text-white">
+                {offlineMode ? "Offline study is active" : "Offline answers are waiting to sync"}
+              </div>
+              <p className="mt-1 leading-6">
+                {pendingOfflineReviews > 0
+                  ? `${pendingOfflineReviews} review${pendingOfflineReviews === 1 ? "" : "s"} will sync when the browser is online.`
+                  : offlineSnapshotAt
+                    ? `Using a study snapshot saved ${new Date(offlineSnapshotAt).toLocaleString()}.`
+                    : "Cards are cached locally when a study queue loads."}
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={pendingOfflineReviews === 0 || offlineMode}
+              onClick={() => void syncPendingOfflineReviews()}
+            >
+              Sync now
+            </Button>
+          </div>
+        </div>
+      ) : null}
       {!loaded ? (
         <div className="space-y-4"><Skeleton className="h-28" /><Skeleton className="h-28" /><Skeleton className="h-72" /></div>
       ) : (

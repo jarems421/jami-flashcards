@@ -5,6 +5,7 @@ import {
   detectCardBackSubject,
   normalizeMathNotation,
 } from "@/lib/ai/card-autocomplete";
+import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
 
 describe("card autocomplete helpers", () => {
   it("normalizes common maths notation into readable symbols", () => {
@@ -81,5 +82,33 @@ describe("card autocomplete helpers", () => {
         style: "auto",
       })
     ).toBe("science");
+  });
+});
+
+describe("card generation helpers", () => {
+  it("parses generated JSON card drafts", () => {
+    expect(
+      parseGeneratedCardDrafts(
+        '[{"front":"What is osmosis?","back":"Water moves across a partially permeable membrane."}]'
+      )
+    ).toEqual([
+      {
+        front: "What is osmosis?",
+        back: "Water moves across a partially permeable membrane.",
+      },
+    ]);
+  });
+
+  it("falls back to labelled text blocks", () => {
+    expect(
+      parseGeneratedCardDrafts(
+        "Front: What is diffusion?\nBack: Net movement from high to low concentration."
+      )
+    ).toEqual([
+      {
+        front: "What is diffusion?",
+        back: "Net movement from high to low concentration.",
+      },
+    ]);
   });
 });

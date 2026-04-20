@@ -2,6 +2,7 @@ export const MAX_FRONT_LENGTH = 400;
 export const MAX_BACK_LENGTH = 2_000;
 export const MAX_CARD_TAGS = 10;
 export const MAX_CARD_TAG_LENGTH = 32;
+const MAX_IMPORT_ERROR_MESSAGES = 8;
 
 export type Card = {
   id: string;
@@ -29,6 +30,17 @@ export type Card = {
   lastStruggleStudyDayKey?: string;
   memoryRiskOverrideDayKey?: string;
   customStruggleCount?: number;
+};
+
+export type ImportedCardDraft = {
+  front: string;
+  back: string;
+};
+
+export type CardImportParseResult = {
+  cards: ImportedCardDraft[];
+  errors: string[];
+  skippedRows: number;
 };
 
 function normalizeTagText(value: string): string {
@@ -83,6 +95,201 @@ export function parseCardTagsParam(value: string | null): string[] {
   }
 
   return parseCardTagsInput(value);
+}
+
+function normalizeImportCell(value: string): string {
+  return value.replace(/\u00a0/g, " ").trim();
+}
+
+export function getCardContentKey(front: string, back: string): string {
+  const frontKey = normalizeImportCell(front).replace(/\s+/g, " ").toLowerCase();
+  const backKey = normalizeImportCell(back).replace(/\s+/g, " ").toLowerCase();
+  return `${frontKey}\u001f${backKey}`;
+}
+
+function getImportCellKey(value: string): string {
+  return normalizeImportCell(value).toLowerCase();
+}
+
+function isImportHeader(front: string, back: string): boolean {
+  const frontKey = getImportCellKey(front);
+  const backKey = getImportCellKey(back);
+
+  return (
+    ["front", "term", "question", "prompt"].includes(frontKey) &&
+    ["back", "definition", "answer", "response"].includes(backKey)
+  );
+}
+
+function parseCommaSeparatedFields(line: string): string[] | null {
+  if (!line.includes(",")) {
+    return null;
+  }
+
+  const fields: string[] = [];
+  let current = "";
+  let inQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+
+    if (character === '"') {
+      if (inQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+
+    if (character === "," && !inQuotes) {
+      fields.push(current);
+      current = "";
+      continue;
+    }
+
+    current += character;
+  }
+
+  if (inQuotes) {
+    return null;
+  }
+
+  fields.push(current);
+  return fields;
+}
+
+function splitImportedCardLine(line: string): ImportedCardDraft | null {
+  const tabIndex = line.indexOf("\t");
+  if (tabIndex !== -1) {
+    return {
+      front: normalizeImportCell(line.slice(0, tabIndex)),
+      back: normalizeImportCell(line.slice(tabIndex + 1)),
+    };
+  }
+
+  const pipeIndex = line.indexOf("|");
+  if (pipeIndex !== -1) {
+    return {
+      front: normalizeImportCell(line.slice(0, pipeIndex)),
+      back: normalizeImportCell(line.slice(pipeIndex + 1)),
+    };
+  }
+
+  const commaFields = parseCommaSeparatedFields(line);
+  if (commaFields && commaFields.length >= 2) {
+    return {
+      front: normalizeImportCell(commaFields[0]),
+      back: normalizeImportCell(commaFields.slice(1).join(",")),
+    };
+  }
+
+  return null;
+}
+
+function pushImportError(errors: string[], message: string) {
+  if (errors.length < MAX_IMPORT_ERROR_MESSAGES) {
+    errors.push(message);
+  }
+}
+
+export function parseCardImportText(value: string): CardImportParseResult {
+  const cards: ImportedCardDraft[] = [];
+  const errors: string[] = [];
+  let skippedRows = 0;
+  let contentRows = 0;
+
+  const lines = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const rawLine = lines[index];
+    if (!rawLine.trim()) {
+      continue;
+    }
+
+    contentRows += 1;
+    const lineNumber = index + 1;
+    const parsed = splitImportedCardLine(rawLine);
+
+    if (!parsed) {
+      skippedRows += 1;
+      pushImportError(
+        errors,
+        `Line ${lineNumber}: use Front | Back, Front<Tab>Back, or two CSV columns.`
+      );
+      continue;
+    }
+
+    if (contentRows === 1 && isImportHeader(parsed.front, parsed.back)) {
+      continue;
+    }
+
+    if (!parsed.front || !parsed.back) {
+      skippedRows += 1;
+      pushImportError(errors, `Line ${lineNumber}: front and back are required.`);
+      continue;
+    }
+
+    if (parsed.front.length > MAX_FRONT_LENGTH) {
+      skippedRows += 1;
+      pushImportError(
+        errors,
+        `Line ${lineNumber}: front must be ${MAX_FRONT_LENGTH} characters or less.`
+      );
+      continue;
+    }
+
+    if (parsed.back.length > MAX_BACK_LENGTH) {
+      skippedRows += 1;
+      pushImportError(
+        errors,
+        `Line ${lineNumber}: back must be ${MAX_BACK_LENGTH} characters or less.`
+      );
+      continue;
+    }
+
+    cards.push(parsed);
+  }
+
+  if (skippedRows > errors.length) {
+    errors.push(`${skippedRows - errors.length} more rows need attention.`);
+  }
+
+  return {
+    cards,
+    errors,
+    skippedRows,
+  };
+}
+
+function normalizeExportCell(value: string): string {
+  return value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").replace(/[\t\n]+/g, " ").trim();
+}
+
+function csvEscape(value: string): string {
+  const normalized = normalizeExportCell(value);
+  if (!/[",\n]/.test(normalized)) {
+    return normalized;
+  }
+
+  return `"${normalized.replace(/"/g, '""')}"`;
+}
+
+export function exportCardsToSeparatedText(
+  cards: Array<Pick<Card, "front" | "back">>,
+  format: "tsv" | "csv" = "tsv"
+) {
+  const header = format === "csv" ? "Front,Back" : "Front\tBack";
+  const rows = cards.map((card) => {
+    if (format === "csv") {
+      return `${csvEscape(card.front)},${csvEscape(card.back)}`;
+    }
+
+    return `${normalizeExportCell(card.front)}\t${normalizeExportCell(card.back)}`;
+  });
+
+  return [header, ...rows].join("\n");
 }
 
 export function addCardTag(
