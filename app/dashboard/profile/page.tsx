@@ -76,8 +76,8 @@ export default function ProfilePage() {
         e instanceof FirebaseError && e.code === "auth/requires-recent-login"
           ? "Please sign in again before deleting your account."
           : e instanceof Error
-          ? e.message
-          : "Failed to delete account.";
+            ? e.message
+            : "Failed to delete account.";
       setError(message);
       setIsDeleting(false);
     }
@@ -155,55 +155,54 @@ export default function ProfilePage() {
       </Card>
 
       <Button
-          onClick={() => void handleSignOut()}
-          variant="surface"
-          size="lg"
-          className="w-full justify-start"
-        >
-          Sign out
+        onClick={() => void handleSignOut()}
+        variant="surface"
+        size="lg"
+        className="w-full justify-start"
+      >
+        Sign out
       </Button>
 
       <div className="space-y-4">
         <NotificationSettingsCard userId={user.uid} />
       </div>
 
-        <Card tone="subtle" className="border-error-muted bg-error-muted/20 sm:p-6" padding="md">
-          <SectionHeader
-            title={<span className="text-rose-200">Danger zone</span>}
-            description="Permanently delete your account and data."
-          />
+      <Card tone="subtle" className="border-error-muted bg-error-muted/20 sm:p-6" padding="md">
+        <SectionHeader
+          title={<span className="text-rose-200">Danger zone</span>}
+          description="Permanently delete your account and data."
+        />
 
-          {error ? (
-            <p className="mt-3 text-xs text-rose-200">{error}</p>
-          ) : null}
+        {error ? (
+          <p className="mt-3 text-xs text-rose-200">{error}</p>
+        ) : null}
 
-          {!showDeleteConfirm ? (
+        {!showDeleteConfirm ? (
+          <Button
+            onClick={() => setShowDeleteConfirm(true)}
+            variant="danger"
+            className="mt-4"
+          >
+            Delete Account
+          </Button>
+        ) : (
+          <div className="mt-4 flex flex-wrap gap-2">
             <Button
-              onClick={() => setShowDeleteConfirm(true)}
+              disabled={isDeleting}
+              onClick={() => void handleDeleteAccount()}
               variant="danger"
-              className="mt-4"
             >
-              Delete Account
+              {isDeleting ? "Deleting..." : "Yes, delete everything"}
             </Button>
-          ) : (
-            <div className="mt-4 flex flex-wrap gap-2">
-              <Button
-                disabled={isDeleting}
-                onClick={() => void handleDeleteAccount()}
-                variant="danger"
-              >
-                {isDeleting ? "Deleting..." : "Yes, delete everything"}
-              </Button>
-              <Button
-                onClick={() => setShowDeleteConfirm(false)}
-                variant="secondary"
-              >
-                Cancel
-              </Button>
-            </div>
-          )}
+            <Button
+              onClick={() => setShowDeleteConfirm(false)}
+              variant="secondary"
+            >
+              Cancel
+            </Button>
+          </div>
+        )}
       </Card>
     </AppPage>
   );
 }
-

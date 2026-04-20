@@ -158,6 +158,14 @@ export default function CardsSearchPage() {
       return;
     }
 
+    if (nextFront.length > MAX_FRONT_LENGTH || nextBack.length > MAX_BACK_LENGTH) {
+      setFeedback({
+        type: "error",
+        message: `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`,
+      });
+      return;
+    }
+
     if (tagResult.error) {
       setFeedback({ type: "error", message: tagResult.error });
       return;
@@ -227,7 +235,10 @@ export default function CardsSearchPage() {
       return;
     }
     if (nextFront.length > MAX_FRONT_LENGTH || nextBack.length > MAX_BACK_LENGTH) {
-      setFeedback({ type: "error", message: `Cards must stay under ${MAX_FRONT_LENGTH} / ${MAX_BACK_LENGTH} characters.` });
+      setFeedback({
+        type: "error",
+        message: `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`,
+      });
       return;
     }
     const tagResult = addCardTag(addTags, addPendingTag);

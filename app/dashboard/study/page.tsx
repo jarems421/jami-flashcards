@@ -371,9 +371,21 @@ export default function StudyPage() {
     };
   }, [refreshPendingOfflineReviews, syncPendingOfflineReviews]);
 
-  const availableTags = useMemo(() => Array.from(new Set(cards.flatMap((card) => card.tags))).sort((left, right) => left.localeCompare(right)), [cards]);
-  const requiredDailyCards = useMemo(() => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.requiredCardIds) : []), [cards, dailyReviewState]);
-  const optionalDailyCards = useMemo(() => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.optionalCardIds) : []), [cards, dailyReviewState]);
+  const availableTags = useMemo(
+    () =>
+      Array.from(new Set(cards.flatMap((card) => card.tags))).sort((left, right) =>
+        left.localeCompare(right)
+      ),
+    [cards]
+  );
+  const requiredDailyCards = useMemo(
+    () => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.requiredCardIds) : []),
+    [cards, dailyReviewState]
+  );
+  const optionalDailyCards = useMemo(
+    () => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.optionalCardIds) : []),
+    [cards, dailyReviewState]
+  );
   const remainingRequiredCards = useMemo(() => {
     if (!dailyReviewState) return [];
     const completed = new Set(dailyReviewState.completedRequiredCardIds);
@@ -387,7 +399,10 @@ export default function StudyPage() {
   }, [dailyReviewState, optionalDailyCards]);
   const hasCards = cards.length > 0;
   const hasRecommendedDailyCards = hasCards && remainingRequiredCards.length > 0;
-  const customPreviewCards = useMemo(() => buildCustomReviewCards(cards, selectedDeckIds, selectedTags), [cards, selectedDeckIds, selectedTags]);
+  const customPreviewCards = useMemo(
+    () => buildCustomReviewCards(cards, selectedDeckIds, selectedTags),
+    [cards, selectedDeckIds, selectedTags]
+  );
   const hasCustomFilters = selectedDeckIds.length > 0 || selectedTags.length > 0;
   const customSelectionEmpty = hasCards && customPreviewCards.length === 0;
   const deckNamesById = useMemo(
@@ -395,18 +410,27 @@ export default function StudyPage() {
     [decks]
   );
 
-  const startSession = useCallback((kind: SessionKind) => {
-    const nextCards = kind === "daily-required" ? remainingRequiredCards : kind === "daily-optional" ? remainingOptionalCards : customPreviewCards;
-    setSessionKind(kind);
-    setSessionCards(nextCards);
-    setSessionStats(createEmptySessionStats());
-    setIndex(0);
-    setFlipped(false);
-    setSavingRating(null);
-    setShowExplanation(false);
-    setAnswerFeedback(null);
-    setFeedback(null);
-  }, [customPreviewCards, remainingOptionalCards, remainingRequiredCards]);
+  const startSession = useCallback(
+    (kind: SessionKind) => {
+      const nextCards =
+        kind === "daily-required"
+          ? remainingRequiredCards
+          : kind === "daily-optional"
+            ? remainingOptionalCards
+            : customPreviewCards;
+
+      setSessionKind(kind);
+      setSessionCards(nextCards);
+      setSessionStats(createEmptySessionStats());
+      setIndex(0);
+      setFlipped(false);
+      setSavingRating(null);
+      setShowExplanation(false);
+      setAnswerFeedback(null);
+      setFeedback(null);
+    },
+    [customPreviewCards, remainingOptionalCards, remainingRequiredCards]
+  );
 
   const handleCustomReviewClick = useCallback(() => {
     if (!hasCards) {

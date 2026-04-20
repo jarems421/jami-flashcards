@@ -37,6 +37,7 @@ export default function DecksPage() {
   const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const nameInputRef = useRef<HTMLInputElement>(null);
   const lastForegroundRefreshAtRef = useRef(0);
 
   const loadAll = useCallback(async () => {
@@ -154,6 +155,11 @@ export default function DecksPage() {
   };
 
   const handleDeckDelete = async (deck: Deck) => {
+    const shouldDelete = window.confirm(
+      `Delete ${deck.name}? This will also delete the cards in this deck.`
+    );
+    if (!shouldDelete) return;
+
     setDeletingDeckId(deck.id);
     setFeedback(null);
     try {
@@ -187,21 +193,22 @@ export default function DecksPage() {
             description="Decks are for editing and structure. Study lives in the Study tab."
             action={
               <div className="flex w-full flex-col gap-3 sm:flex-row">
-              <Input
-                placeholder="New deck name"
-                value={name}
-                onChange={(event) => setName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter" && name.trim()) {
-                    event.preventDefault();
-                    void handleCreate();
-                  }
-                }}
-                containerClassName="w-full"
-              />
-              <Button disabled={isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="sm:min-w-[9rem]">
-                {isCreatingDeck ? "Creating..." : "Create deck"}
-              </Button>
+                <Input
+                  ref={nameInputRef}
+                  placeholder="New deck name"
+                  value={name}
+                  onChange={(event) => setName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === "Enter" && name.trim()) {
+                      event.preventDefault();
+                      void handleCreate();
+                    }
+                  }}
+                  containerClassName="w-full"
+                />
+                <Button disabled={isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="sm:min-w-[9rem]">
+                  {isCreatingDeck ? "Creating..." : "Create deck"}
+                </Button>
               </div>
             }
           />
@@ -224,7 +231,7 @@ export default function DecksPage() {
             eyebrow="Start here"
             title="Create your first deck"
             description="Decks keep your cards organised by subject. Add one topic now, then start filling it with flashcards."
-            action={<Button type="button" onClick={() => document.querySelector<HTMLInputElement>("input[placeholder='New deck name']")?.focus()} variant="warm">Name a deck</Button>}
+            action={<Button type="button" onClick={() => nameInputRef.current?.focus()} variant="warm">Name a deck</Button>}
           />
         ) : (
           <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">

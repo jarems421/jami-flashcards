@@ -78,7 +78,7 @@ function toFSRSCard(card: SchedulableCard): FSRSCard {
     };
   }
 
-  // Legacy card or brand-new card — start fresh for FSRS
+  // Legacy card or brand-new card - start fresh for FSRS.
   return createEmptyCard();
 }
 

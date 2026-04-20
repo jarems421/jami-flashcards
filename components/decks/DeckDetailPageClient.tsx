@@ -734,6 +734,17 @@ export default function DeckDetailPageClient() {
       return;
     }
 
+    if (
+      nextFront.length > MAX_FRONT_LENGTH ||
+      nextBack.length > MAX_BACK_LENGTH
+    ) {
+      setFeedback({
+        type: "error",
+        message: `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`,
+      });
+      return;
+    }
+
     const nextTags = tagResult.nextTags;
 
     setSavingCardId(cardId);
@@ -809,6 +820,19 @@ export default function DeckDetailPageClient() {
   };
 
   const deckTagCount = Array.from(new Set(cards.flatMap((card) => card.tags))).length;
+  const filteredCards = useMemo(() => {
+    const term = searchTerm.trim().toLowerCase();
+    if (!term) {
+      return cards;
+    }
+
+    return cards.filter(
+      (card) =>
+        card.front.toLowerCase().includes(term) ||
+        card.back.toLowerCase().includes(term) ||
+        card.tags.some((tag) => tag.toLowerCase().includes(term))
+    );
+  }, [cards, searchTerm]);
 
   return (
     <AppPage
@@ -1297,140 +1321,121 @@ export default function DeckDetailPageClient() {
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
-          {(() => {
-            const term = searchTerm.trim().toLowerCase();
-            const filteredCards = term
-              ? cards.filter(
-                  (card) =>
-                    card.front.toLowerCase().includes(term) ||
-                    card.back.toLowerCase().includes(term) ||
-                    card.tags.some((tag) => tag.toLowerCase().includes(term))
-                )
-              : cards;
-
-            if (filteredCards.length === 0) {
-              return (
-                <EmptyState
-                  emoji="Search"
-                  eyebrow="No match"
-                  title="No cards match"
-                  description={`No cards match "${searchTerm.trim()}". Try a shorter search or check the global Cards page.`}
-                  action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
-                />
-              );
-            }
-
-            return (
-              <div className="grid gap-4 lg:grid-cols-2">
-                {filteredCards.map((card) => (
-            <section key={card.id} className="app-panel p-4">
-                {editingCardId === card.id ? (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap gap-2">
-                    <CardDifficultyBadge card={card} />
-                  </div>
-                  <Input
-                    label="Front"
-                    value={editingFront}
-                    onChange={(event) => setEditingFront(event.target.value)}
-                  />
-                  <CardBackEditor
-                    label="Back"
-                    value={editingBack}
-                    onChange={setEditingBack}
-                    maxLength={MAX_BACK_LENGTH}
-                    rows={6}
-                    disabled={savingCardId === card.id}
-                  />
-                  <CardBackAutocomplete
-                    front={editingFront}
-                    currentBack={editingBack}
-                    deckId={deckId}
-                    deckName={deck.name}
-                    tags={editingTags}
-                    disabled={savingCardId === card.id}
-                    onApply={setEditingBack}
-                  />
-                  <TagInput
-                    tags={editingTags}
-                    pendingTag={editingPendingTag}
-                    availableTags={availableTags}
-                    onTagsChange={setEditingTags}
-                    onPendingTagChange={setEditingPendingTag}
-                    helperText="Suggestions come from tags you already use across all decks."
-                    disabled={savingCardId === card.id}
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    <Button
-                      type="button"
-                      disabled={savingCardId === card.id}
-                      onClick={() => void handleSaveCard(card.id)}
-                    >
-                      {savingCardId === card.id ? "Saving..." : "Save"}
-                    </Button>
-                    <Button
-                      type="button"
-                      disabled={savingCardId === card.id}
-                      onClick={resetEditingCard}
-                      variant="secondary"
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="space-y-4">
-                  <div className="flex flex-wrap items-start justify-between gap-4">
-                    <div className="min-w-0 flex-1 space-y-2">
-                      <div className="text-lg font-medium leading-7 text-white">
-                        {card.front}
+          {filteredCards.length === 0 ? (
+            <EmptyState
+              emoji="Search"
+              eyebrow="No match"
+              title="No cards match"
+              description={`No cards match "${searchTerm.trim()}". Try a shorter search or check the global Cards page.`}
+              action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
+            />
+          ) : (
+            <div className="grid gap-4 lg:grid-cols-2">
+              {filteredCards.map((card) => (
+                <section key={card.id} className="app-panel p-4">
+                  {editingCardId === card.id ? (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap gap-2">
+                        <CardDifficultyBadge card={card} />
                       </div>
-                      <div className="text-sm leading-6 text-text-secondary">
-                        {card.back}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        disabled={deletingCardId === card.id}
-                        onClick={() => startEditingCard(card)}
-                        variant="secondary"
-                      >
-                        Edit
-                      </Button>
-                      <Button
-                        type="button"
-                        disabled={deletingCardId === card.id}
-                        onClick={() => void handleDeleteCard(card.id)}
-                        variant="danger"
-                      >
-                        {deletingCardId === card.id ? "Deleting..." : "Delete"}
-                      </Button>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-wrap gap-2 pt-1">
-                    <CardDifficultyBadge card={card} />
-                    {card.tags.length > 0 ? (
-                      <>
-                      {card.tags.map((tag) => (
-                        <span
-                          key={tag}
-                          className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+                      <Input
+                        label="Front"
+                        value={editingFront}
+                        onChange={(event) => setEditingFront(event.target.value)}
+                        maxLength={MAX_FRONT_LENGTH}
+                      />
+                      <CardBackEditor
+                        label="Back"
+                        value={editingBack}
+                        onChange={setEditingBack}
+                        maxLength={MAX_BACK_LENGTH}
+                        rows={6}
+                        disabled={savingCardId === card.id}
+                      />
+                      <CardBackAutocomplete
+                        front={editingFront}
+                        currentBack={editingBack}
+                        deckId={deckId}
+                        deckName={deck.name}
+                        tags={editingTags}
+                        disabled={savingCardId === card.id}
+                        onApply={setEditingBack}
+                      />
+                      <TagInput
+                        tags={editingTags}
+                        pendingTag={editingPendingTag}
+                        availableTags={availableTags}
+                        onTagsChange={setEditingTags}
+                        onPendingTagChange={setEditingPendingTag}
+                        helperText="Suggestions come from tags you already use across all decks."
+                        disabled={savingCardId === card.id}
+                      />
+                      <div className="flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          disabled={savingCardId === card.id}
+                          onClick={() => void handleSaveCard(card.id)}
                         >
-                          {tag}
-                        </span>
-                      ))}
-                      </>
-                    ) : null}
-                  </div>
-                </div>
-              )}
-            </section>
-          ))}
-              </div>
-            );
-          })()}
+                          {savingCardId === card.id ? "Saving..." : "Save"}
+                        </Button>
+                        <Button
+                          type="button"
+                          disabled={savingCardId === card.id}
+                          onClick={resetEditingCard}
+                          variant="secondary"
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div className="min-w-0 flex-1 space-y-2">
+                          <div className="text-lg font-medium leading-7 text-white">
+                            {card.front}
+                          </div>
+                          <div className="text-sm leading-6 text-text-secondary">
+                            {card.back}
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          <Button
+                            type="button"
+                            disabled={deletingCardId === card.id}
+                            onClick={() => startEditingCard(card)}
+                            variant="secondary"
+                          >
+                            Edit
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={deletingCardId === card.id}
+                            onClick={() => void handleDeleteCard(card.id)}
+                            variant="danger"
+                          >
+                            {deletingCardId === card.id ? "Deleting..." : "Delete"}
+                          </Button>
+                        </div>
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 pt-1">
+                        <CardDifficultyBadge card={card} />
+                        {card.tags.map((tag) => (
+                          <span
+                            key={tag}
+                            className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+                          >
+                            {tag}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </section>
+              ))}
+            </div>
+          )}
         </>
       ) : null}
     </AppPage>
