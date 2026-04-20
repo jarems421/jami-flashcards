@@ -177,6 +177,24 @@ function splitImportedCardLine(line: string): ImportedCardDraft | null {
     };
   }
 
+  const spacedDashMatch = line.match(/\s[-\u2013\u2014]\s/);
+  if (spacedDashMatch?.index !== undefined) {
+    const dashIndex = spacedDashMatch.index;
+    const dashLength = spacedDashMatch[0].length;
+    return {
+      front: normalizeImportCell(line.slice(0, dashIndex)),
+      back: normalizeImportCell(line.slice(dashIndex + dashLength)),
+    };
+  }
+
+  const colonIndex = line.indexOf(":");
+  if (colonIndex !== -1) {
+    return {
+      front: normalizeImportCell(line.slice(0, colonIndex)),
+      back: normalizeImportCell(line.slice(colonIndex + 1)),
+    };
+  }
+
   const commaFields = parseCommaSeparatedFields(line);
   if (commaFields && commaFields.length >= 2) {
     return {
@@ -194,62 +212,134 @@ function pushImportError(errors: string[], message: string) {
   }
 }
 
+function getImportFormatHelp(lineNumber: number) {
+  return `Line ${lineNumber}: use Question | Answer, Question - Answer, Question: Answer, or put the answer on the next line.`;
+}
+
+function addImportedCardDraft(
+  cards: ImportedCardDraft[],
+  errors: string[],
+  draft: ImportedCardDraft,
+  lineNumber: number,
+  isFirstContent: boolean
+) {
+  if (isFirstContent && isImportHeader(draft.front, draft.back)) {
+    return { skippedRows: 0, skippedHeader: true };
+  }
+
+  if (!draft.front || !draft.back) {
+    pushImportError(errors, `Line ${lineNumber}: question and answer are required.`);
+    return { skippedRows: 1, skippedHeader: false };
+  }
+
+  if (draft.front.length > MAX_FRONT_LENGTH) {
+    pushImportError(
+      errors,
+      `Line ${lineNumber}: question must be ${MAX_FRONT_LENGTH} characters or less.`
+    );
+    return { skippedRows: 1, skippedHeader: false };
+  }
+
+  if (draft.back.length > MAX_BACK_LENGTH) {
+    pushImportError(
+      errors,
+      `Line ${lineNumber}: answer must be ${MAX_BACK_LENGTH} characters or less.`
+    );
+    return { skippedRows: 1, skippedHeader: false };
+  }
+
+  cards.push(draft);
+  return { skippedRows: 0, skippedHeader: false };
+}
+
 export function parseCardImportText(value: string): CardImportParseResult {
   const cards: ImportedCardDraft[] = [];
   const errors: string[] = [];
   let skippedRows = 0;
-  let contentRows = 0;
-
+  let isFirstContent = true;
   const lines = value.replace(/\r\n/g, "\n").replace(/\r/g, "\n").split("\n");
 
-  for (let index = 0; index < lines.length; index += 1) {
-    const rawLine = lines[index];
-    if (!rawLine.trim()) {
+  const commitDraft = (draft: ImportedCardDraft, lineNumber: number) => {
+    const result = addImportedCardDraft(
+      cards,
+      errors,
+      draft,
+      lineNumber,
+      isFirstContent
+    );
+    skippedRows += result.skippedRows;
+    isFirstContent = false;
+  };
+
+  for (let index = 0; index < lines.length;) {
+    if (!lines[index].trim()) {
+      index += 1;
       continue;
     }
 
-    contentRows += 1;
-    const lineNumber = index + 1;
-    const parsed = splitImportedCardLine(rawLine);
+    const block: Array<{ line: string; lineNumber: number }> = [];
+    while (index < lines.length && lines[index].trim()) {
+      block.push({ line: lines[index], lineNumber: index + 1 });
+      index += 1;
+    }
 
-    if (!parsed) {
+    const parsedLines = block.map((entry) => ({
+      ...entry,
+      parsed: splitImportedCardLine(entry.line),
+    }));
+    const hasLineDelimitedCards = parsedLines.some((entry) => entry.parsed !== null);
+
+    if (hasLineDelimitedCards) {
+      for (const entry of parsedLines) {
+        if (!entry.parsed) {
+          skippedRows += 1;
+          pushImportError(errors, getImportFormatHelp(entry.lineNumber));
+          isFirstContent = false;
+          continue;
+        }
+
+        commitDraft(entry.parsed, entry.lineNumber);
+      }
+      continue;
+    }
+
+    if (block.length === 1) {
       skippedRows += 1;
-      pushImportError(
-        errors,
-        `Line ${lineNumber}: use Front | Back, Front<Tab>Back, or two CSV columns.`
+      pushImportError(errors, getImportFormatHelp(block[0].lineNumber));
+      isFirstContent = false;
+      continue;
+    }
+
+    if (block.length === 2) {
+      commitDraft(
+        {
+          front: normalizeImportCell(block[0].line),
+          back: normalizeImportCell(block[1].line),
+        },
+        block[0].lineNumber
       );
       continue;
     }
 
-    if (contentRows === 1 && isImportHeader(parsed.front, parsed.back)) {
+    if (block.length % 2 === 0) {
+      for (let pairIndex = 0; pairIndex < block.length; pairIndex += 2) {
+        commitDraft(
+          {
+            front: normalizeImportCell(block[pairIndex].line),
+            back: normalizeImportCell(block[pairIndex + 1].line),
+          },
+          block[pairIndex].lineNumber
+        );
+      }
       continue;
     }
 
-    if (!parsed.front || !parsed.back) {
-      skippedRows += 1;
-      pushImportError(errors, `Line ${lineNumber}: front and back are required.`);
-      continue;
-    }
-
-    if (parsed.front.length > MAX_FRONT_LENGTH) {
-      skippedRows += 1;
-      pushImportError(
-        errors,
-        `Line ${lineNumber}: front must be ${MAX_FRONT_LENGTH} characters or less.`
-      );
-      continue;
-    }
-
-    if (parsed.back.length > MAX_BACK_LENGTH) {
-      skippedRows += 1;
-      pushImportError(
-        errors,
-        `Line ${lineNumber}: back must be ${MAX_BACK_LENGTH} characters or less.`
-      );
-      continue;
-    }
-
-    cards.push(parsed);
+    skippedRows += 1;
+    pushImportError(
+      errors,
+      `Line ${block[0].lineNumber}: this block has an extra question or answer line. Add a blank line between cards or use Question | Answer.`
+    );
+    isFirstContent = false;
   }
 
   if (skippedRows > errors.length) {

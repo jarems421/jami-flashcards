@@ -95,6 +95,30 @@ describe("card import parser", () => {
     ]);
   });
 
+  it("parses friendly dash and colon rows", () => {
+    expect(
+      parseCardImportText("Capital of Japan - Tokyo\nPhotosynthesis: Plants use light")
+        .cards
+    ).toEqual([
+      { front: "Capital of Japan", back: "Tokyo" },
+      { front: "Photosynthesis", back: "Plants use light" },
+    ]);
+  });
+
+  it("parses two-line cards separated by blank lines", () => {
+    expect(
+      parseCardImportText(
+        "Capital of Japan\nTokyo\n\nPhotosynthesis\nPlants use light to make glucose"
+      ).cards
+    ).toEqual([
+      { front: "Capital of Japan", back: "Tokyo" },
+      {
+        front: "Photosynthesis",
+        back: "Plants use light to make glucose",
+      },
+    ]);
+  });
+
   it("reports invalid and overlong rows without dropping valid rows", () => {
     const overlongFront = "x".repeat(MAX_FRONT_LENGTH + 1);
     const result = parseCardImportText(
@@ -104,8 +128,8 @@ describe("card import parser", () => {
     expect(result.cards).toEqual([{ front: "Valid", back: "Card" }]);
     expect(result.skippedRows).toBe(2);
     expect(result.errors).toEqual([
-      "Line 2: use Front | Back, Front<Tab>Back, or two CSV columns.",
-      `Line 3: front must be ${MAX_FRONT_LENGTH} characters or less.`,
+      "Line 2: use Question | Answer, Question - Answer, Question: Answer, or put the answer on the next line.",
+      `Line 3: question must be ${MAX_FRONT_LENGTH} characters or less.`,
     ]);
   });
 });

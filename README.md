@@ -28,7 +28,7 @@ Users create decks to organise subjects, then add cards through either the globa
 
 AI autocomplete can draft the back of a card from the front prompt. The prompt system asks Gemini to choose the right answer style, keep explanations concise, and clean up maths output so symbols such as pi, roots, multiplication dots, and exponents are easier to read.
 
-For larger workflows, the Cards page and deck pages share one clean add-card flow: add one card, paste a question-and-answer list, upload a file, or generate draft cards from notes. Batch adding validates rows, skips duplicate cards, previews the first cards, saves issue reports, and writes cards in Firestore batches. Newly added batch cards are selected automatically so users can add tags only to the cards that need them.
+For larger workflows, the Cards page and deck pages share one clean add-card flow: add one card, paste a question-and-answer list, upload a file, or generate draft cards from notes. Batch adding accepts friendly formats such as `Question | Answer`, `Question - Answer`, `Question: Answer`, two-line cards, and spreadsheet-style first two columns. It validates rows, skips duplicate cards, previews the first cards, saves issue reports, and writes cards in Firestore batches. Newly added batch cards are selected automatically so users can add tags only to the cards that need them.
 
 ### 2. Generate Cards From Notes
 

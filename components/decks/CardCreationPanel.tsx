@@ -638,7 +638,7 @@ export default function CardCreationPanel({
           {renderDeckSelect(listDeckId, setListDeckId, addingListCards)}
           <Textarea
             label="Cards to add"
-            placeholder={"Question | Answer\nCapital of Japan | Tokyo\nPhotosynthesis | Plants turn light into chemical energy"}
+            placeholder={"Capital of Japan | Tokyo\nPhotosynthesis - Plants turn light into chemical energy\nMitosis: Cell division that creates two identical cells\n\nOsmosis\nWater moving through a membrane"}
             value={listText}
             onChange={(event) => setListText(event.target.value)}
             rows={8}
@@ -648,13 +648,22 @@ export default function CardCreationPanel({
           <div className="grid gap-3 lg:grid-cols-2">
             <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4">
               <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Format
+                Accepted formats
               </div>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">
-                Put one card on each line. Use a vertical bar between the question and answer.
-              </p>
+              <div className="mt-2 space-y-2 text-sm leading-6 text-text-secondary">
+                <p>One card per line:</p>
+                <p className="rounded-[1rem] border border-white/[0.08] bg-black/10 px-3 py-2 font-mono text-xs text-text-secondary">
+                  Question | Answer
+                </p>
+                <p>
+                  A dash or colon also works: Question - Answer or Question: Answer.
+                </p>
+                <p>
+                  You can also put the question on one line and the answer on the next. Leave a blank line before the next card.
+                </p>
+              </div>
               <p className="mt-2 text-xs leading-5 text-text-muted">
-                Files from spreadsheets or other flashcard apps are accepted too; Jami reads the first two columns.
+                Spreadsheet and flashcard app files work too when the first column is the question and the second is the answer.
               </p>
               <label className="mt-3 inline-flex min-h-[2.5rem] cursor-pointer items-center justify-center rounded-[1.4rem] border border-white/14 bg-white/[0.05] px-3 py-2 text-sm font-medium text-white transition duration-fast hover:border-white/22 hover:bg-white/[0.08]">
                 Upload a file
