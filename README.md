@@ -5,19 +5,27 @@
 <h1 align="center">Jami Flashcards</h1>
 
 <p align="center">
+  <strong><a href="https://jami-jarems421s-projects.vercel.app">Open the live app</a></strong>
+</p>
+
+<p align="center">
+  Start here: https://jami-jarems421s-projects.vercel.app
+</p>
+
+<p align="center">
   A memory-aware flashcard app with AI-assisted authoring, offline-ready study, actionable analytics, and a constellation reward loop.
 </p>
 
 <p align="center">
   <a href="https://jami-jarems421s-projects.vercel.app"><strong>Live app</strong></a>
-  ·
+  &middot;
   <a href="https://jami-jarems421s-projects.vercel.app/demo"><strong>Public demo</strong></a>
-  ·
+  &middot;
   <a href="https://github.com/jarems421/jami-flashcards"><strong>Source</strong></a>
 </p>
 
 <p align="center">
-  <strong>Next.js 16</strong> · <strong>React 19</strong> · <strong>TypeScript</strong> · <strong>Firebase</strong> · <strong>Tailwind CSS</strong> · <strong>Gemini</strong>
+  <strong>Next.js 16</strong> &middot; <strong>React 19</strong> &middot; <strong>TypeScript</strong> &middot; <strong>Firebase</strong> &middot; <strong>Tailwind CSS</strong> &middot; <strong>Gemini</strong>
 </p>
 
 ---
