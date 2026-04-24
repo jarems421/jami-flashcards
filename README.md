@@ -5,7 +5,15 @@
 <h1 align="center">Jami Flashcards</h1>
 
 <p align="center">
-  A memory-aware flashcard app with AI-assisted authoring, offline-ready study sessions, actionable analytics, and a constellation reward loop.
+  A memory-aware flashcard app with AI-assisted authoring, offline-ready study, actionable analytics, and a constellation reward loop.
+</p>
+
+<p align="center">
+  <a href="https://jami-jarems421s-projects.vercel.app"><strong>Live app</strong></a>
+  ·
+  <a href="https://jami-jarems421s-projects.vercel.app/demo"><strong>Public demo</strong></a>
+  ·
+  <a href="https://github.com/jarems421/jami-flashcards"><strong>Source</strong></a>
 </p>
 
 <p align="center">
@@ -14,119 +22,120 @@
 
 ---
 
-## Why This App Sells Well
+## At a glance
 
-Jami is not just a CRUD flashcard project. It is built around a clear product story:
+Jami is designed to feel like a finished learning product, not just a flashcard CRUD app.
 
-- Create cards quickly through single-card entry, bulk paste, file upload, and AI-assisted drafting.
-- Study with a memory-aware queue that combines FSRS scheduling with a custom risk layer.
-- Keep learning offline with cached study data and queued review sync.
-- Understand what matters next through streak rescue, weak-area surfacing, retention signals, and upcoming workload.
-- Turn consistency into something visible with goals, stars, and a constellation reward system.
+- Build cards quickly with single-card entry, bulk paste, file import, and AI-assisted drafting.
+- Study through a memory-aware review flow that combines FSRS scheduling with custom risk ranking.
+- Stay productive offline with cached study data and queued review sync.
+- See what matters next through retention signals, weak areas, hardest cards, due-load forecasting, and streak pressure.
+- Turn progress into something visible with goals, stars, and constellation rewards.
 
-That combination makes it read well both as a product and as a portfolio project.
+## Live walkthrough
 
-## Best CV Talking Points
+If you open the app from top to bottom, the story is:
 
-- Built a full-stack flashcard PWA using Next.js 16, React 19, TypeScript, Firebase Auth, Firestore, Storage, and Gemini.
-- Implemented FSRS spaced repetition plus a custom memory-risk ranking layer to prioritize overdue, difficult, and recently missed cards.
-- Shipped offline-ready study sessions with cached decks/cards, queued review events, and sync-back when connectivity returns.
-- Designed AI-assisted authoring flows for autocomplete and notes-to-flashcards generation while keeping users in control of final card quality.
-- Built analytics around streak resilience, retention health, weak areas, upcoming review load, and hardest cards.
-- Added a seeded public demo and protected shared study session so reviewers can explore the product safely.
-- Wrote unit tests for analytics, streak prediction, card utilities, auth helpers, notifications, and Firestore security rules.
+1. Start from a polished landing flow with Google sign-in, email sign-in, and a reviewer-friendly public demo.
+2. Build a card library through decks, tags, bulk imports, and AI-assisted draft generation.
+3. Study through Daily Review for the highest-risk cards or Focused Review for targeted deck/tag practice.
+4. Use Insights to understand weak areas, upcoming workload, streak pressure, and hardest cards.
+5. Track longer-term progress through goals, stars, and the constellation system.
 
-## Feature Highlights
+## Heavy hitters
 
-### 1. Fast card creation
+### 1. Memory-aware study engine
+
+- Daily Review is ranked by memory risk, not just due date order.
+- FSRS provides the scheduling base layer.
+- A custom risk model pulls in overdue pressure, lapses, and recent struggle history.
+- Required and optional review queues keep the session focused without feeling punishing.
+
+### 2. Fast card authoring
 
 - Single-card entry for quick capture.
-- Bulk add from pasted lists and spreadsheet-like formats.
-- File upload for notes and large card sets.
-- Shared tag system across decks for flexible filtering.
-- Export helpers for deck-level CSV and TSV output.
+- Paste-list import for spreadsheet-style workflows.
+- Notes-to-cards generation with editable drafts.
+- AI card-back autocomplete to speed up writing without auto-committing weak output.
+- Export helpers for TSV and CSV deck dumps.
 
-### 2. AI-assisted authoring
+### 3. Useful analytics
 
-- Card-back autocomplete from a front prompt.
-- Notes-to-flashcards generation with editable drafts.
-- Human-in-the-loop save flow so AI output is never blindly committed.
-- Server-side API routes keep secrets out of the client bundle.
+- Retention health and due-load summaries.
+- Weakest decks, tags, and hardest cards.
+- Streak rescue and recent activity changes.
+- Coverage and activity metrics that tell the user what to do next, not just what already happened.
 
-### 3. Memory-aware study
+### 4. Offline-ready product behavior
 
-- Daily Review is prioritized by real memory risk, not just raw due date.
-- Custom Review supports deck and tag targeting for exam prep.
-- Struggle handling avoids trapping users on one card forever.
-- Inline feedback keeps the study loop fast and calm.
+- Local snapshots for cards and decks.
+- Queued review events while offline.
+- Sync-back when connectivity returns.
+- PWA and notification foundations already in place.
 
-### 4. Offline-ready experience
+### 5. Demo and presentation readiness
 
-- Local study snapshot for cards and decks.
-- Review answers can queue while offline.
-- Automatic sync restores server state when the browser reconnects.
-- PWA foundations and notification infrastructure are already in place.
+- Public preview at `/demo`.
+- Shared study session for safe hands-on review.
+- Demo protections block destructive edits while keeping the review loop accessible.
+- Product framing, empty states, and navigation are tuned for interviews, portfolio walkthroughs, and live demos.
 
-### 5. Useful analytics
+## Architecture
 
-- Streak prediction with rescue target guidance.
-- Retention health and overdue pressure summaries.
-- Weakest decks/tags and hardest cards.
-- Accuracy and focus-time trends.
-- Upcoming schedule forecast and library coverage metrics.
+```mermaid
+flowchart LR
+    A[Browser UI<br/>Next.js App Router] --> B[Client state and study shell]
+    B --> C[Next.js route handlers]
+    B --> D[Offline snapshot and queued review sync]
 
-### 6. Product polish
+    C --> E[Firebase Auth]
+    C --> F[Firestore]
+    C --> G[Firebase Storage]
+    C --> H[Gemini API]
+    C --> I[Web Push]
 
-- Mobile-first interface with large touch targets and strong empty states.
-- Goal system tied to constellation stars for visible progress.
-- Seeded public demo plus shared study session for safe reviewer access.
+    J[Demo admin services] --> F
+    J --> E
 
-## What Makes It Technically Strong
+    F --> K[Decks and cards]
+    F --> L[Goals, stars, constellation state]
+    F --> M[Study activity and daily review state]
 
-### Study engine
+    H --> N[AI autocomplete and notes-to-cards drafts]
+    I --> O[Digest notifications]
+```
 
-- `ts-fsrs` drives base spaced-repetition scheduling.
-- A custom memory-risk model layers on top of FSRS state, lapses, overdue pressure, and recent struggle history.
-- Daily Review snapshots are persisted so the app can separate recommended work from optional practice.
+## Why it reads well on a CV
 
-### Full-stack architecture
+- Full-stack learning product built with Next.js 16, React 19, TypeScript, Firebase Auth, Firestore, Storage, and Gemini.
+- FSRS spaced repetition extended with a custom memory-risk ranking layer.
+- Offline-capable study flow with cached data and deferred sync.
+- AI-assisted authoring designed with human review in the loop.
+- Analytics, goals, and reward systems connected into one coherent product story.
+- Safe public demo and shared study mode for portfolio and interview walkthroughs.
+- Unit and rules testing across card utilities, analytics, auth, notifications, demo routes, and Firestore permissions.
 
-- Next.js App Router with clear server/client boundaries.
-- Firebase Authentication for identity.
-- Firestore for decks, cards, goals, study state, activity, stars, and profile data.
-- Firebase Storage for profile photo uploads.
-- Admin-side routes for demo seeding, scheduled jobs, and privileged operations.
-
-### Safety and trust
-
-- Firestore rules protect ownership and restrict shared demo behavior.
-- Demo mode allows study-safe progress while blocking destructive account mutations.
-- AI functionality runs through server routes so keys never reach the client.
-
-## Repo Tour
+## Product map
 
 ```text
 app/
   api/ai/                AI autocomplete, generation, chat, and explanation routes
-  api/demo/              Shared demo login and reset routes
+  api/demo/              Demo login and refresh routes
   api/notifications/     Digest and notification test routes
   dashboard/             Authenticated product experience
   demo/                  Public product preview
 components/
+  decks/                 Deck editing, card editing, import, tags, exports
   demo/                  Shared demo entry points
-  decks/                 Deck editing, card editing, bulk add, tags, exports
-  layout/                App shell, top bar, notices, navigation
-  notifications/         Push preference UI
-  profile/               Profile and account components
+  layout/                App shell, notices, navigation
   stats/                 Analytics presentation
-  study/                 Active study flow and assistant UI
+  study/                 Study flow and assistant UI
   ui/                    Shared design system primitives
 lib/
   ai/                    Prompting and AI output cleanup
   auth/                  Auth context and listeners
-  constellation/         Goal reward visualization
-  demo/                  Shared demo mode helpers
-  study/                 Scheduling, activity, analytics, memory risk, offline queue
+  demo/                  Demo mode helpers
+  study/                 Scheduling, analytics, memory risk, offline queue
 services/
   ai/                    Client helpers for AI endpoints
   auth/                  Sign-in and account lifecycle helpers
@@ -137,28 +146,34 @@ services/
 tests/                   Unit tests and Firestore rules tests
 ```
 
-## Tech Stack
+## Tech stack
 
 | Area | Tools |
 | --- | --- |
 | Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
 | Backend | Firebase Auth, Firestore, Storage, Admin SDK |
 | AI | Google Gemini via `@google/generative-ai` |
-| Study scheduling | `ts-fsrs` plus custom memory-risk ranking |
+| Study engine | `ts-fsrs` plus custom memory-risk ranking |
 | Charts | Recharts |
 | Testing | Vitest, Firebase rules testing |
-| Deployment | Vercel-compatible routes and scheduled jobs |
+| Deployment | Vercel |
 
-## Local Setup
+## Demo mode
+
+- `https://jami-jarems421s-projects.vercel.app/demo` is the public preview.
+- The shared study session opens a protected demo account without exposing real credentials.
+- On the Hobby Vercel plan, the demo workspace refreshes on access when stale.
+
+## Local setup
 
 ### Prerequisites
 
 - Node.js 20+
 - A Firebase project with Authentication, Firestore, and Storage enabled
-- Gemini API key if you want to use AI authoring features
-- Web Push VAPID keys if you want to test notifications
+- Gemini API key if you want AI authoring features
+- Web Push VAPID keys if you want notifications
 
-### Install
+### Run locally
 
 ```bash
 git clone https://github.com/jarems421/jami-flashcards.git
@@ -168,7 +183,7 @@ cp .env.example .env.local
 npm run dev
 ```
 
-App URL:
+Local app:
 
 ```text
 http://localhost:3000
@@ -176,23 +191,7 @@ http://localhost:3000
 
 Environment variables are documented in [`.env.example`](.env.example).
 
-## Demo Mode
-
-The repo supports a seeded demo experience:
-
-- `/demo` is the public read-only preview.
-- A shared study session can be started through the demo login route.
-- Demo seeding and refresh behavior are handled through `app/api/demo/*` and the demo admin helpers.
-- On the Hobby Vercel plan, the shared demo refreshes on access when stale and notification digests run on the single daily cron.
-
-To enable it locally or in deployment, configure the relevant demo env vars in `.env.local`:
-
-- `DEMO_MODE_ENABLED`
-- `NEXT_PUBLIC_DEMO_MODE_ENABLED`
-- `DEMO_USER_ID`
-- `DEMO_RESET_SECRET`
-
-## Useful Scripts
+## Useful scripts
 
 | Command | Purpose |
 | --- | --- |
@@ -207,31 +206,12 @@ To enable it locally or in deployment, configure the relevant demo env vars in `
 
 ## Verification
 
-Recommended checks before review or deploy:
-
 ```bash
 npm run typecheck
 npm run lint
 npm test
 npm run build
 ```
-
-## Good Portfolio Angles
-
-If you are showcasing this project, the strongest angles are:
-
-- Product thinking: the app is opinionated about what the learner should do next.
-- Systems design: study state, activity tracking, analytics, and rewards all connect cleanly.
-- Reliability: offline queueing, Firestore rules, and demo-safe constraints show operational thinking.
-- AI restraint: AI speeds up authoring without replacing user control.
-- UX maturity: the project includes onboarding, empty states, actionable stats, and reviewer-friendly demo access.
-
-## Roadmap
-
-- Add end-to-end coverage for the full study loop and offline sync recovery.
-- Keep validating and tuning the memory-risk model with real review behavior.
-- Expand deck sharing and richer import/export workflows.
-- Grow the constellation system once the core study engine is fully hardened.
 
 ## License
 
