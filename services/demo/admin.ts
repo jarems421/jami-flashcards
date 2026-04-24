@@ -45,6 +45,7 @@ type DemoSeed = {
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+const DEMO_REFRESH_WINDOW_MS = 60 * 60 * 1000;
 const BATCH_LIMIT = 400;
 const ACTIVE_CONSTELLATION_ID = "initial";
 const ACTIVE_CONSTELLATION_STATE_DOC_ID = "active";
@@ -504,6 +505,7 @@ function buildDemoSeed(userId: string, now = Date.now()): DemoSeed {
       username: "Jami Demo",
       createdAt: now - 30 * DAY_MS,
       updatedAt: now,
+      resetAt: now,
       demoMode: true,
     },
     decks,
@@ -613,7 +615,7 @@ export async function issueDemoCustomToken() {
   }
 
   const demoUserId = requireDemoUserId();
-  await ensureDemoAuthUser(demoUserId);
+  await ensureFreshDemoWorkspace();
   return getAdminAuth().createCustomToken(demoUserId, { demo: true });
 }
 
@@ -706,6 +708,31 @@ export async function resetDemoWorkspace(now = Date.now()) {
   };
 }
 
+export async function ensureFreshDemoWorkspace(now = Date.now()) {
+  if (!isDemoModeEnabledServer()) {
+    throw new Error("Demo mode is disabled.");
+  }
+
+  const adminDb = getAdminDb();
+  const demoUserId = requireDemoUserId();
+
+  await ensureDemoAuthUser(demoUserId);
+
+  const userSnapshot = await adminDb.collection("users").doc(demoUserId).get();
+  const userData = userSnapshot.data();
+  const resetAt =
+    typeof userData?.resetAt === "number" && Number.isFinite(userData.resetAt)
+      ? userData.resetAt
+      : null;
+
+  if (resetAt === null || now - resetAt >= DEMO_REFRESH_WINDOW_MS) {
+    await resetDemoWorkspace(now);
+    return true;
+  }
+
+  return false;
+}
+
 export async function loadDemoSnapshot(): Promise<DemoSnapshot | null> {
   if (!isDemoModeEnabledServer()) {
     return null;
@@ -717,6 +744,7 @@ export async function loadDemoSnapshot(): Promise<DemoSnapshot | null> {
   }
 
   const adminDb = getAdminDb();
+  await ensureFreshDemoWorkspace();
   const [userSnapshot, deckSnapshot, cardSnapshot, activitySnapshot, goalsSnapshot, starsSnapshot, constellationsSnapshot, constellationStateSnapshot] =
     await Promise.all([
       adminDb.collection("users").doc(demoUserId).get(),

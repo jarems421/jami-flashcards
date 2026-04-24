@@ -182,7 +182,8 @@ The repo supports a seeded demo experience:
 
 - `/demo` is the public read-only preview.
 - A shared study session can be started through the demo login route.
-- Demo seeding and reset behavior are handled through `app/api/demo/*`.
+- Demo seeding and refresh behavior are handled through `app/api/demo/*` and the demo admin helpers.
+- On the Hobby Vercel plan, the shared demo refreshes on access when stale and notification digests run on the single daily cron.
 
 To enable it locally or in deployment, configure the relevant demo env vars in `.env.local`:
 
