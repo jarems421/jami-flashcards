@@ -1080,7 +1080,7 @@ export default function StudyPage() {
                   </div>
                   <div className="mx-auto w-full max-w-[62rem] cursor-pointer perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
                     <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
-                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.08] bg-[radial-gradient(circle_at_50%_18%,rgba(255,255,255,0.08),transparent_34%),linear-gradient(180deg,rgba(31,22,54,0.96),rgba(15,10,30,0.96))] p-5 shadow-[0_18px_44px_rgba(8,2,26,0.24)] [backface-visibility:hidden] sm:p-8 lg:p-10">
+                      <div className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] sm:p-8 lg:p-10">
                         <div className="flex items-center justify-between gap-3">
                           <div className="min-w-0 text-xs font-medium text-text-muted">
                             {deckNamesById[current.deckId] ?? "Flashcard"}
@@ -1105,7 +1105,7 @@ export default function StudyPage() {
                         </div>
                         <div className="text-center text-xs font-medium text-text-muted">Tap anywhere on the card or press Space to reveal</div>
                       </div>
-                      <div className="absolute inset-0 flex flex-col rounded-[2rem] border border-white/[0.12] bg-[radial-gradient(circle_at_50%_18%,rgba(255,199,234,0.09),transparent_36%),linear-gradient(180deg,rgba(35,25,62,0.98),rgba(17,11,34,0.98))] p-5 shadow-[0_18px_44px_rgba(8,2,26,0.24)] [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
+                      <div className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
                         <div className="text-xs font-normal tracking-[0.06em] text-text-muted">Answer</div>
                         <div className="flex flex-1 items-center justify-center py-6">
                           <StudyText
