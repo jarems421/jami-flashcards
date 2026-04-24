@@ -453,7 +453,7 @@ export default function StatsPage() {
                   ? "Start with a few cards and this page will begin steering your next best study decision."
                   : streakPrediction.studiedToday
                     ? "Today is already logged, so this is a good moment for optional practice or library cleanup."
-                    : `A short focused session should be enough to keep momentum moving. ${streakPrediction.actionLabel}`}
+                    : `A short focused session should be enough to keep momentum moving. ${streakPrediction.actionLabel.replace(/^Suggested session:\s*/i, "")}`}
               </p>
               <div className="mt-5 flex flex-wrap gap-3">
                 <Link

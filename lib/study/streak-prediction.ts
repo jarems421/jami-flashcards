@@ -150,8 +150,8 @@ export function predictStudyStreak(
       riskTier,
       headline: "Today's streak is already protected.",
       explanation:
-        `You already logged study activity today, and you've studied ${trailing7.activeDays} of the last 7 days. The remaining backlog is ${dueBacklog} card${dueBacklog === 1 ? "" : "s"}.`,
-      actionLabel: "Keep going only if you want extra practice.",
+        `You already studied today, so the streak is safe. You've been active ${trailing7.activeDays} of the last 7 days, and there are ${dueBacklog} card${dueBacklog === 1 ? "" : "s"} still available if you want extra practice.`,
+      actionLabel: "No rescue session needed today.",
     };
   }
 
@@ -167,12 +167,12 @@ export function predictStudyStreak(
       dueBacklog,
       overdueBacklog,
       riskTier,
-      headline: "A fresh streak is within reach.",
+      headline: "You can start a new streak today.",
       explanation:
         lastStudyDayKey
-          ? `The previous streak is already broken, but you've still studied ${trailing7.activeDays} of the last 7 days. There are ${dueBacklog} due card${dueBacklog === 1 ? "" : "s"} ready for a reset session.`
-          : `No streak is active yet. A short session on the ${dueBacklog} available card${dueBacklog === 1 ? "" : "s"} is enough to start one.`,
-      actionLabel: `Study ${rescueCards} cards for about ${rescueMinutes} min to start a new streak.`,
+          ? `The previous streak has ended, but you've still been active ${trailing7.activeDays} of the last 7 days. There are ${dueBacklog} card${dueBacklog === 1 ? "" : "s"} ready, so a short session is enough to restart momentum today.`
+          : `No streak is active yet. You have ${dueBacklog} card${dueBacklog === 1 ? "" : "s"} ready, and a short first session is enough to start one.`,
+      actionLabel: `Suggested session: ${rescueCards} cards or about ${rescueMinutes} min.`,
     };
   }
 
@@ -189,10 +189,12 @@ export function predictStudyStreak(
     riskTier,
     headline:
       probabilityPercent >= 75
-        ? `${currentStreak}-day streak looks salvageable today.`
-        : `${currentStreak}-day streak is under pressure today.`,
+        ? `${currentStreak}-day streak is on track.`
+        : probabilityPercent >= 55
+          ? `${currentStreak}-day streak needs a short session.`
+          : `${currentStreak}-day streak needs attention today.`,
     explanation:
-      `You've studied ${trailing7.activeDays} of the last 7 days, with ${dueBacklog} due card${dueBacklog === 1 ? "" : "s"} and ${overdueBacklog} overdue. A focused catch-up session should be enough before the next study boundary.`,
-    actionLabel: `Study ${rescueCards} cards for about ${rescueMinutes} min to likely keep the streak alive.`,
+      `You have not studied yet today. You've been active ${trailing7.activeDays} of the last 7 days, with ${dueBacklog} card${dueBacklog === 1 ? "" : "s"} due and ${overdueBacklog} already overdue, so this panel is suggesting a catch-up session today.`,
+    actionLabel: `Suggested session: ${rescueCards} cards or about ${rescueMinutes} min.`,
   };
 }

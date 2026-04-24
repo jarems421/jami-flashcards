@@ -232,7 +232,7 @@ async function countUrgentGoals(userId: string, now: number) {
 }
 
 export async function GET(request: NextRequest) {
-  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET}`) {
+  if (request.headers.get("authorization") !== `Bearer ${process.env.CRON_SECRET?.trim() ?? ""}`) {
     return new Response("Unauthorized", { status: 401 });
   }
 

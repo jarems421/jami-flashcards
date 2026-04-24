@@ -3,18 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { FirebaseError } from "firebase/app";
-import {
-  signUpWithEmail,
-  signInWithEmail,
-} from "@/services/auth";
+import { signUpWithEmail, signInWithEmail } from "@/services/auth";
 import { listenToAuth } from "@/lib/auth/auth-listener";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, Input, PageHero, StatTile } from "@/components/ui";
+import { Button, Card, Input, PageHero } from "@/components/ui";
 
 export default function AuthPage() {
   const router = useRouter();
   const routerRef = useRef(router);
-
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignInMode, setIsSignInMode] = useState(false);
@@ -52,9 +48,9 @@ export default function AuthPage() {
       } else {
         await signUpWithEmail(trimmedEmail, password);
       }
-    } catch (error) {
-      console.error(error);
-      const maybeCode = error instanceof FirebaseError ? error.code : undefined;
+    } catch (nextError) {
+      console.error(nextError);
+      const maybeCode = nextError instanceof FirebaseError ? nextError.code : undefined;
       setError(friendlyAuthError(maybeCode));
     } finally {
       setLoading(false);
@@ -71,48 +67,45 @@ export default function AuthPage() {
       title={isSignInMode ? "Sign In" : "Create Account"}
       backHref="/"
       backLabel="Home"
-      width="2xl"
+      width="xl"
       className="flex flex-col justify-center"
       contentClassName="space-y-6 sm:space-y-8"
     >
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.05fr)_360px] xl:gap-8">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.02fr)_360px] xl:gap-8">
         <PageHero
           className="animate-fade-in"
-          eyebrow={isSignInMode ? "Account access" : "Create your account"}
+          eyebrow={isSignInMode ? "Email sign-in" : "Create account"}
           title={
             isSignInMode
-              ? "Pick up your study flow right where you left it."
-              : "Start a study system you can keep improving over time."
+              ? "Welcome back."
+              : "Create your account and keep everything in one place."
           }
           description={
             <>
               <span className="block text-base leading-7 text-text-secondary sm:text-lg">
                 {isSignInMode
-                  ? "Sign in to keep your decks, study history, goals, and stars in one place."
-                  : "Create an account to save your library, revisit your review history, and make progress visible across sessions."}
+                  ? "Sign in with your email and password to open your decks, study history, goals, and stars."
+                  : "Use email if you want a straightforward account with a password instead of Google sign-in."}
               </span>
               <span className="mt-4 block text-sm leading-7 text-text-muted sm:text-base">
-                Email sign-in is for the durable version of the product: your cards, your progress, and your longer-term study pattern.
+                Your cards, review history, and progress stay tied to this account.
               </span>
             </>
           }
           aside={
-            <div className="grid min-w-[17rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
+            <div className="grid min-w-[16rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
               {[
                 {
                   label: "Library",
-                  value: "Decks + cards",
-                  detail: "Keep every subject, edit, and tag attached to one account.",
+                  detail: "Keep decks, cards, and tags in one place.",
                 },
                 {
-                  label: "Review",
-                  value: "History + schedule",
-                  detail: "Your queue stays tied to past ratings and future due dates.",
+                  label: "Study history",
+                  detail: "Come back to the same review state on your next session.",
                 },
                 {
                   label: "Progress",
-                  value: "Goals + stars",
-                  detail: "Track progress beyond a single session and keep momentum visible.",
+                  detail: "Goals and stars keep building over time.",
                 },
               ].map((item) => (
                 <div
@@ -122,8 +115,7 @@ export default function AuthPage() {
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
                     {item.label}
                   </div>
-                  <div className="mt-2 text-sm font-semibold text-white">{item.value}</div>
-                  <p className="mt-1 text-xs leading-5 text-text-secondary">{item.detail}</p>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{item.detail}</p>
                 </div>
               ))}
             </div>
@@ -135,12 +127,12 @@ export default function AuthPage() {
             {isSignInMode ? "Sign in with email" : "Create with email"}
           </div>
           <h2 className="mt-3 text-[1.45rem] font-medium tracking-tight text-white sm:text-[1.7rem]">
-            {isSignInMode ? "Welcome back." : "Set up your account."}
+            {isSignInMode ? "Enter your details." : "Set up your login."}
           </h2>
           <p className="mt-3 text-sm leading-7 text-text-secondary">
             {isSignInMode
               ? "Use the email and password linked to your account."
-              : "Add an email and password so your decks and study history stay with you."}
+              : "Choose an email and password to save your study space."}
           </p>
 
           {error ? (
@@ -154,7 +146,7 @@ export default function AuthPage() {
               event.preventDefault();
               void handleSubmit();
             }}
-            className="space-y-4"
+            className="mt-5 space-y-4"
           >
             <Input
               type="email"
@@ -200,7 +192,7 @@ export default function AuthPage() {
               Prefer Google?
             </div>
             <p className="mt-2 text-sm leading-6 text-text-secondary">
-              The quickest Google sign-in path lives on the home page.
+              Go back home if you want the quicker Google sign-in path.
             </p>
             <Button
               type="button"
@@ -209,28 +201,10 @@ export default function AuthPage() {
               className="mt-4 w-full justify-center"
               onClick={() => router.push("/")}
             >
-              Back to home
+              Back home
             </Button>
           </div>
         </Card>
-      </div>
-
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatTile
-          label="Synced library"
-          value="Decks + cards"
-          detail="Keep subjects, edits, and tags together instead of rebuilding them each session."
-        />
-        <StatTile
-          label="Study history"
-          value="Ratings + due dates"
-          detail="Your review schedule keeps learning from what happened in earlier sessions."
-        />
-        <StatTile
-          label="Longer-term signal"
-          value="Goals + stars"
-          detail="The product keeps motivation and progress visible after the first study burst."
-        />
       </div>
     </AppPage>
   );

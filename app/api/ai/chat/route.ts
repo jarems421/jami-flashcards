@@ -8,7 +8,7 @@ import { hasDemoClaim } from "@/lib/demo/token";
 
 export const runtime = "nodejs";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY ?? "";
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 
 const MAX_CARDS = 200;
 const MAX_MESSAGES = 20;

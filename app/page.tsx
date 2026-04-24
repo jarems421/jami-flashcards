@@ -37,9 +37,8 @@ export default function Home() {
       }
     });
 
-    // Handle Google redirect result when popup fallback triggers a redirect.
-    void handleGoogleRedirectResult().catch((error) => {
-      console.error("Redirect result error:", error);
+    void handleGoogleRedirectResult().catch((nextError) => {
+      console.error("Redirect result error:", nextError);
     });
 
     return () => unsubscribe();
@@ -47,46 +46,49 @@ export default function Home() {
 
   return (
     <AppPage
-      title="Welcome"
-      width="3xl"
+      title="Jami"
+      width="2xl"
       className="flex flex-col justify-center"
       contentClassName="space-y-6 sm:space-y-8"
     >
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.12fr)_360px]">
+      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.1fr)_360px] xl:gap-8">
         <PageHero
           className="animate-fade-in"
-          eyebrow="Study that sticks"
-          title="Build a calmer revision system that still feels presentation-ready."
+          eyebrow="Jami"
+          title="Study with a calmer daily rhythm."
           description={
             <>
               <span className="block text-base leading-7 text-text-secondary sm:text-lg">
-                Create a clean card library, review with memory-aware scheduling, and turn steady study into progress you can actually see.
+                Build your card library, review what matters next, and keep progress visible without the app feeling noisy.
               </span>
               <span className="mt-4 block text-sm leading-7 text-text-muted sm:text-base">
-                Jami is built to feel strong both as a daily study tool and as a portfolio-grade product walkthrough.
+                Sign in to pick up your decks and study history, or open the demo first if you just want a quick feel for the product.
               </span>
             </>
           }
           aside={
-            <div className="grid min-w-[17rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
+            <div className="grid min-w-[16rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
               {[
                 {
-                  label: "Daily Review",
-                  value: "FSRS + memory risk",
-                  detail: "The cards most likely to slip come forward first.",
+                  label: "Build",
+                  value: "Cards, decks, tags",
+                  detail: "Capture one card or import a full batch.",
                 },
                 {
-                  label: "Focused Review",
-                  value: "Decks + tags",
-                  detail: "Build targeted sessions whenever you need exam practice.",
+                  label: "Review",
+                  value: "Daily + focused",
+                  detail: "Stay on top of the main queue or target one topic.",
                 },
                 {
-                  label: "Proof",
-                  value: "Insights, goals, stars",
-                  detail: "Show that the product thinks beyond the core flashcard loop.",
+                  label: "Track",
+                  value: "Insights + goals",
+                  detail: "See weak areas, overdue load, and visible progress.",
                 },
               ].map((item) => (
-                <div key={item.label} className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3">
+                <div
+                  key={item.label}
+                  className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3"
+                >
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
                     {item.label}
                   </div>
@@ -100,19 +102,21 @@ export default function Home() {
 
         <Card className="animate-slide-up sm:p-6" padding="lg">
           <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-warm-accent">
-            Start here
+            Sign in
           </div>
-          <h2 className="mt-3 text-[1.55rem] font-medium tracking-tight text-white sm:text-[1.85rem]">
-            Pick the fastest way into the product.
+          <h2 className="mt-3 text-[1.5rem] font-medium tracking-tight text-white sm:text-[1.75rem]">
+            Continue into your workspace.
           </h2>
-          <p className="mt-4 text-sm leading-7 text-text-secondary sm:text-base">
-            Google is the quickest start. Email sign-in is here if you want a separate account and password.
+          <p className="mt-3 text-sm leading-7 text-text-secondary sm:text-base">
+            Google is the quickest start. Email sign-in is here if you would rather use a password.
           </p>
+
           {error ? (
             <div className="mt-5 rounded-2xl border border-error-muted bg-error-muted px-4 py-3 text-sm text-rose-100">
               {error}
             </div>
           ) : null}
+
           <div className="mt-6 space-y-3">
             <Button
               disabled={isSigningIn}
@@ -123,9 +127,9 @@ export default function Home() {
 
                 try {
                   await signInWithGoogle();
-                } catch (error) {
+                } catch (nextError) {
                   const maybeCode =
-                    error instanceof FirebaseError ? error.code : undefined;
+                    nextError instanceof FirebaseError ? nextError.code : undefined;
                   if (maybeCode !== "auth/popup-closed-by-user") {
                     setError(
                       maybeCode
@@ -133,7 +137,7 @@ export default function Home() {
                         : "Google sign-in failed. Please try again."
                     );
                   }
-                  console.error(error);
+                  console.error(nextError);
                   setIsSigningIn(false);
                 }
               }}
@@ -151,13 +155,14 @@ export default function Home() {
               Continue with Email
             </Button>
           </div>
+
           {demoEnabled ? (
             <div className="mt-6 rounded-[1.35rem] border border-white/[0.08] bg-white/[0.04] p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
                 Preview first
               </div>
               <p className="mt-2 text-sm leading-6 text-text-secondary">
-                Explore the seeded workspace before you create an account.
+                Open the seeded workspace and try the study flow before creating an account.
               </p>
               <Button
                 type="button"
@@ -166,112 +171,29 @@ export default function Home() {
                 className="mt-4 w-full justify-center"
                 onClick={() => router.push("/demo")}
               >
-                Explore public demo
+                Open public demo
               </Button>
             </div>
           ) : null}
-          <div className="mt-6 grid gap-3">
-            {[
-              {
-                eyebrow: "Build",
-                text: "Create one card, paste a batch, or turn notes into drafts without losing editing control.",
-              },
-              {
-                eyebrow: "Study",
-                text: "Daily Review keeps slipping cards visible while Focused Review stays open for one deck, one tag, or one weak area.",
-              },
-              {
-                eyebrow: "Present",
-                text: "Insights, goals, offline study, and stars make the app feel like a finished product, not a thin demo.",
-              },
-            ].map((item) => (
-              <div key={item.eyebrow} className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  {item.eyebrow}
-                </div>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">{item.text}</p>
-              </div>
-            ))}
-          </div>
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-3">
         <StatTile
-          label="Create cards"
+          label="Build cards"
           value="Single, paste, or notes"
-          detail="Draft cards one by one, import a list, or turn notes into editable card drafts."
+          detail="Capture a card quickly or bring in a larger set without breaking flow."
         />
         <StatTile
-          label="Review flow"
+          label="Review"
           value="Daily + focused"
           detail="Move between the main queue and targeted sessions without losing your place."
         />
         <StatTile
-          label="Product depth"
+          label="Track progress"
           value="Insights, goals, stars"
-          detail="The walkthrough naturally reaches analytics, motivation, and longer-term retention design."
+          detail="See what needs attention next and keep the progress feeling visible."
         />
-      </div>
-
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.18fr)_minmax(300px,0.82fr)]">
-        <Card className="animate-fade-in sm:p-6" padding="lg">
-          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-warm-accent">
-            What makes it interview-ready
-          </div>
-          <h2 className="mt-3 text-[1.4rem] font-medium tracking-tight text-white sm:text-[1.7rem]">
-            A walkthrough can move from setup to signal without dead ends.
-          </h2>
-          <p className="mt-4 text-sm leading-7 text-text-secondary sm:text-base">
-            The story starts with clean card creation, moves into ranked review, then lands on insights, goals, stars, notifications, and offline support as proof that the product thinking holds together.
-          </p>
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
-            {[
-              {
-                label: "Setup",
-                text: "Decks, cards, tags, import, and AI-assisted drafting all stay editable.",
-              },
-              {
-                label: "Core loop",
-                text: "Memory-aware review feels intentional instead of behaving like a flat checklist.",
-              },
-              {
-                label: "Proof",
-                text: "Insights and goals give the user a reason to come back and a story to talk through.",
-              },
-            ].map((item) => (
-              <div
-                key={item.label}
-                className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3"
-              >
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  {item.label}
-                </div>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">{item.text}</p>
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <Card tone="warm" className="animate-slide-up sm:p-6" padding="lg">
-          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-warm-accent">
-            Stronger talking points
-          </div>
-          <div className="mt-4 space-y-4">
-            {[
-              "FSRS scheduling plus memory-risk prioritisation gives the review queue a real product point of view.",
-              "Bulk import, note-to-card generation, and library editing keep the creation side practical.",
-              "Insights, streaks, goals, and stars make the app feel like a system, not a single screen.",
-            ].map((item) => (
-              <div
-                key={item}
-                className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm leading-6 text-text-secondary"
-              >
-                {item}
-              </div>
-            ))}
-          </div>
-        </Card>
       </div>
     </AppPage>
   );

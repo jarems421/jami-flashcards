@@ -80,7 +80,7 @@ describe("predictStudyStreak", () => {
     );
 
     expect(prediction.currentStreak).toBe(0);
-    expect(prediction.headline).toMatch(/fresh streak/i);
+    expect(prediction.headline).toMatch(/new streak|start a new streak/i);
   });
 
   it("raises risk when the overdue backlog is heavy", () => {
@@ -109,6 +109,6 @@ describe("predictStudyStreak", () => {
     const prediction = predictStudyStreak([], [], now);
     expect(prediction.currentStreak).toBe(0);
     expect(prediction.probabilityPercent).toBeGreaterThan(0);
-    expect(prediction.actionLabel).toMatch(/streak/i);
+    expect(prediction.actionLabel).toMatch(/suggested session/i);
   });
 });

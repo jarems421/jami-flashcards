@@ -20,14 +20,51 @@ function getToneClass(riskTier: StreakPrediction["riskTier"]) {
   return "border-rose-300/20 bg-rose-400/[0.08] text-rose-100";
 }
 
+function getStreakStatus(prediction: StreakPrediction) {
+  if (prediction.studiedToday) {
+    return {
+      label: "Protected today",
+      detail: "You already logged study today.",
+    };
+  }
+
+  if (prediction.currentStreak === 0) {
+    return {
+      label: "Ready to restart",
+      detail: "A short session will start a new streak.",
+    };
+  }
+
+  if (prediction.riskTier === "low") {
+    return {
+      label: "On track",
+      detail: "A light session should be enough.",
+    };
+  }
+
+  if (prediction.riskTier === "medium") {
+    return {
+      label: "Needs a short session",
+      detail: "A focused catch-up today should keep it moving.",
+    };
+  }
+
+  return {
+    label: "Needs attention",
+    detail: "Study today to avoid losing momentum.",
+  };
+}
+
 export function StreakPredictionPanel({ prediction }: { prediction: StreakPrediction }) {
+  const status = getStreakStatus(prediction);
+
   return (
     <Card padding="lg" className="animate-fade-in">
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <SectionHeader
-            title="Study streak prediction"
-            description={prediction.explanation}
+            title="Streak check-in"
+            description={`${prediction.explanation} This view uses today's study, your last 7 active days, and the current due load.`}
           />
           <div className="mt-4 text-lg font-semibold text-white">{prediction.headline}</div>
           <p className="mt-2 text-sm leading-6 text-text-secondary">
@@ -35,20 +72,25 @@ export function StreakPredictionPanel({ prediction }: { prediction: StreakPredic
           </p>
         </div>
         <div className={`rounded-[1.4rem] border px-4 py-3 text-sm ${getToneClass(prediction.riskTier)}`}>
-          <div className="text-xs uppercase tracking-[0.16em]">Keep-streak odds</div>
-          <div className="mt-2 text-2xl font-semibold tabular-nums">
-            {prediction.probabilityPercent}%
+          <div className="text-xs uppercase tracking-[0.16em]">Streak status</div>
+          <div className="mt-2 text-2xl font-semibold">
+            {status.label}
           </div>
           <div className="mt-2 text-xs opacity-80">
-            Rescue target: {prediction.rescueCards} cards / {prediction.rescueMinutes} min
+            {status.detail}
+          </div>
+          <div className="mt-3 text-xs opacity-80">
+            {prediction.studiedToday
+              ? "No rescue session needed."
+              : `Suggested session: ${prediction.rescueCards} cards / ${prediction.rescueMinutes} min`}
           </div>
         </div>
       </div>
       <div className="mt-5 grid gap-3 sm:grid-cols-4">
         {[
           { label: "Current streak", value: `${prediction.currentStreak}d` },
-          { label: "Studied last 7", value: `${prediction.trailing7ActiveDays}d` },
-          { label: "Due backlog", value: prediction.dueBacklog },
+          { label: "Active days (7d)", value: `${prediction.trailing7ActiveDays}d` },
+          { label: "Due now", value: prediction.dueBacklog },
           { label: "Overdue", value: prediction.overdueBacklog },
         ].map((item) => (
           <div
