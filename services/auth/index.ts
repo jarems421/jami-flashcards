@@ -7,6 +7,7 @@ import {
   signOut,
   createUserWithEmailAndPassword,
   signInWithEmailAndPassword,
+  signInWithCustomToken,
   setPersistence,
   browserLocalPersistence,
   deleteUser,
@@ -145,10 +146,21 @@ export const signInWithEmail = async (email: string, password: string) => {
   return result.user;
 };
 
+export const signInWithDemoCustomToken = async (token: string) => {
+  await initAuth();
+  const result = await signInWithCustomToken(auth, token);
+  return result.user;
+};
+
 // Delete user account + Firestore data under users/{uid}
 export const deleteAccount = async () => {
   const user = auth.currentUser;
   if (!user) throw new Error("No authenticated user.");
+
+  const tokenResult = await user.getIdTokenResult();
+  if (tokenResult.claims.demo === true) {
+    throw new Error("The shared demo account cannot be deleted.");
+  }
 
   const uid = user.uid;
 

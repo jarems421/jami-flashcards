@@ -19,16 +19,17 @@ import { ensureStudyStateSetup, loadUserCards } from "@/services/study/daily-rev
 import { getDecks, type Deck } from "@/services/study/decks";
 import {
   computeStudyStreak,
-  computeLongestStreak,
   type DailyStudyActivity,
 } from "@/lib/study/activity";
 import { formatStudyDayLabel, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
-import { getWeakPoints } from "@/lib/study/weak-points";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import { getDeckStudyHref } from "@/lib/app/routes";
+import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
+import { predictStudyStreak } from "@/lib/study/streak-prediction";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, EmptyState, PageHero, SectionHeader, Skeleton, StatTile } from "@/components/ui";
+import { Button, Card, EmptyState, PageHero, SectionHeader, Skeleton, StatTile, StudyText } from "@/components/ui";
+import { RetentionHealthPanel, ScheduleForecastPanel, StreakPredictionPanel, WeakAreasPanel } from "@/components/stats/AnalyticsPanels";
 
 type TimeRange = "7d" | "30d" | "all";
 
@@ -127,15 +128,6 @@ function buildTimeData(
   return points;
 }
 
-function formatStudyTime(totalMs: number) {
-  const minutes = Math.round(totalMs / 60_000);
-  if (minutes < 60) return `${minutes} min`;
-
-  const hours = Math.floor(minutes / 60);
-  const remainingMinutes = minutes % 60;
-  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
-}
-
 function formatDueStatus(card: StudyCard, now = Date.now()) {
   if (typeof card.dueDate !== "number") {
     return "Not scheduled yet";
@@ -148,6 +140,38 @@ function formatDueStatus(card: StudyCard, now = Date.now()) {
   }
   if (days === 0) return "Due today";
   return `Due in ${days} day${days === 1 ? "" : "s"}`;
+}
+
+function countActiveDays(entries: DailyStudyActivity[]) {
+  return entries.filter((entry) => entry.reviewCount > 0).length;
+}
+
+function getAverageSessionMinutes(entries: DailyStudyActivity[]) {
+  const activeDays = countActiveDays(entries);
+  if (activeDays === 0) {
+    return 0;
+  }
+
+  const totalMinutes = entries.reduce((sum, entry) => sum + entry.totalDurationMs, 0) / 60_000;
+  return Math.round(totalMinutes / activeDays);
+}
+
+function getAverageReviewsPerActiveDay(entries: DailyStudyActivity[]) {
+  const activeDays = countActiveDays(entries);
+  if (activeDays === 0) {
+    return 0;
+  }
+
+  const totalReviews = entries.reduce((sum, entry) => sum + entry.reviewCount, 0);
+  return Math.round(totalReviews / activeDays);
+}
+
+function getPercent(part: number, total: number) {
+  if (total <= 0) {
+    return 0;
+  }
+
+  return Math.round((part / total) * 100);
 }
 
 const TIME_RANGE_OPTIONS: { value: TimeRange; label: string }[] = [
@@ -193,17 +217,8 @@ export default function StatsPage() {
   }, [user.uid]);
 
   const currentStreak = useMemo(() => computeStudyStreak(activity), [activity]);
-  const longestStreak = useMemo(() => computeLongestStreak(activity), [activity]);
   const totalReviews = useMemo(
     () => activity.reduce((sum, e) => sum + e.reviewCount, 0),
-    [activity]
-  );
-  const studiedDays = useMemo(
-    () => activity.filter((entry) => entry.reviewCount > 0).length,
-    [activity]
-  );
-  const totalStudyTime = useMemo(
-    () => activity.reduce((sum, e) => sum + e.totalDurationMs, 0),
     [activity]
   );
   const averageAccuracy = useMemo(() => {
@@ -223,29 +238,34 @@ export default function StatsPage() {
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
     [decks]
   );
-  const weakAreas = useMemo(
-    () => getWeakPoints(cards, deckNamesById, 5),
-    [cards, deckNamesById]
+  const last7Activity = useMemo(() => filterByRange(activity, "7d"), [activity]);
+  const last30Activity = useMemo(() => filterByRange(activity, "30d"), [activity]);
+  const analytics = useMemo(
+    () => buildSpacedRepetitionAnalytics(cards, activity, deckNamesById),
+    [activity, cards, deckNamesById]
   );
-  const retentionSummary = useMemo(() => {
-    const summary = { high: 0, medium: 0, low: 0, new: 0, overdue: 0 };
-    const now = Date.now();
-
-    cards.forEach((card) => {
-      const risk = getMemoryRiskInfo(card, now);
-      if (risk.label === "New") {
-        summary.new += 1;
-      } else {
-        summary[risk.tier] += 1;
-      }
-
-      if (typeof card.dueDate === "number" && card.dueDate < now) {
-        summary.overdue += 1;
-      }
-    });
-
-    return summary;
+  const weakAreas = analytics.weakestAreas;
+  const retentionSummary = analytics.retentionSummary;
+  const activeDaysLast7 = useMemo(() => countActiveDays(last7Activity), [last7Activity]);
+  const activeDaysLast30 = useMemo(() => countActiveDays(last30Activity), [last30Activity]);
+  const averageSessionMinutesLast30 = useMemo(
+    () => getAverageSessionMinutes(last30Activity),
+    [last30Activity]
+  );
+  const averageReviewsPerActiveDayLast30 = useMemo(
+    () => getAverageReviewsPerActiveDay(last30Activity),
+    [last30Activity]
+  );
+  const cardsCreatedLast30 = useMemo(() => {
+    const cutoff = Date.now() - 30 * 86_400_000;
+    return cards.filter((card) => card.createdAt >= cutoff).length;
   }, [cards]);
+  const dueToday = analytics.dueForecast7d[0]?.dueCount ?? 0;
+  const reviewedCoverage = getPercent(analytics.reviewedCards, analytics.totalCards);
+  const streakPrediction = useMemo(
+    () => predictStudyStreak(cards, activity),
+    [activity, cards]
+  );
   const hardestCards = useMemo(() => {
     const now = Date.now();
     return [...cards]
@@ -269,6 +289,13 @@ export default function StatsPage() {
 
     return "/dashboard/study?mode=daily";
   }, [decks, weakAreas]);
+  const primaryFocusAction = useMemo(
+    () =>
+      cards.length === 0
+        ? { href: "/dashboard/cards", label: "Add cards" }
+        : { href: nextStudyHref, label: "Study recommended cards" },
+    [cards.length, nextStudyHref]
+  );
   const nextStudyMessage = useMemo(() => {
     if (retentionSummary.high > 0) {
       return `${retentionSummary.high} high-risk card${retentionSummary.high === 1 ? "" : "s"} should be protected first.`;
@@ -283,7 +310,7 @@ export default function StatsPage() {
     }
 
     if (cards.length > 0) {
-      return "Daily Review is clear enough for focused Custom Review.";
+      return "Daily Review is clear enough for a focused session.";
     }
 
     return "Add a deck and a few cards to unlock learning analytics.";
@@ -291,9 +318,9 @@ export default function StatsPage() {
 
   return (
     <AppPage
-      title="Statistics"
+      title="Insights"
       backHref="/dashboard"
-      backLabel="Home"
+      backLabel="Today"
       width="2xl"
       contentClassName="space-y-4 sm:space-y-6"
     >
@@ -311,11 +338,11 @@ export default function StatsPage() {
       ) : (
         <>
           <PageHero
-            eyebrow="Study stats"
-            title={totalReviews > 0 ? "Your study rhythm." : "Stats will grow with you."}
+            eyebrow="Insights"
+            title={totalReviews > 0 ? "Your study pattern." : "Insights will build as you study."}
             description={
               totalReviews > 0
-                ? "A calm snapshot of consistency, accuracy, and time spent learning."
+                ? "See your consistency, incoming workload, and which parts of your library need attention next."
                 : "Complete a few reviews and this page will turn into a useful progress map."
             }
             tone="warm"
@@ -326,59 +353,125 @@ export default function StatsPage() {
                   <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Accuracy</div>
                 </div>
                 <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
-                  <div className="text-lg font-medium tabular-nums text-white sm:text-xl">{studiedDays}</div>
-                  <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Days</div>
+                  <div className="text-lg font-medium tabular-nums text-white sm:text-xl">{activeDaysLast30}</div>
+                  <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Active 30d</div>
                 </div>
                 <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
-                  <div className="text-lg font-medium tabular-nums text-white sm:text-xl">{formatStudyTime(totalStudyTime)}</div>
-                  <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Time</div>
+                  <div className="text-lg font-medium tabular-nums text-white sm:text-xl">{averageSessionMinutesLast30} min</div>
+                  <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Avg session</div>
                 </div>
               </div>
             }
           />
 
-          <div className="grid animate-slide-up gap-4 sm:grid-cols-3">
+          <div className="grid animate-slide-up gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
               tone="warm"
               label="Current streak"
-              value={`${currentStreak} day${currentStreak === 1 ? "" : "s"}`}
-              detail="Your active study rhythm."
+              value={`${currentStreak}d`}
+              detail={streakPrediction.studiedToday ? "Already protected today." : "Still needs a session today."}
             />
             <StatTile
               tone="warm"
-              label="Longest streak"
-              value={`${longestStreak} day${longestStreak === 1 ? "" : "s"}`}
-              detail="Your best run so far."
+              label="Reviews last 7"
+              value={analytics.recentChanges.last7Reviews}
+              detail={`${activeDaysLast7} active day${activeDaysLast7 === 1 ? "" : "s"} this week.`}
             />
             <StatTile
               tone="warm"
-              label="Total reviews"
-              value={totalReviews.toLocaleString()}
-              detail="All completed study answers."
+              label="Studied last 30"
+              value={`${activeDaysLast30}d`}
+              detail={`${cardsCreatedLast30} new card${cardsCreatedLast30 === 1 ? "" : "s"} added.`}
+            />
+            <StatTile
+              tone="warm"
+              label="Avg active day"
+              value={`${averageReviewsPerActiveDayLast30} cards`}
+              detail={`${averageSessionMinutesLast30} min when you sit down to study.`}
             />
           </div>
 
-          <div className="grid animate-slide-up gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid animate-slide-up gap-4 sm:grid-cols-2 xl:grid-cols-4">
             <StatTile
-              label="High risk"
-              value={retentionSummary.high}
-              detail="Cards most likely to slip."
+              label="Due today"
+              value={dueToday}
+              detail="Cards scheduled for the current study day."
             />
             <StatTile
               label="Overdue"
               value={retentionSummary.overdue}
-              detail="Scheduled before now."
+              detail="Already slipped past schedule."
             />
             <StatTile
-              label="New cards"
-              value={retentionSummary.new}
-              detail="No review signal yet."
+              label="Due next 7"
+              value={analytics.dueIn7Days}
+              detail="Upcoming workload you can see coming."
             />
             <StatTile
-              label="Stable"
-              value={retentionSummary.low}
-              detail="Currently holding well."
+              label="Reviewed cards"
+              value={`${analytics.reviewedCards}/${analytics.totalCards}`}
+              detail={`${reviewedCoverage}% of the library has review history.`}
             />
+          </div>
+
+          <StreakPredictionPanel prediction={streakPrediction} />
+
+          <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,0.85fr)]">
+            <ScheduleForecastPanel analytics={analytics} />
+            <Card padding="lg" className="animate-fade-in">
+              <SectionHeader
+                title="What deserves attention next"
+                description={nextStudyMessage}
+              />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                {[
+                  { label: "High risk", value: retentionSummary.high },
+                  { label: "Overdue", value: retentionSummary.overdue },
+                  { label: "Due today", value: dueToday },
+                  {
+                    label: "Rescue target",
+                    value: streakPrediction.studiedToday
+                      ? "Protected"
+                      : `${streakPrediction.rescueCards} / ${streakPrediction.rescueMinutes}m`,
+                  },
+                ].map((item) => (
+                  <div
+                    key={item.label}
+                    className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] px-3 py-3"
+                  >
+                    <div className="text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">
+                      {item.label}
+                    </div>
+                    <div className="mt-2 text-lg font-semibold tabular-nums text-white">
+                      {item.value}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-4 text-sm leading-6 text-text-secondary">
+                {cards.length === 0
+                  ? "Start with a few cards and this page will begin steering your next best study decision."
+                  : streakPrediction.studiedToday
+                    ? "Today is already logged, so this is a good moment for optional practice or library cleanup."
+                    : `A short focused session should be enough to keep momentum moving. ${streakPrediction.actionLabel}`}
+              </p>
+              <div className="mt-5 flex flex-wrap gap-3">
+                <Link
+                  href={primaryFocusAction.href}
+                  className="inline-flex min-h-[3rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-sm font-semibold text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105"
+                >
+                  {primaryFocusAction.label}
+                </Link>
+                {cards.length > 0 ? (
+                  <Link
+                    href="/dashboard/study?mode=custom"
+                    className="inline-flex min-h-[3rem] items-center justify-center rounded-[2rem] border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+                  >
+                    Start Focused Review
+                  </Link>
+                ) : null}
+              </div>
+            </Card>
           </div>
 
           <div className="flex flex-wrap gap-2">
@@ -394,84 +487,128 @@ export default function StatsPage() {
             ))}
           </div>
 
-          <Card padding="lg" className="animate-fade-in">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div>
-                <SectionHeader
-                  title="What to study next"
-                  description={nextStudyMessage}
-                />
-                <div className="mt-4 grid gap-2 sm:grid-cols-4">
-                  {[
-                    { label: "High", value: retentionSummary.high },
-                    { label: "Medium", value: retentionSummary.medium },
-                    { label: "Low", value: retentionSummary.low },
-                    { label: "New", value: retentionSummary.new },
-                  ].map((item) => (
-                    <div
-                      key={item.label}
-                      className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] px-3 py-3 text-center"
-                    >
-                      <div className="text-lg font-semibold tabular-nums text-white">
-                        {item.value}
-                      </div>
-                      <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">
-                        {item.label}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <Link
-                href={nextStudyHref}
-                className="inline-flex min-h-[3rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-sm font-semibold text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105"
-              >
-                Study recommended cards
-              </Link>
-            </div>
-          </Card>
-
-          <div className="grid gap-4 lg:grid-cols-2">
+          <div className="grid gap-4 xl:grid-cols-2">
             <Card padding="lg" className="animate-fade-in">
-              <SectionHeader
-                title="Weakest areas"
-                description="Decks and tags with the toughest review pattern."
-              />
-              <div className="mt-4 space-y-3">
-                {weakAreas.length > 0 ? (
-                  weakAreas.map((area) => (
-                    <div
-                      key={`${area.kind}-${area.name}`}
-                      className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] p-4"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-white">{area.name}</div>
-                          <div className="mt-1 text-xs text-text-muted">
-                            {area.kind === "deck" ? "Deck" : "Tag"} - {area.cardCount} reviewed card{area.cardCount === 1 ? "" : "s"}
-                          </div>
-                        </div>
-                        <div className="rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
-                          {area.score.toFixed(1)}
-                        </div>
-                      </div>
-                      <div className="mt-3 text-sm leading-6 text-text-secondary">
-                        Difficulty {area.avgDifficulty.toFixed(1)} / 10 with {area.totalLapses} lapse{area.totalLapses === 1 ? "" : "s"}.
-                      </div>
-                    </div>
-                  ))
+              <SectionHeader title="Accuracy over time" description="How consistently you are recalling cards across the selected range." />
+              <div className="mt-4 h-64 w-full">
+                {accuracyData.length > 0 ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={accuracyData}>
+                      <defs>
+                        <linearGradient id="accuracyGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#b77cff" stopOpacity={0.3} />
+                          <stop offset="100%" stopColor="#b77cff" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis
+                        dataKey="day"
+                        stroke="rgba(255,255,255,0.3)"
+                        tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        domain={[0, 100]}
+                        stroke="rgba(255,255,255,0.3)"
+                        tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
+                        tickFormatter={(v: number) => `${v}%`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "rgba(18,11,34,0.95)",
+                          border: "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: "1rem",
+                          color: "#fff",
+                          fontSize: 13,
+                        }}
+                        formatter={(value: unknown) => [formatTooltipNumber(value, "%"), "Accuracy"]}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="accuracy"
+                        stroke="#b77cff"
+                        strokeWidth={2.5}
+                        dot={{ r: 3, fill: "#b77cff", strokeWidth: 0 }}
+                        activeDot={{ r: 6, fill: "#b77cff", stroke: "#fff", strokeWidth: 2 }}
+                        fillOpacity={1}
+                        fill="url(#accuracyGradient)"
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
                 ) : (
-                  <EmptyState
-                    variant="plain"
-                    emoji="Tags"
-                    eyebrow="No weak areas yet"
-                    title="Review more cards"
-                    description="Weak areas appear after cards have enough review history."
-                  />
+                  <div className="flex h-full items-center justify-center">
+                    <EmptyState
+                      variant="plain"
+                      emoji="Stats"
+                      eyebrow="No review data"
+                      title="No reviews in this range"
+                      description="Study a few cards and your accuracy trend will appear here."
+                    />
+                  </div>
                 )}
               </div>
             </Card>
 
+            <Card padding="lg" className="animate-fade-in">
+              <SectionHeader title="Time spent studying" description="A calm view of how much time your sessions are taking." />
+              <div className="mt-4 h-64 w-full">
+                {timeData.some((d) => d.minutes > 0) ? (
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={timeData}>
+                      <defs>
+                        <linearGradient id="timeGradient" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="0%" stopColor="#ffc7ea" stopOpacity={0.9} />
+                          <stop offset="100%" stopColor="#b77cff" stopOpacity={0.7} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                      <XAxis
+                        dataKey="day"
+                        stroke="rgba(255,255,255,0.3)"
+                        tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
+                        interval="preserveStartEnd"
+                      />
+                      <YAxis
+                        stroke="rgba(255,255,255,0.3)"
+                        tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
+                        tickFormatter={(v: number) => `${v}m`}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "rgba(18,11,34,0.95)",
+                          border: "1px solid rgba(255,255,255,0.1)",
+                          borderRadius: "1rem",
+                          color: "#fff",
+                          fontSize: 13,
+                        }}
+                        formatter={(value: unknown) => [formatTooltipNumber(value, " min"), "Time"]}
+                      />
+                      <Bar
+                        dataKey="minutes"
+                        fill="url(#timeGradient)"
+                        radius={[8, 8, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                ) : (
+                  <div className="flex h-full items-center justify-center">
+                    <EmptyState
+                      variant="plain"
+                      emoji="Time"
+                      eyebrow="No time data"
+                      title="No study time yet"
+                      description="Once you complete sessions, this chart will show how much time you spent studying."
+                    />
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          <RetentionHealthPanel analytics={analytics} />
+
+          <div className="grid gap-4 lg:grid-cols-2">
+            <WeakAreasPanel analytics={analytics} />
             <Card padding="lg" className="animate-fade-in">
               <SectionHeader
                 title="Hardest cards"
@@ -486,9 +623,11 @@ export default function StatsPage() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-white">
-                            {card.front}
-                          </div>
+                          <StudyText
+                            as="div"
+                            text={card.front}
+                            className="truncate text-sm font-semibold text-white"
+                          />
                           <div className="mt-1 text-xs text-text-muted">
                             {deckNamesById[card.deckId] ?? "Unknown deck"} - {formatDueStatus(card)}
                           </div>
@@ -514,122 +653,6 @@ export default function StatsPage() {
               </div>
             </Card>
           </div>
-
-          <Card padding="lg" className="animate-fade-in">
-            <SectionHeader title="Accuracy over time" description="How consistently you are recalling cards across the selected range." />
-            <div className="mt-4 h-64 w-full">
-              {accuracyData.length > 0 ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={accuracyData}>
-                    <defs>
-                      <linearGradient id="accuracyGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#b77cff" stopOpacity={0.3} />
-                        <stop offset="100%" stopColor="#b77cff" stopOpacity={0} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis
-                      dataKey="day"
-                      stroke="rgba(255,255,255,0.3)"
-                      tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
-                      interval="preserveStartEnd"
-                    />
-                    <YAxis
-                      domain={[0, 100]}
-                      stroke="rgba(255,255,255,0.3)"
-                      tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
-                      tickFormatter={(v: number) => `${v}%`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "rgba(18,11,34,0.95)",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        borderRadius: "1rem",
-                        color: "#fff",
-                        fontSize: 13,
-                      }}
-                      formatter={(value: unknown) => [formatTooltipNumber(value, "%"), "Accuracy"]}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="accuracy"
-                      stroke="#b77cff"
-                      strokeWidth={2.5}
-                      dot={{ r: 3, fill: "#b77cff", strokeWidth: 0 }}
-                      activeDot={{ r: 6, fill: "#b77cff", stroke: "#fff", strokeWidth: 2 }}
-                      fillOpacity={1}
-                      fill="url(#accuracyGradient)"
-                    />
-                  </LineChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <EmptyState
-                    variant="plain"
-                    emoji="Stats"
-                    eyebrow="No review data"
-                    title="No reviews in this range"
-                    description="Study a few cards and your accuracy trend will appear here."
-                  />
-                </div>
-              )}
-            </div>
-          </Card>
-
-          <Card padding="lg" className="animate-fade-in">
-            <SectionHeader title="Time spent studying" description="A calm view of how much time your sessions are taking." />
-            <div className="mt-4 h-64 w-full">
-              {timeData.some((d) => d.minutes > 0) ? (
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={timeData}>
-                    <defs>
-                      <linearGradient id="timeGradient" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#ffc7ea" stopOpacity={0.9} />
-                        <stop offset="100%" stopColor="#b77cff" stopOpacity={0.7} />
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                    <XAxis
-                      dataKey="day"
-                      stroke="rgba(255,255,255,0.3)"
-                      tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
-                      interval="preserveStartEnd"
-                    />
-                    <YAxis
-                      stroke="rgba(255,255,255,0.3)"
-                      tick={{ fontSize: 11, fill: "rgba(255,255,255,0.5)" }}
-                      tickFormatter={(v: number) => `${v}m`}
-                    />
-                    <Tooltip
-                      contentStyle={{
-                        backgroundColor: "rgba(18,11,34,0.95)",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        borderRadius: "1rem",
-                        color: "#fff",
-                        fontSize: 13,
-                      }}
-                      formatter={(value: unknown) => [formatTooltipNumber(value, " min"), "Time"]}
-                    />
-                    <Bar
-                      dataKey="minutes"
-                      fill="url(#timeGradient)"
-                      radius={[8, 8, 0, 0]}
-                    />
-                  </BarChart>
-                </ResponsiveContainer>
-              ) : (
-                <div className="flex h-full items-center justify-center">
-                  <EmptyState
-                    variant="plain"
-                    emoji="Time"
-                    eyebrow="No time data"
-                    title="No study time yet"
-                    description="Once you complete sessions, this chart will show how much time you spent studying."
-                  />
-                </div>
-              )}
-            </div>
-          </Card>
         </>
       )}
     </AppPage>

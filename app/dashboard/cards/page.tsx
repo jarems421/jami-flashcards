@@ -8,9 +8,10 @@ import { getDecks, type Deck } from "@/services/study/decks";
 import {
   addCardTag,
   mapCardData,
-  normalizeCardTags,
-  MAX_FRONT_LENGTH,
   MAX_BACK_LENGTH,
+  MAX_FRONT_LENGTH,
+  normalizeCardContentInput,
+  normalizeCardTags,
   type Card,
 } from "@/lib/study/cards";
 import { getDeckHref } from "@/lib/app/routes";
@@ -21,7 +22,7 @@ import BulkTagToolbar from "@/components/decks/BulkTagToolbar";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
-import { Button, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import Link from "next/link";
 
 function cardMatchesSearch(card: Card, term: string, deckName?: string) {
@@ -37,7 +38,7 @@ function cardMatchesSearch(card: Card, term: string, deckName?: string) {
 const MAX_VISIBLE_RESULTS = 50;
 
 export default function CardsSearchPage() {
-  const { user } = useUser();
+  const { user, isDemoUser } = useUser();
 
   const [cards, setCards] = useState<Card[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -150,8 +151,13 @@ export default function CardsSearchPage() {
   };
 
   const handleSaveCard = async (cardId: string) => {
-    const nextFront = editingFront.trim();
-    const nextBack = editingBack.trim();
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Card editing is disabled in the shared demo account." });
+      return;
+    }
+
+    const nextFront = normalizeCardContentInput(editingFront);
+    const nextBack = normalizeCardContentInput(editingBack);
     const tagResult = addCardTag(editingTags, editingPendingTag);
 
     if (!nextFront || !nextBack) {
@@ -205,6 +211,11 @@ export default function CardsSearchPage() {
   };
 
   const handleDeleteCard = async (cardId: string) => {
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Card deletion is disabled in the shared demo account." });
+      return;
+    }
+
     const shouldDelete = window.confirm("Delete this card?");
     if (!shouldDelete) return;
 
@@ -329,7 +340,7 @@ export default function CardsSearchPage() {
     <AppPage
       title="Cards"
       backHref="/dashboard"
-      backLabel="Home"
+      backLabel="Today"
       width="2xl"
       contentClassName="space-y-4 sm:space-y-6"
     >
@@ -337,18 +348,27 @@ export default function CardsSearchPage() {
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
 
-      <CardCreationPanel
-        userId={user.uid}
-        decks={decks}
-        existingCards={cards}
-        availableTags={availableTags}
-        onCardsCreated={handleCardsCreated}
-        onFeedback={setFeedback}
-      />
+      {isDemoUser ? (
+        <div className="rounded-[1.6rem] border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-text-secondary">
+          <div className="font-semibold text-white">Card editing is locked in the shared demo</div>
+          <p className="mt-1 leading-6">
+            You can search the seeded cards here, but new cards, edits, deletes, and tag changes are reserved for private accounts.
+          </p>
+        </div>
+      ) : (
+        <CardCreationPanel
+          userId={user.uid}
+          decks={decks}
+          existingCards={cards}
+          availableTags={availableTags}
+          onCardsCreated={handleCardsCreated}
+          onFeedback={setFeedback}
+        />
+      )}
 
       <div className="sticky top-0 z-20 -mx-1 px-1 pb-2 pt-1">
         <Input
-          placeholder="Search cards..."
+          placeholder="Search cards, decks, or tags"
           value={searchTerm}
           onChange={(event) => setSearchTerm(event.target.value)}
         />
@@ -366,7 +386,7 @@ export default function CardsSearchPage() {
           emoji="Cards"
           eyebrow="No cards yet"
           title="No cards yet"
-          description="Cards are the fuel for Daily Review and Custom Review. Add a question and answer above to create your first one."
+          description="Cards are what power Daily Review and Focused Review. Add a prompt and answer above to create your first one."
           helperText={decks.length === 0 ? "You will need a deck first, then cards can be added here." : "Once saved, new cards appear in study automatically."}
           action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
         />
@@ -380,49 +400,55 @@ export default function CardsSearchPage() {
         />
       ) : (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={selectVisibleCards}
-              disabled={visibleCards.length === 0}
-            >
-              Select shown cards
-            </Button>
-            <span className="text-sm text-text-muted">
-              {selectedCardIds.length} selected
-            </span>
-          </div>
+          {!isDemoUser ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={selectVisibleCards}
+                  disabled={visibleCards.length === 0}
+                >
+                  Select visible cards
+                </Button>
+                <span className="text-sm text-text-muted">
+                  {selectedCardIds.length} selected for bulk edit
+                </span>
+              </div>
 
-          <BulkTagToolbar
-            selectedCount={selectedCardIds.length}
-            tags={bulkTags}
-            pendingTag={bulkPendingTag}
-            availableTags={availableTags}
-            disabled={applyingBulkTags}
-            onTagsChange={setBulkTags}
-            onPendingTagChange={setBulkPendingTag}
-            onApply={() => void handleAddTagsToSelectedCards()}
-            onClearSelection={() => setSelectedCardIds([])}
-          />
+              <BulkTagToolbar
+                selectedCount={selectedCardIds.length}
+                tags={bulkTags}
+                pendingTag={bulkPendingTag}
+                availableTags={availableTags}
+                disabled={applyingBulkTags}
+                onTagsChange={setBulkTags}
+                onPendingTagChange={setBulkPendingTag}
+                onApply={() => void handleAddTagsToSelectedCards()}
+                onClearSelection={() => setSelectedCardIds([])}
+              />
+            </>
+          ) : null}
 
           <p className="text-sm text-text-secondary">
             {filtered.length} card{filtered.length === 1 ? "" : "s"} found
-            {hasMore ? ` (showing first ${MAX_VISIBLE_RESULTS})` : ""}
+            {hasMore ? ` (showing first ${MAX_VISIBLE_RESULTS})` : ""}. Use the deck pill on any card to jump into that deck.
           </p>
 
           <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
             {visibleCards.map((card) => (
               <section key={card.id} className="app-panel p-3 sm:p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell">
-                <label className="mb-3 flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
-                  <input
-                    type="checkbox"
-                    checked={selectedCardIdSet.has(card.id)}
-                    onChange={() => toggleCardSelection(card.id)}
-                    className="h-4 w-4 accent-[var(--color-accent)]"
-                  />
-                  Select
-                </label>
+                {!isDemoUser ? (
+                  <label className="mb-3 flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                    <input
+                      type="checkbox"
+                      checked={selectedCardIdSet.has(card.id)}
+                      onChange={() => toggleCardSelection(card.id)}
+                      className="h-4 w-4 accent-[var(--color-accent)]"
+                    />
+                    Select
+                  </label>
+                ) : null}
                 {expandedCardId === card.id ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap gap-2">
@@ -465,7 +491,7 @@ export default function CardsSearchPage() {
                         disabled={savingCardId === card.id}
                         onClick={() => void handleSaveCard(card.id)}
                       >
-                        {savingCardId === card.id ? "Saving..." : "Save"}
+                        {savingCardId === card.id ? "Saving..." : "Save card"}
                       </Button>
                       <Button
                         type="button"
@@ -481,25 +507,29 @@ export default function CardsSearchPage() {
                   <div className="space-y-3">
                     <div className="flex flex-wrap items-start justify-between gap-4">
                       <div className="min-w-0 flex-1 space-y-1">
-                        <div className="text-[0.9rem] font-normal leading-6 text-white sm:text-[0.95rem] sm:leading-7">
-                          {card.front}
-                        </div>
-                        <div className="text-sm leading-6 text-text-secondary">
-                          {card.back}
-                        </div>
+                        <StudyText
+                          as="div"
+                          text={card.front}
+                          className="whitespace-pre-wrap text-[0.9rem] font-normal leading-6 text-white sm:text-[0.95rem] sm:leading-7"
+                        />
+                        <StudyText
+                          as="div"
+                          text={card.back}
+                          className="whitespace-pre-wrap text-sm leading-6 text-text-secondary"
+                        />
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <Button
                           type="button"
-                          disabled={deletingCardId === card.id}
+                          disabled={isDemoUser || deletingCardId === card.id}
                           onClick={() => startEditing(card)}
                           variant="secondary"
                         >
-                          Edit
+                          Edit card
                         </Button>
                         <Button
                           type="button"
-                          disabled={deletingCardId === card.id}
+                          disabled={isDemoUser || deletingCardId === card.id}
                           onClick={() => void handleDeleteCard(card.id)}
                           variant="danger"
                         >
@@ -513,9 +543,14 @@ export default function CardsSearchPage() {
                       {deckNamesById[card.deckId] ? (
                         <Link
                           href={getDeckHref(card.deckId)}
-                          className="rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-text-secondary transition duration-fast hover:bg-white/[0.08]"
+                          aria-label={`Open deck ${deckNamesById[card.deckId]}`}
+                          className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-text-secondary transition duration-fast hover:border-border-strong hover:bg-white/[0.08] hover:text-white"
                         >
-                          {deckNamesById[card.deckId]}
+                          <span>{deckNamesById[card.deckId]}</span>
+                          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
+                            <path d="M3.5 8h9" />
+                            <path d="m8.5 3 4.5 5-4.5 5" />
+                          </svg>
                         </Link>
                       ) : null}
                       {card.tags.map((tag) => (

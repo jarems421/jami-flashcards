@@ -19,6 +19,7 @@ import {
   mapCardData,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
+  normalizeCardContentInput,
   normalizeCardTags,
   type Card,
 } from "@/lib/study/cards";
@@ -31,9 +32,10 @@ import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
-import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
+import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
 import { db } from "@/services/firebase/client";
+import { getDeckStudyHref } from "@/lib/app/routes";
 
 function sanitizeFileName(value: string) {
   const normalized = value.trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "");
@@ -56,7 +58,7 @@ export default function DeckDetailPageClient() {
   const params = useParams();
   const rawId = params?.id;
   const deckId = Array.isArray(rawId) ? (rawId[0] ?? "") : (rawId ?? "");
-  const { user } = useUser();
+  const { user, isDemoUser } = useUser();
 
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
@@ -251,8 +253,16 @@ export default function DeckDetailPageClient() {
   };
 
   const handleSaveCard = async (cardId: string) => {
-    const nextFront = editingFront.trim();
-    const nextBack = editingBack.trim();
+    if (isDemoUser) {
+      setFeedback({
+        type: "error",
+        message: "Card editing is disabled in the shared demo account.",
+      });
+      return;
+    }
+
+    const nextFront = normalizeCardContentInput(editingFront);
+    const nextBack = normalizeCardContentInput(editingBack);
     const tagResult = addCardTag(editingTags, editingPendingTag);
 
     if (!nextFront || !nextBack) {
@@ -327,6 +337,14 @@ export default function DeckDetailPageClient() {
   };
 
   const handleDeleteCard = async (cardId: string) => {
+    if (isDemoUser) {
+      setFeedback({
+        type: "error",
+        message: "Card deletion is disabled in the shared demo account.",
+      });
+      return;
+    }
+
     const shouldDelete = window.confirm("Delete this card?");
     if (!shouldDelete) {
       return;
@@ -458,7 +476,7 @@ export default function DeckDetailPageClient() {
           <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.12fr)_320px]">
             <SurfaceCard padding="lg">
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                Deck editor
+                Deck
               </div>
               <div className="mt-3 flex items-center gap-4">
                 <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} className="h-16 w-16" />
@@ -467,14 +485,14 @@ export default function DeckDetailPageClient() {
                 </h1>
               </div>
               <p className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                Edit prompts, answers, and tags.
+                Open cards, tighten wording, and keep this topic ready to study.
               </p>
               <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
                 <Link
-                  href="/dashboard/study?mode=custom"
+                  href={getDeckStudyHref(deck.id)}
                   className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
                 >
-                  Open study hub
+                  Study this deck
                 </Link>
                 <Link
                   href="/dashboard/decks"
@@ -487,7 +505,7 @@ export default function DeckDetailPageClient() {
 
             <SurfaceCard tone="warm" padding="md">
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
-                Deck summary
+                At a glance
               </div>
               <div className="mt-4 grid gap-4">
                 <div>
@@ -522,15 +540,24 @@ export default function DeckDetailPageClient() {
             </SurfaceCard>
           </div>
 
-          <CardCreationPanel
-            userId={user.uid}
-            decks={[deck]}
-            existingCards={cards}
-            availableTags={availableTags}
-            defaultDeckId={deck.id}
-            onCardsCreated={handleCardsCreated}
-            onFeedback={setFeedback}
-          />
+          {isDemoUser ? (
+            <div className="rounded-[1.6rem] border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-text-secondary">
+              <div className="font-semibold text-white">Card editing is locked in the shared demo</div>
+              <p className="mt-1 leading-6">
+                You can inspect the seeded cards in this deck, but creating, editing, and bulk tagging are reserved for private accounts.
+              </p>
+            </div>
+          ) : (
+            <CardCreationPanel
+              userId={user.uid}
+              decks={[deck]}
+              existingCards={cards}
+              availableTags={availableTags}
+              defaultDeckId={deck.id}
+              onCardsCreated={handleCardsCreated}
+              onFeedback={setFeedback}
+            />
+          )}
 
         </>
       ) : !loadingCards ? (
@@ -553,39 +580,43 @@ export default function DeckDetailPageClient() {
           emoji="Cards"
           eyebrow="Empty deck"
           title="No cards yet"
-          description="This deck is ready, it just needs its first flashcards. Add a front and back above to make it available for study."
+          description="This deck is ready for its first cards. Add a prompt and answer above, and it will join study automatically."
           helperText="New cards automatically join Daily Review when they need practice."
         />
       ) : deck ? (
         <>
-          <div className="flex flex-wrap items-center justify-between gap-3">
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={selectFilteredCards}
-              disabled={filteredCards.length === 0}
-            >
-              Select shown cards
-            </Button>
-            <span className="text-sm text-text-muted">
-              {selectedCardIds.length} selected
-            </span>
-          </div>
+          {!isDemoUser ? (
+            <>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={selectFilteredCards}
+                  disabled={filteredCards.length === 0}
+                >
+                  Select visible cards
+                </Button>
+                <span className="text-sm text-text-muted">
+                  {selectedCardIds.length} selected for bulk edit
+                </span>
+              </div>
 
-          <BulkTagToolbar
-            selectedCount={selectedCardIds.length}
-            tags={bulkTags}
-            pendingTag={bulkPendingTag}
-            availableTags={availableTags}
-            disabled={applyingBulkTags}
-            onTagsChange={setBulkTags}
-            onPendingTagChange={setBulkPendingTag}
-            onApply={() => void handleAddTagsToSelectedCards()}
-            onClearSelection={() => setSelectedCardIds([])}
-          />
+              <BulkTagToolbar
+                selectedCount={selectedCardIds.length}
+                tags={bulkTags}
+                pendingTag={bulkPendingTag}
+                availableTags={availableTags}
+                disabled={applyingBulkTags}
+                onTagsChange={setBulkTags}
+                onPendingTagChange={setBulkPendingTag}
+                onApply={() => void handleAddTagsToSelectedCards()}
+                onClearSelection={() => setSelectedCardIds([])}
+              />
+            </>
+          ) : null}
 
           <Input
-            placeholder="Search cards in this deck..."
+            placeholder="Search this deck"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
@@ -601,15 +632,17 @@ export default function DeckDetailPageClient() {
             <div className="grid gap-4 lg:grid-cols-2">
               {filteredCards.map((card) => (
                 <section key={card.id} className="app-panel p-4">
-                  <label className="mb-3 flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
-                    <input
-                      type="checkbox"
-                      checked={selectedCardIdSet.has(card.id)}
-                      onChange={() => toggleCardSelection(card.id)}
-                      className="h-4 w-4 accent-[var(--color-accent)]"
-                    />
-                    Select
-                  </label>
+                  {!isDemoUser ? (
+                    <label className="mb-3 flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={selectedCardIdSet.has(card.id)}
+                        onChange={() => toggleCardSelection(card.id)}
+                        className="h-4 w-4 accent-[var(--color-accent)]"
+                      />
+                      Select
+                    </label>
+                  ) : null}
                   {editingCardId === card.id ? (
                     <div className="space-y-4">
                       <div className="flex flex-wrap gap-2">
@@ -653,7 +686,7 @@ export default function DeckDetailPageClient() {
                           disabled={savingCardId === card.id}
                           onClick={() => void handleSaveCard(card.id)}
                         >
-                          {savingCardId === card.id ? "Saving..." : "Save"}
+                          {savingCardId === card.id ? "Saving..." : "Save card"}
                         </Button>
                         <Button
                           type="button"
@@ -669,25 +702,29 @@ export default function DeckDetailPageClient() {
                     <div className="space-y-4">
                       <div className="flex flex-wrap items-start justify-between gap-4">
                         <div className="min-w-0 flex-1 space-y-2">
-                          <div className="text-lg font-medium leading-7 text-white">
-                            {card.front}
-                          </div>
-                          <div className="text-sm leading-6 text-text-secondary">
-                            {card.back}
-                          </div>
+                          <StudyText
+                            as="div"
+                            text={card.front}
+                            className="whitespace-pre-wrap text-lg font-medium leading-7 text-white"
+                          />
+                          <StudyText
+                            as="div"
+                            text={card.back}
+                            className="whitespace-pre-wrap text-sm leading-6 text-text-secondary"
+                          />
                         </div>
                         <div className="flex flex-wrap gap-2">
                           <Button
                             type="button"
-                            disabled={deletingCardId === card.id}
+                            disabled={isDemoUser || deletingCardId === card.id}
                             onClick={() => startEditingCard(card)}
                             variant="secondary"
                           >
-                            Edit
+                            Edit card
                           </Button>
                           <Button
                             type="button"
-                            disabled={deletingCardId === card.id}
+                            disabled={isDemoUser || deletingCardId === card.id}
                             onClick={() => void handleDeleteCard(card.id)}
                             variant="danger"
                           >

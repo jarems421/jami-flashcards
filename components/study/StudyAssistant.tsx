@@ -8,6 +8,7 @@ import {
   type StudyChatIntent,
 } from "@/services/ai/chat";
 import type { Card } from "@/lib/study/cards";
+import { StudyText } from "@/components/ui";
 
 type Props = {
   card: Card;
@@ -219,7 +220,7 @@ export default function StudyAssistant({
                     : "bg-white/[0.06] text-text-secondary"
                 }`}
               >
-                {msg.text}
+                <StudyText text={msg.text} />
               </div>
             </div>
           ))}

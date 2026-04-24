@@ -10,9 +10,12 @@ import {
 import { useRouter } from "next/navigation";
 import { User } from "firebase/auth";
 import { listenToAuth } from "@/lib/auth/auth-listener";
+import type { DemoViewerMode } from "@/lib/demo/shared";
 
 type UserContextValue = {
   user: User;
+  demoMode: Exclude<DemoViewerMode, "demo-readonly">;
+  isDemoUser: boolean;
 };
 
 const UserContext = createContext<UserContextValue | null>(null);
@@ -27,11 +30,30 @@ export default function UserProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
+  const [demoMode, setDemoMode] = useState<Exclude<DemoViewerMode, "demo-readonly">>("private");
 
   useEffect(() => {
     const unsubscribe = listenToAuth((nextUser) => {
-      setUser(nextUser);
-      setChecked(true);
+      if (!nextUser) {
+        setUser(null);
+        setDemoMode("private");
+        setChecked(true);
+        return;
+      }
+
+      void nextUser
+        .getIdTokenResult()
+        .then((tokenResult) => {
+          setUser(nextUser);
+          setDemoMode(tokenResult.claims.demo === true ? "demo-test" : "private");
+          setChecked(true);
+        })
+        .catch((error) => {
+          console.error(error);
+          setUser(nextUser);
+          setDemoMode("private");
+          setChecked(true);
+        });
     });
     return () => unsubscribe();
   }, [router]);
@@ -52,9 +74,8 @@ export default function UserProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <UserContext.Provider value={{ user }}>
+    <UserContext.Provider value={{ user, demoMode, isDemoUser: demoMode === "demo-test" }}>
       {children}
     </UserContext.Provider>
   );
 }
-

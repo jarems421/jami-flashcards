@@ -99,6 +99,19 @@ describe("card generation helpers", () => {
     ]);
   });
 
+  it("normalizes generated power notation into the card storage format", () => {
+    expect(
+      parseGeneratedCardDrafts(
+        '[{"front":"What is Ka?","back":"Ka = 10**(-4.9) and x² + y² = z²"}]'
+      )
+    ).toEqual([
+      {
+        front: "What is Ka?",
+        back: "Ka = 10^-4.9 and x^2 + y^2 = z^2",
+      },
+    ]);
+  });
+
   it("falls back to labelled text blocks", () => {
     expect(
       parseGeneratedCardDrafts(

@@ -38,9 +38,25 @@ export default function StatTile({
     return (
       <Link
         href={href}
-        className={`${panelClass} block p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell sm:p-5 ${className}`}
+        className={`${panelClass} group block p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell sm:p-5 ${className}`}
       >
         {content}
+        <div className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-white/90">
+          <span>Open</span>
+          <svg
+            viewBox="0 0 16 16"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="1.8"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            className="h-3.5 w-3.5 transition-transform duration-fast group-hover:translate-x-0.5"
+            aria-hidden="true"
+          >
+            <path d="M3.5 8h9" />
+            <path d="m8.5 3 4.5 5-4.5 5" />
+          </svg>
+        </div>
       </Link>
     );
   }

@@ -1,3 +1,5 @@
+import { normalizeStudyTextInput } from "@/lib/study/display-text";
+
 export const MAX_FRONT_LENGTH = 400;
 export const MAX_BACK_LENGTH = 2_000;
 export const MAX_CARD_TAGS = 10;
@@ -98,7 +100,11 @@ export function parseCardTagsParam(value: string | null): string[] {
 }
 
 function normalizeImportCell(value: string): string {
-  return value.replace(/\u00a0/g, " ").trim();
+  return normalizeCardContentInput(value);
+}
+
+export function normalizeCardContentInput(value: string): string {
+  return normalizeStudyTextInput(value).trim();
 }
 
 export function getCardContentKey(front: string, back: string): string {

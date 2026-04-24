@@ -8,6 +8,7 @@ import {
   MIN_NOTES_FOR_CARD_GENERATION,
   parseGeneratedCardDrafts,
 } from "@/lib/ai/card-generation";
+import { hasDemoClaim } from "@/lib/demo/token";
 
 export const runtime = "nodejs";
 
@@ -31,6 +32,9 @@ export async function POST(request: NextRequest) {
   let uid: string;
   try {
     const decoded = await getAdminAuth().verifyIdToken(token);
+    if (hasDemoClaim(decoded)) {
+      return Response.json({ error: "AI is disabled in the shared demo account." }, { status: 403 });
+    }
     uid = decoded.uid;
   } catch {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

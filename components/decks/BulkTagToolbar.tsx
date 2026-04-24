@@ -29,7 +29,7 @@ export default function BulkTagToolbar({
   if (selectedCount === 0) {
     return (
       <div className="rounded-[1.35rem] border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-sm leading-6 text-text-secondary">
-        Select cards below when you want to add the same tag to a few of them at once.
+        Select a few cards when you want to tag them together.
       </div>
     );
   }
@@ -42,7 +42,7 @@ export default function BulkTagToolbar({
             {selectedCount} card{selectedCount === 1 ? "" : "s"} selected
           </div>
           <p className="mt-1 text-sm leading-6 text-text-secondary">
-            Add one or more tags to the selected cards. Existing tags stay in place.
+            Add one or more tags to every selected card at once. Existing tags stay in place.
           </p>
           <div className="mt-3">
             <TagInput
@@ -62,7 +62,7 @@ export default function BulkTagToolbar({
             disabled={disabled}
             onClick={onApply}
           >
-            Add tags
+            Apply tags
           </Button>
           <Button
             type="button"

@@ -18,6 +18,7 @@ import {
   countTodayReviews,
   type DailyStudyActivity,
 } from "@/lib/study/activity";
+import { predictStudyStreak } from "@/lib/study/streak-prediction";
 import { loadStudyActivity } from "@/services/study/activity";
 import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
@@ -26,6 +27,7 @@ import { FeedbackBanner, PageHero, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { loadInAppUsername } from "@/services/profile";
 import { formatTimeRemaining } from "@/lib/study/time";
+import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
 const URGENT_GOAL_WINDOW_MS = 48 * 60 * 60 * 1000;
@@ -175,12 +177,16 @@ export default function DashboardHome() {
     () => countTodayReviews(studyActivity),
     [studyActivity]
   );
+  const streakPrediction = useMemo(
+    () => predictStudyStreak(cards, studyActivity),
+    [cards, studyActivity]
+  );
   const dashboardAction = useMemo<DashboardAction>(() => {
     if (decks.length === 0) {
       return {
         eyebrow: "Start here",
         title: "Create your first deck.",
-        description: "Add one subject area first. After that, you can write cards and Jami will build your study path.",
+        description: "Start with one subject, module, or exam. Once it exists, you can add cards and let Jami shape the review flow.",
         href: "/dashboard/decks",
         label: "Create a deck",
       };
@@ -190,53 +196,53 @@ export default function DashboardHome() {
       return {
         eyebrow: "Next step",
         title: "Add your first cards.",
-        description: "Your decks are ready. Add a few questions and answers so Daily Review has something to schedule.",
+        description: "Your deck is ready. Add a few prompts and answers so Daily Review has something real to work with.",
         href: "/dashboard/cards",
         label: "Create cards",
         secondaryHref: "/dashboard/decks",
-        secondaryLabel: "Manage decks",
+        secondaryLabel: "Open decks",
       };
     }
 
     if (dueCount > 0) {
       return {
         eyebrow: "Recommended today",
-        title: `${dueCount} memory card${dueCount === 1 ? "" : "s"} worth protecting.`,
-        description: "Daily Review is the smartest place to start, but Custom Review stays open for focused exam practice.",
+        title: `${dueCount} card${dueCount === 1 ? "" : "s"} need attention today.`,
+        description: "Start with Daily Review, then use Focused Review if you want a targeted session afterwards.",
         href: getCustomStudyHref({ mode: "daily" }),
         label: "Start Daily Review",
         secondaryHref: getCustomStudyHref({ mode: "custom" }),
-        secondaryLabel: "Start Custom Review",
+        secondaryLabel: "Start Focused Review",
       };
     }
 
     if (remainingOptionalCount > 0) {
       return {
         eyebrow: "Daily is clear",
-        title: `${remainingOptionalCount} optional easy card${remainingOptionalCount === 1 ? "" : "s"} waiting.`,
-        description: "These are light extras if you want a little more practice.",
-        href: "/dashboard/study",
-        label: "Do optional easy",
+        title: `${remainingOptionalCount} easy card${remainingOptionalCount === 1 ? "" : "s"} left if you want extra reps.`,
+        description: "Your main queue is clear. These are lighter passes if you want a little more practice today.",
+        href: getCustomStudyHref({ mode: "daily" }),
+        label: "Review easy extras",
         secondaryHref: getCustomStudyHref({ mode: "custom" }),
-        secondaryLabel: "Start Custom Review",
+        secondaryLabel: "Start Focused Review",
       };
     }
 
     return {
-      eyebrow: "Open practice",
-      title: "Custom Review is open.",
-      description: "Daily Review is clear. Choose any decks or tags and practise on your own terms.",
+      eyebrow: "Focused practice",
+      title: "Focused Review is open.",
+      description: "Daily Review is clear. Pick any deck or tag and practise the area you want to sharpen.",
       href: getCustomStudyHref({ mode: "custom" }),
-      label: "Start Custom Review",
+      label: "Start Focused Review",
       secondaryHref: "/dashboard/cards",
-      secondaryLabel: "Manage cards",
+      secondaryLabel: "Edit cards",
     };
   }, [cards.length, decks.length, dueCount, remainingOptionalCount]);
 
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
-        title="Dashboard"
+        title="Today"
         width="2xl"
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
         contentClassName="space-y-4 sm:space-y-6"
@@ -248,16 +254,16 @@ export default function DashboardHome() {
         <PageHero
           className="animate-slide-up"
           eyebrow={isLoading ? "Getting ready" : dashboardAction.eyebrow}
-          title={isLoading ? "Checking today." : dashboardAction.title}
+          title={isLoading ? "Getting today ready." : dashboardAction.title}
           description={
             <>
               <span className="mb-3 block text-sm text-text-secondary">
                 {inAppUsername
                   ? `Welcome back, ${inAppUsername}.`
-                  : "Welcome back. Let's keep it simple."}
+                  : "Welcome back. Here is today at a glance."}
               </span>
               {isLoading
-                ? "Jami is loading your decks, cards, review queue, and goals."
+                ? "Jami is loading today's review queue, cards, and goals."
                 : dashboardAction.description}
             </>
           }
@@ -298,13 +304,13 @@ export default function DashboardHome() {
           <StatTile
             label="Daily Review"
             value={isLoading ? "..." : dueCount}
-            detail={dueCount > 0 ? "Memory-ranked cards for today." : "Recommended queue is clear."}
+            detail={dueCount > 0 ? "The cards that need attention first." : "Your main queue is clear."}
             href="/dashboard/study"
           />
           <StatTile
-            label="Library"
+            label="Card library"
             value={isLoading ? "..." : cards.length}
-            detail={`${decks.length} deck${decks.length === 1 ? "" : "s"} organised for study.`}
+            detail={`${decks.length} deck${decks.length === 1 ? "" : "s"} ready for study.`}
             href="/dashboard/cards"
           />
           {urgentGoal ? (
@@ -328,13 +334,17 @@ export default function DashboardHome() {
             </Link>
           ) : (
             <StatTile
-              label="Custom Review"
+              label="Focused Review"
               value={isLoading ? "..." : cards.length > 0 ? "Open" : "Set up"}
-              detail={cards.length === 0 ? "Add cards first." : dueCount > 0 ? "Available even with Daily Review waiting." : "Free practice is available."}
+              detail={cards.length === 0 ? "Add cards first." : dueCount > 0 ? "Still available after Daily Review." : "Targeted practice is ready."}
               href="/dashboard/study"
             />
           )}
         </div>
+
+        {!isLoading && cards.length > 0 ? (
+          <StreakPredictionPanel prediction={streakPrediction} />
+        ) : null}
       </AppPage>
     </Refreshable>
   );

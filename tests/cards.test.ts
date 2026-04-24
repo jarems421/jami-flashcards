@@ -119,6 +119,15 @@ describe("card import parser", () => {
     ]);
   });
 
+  it("normalizes pasted power notation into one card format", () => {
+    expect(
+      parseCardImportText("Acid strength | 10**(-4.9)\nPythagoras | x² + y²").cards
+    ).toEqual([
+      { front: "Acid strength", back: "10^-4.9" },
+      { front: "Pythagoras", back: "x^2 + y^2" },
+    ]);
+  });
+
   it("reports invalid and overlong rows without dropping valid rows", () => {
     const overlongFront = "x".repeat(MAX_FRONT_LENGTH + 1);
     const result = parseCardImportText(
@@ -138,6 +147,15 @@ describe("card import/export helpers", () => {
   it("builds stable duplicate keys from normalized card text", () => {
     expect(getCardContentKey("  Capital   ", " Tokyo ")).toBe(
       getCardContentKey("capital", "tokyo")
+    );
+  });
+
+  it("treats equivalent power notation as the same card content", () => {
+    expect(getCardContentKey("Acid strength", "10**(-4.9)")).toBe(
+      getCardContentKey("Acid strength", "10^-4.9")
+    );
+    expect(getCardContentKey("Pythagoras", "x² + y²")).toBe(
+      getCardContentKey("Pythagoras", "x^2 + y^2")
     );
   });
 

@@ -100,7 +100,7 @@ function buildDigestPayload(
 
   return {
     title: "Study window is open",
-    body: "Daily Review is clear. Use Custom Review or tidy up your decks.",
+    body: "Daily Review is clear. Use Focused Review or tidy up your cards.",
     url: "/dashboard/study?mode=custom",
     tag: "daily-digest",
     icon: "/icons/notification-icon-192.png",

@@ -43,6 +43,20 @@ async function seedData() {
         uid: ALICE,
         createdAt: 1,
       }),
+      setDoc(doc(adminDb, "cards", "alice-card"), {
+        deckId: ALICE_DECK_ID,
+        userId: ALICE,
+        front: "Question",
+        back: "Answer",
+        tags: ["biology"],
+        createdAt: 1,
+        dueDate: 100,
+        stability: 2,
+        difficulty: 5,
+        fsrsState: 2,
+        lapses: 1,
+        reps: 2,
+      }),
     ]);
   });
 }
@@ -252,6 +266,76 @@ describe("Firestore security rules", () => {
         },
         updatedAt: 1,
       })
+    );
+  });
+
+  it("blocks demo accounts from mutating decks and notification setup", async () => {
+    await seedData();
+
+    const demoDb = testEnv.authenticatedContext(ALICE, { demo: true }).firestore();
+
+    await assertFails(
+      setDoc(doc(demoDb, "decks", "demo-deck"), {
+        name: "Demo deck",
+        userId: ALICE,
+        createdAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(demoDb, "users", ALICE, "notificationPreferences", "config"), {
+        enabled: true,
+        mode: "smart",
+        updatedAt: 1,
+      })
+    );
+  });
+
+  it("allows demo accounts to update study-safe card scheduling fields only", async () => {
+    await seedData();
+
+    const demoDb = testEnv.authenticatedContext(ALICE, { demo: true }).firestore();
+
+    await assertSucceeds(
+      setDoc(
+        doc(demoDb, "cards", "alice-card"),
+        {
+          deckId: ALICE_DECK_ID,
+          userId: ALICE,
+          front: "Question",
+          back: "Answer",
+          tags: ["biology"],
+          createdAt: 1,
+          dueDate: 200,
+          stability: 3,
+          difficulty: 5,
+          fsrsState: 2,
+          lapses: 1,
+          reps: 3,
+        },
+        { merge: false }
+      )
+    );
+
+    await assertFails(
+      setDoc(
+        doc(demoDb, "cards", "alice-card"),
+        {
+          deckId: ALICE_DECK_ID,
+          userId: ALICE,
+          front: "Changed question",
+          back: "Answer",
+          tags: ["biology"],
+          createdAt: 1,
+          dueDate: 200,
+          stability: 3,
+          difficulty: 5,
+          fsrsState: 2,
+          lapses: 1,
+          reps: 3,
+        },
+        { merge: false }
+      )
     );
   });
 });

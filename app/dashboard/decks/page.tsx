@@ -23,7 +23,7 @@ type DeckCounts = Record<string, { due: number; total: number }>;
 type Feedback = { type: "success" | "error"; message: string };
 
 export default function DecksPage() {
-  const { user } = useUser();
+  const { user, isDemoUser } = useUser();
   const [decks, setDecks] = useState<Deck[]>([]);
   const [deckCounts, setDeckCounts] = useState<DeckCounts>({});
   const [name, setName] = useState("");
@@ -117,6 +117,11 @@ export default function DecksPage() {
   };
 
   const handleCreate = async () => {
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Deck creation is disabled in the shared demo account." });
+      return;
+    }
+
     const deckName = name.trim();
     if (!deckName) return;
     setIsCreatingDeck(true);
@@ -135,6 +140,11 @@ export default function DecksPage() {
   };
 
   const handleDeckRename = async (deck: Deck) => {
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Deck editing is disabled in the shared demo account." });
+      return;
+    }
+
     setSavingDeckId(deck.id);
     setFeedback(null);
     try {
@@ -145,7 +155,7 @@ export default function DecksPage() {
       });
       await loadAll();
       resetDeckEditing();
-      setFeedback({ type: "success", message: `Renamed deck to ${editingDeckName.trim()}.` });
+      setFeedback({ type: "success", message: `Saved changes to ${editingDeckName.trim()}.` });
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "Failed to rename deck." });
@@ -155,6 +165,11 @@ export default function DecksPage() {
   };
 
   const handleDeckDelete = async (deck: Deck) => {
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Deck deletion is disabled in the shared demo account." });
+      return;
+    }
+
     const shouldDelete = window.confirm(
       `Delete ${deck.name}? This will also delete the cards in this deck.`
     );
@@ -179,7 +194,7 @@ export default function DecksPage() {
       <AppPage
         title="Decks"
         backHref="/dashboard"
-        backLabel="Dashboard"
+        backLabel="Today"
         width="2xl"
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
         contentClassName="space-y-4 sm:space-y-6"
@@ -188,9 +203,9 @@ export default function DecksPage() {
 
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <PageHero
-            eyebrow="Deck management"
-            title="Organize your cards."
-            description="Decks are for editing and structure. Study lives in the Study tab."
+            eyebrow="Library"
+            title="Group your cards by topic."
+            description="Use decks to keep subjects tidy. Open any deck to edit its cards or jump into a focused study session."
             action={
               <div className="flex w-full flex-col gap-3 sm:flex-row">
                 <Input
@@ -206,7 +221,7 @@ export default function DecksPage() {
                   }}
                   containerClassName="w-full"
                 />
-                <Button disabled={isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="sm:min-w-[9rem]">
+                <Button disabled={isDemoUser || isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="sm:min-w-[9rem]">
                   {isCreatingDeck ? "Creating..." : "Create deck"}
                 </Button>
               </div>
@@ -214,10 +229,19 @@ export default function DecksPage() {
           />
 
           <div className="grid gap-4">
-            <StatTile label="Decks" value={decks.length} detail="Organised subject groups." />
-            <StatTile label="Cards" value="Manage" detail="Search and edit across decks." href="/dashboard/cards" />
+            <StatTile label="Decks" value={decks.length} detail="Topics ready to study." />
+            <StatTile label="Card library" value="Open" detail="Search and edit cards across every deck." href="/dashboard/cards" />
           </div>
         </div>
+
+        {isDemoUser ? (
+          <div className="rounded-[1.6rem] border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-text-secondary">
+            <div className="font-semibold text-white">Deck editing is locked in the shared demo</div>
+            <p className="mt-1 leading-6">
+              You can browse the seeded decks here, but creating, renaming, recoloring, and deleting stay locked to keep the shared workspace stable.
+            </p>
+          </div>
+        ) : null}
 
         {isLoadingDecks ? (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -230,7 +254,7 @@ export default function DecksPage() {
             emoji="Deck"
             eyebrow="Start here"
             title="Create your first deck"
-            description="Decks keep your cards organised by subject. Add one topic now, then start filling it with flashcards."
+            description="Decks help you group cards by topic, module, or exam. Add one now, then start filling it with flashcards."
             action={<Button type="button" onClick={() => nameInputRef.current?.focus()} variant="warm">Name a deck</Button>}
           />
         ) : (
@@ -251,7 +275,7 @@ export default function DecksPage() {
                         <div className="space-y-3">
                           <Input value={editingDeckName} onChange={(event) => setEditingDeckName(event.target.value)} placeholder="Deck name" />
                           <div className="space-y-3 rounded-[1.4rem] border border-white/[0.07] bg-white/[0.04] p-3">
-                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Cover</div>
+                            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Deck cover</div>
                             <div className="flex flex-wrap items-center gap-3 rounded-[1rem] border border-white/[0.08] bg-black/10 p-3 sm:flex-nowrap">
                               <DeckCoverIcon
                                 colorPreset={editingDeckColor}
@@ -263,7 +287,7 @@ export default function DecksPage() {
                                   {editingDeckName.trim() || "Deck preview"}
                                 </div>
                                 <div className="text-xs text-text-muted">
-                                  Live cover preview
+                                  Updates as you style it
                                 </div>
                               </div>
                             </div>
@@ -300,15 +324,15 @@ export default function DecksPage() {
                           <div className="flex flex-col gap-2 sm:flex-row">
                             <Button
                               type="button"
-                              disabled={savingDeckId === deck.id || !editingDeckName.trim()}
+                              disabled={isDemoUser || savingDeckId === deck.id || !editingDeckName.trim()}
                               onClick={() => void handleDeckRename(deck)}
                               className="w-full sm:w-auto"
                             >
-                              {savingDeckId === deck.id ? "Saving..." : "Save"}
+                              {savingDeckId === deck.id ? "Saving..." : "Save deck"}
                             </Button>
                             <Button
                               type="button"
-                              disabled={savingDeckId === deck.id}
+                              disabled={isDemoUser || savingDeckId === deck.id}
                               onClick={resetDeckEditing}
                               variant="secondary"
                               className="w-full sm:w-auto"
@@ -318,24 +342,42 @@ export default function DecksPage() {
                           </div>
                         </div>
                       ) : (
-                        <Link href={getDeckHref(deck.id)} className="flex items-center gap-3 transition duration-fast hover:opacity-80">
+                        <Link href={getDeckHref(deck.id)} aria-label={`Open ${deck.name}`} className="group flex items-center gap-3 transition duration-fast hover:opacity-90">
                           <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} />
                           <div className="min-w-0">
                             <div className="truncate font-medium">{deck.name}</div>
                             <div className="text-sm text-text-muted">{counts.total} cards | {counts.due} currently due</div>
+                            <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-white/90">
+                              <span>Open deck</span>
+                              <svg
+                                viewBox="0 0 16 16"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="1.8"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="h-3.5 w-3.5 transition-transform duration-fast group-hover:translate-x-0.5"
+                                aria-hidden="true"
+                              >
+                                <path d="M3.5 8h9" />
+                                <path d="m8.5 3 4.5 5-4.5 5" />
+                              </svg>
+                            </div>
                           </div>
                         </Link>
                       )}
                     </div>
 
-                    <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                      <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
-                        Customise
-                      </Button>
-                      <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => void handleDeckDelete(deck)} variant="danger" className="flex-1 sm:flex-none">
-                        {deletingDeckId === deck.id ? "Deleting..." : "Delete"}
-                      </Button>
-                    </div>
+                    {editingDeckId === deck.id ? null : (
+                      <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                        <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
+                          Edit name & cover
+                        </Button>
+                        <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => void handleDeckDelete(deck)} variant="danger" className="flex-1 sm:flex-none">
+                          {deletingDeckId === deck.id ? "Deleting..." : "Delete"}
+                        </Button>
+                      </div>
+                    )}
                   </div>
                 </div>
               );

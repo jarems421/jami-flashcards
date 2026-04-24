@@ -2,7 +2,11 @@ import {
   cleanGeneratedCardBack,
   cleanGeneratedStudyText,
 } from "@/lib/ai/card-autocomplete";
-import { MAX_BACK_LENGTH, MAX_FRONT_LENGTH } from "@/lib/study/cards";
+import {
+  MAX_BACK_LENGTH,
+  MAX_FRONT_LENGTH,
+  normalizeCardContentInput,
+} from "@/lib/study/cards";
 
 export const MIN_NOTES_FOR_CARD_GENERATION = 80;
 export const MAX_NOTES_FOR_CARD_GENERATION = 12_000;
@@ -43,9 +47,14 @@ function normalizeGeneratedDraft(value: unknown): GeneratedCardDraft | null {
   const backValue = record.back ?? record.answer ?? record.definition;
   const front =
     typeof frontValue === "string"
-      ? cleanGeneratedStudyText(frontValue, { stripLeadingLabel: true })
+      ? normalizeCardContentInput(
+          cleanGeneratedStudyText(frontValue, { stripLeadingLabel: true })
+        )
       : "";
-  const back = typeof backValue === "string" ? cleanGeneratedCardBack(backValue) : "";
+  const back =
+    typeof backValue === "string"
+      ? normalizeCardContentInput(cleanGeneratedCardBack(backValue))
+      : "";
 
   if (!front || !back) {
     return null;

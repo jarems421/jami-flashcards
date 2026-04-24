@@ -48,7 +48,7 @@ function parseTargetAccuracyInput(value: string) {
 }
 
 export default function GoalsPage() {
-  const { user } = useUser();
+  const { user, isDemoUser } = useUser();
 
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showGoalHistory, setShowGoalHistory] = useState(false);
@@ -185,6 +185,11 @@ export default function GoalsPage() {
   };
 
   const handleCreateGoal = async () => {
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Goal creation is disabled in the shared demo account." });
+      return;
+    }
+
     const nextTargetCards = parseTargetCardsInput(targetCards);
     const nextTargetAccuracy = parseTargetAccuracyInput(targetAccuracy);
     const parsedDeadline = Date.parse(`${deadlineDate}T${deadlineTime || "23:59"}`);
@@ -240,7 +245,7 @@ export default function GoalsPage() {
       <AppPage
         title="Goals"
         backHref="/dashboard"
-        backLabel="Dashboard"
+        backLabel="Today"
         width="2xl"
         action={
           <RefreshIconButton
@@ -260,6 +265,11 @@ export default function GoalsPage() {
             title="Set a clear target."
             description="Choose a card count, accuracy, date, and time. Completing goals earns stars for your constellation."
           />
+          {isDemoUser ? (
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              The shared demo keeps goal creation locked so the seeded reward flow stays readable. Existing goals still update when you study.
+            </p>
+          ) : null}
           <div className="mt-5 grid gap-3 sm:gap-4 md:grid-cols-2">
             <Input
               type="number"
@@ -305,7 +315,7 @@ export default function GoalsPage() {
             </div>
             <div className="md:col-span-2">
               <Button
-                disabled={isCreatingGoal}
+                disabled={isDemoUser || isCreatingGoal}
                 onClick={() => void handleCreateGoal()}
                 variant="warm"
                 size="lg"

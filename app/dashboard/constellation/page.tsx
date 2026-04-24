@@ -335,9 +335,9 @@ export default function ConstellationDashboardPage() {
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
-        title="Constellation"
+        title="Stars"
         backHref="/dashboard"
-        backLabel="Dashboard"
+        backLabel="Today"
         width="3xl"
         action={
           <RefreshIconButton
@@ -614,12 +614,13 @@ export default function ConstellationDashboardPage() {
                           ) : (
                             <button
                               type="button"
-                              className="group flex min-w-0 items-center gap-1.5 font-medium transition-colors hover:text-accent"
+                              className="group flex min-w-0 items-center gap-2 font-medium transition-colors hover:text-accent"
                               onClick={() => startRename(constellation)}
                             >
                               <span className="truncate">{constellation.name}</span>
-                              <span className="text-text-muted opacity-0 transition-opacity group-hover:opacity-100" aria-label="Rename">
+                              <span className="inline-flex items-center gap-1 text-xs font-medium text-text-muted transition-colors group-hover:text-accent" aria-label="Rename">
                                 <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.83 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg>
+                                <span>Rename</span>
                               </span>
                             </button>
                           )}

@@ -12,6 +12,7 @@ import {
   getCardContentKey,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
+  normalizeCardContentInput,
   parseCardImportText,
   type Card,
   type ImportedCardDraft,
@@ -27,7 +28,7 @@ import type { Deck } from "@/services/study/decks";
 import TagInput from "@/components/decks/TagInput";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
-import { Button, Input, SectionHeader, Textarea } from "@/components/ui";
+import { Button, Input, SectionHeader, StudyText, Textarea } from "@/components/ui";
 
 type CreationMode = "single" | "list" | "notes";
 type GeneratedReviewCard = GeneratedCardDraft & { selected: boolean };
@@ -174,7 +175,10 @@ export default function CardCreationPanel({
     () =>
       generatedCards
         .filter((card) => card.selected)
-        .map(({ front, back }) => ({ front: front.trim(), back: back.trim() }))
+        .map(({ front, back }) => ({
+          front: normalizeCardContentInput(front),
+          back: normalizeCardContentInput(back),
+        }))
         .filter((card) => card.front && card.back),
     [generatedCards]
   );
@@ -203,12 +207,14 @@ export default function CardCreationPanel({
           const cardIndex = start + index;
           const cardRef = doc(cardsCollection);
           const createdAt = createdAtBase - cardIndex;
+          const front = normalizeCardContentInput(draft.front);
+          const back = normalizeCardContentInput(draft.back);
           const card: Card = {
             id: cardRef.id,
             deckId,
             userId,
-            front: draft.front,
-            back: draft.back,
+            front,
+            back,
             tags,
             createdAt,
           };
@@ -216,8 +222,8 @@ export default function CardCreationPanel({
           batch.set(cardRef, {
             deckId,
             userId,
-            front: card.front,
-            back: card.back,
+            front,
+            back,
             tags,
             createdAt,
           });
@@ -268,8 +274,8 @@ export default function CardCreationPanel({
   };
 
   const handleAddSingleCard = async () => {
-    const front = singleFront.trim();
-    const back = singleBack.trim();
+    const front = normalizeCardContentInput(singleFront);
+    const back = normalizeCardContentInput(singleBack);
     const tagResult = addCardTag(singleTags, singlePendingTag);
 
     if (!singleDeckId) {
@@ -559,20 +565,20 @@ export default function CardCreationPanel({
     <section className="app-panel p-4 sm:p-5">
       <SectionHeader
         eyebrow="Add cards"
-        title="Add one card or bring in a batch."
-        description="Start small, paste a list, or turn notes into drafts. Tags can be added to selected cards after a batch is saved."
+        title="Add a card or import a batch."
+        description="Start small, paste a list, or turn notes into draft cards. After a batch saves, you can tag the selected cards together."
         action={
           <div className="flex flex-wrap gap-2">
-            <ModeButton active={mode === "single"} onClick={() => setMode("single")}>One card</ModeButton>
-            <ModeButton active={mode === "list"} onClick={() => setMode("list")}>Paste a list</ModeButton>
-            <ModeButton active={mode === "notes"} onClick={() => setMode("notes")}>Use notes</ModeButton>
+            <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
+            <ModeButton active={mode === "list"} onClick={() => setMode("list")}>Paste list</ModeButton>
+            <ModeButton active={mode === "notes"} onClick={() => setMode("notes")}>From notes</ModeButton>
           </div>
         }
       />
 
       {decks.length === 0 ? (
         <p className="mt-4 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-          Create a deck first, then cards can be added here.
+          Create a deck first. Then you can add cards here.
         </p>
       ) : null}
 
@@ -689,12 +695,16 @@ export default function CardCreationPanel({
                       key={`${card.front}-${index}`}
                       className="rounded-[1rem] border border-white/[0.08] bg-surface-panel-strong p-3"
                     >
-                      <div className="truncate text-sm font-medium text-white">
-                        {card.front}
-                      </div>
-                      <div className="mt-1 truncate text-xs text-text-muted">
-                        {card.back}
-                      </div>
+                      <StudyText
+                        as="div"
+                        text={card.front}
+                        className="truncate text-sm font-medium text-white"
+                      />
+                      <StudyText
+                        as="div"
+                        text={card.back}
+                        className="mt-1 truncate text-xs text-text-muted"
+                      />
                     </div>
                   ))}
                   {listSummary.cards.length > 3 ? (

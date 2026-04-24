@@ -9,6 +9,12 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isDemoAccount() {
+      return isSignedIn() &&
+        ('demo' in request.auth.token) &&
+        request.auth.token.demo == true;
+    }
+
     function isOwnedByRequestAuth(data) {
       return isSignedIn() &&
         (('userId' in data) || ('uid' in data)) &&
@@ -30,9 +36,9 @@ service cloud.firestore {
 
     match /decks/{deckId} {
       allow read: if ownsDeck();
-      allow create: if createsOwnDeck();
-      allow update: if ownsDeck() && updatesOwnDeck();
-      allow delete: if ownsDeck();
+      allow create: if !isDemoAccount() && createsOwnDeck();
+      allow update: if !isDemoAccount() && ownsDeck() && updatesOwnDeck();
+      allow delete: if !isDemoAccount() && ownsDeck();
 
       function ownsDeck() {
         return isOwnedByRequestAuth(resource.data);
@@ -49,58 +55,84 @@ service cloud.firestore {
 
     match /cards/{cardId} {
       allow read: if isOwnedByRequestAuth(resource.data);
-      allow create: if isOwnedByRequestAuth(request.resource.data) &&
+      allow create: if !isDemoAccount() &&
+        isOwnedByRequestAuth(request.resource.data) &&
         deckExistsAndIsOwned(request.resource.data.deckId);
       allow update: if isOwnedByRequestAuth(resource.data) &&
         isOwnedByRequestAuth(request.resource.data) &&
-        request.resource.data.deckId == resource.data.deckId;
-      allow delete: if isOwnedByRequestAuth(resource.data);
+        request.resource.data.deckId == resource.data.deckId &&
+        (
+          !isDemoAccount() ||
+          (
+            request.resource.data.front == resource.data.front &&
+            request.resource.data.back == resource.data.back &&
+            request.resource.data.tags == resource.data.tags &&
+            request.resource.data.createdAt == resource.data.createdAt &&
+            request.resource.data.userId == resource.data.userId
+          )
+        );
+      allow delete: if !isDemoAccount() && isOwnedByRequestAuth(resource.data);
     }
 
     match /users/{userId} {
-      allow read, create, update, delete: if isSelf(userId);
+      allow read: if isSelf(userId);
+      allow create, update, delete: if isSelf(userId) && !isDemoAccount();
 
       match /goals/{goalId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read: if isSelf(userId);
+        allow create, delete: if isSelf(userId) && !isDemoAccount();
+        allow update: if isSelf(userId);
       }
 
       match /stars/{starId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read: if isSelf(userId);
+        allow create, update: if isSelf(userId);
+        allow delete: if isSelf(userId) && !isDemoAccount();
       }
 
       match /studyActivity/{dayKey} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read, create, update: if isSelf(userId);
+        allow delete: if isSelf(userId) && !isDemoAccount();
       }
 
       match /studyState/{documentId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read, create, update: if isSelf(userId);
+        allow delete: if isSelf(userId) && !isDemoAccount();
       }
 
       match /constellations/{constellationId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read: if isSelf(userId);
+        allow create, update: if isSelf(userId);
+        allow delete: if isSelf(userId) && !isDemoAccount();
       }
 
       match /constellationState/{stateId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read: if isSelf(userId);
+        allow create, update: if isSelf(userId);
+        allow delete: if isSelf(userId) && !isDemoAccount();
       }
 
       match /notificationPreferences/{documentId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
       match /pushSubscriptions/{subscriptionId} {
-        allow read, create, update, delete: if isSelf(userId);
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
       match /decks/{deckId} {
         allow read, delete: if isSelf(userId);
         allow create, update: if isSelf(userId) &&
+          !isDemoAccount() &&
           request.resource.data.deckId == deckId &&
           deckExistsAndIsOwned(deckId);
 
         match /attempts/{attemptId} {
           allow read, delete: if isSelf(userId);
           allow create, update: if isSelf(userId) &&
+            !isDemoAccount() &&
             request.resource.data.deckId == deckId &&
             deckExistsAndIsOwned(deckId);
         }

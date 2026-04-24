@@ -299,6 +299,8 @@ function normalizeMathOperators(text: string) {
     .replace(/\s*<-\s*/g, " \u2190 ")
     .replace(/\bcbrt\(([^()]+)\)/gi, "\u221b($1)")
     .replace(/\bsqrt\(([^()]+)\)/gi, "\u221a($1)")
+    .replace(/([A-Za-z0-9)\]])\*\*([+\-]?\d+(?:\.\d+)?(?:e[+\-]?\d+)?)\b/gi, "$1^$2")
+    .replace(/([A-Za-z0-9)\]])\*\*\{([+\-]?\d+(?:\.\d+)?(?:e[+\-]?\d+)?)\}/gi, "$1^{$2}")
     .replace(/([A-Za-z0-9)\]])\*\*([+\-]?\d{1,3})\b/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
     .replace(/([A-Za-z0-9)\]])\^([+\-]?\d{1,3})\b/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
     .replace(/([A-Za-z0-9)\]])\^\{([+\-]?\d{1,3})\}/g, (_match, base: string, exponent: string) => `${base}${toSuperscript(exponent)}`)
