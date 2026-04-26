@@ -14,6 +14,7 @@ import {
 import {
   buildDailyReviewQueues,
   getDailyReviewBucket,
+  sortCardsByStudyPriority,
 } from "@/lib/study/daily-review";
 import {
   updateCardSchedule,
@@ -377,6 +378,56 @@ describe("daily review memory risk", () => {
       now
     );
 
-    expect(requiredCards.map((card) => card.id)).toEqual(["weak", "old-new"]);
+    expect(requiredCards.map((card) => card.id)).toEqual(["old-new", "weak"]);
+  });
+
+  it("keeps reviewed cards in normal weakest-first order after all new cards", () => {
+    const now = Date.UTC(2026, 0, 3, 12);
+    const orderedCards = sortCardsByStudyPriority(
+      [
+        {
+          id: "new-card",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now - 2 * 24 * 60 * 60 * 1000,
+          tags: [],
+        },
+        {
+          id: "weak-card",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now - 10 * 24 * 60 * 60 * 1000,
+          tags: [],
+          difficulty: 8,
+          reps: 5,
+          lapses: 2,
+          dueDate: now - 60 * 60 * 1000,
+        },
+        {
+          id: "medium-card",
+          deckId: "deck",
+          userId: "user",
+          front: "front",
+          back: "back",
+          createdAt: now - 8 * 24 * 60 * 60 * 1000,
+          tags: [],
+          difficulty: 5,
+          reps: 5,
+          lapses: 0,
+          dueDate: now - 30 * 60 * 1000,
+        },
+      ],
+      now
+    );
+
+    expect(orderedCards.map((card) => card.id)).toEqual([
+      "new-card",
+      "weak-card",
+      "medium-card",
+    ]);
   });
 });

@@ -100,6 +100,47 @@ function getStudyPriorityTime(card: Card) {
   return card.createdAt;
 }
 
+function hasCardReviewHistory(card: Card) {
+  if (typeof card.lastReview === "number") {
+    return true;
+  }
+
+  if (
+    (card.reps ?? 0) > 0 ||
+    (card.lapses ?? 0) > 0 ||
+    (card.repetitions ?? 0) > 0
+  ) {
+    return true;
+  }
+
+  if (
+    (card.stability ?? 0) > 0 ||
+    (card.difficulty ?? 0) > 0 ||
+    (card.interval ?? 0) > 0 ||
+    (card.easeFactor ?? 0) > 0
+  ) {
+    return true;
+  }
+
+  if (
+    typeof card.fsrsState === "number" &&
+    card.fsrsState !== 0
+  ) {
+    return true;
+  }
+
+  return typeof card.dueDate === "number";
+}
+
+function compareNewCardAge(a: Card, b: Card) {
+  const createdAtDelta = a.createdAt - b.createdAt;
+  if (createdAtDelta !== 0) {
+    return createdAtDelta;
+  }
+
+  return a.id.localeCompare(b.id);
+}
+
 function compareStudyPriority(a: Card, b: Card, now: number) {
   const riskScoreDelta =
     getMemoryRiskInfo(b, now).score - getMemoryRiskInfo(a, now).score;
@@ -116,17 +157,22 @@ function compareStudyPriority(a: Card, b: Card, now: number) {
 }
 
 export function sortCardsForDailyReview(cards: Card[], now = Date.now()) {
-  const weakCards = cards
+  const neverReviewedCards = cards
+    .filter((card) => !hasCardReviewHistory(card))
+    .sort(compareNewCardAge);
+  const reviewedCards = cards.filter((card) => hasCardReviewHistory(card));
+  const weakCards = reviewedCards
     .filter((card) => getDailyReviewBucket(card, now) === "weak")
     .sort((left, right) => compareStudyPriority(left, right, now));
-  const mediumCards = cards
+  const mediumCards = reviewedCards
     .filter((card) => getDailyReviewBucket(card, now) === "medium")
     .sort((left, right) => compareStudyPriority(left, right, now));
-  const easyCards = cards
+  const easyCards = reviewedCards
     .filter((card) => getDailyReviewBucket(card, now) === "easy")
     .sort((left, right) => compareStudyPriority(left, right, now));
 
   return {
+    neverReviewedCards,
     weakCards,
     mediumCards,
     easyCards,
@@ -134,16 +180,16 @@ export function sortCardsForDailyReview(cards: Card[], now = Date.now()) {
 }
 
 export function sortCardsByStudyPriority(cards: Card[], now = Date.now()) {
-  const { weakCards, mediumCards, easyCards } = sortCardsForDailyReview(cards, now);
-  return [...weakCards, ...mediumCards, ...easyCards];
+  const { neverReviewedCards, weakCards, mediumCards, easyCards } = sortCardsForDailyReview(cards, now);
+  return [...neverReviewedCards, ...weakCards, ...mediumCards, ...easyCards];
 }
 
 export function buildDailyReviewQueues(cards: Card[], now: number) {
   const eligibleCards = cards.filter((card) => isCardEligibleForDailyReview(card, now));
-  const { weakCards, mediumCards, easyCards } = sortCardsForDailyReview(eligibleCards, now);
+  const { neverReviewedCards, weakCards, mediumCards, easyCards } = sortCardsForDailyReview(eligibleCards, now);
 
   return {
-    requiredCards: [...weakCards, ...mediumCards],
+    requiredCards: [...neverReviewedCards, ...weakCards, ...mediumCards],
     optionalCards: easyCards,
   };
 }
