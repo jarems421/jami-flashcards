@@ -469,7 +469,7 @@ export default function StudyPage() {
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
   const totalCards = sessionCards.length;
-  const currentCardNumber = current ? index + 1 : 0;
+  const remainingCards = current ? totalCards - index : 0;
   const accuracyPercentage = sessionStats.reviewedCards > 0 ? Math.round((sessionStats.correctAnswers / sessionStats.reviewedCards) * 100) : 0;
   const progressPercent = totalCards > 0 ? Math.round((index / totalCards) * 100) : 0;
 
@@ -1064,10 +1064,10 @@ export default function StudyPage() {
                     <div className="min-w-0">
                       <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">{getSessionLabel(sessionKind)}</div>
                       <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-white/[0.10] bg-white/[0.05] px-3 py-1.5 text-sm leading-none text-text-secondary">
-                        <span className="font-semibold tabular-nums text-white">{currentCardNumber}</span>
+                        <span className="font-semibold tabular-nums text-white">{remainingCards}</span>
                         <span className="text-text-muted">/</span>
                         <span className="tabular-nums">{totalCards}</span>
-                        <span>cards</span>
+                        <span>cards remaining</span>
                       </div>
                     </div>
                     <div className="min-w-0 lg:min-w-[12rem]">
