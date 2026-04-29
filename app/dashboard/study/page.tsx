@@ -1171,7 +1171,7 @@ export default function StudyPage() {
                           )
                         ) : (
                           <p className="rounded-[1rem] border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-sm text-text-muted">
-                            Type a few letters, like im, to find matching tags.
+                            Start typing to find a tag.
                           </p>
                         )}
                       </div>
