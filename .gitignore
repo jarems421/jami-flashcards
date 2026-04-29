@@ -40,6 +40,7 @@ tsconfig.tsbuildinfo
 
 # dev logs
 .next-dev.log
+next-dev-*.log
 .tmp*.log
 
 # vercel

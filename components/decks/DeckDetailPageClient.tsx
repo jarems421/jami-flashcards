@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useParams } from "next/navigation";
 import {
   collection,
@@ -16,6 +16,7 @@ import {
 import {
   addCardTag,
   exportCardsToSeparatedText,
+  getCardContentKey,
   mapCardData,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
@@ -23,11 +24,13 @@ import {
   normalizeCardTags,
   type Card,
 } from "@/lib/study/cards";
+import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import BulkTagToolbar from "@/components/decks/BulkTagToolbar";
+import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
@@ -80,6 +83,15 @@ export default function DeckDetailPageClient() {
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkPendingTag, setBulkPendingTag] = useState("");
   const [applyingBulkTags, setApplyingBulkTags] = useState(false);
+  const dragSelectionRef = useRef<{
+    active: boolean;
+    shouldSelect: boolean;
+    touchedCardIds: Set<string>;
+  }>({
+    active: false,
+    shouldSelect: true,
+    touchedCardIds: new Set(),
+  });
 
   useEffect(() => {
     if (!deckId) {
@@ -228,6 +240,75 @@ export default function DeckDetailPageClient() {
         : [...prev, cardId]
     );
   };
+
+  const setCardSelection = useCallback((cardId: string, shouldSelect: boolean) => {
+    setSelectedCardIds((prev) => {
+      const alreadySelected = prev.includes(cardId);
+      if (shouldSelect) {
+        return alreadySelected ? prev : [...prev, cardId];
+      }
+
+      return alreadySelected ? prev.filter((selectedId) => selectedId !== cardId) : prev;
+    });
+  }, []);
+
+  const applyDragSelectionToCard = useCallback(
+    (cardId: string) => {
+      const drag = dragSelectionRef.current;
+      if (!drag.active || drag.touchedCardIds.has(cardId)) {
+        return;
+      }
+
+      drag.touchedCardIds.add(cardId);
+      setCardSelection(cardId, drag.shouldSelect);
+    },
+    [setCardSelection]
+  );
+
+  const stopCardSelectionDrag = useCallback(() => {
+    dragSelectionRef.current.active = false;
+    dragSelectionRef.current.touchedCardIds.clear();
+  }, []);
+
+  const handleCardPointerDown = (
+    event: PointerEvent<HTMLElement>,
+    cardId: string
+  ) => {
+    if (isDemoUser || event.button !== 0 || editingCardId === cardId) {
+      return;
+    }
+
+    event.preventDefault();
+    const shouldSelect = !selectedCardIdSet.has(cardId);
+    dragSelectionRef.current = {
+      active: true,
+      shouldSelect,
+      touchedCardIds: new Set([cardId]),
+    };
+    setCardSelection(cardId, shouldSelect);
+  };
+
+  const handleCardGridPointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    if (!dragSelectionRef.current.active) {
+      return;
+    }
+
+    const target = document.elementFromPoint(event.clientX, event.clientY);
+    const cardElement = target instanceof HTMLElement ? target.closest<HTMLElement>("[data-card-id]") : null;
+    const cardId = cardElement?.dataset.cardId;
+    if (cardId) {
+      applyDragSelectionToCard(cardId);
+    }
+  };
+
+  useEffect(() => {
+    window.addEventListener("pointerup", stopCardSelectionDrag);
+    window.addEventListener("pointercancel", stopCardSelectionDrag);
+    return () => {
+      window.removeEventListener("pointerup", stopCardSelectionDrag);
+      window.removeEventListener("pointercancel", stopCardSelectionDrag);
+    };
+  }, [stopCardSelectionDrag]);
 
   const handleExportCards = (format: "tsv" | "csv") => {
     if (!deck || cards.length === 0) {
@@ -390,6 +471,7 @@ export default function DeckDetailPageClient() {
     );
   }, [cards, searchTerm]);
   const selectedCardIdSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
+  const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
 
   const selectFilteredCards = () => {
     setSelectedCardIds((prev) =>
@@ -597,7 +679,7 @@ export default function DeckDetailPageClient() {
                   Select visible cards
                 </Button>
                 <span className="text-sm text-text-muted">
-                  {selectedCardIds.length} selected for bulk edit
+                  {selectedCardIds.length} selected for bulk edit. Use a card handle, then slide across more cards.
                 </span>
               </div>
 
@@ -629,25 +711,54 @@ export default function DeckDetailPageClient() {
               action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
             />
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div
+              className="grid gap-4 lg:grid-cols-2"
+              onPointerMove={handleCardGridPointerMove}
+              onPointerLeave={stopCardSelectionDrag}
+            >
               {filteredCards.map((card) => (
-                <section key={card.id} className="app-panel p-4">
+                <section
+                  key={card.id}
+                  data-card-id={card.id}
+                  className={`app-panel p-4 transition duration-fast ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
+                >
                   {!isDemoUser ? (
-                    <label className="mb-3 flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
-                      <input
-                        type="checkbox"
-                        checked={selectedCardIdSet.has(card.id)}
-                        onChange={() => toggleCardSelection(card.id)}
-                        className="h-4 w-4 accent-[var(--color-accent)]"
-                      />
-                      Select
-                    </label>
+                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onPointerDown={(event) => handleCardPointerDown(event, card.id)}
+                        className="inline-flex h-9 w-9 touch-none cursor-grab items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.055] text-text-secondary transition duration-fast hover:border-accent/40 hover:bg-accent/10 hover:text-accent active:cursor-grabbing"
+                        aria-label={`${selectedCardIdSet.has(card.id) ? "Deselect" : "Select"} this card and slide across more cards`}
+                        title="Selection handle"
+                      >
+                        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true" className="h-4 w-4">
+                          <path d="M4 3.5h8" />
+                          <path d="M4 8h8" />
+                          <path d="M4 12.5h8" />
+                        </svg>
+                      </button>
+                      <label className="flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                        <input
+                          type="checkbox"
+                          checked={selectedCardIdSet.has(card.id)}
+                          onChange={() => toggleCardSelection(card.id)}
+                          className="h-4 w-4 accent-[var(--color-accent)]"
+                        />
+                        Select
+                      </label>
+                    </div>
                   ) : null}
                   {editingCardId === card.id ? (
                     <div className="space-y-4">
                       <div className="flex flex-wrap gap-2">
                         <CardDifficultyBadge card={card} />
                       </div>
+                      <CardQualityWarnings
+                        warnings={getCardQualityWarnings(
+                          { front: editingFront, back: editingBack, tags: editingTags },
+                          { duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)) }
+                        )}
+                      />
                       <Input
                         label="Front"
                         value={editingFront}
@@ -735,6 +846,11 @@ export default function DeckDetailPageClient() {
 
                       <div className="flex flex-wrap gap-2 pt-1">
                         <CardDifficultyBadge card={card} />
+                        <CardQualityWarnings
+                          warnings={getCardQualityWarnings(card, {
+                            duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)),
+                          })}
+                        />
                         {card.tags.map((tag) => (
                           <span
                             key={tag}

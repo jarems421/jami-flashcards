@@ -181,7 +181,7 @@ export default function Home() {
       <div className="grid gap-4 md:grid-cols-3">
         <StatTile
           label="Build cards"
-          value="Single, paste, or notes"
+          value="Single or paste"
           detail="Capture a card quickly or bring in a larger set without breaking flow."
         />
         <StatTile

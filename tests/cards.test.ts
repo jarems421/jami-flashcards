@@ -10,7 +10,9 @@ import {
   parseCardTagsInput,
   parseCardTagsParam,
   MAX_FRONT_LENGTH,
+  MAX_CARD_TAG_LENGTH,
 } from "@/lib/study/cards";
+import { getCardQualityWarnings } from "@/lib/study/card-quality";
 import {
   buildDailyReviewQueues,
   getDailyReviewBucket,
@@ -64,6 +66,18 @@ describe("card tag helpers", () => {
     });
   });
 
+  it("allows tags up to the current length limit", () => {
+    const tag = "a".repeat(MAX_CARD_TAG_LENGTH);
+    expect(addCardTag([], tag)).toEqual({
+      nextTags: [tag],
+      added: true,
+      error: null,
+    });
+    expect(addCardTag([], `${tag}x`).error).toBe(
+      `Each tag must be ${MAX_CARD_TAG_LENGTH} characters or less.`
+    );
+  });
+
   it("suggests reusable tags that match the current input", () => {
     expect(
       getTagSuggestions(
@@ -72,6 +86,23 @@ describe("card tag helpers", () => {
         ["physics"]
       )
     ).toEqual(["biology", "cell biology"]);
+  });
+});
+
+describe("card quality helpers", () => {
+  it("flags cards that are harder to maintain", () => {
+    const warnings = getCardQualityWarnings(
+      {
+        front: "Same",
+        back: "Same",
+        tags: [],
+      },
+      { duplicateCount: 2 }
+    ).map((warning) => warning.id);
+
+    expect(warnings).toContain("duplicate");
+    expect(warnings).toContain("same-front-back");
+    expect(warnings).toContain("untagged");
   });
 });
 

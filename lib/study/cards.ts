@@ -3,7 +3,7 @@ import { normalizeStudyTextInput } from "@/lib/study/display-text";
 export const MAX_FRONT_LENGTH = 400;
 export const MAX_BACK_LENGTH = 2_000;
 export const MAX_CARD_TAGS = 10;
-export const MAX_CARD_TAG_LENGTH = 32;
+export const MAX_CARD_TAG_LENGTH = 42;
 const MAX_IMPORT_ERROR_MESSAGES = 8;
 
 export type Card = {

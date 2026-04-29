@@ -6,7 +6,22 @@ import { FirebaseError } from "firebase/app";
 import { signUpWithEmail, signInWithEmail } from "@/services/auth";
 import { listenToAuth } from "@/lib/auth/auth-listener";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card, Input, PageHero } from "@/components/ui";
+import { Button, Card, Input } from "@/components/ui";
+
+const AUTH_HIGHLIGHTS = [
+  {
+    label: "Library",
+    detail: "Keep decks, cards, and tags in one place.",
+  },
+  {
+    label: "Study history",
+    detail: "Come back to the same review state on your next session.",
+  },
+  {
+    label: "Progress",
+    detail: "Goals and stars keep building over time.",
+  },
+];
 
 export default function AuthPage() {
   const router = useRouter();
@@ -67,50 +82,39 @@ export default function AuthPage() {
       title={isSignInMode ? "Sign In" : "Create Account"}
       backHref="/"
       backLabel="Home"
-      width="xl"
+      width="2xl"
       className="flex flex-col justify-center"
       contentClassName="space-y-6 sm:space-y-8"
     >
-      <div className="grid items-start gap-6 xl:grid-cols-[minmax(0,1.02fr)_360px] xl:gap-8">
-        <PageHero
-          className="animate-fade-in"
-          eyebrow={isSignInMode ? "Email sign-in" : "Create account"}
-          title={
-            isSignInMode
-              ? "Welcome back."
-              : "Create your account and keep everything in one place."
-          }
-          description={
-            <>
-              <span className="block text-base leading-7 text-text-secondary sm:text-lg">
+      <div className="grid items-stretch gap-6 xl:grid-cols-[minmax(0,1fr)_400px] xl:gap-8">
+        <Card tone="warm" padding="lg" className="min-h-full animate-fade-in">
+          <div className="grid h-full content-between gap-8">
+            <div>
+              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+                {isSignInMode ? "Email sign-in" : "Create account"}
+              </div>
+              <h2 className="mt-3 max-w-[58rem] text-[1.65rem] font-medium leading-tight tracking-tight text-white sm:text-[2rem] xl:text-[2.45rem]">
                 {isSignInMode
-                  ? "Sign in with your email and password to open your decks, study history, goals, and stars."
-                  : "Use email if you want a straightforward account with a password instead of Google sign-in."}
-              </span>
-              <span className="mt-4 block text-sm leading-7 text-text-muted sm:text-base">
-                Your cards, review history, and progress stay tied to this account.
-              </span>
-            </>
-          }
-          aside={
-            <div className="grid min-w-[16rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
-              {[
-                {
-                  label: "Library",
-                  detail: "Keep decks, cards, and tags in one place.",
-                },
-                {
-                  label: "Study history",
-                  detail: "Come back to the same review state on your next session.",
-                },
-                {
-                  label: "Progress",
-                  detail: "Goals and stars keep building over time.",
-                },
-              ].map((item) => (
+                  ? "Welcome back to your study space."
+                  : "Create your account and keep everything in one place."}
+              </h2>
+              <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(14rem,0.48fr)] lg:items-start">
+                <p className="text-base leading-8 text-text-secondary sm:text-lg">
+                  {isSignInMode
+                    ? "Sign in with your email and password to open your decks, study history, goals, and stars without losing your review rhythm."
+                    : "Use email if you want a straightforward account with a password instead of Google sign-in, with your study space ready wherever you come back."}
+                </p>
+                <p className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm leading-6 text-text-muted sm:text-base">
+                  Your cards, review history, and progress stay tied to this account.
+                </p>
+              </div>
+            </div>
+
+            <div className="grid w-full min-w-0 gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4 sm:grid-cols-3">
+              {AUTH_HIGHLIGHTS.map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3"
+                  className="min-w-0 rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3"
                 >
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
                     {item.label}
@@ -119,10 +123,10 @@ export default function AuthPage() {
                 </div>
               ))}
             </div>
-          }
-        />
+          </div>
+        </Card>
 
-        <Card className="animate-slide-up sm:p-6" padding="lg">
+        <Card className="animate-slide-up self-stretch sm:p-6 xl:sticky xl:top-24" padding="lg">
           <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-warm-accent">
             {isSignInMode ? "Sign in with email" : "Create with email"}
           </div>

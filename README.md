@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  A memory-aware flashcard app with AI-assisted authoring, offline-ready study, actionable analytics, and a constellation reward loop.
+  A memory-aware flashcard app with AI-assisted study support, offline-ready review, actionable analytics, and a constellation reward loop.
 </p>
 
 <p align="center">
@@ -34,7 +34,7 @@
 
 Jami is designed to feel like a finished learning product, not just a flashcard CRUD app.
 
-- Build cards quickly with single-card entry, bulk paste, file import, and AI-assisted drafting.
+- Build cards quickly with single-card entry, bulk paste, file import, tag management, and quality warnings.
 - Study through a memory-aware review flow that combines FSRS scheduling with custom risk ranking.
 - Stay productive offline with cached study data and queued review sync.
 - See what matters next through retention signals, weak areas, hardest cards, due-load forecasting, and streak pressure.
@@ -45,7 +45,7 @@ Jami is designed to feel like a finished learning product, not just a flashcard 
 If you open the app from top to bottom, the story is:
 
 1. Start from a polished landing flow with Google sign-in, email sign-in, and a reviewer-friendly public demo.
-2. Build a card library through decks, tags, bulk imports, and AI-assisted draft generation.
+2. Build a card library through decks, tags, bulk imports, tag cleanup, and card-quality warnings.
 3. Study through Daily Review for the highest-risk cards or Focused Review for targeted deck/tag practice.
 4. Use Insights to understand weak areas, upcoming workload, streak pressure, and hardest cards.
 5. Track longer-term progress through goals, stars, and the constellation system.
@@ -63,8 +63,9 @@ If you open the app from top to bottom, the story is:
 
 - Single-card entry for quick capture.
 - Paste-list import for spreadsheet-style workflows.
-- Notes-to-cards generation with editable drafts.
 - AI card-back autocomplete to speed up writing without auto-committing weak output.
+- Tag rename, merge, and removal tools for keeping a growing library tidy.
+- Quality warnings for duplicate, oversized, untagged, or suspicious cards.
 - Export helpers for TSV and CSV deck dumps.
 
 ### 3. Useful analytics
@@ -109,7 +110,7 @@ flowchart LR
     F --> L[Goals, stars, constellation state]
     F --> M[Study activity and daily review state]
 
-    H --> N[AI autocomplete and notes-to-cards drafts]
+    H --> N[AI autocomplete, explanations, and study chat]
     I --> O[Digest notifications]
 ```
 
@@ -118,7 +119,7 @@ flowchart LR
 - Full-stack learning product built with Next.js 16, React 19, TypeScript, Firebase Auth, Firestore, Storage, and Gemini.
 - FSRS spaced repetition extended with a custom memory-risk ranking layer.
 - Offline-capable study flow with cached data and deferred sync.
-- AI-assisted authoring designed with human review in the loop.
+- AI-assisted card-back autocomplete, explanations, and study chat designed with human review in the loop.
 - Analytics, goals, and reward systems connected into one coherent product story.
 - Safe public demo and shared study mode for portfolio and interview walkthroughs.
 - Unit and rules testing across card utilities, analytics, auth, notifications, demo routes, and Firestore permissions.
@@ -127,7 +128,7 @@ flowchart LR
 
 ```text
 app/
-  api/ai/                AI autocomplete, generation, chat, and explanation routes
+  api/ai/                AI autocomplete, chat, and explanation routes
   api/demo/              Demo login and refresh routes
   api/notifications/     Digest and notification test routes
   dashboard/             Authenticated product experience

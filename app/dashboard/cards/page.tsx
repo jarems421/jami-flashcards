@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { collection, deleteDoc, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { getDecks, type Deck } from "@/services/study/decks";
 import {
   addCardTag,
+  getCardContentKey,
+  getTagKey,
   mapCardData,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
@@ -14,11 +16,14 @@ import {
   normalizeCardTags,
   type Card,
 } from "@/lib/study/cards";
+import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { getDeckHref } from "@/lib/app/routes";
+import { removeUserTag, renameUserTag } from "@/services/study/tags";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import BulkTagToolbar from "@/components/decks/BulkTagToolbar";
+import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
@@ -36,6 +41,7 @@ function cardMatchesSearch(card: Card, term: string, deckName?: string) {
 }
 
 const MAX_VISIBLE_RESULTS = 50;
+type SelectionDragMode = "select" | "deselect";
 
 export default function CardsSearchPage() {
   const { user, isDemoUser } = useUser();
@@ -54,9 +60,14 @@ export default function CardsSearchPage() {
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
+  const [selectionDragMode, setSelectionDragMode] = useState<SelectionDragMode | null>(null);
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkPendingTag, setBulkPendingTag] = useState("");
   const [applyingBulkTags, setApplyingBulkTags] = useState(false);
+  const [tagManagerSource, setTagManagerSource] = useState("");
+  const [tagManagerTarget, setTagManagerTarget] = useState("");
+  const [tagManagerAction, setTagManagerAction] = useState<"rename" | "remove" | null>(null);
+  const selectionDragModeRef = useRef<SelectionDragMode | null>(null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -131,6 +142,53 @@ export default function CardsSearchPage() {
   const visibleCards = filtered.slice(0, MAX_VISIBLE_RESULTS);
   const hasMore = filtered.length > MAX_VISIBLE_RESULTS;
   const selectedCardIdSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
+  const visibleCardIdSet = useMemo(() => new Set(visibleCards.map((card) => card.id)), [visibleCards]);
+  const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
+  const tagCounts = useMemo(() => {
+    const counts = new Map<string, { label: string; count: number }>();
+    for (const card of cards) {
+      for (const tag of card.tags) {
+        const key = getTagKey(tag);
+        const current = counts.get(key) ?? { label: tag, count: 0 };
+        current.count += 1;
+        counts.set(key, current);
+      }
+    }
+    return counts;
+  }, [cards]);
+
+  const setSelectionDrag = useCallback((mode: SelectionDragMode | null) => {
+    selectionDragModeRef.current = mode;
+    setSelectionDragMode(mode);
+  }, []);
+
+  const applyCardSelectionDrag = useCallback(
+    (cardId: string, mode: SelectionDragMode) => {
+      if (!visibleCardIdSet.has(cardId)) {
+        return;
+      }
+
+      setSelectedCardIds((prev) => {
+        const selected = prev.includes(cardId);
+        if (mode === "select") {
+          return selected ? prev : [...prev, cardId];
+        }
+
+        return selected ? prev.filter((selectedId) => selectedId !== cardId) : prev;
+      });
+    },
+    [visibleCardIdSet]
+  );
+
+  useEffect(() => {
+    const stopSelectionDrag = () => setSelectionDrag(null);
+    window.addEventListener("pointerup", stopSelectionDrag);
+    window.addEventListener("pointercancel", stopSelectionDrag);
+    return () => {
+      window.removeEventListener("pointerup", stopSelectionDrag);
+      window.removeEventListener("pointercancel", stopSelectionDrag);
+    };
+  }, [setSelectionDrag]);
 
   const startEditing = (card: Card) => {
     setExpandedCardId(card.id);
@@ -270,6 +328,38 @@ export default function CardsSearchPage() {
     );
   };
 
+  const handleCardPointerDown = (cardId: string, selected: boolean) => (event: PointerEvent<HTMLElement>) => {
+    if (isDemoUser || event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+    const mode: SelectionDragMode = selected ? "deselect" : "select";
+    setSelectionDrag(mode);
+    applyCardSelectionDrag(cardId, mode);
+  };
+
+  const handleCardPointerEnter = (cardId: string) => {
+    const mode = selectionDragModeRef.current;
+    if (mode) {
+      applyCardSelectionDrag(cardId, mode);
+    }
+  };
+
+  const handleCardPointerMove = (event: PointerEvent<HTMLElement>) => {
+    const mode = selectionDragModeRef.current;
+    if (!mode || typeof document === "undefined") {
+      return;
+    }
+
+    const element = document.elementFromPoint(event.clientX, event.clientY);
+    const cardElement = element instanceof HTMLElement ? element.closest<HTMLElement>("[data-card-id]") : null;
+    const cardId = cardElement?.dataset.cardId;
+    if (cardId) {
+      applyCardSelectionDrag(cardId, mode);
+    }
+  };
+
   const selectVisibleCards = () => {
     setSelectedCardIds((prev) =>
       Array.from(new Set([...prev, ...visibleCards.map((card) => card.id)]))
@@ -336,6 +426,104 @@ export default function CardsSearchPage() {
     }
   };
 
+  const refreshAvailableTagsFromCards = (nextCards: Card[]) => {
+    setAvailableTags(
+      Array.from(new Set(nextCards.flatMap((card) => normalizeCardTags(card.tags)))).sort((a, b) =>
+        a.localeCompare(b)
+      )
+    );
+  };
+
+  const applyLocalTagRename = (sourceTag: string, targetTag: string) => {
+    const sourceKey = getTagKey(sourceTag);
+    const nextCards = cards.map((card) => ({
+      ...card,
+      tags: normalizeCardTags(
+        card.tags.map((tag) => (getTagKey(tag) === sourceKey ? targetTag : tag))
+      ),
+    }));
+    setCards(nextCards);
+    refreshAvailableTagsFromCards(nextCards);
+  };
+
+  const applyLocalTagRemoval = (sourceTag: string) => {
+    const sourceKey = getTagKey(sourceTag);
+    const nextCards = cards.map((card) => ({
+      ...card,
+      tags: normalizeCardTags(card.tags.filter((tag) => getTagKey(tag) !== sourceKey)),
+    }));
+    setCards(nextCards);
+    refreshAvailableTagsFromCards(nextCards);
+  };
+
+  const handleRenameTag = async () => {
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Tag editing is disabled in the shared demo account." });
+      return;
+    }
+
+    const sourceTag = tagManagerSource.trim();
+    const targetTag = tagManagerTarget.trim();
+    if (!sourceTag || !targetTag) {
+      setFeedback({ type: "error", message: "Choose a tag and enter the new tag name." });
+      return;
+    }
+
+    setTagManagerAction("rename");
+    setFeedback(null);
+    try {
+      const count = await renameUserTag(user.uid, sourceTag, targetTag);
+      applyLocalTagRename(sourceTag, targetTag);
+      setTagManagerSource(targetTag);
+      setTagManagerTarget("");
+      setFeedback({ type: "success", message: `Updated ${count} card${count === 1 ? "" : "s"}.` });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to rename that tag.",
+      });
+    } finally {
+      setTagManagerAction(null);
+    }
+  };
+
+  const handleRemoveTag = async () => {
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Tag editing is disabled in the shared demo account." });
+      return;
+    }
+
+    const sourceTag = tagManagerSource.trim();
+    if (!sourceTag) {
+      setFeedback({ type: "error", message: "Choose a tag to remove." });
+      return;
+    }
+
+    const shouldRemove = window.confirm(`Remove "${sourceTag}" from every card?`);
+    if (!shouldRemove) {
+      return;
+    }
+
+    setTagManagerAction("remove");
+    setFeedback(null);
+    try {
+      const count = await removeUserTag(user.uid, sourceTag);
+      applyLocalTagRemoval(sourceTag);
+      setTagManagerSource("");
+      setTagManagerTarget("");
+      setFeedback({ type: "success", message: `Removed tag from ${count} card${count === 1 ? "" : "s"}.` });
+    } catch (error) {
+      console.error(error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Failed to remove that tag.",
+      });
+    } finally {
+      setTagManagerAction(null);
+    }
+  };
+
   return (
     <AppPage
       title="Cards"
@@ -346,6 +534,43 @@ export default function CardsSearchPage() {
     >
       {feedback ? (
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
+      ) : null}
+
+      {!loading && !isDemoUser && (decks.length === 0 || cards.length === 0 || availableTags.length === 0) ? (
+        <section className="grid gap-3 rounded-[1.5rem] border border-white/[0.08] bg-white/[0.035] p-4 sm:grid-cols-3">
+          <div className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] p-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">1. Decks</div>
+            <div className="mt-2 text-sm font-medium text-white">
+              {decks.length > 0 ? `${decks.length} ready` : "Create a deck"}
+            </div>
+            <p className="mt-1 text-xs leading-5 text-text-muted">
+              Decks group your cards by subject or exam.
+            </p>
+            {decks.length === 0 ? (
+              <Link href="/dashboard/decks" className="mt-3 inline-flex text-xs font-semibold text-accent hover:text-white">
+                Open decks
+              </Link>
+            ) : null}
+          </div>
+          <div className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] p-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">2. Cards</div>
+            <div className="mt-2 text-sm font-medium text-white">
+              {cards.length > 0 ? `${cards.length} ready` : "Add your first cards"}
+            </div>
+            <p className="mt-1 text-xs leading-5 text-text-muted">
+              Single card and paste-list import live just below.
+            </p>
+          </div>
+          <div className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] p-3">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">3. Tags</div>
+            <div className="mt-2 text-sm font-medium text-white">
+              {availableTags.length > 0 ? `${availableTags.length} ready` : "Add tags when useful"}
+            </div>
+            <p className="mt-1 text-xs leading-5 text-text-muted">
+              Tags unlock cleaner Focused Review sessions.
+            </p>
+          </div>
+        </section>
       ) : null}
 
       {isDemoUser ? (
@@ -365,6 +590,98 @@ export default function CardsSearchPage() {
           onFeedback={setFeedback}
         />
       )}
+
+      {!isDemoUser ? (
+        <section className="app-panel p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                Tag manager
+              </div>
+              <h2 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">
+                Rename, merge, or remove tags.
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
+                Pick a tag below, then rename it. Renaming to an existing tag will merge them across your cards.
+              </p>
+            </div>
+            <div className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-sm text-text-secondary">
+              <span className="font-semibold text-white">{availableTags.length}</span> tag{availableTags.length === 1 ? "" : "s"}
+            </div>
+          </div>
+
+          {availableTags.length === 0 ? (
+            <div className="mt-4 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+              Add a tag to any card and it will appear here for cleanup later.
+            </div>
+          ) : (
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]">
+              <div className="max-h-56 overflow-y-auto rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] p-2">
+                <div className="flex flex-wrap gap-2">
+                  {availableTags.map((tag) => {
+                    const selected = getTagKey(tagManagerSource) === getTagKey(tag);
+                    const count = tagCounts.get(getTagKey(tag))?.count ?? 0;
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => {
+                          setTagManagerSource(tag);
+                          setTagManagerTarget("");
+                          setFeedback(null);
+                        }}
+                        className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${
+                          selected
+                            ? "border-accent bg-accent/20 text-accent"
+                            : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"
+                        }`}
+                      >
+                        {tag} · {count} card{count === 1 ? "" : "s"}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="space-y-3 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4">
+                <Input
+                  label="Selected tag"
+                  value={tagManagerSource}
+                  onChange={(event) => setTagManagerSource(event.target.value)}
+                  placeholder="Choose or type a tag"
+                  disabled={tagManagerAction !== null}
+                />
+                <Input
+                  label="Rename or merge into"
+                  value={tagManagerTarget}
+                  onChange={(event) => setTagManagerTarget(event.target.value)}
+                  placeholder="New or existing tag"
+                  disabled={tagManagerAction !== null}
+                />
+                <div className="flex flex-col gap-2 sm:flex-row">
+                  <Button
+                    type="button"
+                    disabled={tagManagerAction !== null || !tagManagerSource.trim() || !tagManagerTarget.trim()}
+                    onClick={() => void handleRenameTag()}
+                    className="w-full sm:w-auto"
+                  >
+                    {tagManagerAction === "rename" ? "Updating..." : "Rename / merge"}
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="danger"
+                    disabled={tagManagerAction !== null || !tagManagerSource.trim()}
+                    onClick={() => void handleRemoveTag()}
+                    className="w-full sm:w-auto"
+                  >
+                    {tagManagerAction === "remove" ? "Removing..." : "Remove tag"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+        </section>
+      ) : null}
 
       <div className="sticky top-0 z-20 -mx-1 px-1 pb-2 pt-1">
         <Input
@@ -415,6 +732,19 @@ export default function CardsSearchPage() {
                   {selectedCardIds.length} selected for bulk edit
                 </span>
               </div>
+              <div
+                className={`rounded-[1.25rem] border px-4 py-3 text-sm leading-6 transition duration-fast ${
+                  selectionDragMode
+                    ? "border-accent/35 bg-accent/10 text-accent"
+                    : "border-white/[0.08] bg-white/[0.025] text-text-muted"
+                }`}
+              >
+                {selectionDragMode
+                  ? selectionDragMode === "select"
+                    ? "Selecting as you slide."
+                    : "Deselecting as you slide."
+                  : "Use the selection handle on a card, then slide across other handles or panels to select or deselect several at once."}
+              </div>
 
               <BulkTagToolbar
                 selectedCount={selectedCardIds.length}
@@ -435,25 +765,58 @@ export default function CardsSearchPage() {
             {hasMore ? ` (showing first ${MAX_VISIBLE_RESULTS})` : ""}. Use the deck pill on any card to jump into that deck.
           </p>
 
-          <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
+          <div
+            className="grid animate-slide-up touch-pan-y select-none gap-3 sm:gap-4 lg:grid-cols-2"
+            onPointerMove={handleCardPointerMove}
+          >
             {visibleCards.map((card) => (
-              <section key={card.id} className="app-panel p-3 sm:p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell">
+              <section
+                key={card.id}
+                data-card-id={card.id}
+                onPointerEnter={() => handleCardPointerEnter(card.id)}
+                className={`app-panel p-3 sm:p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell ${
+                  selectedCardIdSet.has(card.id)
+                    ? "border-accent/45 ring-2 ring-accent/20"
+                    : ""
+                }`}
+              >
                 {!isDemoUser ? (
-                  <label className="mb-3 flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
-                    <input
-                      type="checkbox"
-                      checked={selectedCardIdSet.has(card.id)}
-                      onChange={() => toggleCardSelection(card.id)}
-                      className="h-4 w-4 accent-[var(--color-accent)]"
-                    />
-                    Select
-                  </label>
+                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      onPointerDown={handleCardPointerDown(card.id, selectedCardIdSet.has(card.id))}
+                      className="inline-flex h-9 w-9 touch-none cursor-grab items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.055] text-text-secondary transition duration-fast hover:border-accent/40 hover:bg-accent/10 hover:text-accent active:cursor-grabbing"
+                      aria-label={`${selectedCardIdSet.has(card.id) ? "Deselect" : "Select"} this card and slide across more cards`}
+                      title="Selection handle"
+                    >
+                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true" className="h-4 w-4">
+                        <path d="M4 3.5h8" />
+                        <path d="M4 8h8" />
+                        <path d="M4 12.5h8" />
+                      </svg>
+                    </button>
+                    <label className="flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <input
+                        type="checkbox"
+                        checked={selectedCardIdSet.has(card.id)}
+                        onChange={() => toggleCardSelection(card.id)}
+                        className="h-4 w-4 accent-[var(--color-accent)]"
+                      />
+                      Select
+                    </label>
+                  </div>
                 ) : null}
                 {expandedCardId === card.id ? (
                   <div className="space-y-4">
                     <div className="flex flex-wrap gap-2">
                       <CardDifficultyBadge card={card} />
                     </div>
+                    <CardQualityWarnings
+                      warnings={getCardQualityWarnings(
+                        { front: editingFront, back: editingBack, tags: editingTags },
+                        { duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)) }
+                      )}
+                    />
                     <Input
                       label="Front"
                       value={editingFront}
@@ -540,6 +903,11 @@ export default function CardsSearchPage() {
 
                     <div className="flex flex-wrap items-center gap-2">
                       <CardDifficultyBadge card={card} />
+                      <CardQualityWarnings
+                        warnings={getCardQualityWarnings(card, {
+                          duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)),
+                        })}
+                      />
                       {deckNamesById[card.deckId] ? (
                         <Link
                           href={getDeckHref(card.deckId)}

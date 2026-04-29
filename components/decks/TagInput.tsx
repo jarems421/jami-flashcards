@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import {
   addCardTag,
   getTagSuggestions,
@@ -30,7 +30,15 @@ export default function TagInput({
   helperText,
 }: TagInputProps) {
   const [localError, setLocalError] = useState<string | null>(null);
-  const suggestions = getTagSuggestions(availableTags, pendingTag, tags);
+  const [showAllSuggestions, setShowAllSuggestions] = useState(false);
+  const allSuggestions = useMemo(
+    () => getTagSuggestions(availableTags, pendingTag, tags, availableTags.length),
+    [availableTags, pendingTag, tags]
+  );
+  const suggestions = showAllSuggestions
+    ? allSuggestions
+    : allSuggestions.slice(0, 6);
+  const hasHiddenSuggestions = allSuggestions.length > suggestions.length;
 
   const commitPendingTag = () => {
     const result = addCardTag(tags, pendingTag);
@@ -93,6 +101,7 @@ export default function TagInput({
           placeholder={placeholder}
           onChange={(event) => {
             onPendingTagChange(event.target.value);
+            setShowAllSuggestions(false);
             if (localError) {
               setLocalError(null);
             }
@@ -126,18 +135,32 @@ export default function TagInput({
       ) : null}
 
       {suggestions.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {suggestions.map((tag) => (
+        <div className="space-y-2">
+          <div className="flex max-h-44 flex-wrap gap-2 overflow-y-auto rounded-[1.1rem] border border-white/[0.08] bg-white/[0.025] p-2">
+            {suggestions.map((tag) => (
+              <button
+                key={tag}
+                type="button"
+                onClick={() => handleSuggestionClick(tag)}
+                disabled={disabled}
+                className="rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-xs text-text-muted transition duration-fast hover:border-border-strong hover:bg-white/[0.08] disabled:opacity-50"
+              >
+                Use {tag}
+              </button>
+            ))}
+          </div>
+          {hasHiddenSuggestions || showAllSuggestions ? (
             <button
-              key={tag}
               type="button"
-              onClick={() => handleSuggestionClick(tag)}
+              onClick={() => setShowAllSuggestions((value) => !value)}
               disabled={disabled}
-              className="rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-xs text-text-muted transition duration-fast hover:border-border-strong hover:bg-white/[0.08] disabled:opacity-50"
+              className="text-xs font-medium text-text-muted transition duration-fast hover:text-white disabled:opacity-50"
             >
-              Use {tag}
+              {showAllSuggestions
+                ? "Show fewer tags"
+                : `Show all tags (${allSuggestions.length})`}
             </button>
-          ))}
+          ) : null}
         </div>
       ) : null}
 

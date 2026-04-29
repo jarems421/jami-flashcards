@@ -17,12 +17,6 @@ import {
   type Card,
   type ImportedCardDraft,
 } from "@/lib/study/cards";
-import {
-  MAX_NOTES_FOR_CARD_GENERATION,
-  MIN_NOTES_FOR_CARD_GENERATION,
-  type GeneratedCardDraft,
-} from "@/lib/ai/card-generation";
-import { generateCardsFromNotes } from "@/services/ai/generate-cards";
 import { db } from "@/services/firebase/client";
 import type { Deck } from "@/services/study/decks";
 import TagInput from "@/components/decks/TagInput";
@@ -30,8 +24,7 @@ import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import { Button, Input, SectionHeader, StudyText, Textarea } from "@/components/ui";
 
-type CreationMode = "single" | "list" | "notes";
-type GeneratedReviewCard = GeneratedCardDraft & { selected: boolean };
+type CreationMode = "single" | "list";
 type Feedback = { type: "success" | "error"; message: string };
 
 type CardCreationPanelProps = {
@@ -133,13 +126,6 @@ export default function CardCreationPanel({
   const [addingListCards, setAddingListCards] = useState(false);
   const [listProgress, setListProgress] = useState<{ completed: number; total: number } | null>(null);
 
-  const [notesDeckId, setNotesDeckId] = useState(fallbackDeckId);
-  const [notesText, setNotesText] = useState("");
-  const [notesFileName, setNotesFileName] = useState("");
-  const [generatingCards, setGeneratingCards] = useState(false);
-  const [savingGeneratedCards, setSavingGeneratedCards] = useState(false);
-  const [generatedCards, setGeneratedCards] = useState<GeneratedReviewCard[]>([]);
-
   useEffect(() => {
     if (!fallbackDeckId) {
       return;
@@ -147,7 +133,6 @@ export default function CardCreationPanel({
 
     setSingleDeckId((current) => current || fallbackDeckId);
     setListDeckId((current) => current || fallbackDeckId);
-    setNotesDeckId((current) => current || fallbackDeckId);
   }, [fallbackDeckId]);
 
   const deckNamesById = useMemo(
@@ -170,21 +155,6 @@ export default function CardCreationPanel({
   const listDraftSummary = useMemo(
     () => getNewDraftSummary(listSummary.cards, existingKeysByDeckId.get(listDeckId) ?? new Set()),
     [existingKeysByDeckId, listDeckId, listSummary.cards]
-  );
-  const selectedGeneratedCards = useMemo(
-    () =>
-      generatedCards
-        .filter((card) => card.selected)
-        .map(({ front, back }) => ({
-          front: normalizeCardContentInput(front),
-          back: normalizeCardContentInput(back),
-        }))
-        .filter((card) => card.front && card.back),
-    [generatedCards]
-  );
-  const generatedDraftSummary = useMemo(
-    () => getNewDraftSummary(selectedGeneratedCards, existingKeysByDeckId.get(notesDeckId) ?? new Set()),
-    [existingKeysByDeckId, notesDeckId, selectedGeneratedCards]
   );
 
   const createCardsFromDrafts = async (
@@ -420,158 +390,16 @@ export default function CardCreationPanel({
     }
   };
 
-  const handleGenerateCards = async () => {
-    if (!notesDeckId) {
-      onFeedback({ type: "error", message: "Choose a deck first." });
-      return;
-    }
-
-    if (notesText.trim().length < MIN_NOTES_FOR_CARD_GENERATION) {
-      onFeedback({
-        type: "error",
-        message: `Paste at least ${MIN_NOTES_FOR_CARD_GENERATION} characters of notes before generating cards.`,
-      });
-      return;
-    }
-
-    setGeneratingCards(true);
-
-    try {
-      const drafts = await generateCardsFromNotes({
-        notes: notesText,
-        deckName: deckNamesById[notesDeckId],
-      });
-      setGeneratedCards(drafts.map((draft) => ({ ...draft, selected: true })));
-      onFeedback({
-        type: "success",
-        message: `Generated ${drafts.length} draft cards. Review them before saving.`,
-      });
-    } catch (error) {
-      console.error(error);
-      onFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to generate cards from those notes.",
-      });
-    } finally {
-      setGeneratingCards(false);
-    }
-  };
-
-  const handleNotesFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
-    const input = event.currentTarget;
-    const file = input.files?.[0];
-    if (!file) {
-      return;
-    }
-
-    try {
-      const text = await file.text();
-      const trimmedText = text.trim();
-      if (!trimmedText) {
-        onFeedback({ type: "error", message: "That file did not contain readable notes." });
-        return;
-      }
-
-      const limitedText = trimmedText.slice(0, MAX_NOTES_FOR_CARD_GENERATION);
-      setNotesText(limitedText);
-      setNotesFileName(file.name);
-      onFeedback({
-        type: "success",
-        message:
-          trimmedText.length > MAX_NOTES_FOR_CARD_GENERATION
-            ? `Loaded the first ${MAX_NOTES_FOR_CARD_GENERATION.toLocaleString()} characters from ${file.name}.`
-            : `Loaded notes from ${file.name}.`,
-      });
-    } catch (error) {
-      console.error(error);
-      onFeedback({ type: "error", message: "Failed to read that notes file." });
-    } finally {
-      input.value = "";
-    }
-  };
-
-  const updateGeneratedCard = (
-    index: number,
-    field: "front" | "back" | "selected",
-    value: string | boolean
-  ) => {
-    setGeneratedCards((currentCards) =>
-      currentCards.map((card, cardIndex) =>
-        cardIndex === index ? { ...card, [field]: value } : card
-      )
-    );
-  };
-
-  const handleSaveGeneratedCards = async () => {
-    if (!notesDeckId) {
-      onFeedback({ type: "error", message: "Choose a deck first." });
-      return;
-    }
-
-    if (selectedGeneratedCards.length === 0) {
-      onFeedback({ type: "error", message: "Select at least one generated card to save." });
-      return;
-    }
-
-    if (generatedDraftSummary.newDrafts.length === 0) {
-      onFeedback({ type: "error", message: "The selected generated cards already exist in this deck." });
-      return;
-    }
-
-    setSavingGeneratedCards(true);
-
-    try {
-      const createdCards = await createCardsFromDrafts(
-        generatedDraftSummary.newDrafts,
-        notesDeckId
-      );
-      const duplicateMessage =
-        generatedDraftSummary.duplicateCount > 0
-          ? ` Skipped ${generatedDraftSummary.duplicateCount} duplicate${generatedDraftSummary.duplicateCount === 1 ? "" : "s"}.`
-          : "";
-
-      setNotesText("");
-      setGeneratedCards([]);
-      onCardsCreated(createdCards, { source: "notes", selectCreated: true });
-      onFeedback({
-        type: "success",
-        message: `Saved ${createdCards.length} generated cards.${duplicateMessage} They are selected below so you can tag them if needed.`,
-      });
-    } catch (error) {
-      console.error(error);
-      const createdCards =
-        error instanceof Error
-          ? ((error as Error & { createdCards?: Card[] }).createdCards ?? [])
-          : [];
-      if (createdCards.length > 0) {
-        onCardsCreated(createdCards, { source: "notes", selectCreated: true });
-      }
-      onFeedback({
-        type: "error",
-        message:
-          createdCards.length > 0
-            ? `Saved ${createdCards.length} cards before the batch stopped. Check the selected cards before retrying.`
-            : "Failed to save generated cards.",
-      });
-    } finally {
-      setSavingGeneratedCards(false);
-    }
-  };
-
   return (
     <section className="app-panel p-4 sm:p-5">
       <SectionHeader
         eyebrow="Add cards"
         title="Add a card or import a batch."
-        description="Start small, paste a list, or turn notes into draft cards. After a batch saves, you can tag the selected cards together."
+        description="Start small or paste a list. After a batch saves, you can tag the selected cards together."
         action={
           <div className="flex flex-wrap gap-2">
             <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
             <ModeButton active={mode === "list"} onClick={() => setMode("list")}>Paste list</ModeButton>
-            <ModeButton active={mode === "notes"} onClick={() => setMode("notes")}>From notes</ModeButton>
           </div>
         }
       />
@@ -790,140 +618,6 @@ export default function CardCreationPanel({
         </div>
       ) : null}
 
-      {mode === "notes" ? (
-        <div className="mt-5 space-y-4 animate-fade-in">
-          {renderDeckSelect(notesDeckId, setNotesDeckId, generatingCards || savingGeneratedCards)}
-          <Textarea
-            label="Notes"
-            placeholder="Paste class notes, a textbook summary, or revision bullet points..."
-            value={notesText}
-            onChange={(event) => setNotesText(event.target.value.slice(0, MAX_NOTES_FOR_CARD_GENERATION))}
-            rows={8}
-            disabled={generatingCards || savingGeneratedCards}
-          />
-          <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  Notes upload
-                </div>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">
-                  Upload plain text or markdown notes, or paste them above. No special format is needed for notes.
-                </p>
-                <p className="mt-2 text-xs leading-5 text-text-muted">
-                  For now, copy text out of PDF or Word files before adding it here.
-                </p>
-                {notesFileName ? (
-                  <p className="mt-3 text-xs font-medium text-warm-accent">
-                    Loaded {notesFileName}
-                  </p>
-                ) : null}
-              </div>
-              <label className="inline-flex min-h-[2.5rem] cursor-pointer items-center justify-center rounded-[1.4rem] border border-white/14 bg-white/[0.05] px-3 py-2 text-sm font-medium text-white transition duration-fast hover:border-white/22 hover:bg-white/[0.08]">
-                Upload notes
-                <input
-                  type="file"
-                  accept=".txt,.md,.markdown,text/plain,text/markdown,text/x-markdown"
-                  className="sr-only"
-                  disabled={generatingCards || savingGeneratedCards}
-                  onChange={(event) => void handleNotesFileChange(event)}
-                />
-              </label>
-            </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-text-muted">
-            <span>
-              {notesText.trim().length.toLocaleString()} / {MAX_NOTES_FOR_CARD_GENERATION.toLocaleString()} characters
-            </span>
-            <span>
-              Minimum {MIN_NOTES_FOR_CARD_GENERATION} characters.
-            </span>
-          </div>
-
-          <div className="flex flex-wrap gap-3">
-            <Button
-              type="button"
-              disabled={generatingCards || savingGeneratedCards || !notesDeckId || notesText.trim().length < MIN_NOTES_FOR_CARD_GENERATION}
-              onClick={() => void handleGenerateCards()}
-              size="lg"
-            >
-              {generatingCards ? "Generating..." : "Generate drafts"}
-            </Button>
-            <Button
-              type="button"
-              disabled={generatingCards || savingGeneratedCards || (!notesText && generatedCards.length === 0)}
-              onClick={() => {
-                setNotesText("");
-                setNotesFileName("");
-                setGeneratedCards([]);
-              }}
-              variant="ghost"
-              size="lg"
-            >
-              Clear
-            </Button>
-          </div>
-
-          {generatedCards.length > 0 ? (
-            <div className="space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-sm text-text-secondary">
-                <span>
-                  {generatedDraftSummary.newDrafts.length} selected card{generatedDraftSummary.newDrafts.length === 1 ? "" : "s"} ready
-                </span>
-                {generatedDraftSummary.duplicateCount > 0 ? (
-                  <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">
-                    {generatedDraftSummary.duplicateCount} duplicate{generatedDraftSummary.duplicateCount === 1 ? "" : "s"} skipped
-                  </span>
-                ) : null}
-              </div>
-
-              {generatedCards.map((card, index) => (
-                <div
-                  key={`${card.front}-${index}`}
-                  className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4"
-                >
-                  <label className="mb-3 flex items-center gap-2 text-sm font-medium text-white">
-                    <input
-                      type="checkbox"
-                      checked={card.selected}
-                      onChange={(event) => updateGeneratedCard(index, "selected", event.target.checked)}
-                      disabled={savingGeneratedCards}
-                      className="h-4 w-4 accent-[var(--color-accent)]"
-                    />
-                    Save this card
-                  </label>
-                  <div className="grid gap-3 lg:grid-cols-2">
-                    <Input
-                      label="Front"
-                      value={card.front}
-                      maxLength={MAX_FRONT_LENGTH}
-                      onChange={(event) => updateGeneratedCard(index, "front", event.target.value)}
-                      disabled={savingGeneratedCards}
-                    />
-                    <Textarea
-                      label="Back"
-                      value={card.back}
-                      maxLength={MAX_BACK_LENGTH}
-                      onChange={(event) => updateGeneratedCard(index, "back", event.target.value)}
-                      rows={4}
-                      disabled={savingGeneratedCards}
-                    />
-                  </div>
-                </div>
-              ))}
-
-              <Button
-                type="button"
-                disabled={savingGeneratedCards || generatedDraftSummary.newDrafts.length === 0}
-                onClick={() => void handleSaveGeneratedCards()}
-                size="lg"
-              >
-                {savingGeneratedCards ? "Saving..." : `Save ${generatedDraftSummary.newDrafts.length} cards`}
-              </Button>
-            </div>
-          ) : null}
-        </div>
-      ) : null}
     </section>
   );
 }

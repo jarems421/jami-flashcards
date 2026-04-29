@@ -30,12 +30,17 @@ import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
 import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, PageHero, ProgressBar, Skeleton, StudyText } from "@/components/ui";
+import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, PageHero, ProgressBar, Skeleton, StudyText } from "@/components/ui";
 
 type SessionKind = "daily-required" | "daily-optional" | "custom";
 type SessionStats = { reviewedCards: number; correctAnswers: number; completedGoals: number; starsEarned: number; ratings: Record<CardRating, number>; };
 const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
 type AnswerFeedback = { tone: "error" | "warm" | "good" | "calm"; message: string };
+type FocusedReviewRecents = { deckIds: string[]; tags: string[] };
+
+const FOCUSED_REVIEW_RECENTS_PREFIX = "jami:focused-review-recents:";
+const EMPTY_FOCUSED_REVIEW_RECENTS: FocusedReviewRecents = { deckIds: [], tags: [] };
+const FOCUSED_REVIEW_RECENT_LIMIT = 5;
 
 const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classes: string }> = {
   again: {
@@ -182,6 +187,47 @@ function buildCustomReviewCards(cards: Card[], selectedDeckIds: string[], select
   return sortCardsByStudyPriority(filteredCards);
 }
 
+function getFocusedReviewRecentsKey(userId: string) {
+  return `${FOCUSED_REVIEW_RECENTS_PREFIX}${userId}`;
+}
+
+function normalizeFocusedReviewRecents(value: unknown): FocusedReviewRecents {
+  if (!value || typeof value !== "object") {
+    return EMPTY_FOCUSED_REVIEW_RECENTS;
+  }
+
+  const data = value as { deckIds?: unknown; tags?: unknown };
+  return {
+    deckIds: Array.isArray(data.deckIds)
+      ? data.deckIds.filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim())).slice(0, FOCUSED_REVIEW_RECENT_LIMIT)
+      : [],
+    tags: Array.isArray(data.tags)
+      ? data.tags.filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim())).slice(0, FOCUSED_REVIEW_RECENT_LIMIT)
+      : [],
+  };
+}
+
+function mergeRecentValues(current: string[], nextValues: string[], getKey = (value: string) => value) {
+  const seen = new Set<string>();
+  const merged: string[] = [];
+
+  for (const value of [...nextValues, ...current]) {
+    const trimmed = value.trim();
+    const key = getKey(trimmed);
+    if (!trimmed || !key || seen.has(key)) {
+      continue;
+    }
+
+    seen.add(key);
+    merged.push(trimmed);
+    if (merged.length >= FOCUSED_REVIEW_RECENT_LIMIT) {
+      break;
+    }
+  }
+
+  return merged;
+}
+
 export default function StudyPage() {
   const searchParams = useSearchParams();
   const { user, demoMode } = useUser();
@@ -195,6 +241,9 @@ export default function StudyPage() {
   const [dailyReviewState, setDailyReviewState] = useState<DailyReviewState | null>(null);
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>(requestedDeckIds);
   const [selectedTags, setSelectedTags] = useState<string[]>(requestedTags);
+  const [deckSearch, setDeckSearch] = useState("");
+  const [tagSearch, setTagSearch] = useState("");
+  const [focusedReviewRecents, setFocusedReviewRecents] = useState<FocusedReviewRecents>(EMPTY_FOCUSED_REVIEW_RECENTS);
   const [sessionKind, setSessionKind] = useState<SessionKind | null>(null);
   const [sessionCards, setSessionCards] = useState<Card[]>([]);
   const [loaded, setLoaded] = useState(false);
@@ -225,6 +274,42 @@ export default function StudyPage() {
     setSessionStats(createEmptySessionStats());
     autoStartHandledRef.current = false;
   }, [requestedDeckIds, requestedTags, requestedMode]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const stored = window.localStorage.getItem(getFocusedReviewRecentsKey(user.uid));
+      setFocusedReviewRecents(stored ? normalizeFocusedReviewRecents(JSON.parse(stored)) : EMPTY_FOCUSED_REVIEW_RECENTS);
+    } catch (error) {
+      console.warn("Failed to load focused review recents.", error);
+      setFocusedReviewRecents(EMPTY_FOCUSED_REVIEW_RECENTS);
+    }
+  }, [user.uid]);
+
+  const pushFocusedReviewRecents = useCallback(
+    (deckIds: string[], tags: string[]) => {
+      setFocusedReviewRecents((current) => {
+        const next = {
+          deckIds: mergeRecentValues(current.deckIds, deckIds),
+          tags: mergeRecentValues(current.tags, tags, getTagKey),
+        };
+
+        if (typeof window !== "undefined") {
+          try {
+            window.localStorage.setItem(getFocusedReviewRecentsKey(user.uid), JSON.stringify(next));
+          } catch (error) {
+            console.warn("Failed to save focused review recents.", error);
+          }
+        }
+
+        return next;
+      });
+    },
+    [user.uid]
+  );
 
   useEffect(() => {
     const interval = setInterval(() => setCountdownMs(getMsUntilNextStudyBoundary()), 1000);
@@ -394,6 +479,70 @@ export default function StudyPage() {
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
     [decks]
   );
+  const deckCardCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const card of cards) {
+      counts.set(card.deckId, (counts.get(card.deckId) ?? 0) + 1);
+    }
+    return counts;
+  }, [cards]);
+  const tagCardCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const card of cards) {
+      const cardTagKeys = new Set(card.tags.map(getTagKey));
+      for (const tagKey of cardTagKeys) {
+        counts.set(tagKey, (counts.get(tagKey) ?? 0) + 1);
+      }
+    }
+    return counts;
+  }, [cards]);
+  const deckSearchResults = useMemo(() => {
+    const query = deckSearch.trim().toLowerCase();
+    if (!query) return [];
+    return decks
+      .filter((deck) => deck.name.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [deckSearch, decks]);
+  const tagSearchResults = useMemo(() => {
+    const query = getTagKey(tagSearch);
+    if (!query) return [];
+    return availableTags
+      .filter((tag) => getTagKey(tag).includes(query))
+      .slice(0, 8);
+  }, [availableTags, tagSearch]);
+  const recentDecks = useMemo(() => {
+    const decksById = new Map(decks.map((deck) => [deck.id, deck]));
+    return focusedReviewRecents.deckIds
+      .map((deckId) => decksById.get(deckId) ?? null)
+      .filter((deck): deck is Deck => deck !== null)
+      .slice(0, FOCUSED_REVIEW_RECENT_LIMIT);
+  }, [decks, focusedReviewRecents.deckIds]);
+  const recentTags = useMemo(() => {
+    const tagsByKey = new Map(availableTags.map((tag) => [getTagKey(tag), tag]));
+    return focusedReviewRecents.tags
+      .map((tag) => tagsByKey.get(getTagKey(tag)) ?? null)
+      .filter((tag): tag is string => tag !== null)
+      .slice(0, FOCUSED_REVIEW_RECENT_LIMIT);
+  }, [availableTags, focusedReviewRecents.tags]);
+
+  const toggleDeckFilter = useCallback((deckId: string) => {
+    setSelectedDeckIds((prev) =>
+      prev.includes(deckId)
+        ? prev.filter((currentId) => currentId !== deckId)
+        : [...prev, deckId]
+    );
+    setFeedback(null);
+  }, []);
+
+  const toggleTagFilter = useCallback((tag: string) => {
+    const tagKey = getTagKey(tag);
+    setSelectedTags((prev) =>
+      prev.some((currentTag) => getTagKey(currentTag) === tagKey)
+        ? prev.filter((currentTag) => getTagKey(currentTag) !== tagKey)
+        : [...prev, tag]
+    );
+    setFeedback(null);
+  }, []);
 
   const startSession = useCallback(
     (kind: SessionKind) => {
@@ -413,8 +562,12 @@ export default function StudyPage() {
       setShowExplanation(false);
       setAnswerFeedback(null);
       setFeedback(null);
+
+      if (kind === "custom") {
+        pushFocusedReviewRecents(selectedDeckIds, selectedTags);
+      }
     },
-    [customPreviewCards, remainingOptionalCards, remainingRequiredCards]
+    [customPreviewCards, pushFocusedReviewRecents, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTags]
   );
 
   const handleCustomReviewClick = useCallback(() => {
@@ -545,7 +698,6 @@ export default function StudyPage() {
       clearMemoryRiskOverrideDayKey: Boolean(schedule && isCorrect),
     });
     refreshPendingOfflineReviews();
-
     const nextCard: Card = {
       ...current,
       ...(schedule ?? {}),
@@ -901,46 +1053,179 @@ export default function StudyPage() {
                       </span>
                     </div>
                   ) : null}
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div>
-                      <div className="mb-3 text-sm font-medium text-white">Filter by deck</div>
-                      <div className="flex flex-wrap gap-2">
-                        {decks.map((deck) => {
-                          const selected = selectedDeckIds.includes(deck.id);
-                          return (
-                            <button
-                              key={deck.id}
-                              type="button"
-                              className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
-                              onClick={() => {
-                                setSelectedDeckIds((prev) => prev.includes(deck.id) ? prev.filter((currentId) => currentId !== deck.id) : [...prev, deck.id]);
-                              }}
-                            >
-                              {deck.name}
-                            </button>
-                          );
-                        })}
+                  {hasCustomFilters ? (
+                    <div className="grid gap-3 rounded-[1.25rem] border border-accent/20 bg-accent/10 p-3 md:grid-cols-2">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                        Selected decks
                       </div>
-                    </div>
-                    <div>
-                      <div className="mb-3 text-sm font-medium text-white">Filter by tag</div>
-                      <div className="flex flex-wrap gap-2">
-                        {availableTags.map((tag) => {
-                          const selected = selectedTags.includes(tag);
-                          return (
+                      <div className="flex flex-wrap gap-2 md:col-start-1">
+                        {selectedDeckIds.length > 0 ? (
+                          selectedDeckIds.map((deckId) => (
+                            <button
+                              key={deckId}
+                              type="button"
+                              onClick={() => toggleDeckFilter(deckId)}
+                              className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition duration-fast hover:bg-accent/20"
+                            >
+                              {deckNamesById[deckId] ?? "Deck"} · {deckCardCounts.get(deckId) ?? 0} cards x
+                            </button>
+                          ))
+                        ) : (
+                          <span className="text-xs leading-5 text-text-muted">No deck filter selected.</span>
+                        )}
+                      </div>
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted md:col-start-2 md:row-start-1">
+                        Selected tags
+                      </div>
+                      <div className="flex flex-wrap gap-2 md:col-start-2">
+                        {selectedTags.length > 0 ? (
+                          selectedTags.map((tag) => (
                             <button
                               key={tag}
                               type="button"
-                              className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
-                              onClick={() => {
-                                setSelectedTags((prev) => prev.includes(tag) ? prev.filter((currentTag) => currentTag !== tag) : [...prev, tag]);
-                              }}
+                              onClick={() => toggleTagFilter(tag)}
+                              className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition duration-fast hover:bg-accent/20"
                             >
-                              {tag}
+                              {tag} · {tagCardCounts.get(getTagKey(tag)) ?? 0} cards x
                             </button>
-                          );
-                        })}
+                          ))
+                        ) : (
+                          <span className="text-xs leading-5 text-text-muted">No tag filter selected.</span>
+                        )}
                       </div>
+                    </div>
+                  ) : null}
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-[1.35rem] border border-white/[0.08] bg-white/[0.035] p-4">
+                      <Input
+                        label="Search decks"
+                        placeholder="Type a deck name"
+                        value={deckSearch}
+                        onChange={(event) => setDeckSearch(event.target.value)}
+                      />
+                      <div className="mt-3 min-h-12 space-y-2">
+                        {deckSearch.trim() ? (
+                          deckSearchResults.length > 0 ? (
+                            deckSearchResults.map((deck) => {
+                              const selected = selectedDeckIds.includes(deck.id);
+                              return (
+                                <button
+                                  key={deck.id}
+                                  type="button"
+                                  onClick={() => toggleDeckFilter(deck.id)}
+                                  className={`flex w-full items-center justify-between gap-3 rounded-[1rem] border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate">{deck.name}</span>
+                                    <span className="mt-0.5 block text-xs text-text-muted">{deckCardCounts.get(deck.id) ?? 0} cards</span>
+                                  </span>
+                                  <span className="shrink-0 text-xs text-text-muted">{selected ? "Selected" : "Add"}</span>
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <p className="rounded-[1rem] border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-sm text-text-muted">
+                              No decks match that search.
+                            </p>
+                          )
+                        ) : (
+                          <p className="rounded-[1rem] border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-sm text-text-muted">
+                            Start typing to find a deck.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="rounded-[1.35rem] border border-white/[0.08] bg-white/[0.035] p-4">
+                      <Input
+                        label="Search tags"
+                        placeholder="Type a tag name"
+                        value={tagSearch}
+                        onChange={(event) => setTagSearch(event.target.value)}
+                      />
+                      <div className="mt-3 min-h-12 space-y-2">
+                        {tagSearch.trim() ? (
+                          tagSearchResults.length > 0 ? (
+                            tagSearchResults.map((tag) => {
+                              const selected = selectedTags.some((currentTag) => getTagKey(currentTag) === getTagKey(tag));
+                              return (
+                                <button
+                                  key={tag}
+                                  type="button"
+                                  onClick={() => toggleTagFilter(tag)}
+                                  className={`flex w-full items-center justify-between gap-3 rounded-[1rem] border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                                >
+                                  <span className="min-w-0">
+                                    <span className="block truncate">{tag}</span>
+                                    <span className="mt-0.5 block text-xs text-text-muted">{tagCardCounts.get(getTagKey(tag)) ?? 0} cards</span>
+                                  </span>
+                                  <span className="shrink-0 text-xs text-text-muted">{selected ? "Selected" : "Add"}</span>
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <p className="rounded-[1rem] border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-sm text-text-muted">
+                              No tags match that search.
+                            </p>
+                          )
+                        ) : (
+                          <p className="rounded-[1rem] border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-sm text-text-muted">
+                            Type a few letters, like im, to find matching tags.
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="grid gap-4 lg:grid-cols-2">
+                    <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] p-4">
+                      <div className="mb-3 text-sm font-medium text-white">Recent decks</div>
+                      {recentDecks.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {recentDecks.map((deck) => {
+                            const selected = selectedDeckIds.includes(deck.id);
+                            return (
+                              <button
+                                key={deck.id}
+                                type="button"
+                                onClick={() => toggleDeckFilter(deck.id)}
+                                className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                              >
+                                {deck.name} · {deckCardCounts.get(deck.id) ?? 0} cards
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm leading-6 text-text-muted">
+                          Start a focused session and your recent decks will appear here.
+                        </p>
+                      )}
+                    </div>
+                    <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] p-4">
+                      <div className="mb-3 text-sm font-medium text-white">Recent tags</div>
+                      {recentTags.length > 0 ? (
+                        <div className="flex flex-wrap gap-2">
+                          {recentTags.map((tag) => {
+                            const selected = selectedTags.some((currentTag) => getTagKey(currentTag) === getTagKey(tag));
+                            return (
+                              <button
+                                key={tag}
+                                type="button"
+                                onClick={() => toggleTagFilter(tag)}
+                                className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                              >
+                                {tag} · {tagCardCounts.get(getTagKey(tag)) ?? 0} cards
+                              </button>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <p className="text-sm leading-6 text-text-muted">
+                          Tags from focused sessions will collect here.
+                        </p>
+                      )}
                     </div>
                   </div>
                   {customSelectionEmpty ? (
@@ -1134,7 +1419,7 @@ export default function StudyPage() {
                 </div>
               ) : null}
               {flipped ? (
-                <div className="animate-fade-in space-y-3">
+                <div className="sticky bottom-3 z-30 animate-fade-in space-y-3 rounded-[1.5rem] border border-white/[0.08] bg-surface-panel/95 p-2 shadow-[0_18px_36px_rgba(8,2,26,0.28)] backdrop-blur-md sm:static sm:z-auto sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
                   {savingRating ? <div className="text-center text-sm text-text-muted">Saving...</div> : null}
                   {showExplanation ? (
                     !demoAiDisabled ? (
@@ -1142,7 +1427,7 @@ export default function StudyPage() {
                     ) : null
                   ) : (
                     <div className="space-y-3">
-                      <div className="grid gap-2 sm:grid-cols-4 sm:gap-3">
+                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
                         {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => {
                           const meta = RATING_STYLES[rating];
                           return (
@@ -1150,7 +1435,7 @@ export default function StudyPage() {
                             key={rating}
                             type="button"
                             disabled={savingRating !== null}
-                            className={`flex min-h-[4.35rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border px-4 py-3.5 text-center text-sm font-medium shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:opacity-50 ${meta.classes}`}
+                            className={`flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border px-3 py-4 text-center text-base font-semibold shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:opacity-50 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm ${meta.classes}`}
                             onClick={() => void handleRating(rating)}
                           >
                             <span>{RATING_LABELS[rating]}</span>
