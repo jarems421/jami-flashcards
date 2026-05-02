@@ -6,6 +6,7 @@ import {
   canRestorePersistedSession,
   createEmptySessionStats,
   hydratePersistedSessionCards,
+  isStudySessionProgressRegression,
   normalizePersistedStudySession,
 } from "@/lib/study/session";
 
@@ -28,6 +29,7 @@ function createDailyReviewState(overrides: Partial<DailyReviewState> = {}): Dail
     generatedAt: 1,
     requiredCardIds: [],
     optionalCardIds: [],
+    carryoverRequiredCardIds: [],
     completedRequiredCardIds: [],
     completedOptionalCardIds: [],
     parkedRequiredCardIds: [],
@@ -94,6 +96,30 @@ describe("study session persistence", () => {
     ).toBeNull();
   });
 
+  it("restores paused sessions across study day boundaries while they are still fresh", () => {
+    const session = normalizePersistedStudySession(
+      {
+        version: 1,
+        userId: "user-1",
+        studyDayKey: "2026-05-01",
+        kind: "daily-required",
+        status: "active",
+        cardIds: ["a"],
+        index: 0,
+        stats: createEmptySessionStats(),
+        selectedDeckIds: [],
+        selectedTags: [],
+        startedAt: 100,
+        savedAt: 150,
+      },
+      "user-1",
+      "2026-05-02",
+      200
+    );
+
+    expect(session?.studyDayKey).toBe("2026-05-01");
+  });
+
   it("hydrates a saved queue without reintroducing daily cards already completed elsewhere", () => {
     const cards = ["a", "b", "c", "d"].map(createCard);
     const session = buildPersistedStudySession({
@@ -132,5 +158,35 @@ describe("study session persistence", () => {
     expect(canRestorePersistedSession(session, "custom", ["deck-1"], ["cell biology"])).toBe(true);
     expect(canRestorePersistedSession(session, "custom", ["deck-2"], ["cell biology"])).toBe(false);
     expect(canRestorePersistedSession(session, "daily", [], [])).toBe(false);
+  });
+
+  it("detects stale active-session writes that would rewind progress", () => {
+    const cards = ["a", "b", "c"].map(createCard);
+    const base = buildPersistedStudySession({
+      userId: "user-1",
+      kind: "daily-required",
+      sessionCards: cards,
+      index: 1,
+      stats: { ...createEmptySessionStats(), reviewedCards: 1 },
+      selectedDeckIds: [],
+      selectedTags: [],
+      startedAt: 100,
+      now: 200,
+    });
+    const stale = {
+      ...base,
+      index: 0,
+      stats: createEmptySessionStats(),
+      savedAt: 300,
+    };
+    const next = {
+      ...base,
+      index: 2,
+      stats: { ...createEmptySessionStats(), reviewedCards: 2 },
+      savedAt: 300,
+    };
+
+    expect(isStudySessionProgressRegression(base, stale)).toBe(true);
+    expect(isStudySessionProgressRegression(base, next)).toBe(false);
   });
 });

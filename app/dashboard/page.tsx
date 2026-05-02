@@ -22,11 +22,13 @@ import { predictStudyStreak } from "@/lib/study/streak-prediction";
 import { loadStudyActivity } from "@/services/study/activity";
 import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
+import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
 import { FeedbackBanner, PageHero, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { loadInAppUsername } from "@/services/profile";
 import { formatTimeRemaining } from "@/lib/study/time";
+import { getStudyDayKey } from "@/lib/study/day";
 import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
@@ -100,7 +102,17 @@ export default function DashboardHome() {
         allCards.push(mapCardData(cardDoc.id, data as Record<string, unknown>));
       }
 
-      const dailyReviewState = await ensureDailyReviewState(uid, allCards, now);
+      const activeSessionResult = await loadRemoteActiveStudySession(
+        uid,
+        getStudyDayKey(now),
+        now
+      ).catch((error) => {
+        console.warn("Failed to load active study session for dashboard counts.", error);
+        return { session: null, foundRemoteSession: false };
+      });
+      const dailyReviewState = await ensureDailyReviewState(uid, allCards, now, {
+        activeSession: activeSessionResult.session,
+      });
       const completedRequiredIds = new Set(dailyReviewState.completedRequiredCardIds);
       const parkedRequiredIds = new Set(dailyReviewState.parkedRequiredCardIds);
       const cardsById = new Map(allCards.map((card) => [card.id, card]));

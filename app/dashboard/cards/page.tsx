@@ -40,7 +40,7 @@ function cardMatchesSearch(card: Card, term: string, deckName?: string) {
   return false;
 }
 
-const MAX_VISIBLE_RESULTS = 50;
+const CARD_RESULT_PAGE_SIZE = 50;
 type SelectionDragMode = "select" | "deselect";
 
 export default function CardsSearchPage() {
@@ -52,6 +52,7 @@ export default function CardsSearchPage() {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
+  const [visibleResultLimit, setVisibleResultLimit] = useState(CARD_RESULT_PAGE_SIZE);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
@@ -78,6 +79,10 @@ export default function CardsSearchPage() {
     const timer = setTimeout(() => setDebouncedTerm(searchTerm), 300);
     return () => clearTimeout(timer);
   }, [searchTerm]);
+
+  useEffect(() => {
+    setVisibleResultLimit(CARD_RESULT_PAGE_SIZE);
+  }, [cards.length, debouncedTerm]);
 
   // Load all user cards + decks
   useEffect(() => {
@@ -139,8 +144,9 @@ export default function CardsSearchPage() {
     );
   }, [cards, debouncedTerm, deckNamesById]);
 
-  const visibleCards = filtered.slice(0, MAX_VISIBLE_RESULTS);
-  const hasMore = filtered.length > MAX_VISIBLE_RESULTS;
+  const visibleCards = filtered.slice(0, visibleResultLimit);
+  const remainingHiddenCards = Math.max(filtered.length - visibleCards.length, 0);
+  const hasMore = remainingHiddenCards > 0;
   const selectedCardIdSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
   const visibleCardIdSet = useMemo(() => new Set(visibleCards.map((card) => card.id)), [visibleCards]);
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
@@ -719,16 +725,17 @@ export default function CardsSearchPage() {
         <>
           {!isDemoUser ? (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={selectVisibleCards}
                   disabled={visibleCards.length === 0}
+                  className="w-full sm:w-auto"
                 >
-                  Select visible cards
+                  Select shown cards
                 </Button>
-                <span className="text-sm text-text-muted">
+                <span className="text-center text-sm text-text-muted sm:text-right">
                   {selectedCardIds.length} selected for bulk edit
                 </span>
               </div>
@@ -743,7 +750,12 @@ export default function CardsSearchPage() {
                   ? selectionDragMode === "select"
                     ? "Selecting as you slide."
                     : "Deselecting as you slide."
-                  : "Use the selection handle on a card, then slide across other handles or panels to select or deselect several at once."}
+                  : (
+                    <>
+                      <span className="sm:hidden">Tap Select on cards, or use the handle for quick multi-select.</span>
+                      <span className="hidden sm:inline">Use the selection handle on a card, then slide across other handles or panels to select or deselect several at once.</span>
+                    </>
+                  )}
               </div>
 
               <BulkTagToolbar
@@ -761,8 +773,8 @@ export default function CardsSearchPage() {
           ) : null}
 
           <p className="text-sm text-text-secondary">
-            {filtered.length} card{filtered.length === 1 ? "" : "s"} found
-            {hasMore ? ` (showing first ${MAX_VISIBLE_RESULTS})` : ""}. Use the deck pill on any card to jump into that deck.
+            Showing {visibleCards.length} of {filtered.length} card{filtered.length === 1 ? "" : "s"}.
+            Use the deck pill on any card to jump into that deck.
           </p>
 
           <div
@@ -781,7 +793,7 @@ export default function CardsSearchPage() {
                 }`}
               >
                 {!isDemoUser ? (
-                  <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <div className="mb-3 flex items-center justify-between gap-2 sm:justify-start">
                     <button
                       type="button"
                       onPointerDown={handleCardPointerDown(card.id, selectedCardIdSet.has(card.id))}
@@ -795,7 +807,7 @@ export default function CardsSearchPage() {
                         <path d="M4 12.5h8" />
                       </svg>
                     </button>
-                    <label className="flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                    <label className="flex min-h-9 flex-1 items-center justify-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary sm:flex-none">
                       <input
                         type="checkbox"
                         checked={selectedCardIdSet.has(card.id)}
@@ -848,11 +860,12 @@ export default function CardsSearchPage() {
                       onPendingTagChange={setEditingPendingTag}
                       disabled={savingCardId === card.id}
                     />
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid gap-2 sm:flex sm:flex-wrap">
                       <Button
                         type="button"
                         disabled={savingCardId === card.id}
                         onClick={() => void handleSaveCard(card.id)}
+                        className="w-full sm:w-auto"
                       >
                         {savingCardId === card.id ? "Saving..." : "Save card"}
                       </Button>
@@ -861,6 +874,7 @@ export default function CardsSearchPage() {
                         disabled={savingCardId === card.id}
                         onClick={cancelEditing}
                         variant="secondary"
+                        className="w-full sm:w-auto"
                       >
                         Cancel
                       </Button>
@@ -868,7 +882,7 @@ export default function CardsSearchPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex flex-wrap items-start justify-between gap-4">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0 flex-1 space-y-1">
                         <StudyText
                           as="div"
@@ -881,12 +895,13 @@ export default function CardsSearchPage() {
                           className="whitespace-pre-wrap text-sm leading-6 text-text-secondary"
                         />
                       </div>
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
                         <Button
                           type="button"
                           disabled={isDemoUser || deletingCardId === card.id}
                           onClick={() => startEditing(card)}
                           variant="secondary"
+                          className="w-full sm:w-auto"
                         >
                           Edit card
                         </Button>
@@ -895,6 +910,7 @@ export default function CardsSearchPage() {
                           disabled={isDemoUser || deletingCardId === card.id}
                           onClick={() => void handleDeleteCard(card.id)}
                           variant="danger"
+                          className="w-full sm:w-auto"
                         >
                           {deletingCardId === card.id ? "Deleting..." : "Delete"}
                         </Button>
@@ -912,9 +928,9 @@ export default function CardsSearchPage() {
                         <Link
                           href={getDeckHref(card.deckId)}
                           aria-label={`Open deck ${deckNamesById[card.deckId]}`}
-                          className="inline-flex items-center gap-1.5 rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-text-secondary transition duration-fast hover:border-border-strong hover:bg-white/[0.08] hover:text-white"
+                          className="inline-flex max-w-full items-center gap-1.5 rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-text-secondary transition duration-fast hover:border-border-strong hover:bg-white/[0.08] hover:text-white"
                         >
-                          <span>{deckNamesById[card.deckId]}</span>
+                          <span className="min-w-0 truncate">{deckNamesById[card.deckId]}</span>
                           <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" className="h-3.5 w-3.5" aria-hidden="true">
                             <path d="M3.5 8h9" />
                             <path d="m8.5 3 4.5 5-4.5 5" />
@@ -924,9 +940,9 @@ export default function CardsSearchPage() {
                       {card.tags.map((tag) => (
                         <span
                           key={tag}
-                          className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+                          className="max-w-full rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
                         >
-                          {tag}
+                          <span className="block truncate">{tag}</span>
                         </span>
                       ))}
                     </div>
@@ -935,6 +951,18 @@ export default function CardsSearchPage() {
               </section>
             ))}
           </div>
+          {hasMore ? (
+            <div className="flex justify-center pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setVisibleResultLimit((limit) => limit + CARD_RESULT_PAGE_SIZE)}
+                className="w-full sm:w-auto"
+              >
+                Show {Math.min(CARD_RESULT_PAGE_SIZE, remainingHiddenCards)} more
+              </Button>
+            </div>
+          ) : null}
         </>
       )}
     </AppPage>

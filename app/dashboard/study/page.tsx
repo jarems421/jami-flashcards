@@ -11,6 +11,8 @@ import {
   buildDailyReviewQueues,
   DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
   DAILY_REVIEW_STATE_DOC_ID,
+  getRemainingCarryoverRequiredCards,
+  getRemainingFreshRequiredCards,
   sortCardsByStudyPriority,
   type DailyReviewState,
 } from "@/lib/study/daily-review";
@@ -48,6 +50,7 @@ import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, PageHer
 
 type SessionKind = StudySessionKind;
 type SessionStats = StudySessionStats;
+type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
 const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
 type AnswerFeedback = { tone: "error" | "warm" | "good" | "calm"; message: string };
 type FocusedReviewRecents = { deckIds: string[]; tags: string[] };
@@ -273,6 +276,7 @@ export default function StudyPage() {
   const autoStartHandledRef = useRef(false);
   const sessionRestoreHandledRef = useRef(false);
   const sessionStartedAtRef = useRef<number | null>(null);
+  const sessionStudyDayKeyRef = useRef<string | null>(null);
   const remoteCloseKeyRef = useRef<string | null>(null);
   const demoAiDisabled = demoMode === "demo-test";
 
@@ -289,6 +293,7 @@ export default function StudyPage() {
     autoStartHandledRef.current = false;
     sessionRestoreHandledRef.current = false;
     sessionStartedAtRef.current = null;
+    sessionStudyDayKeyRef.current = null;
     remoteCloseKeyRef.current = null;
     setSessionRestoreReady(false);
   }, [requestedDeckIds, requestedTags, requestedMode]);
@@ -356,10 +361,20 @@ export default function StudyPage() {
         }
       });
 
-      const [nextDecks, nextCards] = await Promise.all([getDecks(user.uid), loadUserCards(user.uid)]);
       const now = Date.now();
+      const activeSessionPromise = loadRemoteActiveStudySession(user.uid, getStudyDayKey(now), now).catch((error) => {
+        console.warn("Failed to load remote active study session before daily review refresh.", error);
+        return { session: null, foundRemoteSession: false };
+      });
+      const [nextDecks, nextCards, activeSessionResult] = await Promise.all([
+        getDecks(user.uid),
+        loadUserCards(user.uid),
+        activeSessionPromise,
+      ]);
       const sortedCards = sortCardsByStudyPriority(nextCards, now);
-      const nextDailyReviewState = await ensureDailyReviewState(user.uid, sortedCards, now);
+      const nextDailyReviewState = await ensureDailyReviewState(user.uid, sortedCards, now, {
+        activeSession: activeSessionResult.session,
+      });
       setDecks(nextDecks);
       setCards(sortedCards);
       setDailyReviewState(nextDailyReviewState);
@@ -382,6 +397,7 @@ export default function StudyPage() {
           generatedAt: snapshot.savedAt,
           requiredCardIds: queues.requiredCards.map((card) => card.id),
           optionalCardIds: queues.optionalCards.map((card) => card.id),
+          carryoverRequiredCardIds: queues.carryoverRequiredCards.map((card) => card.id),
           completedRequiredCardIds: [],
           completedOptionalCardIds: [],
           parkedRequiredCardIds: [],
@@ -466,25 +482,32 @@ export default function StudyPage() {
       ),
     [cards]
   );
-  const requiredDailyCards = useMemo(
-    () => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.requiredCardIds) : []),
-    [cards, dailyReviewState]
-  );
   const optionalDailyCards = useMemo(
     () => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.optionalCardIds) : []),
     [cards, dailyReviewState]
   );
-  const remainingRequiredCards = useMemo(() => {
-    if (!dailyReviewState) return [];
-    const completed = new Set(dailyReviewState.completedRequiredCardIds);
-    const parked = new Set(dailyReviewState.parkedRequiredCardIds);
-    return requiredDailyCards.filter((card) => !completed.has(card.id) && !parked.has(card.id));
-  }, [dailyReviewState, requiredDailyCards]);
+  const carryoverRequiredIdSet = useMemo(
+    () => new Set(dailyReviewState?.carryoverRequiredCardIds ?? []),
+    [dailyReviewState]
+  );
+  const remainingCarryoverRequiredCards = useMemo(
+    () => getRemainingCarryoverRequiredCards(dailyReviewState, cards),
+    [cards, dailyReviewState]
+  );
+  const remainingFreshRequiredCards = useMemo(
+    () => getRemainingFreshRequiredCards(dailyReviewState, cards),
+    [cards, dailyReviewState]
+  );
+  const remainingRequiredCards = useMemo(
+    () => [...remainingCarryoverRequiredCards, ...remainingFreshRequiredCards],
+    [remainingCarryoverRequiredCards, remainingFreshRequiredCards]
+  );
   const remainingOptionalCards = useMemo(() => {
     if (!dailyReviewState) return [];
     const completed = new Set(dailyReviewState.completedOptionalCardIds);
     return optionalDailyCards.filter((card) => !completed.has(card.id));
   }, [dailyReviewState, optionalDailyCards]);
+  const hasCarryoverRequiredCards = remainingCarryoverRequiredCards.length > 0;
   const hasCards = cards.length > 0;
   const hasRecommendedDailyCards = hasCards && remainingRequiredCards.length > 0;
   const customPreviewCards = useMemo(
@@ -563,10 +586,14 @@ export default function StudyPage() {
   }, []);
 
   const startSession = useCallback(
-    (kind: SessionKind) => {
+    (kind: SessionKind, requiredScope: DailyRequiredSessionScope = "all") => {
       const nextCards =
         kind === "daily-required"
-          ? remainingRequiredCards
+          ? requiredScope === "carryover"
+            ? remainingCarryoverRequiredCards
+            : requiredScope === "fresh"
+              ? remainingFreshRequiredCards
+              : remainingRequiredCards
           : kind === "daily-optional"
             ? remainingOptionalCards
             : customPreviewCards;
@@ -585,6 +612,7 @@ export default function StudyPage() {
       });
 
       sessionStartedAtRef.current = now;
+      sessionStudyDayKeyRef.current = nextSession.studyDayKey;
       remoteCloseKeyRef.current = null;
       setSessionKind(kind);
       setSessionCards(nextCards);
@@ -604,7 +632,7 @@ export default function StudyPage() {
         pushFocusedReviewRecents(selectedDeckIds, selectedTags);
       }
     },
-    [customPreviewCards, pushFocusedReviewRecents, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTags, user.uid]
+    [customPreviewCards, pushFocusedReviewRecents, remainingCarryoverRequiredCards, remainingFreshRequiredCards, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTags, user.uid]
   );
 
   const handleCustomReviewClick = useCallback(() => {
@@ -691,6 +719,7 @@ export default function StudyPage() {
       }
 
       sessionStartedAtRef.current = restoredSession.startedAt;
+      sessionStudyDayKeyRef.current = restoredSession.studyDayKey;
       remoteCloseKeyRef.current = null;
       savePersistedStudySession(restoredSession);
       setSessionKind(restoredSession.kind);
@@ -723,6 +752,9 @@ export default function StudyPage() {
     if (!loaded || !sessionRestoreReady || autoStartHandledRef.current) return;
     if (requestedMode === "daily") {
       autoStartHandledRef.current = true;
+      if (remainingCarryoverRequiredCards.length > 0) {
+        return;
+      }
       if (remainingRequiredCards.length > 0) {
         startSession("daily-required");
         return;
@@ -738,7 +770,7 @@ export default function StudyPage() {
       return;
     }
     autoStartHandledRef.current = true;
-  }, [customPreviewCards.length, loaded, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, sessionRestoreReady, startSession]);
+  }, [customPreviewCards.length, loaded, remainingCarryoverRequiredCards.length, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, sessionRestoreReady, startSession]);
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
@@ -746,6 +778,10 @@ export default function StudyPage() {
   const remainingCards = current ? totalCards - index : 0;
   const accuracyPercentage = sessionStats.reviewedCards > 0 ? Math.round((sessionStats.correctAnswers / sessionStats.reviewedCards) * 100) : 0;
   const progressPercent = totalCards > 0 ? Math.round((index / totalCards) * 100) : 0;
+  const sessionWasCarryoverOnly =
+    sessionKind === "daily-required" &&
+    sessionCards.length > 0 &&
+    sessionCards.every((card) => carryoverRequiredIdSet.has(card.id));
 
   useEffect(() => {
     if (!loaded || !sessionKind) return;
@@ -753,6 +789,7 @@ export default function StudyPage() {
     const now = Date.now();
     const currentSession = buildPersistedStudySession({
       userId: user.uid,
+      studyDayKey: sessionStudyDayKeyRef.current,
       kind: sessionKind,
       sessionCards,
       index,
@@ -763,6 +800,7 @@ export default function StudyPage() {
       now,
     });
     sessionStartedAtRef.current = currentSession.startedAt;
+    sessionStudyDayKeyRef.current = currentSession.studyDayKey;
 
     if (done) {
       const closeKey = `${currentSession.kind}:${currentSession.startedAt}:${currentSession.cardIds.join(",")}:completed`;
@@ -1053,6 +1091,7 @@ export default function StudyPage() {
       const reason = done ? "completed" : "user-ended";
       const currentSession = buildPersistedStudySession({
         userId: user.uid,
+        studyDayKey: sessionStudyDayKeyRef.current,
         kind: sessionKind,
         sessionCards,
         index: done ? sessionCards.length : index,
@@ -1072,6 +1111,7 @@ export default function StudyPage() {
 
     clearPersistedStudySession(user.uid);
     sessionStartedAtRef.current = null;
+    sessionStudyDayKeyRef.current = null;
     setSessionKind(null);
     setSessionCards([]);
     setSessionStats(createEmptySessionStats());
@@ -1128,14 +1168,18 @@ export default function StudyPage() {
               <PageHero
                 eyebrow="Study"
                 title={
-                  remainingRequiredCards.length > 0
+                  hasCarryoverRequiredCards
+                    ? "Finish yesterday's review first."
+                    : remainingRequiredCards.length > 0
                     ? "Your next review is ready."
                     : hasCards
                       ? "Choose how you want to study."
                       : "Start with your first cards."
                 }
                 description={
-                  remainingRequiredCards.length > 0
+                  hasCarryoverRequiredCards
+                    ? "A few priority cards carried over from the last Daily Review. Finish them first, or start today's fresh priority cards."
+                    : remainingRequiredCards.length > 0
                     ? "Daily Review surfaces the cards most likely to slip. Focused Review is still there whenever you want targeted practice."
                     : hasCards
                       ? "Daily Review is clear for now. You can review easy extras or build a focused session."
@@ -1171,14 +1215,24 @@ export default function StudyPage() {
                             ? `${remainingRequiredCards.length + remainingOptionalCards.length} cards available`
                             : "Daily Review complete"}
                         </h3>
+                        {hasCarryoverRequiredCards ? (
+                          <div className="mt-2 text-sm font-medium text-warm-accent">
+                            Unfinished from last Daily Review: {remainingCarryoverRequiredCards.length}
+                          </div>
+                        ) : null}
                       </div>
                       <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
-                        <CountPill value={remainingRequiredCards.length} label="Needs attention" />
+                        {hasCarryoverRequiredCards ? (
+                          <CountPill value={remainingCarryoverRequiredCards.length} label="Unfinished" />
+                        ) : null}
+                        <CountPill value={remainingFreshRequiredCards.length} label={hasCarryoverRequiredCards ? "Today" : "Needs attention"} />
                         <CountPill value={remainingOptionalCards.length} label="Easy extras" />
                       </div>
                     </div>
                     <p className="max-w-3xl text-sm leading-6 text-text-secondary">
-                      {remainingRequiredCards.length > 0 && remainingOptionalCards.length > 0
+                      {hasCarryoverRequiredCards
+                        ? "You can clear the unfinished priority cards from the last Daily Review first, or move straight into today's fresh priority cards."
+                        : remainingRequiredCards.length > 0 && remainingOptionalCards.length > 0
                         ? "Start with the cards most likely to slip, then use the easier extras if you want a little more practice."
                         : remainingRequiredCards.length > 0
                           ? "Start with the cards that need the most attention today."
@@ -1186,10 +1240,24 @@ export default function StudyPage() {
                             ? "Your main queue is clear. The easier extras are still here if you want a lighter pass."
                             : "No Daily Review cards are waiting right now. Focused Review is open whenever you want targeted practice."}
                     </p>
-                    <div className="grid gap-3 sm:grid-cols-2">
+                    <div className={`grid gap-3 ${hasCarryoverRequiredCards ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+                      {hasCarryoverRequiredCards ? (
+                        <div className="space-y-1.5">
+                          <Button type="button" onClick={() => startSession("daily-required", "carryover")} variant="warm" size="md" className="w-full justify-center">
+                            Finish unfinished cards
+                          </Button>
+                          <div className="text-center text-xs leading-5 text-text-muted">Carried over from last Daily Review</div>
+                        </div>
+                      ) : null}
                       <div className="space-y-1.5">
-                        <Button type="button" onClick={() => startSession("daily-required")} disabled={remainingRequiredCards.length === 0} variant="warm" size="md" className="w-full justify-center">
-                          {remainingRequiredCards.length > 0 ? "Review priority cards" : "No priority cards"}
+                        <Button type="button" onClick={() => startSession("daily-required", hasCarryoverRequiredCards ? "fresh" : "all")} disabled={(hasCarryoverRequiredCards ? remainingFreshRequiredCards.length : remainingRequiredCards.length) === 0} variant={hasCarryoverRequiredCards ? "secondary" : "warm"} size="md" className="w-full justify-center">
+                          {hasCarryoverRequiredCards
+                            ? remainingFreshRequiredCards.length > 0
+                              ? "Start today's priority cards"
+                              : "No fresh priority cards"
+                            : remainingRequiredCards.length > 0
+                              ? "Review priority cards"
+                              : "No priority cards"}
                         </Button>
                         <div className="text-center text-xs leading-5 text-text-muted">Most likely to slip today</div>
                       </div>
@@ -1494,7 +1562,9 @@ export default function StudyPage() {
                 <div className="mt-6 rounded-[1.6rem] border border-white/[0.10] bg-white/[0.06] p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Next best step</div>
                   <div className="mt-2 text-base font-semibold text-white sm:text-lg">
-                    {sessionKind === "daily-required" && remainingOptionalCards.length > 0
+                    {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0
+                      ? "Today's priority cards are ready"
+                      : sessionKind === "daily-required" && remainingOptionalCards.length > 0
                       ? "Easy extras are ready"
                       : hasCards && customPreviewCards.length > 0
                         ? "Focused Review is ready"
@@ -1503,7 +1573,9 @@ export default function StudyPage() {
                           : "Tidy your card library"}
                   </div>
                   <p className="mt-1 text-sm leading-6 text-text-secondary">
-                    {sessionKind === "daily-required" && remainingOptionalCards.length > 0
+                    {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0
+                      ? "The unfinished carryover is clear. Move into the fresh cards selected for this Daily Review when you are ready."
+                      : sessionKind === "daily-required" && remainingOptionalCards.length > 0
                       ? "These are lighter extra reps. Do them only if you want a little more practice today."
                       : hasCards && customPreviewCards.length > 0
                         ? "Build a session from any deck or tag whenever you want targeted practice."
@@ -1513,7 +1585,9 @@ export default function StudyPage() {
                   </p>
                 </div>
                 <div className="mt-6 flex flex-wrap gap-3">
-                  {sessionKind === "daily-required" && remainingOptionalCards.length > 0 ? (
+                  {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0 ? (
+                    <Button type="button" onClick={() => startSession("daily-required", "fresh")} size="lg" variant="warm">Start today&apos;s priority cards</Button>
+                  ) : sessionKind === "daily-required" && remainingOptionalCards.length > 0 ? (
                     <Button type="button" onClick={() => startSession("daily-optional")} size="lg" variant="warm">Review easy extras</Button>
                   ) : hasCards && customPreviewCards.length > 0 ? (
                     <Button type="button" onClick={() => startSession("custom")} size="lg" variant="warm">Start Focused Review</Button>

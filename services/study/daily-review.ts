@@ -14,15 +14,18 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import {
   buildDailyReviewQueues,
+  buildDailyReviewStateData,
   DAILY_REVIEW_STATE_DOC_ID,
   DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
   normalizeDailyReviewState,
+  shouldPauseDailyReviewStateRefresh,
   STUDY_ACTIVITY_SCHEMA_VERSION,
   STUDY_STATE_META_DOC_ID,
   type DailyReviewState,
 } from "@/lib/study/daily-review";
 import { mapCardData, type Card } from "@/lib/study/cards";
 import { getStudyDayKey } from "@/lib/study/day";
+import type { PersistedStudySession } from "@/lib/study/session";
 
 const LOAD_MS = 30_000;
 const SAVE_MS = 30_000;
@@ -56,9 +59,14 @@ function refreshCurrentDailyReviewState(
   cards: Card[],
   now: number
 ) {
-  const { requiredCards, optionalCards } = buildDailyReviewQueues(cards, now);
+  const { requiredCards, optionalCards, carryoverRequiredCards } = buildDailyReviewQueues(
+    cards,
+    now,
+    state.carryoverRequiredCardIds
+  );
   const requiredCardIds = requiredCards.map((card) => card.id);
   const optionalCardIds = optionalCards.map((card) => card.id);
+  const carryoverRequiredCardIds = carryoverRequiredCards.map((card) => card.id);
   const requiredIdSet = new Set(requiredCardIds);
   const optionalIdSet = new Set(optionalCardIds);
   const completedRequiredCardIds = keepKnownIds(
@@ -81,6 +89,7 @@ function refreshCurrentDailyReviewState(
   const changed =
     !areSameIds(state.requiredCardIds, requiredCardIds) ||
     !areSameIds(state.optionalCardIds, optionalCardIds) ||
+    !areSameIds(state.carryoverRequiredCardIds, carryoverRequiredCardIds) ||
     !areSameIds(state.completedRequiredCardIds, completedRequiredCardIds) ||
     !areSameIds(state.completedOptionalCardIds, completedOptionalCardIds) ||
     !areSameIds(state.parkedRequiredCardIds, parkedRequiredCardIds) ||
@@ -95,6 +104,7 @@ function refreshCurrentDailyReviewState(
     ...state,
     requiredCardIds,
     optionalCardIds,
+    carryoverRequiredCardIds,
     completedRequiredCardIds,
     completedOptionalCardIds,
     parkedRequiredCardIds,
@@ -190,10 +200,18 @@ export async function loadDailyReviewState(userId: string) {
 export async function ensureDailyReviewState(
   userId: string,
   cards: Card[],
-  now = Date.now()
+  now = Date.now(),
+  options: { activeSession?: PersistedStudySession | null } = {}
 ): Promise<DailyReviewState> {
   const currentStudyDayKey = getStudyDayKey(now);
   const existingState = await loadDailyReviewState(userId);
+
+  if (
+    existingState &&
+    shouldPauseDailyReviewStateRefresh(existingState, options.activeSession ?? null)
+  ) {
+    return existingState;
+  }
 
   if (existingState?.studyDayKey === currentStudyDayKey) {
     const refreshedState = refreshCurrentDailyReviewState(existingState, cards, now);
@@ -211,18 +229,7 @@ export async function ensureDailyReviewState(
     return refreshedState;
   }
 
-  const { requiredCards, optionalCards } = buildDailyReviewQueues(cards, now);
-  const nextState = {
-    studyDayKey: currentStudyDayKey,
-    generatedAt: now,
-    requiredCardIds: requiredCards.map((card) => card.id),
-    optionalCardIds: optionalCards.map((card) => card.id),
-    completedRequiredCardIds: [] as string[],
-    completedOptionalCardIds: [] as string[],
-    parkedRequiredCardIds: [] as string[],
-    requiredRetryCounts: {} as Record<string, number>,
-    updatedAt: now,
-  };
+  const nextState = buildDailyReviewStateData(cards, now, existingState);
 
   await withTimeout(
     setDoc(getStudyStateDoc(userId, DAILY_REVIEW_STATE_DOC_ID), nextState),

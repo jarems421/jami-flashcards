@@ -55,12 +55,13 @@ export default function BulkTagToolbar({
             />
           </div>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="grid shrink-0 gap-2 sm:flex sm:flex-wrap">
           <Button
             type="button"
             variant="warm"
             disabled={disabled}
             onClick={onApply}
+            className="w-full sm:w-auto"
           >
             Apply tags
           </Button>
@@ -69,6 +70,7 @@ export default function BulkTagToolbar({
             variant="secondary"
             disabled={disabled}
             onClick={onClearSelection}
+            className="w-full sm:w-auto"
           >
             Clear selection
           </Button>

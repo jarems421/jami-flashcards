@@ -120,11 +120,14 @@ export function normalizePersistedStudySession(
   const startedAt = normalizeCount(data.startedAt) || savedAt;
   const cardIds = normalizeStringList(data.cardIds);
   const status = isSessionStatus(data.status) ? data.status : "active";
+  const studyDayKey =
+    typeof data.studyDayKey === "string" && data.studyDayKey.trim()
+      ? data.studyDayKey
+      : currentStudyDayKey;
 
   if (
     data.version !== ACTIVE_STUDY_SESSION_VERSION ||
     data.userId !== userId ||
-    data.studyDayKey !== currentStudyDayKey ||
     !isSessionKind(data.kind) ||
     status !== "active" ||
     cardIds.length === 0 ||
@@ -136,7 +139,7 @@ export function normalizePersistedStudySession(
   return {
     version: ACTIVE_STUDY_SESSION_VERSION,
     userId,
-    studyDayKey: currentStudyDayKey,
+    studyDayKey,
     kind: data.kind,
     status,
     cardIds,
@@ -286,6 +289,7 @@ export function hydratePersistedSessionCards(
 
 export function buildPersistedStudySession({
   userId,
+  studyDayKey,
   kind,
   sessionCards,
   index,
@@ -296,6 +300,7 @@ export function buildPersistedStudySession({
   now = Date.now(),
 }: {
   userId: string;
+  studyDayKey?: string | null;
   kind: StudySessionKind;
   sessionCards: Card[];
   index: number;
@@ -308,7 +313,7 @@ export function buildPersistedStudySession({
   return {
     version: ACTIVE_STUDY_SESSION_VERSION,
     userId,
-    studyDayKey: getStudyDayKey(now),
+    studyDayKey: studyDayKey ?? getStudyDayKey(now),
     kind,
     status: "active",
     cardIds: sessionCards.map((card) => card.id),
@@ -334,4 +339,40 @@ export function closePersistedStudySession(
     endedAt: now,
     savedAt: now,
   };
+}
+
+function hasSameStudySessionIdentity(
+  left: PersistedStudySession,
+  right: PersistedStudySession
+) {
+  return (
+    left.userId === right.userId &&
+    left.kind === right.kind &&
+    left.startedAt === right.startedAt
+  );
+}
+
+function getStudySessionProgress(session: PersistedStudySession) {
+  return {
+    reviewedCards: session.stats.reviewedCards,
+    index: session.index,
+  };
+}
+
+export function isStudySessionProgressRegression(
+  existingSession: PersistedStudySession,
+  incomingSession: PersistedStudySession
+) {
+  if (!hasSameStudySessionIdentity(existingSession, incomingSession)) {
+    return false;
+  }
+
+  const existingProgress = getStudySessionProgress(existingSession);
+  const incomingProgress = getStudySessionProgress(incomingSession);
+
+  if (existingProgress.reviewedCards !== incomingProgress.reviewedCards) {
+    return existingProgress.reviewedCards > incomingProgress.reviewedCards;
+  }
+
+  return existingProgress.index > incomingProgress.index;
 }

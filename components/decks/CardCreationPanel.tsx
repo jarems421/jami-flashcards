@@ -457,6 +457,7 @@ export default function CardCreationPanel({
             disabled={addingSingleCard || !singleDeckId || !singleFront.trim() || !singleBack.trim()}
             onClick={() => void handleAddSingleCard()}
             size="lg"
+            className="w-full sm:w-auto"
           >
             {addingSingleCard ? "Adding..." : "Add card"}
           </Button>
@@ -576,7 +577,7 @@ export default function CardCreationPanel({
             </div>
           ) : null}
 
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-center">
             <Button
               type="button"
               disabled={
@@ -587,6 +588,7 @@ export default function CardCreationPanel({
               }
               onClick={() => void handleAddListCards()}
               size="lg"
+              className="w-full sm:w-auto"
             >
               {addingListCards
                 ? "Adding..."
@@ -604,10 +606,11 @@ export default function CardCreationPanel({
               }}
               variant="ghost"
               size="lg"
+              className="w-full sm:w-auto"
             >
               Clear
             </Button>
-            <div className="text-sm text-text-muted">
+            <div className="text-center text-sm text-text-muted sm:text-left">
               {listProgress
                 ? `${listProgress.completed} / ${listProgress.total} added.`
                 : listDraftSummary.newDrafts.length > 0 && listSummary.skippedRows === 0

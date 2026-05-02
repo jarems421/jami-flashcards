@@ -12,10 +12,16 @@ import {
   MAX_FRONT_LENGTH,
   MAX_CARD_TAG_LENGTH,
 } from "@/lib/study/cards";
+import type { Card } from "@/lib/study/cards";
 import { getCardQualityWarnings } from "@/lib/study/card-quality";
 import {
+  buildDailyReviewStateData,
   buildDailyReviewQueues,
   getDailyReviewBucket,
+  getRemainingCarryoverRequiredCards,
+  getRemainingFreshRequiredCards,
+  getUnfinishedRequiredCardIds,
+  shouldPauseDailyReviewStateRefresh,
   sortCardsByStudyPriority,
 } from "@/lib/study/daily-review";
 import {
@@ -285,6 +291,19 @@ describe("getDifficultyInfo", () => {
 });
 
 describe("daily review memory risk", () => {
+  function createReviewCard(id: string, overrides: Partial<Card> = {}): Card {
+    return {
+      id,
+      deckId: "deck",
+      userId: "user",
+      front: "front",
+      back: "back",
+      createdAt: Date.UTC(2026, 0, 1, 12),
+      tags: [],
+      ...overrides,
+    };
+  }
+
   it("keeps new cards in required medium review", () => {
     const now = Date.now();
     expect(
@@ -323,6 +342,181 @@ describe("daily review memory risk", () => {
 
     expect(requiredCards.map((card) => card.id)).toEqual(["risky-easy"]);
     expect(optionalCards).toHaveLength(0);
+  });
+
+  it("carries unfinished required cards into the next study day before fresh required cards", () => {
+    const yesterday = Date.UTC(2026, 0, 2, 12);
+    const today = Date.UTC(2026, 0, 3, 17);
+    const cards: Card[] = [
+      createReviewCard("carryover", {
+        difficulty: 2,
+        reps: 3,
+        dueDate: today + 7 * 24 * 60 * 60 * 1000,
+      }),
+      createReviewCard("duplicate-fresh"),
+      createReviewCard("fresh"),
+      createReviewCard("completed"),
+      createReviewCard("parked"),
+      createReviewCard("easy-extra", {
+        difficulty: 2,
+        reps: 5,
+        lapses: 0,
+        dueDate: today - 1000,
+      }),
+    ];
+
+    const nextState = buildDailyReviewStateData(cards, today, {
+      id: "dailyReview",
+      studyDayKey: "2026-01-02",
+      generatedAt: yesterday,
+      requiredCardIds: ["carryover", "completed", "parked", "missing", "duplicate-fresh"],
+      optionalCardIds: ["easy-extra"],
+      carryoverRequiredCardIds: [],
+      completedRequiredCardIds: ["completed"],
+      completedOptionalCardIds: [],
+      parkedRequiredCardIds: ["parked"],
+      requiredRetryCounts: {},
+      updatedAt: yesterday,
+    });
+
+    expect(nextState.carryoverRequiredCardIds).toEqual(["carryover", "duplicate-fresh"]);
+    expect(nextState.requiredCardIds.slice(0, 2)).toEqual(["carryover", "duplicate-fresh"]);
+    expect(nextState.requiredCardIds).toContain("fresh");
+    expect(nextState.requiredCardIds.filter((id) => id === "duplicate-fresh")).toHaveLength(1);
+    expect(nextState.optionalCardIds).toEqual(["easy-extra"]);
+    expect(nextState.optionalCardIds).not.toContain("carryover");
+  });
+
+  it("keeps same-day carryover metadata when rebuilding queues", () => {
+    const now = Date.UTC(2026, 0, 3, 17);
+    const { carryoverRequiredCards, requiredCards, optionalCards } = buildDailyReviewQueues(
+      [
+        createReviewCard("carryover", {
+          difficulty: 2,
+          reps: 3,
+          dueDate: now + 7 * 24 * 60 * 60 * 1000,
+        }),
+        createReviewCard("fresh"),
+        createReviewCard("easy-extra", {
+          difficulty: 2,
+          reps: 5,
+          lapses: 0,
+          dueDate: now - 1000,
+        }),
+      ],
+      now,
+      ["carryover"]
+    );
+
+    expect(carryoverRequiredCards.map((card) => card.id)).toEqual(["carryover"]);
+    expect(requiredCards.map((card) => card.id)).toEqual(["carryover", "fresh"]);
+    expect(optionalCards.map((card) => card.id)).toEqual(["easy-extra"]);
+  });
+
+  it("finds unfinished required cards without carrying completed or parked cards", () => {
+    const cards = [
+      createReviewCard("unfinished"),
+      createReviewCard("completed"),
+      createReviewCard("parked"),
+    ];
+
+    expect(
+      getUnfinishedRequiredCardIds(
+        {
+          id: "dailyReview",
+          studyDayKey: "2026-01-02",
+          generatedAt: 1,
+          requiredCardIds: ["unfinished", "completed", "parked", "missing"],
+          optionalCardIds: ["optional"],
+          carryoverRequiredCardIds: [],
+          completedRequiredCardIds: ["completed"],
+          completedOptionalCardIds: [],
+          parkedRequiredCardIds: ["parked"],
+          requiredRetryCounts: {},
+          updatedAt: 1,
+        },
+        cards
+      )
+    ).toEqual(["unfinished"]);
+  });
+
+  it("splits remaining carryover and fresh required cards for the Study UI", () => {
+    const cards = [
+      createReviewCard("carryover"),
+      createReviewCard("fresh"),
+      createReviewCard("completed-carryover"),
+      createReviewCard("parked-fresh"),
+    ];
+    const state = {
+      id: "dailyReview",
+      studyDayKey: "2026-01-03",
+      generatedAt: 1,
+      requiredCardIds: ["carryover", "fresh", "completed-carryover", "parked-fresh"],
+      optionalCardIds: [],
+      carryoverRequiredCardIds: ["carryover", "completed-carryover"],
+      completedRequiredCardIds: ["completed-carryover"],
+      completedOptionalCardIds: [],
+      parkedRequiredCardIds: ["parked-fresh"],
+      requiredRetryCounts: {},
+      updatedAt: 1,
+    };
+
+    expect(getRemainingCarryoverRequiredCards(state, cards).map((card) => card.id)).toEqual([
+      "carryover",
+    ]);
+    expect(getRemainingFreshRequiredCards(state, cards).map((card) => card.id)).toEqual([
+      "fresh",
+    ]);
+  });
+
+  it("pauses daily review rebuilding while a daily session is still active", () => {
+    const state = {
+      id: "dailyReview",
+      studyDayKey: "2026-01-03",
+      generatedAt: 1,
+      requiredCardIds: ["active"],
+      optionalCardIds: [],
+      carryoverRequiredCardIds: [],
+      completedRequiredCardIds: [],
+      completedOptionalCardIds: [],
+      parkedRequiredCardIds: [],
+      requiredRetryCounts: {},
+      updatedAt: 1,
+    };
+    const activeSession = {
+      version: 1 as const,
+      userId: "user",
+      studyDayKey: "2026-01-03",
+      kind: "daily-required" as const,
+      status: "active" as const,
+      cardIds: ["active"],
+      index: 0,
+      stats: {
+        reviewedCards: 0,
+        correctAnswers: 0,
+        completedGoals: 0,
+        starsEarned: 0,
+        ratings: { again: 0, hard: 0, good: 0, easy: 0 },
+      },
+      selectedDeckIds: [],
+      selectedTags: [],
+      startedAt: 1,
+      savedAt: 1,
+    };
+
+    expect(shouldPauseDailyReviewStateRefresh(state, activeSession)).toBe(true);
+    expect(
+      shouldPauseDailyReviewStateRefresh(state, {
+        ...activeSession,
+        kind: "custom",
+      })
+    ).toBe(false);
+    expect(
+      shouldPauseDailyReviewStateRefresh(state, {
+        ...activeSession,
+        studyDayKey: "2026-01-04",
+      })
+    ).toBe(false);
   });
 
   it("includes custom struggles on their override study day even if not due", () => {

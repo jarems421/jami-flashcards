@@ -492,6 +492,7 @@ function buildDemoSeed(userId: string, now = Date.now()): DemoSeed {
       generatedAt: now,
       requiredCardIds: requiredCards.map((card) => card.id),
       optionalCardIds: optionalCards.map((card) => card.id),
+      carryoverRequiredCardIds: [],
       completedRequiredCardIds,
       completedOptionalCardIds: [],
       parkedRequiredCardIds: [],

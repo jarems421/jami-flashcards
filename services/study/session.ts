@@ -2,6 +2,7 @@ import { doc, getDoc, runTransaction } from "firebase/firestore";
 import {
   ACTIVE_STUDY_SESSION_DOC_ID,
   closePersistedStudySession,
+  isStudySessionProgressRegression,
   normalizePersistedStudySession,
   type PersistedStudySession,
   type StudySessionEndReason,
@@ -76,8 +77,25 @@ export async function saveRemoteActiveStudySession(session: PersistedStudySessio
         ? (snapshot.data() as Record<string, unknown>)
         : null;
       const existingSavedAt = getSavedAt(existingData);
+      const existingStartedAt = getStartedAt(existingData);
+      const existingSession = existingData
+        ? normalizePersistedStudySession(
+            existingData,
+            session.userId,
+            session.studyDayKey,
+            Math.max(existingSavedAt, session.savedAt)
+          )
+        : null;
 
-      if (existingData && existingSavedAt > session.savedAt) {
+      if (existingData && existingStartedAt > session.startedAt) {
+        return false;
+      }
+
+      if (
+        existingData &&
+        existingStartedAt === session.startedAt &&
+        existingSavedAt > session.savedAt
+      ) {
         return false;
       }
 
@@ -86,6 +104,10 @@ export async function saveRemoteActiveStudySession(session: PersistedStudySessio
         existingData.status !== "active" &&
         existingSavedAt >= session.startedAt
       ) {
+        return false;
+      }
+
+      if (existingSession && isStudySessionProgressRegression(existingSession, session)) {
         return false;
       }
 

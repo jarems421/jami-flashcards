@@ -8,6 +8,8 @@ import {
 } from "@/lib/study/cards";
 import { Button } from "@/components/ui";
 
+const COLLAPSED_SUGGESTION_LIMIT = 6;
+
 type TagInputProps = {
   tags: string[];
   pendingTag: string;
@@ -37,8 +39,9 @@ export default function TagInput({
   );
   const suggestions = showAllSuggestions
     ? allSuggestions
-    : allSuggestions.slice(0, 6);
-  const hasHiddenSuggestions = allSuggestions.length > suggestions.length;
+    : allSuggestions.slice(0, COLLAPSED_SUGGESTION_LIMIT);
+  const hiddenSuggestionCount = allSuggestions.length - suggestions.length;
+  const hasHiddenSuggestions = hiddenSuggestionCount > 0;
 
   const commitPendingTag = () => {
     const result = addCardTag(tags, pendingTag);
@@ -74,9 +77,9 @@ export default function TagInput({
           {tags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+              className="inline-flex max-w-full items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
             >
-              <span>{tag}</span>
+              <span className="min-w-0 truncate">{tag}</span>
               <button
                 type="button"
                 onClick={() => {
@@ -85,7 +88,7 @@ export default function TagInput({
                 }}
                 disabled={disabled}
                 aria-label={`Remove tag ${tag}`}
-                className="rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white transition duration-fast hover:bg-white/20 disabled:opacity-50"
+                className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white transition duration-fast hover:bg-white/20 disabled:opacity-50"
               >
                 x
               </button>
@@ -94,7 +97,7 @@ export default function TagInput({
         </div>
       ) : null}
 
-      <div className="flex gap-2">
+      <div className="flex flex-col gap-2 sm:flex-row">
         <input
           value={pendingTag}
           disabled={disabled}
@@ -125,6 +128,7 @@ export default function TagInput({
           disabled={disabled}
           onClick={commitPendingTag}
           variant="secondary"
+          className="w-full sm:w-auto sm:shrink-0"
         >
           Add tag
         </Button>
@@ -136,16 +140,22 @@ export default function TagInput({
 
       {suggestions.length > 0 ? (
         <div className="space-y-2">
-          <div className="flex max-h-44 flex-wrap gap-2 overflow-y-auto rounded-[1.1rem] border border-white/[0.08] bg-white/[0.025] p-2">
+          <div className="flex items-center justify-between gap-3 text-xs text-text-muted">
+            <span>Suggested tags</span>
+            <span>
+              {suggestions.length} of {allSuggestions.length}
+            </span>
+          </div>
+          <div className="flex max-h-52 flex-wrap gap-2 overflow-y-auto rounded-[1.1rem] border border-white/[0.08] bg-white/[0.025] p-2">
             {suggestions.map((tag) => (
               <button
                 key={tag}
                 type="button"
                 onClick={() => handleSuggestionClick(tag)}
                 disabled={disabled}
-                className="rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-xs text-text-muted transition duration-fast hover:border-border-strong hover:bg-white/[0.08] disabled:opacity-50"
+                className="max-w-full rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-left text-xs text-text-muted transition duration-fast hover:border-border-strong hover:bg-white/[0.08] disabled:opacity-50 sm:max-w-[16rem]"
               >
-                Use {tag}
+                <span className="block truncate">Use {tag}</span>
               </button>
             ))}
           </div>
@@ -154,11 +164,12 @@ export default function TagInput({
               type="button"
               onClick={() => setShowAllSuggestions((value) => !value)}
               disabled={disabled}
+              aria-expanded={showAllSuggestions}
               className="text-xs font-medium text-text-muted transition duration-fast hover:text-white disabled:opacity-50"
             >
               {showAllSuggestions
                 ? "Show fewer tags"
-                : `Show all tags (${allSuggestions.length})`}
+                : `Show ${hiddenSuggestionCount} more tag${hiddenSuggestionCount === 1 ? "" : "s"}`}
             </button>
           ) : null}
         </div>

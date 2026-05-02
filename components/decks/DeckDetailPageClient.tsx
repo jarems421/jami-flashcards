@@ -669,17 +669,21 @@ export default function DeckDetailPageClient() {
         <>
           {!isDemoUser ? (
             <>
-              <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <Button
                   type="button"
                   variant="secondary"
                   onClick={selectFilteredCards}
                   disabled={filteredCards.length === 0}
+                  className="w-full sm:w-auto"
                 >
                   Select visible cards
                 </Button>
-                <span className="text-sm text-text-muted">
-                  {selectedCardIds.length} selected for bulk edit. Use a card handle, then slide across more cards.
+                <span className="text-center text-sm text-text-muted sm:text-right">
+                  <span className="sm:hidden">{selectedCardIds.length} selected for bulk edit</span>
+                  <span className="hidden sm:inline">
+                    {selectedCardIds.length} selected for bulk edit. Use a card handle, then slide across more cards.
+                  </span>
                 </span>
               </div>
 
@@ -720,10 +724,10 @@ export default function DeckDetailPageClient() {
                 <section
                   key={card.id}
                   data-card-id={card.id}
-                  className={`app-panel p-4 transition duration-fast ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
+                  className={`app-panel p-3 transition duration-fast sm:p-4 ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
                 >
                   {!isDemoUser ? (
-                    <div className="mb-3 flex flex-wrap items-center gap-2">
+                    <div className="mb-3 flex items-center justify-between gap-2 sm:justify-start">
                       <button
                         type="button"
                         onPointerDown={(event) => handleCardPointerDown(event, card.id)}
@@ -737,7 +741,7 @@ export default function DeckDetailPageClient() {
                           <path d="M4 12.5h8" />
                         </svg>
                       </button>
-                      <label className="flex w-fit items-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                      <label className="flex min-h-9 flex-1 items-center justify-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary sm:flex-none">
                         <input
                           type="checkbox"
                           checked={selectedCardIdSet.has(card.id)}
@@ -791,11 +795,12 @@ export default function DeckDetailPageClient() {
                         helperText="Suggestions come from tags you already use across all decks."
                         disabled={savingCardId === card.id}
                       />
-                      <div className="flex flex-wrap gap-2">
+                      <div className="grid gap-2 sm:flex sm:flex-wrap">
                         <Button
                           type="button"
                           disabled={savingCardId === card.id}
                           onClick={() => void handleSaveCard(card.id)}
+                          className="w-full sm:w-auto"
                         >
                           {savingCardId === card.id ? "Saving..." : "Save card"}
                         </Button>
@@ -804,6 +809,7 @@ export default function DeckDetailPageClient() {
                           disabled={savingCardId === card.id}
                           onClick={resetEditingCard}
                           variant="secondary"
+                          className="w-full sm:w-auto"
                         >
                           Cancel
                         </Button>
@@ -811,12 +817,12 @@ export default function DeckDetailPageClient() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <div className="flex flex-wrap items-start justify-between gap-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div className="min-w-0 flex-1 space-y-2">
                           <StudyText
                             as="div"
                             text={card.front}
-                            className="whitespace-pre-wrap text-lg font-medium leading-7 text-white"
+                            className="whitespace-pre-wrap text-[0.95rem] font-medium leading-6 text-white sm:text-lg sm:leading-7"
                           />
                           <StudyText
                             as="div"
@@ -824,12 +830,13 @@ export default function DeckDetailPageClient() {
                             className="whitespace-pre-wrap text-sm leading-6 text-text-secondary"
                           />
                         </div>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
                           <Button
                             type="button"
                             disabled={isDemoUser || deletingCardId === card.id}
                             onClick={() => startEditingCard(card)}
                             variant="secondary"
+                            className="w-full sm:w-auto"
                           >
                             Edit card
                           </Button>
@@ -838,6 +845,7 @@ export default function DeckDetailPageClient() {
                             disabled={isDemoUser || deletingCardId === card.id}
                             onClick={() => void handleDeleteCard(card.id)}
                             variant="danger"
+                            className="w-full sm:w-auto"
                           >
                             {deletingCardId === card.id ? "Deleting..." : "Delete"}
                           </Button>
@@ -854,9 +862,9 @@ export default function DeckDetailPageClient() {
                         {card.tags.map((tag) => (
                           <span
                             key={tag}
-                            className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+                            className="max-w-full rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
                           >
-                            {tag}
+                            <span className="block truncate">{tag}</span>
                           </span>
                         ))}
                       </div>

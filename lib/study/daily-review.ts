@@ -1,5 +1,7 @@
 import type { Card } from "@/lib/study/cards";
+import { getStudyDayKey } from "@/lib/study/day";
 import { getMemoryRiskInfo, hasActiveMemoryRiskOverride } from "@/lib/study/memory-risk";
+import type { PersistedStudySession } from "@/lib/study/session";
 
 export type DailyReviewBucket = "weak" | "medium" | "easy";
 
@@ -9,12 +11,15 @@ export type DailyReviewState = {
   generatedAt: number;
   requiredCardIds: string[];
   optionalCardIds: string[];
+  carryoverRequiredCardIds: string[];
   completedRequiredCardIds: string[];
   completedOptionalCardIds: string[];
   parkedRequiredCardIds: string[];
   requiredRetryCounts: Record<string, number>;
   updatedAt: number;
 };
+
+export type DailyReviewStateData = Omit<DailyReviewState, "id">;
 
 export const DAILY_REVIEW_STATE_DOC_ID = "dailyReview";
 export const STUDY_STATE_META_DOC_ID = "meta";
@@ -58,6 +63,7 @@ export function normalizeDailyReviewState(
     generatedAt: typeof data.generatedAt === "number" ? data.generatedAt : 0,
     requiredCardIds: normalizeCardIdList(data.requiredCardIds),
     optionalCardIds: normalizeCardIdList(data.optionalCardIds),
+    carryoverRequiredCardIds: normalizeCardIdList(data.carryoverRequiredCardIds),
     completedRequiredCardIds: normalizeCardIdList(data.completedRequiredCardIds),
     completedOptionalCardIds: normalizeCardIdList(data.completedOptionalCardIds),
     parkedRequiredCardIds: normalizeCardIdList(data.parkedRequiredCardIds),
@@ -184,14 +190,121 @@ export function sortCardsByStudyPriority(cards: Card[], now = Date.now()) {
   return [...neverReviewedCards, ...weakCards, ...mediumCards, ...easyCards];
 }
 
-export function buildDailyReviewQueues(cards: Card[], now: number) {
+function getCardsByIds(cards: Card[], ids: string[]) {
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+  return ids.map((id) => cardsById.get(id) ?? null).filter((card): card is Card => card !== null);
+}
+
+export function getUnfinishedRequiredCardIds(
+  state: DailyReviewState | null,
+  cards: Card[]
+) {
+  if (!state) {
+    return [];
+  }
+
+  const knownCardIds = new Set(cards.map((card) => card.id));
+  const handledCardIds = new Set([
+    ...state.completedRequiredCardIds,
+    ...state.parkedRequiredCardIds,
+  ]);
+
+  return state.requiredCardIds.filter(
+    (cardId) => knownCardIds.has(cardId) && !handledCardIds.has(cardId)
+  );
+}
+
+function getHandledRequiredCardIds(state: DailyReviewState) {
+  return new Set([
+    ...state.completedRequiredCardIds,
+    ...state.parkedRequiredCardIds,
+  ]);
+}
+
+export function getRemainingCarryoverRequiredCards(
+  state: DailyReviewState | null,
+  cards: Card[]
+) {
+  if (!state) {
+    return [];
+  }
+
+  const handledCardIds = getHandledRequiredCardIds(state);
+  return getCardsByIds(cards, state.carryoverRequiredCardIds).filter(
+    (card) => !handledCardIds.has(card.id)
+  );
+}
+
+export function getRemainingFreshRequiredCards(
+  state: DailyReviewState | null,
+  cards: Card[]
+) {
+  if (!state) {
+    return [];
+  }
+
+  const handledCardIds = getHandledRequiredCardIds(state);
+  const carryoverCardIds = new Set(state.carryoverRequiredCardIds);
+  return getCardsByIds(cards, state.requiredCardIds).filter(
+    (card) => !carryoverCardIds.has(card.id) && !handledCardIds.has(card.id)
+  );
+}
+
+export function buildDailyReviewQueues(cards: Card[], now: number, carryoverCardIds: string[] = []) {
+  const carryoverCards = getCardsByIds(cards, carryoverCardIds);
+  const carryoverIdSet = new Set(carryoverCards.map((card) => card.id));
   const eligibleCards = cards.filter((card) => isCardEligibleForDailyReview(card, now));
-  const { neverReviewedCards, weakCards, mediumCards, easyCards } = sortCardsForDailyReview(eligibleCards, now);
+  const freshEligibleCards = eligibleCards.filter((card) => !carryoverIdSet.has(card.id));
+  const { neverReviewedCards, weakCards, mediumCards, easyCards } = sortCardsForDailyReview(freshEligibleCards, now);
 
   return {
-    requiredCards: [...neverReviewedCards, ...weakCards, ...mediumCards],
+    carryoverRequiredCards: carryoverCards,
+    requiredCards: [...carryoverCards, ...neverReviewedCards, ...weakCards, ...mediumCards],
     optionalCards: easyCards,
   };
+}
+
+export function buildDailyReviewStateData(
+  cards: Card[],
+  now: number,
+  previousState: DailyReviewState | null = null
+): DailyReviewStateData {
+  const studyDayKey = getStudyDayKey(now);
+  const carryoverRequiredCardIds =
+    previousState && previousState.studyDayKey !== studyDayKey
+      ? getUnfinishedRequiredCardIds(previousState, cards)
+      : previousState?.carryoverRequiredCardIds ?? [];
+  const { requiredCards, optionalCards, carryoverRequiredCards } = buildDailyReviewQueues(
+    cards,
+    now,
+    carryoverRequiredCardIds
+  );
+
+  return {
+    studyDayKey,
+    generatedAt: now,
+    requiredCardIds: requiredCards.map((card) => card.id),
+    optionalCardIds: optionalCards.map((card) => card.id),
+    carryoverRequiredCardIds: carryoverRequiredCards.map((card) => card.id),
+    completedRequiredCardIds: [],
+    completedOptionalCardIds: [],
+    parkedRequiredCardIds: [],
+    requiredRetryCounts: {},
+    updatedAt: now,
+  };
+}
+
+export function shouldPauseDailyReviewStateRefresh(
+  state: DailyReviewState | null,
+  activeSession: PersistedStudySession | null
+) {
+  return Boolean(
+    state &&
+      activeSession &&
+      activeSession.status === "active" &&
+      activeSession.kind !== "custom" &&
+      state.studyDayKey === activeSession.studyDayKey
+  );
 }
 
 export function isDailyReviewRequiredComplete(state: DailyReviewState | null) {
