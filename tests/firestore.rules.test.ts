@@ -269,6 +269,60 @@ describe("Firestore security rules", () => {
     );
   });
 
+  it("restricts active study sessions to the caller", async () => {
+    await seedData();
+
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const demoDb = testEnv.authenticatedContext(ALICE, { demo: true }).firestore();
+    const activeSessionData = {
+      version: 1,
+      userId: ALICE,
+      studyDayKey: "2026-05-02",
+      kind: "daily-required",
+      status: "active",
+      cardIds: ["alice-card"],
+      index: 0,
+      stats: {
+        reviewedCards: 0,
+        correctAnswers: 0,
+        completedGoals: 0,
+        starsEarned: 0,
+        ratings: { again: 0, hard: 0, good: 0, easy: 0 },
+      },
+      selectedDeckIds: [],
+      selectedTags: [],
+      startedAt: 1,
+      savedAt: 1,
+    };
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "studyState", "activeSession"), activeSessionData)
+    );
+
+    await assertSucceeds(
+      getDoc(doc(aliceDb, "users", ALICE, "studyState", "activeSession"))
+    );
+
+    await assertFails(
+      getDoc(doc(bobDb, "users", ALICE, "studyState", "activeSession"))
+    );
+
+    await assertFails(
+      setDoc(doc(bobDb, "users", ALICE, "studyState", "activeSession"), activeSessionData)
+    );
+
+    await assertSucceeds(
+      setDoc(doc(demoDb, "users", ALICE, "studyState", "activeSession"), {
+        ...activeSessionData,
+        status: "ended",
+        endReason: "user-ended",
+        endedAt: 2,
+        savedAt: 2,
+      })
+    );
+  });
+
   it("blocks demo accounts from mutating decks and notification setup", async () => {
     await seedData();
 

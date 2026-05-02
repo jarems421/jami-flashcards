@@ -23,8 +23,22 @@ import {
   queueOfflineStudyReview,
   saveOfflineStudySnapshot,
 } from "@/lib/study/offline-study";
+import {
+  buildPersistedStudySession,
+  canRestorePersistedSession,
+  clearPersistedStudySession,
+  closePersistedStudySession,
+  createEmptySessionStats,
+  hydratePersistedSessionCards,
+  loadPersistedStudySession,
+  savePersistedStudySession,
+  type PersistedStudySession,
+  type StudySessionKind,
+  type StudySessionStats,
+} from "@/lib/study/session";
 import { ensureDailyReviewState, ensureStudyStateSetup, loadUserCards, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
 import { syncOfflineStudyReviews } from "@/services/study/offline";
+import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
@@ -32,28 +46,13 @@ import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, PageHero, ProgressBar, Skeleton, StudyText } from "@/components/ui";
 
-type SessionKind = "daily-required" | "daily-optional" | "custom";
-type SessionStats = { reviewedCards: number; correctAnswers: number; completedGoals: number; starsEarned: number; ratings: Record<CardRating, number>; };
+type SessionKind = StudySessionKind;
+type SessionStats = StudySessionStats;
 const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
 type AnswerFeedback = { tone: "error" | "warm" | "good" | "calm"; message: string };
 type FocusedReviewRecents = { deckIds: string[]; tags: string[] };
-type PersistedStudySession = {
-  version: 1;
-  userId: string;
-  studyDayKey: string;
-  kind: SessionKind;
-  cardIds: string[];
-  index: number;
-  stats: SessionStats;
-  selectedDeckIds: string[];
-  selectedTags: string[];
-  savedAt: number;
-};
 
 const FOCUSED_REVIEW_RECENTS_PREFIX = "jami:focused-review-recents:";
-const ACTIVE_STUDY_SESSION_PREFIX = "jami:active-study-session:";
-const ACTIVE_STUDY_SESSION_VERSION = 1;
-const ACTIVE_STUDY_SESSION_MAX_AGE_MS = 30 * 60 * 60 * 1000;
 const EMPTY_FOCUSED_REVIEW_RECENTS: FocusedReviewRecents = { deckIds: [], tags: [] };
 const FOCUSED_REVIEW_RECENT_LIMIT = 5;
 
@@ -151,269 +150,6 @@ function formatCountdown(ms: number) {
   const minutes = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
   const seconds = (totalSeconds % 60).toString().padStart(2, "0");
   return `${hours}:${minutes}:${seconds}`;
-}
-
-function createEmptySessionStats(): SessionStats {
-  return { reviewedCards: 0, correctAnswers: 0, completedGoals: 0, starsEarned: 0, ratings: { again: 0, hard: 0, good: 0, easy: 0 } };
-}
-
-function normalizeCount(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) && value >= 0
-    ? Math.floor(value)
-    : 0;
-}
-
-function normalizeStringList(value: unknown) {
-  if (!Array.isArray(value)) {
-    return [];
-  }
-
-  return Array.from(
-    new Set(
-      value
-        .filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim()))
-        .map((entry) => entry.trim())
-    )
-  );
-}
-
-function normalizeSessionStats(value: unknown): SessionStats {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return createEmptySessionStats();
-  }
-
-  const data = value as Record<string, unknown>;
-  const ratings = data.ratings && typeof data.ratings === "object" && !Array.isArray(data.ratings)
-    ? data.ratings as Record<string, unknown>
-    : {};
-
-  return {
-    reviewedCards: normalizeCount(data.reviewedCards),
-    correctAnswers: normalizeCount(data.correctAnswers),
-    completedGoals: normalizeCount(data.completedGoals),
-    starsEarned: normalizeCount(data.starsEarned),
-    ratings: {
-      again: normalizeCount(ratings.again),
-      hard: normalizeCount(ratings.hard),
-      good: normalizeCount(ratings.good),
-      easy: normalizeCount(ratings.easy),
-    },
-  };
-}
-
-function getActiveStudySessionKey(userId: string) {
-  return `${ACTIVE_STUDY_SESSION_PREFIX}${userId}`;
-}
-
-function isSessionKind(value: unknown): value is SessionKind {
-  return value === "daily-required" || value === "daily-optional" || value === "custom";
-}
-
-function normalizePersistedStudySession(
-  value: unknown,
-  userId: string,
-  currentStudyDayKey: string,
-  now = Date.now()
-): PersistedStudySession | null {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return null;
-  }
-
-  const data = value as Record<string, unknown>;
-  const savedAt = normalizeCount(data.savedAt);
-  const cardIds = normalizeStringList(data.cardIds);
-
-  if (
-    data.version !== ACTIVE_STUDY_SESSION_VERSION ||
-    data.userId !== userId ||
-    data.studyDayKey !== currentStudyDayKey ||
-    !isSessionKind(data.kind) ||
-    cardIds.length === 0 ||
-    now - savedAt > ACTIVE_STUDY_SESSION_MAX_AGE_MS
-  ) {
-    return null;
-  }
-
-  return {
-    version: ACTIVE_STUDY_SESSION_VERSION,
-    userId,
-    studyDayKey: currentStudyDayKey,
-    kind: data.kind,
-    cardIds,
-    index: Math.min(normalizeCount(data.index), cardIds.length),
-    stats: normalizeSessionStats(data.stats),
-    selectedDeckIds: normalizeStringList(data.selectedDeckIds),
-    selectedTags: normalizeStringList(data.selectedTags),
-    savedAt,
-  };
-}
-
-function loadPersistedStudySession(userId: string, currentStudyDayKey: string) {
-  if (typeof window === "undefined") {
-    return null;
-  }
-
-  try {
-    const stored = window.localStorage.getItem(getActiveStudySessionKey(userId));
-    return stored
-      ? normalizePersistedStudySession(JSON.parse(stored), userId, currentStudyDayKey)
-      : null;
-  } catch (error) {
-    console.warn("Failed to load active study session.", error);
-    return null;
-  }
-}
-
-function savePersistedStudySession(session: PersistedStudySession) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.setItem(getActiveStudySessionKey(session.userId), JSON.stringify(session));
-  } catch (error) {
-    console.warn("Failed to save active study session.", error);
-  }
-}
-
-function clearPersistedStudySession(userId: string) {
-  if (typeof window === "undefined") {
-    return;
-  }
-
-  try {
-    window.localStorage.removeItem(getActiveStudySessionKey(userId));
-  } catch (error) {
-    console.warn("Failed to clear active study session.", error);
-  }
-}
-
-function sameSelection(left: string[], right: string[], getKey = (value: string) => value) {
-  if (left.length !== right.length) {
-    return false;
-  }
-
-  const rightKeys = new Set(right.map(getKey));
-  return left.every((value) => rightKeys.has(getKey(value)));
-}
-
-function canRestorePersistedSession(
-  session: PersistedStudySession,
-  requestedMode: "custom" | "daily" | null,
-  requestedDeckIds: string[],
-  requestedTags: string[]
-) {
-  if (requestedMode === "daily") {
-    return session.kind !== "custom";
-  }
-
-  if (requestedMode !== "custom") {
-    return true;
-  }
-
-  if (session.kind !== "custom") {
-    return false;
-  }
-
-  if (requestedDeckIds.length === 0 && requestedTags.length === 0) {
-    return true;
-  }
-
-  return (
-    sameSelection(session.selectedDeckIds, requestedDeckIds) &&
-    sameSelection(session.selectedTags, requestedTags, getTagKey)
-  );
-}
-
-function isDailySessionCardComplete(
-  kind: SessionKind,
-  cardId: string,
-  dailyReviewState: DailyReviewState | null
-) {
-  if (!dailyReviewState) {
-    return false;
-  }
-
-  if (kind === "daily-required") {
-    return (
-      dailyReviewState.completedRequiredCardIds.includes(cardId) ||
-      dailyReviewState.parkedRequiredCardIds.includes(cardId)
-    );
-  }
-
-  if (kind === "daily-optional") {
-    return dailyReviewState.completedOptionalCardIds.includes(cardId);
-  }
-
-  return false;
-}
-
-function hydratePersistedSessionCards(
-  session: PersistedStudySession,
-  cards: Card[],
-  dailyReviewState: DailyReviewState | null
-) {
-  const cardsById = new Map(cards.map((card) => [card.id, card]));
-  const cappedIndex = Math.min(session.index, session.cardIds.length);
-  let missingBeforeIndex = 0;
-  const restoredCards: Card[] = [];
-
-  session.cardIds.forEach((cardId, position) => {
-    const card = cardsById.get(cardId);
-    if (!card) {
-      if (position < cappedIndex) {
-        missingBeforeIndex += 1;
-      }
-      return;
-    }
-
-    if (
-      position >= cappedIndex &&
-      isDailySessionCardComplete(session.kind, cardId, dailyReviewState)
-    ) {
-      return;
-    }
-
-    restoredCards.push(card);
-  });
-
-  return {
-    cards: restoredCards,
-    index: Math.max(0, Math.min(cappedIndex - missingBeforeIndex, restoredCards.length)),
-  };
-}
-
-function buildPersistedStudySession({
-  userId,
-  kind,
-  sessionCards,
-  index,
-  stats,
-  selectedDeckIds,
-  selectedTags,
-  now = Date.now(),
-}: {
-  userId: string;
-  kind: SessionKind;
-  sessionCards: Card[];
-  index: number;
-  stats: SessionStats;
-  selectedDeckIds: string[];
-  selectedTags: string[];
-  now?: number;
-}): PersistedStudySession {
-  return {
-    version: ACTIVE_STUDY_SESSION_VERSION,
-    userId,
-    studyDayKey: getStudyDayKey(now),
-    kind,
-    cardIds: sessionCards.map((card) => card.id),
-    index: Math.max(0, Math.min(index, sessionCards.length)),
-    stats,
-    selectedDeckIds,
-    selectedTags,
-    savedAt: now,
-  };
 }
 
 function StepLabel({ step, children }: { step: number; children: string }) {
@@ -532,9 +268,12 @@ export default function StudyPage() {
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineSnapshotAt, setOfflineSnapshotAt] = useState<number | null>(null);
   const [pendingOfflineReviews, setPendingOfflineReviews] = useState(0);
+  const [sessionRestoreReady, setSessionRestoreReady] = useState(false);
   const flipTimestampRef = useRef(0);
   const autoStartHandledRef = useRef(false);
   const sessionRestoreHandledRef = useRef(false);
+  const sessionStartedAtRef = useRef<number | null>(null);
+  const remoteCloseKeyRef = useRef<string | null>(null);
   const demoAiDisabled = demoMode === "demo-test";
 
   useEffect(() => {
@@ -549,6 +288,9 @@ export default function StudyPage() {
     setSessionStats(createEmptySessionStats());
     autoStartHandledRef.current = false;
     sessionRestoreHandledRef.current = false;
+    sessionStartedAtRef.current = null;
+    remoteCloseKeyRef.current = null;
+    setSessionRestoreReady(false);
   }, [requestedDeckIds, requestedTags, requestedMode]);
 
   useEffect(() => {
@@ -828,22 +570,41 @@ export default function StudyPage() {
           : kind === "daily-optional"
             ? remainingOptionalCards
             : customPreviewCards;
+      const now = Date.now();
+      const nextStats = createEmptySessionStats();
+      const nextSession = buildPersistedStudySession({
+        userId: user.uid,
+        kind,
+        sessionCards: nextCards,
+        index: 0,
+        stats: nextStats,
+        selectedDeckIds,
+        selectedTags,
+        startedAt: now,
+        now,
+      });
 
+      sessionStartedAtRef.current = now;
+      remoteCloseKeyRef.current = null;
       setSessionKind(kind);
       setSessionCards(nextCards);
-      setSessionStats(createEmptySessionStats());
+      setSessionStats(nextStats);
       setIndex(0);
       setFlipped(false);
       setSavingRating(null);
       setShowExplanation(false);
       setAnswerFeedback(null);
       setFeedback(null);
+      savePersistedStudySession(nextSession);
+      void saveRemoteActiveStudySession(nextSession).catch((error) => {
+        console.warn("Failed to save active study session.", error);
+      });
 
       if (kind === "custom") {
         pushFocusedReviewRecents(selectedDeckIds, selectedTags);
       }
     },
-    [customPreviewCards, pushFocusedReviewRecents, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTags]
+    [customPreviewCards, pushFocusedReviewRecents, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTags, user.uid]
   );
 
   const handleCustomReviewClick = useCallback(() => {
@@ -877,46 +638,89 @@ export default function StudyPage() {
   useEffect(() => {
     if (!loaded || sessionRestoreHandledRef.current) return;
     sessionRestoreHandledRef.current = true;
+    let cancelled = false;
 
-    const restoredSession = loadPersistedStudySession(user.uid, getStudyDayKey(Date.now()));
-    if (
-      !restoredSession ||
-      !canRestorePersistedSession(
-        restoredSession,
-        requestedMode,
-        requestedDeckIds,
-        requestedTags
-      )
-    ) {
-      return;
-    }
+    const restoreSession = async () => {
+      const currentStudyDayKey = getStudyDayKey(Date.now());
+      let restoredSession: PersistedStudySession | null = null;
+      let foundRemoteSession = false;
 
-    const restored = hydratePersistedSessionCards(restoredSession, cards, dailyReviewState);
-    if (restored.cards.length === 0 || restored.index >= restored.cards.length) {
-      clearPersistedStudySession(user.uid);
-      return;
-    }
+      try {
+        const remoteResult = await loadRemoteActiveStudySession(user.uid, currentStudyDayKey);
+        restoredSession = remoteResult.session;
+        foundRemoteSession = remoteResult.foundRemoteSession;
+      } catch (error) {
+        console.warn("Failed to load remote active study session.", error);
+      }
 
-    setSessionKind(restoredSession.kind);
-    setSessionCards(restored.cards);
-    setSessionStats(restoredSession.stats);
-    setIndex(restored.index);
-    setFlipped(false);
-    setSavingRating(null);
-    setShowExplanation(false);
-    setAnswerFeedback(null);
-    setFeedback(null);
+      if (!restoredSession && !foundRemoteSession) {
+        restoredSession = loadPersistedStudySession(user.uid, currentStudyDayKey);
+      }
 
-    if (restoredSession.kind === "custom") {
-      setSelectedDeckIds(restoredSession.selectedDeckIds);
-      setSelectedTags(restoredSession.selectedTags);
-    }
+      if (cancelled) {
+        return;
+      }
 
-    autoStartHandledRef.current = true;
+      if (foundRemoteSession && !restoredSession) {
+        clearPersistedStudySession(user.uid);
+        setSessionRestoreReady(true);
+        return;
+      }
+
+      if (
+        !restoredSession ||
+        !canRestorePersistedSession(
+          restoredSession,
+          requestedMode,
+          requestedDeckIds,
+          requestedTags
+        )
+      ) {
+        setSessionRestoreReady(true);
+        return;
+      }
+
+      const restored = hydratePersistedSessionCards(restoredSession, cards, dailyReviewState);
+      if (restored.cards.length === 0 || restored.index >= restored.cards.length) {
+        clearPersistedStudySession(user.uid);
+        void closeRemoteStudySession(user.uid, restoredSession, "completed", "completed").catch((error) => {
+          console.warn("Failed to close empty active study session.", error);
+        });
+        setSessionRestoreReady(true);
+        return;
+      }
+
+      sessionStartedAtRef.current = restoredSession.startedAt;
+      remoteCloseKeyRef.current = null;
+      savePersistedStudySession(restoredSession);
+      setSessionKind(restoredSession.kind);
+      setSessionCards(restored.cards);
+      setSessionStats(restoredSession.stats);
+      setIndex(restored.index);
+      setFlipped(false);
+      setSavingRating(null);
+      setShowExplanation(false);
+      setAnswerFeedback(null);
+      setFeedback(null);
+
+      if (restoredSession.kind === "custom") {
+        setSelectedDeckIds(restoredSession.selectedDeckIds);
+        setSelectedTags(restoredSession.selectedTags);
+      }
+
+      autoStartHandledRef.current = true;
+      setSessionRestoreReady(true);
+    };
+
+    void restoreSession();
+
+    return () => {
+      cancelled = true;
+    };
   }, [cards, dailyReviewState, loaded, requestedDeckIds, requestedMode, requestedTags, user.uid]);
 
   useEffect(() => {
-    if (!loaded || autoStartHandledRef.current) return;
+    if (!loaded || !sessionRestoreReady || autoStartHandledRef.current) return;
     if (requestedMode === "daily") {
       autoStartHandledRef.current = true;
       if (remainingRequiredCards.length > 0) {
@@ -934,7 +738,7 @@ export default function StudyPage() {
       return;
     }
     autoStartHandledRef.current = true;
-  }, [customPreviewCards.length, loaded, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, startSession]);
+  }, [customPreviewCards.length, loaded, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, sessionRestoreReady, startSession]);
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
@@ -946,22 +750,42 @@ export default function StudyPage() {
   useEffect(() => {
     if (!loaded || !sessionKind) return;
 
+    const now = Date.now();
+    const currentSession = buildPersistedStudySession({
+      userId: user.uid,
+      kind: sessionKind,
+      sessionCards,
+      index,
+      stats: sessionStats,
+      selectedDeckIds,
+      selectedTags,
+      startedAt: sessionStartedAtRef.current,
+      now,
+    });
+    sessionStartedAtRef.current = currentSession.startedAt;
+
     if (done) {
+      const closeKey = `${currentSession.kind}:${currentSession.startedAt}:${currentSession.cardIds.join(",")}:completed`;
       clearPersistedStudySession(user.uid);
+      if (remoteCloseKeyRef.current !== closeKey) {
+        remoteCloseKeyRef.current = closeKey;
+        void closeRemoteStudySession(
+          user.uid,
+          currentSession,
+          "completed",
+          "completed",
+          now
+        ).catch((error) => {
+          console.warn("Failed to close completed study session.", error);
+        });
+      }
       return;
     }
 
-    savePersistedStudySession(
-      buildPersistedStudySession({
-        userId: user.uid,
-        kind: sessionKind,
-        sessionCards,
-        index,
-        stats: sessionStats,
-        selectedDeckIds,
-        selectedTags,
-      })
-    );
+    savePersistedStudySession(currentSession);
+    void saveRemoteActiveStudySession(currentSession).catch((error) => {
+      console.warn("Failed to save active study session.", error);
+    });
   }, [done, index, loaded, selectedDeckIds, selectedTags, sessionCards, sessionKind, sessionStats, user.uid]);
 
   const goNext = () => {
@@ -1223,7 +1047,31 @@ export default function StudyPage() {
   }, [current, flipped, handleFlip, savingRating]);
 
   const exitSession = () => {
+    if (sessionKind) {
+      const now = Date.now();
+      const status = done ? "completed" : "ended";
+      const reason = done ? "completed" : "user-ended";
+      const currentSession = buildPersistedStudySession({
+        userId: user.uid,
+        kind: sessionKind,
+        sessionCards,
+        index: done ? sessionCards.length : index,
+        stats: sessionStats,
+        selectedDeckIds,
+        selectedTags,
+        startedAt: sessionStartedAtRef.current,
+        now,
+      });
+      const closedSession = closePersistedStudySession(currentSession, status, reason, now);
+
+      remoteCloseKeyRef.current = `${closedSession.kind}:${closedSession.startedAt}:${closedSession.cardIds.join(",")}:${closedSession.status}`;
+      void closeRemoteStudySession(user.uid, currentSession, status, reason, now).catch((error) => {
+        console.warn("Failed to close active study session.", error);
+      });
+    }
+
     clearPersistedStudySession(user.uid);
+    sessionStartedAtRef.current = null;
     setSessionKind(null);
     setSessionCards([]);
     setSessionStats(createEmptySessionStats());
@@ -1792,7 +1640,7 @@ export default function StudyPage() {
                 </div>
               ) : null}
               <div className="flex flex-wrap gap-3">
-                <Button type="button" onClick={exitSession} variant="secondary">Exit session</Button>
+                <Button type="button" onClick={exitSession} variant="secondary">End session</Button>
                 <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Edit cards</Link>
               </div>
             </div>
