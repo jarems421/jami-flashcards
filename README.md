@@ -35,7 +35,7 @@
 Jami is designed to feel like a finished learning product, not just a flashcard CRUD app.
 
 - Build cards quickly with single-card entry, bulk paste, file import, tag management, and quality warnings.
-- Study through a memory-aware review flow that combines FSRS scheduling with custom risk ranking.
+- Study through Daily Review, Focused Review, or Simple Study depending on how much structure you want.
 - Stay productive offline with cached study data and queued review sync.
 - See what matters next through retention signals, weak areas, hardest cards, due-load forecasting, and streak pressure.
 - Turn progress into something visible with goals, stars, and constellation rewards.
@@ -46,7 +46,7 @@ If you open the app from top to bottom, the story is:
 
 1. Start from a polished landing flow with Google sign-in, email sign-in, and a reviewer-friendly public demo.
 2. Build a card library through decks, tags, bulk imports, tag cleanup, and card-quality warnings.
-3. Study through Daily Review for the highest-risk cards or Focused Review for targeted deck/tag practice.
+3. Study through Daily Review for the highest-risk cards, Focused Review for targeted deck/tag practice, or Simple Study for a lighter two-button practice loop.
 4. Use Insights to understand weak areas, upcoming workload, streak pressure, and hardest cards.
 5. Track longer-term progress through goals, stars, and the constellation system.
 
@@ -58,8 +58,16 @@ If you open the app from top to bottom, the story is:
 - FSRS provides the scheduling base layer.
 - A custom risk model pulls in overdue pressure, lapses, and recent struggle history.
 - Required and optional review queues keep the session focused without feeling punishing.
+- Active study sessions persist with stable session identity and revision ordering, so PWA resume, tab focus, offline fallback, and cross-device saves do not rebuild or rewind the queue.
 
-### 2. Fast card authoring
+### 2. Simple Study mode
+
+- Simple Study is practice-only: it does not reschedule cards, move Daily Review progress, or award goals and stars.
+- The queue starts with cards that have no prior rating, then shows missed or historically hard cards from hardest to easiest.
+- The answer flow is intentionally small: `Got it` clears the card, while `Missed` moves it to the back of the queue.
+- Separate Simple Study card fields track lightweight progress without mixing it into FSRS due dates.
+
+### 3. Fast card authoring
 
 - Single-card entry for quick capture.
 - Paste-list import for spreadsheet-style workflows.
@@ -68,21 +76,21 @@ If you open the app from top to bottom, the story is:
 - Quality warnings for duplicate, oversized, untagged, or suspicious cards.
 - Export helpers for TSV and CSV deck dumps.
 
-### 3. Useful analytics
+### 4. Useful analytics
 
 - Retention health and due-load summaries.
 - Weakest decks, tags, and hardest cards.
 - Streak rescue and recent activity changes.
 - Coverage and activity metrics that tell the user what to do next, not just what already happened.
 
-### 4. Offline-ready product behavior
+### 5. Offline-ready product behavior
 
 - Local snapshots for cards and decks.
 - Queued review events while offline.
 - Sync-back when connectivity returns.
-- PWA and notification foundations already in place.
+- PWA-safe session restore keeps the current card, cursor, and remaining count stable when the app is backgrounded or reopened.
 
-### 5. Demo and presentation readiness
+### 6. Demo and presentation readiness
 
 - Public preview at `/demo`.
 - Shared study session for safe hands-on review.
@@ -144,7 +152,7 @@ lib/
   ai/                    Prompting and AI output cleanup
   auth/                  Auth context and listeners
   demo/                  Demo mode helpers
-  study/                 Scheduling, analytics, memory risk, offline queue
+  study/                 Scheduling, analytics, memory risk, simple study, offline queue
 services/
   ai/                    Client helpers for AI endpoints
   auth/                  Sign-in and account lifecycle helpers

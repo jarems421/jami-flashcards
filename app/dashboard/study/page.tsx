@@ -20,6 +20,12 @@ import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@
 import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
 import { getTagKey, parseCardTagsParam, type Card } from "@/lib/study/cards";
 import {
+  applySimpleStudyResultToCard,
+  applySimpleStudyResultToQueue,
+  buildSimpleStudyQueue,
+  type SimpleStudyResult,
+} from "@/lib/study/simple-study";
+import {
   getOfflineQueuedReviews,
   loadOfflineStudySnapshot,
   queueOfflineStudyReview,
@@ -28,11 +34,17 @@ import {
 import {
   buildPersistedStudySession,
   canRestorePersistedSession,
+  clearClosedStudySessionTombstone,
   clearPersistedStudySession,
   closePersistedStudySession,
   createEmptySessionStats,
+  hasClosedStudySessionTombstone,
   hydratePersistedSessionCards,
+  isIncomingSessionNewer,
+  loadClosedStudySessionTombstone,
   loadPersistedStudySession,
+  markClosedStudySessionTombstoneSynced,
+  saveClosedStudySessionTombstone,
   savePersistedStudySession,
   type PersistedStudySession,
   type StudySessionKind,
@@ -58,6 +70,7 @@ type FocusedReviewRecents = { deckIds: string[]; tags: string[] };
 const FOCUSED_REVIEW_RECENTS_PREFIX = "jami:focused-review-recents:";
 const EMPTY_FOCUSED_REVIEW_RECENTS: FocusedReviewRecents = { deckIds: [], tags: [] };
 const FOCUSED_REVIEW_RECENT_LIMIT = 5;
+const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
 
 const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classes: string }> = {
   again: {
@@ -83,6 +96,7 @@ const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classe
 };
 
 function getSessionLabel(kind: SessionKind | null) {
+  if (kind === "simple") return "Simple Study";
   if (kind === "custom") return "Focused Review";
   if (kind === "daily-optional") return "Easy Extras";
   return "Daily Review";
@@ -116,6 +130,12 @@ function getAnswerFeedback(rating: CardRating, sessionKind: SessionKind, parked:
   }
 
   return { tone: "good" as const, message: "That one felt easy." };
+}
+
+function getSimpleStudyFeedback(result: SimpleStudyResult) {
+  return result === "correct"
+    ? { tone: "good" as const, message: "Cleared from Simple Study." }
+    : { tone: "warm" as const, message: "Moved to the back for another pass." };
 }
 
 function InlineStudyFeedback({ feedback }: { feedback: AnswerFeedback | null }) {
@@ -245,10 +265,12 @@ export default function StudyPage() {
   const searchParams = useSearchParams();
   const { user, demoMode } = useUser();
   const rawMode = searchParams.get("mode");
+  const rawDecksParam = searchParams.get("decks");
+  const rawTagsParam = searchParams.get("tags");
   const requestedMode =
     rawMode === "custom" || rawMode === "daily" ? rawMode : null;
-  const requestedDeckIds = useMemo(() => parseDeckIdsParam(searchParams.get("decks")), [searchParams]);
-  const requestedTags = useMemo(() => parseCardTagsParam(searchParams.get("tags")), [searchParams]);
+  const requestedDeckIds = useMemo(() => parseDeckIdsParam(rawDecksParam), [rawDecksParam]);
+  const requestedTags = useMemo(() => parseCardTagsParam(rawTagsParam), [rawTagsParam]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [dailyReviewState, setDailyReviewState] = useState<DailyReviewState | null>(null);
@@ -277,6 +299,11 @@ export default function StudyPage() {
   const sessionRestoreHandledRef = useRef(false);
   const sessionStartedAtRef = useRef<number | null>(null);
   const sessionStudyDayKeyRef = useRef<string | null>(null);
+  const sessionIdRef = useRef<string | null>(null);
+  const sessionRevisionRef = useRef(0);
+  const latestPersistedSessionRef = useRef<PersistedStudySession | null>(null);
+  const loadRequestIdRef = useRef(0);
+  const lastForegroundRefreshAtRef = useRef(0);
   const remoteCloseKeyRef = useRef<string | null>(null);
   const demoAiDisabled = demoMode === "demo-test";
 
@@ -294,6 +321,9 @@ export default function StudyPage() {
     sessionRestoreHandledRef.current = false;
     sessionStartedAtRef.current = null;
     sessionStudyDayKeyRef.current = null;
+    sessionIdRef.current = null;
+    sessionRevisionRef.current = 0;
+    latestPersistedSessionRef.current = null;
     remoteCloseKeyRef.current = null;
     setSessionRestoreReady(false);
   }, [requestedDeckIds, requestedTags, requestedMode]);
@@ -345,8 +375,12 @@ export default function StudyPage() {
     return () => window.clearTimeout(timeout);
   }, [answerFeedback]);
 
-  const loadAll = useCallback(async () => {
-    setLoaded(false);
+  const loadAll = useCallback(async (options: { keepSessionMounted?: boolean } = {}) => {
+    const requestId = loadRequestIdRef.current + 1;
+    loadRequestIdRef.current = requestId;
+    if (!options.keepSessionMounted) {
+      setLoaded(false);
+    }
     setFeedback(null);
     try {
       const setupResults = await Promise.allSettled([
@@ -375,6 +409,9 @@ export default function StudyPage() {
       const nextDailyReviewState = await ensureDailyReviewState(user.uid, sortedCards, now, {
         activeSession: activeSessionResult.session,
       });
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
       setDecks(nextDecks);
       setCards(sortedCards);
       setDailyReviewState(nextDailyReviewState);
@@ -383,6 +420,17 @@ export default function StudyPage() {
       setOfflineSnapshotAt(Date.now());
     } catch (error) {
       console.error(error);
+      if (requestId !== loadRequestIdRef.current) {
+        return;
+      }
+
+      if (options.keepSessionMounted && latestPersistedSessionRef.current) {
+        setOfflineMode(true);
+        setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
+        setFeedback({ type: "success", message: "Still using your current study session. New data will refresh when the connection settles." });
+        return;
+      }
+
       const snapshot = loadOfflineStudySnapshot(user.uid);
 
       if (snapshot) {
@@ -414,13 +462,72 @@ export default function StudyPage() {
         setFeedback({ type: "error", message: "Failed to load your study queue." });
       }
     } finally {
-      setLoaded(true);
+      if (requestId === loadRequestIdRef.current) {
+        setLoaded(true);
+      }
     }
   }, [user.uid]);
 
   useEffect(() => {
     void loadAll();
-  }, [loadAll]);
+  }, [loadAll, user.uid]);
+
+  useEffect(() => {
+    const retryClosedSessionSync = () => {
+      const tombstone = loadClosedStudySessionTombstone(user.uid);
+      if (!tombstone?.retryRemoteClose) {
+        return;
+      }
+
+      void closeRemoteStudySession(
+        user.uid,
+        tombstone.session,
+        tombstone.status,
+        tombstone.reason
+      )
+        .then((saved) => {
+          if (saved) {
+            markClosedStudySessionTombstoneSynced(user.uid);
+          }
+        })
+        .catch((error) => {
+          console.warn("Failed to retry closed study session sync.", error);
+        });
+    };
+
+    const handleFocus = () => {
+      if (document.visibilityState === "hidden") {
+        return;
+      }
+
+      setOfflineMode(typeof navigator !== "undefined" ? !navigator.onLine : false);
+      setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
+      retryClosedSessionSync();
+
+      if (latestPersistedSessionRef.current) {
+        return;
+      }
+
+      const now = Date.now();
+      if (now - lastForegroundRefreshAtRef.current < STUDY_FOREGROUND_REFRESH_THROTTLE_MS) {
+        return;
+      }
+
+      lastForegroundRefreshAtRef.current = now;
+      void loadAll({ keepSessionMounted: true });
+    };
+
+    if (document.visibilityState !== "hidden") {
+      retryClosedSessionSync();
+    }
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleFocus);
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleFocus);
+    };
+  }, [loadAll, user.uid]);
 
   const refreshPendingOfflineReviews = useCallback(() => {
     setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
@@ -446,7 +553,10 @@ export default function StudyPage() {
         type: "success",
         message: `Synced ${result.synced} offline review${result.synced === 1 ? "" : "s"}.`,
       });
-      await loadAll();
+      if (latestPersistedSessionRef.current) {
+        return;
+      }
+      await loadAll({ keepSessionMounted: true });
     }
   }, [loadAll, user.uid]);
 
@@ -514,6 +624,7 @@ export default function StudyPage() {
     () => buildCustomReviewCards(cards, selectedDeckIds, selectedTags),
     [cards, selectedDeckIds, selectedTags]
   );
+  const simpleStudyQueue = useMemo(() => buildSimpleStudyQueue(cards), [cards]);
   const hasCustomFilters = selectedDeckIds.length > 0 || selectedTags.length > 0;
   const customSelectionEmpty = hasCards && customPreviewCards.length === 0;
   const deckNamesById = useMemo(
@@ -551,6 +662,10 @@ export default function StudyPage() {
       .filter((tag) => getTagKey(tag).includes(query))
       .slice(0, 8);
   }, [availableTags, tagSearch]);
+  const simpleStudyStatusText =
+    simpleStudyQueue.cards.length > 0
+      ? `${simpleStudyQueue.newCount} new · ${simpleStudyQueue.wrongCount} missed`
+      : "All clear";
   const recentDecks = useMemo(() => {
     const decksById = new Map(decks.map((deck) => [deck.id, deck]));
     return focusedReviewRecents.deckIds
@@ -596,23 +711,31 @@ export default function StudyPage() {
               : remainingRequiredCards
           : kind === "daily-optional"
             ? remainingOptionalCards
-            : customPreviewCards;
+            : kind === "simple"
+              ? simpleStudyQueue.cards
+              : customPreviewCards;
       const now = Date.now();
       const nextStats = createEmptySessionStats();
+      const sessionSelectedDeckIds = kind === "simple" ? [] : selectedDeckIds;
+      const sessionSelectedTags = kind === "simple" ? [] : selectedTags;
       const nextSession = buildPersistedStudySession({
         userId: user.uid,
         kind,
         sessionCards: nextCards,
         index: 0,
         stats: nextStats,
-        selectedDeckIds,
-        selectedTags,
+        selectedDeckIds: sessionSelectedDeckIds,
+        selectedTags: sessionSelectedTags,
         startedAt: now,
         now,
       });
 
+      clearClosedStudySessionTombstone(user.uid);
+      sessionIdRef.current = nextSession.sessionId;
       sessionStartedAtRef.current = now;
       sessionStudyDayKeyRef.current = nextSession.studyDayKey;
+      sessionRevisionRef.current = nextSession.revision;
+      latestPersistedSessionRef.current = nextSession;
       remoteCloseKeyRef.current = null;
       setSessionKind(kind);
       setSessionCards(nextCards);
@@ -632,7 +755,7 @@ export default function StudyPage() {
         pushFocusedReviewRecents(selectedDeckIds, selectedTags);
       }
     },
-    [customPreviewCards, pushFocusedReviewRecents, remainingCarryoverRequiredCards, remainingFreshRequiredCards, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTags, user.uid]
+    [customPreviewCards, pushFocusedReviewRecents, remainingCarryoverRequiredCards, remainingFreshRequiredCards, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTags, simpleStudyQueue.cards, user.uid]
   );
 
   const handleCustomReviewClick = useCallback(() => {
@@ -670,27 +793,81 @@ export default function StudyPage() {
 
     const restoreSession = async () => {
       const currentStudyDayKey = getStudyDayKey(Date.now());
-      let restoredSession: PersistedStudySession | null = null;
+      const localSession = loadPersistedStudySession(user.uid, currentStudyDayKey);
+      let remoteSession: PersistedStudySession | null = null;
+      let remoteClosedSession: PersistedStudySession | null = null;
       let foundRemoteSession = false;
 
       try {
         const remoteResult = await loadRemoteActiveStudySession(user.uid, currentStudyDayKey);
-        restoredSession = remoteResult.session;
+        remoteSession = remoteResult.session;
+        remoteClosedSession = remoteResult.closedSession ?? null;
         foundRemoteSession = remoteResult.foundRemoteSession;
       } catch (error) {
         console.warn("Failed to load remote active study session.", error);
       }
 
-      if (!restoredSession && !foundRemoteSession) {
-        restoredSession = loadPersistedStudySession(user.uid, currentStudyDayKey);
+      let restoredSession = localSession;
+      if (remoteSession && (!restoredSession || isIncomingSessionNewer(restoredSession, remoteSession))) {
+        restoredSession = remoteSession;
       }
 
       if (cancelled) {
         return;
       }
 
-      if (foundRemoteSession && !restoredSession) {
+      if (foundRemoteSession && !remoteSession) {
+        if (
+          remoteClosedSession &&
+          restoredSession &&
+          remoteClosedSession.sessionId === restoredSession.sessionId &&
+          isIncomingSessionNewer(restoredSession, remoteClosedSession)
+        ) {
+          saveClosedStudySessionTombstone(remoteClosedSession, false);
+          clearPersistedStudySession(user.uid);
+          latestPersistedSessionRef.current = null;
+          setSessionRestoreReady(true);
+          return;
+        }
+
+        if (!restoredSession) {
+          clearPersistedStudySession(user.uid);
+          latestPersistedSessionRef.current = null;
+          setSessionRestoreReady(true);
+          return;
+        }
+
+        if (remoteClosedSession && remoteClosedSession.sessionId !== restoredSession.sessionId) {
+          saveClosedStudySessionTombstone(remoteClosedSession, false);
+        }
+
+        setSessionRestoreReady(true);
+        return;
+      }
+
+      if (
+        remoteClosedSession &&
+        restoredSession &&
+        remoteClosedSession.sessionId === restoredSession.sessionId &&
+        isIncomingSessionNewer(restoredSession, remoteClosedSession)
+      ) {
+        saveClosedStudySessionTombstone(remoteClosedSession, false);
         clearPersistedStudySession(user.uid);
+        latestPersistedSessionRef.current = null;
+        setSessionRestoreReady(true);
+        return;
+      }
+
+      if (
+        restoredSession &&
+        hasClosedStudySessionTombstone(
+          user.uid,
+          restoredSession.sessionId,
+          restoredSession.revision
+        )
+      ) {
+        clearPersistedStudySession(user.uid);
+        latestPersistedSessionRef.current = null;
         setSessionRestoreReady(true);
         return;
       }
@@ -711,6 +888,9 @@ export default function StudyPage() {
       const restored = hydratePersistedSessionCards(restoredSession, cards, dailyReviewState);
       if (restored.cards.length === 0 || restored.index >= restored.cards.length) {
         clearPersistedStudySession(user.uid);
+        saveClosedStudySessionTombstone(
+          closePersistedStudySession(restoredSession, "completed", "completed")
+        );
         void closeRemoteStudySession(user.uid, restoredSession, "completed", "completed").catch((error) => {
           console.warn("Failed to close empty active study session.", error);
         });
@@ -718,8 +898,11 @@ export default function StudyPage() {
         return;
       }
 
+      sessionIdRef.current = restoredSession.sessionId;
       sessionStartedAtRef.current = restoredSession.startedAt;
       sessionStudyDayKeyRef.current = restoredSession.studyDayKey;
+      sessionRevisionRef.current = restoredSession.revision;
+      latestPersistedSessionRef.current = restoredSession;
       remoteCloseKeyRef.current = null;
       savePersistedStudySession(restoredSession);
       setSessionKind(restoredSession.kind);
@@ -783,28 +966,55 @@ export default function StudyPage() {
     sessionCards.length > 0 &&
     sessionCards.every((card) => carryoverRequiredIdSet.has(card.id));
 
+  const bumpSessionRevision = useCallback(() => {
+    sessionRevisionRef.current = Math.max(1, sessionRevisionRef.current + 1);
+    return sessionRevisionRef.current;
+  }, []);
+
+  const getCurrentPersistedSession = useCallback(
+    (now = Date.now()) => {
+      if (!sessionKind) {
+        return null;
+      }
+
+      const currentSession = buildPersistedStudySession({
+        userId: user.uid,
+        sessionId: sessionIdRef.current,
+        revision: sessionRevisionRef.current,
+        studyDayKey: sessionStudyDayKeyRef.current,
+        kind: sessionKind,
+        sessionCards,
+        index,
+        stats: sessionStats,
+        selectedDeckIds,
+        selectedTags,
+        startedAt: sessionStartedAtRef.current,
+        now,
+      });
+
+      sessionIdRef.current = currentSession.sessionId;
+      sessionStartedAtRef.current = currentSession.startedAt;
+      sessionStudyDayKeyRef.current = currentSession.studyDayKey;
+      sessionRevisionRef.current = currentSession.revision;
+      latestPersistedSessionRef.current = currentSession;
+      return currentSession;
+    },
+    [index, selectedDeckIds, selectedTags, sessionCards, sessionKind, sessionStats, user.uid]
+  );
+
   useEffect(() => {
     if (!loaded || !sessionKind) return;
 
     const now = Date.now();
-    const currentSession = buildPersistedStudySession({
-      userId: user.uid,
-      studyDayKey: sessionStudyDayKeyRef.current,
-      kind: sessionKind,
-      sessionCards,
-      index,
-      stats: sessionStats,
-      selectedDeckIds,
-      selectedTags,
-      startedAt: sessionStartedAtRef.current,
-      now,
-    });
-    sessionStartedAtRef.current = currentSession.startedAt;
-    sessionStudyDayKeyRef.current = currentSession.studyDayKey;
+    const currentSession = getCurrentPersistedSession(now);
+    if (!currentSession) return;
 
     if (done) {
-      const closeKey = `${currentSession.kind}:${currentSession.startedAt}:${currentSession.cardIds.join(",")}:completed`;
+      const closeKey = `${currentSession.sessionId}:${currentSession.revision}:completed`;
       clearPersistedStudySession(user.uid);
+      const closedSession = closePersistedStudySession(currentSession, "completed", "completed", now);
+      saveClosedStudySessionTombstone(closedSession);
+      latestPersistedSessionRef.current = null;
       if (remoteCloseKeyRef.current !== closeKey) {
         remoteCloseKeyRef.current = closeKey;
         void closeRemoteStudySession(
@@ -813,9 +1023,15 @@ export default function StudyPage() {
           "completed",
           "completed",
           now
-        ).catch((error) => {
-          console.warn("Failed to close completed study session.", error);
-        });
+        )
+          .then((saved) => {
+            if (saved) {
+              markClosedStudySessionTombstoneSynced(user.uid);
+            }
+          })
+          .catch((error) => {
+            console.warn("Failed to close completed study session.", error);
+          });
       }
       return;
     }
@@ -824,7 +1040,32 @@ export default function StudyPage() {
     void saveRemoteActiveStudySession(currentSession).catch((error) => {
       console.warn("Failed to save active study session.", error);
     });
-  }, [done, index, loaded, selectedDeckIds, selectedTags, sessionCards, sessionKind, sessionStats, user.uid]);
+  }, [done, getCurrentPersistedSession, loaded, sessionKind, user.uid]);
+
+  useEffect(() => {
+    const persistBeforeSuspend = () => {
+      const currentSession = getCurrentPersistedSession();
+      if (currentSession && currentSession.status === "active") {
+        savePersistedStudySession(currentSession);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        persistBeforeSuspend();
+      }
+    };
+
+    window.addEventListener("pagehide", persistBeforeSuspend);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    document.addEventListener("freeze", persistBeforeSuspend);
+
+    return () => {
+      window.removeEventListener("pagehide", persistBeforeSuspend);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      document.removeEventListener("freeze", persistBeforeSuspend);
+    };
+  }, [getCurrentPersistedSession]);
 
   const goNext = () => {
     setIndex((value) => value + 1);
@@ -844,6 +1085,7 @@ export default function StudyPage() {
 
   const handleOfflineRating = async (rating: CardRating) => {
     if (!current || !sessionKind) return;
+    if (sessionKind === "simple") return;
 
     const now = Date.now();
     const durationMs = flipTimestampRef.current > 0 ? now - flipTimestampRef.current : undefined;
@@ -934,6 +1176,7 @@ export default function StudyPage() {
       setDailyReviewState((prev) => prev ? { ...prev, completedOptionalCardIds: prev.completedOptionalCardIds.includes(current.id) ? prev.completedOptionalCardIds : [...prev.completedOptionalCardIds, current.id], updatedAt: now } : prev);
     }
 
+    bumpSessionRevision();
     setOfflineMode(true);
     setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals, starsEarned: prev.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
     setAnswerFeedback(getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)));
@@ -948,8 +1191,62 @@ export default function StudyPage() {
     }
   };
 
+  const handleSimpleStudyResult = async (result: SimpleStudyResult) => {
+    if (!current || sessionKind !== "simple" || savingRating) return;
+
+    const now = Date.now();
+    const nextCard = applySimpleStudyResultToCard(current, result, now);
+    const nextCardsSnapshot = cards.map((card) => (card.id === current.id ? nextCard : card));
+    const ratingForStats: CardRating = result === "correct" ? "good" : "again";
+    setSavingRating(ratingForStats);
+    setFeedback(null);
+
+    setCards(nextCardsSnapshot);
+    saveOfflineStudySnapshot(user.uid, { cards: nextCardsSnapshot, decks });
+    if (result === "correct") {
+      setSessionCards((prev) => prev.map((card) => (card.id === current.id ? nextCard : card)));
+      setIndex((value) => Math.min(value + 1, sessionCards.length));
+    } else {
+      setSessionCards((prev) => applySimpleStudyResultToQueue(prev, current.id, result, now));
+    }
+    bumpSessionRevision();
+    setSessionStats((prev) => ({
+      reviewedCards: prev.reviewedCards + 1,
+      correctAnswers: prev.correctAnswers + (result === "correct" ? 1 : 0),
+      completedGoals: prev.completedGoals,
+      starsEarned: prev.starsEarned,
+      ratings: { ...prev.ratings, [ratingForStats]: prev.ratings[ratingForStats] + 1 },
+    }));
+    setAnswerFeedback(getSimpleStudyFeedback(result));
+    setFlipped(false);
+    setShowExplanation(false);
+
+    try {
+      await updateDoc(doc(db, "cards", current.id), {
+        simpleStudyLastResult: result,
+        simpleStudyLastReviewedAt: now,
+        ...(result === "correct"
+          ? { simpleStudyCorrectCount: increment(1) }
+          : { simpleStudyWrongCount: increment(1) }),
+      });
+    } catch (error) {
+      console.warn("Failed to save Simple Study result.", error);
+      setOfflineMode(true);
+      setFeedback({
+        type: "success",
+        message: "Kept this Simple Study answer in your current session. It will refresh when your connection settles.",
+      });
+    } finally {
+      setSavingRating(null);
+    }
+  };
+
   const handleRating = async (rating: CardRating) => {
     if (!current || !sessionKind) return;
+    if (sessionKind === "simple") {
+      await handleSimpleStudyResult(rating === "again" || rating === "hard" ? "wrong" : "correct");
+      return;
+    }
     setSavingRating(rating);
     setFeedback(null);
     try {
@@ -1036,6 +1333,7 @@ export default function StudyPage() {
       } else if (sessionKind === "daily-optional") {
         setDailyReviewState((prev) => prev ? { ...prev, completedOptionalCardIds: prev.completedOptionalCardIds.includes(current.id) ? prev.completedOptionalCardIds : [...prev.completedOptionalCardIds, current.id], updatedAt: now } : prev);
       }
+      bumpSessionRevision();
       setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals + goalProgress.completedGoals, starsEarned: prev.starsEarned + goalProgress.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
       setAnswerFeedback(getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)));
       if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
@@ -1073,7 +1371,10 @@ export default function StudyPage() {
         return;
       }
       if (!flipped || savingRating !== null || !current) return;
-      const ratingMap: Record<string, CardRating> = { "1": "again", "2": "hard", "3": "good", "4": "easy" };
+      const ratingMap: Record<string, CardRating> =
+        sessionKind === "simple"
+          ? { "1": "again", "2": "good" }
+          : { "1": "again", "2": "hard", "3": "good", "4": "easy" };
       const mappedRating = ratingMap[event.key];
       if (mappedRating) {
         event.preventDefault();
@@ -1082,36 +1383,50 @@ export default function StudyPage() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [current, flipped, handleFlip, savingRating]);
+  }, [current, flipped, handleFlip, savingRating, sessionKind]);
 
   const exitSession = () => {
     if (sessionKind) {
       const now = Date.now();
       const status = done ? "completed" : "ended";
       const reason = done ? "completed" : "user-ended";
-      const currentSession = buildPersistedStudySession({
-        userId: user.uid,
-        studyDayKey: sessionStudyDayKeyRef.current,
-        kind: sessionKind,
-        sessionCards,
-        index: done ? sessionCards.length : index,
-        stats: sessionStats,
-        selectedDeckIds,
-        selectedTags,
-        startedAt: sessionStartedAtRef.current,
-        now,
-      });
+      const currentSession =
+        getCurrentPersistedSession(now) ??
+        buildPersistedStudySession({
+          userId: user.uid,
+          sessionId: sessionIdRef.current,
+          revision: sessionRevisionRef.current,
+          studyDayKey: sessionStudyDayKeyRef.current,
+          kind: sessionKind,
+          sessionCards,
+          index: done ? sessionCards.length : index,
+          stats: sessionStats,
+          selectedDeckIds,
+          selectedTags,
+          startedAt: sessionStartedAtRef.current,
+          now,
+        });
       const closedSession = closePersistedStudySession(currentSession, status, reason, now);
 
-      remoteCloseKeyRef.current = `${closedSession.kind}:${closedSession.startedAt}:${closedSession.cardIds.join(",")}:${closedSession.status}`;
-      void closeRemoteStudySession(user.uid, currentSession, status, reason, now).catch((error) => {
-        console.warn("Failed to close active study session.", error);
-      });
+      saveClosedStudySessionTombstone(closedSession);
+      remoteCloseKeyRef.current = `${closedSession.sessionId}:${closedSession.closedRevision ?? closedSession.revision}:${closedSession.status}`;
+      void closeRemoteStudySession(user.uid, currentSession, status, reason, now)
+        .then((saved) => {
+          if (saved) {
+            markClosedStudySessionTombstoneSynced(user.uid);
+          }
+        })
+        .catch((error) => {
+          console.warn("Failed to close active study session.", error);
+        });
     }
 
     clearPersistedStudySession(user.uid);
     sessionStartedAtRef.current = null;
     sessionStudyDayKeyRef.current = null;
+    sessionIdRef.current = null;
+    sessionRevisionRef.current = 0;
+    latestPersistedSessionRef.current = null;
     setSessionKind(null);
     setSessionCards([]);
     setSessionStats(createEmptySessionStats());
@@ -1272,10 +1587,46 @@ export default function StudyPage() {
                 </div>
               ) : null}
               {hasCards ? (
+                <SurfaceCard padding="md" className="space-y-4">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StepLabel step={2}>Simple Study</StepLabel>
+                        <span className="rounded-full border border-emerald-300/20 bg-emerald-400/[0.08] px-2.5 py-1 text-xs font-medium text-emerald-100">
+                          {simpleStudyStatusText}
+                        </span>
+                      </div>
+                      <h3 className="mt-3 text-lg font-semibold leading-tight text-white">
+                        {simpleStudyQueue.cards.length > 0
+                          ? `${simpleStudyQueue.cards.length} cards to clear`
+                          : "Simple Study complete"}
+                      </h3>
+                      <p className="mt-2 max-w-3xl text-sm leading-6 text-text-secondary">
+                        New cards come first, then the cards you have missed most often.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => startSession("simple")}
+                      disabled={simpleStudyQueue.cards.length === 0}
+                      variant="secondary"
+                      size="md"
+                      className="w-full justify-center lg:w-auto"
+                    >
+                      {simpleStudyQueue.cards.length > 0 ? "Start Simple Study" : "No Simple Study cards"}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <CountPill value={simpleStudyQueue.newCount} label="New" />
+                    <CountPill value={simpleStudyQueue.wrongCount} label="Missed" />
+                  </div>
+                </SurfaceCard>
+              ) : null}
+              {hasCards ? (
                 <SurfaceCard padding="lg" className="relative space-y-5">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="max-w-2xl">
-                      <StepLabel step={2}>Focused Review</StepLabel>
+                      <StepLabel step={3}>Focused Review</StepLabel>
                       <h3 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">
                         Build a focused session
                       </h3>
@@ -1510,12 +1861,12 @@ export default function StudyPage() {
             </>
           ) : null}
           {sessionKind === null ? null : done ? (
-            totalCards === 0 ? (
+            totalCards === 0 && sessionStats.reviewedCards === 0 ? (
               <EmptyState
                 emoji="Review"
                 eyebrow="Nothing to study"
                 title="No cards in this session"
-                description={sessionKind === "daily-required" ? "Your Daily Review is clear right now." : sessionKind === "daily-optional" ? "There are no easy extras left right now." : "This Focused Review does not match any cards yet."}
+                description={sessionKind === "daily-required" ? "Your Daily Review is clear right now." : sessionKind === "daily-optional" ? "There are no easy extras left right now." : sessionKind === "simple" ? "Simple Study is clear right now." : "This Focused Review does not match any cards yet."}
                 helperText="That is not a bug, it just means this queue is empty for the current selection."
                 action={<Button type="button" onClick={exitSession}>Back to study home</Button>}
                 secondaryAction={sessionKind === "custom" ? <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Edit cards</Link> : undefined}
@@ -1527,7 +1878,9 @@ export default function StudyPage() {
                     <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
                     <h2 className="mt-3 text-xl font-medium leading-tight tracking-tight text-white sm:text-2xl">Good work.</h2>
                     <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
-                      You reviewed {sessionStats.reviewedCards} of {totalCards} card{totalCards === 1 ? "" : "s"}. Your next best step is ready below.
+                      {sessionKind === "simple"
+                        ? `You cleared Simple Study after ${sessionStats.reviewedCards} answer${sessionStats.reviewedCards === 1 ? "" : "s"}. Your next best step is ready below.`
+                        : `You reviewed ${sessionStats.reviewedCards} of ${totalCards} card${totalCards === 1 ? "" : "s"}. Your next best step is ready below.`}
                     </p>
                   </div>
                   <div className="rounded-[1.4rem] border border-white/[0.12] bg-white/[0.08] px-4 py-3 text-sm text-text-secondary">
@@ -1564,6 +1917,8 @@ export default function StudyPage() {
                   <div className="mt-2 text-base font-semibold text-white sm:text-lg">
                     {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0
                       ? "Today's priority cards are ready"
+                      : sessionKind === "simple"
+                        ? "Simple Study is clear"
                       : sessionKind === "daily-required" && remainingOptionalCards.length > 0
                       ? "Easy extras are ready"
                       : hasCards && customPreviewCards.length > 0
@@ -1575,6 +1930,8 @@ export default function StudyPage() {
                   <p className="mt-1 text-sm leading-6 text-text-secondary">
                     {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0
                       ? "The unfinished carryover is clear. Move into the fresh cards selected for this Daily Review when you are ready."
+                      : sessionKind === "simple"
+                        ? "You can switch to Daily Review, build a focused session, or come back when more cards need a simple pass."
                       : sessionKind === "daily-required" && remainingOptionalCards.length > 0
                       ? "These are lighter extra reps. Do them only if you want a little more practice today."
                       : hasCards && customPreviewCards.length > 0
@@ -1596,7 +1953,9 @@ export default function StudyPage() {
                   ) : (
                     <Link href="/dashboard/cards" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">Edit cards</Link>
                   )}
-                  <Button type="button" onClick={() => startSession(sessionKind)} size="lg" variant="secondary">Run this session again</Button>
+                  {sessionKind === "simple" && simpleStudyQueue.cards.length === 0 ? null : (
+                    <Button type="button" onClick={() => startSession(sessionKind)} size="lg" variant="secondary">Run this session again</Button>
+                  )}
                   <Button type="button" onClick={exitSession} variant="secondary" size="lg">Back to study home</Button>
                 </div>
               </SurfaceCard>
@@ -1688,24 +2047,51 @@ export default function StudyPage() {
                     ) : null
                   ) : (
                     <div className="space-y-3">
-                      <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
-                        {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => {
-                          const meta = RATING_STYLES[rating];
-                          return (
+                      {sessionKind === "simple" ? (
+                        <div className="grid grid-cols-2 gap-2 sm:gap-3" aria-label="Simple Study answer choices">
                           <button
-                            key={rating}
                             type="button"
+                            aria-label="Missed this card"
                             disabled={savingRating !== null}
-                            className={`flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border px-3 py-4 text-center text-base font-semibold shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:opacity-50 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm ${meta.classes}`}
-                            onClick={() => void handleRating(rating)}
+                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border border-rose-300/25 bg-rose-400/[0.08] px-3 py-4 text-center text-base font-semibold text-rose-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-rose-200/45 hover:bg-rose-400/[0.12] active:scale-[0.985] disabled:opacity-50 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
+                            onClick={() => void handleSimpleStudyResult("wrong")}
                           >
-                            <span>{RATING_LABELS[rating]}</span>
-                            <span className="text-[0.7rem] font-normal opacity-75">{meta.hint}</span>
-                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-black/10 px-2 text-[0.68rem] leading-none tabular-nums opacity-75">{meta.shortcut}</span>
+                            <span>Missed</span>
+                            <span className="text-[0.7rem] font-normal opacity-75">Back of queue</span>
+                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-black/10 px-2 text-[0.68rem] leading-none tabular-nums opacity-75">1</span>
                           </button>
-                          );
-                        })}
-                      </div>
+                          <button
+                            type="button"
+                            aria-label="Got this card right"
+                            disabled={savingRating !== null}
+                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border border-emerald-300/25 bg-emerald-400/[0.08] px-3 py-4 text-center text-base font-semibold text-emerald-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-emerald-200/45 hover:bg-emerald-400/[0.12] active:scale-[0.985] disabled:opacity-50 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
+                            onClick={() => void handleSimpleStudyResult("correct")}
+                          >
+                            <span>Got it</span>
+                            <span className="text-[0.7rem] font-normal opacity-75">Clear card</span>
+                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-black/10 px-2 text-[0.68rem] leading-none tabular-nums opacity-75">2</span>
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-3">
+                          {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => {
+                            const meta = RATING_STYLES[rating];
+                            return (
+                            <button
+                              key={rating}
+                              type="button"
+                              disabled={savingRating !== null}
+                              className={`flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border px-3 py-4 text-center text-base font-semibold shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:opacity-50 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm ${meta.classes}`}
+                              onClick={() => void handleRating(rating)}
+                            >
+                              <span>{RATING_LABELS[rating]}</span>
+                              <span className="text-[0.7rem] font-normal opacity-75">{meta.hint}</span>
+                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-white/10 bg-black/10 px-2 text-[0.68rem] leading-none tabular-nums opacity-75">{meta.shortcut}</span>
+                            </button>
+                            );
+                          })}
+                        </div>
+                      )}
                       {!demoAiDisabled ? (
                         <StudyAssistant card={current} autoExplain={false} mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
                       ) : null}

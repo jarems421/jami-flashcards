@@ -32,6 +32,10 @@ export type Card = {
   lastStruggleStudyDayKey?: string;
   memoryRiskOverrideDayKey?: string;
   customStruggleCount?: number;
+  simpleStudyWrongCount?: number;
+  simpleStudyCorrectCount?: number;
+  simpleStudyLastResult?: "correct" | "wrong";
+  simpleStudyLastReviewedAt?: number;
 };
 
 export type ImportedCardDraft = {
@@ -549,6 +553,22 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
     customStruggleCount:
       typeof data.customStruggleCount === "number"
         ? data.customStruggleCount
+        : undefined,
+    simpleStudyWrongCount:
+      typeof data.simpleStudyWrongCount === "number"
+        ? data.simpleStudyWrongCount
+        : undefined,
+    simpleStudyCorrectCount:
+      typeof data.simpleStudyCorrectCount === "number"
+        ? data.simpleStudyCorrectCount
+        : undefined,
+    simpleStudyLastResult:
+      data.simpleStudyLastResult === "correct" || data.simpleStudyLastResult === "wrong"
+        ? data.simpleStudyLastResult
+        : undefined,
+    simpleStudyLastReviewedAt:
+      typeof data.simpleStudyLastReviewedAt === "number"
+        ? data.simpleStudyLastReviewedAt
         : undefined,
   };
 }

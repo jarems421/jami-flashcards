@@ -485,6 +485,8 @@ describe("daily review memory risk", () => {
     };
     const activeSession = {
       version: 1 as const,
+      sessionId: "session-1",
+      revision: 1,
       userId: "user",
       studyDayKey: "2026-01-03",
       kind: "daily-required" as const,

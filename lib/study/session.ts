@@ -4,7 +4,7 @@ import type { DailyReviewState } from "@/lib/study/daily-review";
 import { getStudyDayKey } from "@/lib/study/day";
 import type { CardRating } from "@/lib/study/scheduler";
 
-export type StudySessionKind = "daily-required" | "daily-optional" | "custom";
+export type StudySessionKind = "daily-required" | "daily-optional" | "custom" | "simple";
 export type StudySessionStatus = "active" | "ended" | "completed";
 export type StudySessionEndReason = "user-ended" | "completed" | "expired";
 
@@ -18,6 +18,8 @@ export type StudySessionStats = {
 
 export type PersistedStudySession = {
   version: 1;
+  sessionId: string;
+  revision: number;
   userId: string;
   studyDayKey: string;
   kind: StudySessionKind;
@@ -31,12 +33,26 @@ export type PersistedStudySession = {
   savedAt: number;
   endedAt?: number;
   endReason?: StudySessionEndReason;
+  closedRevision?: number;
 };
 
 export const ACTIVE_STUDY_SESSION_DOC_ID = "activeSession";
 export const ACTIVE_STUDY_SESSION_PREFIX = "jami:active-study-session:";
+export const CLOSED_STUDY_SESSION_PREFIX = "jami:closed-study-session:";
 export const ACTIVE_STUDY_SESSION_VERSION = 1;
 export const ACTIVE_STUDY_SESSION_MAX_AGE_MS = 30 * 60 * 60 * 1000;
+
+export type ClosedStudySessionTombstone = {
+  version: 1;
+  userId: string;
+  sessionId: string;
+  revision: number;
+  status: Exclude<StudySessionStatus, "active">;
+  reason: StudySessionEndReason;
+  savedAt: number;
+  retryRemoteClose: boolean;
+  session: PersistedStudySession;
+};
 
 export function createEmptySessionStats(): StudySessionStats {
   return {
@@ -97,12 +113,54 @@ export function getActiveStudySessionKey(userId: string) {
   return `${ACTIVE_STUDY_SESSION_PREFIX}${userId}`;
 }
 
+export function getActiveStudySessionTombstoneKey(userId: string) {
+  return `${CLOSED_STUDY_SESSION_PREFIX}${userId}`;
+}
+
 export function isSessionKind(value: unknown): value is StudySessionKind {
-  return value === "daily-required" || value === "daily-optional" || value === "custom";
+  return value === "daily-required" || value === "daily-optional" || value === "custom" || value === "simple";
 }
 
 export function isSessionStatus(value: unknown): value is StudySessionStatus {
   return value === "active" || value === "ended" || value === "completed";
+}
+
+function normalizeSessionId(value: unknown) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : "";
+}
+
+function createLegacySessionId({
+  userId,
+  studyDayKey,
+  kind,
+  startedAt,
+  cardIds,
+}: {
+  userId: string;
+  studyDayKey: string;
+  kind: StudySessionKind;
+  startedAt: number;
+  cardIds: string[];
+}) {
+  const firstCardId = cardIds[0] ?? "empty";
+  return `legacy:${userId}:${studyDayKey}:${kind}:${startedAt}:${cardIds.length}:${firstCardId}`;
+}
+
+function createSessionId(userId: string, now: number) {
+  const randomPart =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID()
+      : Math.random().toString(36).slice(2);
+  return `${userId}:${now}:${randomPart}`;
+}
+
+function normalizeRevision(value: unknown, index: number, stats: StudySessionStats) {
+  const explicitRevision = normalizeCount(value);
+  if (explicitRevision > 0) {
+    return explicitRevision;
+  }
+
+  return Math.max(index, stats.reviewedCards, 1);
 }
 
 export function normalizePersistedStudySession(
@@ -120,6 +178,8 @@ export function normalizePersistedStudySession(
   const startedAt = normalizeCount(data.startedAt) || savedAt;
   const cardIds = normalizeStringList(data.cardIds);
   const status = isSessionStatus(data.status) ? data.status : "active";
+  const stats = normalizeSessionStats(data.stats);
+  const index = Math.min(normalizeCount(data.index), cardIds.length);
   const studyDayKey =
     typeof data.studyDayKey === "string" && data.studyDayKey.trim()
       ? data.studyDayKey
@@ -136,19 +196,28 @@ export function normalizePersistedStudySession(
     return null;
   }
 
+  const sessionId =
+    normalizeSessionId(data.sessionId) ||
+    createLegacySessionId({ userId, studyDayKey, kind: data.kind, startedAt, cardIds });
+  const revision = normalizeRevision(data.revision, index, stats);
+  const closedRevision = normalizeCount(data.closedRevision);
+
   return {
     version: ACTIVE_STUDY_SESSION_VERSION,
+    sessionId,
+    revision,
     userId,
     studyDayKey,
     kind: data.kind,
     status,
     cardIds,
-    index: Math.min(normalizeCount(data.index), cardIds.length),
-    stats: normalizeSessionStats(data.stats),
+    index,
+    stats,
     selectedDeckIds: normalizeStringList(data.selectedDeckIds),
     selectedTags: normalizeStringList(data.selectedTags),
     startedAt,
     savedAt,
+    ...(closedRevision > 0 ? { closedRevision } : {}),
   };
 }
 
@@ -180,6 +249,153 @@ export function savePersistedStudySession(session: PersistedStudySession) {
   }
 }
 
+function normalizeTombstone(value: unknown, userId: string, now = Date.now()) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+
+  const data = value as Record<string, unknown>;
+  const rawSession =
+    data.session && typeof data.session === "object" && !Array.isArray(data.session)
+      ? (data.session as Record<string, unknown>)
+      : null;
+  const status = isSessionStatus(rawSession?.status) && rawSession.status !== "active" ? rawSession.status : null;
+  const session = rawSession
+    ? normalizePersistedStudySession({ ...rawSession, status: "active" }, userId, "", now)
+    : null;
+  const sessionId = normalizeSessionId(data.sessionId);
+  const savedAt = normalizeCount(data.savedAt);
+  const tombstoneStatus = isSessionStatus(data.status) && data.status !== "active" ? data.status : null;
+  const reason =
+    data.reason === "user-ended" || data.reason === "completed" || data.reason === "expired"
+      ? data.reason
+      : null;
+
+  if (
+    data.version !== ACTIVE_STUDY_SESSION_VERSION ||
+    !session ||
+    !sessionId ||
+    sessionId !== session.sessionId ||
+    !status ||
+    !tombstoneStatus ||
+    !reason ||
+    now - savedAt > ACTIVE_STUDY_SESSION_MAX_AGE_MS
+  ) {
+    return null;
+  }
+
+  return {
+    version: ACTIVE_STUDY_SESSION_VERSION,
+    userId,
+    sessionId,
+    revision: Math.max(normalizeCount(data.revision), session.revision),
+    status: tombstoneStatus,
+    reason,
+    savedAt,
+    retryRemoteClose: Boolean(data.retryRemoteClose),
+    session: {
+      ...session,
+      status,
+      endReason: reason,
+      endedAt: normalizeCount(rawSession?.endedAt) || savedAt,
+      closedRevision: Math.max(normalizeCount(rawSession?.closedRevision), session.revision),
+    },
+  } satisfies ClosedStudySessionTombstone;
+}
+
+export function loadClosedStudySessionTombstone(userId: string, now = Date.now()) {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  try {
+    const key = getActiveStudySessionTombstoneKey(userId);
+    const stored = window.localStorage.getItem(key);
+    const tombstone = stored ? normalizeTombstone(JSON.parse(stored), userId, now) : null;
+    if (!tombstone && stored) {
+      window.localStorage.removeItem(key);
+    }
+    return tombstone;
+  } catch (error) {
+    console.warn("Failed to load closed study session tombstone.", error);
+    return null;
+  }
+}
+
+export function saveClosedStudySessionTombstone(
+  session: PersistedStudySession,
+  retryRemoteClose = true,
+  now = Date.now()
+) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const closedSession =
+    session.status === "active"
+      ? closePersistedStudySession(session, "ended", "user-ended", now)
+      : session;
+  const tombstone: ClosedStudySessionTombstone = {
+    version: ACTIVE_STUDY_SESSION_VERSION,
+    userId: closedSession.userId,
+    sessionId: closedSession.sessionId,
+    revision: closedSession.closedRevision ?? closedSession.revision,
+    status: closedSession.status === "active" ? "ended" : closedSession.status,
+    reason: closedSession.endReason ?? "user-ended",
+    savedAt: now,
+    retryRemoteClose,
+    session: closedSession,
+  };
+
+  try {
+    window.localStorage.setItem(
+      getActiveStudySessionTombstoneKey(closedSession.userId),
+      JSON.stringify(tombstone)
+    );
+  } catch (error) {
+    console.warn("Failed to save closed study session tombstone.", error);
+  }
+}
+
+export function hasClosedStudySessionTombstone(
+  userId: string,
+  sessionId: string,
+  revision = 0,
+  now = Date.now()
+) {
+  const tombstone = loadClosedStudySessionTombstone(userId, now);
+  return Boolean(
+    tombstone &&
+      tombstone.sessionId === sessionId &&
+      tombstone.revision >= revision
+  );
+}
+
+export function markClosedStudySessionTombstoneSynced(userId: string, now = Date.now()) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const tombstone = loadClosedStudySessionTombstone(userId, now);
+  if (!tombstone) {
+    return;
+  }
+
+  saveClosedStudySessionTombstone(tombstone.session, false, now);
+}
+
+export function clearClosedStudySessionTombstone(userId: string) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  try {
+    window.localStorage.removeItem(getActiveStudySessionTombstoneKey(userId));
+  } catch (error) {
+    console.warn("Failed to clear closed study session tombstone.", error);
+  }
+}
+
 export function clearPersistedStudySession(userId: string) {
   if (typeof window === "undefined") {
     return;
@@ -208,7 +424,7 @@ export function canRestorePersistedSession(
   requestedTags: string[]
 ) {
   if (requestedMode === "daily") {
-    return session.kind !== "custom";
+    return session.kind === "daily-required" || session.kind === "daily-optional";
   }
 
   if (requestedMode !== "custom") {
@@ -289,6 +505,8 @@ export function hydratePersistedSessionCards(
 
 export function buildPersistedStudySession({
   userId,
+  sessionId,
+  revision,
   studyDayKey,
   kind,
   sessionCards,
@@ -300,6 +518,8 @@ export function buildPersistedStudySession({
   now = Date.now(),
 }: {
   userId: string;
+  sessionId?: string | null;
+  revision?: number | null;
   studyDayKey?: string | null;
   kind: StudySessionKind;
   sessionCards: Card[];
@@ -310,8 +530,11 @@ export function buildPersistedStudySession({
   startedAt?: number | null;
   now?: number;
 }): PersistedStudySession {
+  const nextRevision = revision && revision > 0 ? Math.floor(revision) : 1;
   return {
     version: ACTIVE_STUDY_SESSION_VERSION,
+    sessionId: sessionId ?? createSessionId(userId, startedAt ?? now),
+    revision: nextRevision,
     userId,
     studyDayKey: studyDayKey ?? getStudyDayKey(now),
     kind,
@@ -335,6 +558,8 @@ export function closePersistedStudySession(
   return {
     ...session,
     status,
+    revision: session.revision + 1,
+    closedRevision: session.revision + 1,
     endReason: reason,
     endedAt: now,
     savedAt: now,
@@ -347,8 +572,7 @@ function hasSameStudySessionIdentity(
 ) {
   return (
     left.userId === right.userId &&
-    left.kind === right.kind &&
-    left.startedAt === right.startedAt
+    left.sessionId === right.sessionId
   );
 }
 
@@ -375,4 +599,40 @@ export function isStudySessionProgressRegression(
   }
 
   return existingProgress.index > incomingProgress.index;
+}
+
+export function isIncomingSessionNewer(
+  existingSession: PersistedStudySession,
+  incomingSession: PersistedStudySession
+) {
+  if (existingSession.userId !== incomingSession.userId) {
+    return false;
+  }
+
+  if (existingSession.sessionId !== incomingSession.sessionId) {
+    return existingSession.startedAt < incomingSession.startedAt;
+  }
+
+  const existingClosedRevision =
+    existingSession.status !== "active"
+      ? existingSession.closedRevision ?? existingSession.revision
+      : 0;
+  const incomingClosedRevision =
+    incomingSession.status !== "active"
+      ? incomingSession.closedRevision ?? incomingSession.revision
+      : 0;
+
+  if (existingClosedRevision !== incomingClosedRevision) {
+    return incomingClosedRevision > existingClosedRevision;
+  }
+
+  if (existingSession.status !== incomingSession.status) {
+    return existingSession.status === "active" && incomingSession.status !== "active";
+  }
+
+  if (existingSession.revision !== incomingSession.revision) {
+    return incomingSession.revision > existingSession.revision;
+  }
+
+  return incomingSession.savedAt > existingSession.savedAt;
 }

@@ -2,7 +2,7 @@ import { doc, getDoc, runTransaction } from "firebase/firestore";
 import {
   ACTIVE_STUDY_SESSION_DOC_ID,
   closePersistedStudySession,
-  isStudySessionProgressRegression,
+  isIncomingSessionNewer,
   normalizePersistedStudySession,
   type PersistedStudySession,
   type StudySessionEndReason,
@@ -16,6 +16,7 @@ const SAVE_MS = 30_000;
 
 export type RemoteStudySessionLoadResult = {
   session: PersistedStudySession | null;
+  closedSession?: PersistedStudySession | null;
   foundRemoteSession: boolean;
 };
 
@@ -32,13 +33,49 @@ function getSavedAt(value: unknown) {
   return typeof savedAt === "number" && Number.isFinite(savedAt) ? savedAt : 0;
 }
 
-function getStartedAt(value: unknown) {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return 0;
+function normalizeStoredStudySession(
+  value: Record<string, unknown> | null,
+  userId: string,
+  currentStudyDayKey: string,
+  now: number
+) {
+  if (!value) {
+    return null;
   }
 
-  const startedAt = (value as { startedAt?: unknown }).startedAt;
-  return typeof startedAt === "number" && Number.isFinite(startedAt) ? startedAt : 0;
+  const status = value.status;
+  const normalized = normalizePersistedStudySession(
+    { ...value, status: "active" },
+    userId,
+    currentStudyDayKey,
+    now
+  );
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (status === "ended" || status === "completed") {
+    return {
+      ...normalized,
+      status,
+      endedAt: typeof value.endedAt === "number" ? value.endedAt : normalized.savedAt,
+      endReason:
+        value.endReason === "user-ended" ||
+        value.endReason === "completed" ||
+        value.endReason === "expired"
+          ? value.endReason
+          : status === "completed"
+            ? "completed"
+            : "user-ended",
+      closedRevision:
+        typeof value.closedRevision === "number" && Number.isFinite(value.closedRevision)
+          ? Math.floor(value.closedRevision)
+          : normalized.revision,
+    } satisfies PersistedStudySession;
+  }
+
+  return normalized;
 }
 
 export async function loadRemoteActiveStudySession(
@@ -56,13 +93,16 @@ export async function loadRemoteActiveStudySession(
     return { session: null, foundRemoteSession: false };
   }
 
+  const storedSession = normalizeStoredStudySession(
+    snapshot.data() as Record<string, unknown>,
+    userId,
+    currentStudyDayKey,
+    now
+  );
+
   return {
-    session: normalizePersistedStudySession(
-      snapshot.data() as Record<string, unknown>,
-      userId,
-      currentStudyDayKey,
-      now
-    ),
+    session: storedSession?.status === "active" ? storedSession : null,
+    closedSession: storedSession?.status !== "active" ? storedSession : null,
     foundRemoteSession: true,
   };
 }
@@ -77,9 +117,8 @@ export async function saveRemoteActiveStudySession(session: PersistedStudySessio
         ? (snapshot.data() as Record<string, unknown>)
         : null;
       const existingSavedAt = getSavedAt(existingData);
-      const existingStartedAt = getStartedAt(existingData);
       const existingSession = existingData
-        ? normalizePersistedStudySession(
+        ? normalizeStoredStudySession(
             existingData,
             session.userId,
             session.studyDayKey,
@@ -87,27 +126,7 @@ export async function saveRemoteActiveStudySession(session: PersistedStudySessio
           )
         : null;
 
-      if (existingData && existingStartedAt > session.startedAt) {
-        return false;
-      }
-
-      if (
-        existingData &&
-        existingStartedAt === session.startedAt &&
-        existingSavedAt > session.savedAt
-      ) {
-        return false;
-      }
-
-      if (
-        existingData &&
-        existingData.status !== "active" &&
-        existingSavedAt >= session.startedAt
-      ) {
-        return false;
-      }
-
-      if (existingSession && isStudySessionProgressRegression(existingSession, session)) {
+      if (existingSession && !isIncomingSessionNewer(existingSession, session)) {
         return false;
       }
 
@@ -126,7 +145,17 @@ export async function closeRemoteStudySession(
   reason: StudySessionEndReason,
   now = Date.now()
 ) {
-  const closedSession = closePersistedStudySession(session, status, reason, now);
+  const closedSession =
+    session.status === "active"
+      ? closePersistedStudySession(session, status, reason, now)
+      : {
+          ...session,
+          status,
+          endReason: reason,
+          endedAt: session.endedAt ?? now,
+          savedAt: now,
+          closedRevision: session.closedRevision ?? session.revision,
+        };
   const sessionRef = getActiveStudySessionDoc(userId);
 
   return withTimeout(
@@ -135,12 +164,17 @@ export async function closeRemoteStudySession(
       const existingData = snapshot.exists()
         ? (snapshot.data() as Record<string, unknown>)
         : null;
+      const existingSavedAt = getSavedAt(existingData);
+      const existingSession = existingData
+        ? normalizeStoredStudySession(
+            existingData,
+            userId,
+            closedSession.studyDayKey,
+            Math.max(existingSavedAt, closedSession.savedAt)
+          )
+        : null;
 
-      if (existingData && getSavedAt(existingData) > closedSession.savedAt) {
-        return false;
-      }
-
-      if (existingData && getStartedAt(existingData) > closedSession.startedAt) {
+      if (existingSession && !isIncomingSessionNewer(existingSession, closedSession)) {
         return false;
       }
 
