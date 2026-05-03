@@ -1104,6 +1104,11 @@ export default function StudyPage() {
       cardUpdates.memoryRiskOverrideDayKey = shiftStudyDayKey(studyDayKey, 1);
       cardUpdates.customStruggleCount = (current.customStruggleCount ?? 0) + 1;
     }
+    if (isStruggle) {
+      cardUpdates.simpleStudyLastResult = "wrong";
+      cardUpdates.simpleStudyLastReviewedAt = now;
+      cardUpdates.simpleStudyWrongCount = (current.simpleStudyWrongCount ?? 0) + 1;
+    }
 
     if (sessionKind === "daily-required" && isStruggle) {
       const currentAttempts = dailyReviewState?.requiredRetryCounts[current.id] ?? 0;
@@ -1150,6 +1155,13 @@ export default function StudyPage() {
             lastStruggleStudyDayKey: getStudyDayKey(now),
             memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
             customStruggleCount: (current.customStruggleCount ?? 0) + 1,
+          }
+        : {}),
+      ...(isStruggle
+        ? {
+            simpleStudyLastResult: "wrong" as const,
+            simpleStudyLastReviewedAt: now,
+            simpleStudyWrongCount: (current.simpleStudyWrongCount ?? 0) + 1,
           }
         : {}),
       ...(schedule && isCorrect ? { memoryRiskOverrideDayKey: undefined } : {}),
@@ -1272,6 +1284,11 @@ export default function StudyPage() {
         cardUpdates.memoryRiskOverrideDayKey = shiftStudyDayKey(studyDayKey, 1);
         cardUpdates.customStruggleCount = increment(1);
       }
+      if (isStruggle) {
+        cardUpdates.simpleStudyLastResult = "wrong";
+        cardUpdates.simpleStudyLastReviewedAt = now;
+        cardUpdates.simpleStudyWrongCount = increment(1);
+      }
 
       const reviewPromise = recordStudyReview(user.uid, now, {
         isCorrect,
@@ -1312,6 +1329,13 @@ export default function StudyPage() {
               lastStruggleStudyDayKey: getStudyDayKey(now),
               memoryRiskOverrideDayKey: shiftStudyDayKey(getStudyDayKey(now), 1),
               customStruggleCount: (current.customStruggleCount ?? 0) + 1,
+            }
+          : {}),
+        ...(isStruggle
+          ? {
+              simpleStudyLastResult: "wrong" as const,
+              simpleStudyLastReviewedAt: now,
+              simpleStudyWrongCount: (current.simpleStudyWrongCount ?? 0) + 1,
             }
           : {}),
         ...(schedule && isCorrect ? { memoryRiskOverrideDayKey: undefined } : {}),

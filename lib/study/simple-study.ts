@@ -24,14 +24,18 @@ function getSeededWrongScore(card: Card) {
   const simpleWrongScore = positiveNumber(card.simpleStudyWrongCount) * 1000;
   const lapseScore = positiveNumber(card.lapses) * 120;
   const customStruggleScore = positiveNumber(card.customStruggleCount) * 80;
-  const difficultyScore = positiveNumber(card.difficulty) >= 7 ? positiveNumber(card.difficulty) * 20 : 0;
+  const difficultyScore = positiveNumber(card.difficulty) >= 5.1 ? positiveNumber(card.difficulty) * 20 : 0;
   const struggleScore = positiveNumber(card.lastStruggleAt) > 0 ? 50 : 0;
 
   return simpleWrongScore + lapseScore + customStruggleScore + difficultyScore + struggleScore;
 }
 
 function isSimpleStudyCleared(card: Card) {
-  return card.simpleStudyLastResult === "correct";
+  if (card.simpleStudyLastResult !== "correct") {
+    return false;
+  }
+
+  return positiveNumber(card.simpleStudyLastReviewedAt) >= positiveNumber(card.lastStruggleAt);
 }
 
 function isSimpleStudyNew(card: Card) {

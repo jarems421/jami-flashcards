@@ -42,6 +42,46 @@ describe("simple study queue", () => {
     expect(queue.cards.map((card) => card.id)).toEqual(["new"]);
   });
 
+  it("includes cards that look like a prior Again or Hard answer", () => {
+    const queue = buildSimpleStudyQueue([
+      createCard("again-once", { reps: 1, difficulty: 6.4 }),
+      createCard("hard-once", { reps: 1, difficulty: 5.1 }),
+      createCard("borderline-medium", { reps: 1, difficulty: 5 }),
+      createCard("good-once", { reps: 1, difficulty: 2.1 }),
+      createCard("explicit-wrong", {
+        reps: 1,
+        difficulty: 5,
+        simpleStudyLastResult: "wrong",
+        simpleStudyWrongCount: 1,
+      }),
+    ]);
+
+    expect(queue.cards.map((card) => card.id)).toEqual([
+      "explicit-wrong",
+      "again-once",
+      "hard-once",
+    ]);
+  });
+
+  it("reopens a Simple Study cleared card after a newer struggle", () => {
+    const queue = buildSimpleStudyQueue([
+      createCard("reopened", {
+        reps: 3,
+        simpleStudyLastResult: "correct",
+        simpleStudyLastReviewedAt: 100,
+        lastStruggleAt: 200,
+      }),
+      createCard("still-clear", {
+        reps: 3,
+        simpleStudyLastResult: "correct",
+        simpleStudyLastReviewedAt: 300,
+        lastStruggleAt: 200,
+      }),
+    ]);
+
+    expect(queue.cards.map((card) => card.id)).toEqual(["reopened"]);
+  });
+
   it("sorts missed cards hardest first", () => {
     const queue = buildSimpleStudyQueue([
       createCard("one-miss", { simpleStudyWrongCount: 1, simpleStudyLastResult: "wrong" }),
