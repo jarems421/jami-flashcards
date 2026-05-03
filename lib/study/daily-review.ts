@@ -192,7 +192,9 @@ export function sortCardsByStudyPriority(cards: Card[], now = Date.now()) {
 
 function getCardsByIds(cards: Card[], ids: string[]) {
   const cardsById = new Map(cards.map((card) => [card.id, card]));
-  return ids.map((id) => cardsById.get(id) ?? null).filter((card): card is Card => card !== null);
+  return Array.from(new Set(ids))
+    .map((id) => cardsById.get(id) ?? null)
+    .filter((card): card is Card => card !== null);
 }
 
 export function getUnfinishedRequiredCardIds(
@@ -251,16 +253,22 @@ export function getRemainingFreshRequiredCards(
 }
 
 export function buildDailyReviewQueues(cards: Card[], now: number, carryoverCardIds: string[] = []) {
-  const carryoverCards = getCardsByIds(cards, carryoverCardIds);
-  const carryoverIdSet = new Set(carryoverCards.map((card) => card.id));
   const eligibleCards = cards.filter((card) => isCardEligibleForDailyReview(card, now));
-  const freshEligibleCards = eligibleCards.filter((card) => !carryoverIdSet.has(card.id));
-  const { neverReviewedCards, weakCards, mediumCards, easyCards } = sortCardsForDailyReview(freshEligibleCards, now);
+  const { neverReviewedCards, weakCards, mediumCards, easyCards } = sortCardsForDailyReview(eligibleCards, now);
+  const freshRequiredCards = [...neverReviewedCards, ...weakCards, ...mediumCards];
+  const freshRequiredIdSet = new Set(freshRequiredCards.map((card) => card.id));
+  const carryoverCards = getCardsByIds(cards, carryoverCardIds).filter(
+    (card) => !freshRequiredIdSet.has(card.id)
+  );
+  const carryoverIdSet = new Set(carryoverCards.map((card) => card.id));
 
   return {
     carryoverRequiredCards: carryoverCards,
-    requiredCards: [...carryoverCards, ...neverReviewedCards, ...weakCards, ...mediumCards],
-    optionalCards: easyCards,
+    requiredCards: [
+      ...carryoverCards,
+      ...freshRequiredCards.filter((card) => !carryoverIdSet.has(card.id)),
+    ],
+    optionalCards: easyCards.filter((card) => !carryoverIdSet.has(card.id)),
   };
 }
 

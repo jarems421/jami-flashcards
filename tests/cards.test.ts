@@ -379,12 +379,90 @@ describe("daily review memory risk", () => {
       updatedAt: yesterday,
     });
 
-    expect(nextState.carryoverRequiredCardIds).toEqual(["carryover", "duplicate-fresh"]);
-    expect(nextState.requiredCardIds.slice(0, 2)).toEqual(["carryover", "duplicate-fresh"]);
+    expect(nextState.carryoverRequiredCardIds).toEqual(["carryover"]);
+    expect(nextState.requiredCardIds[0]).toBe("carryover");
     expect(nextState.requiredCardIds).toContain("fresh");
+    expect(nextState.requiredCardIds).toContain("duplicate-fresh");
     expect(nextState.requiredCardIds.filter((id) => id === "duplicate-fresh")).toHaveLength(1);
     expect(nextState.optionalCardIds).toEqual(["easy-extra"]);
     expect(nextState.optionalCardIds).not.toContain("carryover");
+  });
+
+  it("does not put unfinished cards in carryover when they are already fresh priority cards", () => {
+    const yesterday = Date.UTC(2026, 0, 2, 12);
+    const today = Date.UTC(2026, 0, 3, 17);
+    const cards: Card[] = [
+      createReviewCard("priority-again", {
+        difficulty: 8,
+        reps: 3,
+        lapses: 2,
+        dueDate: today - 1000,
+      }),
+      createReviewCard("carryover-only", {
+        difficulty: 2,
+        reps: 3,
+        dueDate: today + 7 * 24 * 60 * 60 * 1000,
+      }),
+    ];
+
+    const nextState = buildDailyReviewStateData(cards, today, {
+      id: "dailyReview",
+      studyDayKey: "2026-01-02",
+      generatedAt: yesterday,
+      requiredCardIds: ["priority-again", "carryover-only"],
+      optionalCardIds: [],
+      carryoverRequiredCardIds: [],
+      completedRequiredCardIds: [],
+      completedOptionalCardIds: [],
+      parkedRequiredCardIds: [],
+      requiredRetryCounts: {},
+      updatedAt: yesterday,
+    });
+
+    expect(nextState.carryoverRequiredCardIds).toEqual(["carryover-only"]);
+    expect(nextState.requiredCardIds).toEqual(["carryover-only", "priority-again"]);
+    expect(nextState.requiredCardIds.filter((id) => id === "priority-again")).toHaveLength(1);
+  });
+
+  it("keeps multi-day unfinished cards out of carryover when they become fresh priority", () => {
+    const dayOne = Date.UTC(2026, 0, 1, 17);
+    const dayTwo = Date.UTC(2026, 0, 2, 17);
+    const dayThree = Date.UTC(2026, 0, 3, 17);
+    const cards: Card[] = [
+      createReviewCard("two-day-priority", {
+        difficulty: 8,
+        reps: 3,
+        lapses: 2,
+        dueDate: dayThree - 1000,
+      }),
+      createReviewCard("two-day-carryover", {
+        difficulty: 2,
+        reps: 3,
+        dueDate: dayThree + 7 * 24 * 60 * 60 * 1000,
+      }),
+    ];
+    const dayTwoState = buildDailyReviewStateData(cards, dayTwo, {
+      id: "dailyReview",
+      studyDayKey: "2026-01-01",
+      generatedAt: dayOne,
+      requiredCardIds: ["two-day-priority", "two-day-carryover"],
+      optionalCardIds: [],
+      carryoverRequiredCardIds: [],
+      completedRequiredCardIds: [],
+      completedOptionalCardIds: [],
+      parkedRequiredCardIds: [],
+      requiredRetryCounts: {},
+      updatedAt: dayOne,
+    });
+
+    const dayThreeState = buildDailyReviewStateData(cards, dayThree, {
+      id: "dailyReview",
+      ...dayTwoState,
+    });
+
+    expect(dayThreeState.carryoverRequiredCardIds).toEqual(["two-day-carryover"]);
+    expect(dayThreeState.requiredCardIds).toEqual(["two-day-carryover", "two-day-priority"]);
+    expect(dayThreeState.requiredCardIds.filter((id) => id === "two-day-priority")).toHaveLength(1);
   });
 
   it("keeps same-day carryover metadata when rebuilding queues", () => {
