@@ -29,7 +29,7 @@ import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
-import { Card, FeedbackBanner, MetricStrip, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
+import { Card, FeedbackBanner, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { loadInAppUsername } from "@/services/profile";
 import { getStudyDayKey } from "@/lib/study/day";
@@ -207,6 +207,90 @@ function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
   );
 }
 
+function TodayStatusRow({ plan }: { plan: TodayPlan }) {
+  const items = [
+    ["Due", plan.dueCards.count],
+    ["Mistakes", plan.recentMistakes.length],
+    ["Drafts", plan.drafts.length],
+    ["Weak topics", plan.weakTopics.length],
+  ];
+
+  return (
+    <div className="flex flex-wrap gap-2 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-2">
+      {items.map(([label, value]) => (
+        <span
+          key={label}
+          className="rounded-full border border-white/[0.09] bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-text-secondary"
+        >
+          <span className="text-white">{value}</span> {label}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
+  const actions = [
+    plan.recentMistakes[0]
+      ? {
+          label: "Retry mistake",
+          title: plan.recentMistakes[0].questionText,
+          detail: plan.recentMistakes[0].tutorUsed ? "Tutor already helped once." : "No Tutor help yet.",
+          href: plan.recentMistakes[0].href,
+        }
+      : null,
+    plan.drafts[0]
+      ? {
+          label: "Review draft",
+          title: "Flashcard draft waiting",
+          detail: "Tutor made this from a mistake. Approve it before it joins your deck.",
+          href: plan.drafts[0].href,
+        }
+      : null,
+    plan.weakTopics[0]
+      ? {
+          label: "Practise topic",
+          title: plan.weakTopics[0].name,
+          detail: plan.weakTopics[0].reason,
+          href: plan.weakTopics[0].href,
+        }
+      : null,
+    plan.goalSummary
+      ? {
+          label: "Open goal",
+          title: "Study target",
+          detail: plan.goalSummary.detail,
+          href: plan.goalSummary.href,
+        }
+      : null,
+  ].filter((action): action is { label: string; title: string; detail: string; href: string } =>
+    Boolean(action)
+  ).slice(0, 4);
+
+  if (actions.length === 0) return null;
+
+  return (
+    <Card padding="md">
+      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+        Secondary actions
+      </div>
+      <div className="grid gap-2 md:grid-cols-3">
+        {actions.map((action) => (
+          <Link
+            key={`${action.label}-${action.href}`}
+            href={action.href}
+            className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.035] p-3 transition duration-fast hover:border-warm-border hover:bg-white/[0.06]"
+          >
+            <div className="text-sm font-semibold text-white">{action.label}</div>
+            <div className="mt-1 line-clamp-1 text-xs font-medium text-text-secondary">{action.title}</div>
+            <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.detail}</p>
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function TodayReviewCard({ plan }: { plan: TodayPlan }) {
   return (
     <Card padding="lg">
@@ -224,9 +308,9 @@ function TodayReviewCard({ plan }: { plan: TodayPlan }) {
         <MiniMetric label="Weak cards" value={plan.dueCards.weakCount} />
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
-        <ActionPill href={getCustomStudyHref({ mode: "daily" })}>Start Daily Review</ActionPill>
+        <ActionPill href={getCustomStudyHref({ mode: "daily" })}>Start review</ActionPill>
         <ActionPill href={getCustomStudyHref({ mode: "custom" })} variant="secondary">
-          Focused Review
+          Focused review
         </ActionPill>
       </div>
     </Card>
@@ -377,6 +461,7 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
 }
 
 function HowJamiWorksCard({ compact }: { compact: boolean }) {
+  const [open, setOpen] = useState(!compact);
   const steps = [
     ["1", "Learn", "Review flashcards so facts and definitions stay available."],
     ["2", "Practise", "Try questions to test whether the idea transfers."],
@@ -387,11 +472,28 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
 
   return (
     <Card padding={compact ? "md" : "lg"}>
-      <SectionHeader
-        eyebrow="How Jami works"
-        title="Learn, practise, repair, then track what is improving."
-        description="Jami works best when each study action feeds the next one."
-      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SectionHeader
+          eyebrow="How Jami works"
+          title={compact ? "Need a reminder?" : "Learn, practise, repair, then track what is improving."}
+          description={
+            compact
+              ? "The loop is still here, but Today is focused on your next action."
+              : "Jami works best when each study action feeds the next one."
+          }
+        />
+        {compact ? (
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+            aria-expanded={open}
+          >
+            {open ? "Hide" : "Show"}
+          </button>
+        ) : null}
+      </div>
+      {!open ? null : (
       <div className="mt-5 space-y-3">
         {steps.map(([step, title, detail], index) => (
           <div
@@ -413,6 +515,7 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
           </div>
         ))}
       </div>
+      )}
     </Card>
   );
 }
@@ -725,23 +828,16 @@ export default function DashboardHome() {
         ) : (
           <>
             <RecommendedActionCard plan={todayPlan} />
-            <MetricStrip
-              variant="compact"
-              items={[
-                { label: "Due cards", value: todayPlan.dueCards.count },
-                { label: "Recent mistakes", value: todayPlan.recentMistakes.length, tone: todayPlan.recentMistakes.length > 0 ? "danger" : "good" },
-                { label: "Drafts", value: todayPlan.drafts.length, tone: todayPlan.drafts.length > 0 ? "warm" : "good" },
-                { label: "Weak topics", value: todayPlan.weakTopics.length, tone: todayPlan.weakTopics.length > 0 ? "danger" : "good" },
-              ]}
-            />
+            <TodayStatusRow plan={todayPlan} />
+            <SecondaryActionsPanel plan={todayPlan} />
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
               <div className="space-y-4">
                 <TodayReviewCard plan={todayPlan} />
-                <RepairQueueCard plan={todayPlan} />
                 <DraftQueueCard plan={todayPlan} />
               </div>
               <div className="space-y-4">
+                <RepairQueueCard plan={todayPlan} />
                 <WeakTopicsCard plan={todayPlan} />
                 <GoalSnapshotCard plan={todayPlan} />
               </div>

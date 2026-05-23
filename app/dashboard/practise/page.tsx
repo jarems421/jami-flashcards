@@ -84,6 +84,10 @@ export default function PractisePage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [creatingQuestion, setCreatingQuestion] = useState(false);
   const [savingAttempt, setSavingAttempt] = useState(false);
+  const [showAddQuestion, setShowAddQuestion] = useState(false);
+  const [showTopicCreator, setShowTopicCreator] = useState(false);
+  const [showTutorPanel, setShowTutorPanel] = useState(false);
+  const [showAttemptHistory, setShowAttemptHistory] = useState(false);
   const [newTopicName, setNewTopicName] = useState("");
   const [newTopicSubject, setNewTopicSubject] = useState("");
   const [questionText, setQuestionText] = useState("");
@@ -200,6 +204,8 @@ export default function PractisePage() {
     setDraftFront("");
     setDraftBack("");
     setSavedDraftId(null);
+    setShowTutorPanel(false);
+    setShowAttemptHistory(false);
   }, [selectedQuestionId]);
 
   useEffect(() => {
@@ -269,6 +275,7 @@ export default function PractisePage() {
       setSelectedTopicIds([]);
       await loadAll();
       setSelectedQuestionId(questionId);
+      setShowAddQuestion(false);
       setFeedback({
         type: "success",
         message: "Question created. Attempt it below to start building Progress evidence.",
@@ -310,6 +317,7 @@ export default function PractisePage() {
           .filter(Boolean),
       });
       await loadAll();
+      setShowAttemptHistory(true);
       setFeedback({
         type: "success",
         message: "Attempt saved. Progress updated. Tutor now has this attempt as context.",
@@ -327,6 +335,7 @@ export default function PractisePage() {
   const handleTutorIntent = async (intent: PracticeTutorIntent, prompt: string) => {
     if (!selectedQuestion) return;
 
+    setShowTutorPanel(true);
     setTutorBusyIntent(intent);
     setTutorUsed(true);
     if (intent === "hint" || intent === "show-method" || intent === "check-working") {
@@ -452,6 +461,13 @@ export default function PractisePage() {
     );
   }
 
+  const tutorPanelOpen =
+    showTutorPanel ||
+    tutorMessages.length > 0 ||
+    lastSuggestedFlashcard !== null ||
+    confirmFullSolution ||
+    tutorBusyIntent !== null;
+
   return (
     <AppPage
       title="Practise"
@@ -469,9 +485,9 @@ export default function PractisePage() {
       ) : null}
 
       <PageHero
-        eyebrow="Practice tests application"
-        title="Manual questions first. Tutor only when there is context."
-        description="Create topical questions, attempt them, self-mark honestly, and let Jami turn useful struggle into mastery evidence."
+        eyebrow="Practise"
+        title="Choose a question, attempt it, repair what happened."
+        description="Keep one question at the centre. Add new questions only when you need them, then use Tutor to repair the attempt."
         tone="warm"
         aside={
           <div className="grid min-w-[18rem] grid-cols-3 gap-2 text-center">
@@ -515,105 +531,125 @@ export default function PractisePage() {
             ]}
           />
 
-          <div className="grid gap-4 2xl:grid-cols-[minmax(460px,0.9fr)_minmax(0,1.1fr)]">
-            <div className="space-y-4">
-              <Card padding="lg">
+          <div className="grid gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
+            <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
                 <SectionHeader
-                  title="Topics"
-                  description="Tags organise content. Topics measure learning."
+                  title="Question bank"
+                  description="Choose one question, attempt it, then repair what happened."
                 />
-                <div className="mt-4 grid gap-3">
-                  <Input
-                    label="New topic"
-                    value={newTopicName}
-                    onChange={(event) => setNewTopicName(event.target.value)}
-                    placeholder="Eigenvalues"
-                  />
-                  <Input
-                    label="Subject"
-                    value={newTopicSubject}
-                    onChange={(event) => setNewTopicSubject(event.target.value)}
-                    placeholder="Linear Algebra"
-                  />
-                  <Button type="button" variant="secondary" onClick={() => void handleCreateTopic()}>
-                    Add topic
-                  </Button>
-                </div>
-                <div className="mt-5 flex flex-wrap gap-2">
-                  {topics.length > 0 ? (
-                    topics.map((topic) => (
-                      <button
-                        key={topic.id}
-                        type="button"
-                        onClick={() =>
-                          setSelectedTopicIds((current) =>
-                            current.includes(topic.id)
-                              ? current.filter((topicId) => topicId !== topic.id)
-                              : [...current, topic.id]
-                          )
-                        }
-                        className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                          selectedTopicIds.includes(topic.id)
-                            ? "border-warm-accent bg-warm-glow text-warm-accent"
-                            : "border-white/[0.10] bg-white/[0.05] text-text-secondary hover:border-white/[0.18]"
-                        }`}
-                      >
-                        {topic.name}
-                      </button>
-                    ))
-                  ) : (
-                    <p className="text-sm leading-6 text-text-secondary">
-                      Create one topic to start building structured practice.
-                    </p>
-                  )}
-                </div>
-              </Card>
+                <Button
+                  type="button"
+                  variant={showAddQuestion ? "warm" : "secondary"}
+                  onClick={() => setShowAddQuestion((value) => !value)}
+                >
+                  {showAddQuestion ? "Close" : "+ Add question"}
+                </Button>
+              </div>
 
-              <Card padding="lg">
-                <SectionHeader
-                  title="Create a question"
-                  description="Keep this manual for MVP. OCR, mark schemes, and paper extraction come later."
-                />
-                <div className="mt-4 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
-                  <div className="font-semibold text-white">Example</div>
-                  <p className="mt-1">Question: Solve x^2 - 5x + 6 = 0</p>
-                  <p>Expected answer: x = 2 or x = 3</p>
-                  <p>Solution notes: Factorise into (x - 2)(x - 3)</p>
-                </div>
-                <div className="mt-4 space-y-3">
-                  <Textarea
-                    label="Question"
-                    value={questionText}
-                    onChange={(event) => setQuestionText(event.target.value)}
-                    placeholder="Write the question you want to practise."
-                  />
-                  <Textarea
-                    label="Expected answer / checkpoint"
-                    rows={3}
-                    value={answerText}
-                    onChange={(event) => setAnswerText(event.target.value)}
-                    placeholder="Optional. Add the answer or mark-scheme idea."
-                  />
-                  <Textarea
-                    label="Solution notes"
-                    rows={3}
-                    value={solutionText}
-                    onChange={(event) => setSolutionText(event.target.value)}
-                    placeholder="Optional. Add method notes for yourself or Tutor."
-                  />
-                  <Button
-                    type="button"
-                    disabled={creatingQuestion}
-                    onClick={() => void handleCreateQuestion()}
-                  >
-                    {creatingQuestion ? "Creating..." : "Create question"}
-                  </Button>
-                </div>
-              </Card>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowTopicCreator((value) => !value)}
+                  className="text-xs font-semibold text-text-muted transition hover:text-white"
+                  aria-expanded={showTopicCreator}
+                >
+                  {showTopicCreator ? "Hide topic creator" : "+ Add topic"}
+                </button>
+                {showTopicCreator ? (
+                  <div className="mt-3 grid gap-3 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.035] p-3">
+                    <Input
+                      label="New topic"
+                      value={newTopicName}
+                      onChange={(event) => setNewTopicName(event.target.value)}
+                      placeholder="Eigenvalues"
+                    />
+                    <Input
+                      label="Subject"
+                      value={newTopicSubject}
+                      onChange={(event) => setNewTopicSubject(event.target.value)}
+                      placeholder="Linear Algebra"
+                    />
+                    <Button type="button" variant="secondary" onClick={() => void handleCreateTopic()}>
+                      Add topic
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
 
-              <Card padding="lg">
-                <SectionHeader title="Question bank" description="Topical drill starts here." />
-                <div className="mt-4 space-y-2">
+              <div className="mt-4 flex flex-wrap gap-2">
+                {topics.length > 0 ? (
+                  topics.map((topic) => (
+                    <button
+                      key={topic.id}
+                      type="button"
+                      onClick={() =>
+                        setSelectedTopicIds((current) =>
+                          current.includes(topic.id)
+                            ? current.filter((topicId) => topicId !== topic.id)
+                            : [...current, topic.id]
+                        )
+                      }
+                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                        selectedTopicIds.includes(topic.id)
+                          ? "border-warm-accent bg-warm-glow text-warm-accent"
+                          : "border-white/[0.10] bg-white/[0.05] text-text-secondary hover:border-white/[0.18]"
+                      }`}
+                    >
+                      {topic.name}
+                    </button>
+                  ))
+                ) : (
+                  <p className="text-sm leading-6 text-text-secondary">
+                    Add topics when you want practice and cards to share a learning concept.
+                  </p>
+                )}
+              </div>
+
+              {showAddQuestion || questions.length === 0 ? (
+                <div className="mt-5 rounded-[1.25rem] border border-warm-border bg-warm-glow p-4">
+                  <div className="text-sm font-semibold text-white">Add a practice question</div>
+                  <p className="mt-1 text-xs leading-5 text-text-secondary">
+                    Example: Solve x^2 - 5x + 6 = 0. Expected answer: x = 2 or x = 3.
+                  </p>
+                  <div className="mt-4 space-y-3">
+                    <Textarea
+                      label="Question"
+                      value={questionText}
+                      onChange={(event) => setQuestionText(event.target.value)}
+                      placeholder="Write the question you want to practise."
+                    />
+                    <Textarea
+                      label="Expected answer / checkpoint"
+                      rows={3}
+                      value={answerText}
+                      onChange={(event) => setAnswerText(event.target.value)}
+                      placeholder="Optional. Add the answer or mark-scheme idea."
+                    />
+                    <Textarea
+                      label="Solution notes"
+                      rows={3}
+                      value={solutionText}
+                      onChange={(event) => setSolutionText(event.target.value)}
+                      placeholder="Optional. Add method notes for yourself or Tutor."
+                    />
+                    <Button
+                      type="button"
+                      disabled={creatingQuestion}
+                      onClick={() => void handleCreateQuestion()}
+                    >
+                      {creatingQuestion ? "Creating..." : "Create question"}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
+
+              <div className="mt-5">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="text-sm font-semibold text-white">Questions</div>
+                  <span className="text-xs text-text-muted">{questions.length} total</span>
+                </div>
+                <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
                   {questions.length > 0 ? (
                     questions.map((question) => {
                       const questionAttempts = getQuestionAttempts(question.id, attempts);
@@ -646,10 +682,10 @@ export default function PractisePage() {
                     />
                   )}
                 </div>
-              </Card>
-            </div>
+              </div>
+            </Card>
 
-            <div className="space-y-4">
+            <div className="min-w-0 space-y-4">
               {selectedQuestion ? (
                 <>
                   <Card tone="warm" padding="lg">
@@ -768,23 +804,71 @@ export default function PractisePage() {
                       >
                         {savingAttempt ? "Saving..." : "Save attempt"}
                       </Button>
+                      <div className="flex flex-wrap items-center gap-2 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] px-3 py-2">
+                        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                          Next
+                        </span>
+                        <Button type="button" variant="secondary" onClick={() => setShowTutorPanel(true)}>
+                          Ask Tutor
+                        </Button>
+                        <Button type="button" variant="secondary" onClick={() => setShowAttemptHistory(true)}>
+                          View history
+                        </Button>
+                      </div>
                     </div>
                   </Card>
 
-                  {featureFlags.enableTutorInPractice ? (
-                    <Card padding="lg">
-                      <SectionHeader
-                        title="Contextual tutor"
-                        description="Hint-first help attached to this exact question. Full solution is explicit."
-                      />
-                      <div className="mt-4 flex flex-wrap gap-2 rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-2">
+                </>
+              ) : (
+                <EmptyState
+                  emoji="Practice"
+                  title="Create a practice question"
+                  description="Practise starts manual and topical so the learning loop can prove itself before documents and OCR arrive."
+                  secondaryAction={
+                    <Link
+                      href="/dashboard/study"
+                      className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+                    >
+                      Back to Learn
+                    </Link>
+                  }
+                />
+              )}
+            </div>
+
+            <div className="space-y-4 2xl:sticky 2xl:top-4 2xl:self-start">
+              {selectedQuestion && featureFlags.enableTutorInPractice ? (
+                <Card padding="lg">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
+                    <SectionHeader
+                      title="Contextual tutor"
+                      description="Open Tutor when you want hint-first help beside this question."
+                    />
+                    <Button
+                      type="button"
+                      variant={tutorPanelOpen ? "secondary" : "warm"}
+                      onClick={() => setShowTutorPanel((value) => !value)}
+                      aria-expanded={tutorPanelOpen}
+                    >
+                      {tutorPanelOpen ? "Hide Tutor" : "Ask Tutor"}
+                    </Button>
+                  </div>
+
+                  {!tutorPanelOpen ? (
+                    <div className="mt-4 rounded-[1.2rem] border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+                      Stuck on the current step? Open Tutor for a nudge, a working check, or a
+                      deliberate full solution.
+                    </div>
+                  ) : (
+                    <>
+                      <div className="mt-4 flex gap-2 overflow-x-auto rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-2">
                         {TUTOR_INTENTS.map((item) => (
                           <Button
                             key={item.intent}
                             type="button"
                             variant={item.intent === "full-solution" ? "danger" : "secondary"}
                             disabled={tutorBusyIntent !== null}
-                            className="min-h-[2.55rem] flex-1 rounded-full px-3 text-xs sm:flex-none"
+                            className="min-h-[2.45rem] shrink-0 rounded-full px-3 text-xs"
                             title={item.description}
                             onClick={() => {
                               if (item.intent === "full-solution" && !confirmFullSolution) {
@@ -799,17 +883,20 @@ export default function PractisePage() {
                           </Button>
                         ))}
                       </div>
-                      <div className="mt-3 grid gap-2 md:grid-cols-2">
-                        {TUTOR_INTENTS.map((item) => (
-                          <div key={item.intent} className="rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs leading-5 text-text-secondary">
-                            <span className="font-semibold text-white">{item.label}:</span> {item.description}
-                          </div>
+                      <div className="mt-3 space-y-2">
+                        {TUTOR_INTENTS.slice(0, 5).map((item) => (
+                          <p key={item.intent} className="text-xs leading-5 text-text-muted">
+                            <span className="font-semibold text-text-secondary">{item.label}:</span> {item.description}
+                          </p>
                         ))}
                       </div>
                       {confirmFullSolution ? (
                         <div className="mt-4 rounded-[1.25rem] border border-error-muted bg-error-muted p-4 text-sm leading-6 text-rose-100">
                           <div className="font-semibold text-white">Full solution gives the answer.</div>
-                          <p className="mt-1">It may count as lower independent evidence. Use it when you are ready to reveal the full method.</p>
+                          <p className="mt-1">
+                            It may count as lower independent evidence. Use it when you are ready to
+                            reveal the full method.
+                          </p>
                           <div className="mt-3 flex flex-wrap gap-2">
                             <Button
                               type="button"
@@ -833,7 +920,7 @@ export default function PractisePage() {
                           tutorMessages.map((message, index) => (
                             <div
                               key={`${message.role}-${index}`}
-                            className={`rounded-[1.15rem] border p-4 text-sm leading-6 ${
+                              className={`rounded-[1.15rem] border p-4 text-sm leading-6 ${
                                 message.role === "user"
                                   ? "border-white/[0.09] bg-white/[0.045] text-text-secondary"
                                   : "border-warm-border bg-warm-glow text-white"
@@ -847,8 +934,8 @@ export default function PractisePage() {
                           ))
                         ) : (
                           <p className="text-sm leading-6 text-text-secondary">
-                            Ask for a hint when you are stuck. The tutor will try to move you one step,
-                            not replace your attempt.
+                            Ask for a hint when you are stuck. Tutor should move you one step, not
+                            replace your attempt.
                           </p>
                         )}
                       </div>
@@ -870,7 +957,7 @@ export default function PractisePage() {
                               {savedDraftId ? "Saved draft" : "Unsaved draft"}
                             </span>
                           </div>
-                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                          <div className="mt-4 grid gap-3">
                             <Textarea
                               label="Front"
                               rows={3}
@@ -890,13 +977,16 @@ export default function PractisePage() {
                               }}
                             />
                           </div>
-                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                          <div className="mt-4 grid gap-3">
                             <div>
                               <div className="mb-2 text-sm font-medium text-text-secondary">Suggested topic</div>
                               <div className="flex flex-wrap gap-2">
                                 {selectedQuestionTopics.length > 0 ? (
                                   selectedQuestionTopics.map((topic) => (
-                                    <span key={topic.id} className="rounded-full border border-white/[0.12] bg-white/[0.07] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                                    <span
+                                      key={topic.id}
+                                      className="rounded-full border border-white/[0.12] bg-white/[0.07] px-3 py-1.5 text-xs font-medium text-text-secondary"
+                                    >
                                       {topic.name}
                                     </span>
                                   ))
@@ -906,7 +996,9 @@ export default function PractisePage() {
                               </div>
                             </div>
                             <label className="block">
-                              <span className="mb-2 block text-sm font-medium text-text-secondary">Destination deck</span>
+                              <span className="mb-2 block text-sm font-medium text-text-secondary">
+                                Destination deck
+                              </span>
                               <select
                                 value={draftDeckId}
                                 onChange={(event) => setDraftDeckId(event.target.value)}
@@ -940,63 +1032,65 @@ export default function PractisePage() {
                           </div>
                         </div>
                       ) : null}
-                    </Card>
-                  ) : null}
+                    </>
+                  )}
+                </Card>
+              ) : null}
 
-                  <Card padding="lg">
-                    <SectionHeader title="Attempt history" description="Recent evidence for this question." />
-                    <div className="mt-4 space-y-2">
-                      {selectedQuestionAttempts.length > 0 ? (
-                        selectedQuestionAttempts.map((attempt) => (
-                          <div
-                            key={attempt.id}
-                            className={surfaceCardClass}
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className={attempt.isCorrect ? "text-emerald-100" : "text-rose-100"}>
-                                {attempt.isCorrect ? "Correct" : "Incorrect"}
-                              </span>
-                              <span className="text-xs text-text-muted">
-                                Confidence {attempt.confidence} - {attempt.timeSpentSeconds ? formatElapsed(attempt.timeSpentSeconds) : "No timer"}
-                              </span>
-                            </div>
-                            {attempt.mistakeLabels.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {attempt.mistakeLabels.map((label) => (
-                                  <span
-                                    key={label}
-                                    className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-secondary"
-                                  >
-                                    {label}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
+              <Card padding="lg">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
+                  <SectionHeader
+                    title="Attempt history"
+                    description={`${selectedQuestionAttempts.length} attempt${selectedQuestionAttempts.length === 1 ? "" : "s"} on this question.`}
+                  />
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setShowAttemptHistory((value) => !value)}
+                    aria-expanded={showAttemptHistory}
+                  >
+                    {showAttemptHistory ? "Hide history" : "Expand"}
+                  </Button>
+                </div>
+                {!showAttemptHistory ? (
+                  <p className="mt-4 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+                    History stays tucked away so the current question and attempt stay in focus.
+                  </p>
+                ) : (
+                  <div className="mt-4 space-y-2">
+                    {selectedQuestionAttempts.length > 0 ? (
+                      selectedQuestionAttempts.map((attempt) => (
+                        <div key={attempt.id} className={surfaceCardClass}>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <span className={attempt.isCorrect ? "text-emerald-100" : "text-rose-100"}>
+                              {attempt.isCorrect ? "Correct" : "Incorrect"}
+                            </span>
+                            <span className="text-xs text-text-muted">
+                              Confidence {attempt.confidence} - {attempt.timeSpentSeconds ? formatElapsed(attempt.timeSpentSeconds) : "No timer"}
+                            </span>
                           </div>
-                        ))
-                      ) : (
-                        <p className="text-sm leading-6 text-text-secondary">
-                          Save an attempt to start building evidence.
-                        </p>
-                      )}
-                    </div>
-                  </Card>
-                </>
-              ) : (
-                <EmptyState
-                  emoji="Practice"
-                  title="Create a practice question"
-                  description="Practise starts manual and topical so the learning loop can prove itself before documents and OCR arrive."
-                  secondaryAction={
-                    <Link
-                      href="/dashboard/study"
-                      className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
-                    >
-                      Back to Learn
-                    </Link>
-                  }
-                />
-              )}
+                          {attempt.mistakeLabels.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-1.5">
+                              {attempt.mistakeLabels.map((label) => (
+                                <span
+                                  key={label}
+                                  className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-secondary"
+                                >
+                                  {label}
+                                </span>
+                              ))}
+                            </div>
+                          ) : null}
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm leading-6 text-text-secondary">
+                        Save an attempt to start building evidence.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </Card>
             </div>
           </div>
         </>

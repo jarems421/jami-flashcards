@@ -750,13 +750,19 @@ function PractisePanel({
   confirmFullSolution: boolean;
   onConfirmFullSolutionChange: (value: boolean) => void;
 }) {
+  const [showTutor, setShowTutor] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const selectedQuestionAttempts = getQuestionAttempts(selectedQuestion.id, attempts);
+  const tutorOpen =
+    showTutor || tutorMessages.length > 0 || busyIntent !== null || confirmFullSolution;
+
   return (
-    <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(460px,0.9fr)_minmax(0,1.1fr)]">
-      <Card padding="lg">
+    <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
+      <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
         <SectionHeader
           eyebrow="Practise"
-          title="Topical questions"
-          description="This public version uses seeded questions and local attempt state."
+          title="Question bank"
+          description="Choose one seeded question, attempt it, then repair what happened."
         />
         <div className="mt-5 space-y-3">
           {WALKTHROUGH_QUESTIONS.map((question) => {
@@ -791,8 +797,8 @@ function PractisePanel({
       <div className="min-w-0 space-y-4">
         <Card tone="warm" padding="lg">
           <SectionHeader
-            title="Attempt the selected question"
-            description="Saving here updates only this public session. No Firestore writes happen."
+            title="Active question"
+            description="The selected question stays at the centre. Saving updates this public session only."
           />
           <div className={`${surfaceCardClass} mt-5`}>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
@@ -857,8 +863,22 @@ function PractisePanel({
             <Button type="button" size="lg" onClick={onSaveAttempt}>
               Save local attempt
             </Button>
+            <div className="flex flex-wrap items-center gap-2 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] px-3 py-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                Next
+              </span>
+              <Button type="button" variant="secondary" onClick={() => setShowTutor(true)}>
+                Ask Tutor
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => setShowHistory(true)}>
+                View history
+              </Button>
+            </div>
           </div>
         </Card>
+      </div>
+
+      <div className="space-y-4 2xl:sticky 2xl:top-4 2xl:self-start">
         <TutorPanel
           selectedQuestion={selectedQuestion}
           userAnswer={userAnswer}
@@ -868,7 +888,55 @@ function PractisePanel({
           onTutorIntent={onTutorIntent}
           confirmFullSolution={confirmFullSolution}
           onConfirmFullSolutionChange={onConfirmFullSolutionChange}
+          open={tutorOpen}
+          onOpenChange={setShowTutor}
         />
+        <Card padding="lg">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
+            <SectionHeader
+              title="Attempt history"
+              description={`${selectedQuestionAttempts.length} attempt${selectedQuestionAttempts.length === 1 ? "" : "s"} on this public question.`}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowHistory((value) => !value)}
+              aria-expanded={showHistory}
+            >
+              {showHistory ? "Hide history" : "Expand"}
+            </Button>
+          </div>
+          {!showHistory ? (
+            <p className="mt-4 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+              History stays tucked away so the current attempt stays in focus.
+            </p>
+          ) : (
+            <div className="mt-4 space-y-2">
+              {selectedQuestionAttempts.map((attempt) => (
+                <div key={attempt.id} className={surfaceCardClass}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className={attempt.isCorrect ? "text-emerald-100" : "text-rose-100"}>
+                      {attempt.isCorrect ? "Correct" : "Incorrect"}
+                    </span>
+                    <span className="text-xs text-text-muted">Confidence {attempt.confidence}</span>
+                  </div>
+                  {attempt.mistakeLabels.length > 0 ? (
+                    <div className="mt-2 flex flex-wrap gap-1.5">
+                      {attempt.mistakeLabels.map((label) => (
+                        <span
+                          key={label}
+                          className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-secondary"
+                        >
+                          {label}
+                        </span>
+                      ))}
+                    </div>
+                  ) : null}
+                </div>
+              ))}
+            </div>
+          )}
+        </Card>
       </div>
     </div>
   );
@@ -913,6 +981,8 @@ function TutorPanel({
   onTutorIntent,
   confirmFullSolution,
   onConfirmFullSolutionChange,
+  open,
+  onOpenChange,
 }: {
   selectedQuestion: WalkthroughQuestion;
   userAnswer: string;
@@ -922,15 +992,33 @@ function TutorPanel({
   onTutorIntent: (intent: WalkthroughTutorIntent, prompt: string) => void;
   confirmFullSolution: boolean;
   onConfirmFullSolutionChange: (value: boolean) => void;
+  open: boolean;
+  onOpenChange: (value: boolean) => void;
 }) {
   return (
     <Card padding="lg">
-      <SectionHeader
-        eyebrow="Contextual tutor"
-        title="Hint-first help beside the question."
-        description="This public tutor can make limited real AI calls, but writes nothing to user data."
-      />
-      <div className="mt-5 flex flex-wrap gap-2 rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
+        <SectionHeader
+          eyebrow="Contextual tutor"
+          title="Hint-first help beside the question."
+          description="This public tutor can make limited real AI calls, but writes nothing to user data."
+        />
+        <Button
+          type="button"
+          variant={open ? "secondary" : "warm"}
+          onClick={() => onOpenChange(!open)}
+          aria-expanded={open}
+        >
+          {open ? "Hide Tutor" : "Ask Tutor"}
+        </Button>
+      </div>
+      {!open ? (
+        <p className="mt-4 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+          Tutor is tucked away until the student asks for help.
+        </p>
+      ) : (
+      <>
+      <div className="mt-5 flex gap-2 overflow-x-auto rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-2">
         {TUTOR_ACTIONS.map((action) => (
           <Button
             key={action.intent}
@@ -938,7 +1026,7 @@ function TutorPanel({
             variant={action.variant ?? "secondary"}
             disabled={busyIntent !== null}
             title={action.description}
-            className="min-h-[2.55rem] flex-1 rounded-full px-3 text-xs sm:flex-none"
+            className="min-h-[2.55rem] shrink-0 rounded-full px-3 text-xs"
             onClick={() => {
               if (action.intent === "full-solution" && !confirmFullSolution) {
                 onConfirmFullSolutionChange(true);
@@ -1020,6 +1108,8 @@ function TutorPanel({
           Working: {workingText || "Not supplied"}
         </p>
       </div>
+      </>
+      )}
     </Card>
   );
 }

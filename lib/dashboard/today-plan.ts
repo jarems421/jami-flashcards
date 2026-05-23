@@ -118,6 +118,7 @@ export type BuildTodayPlanInput = {
   reviewedToday?: number;
   progressVisited?: boolean;
   now?: number;
+  smallDueRepairThreshold?: number;
 };
 
 function pluralize(value: number, singular: string, plural = `${singular}s`) {
@@ -282,6 +283,7 @@ function buildNextAction(input: {
   weakTopics: TodayWeakTopic[];
   goalSummary?: TodayGoalSummary;
   questions: Question[];
+  smallDueRepairThreshold: number;
 }): TodayNextAction {
   if (input.decks.length === 0) {
     return {
@@ -307,6 +309,24 @@ function buildNextAction(input: {
     };
   }
 
+  if (
+    input.recentMistakes.length > 0 &&
+    input.dueCards.count > 0 &&
+    input.dueCards.count <= input.smallDueRepairThreshold
+  ) {
+    const mistake = input.recentMistakes[0];
+    return {
+      type: "repair_mistake",
+      title: "Repair your most recent mistake.",
+      description: mistake.questionText,
+      href: mistake.href,
+      label: "Retry mistake",
+      priority: 3,
+      secondaryHref: getCustomStudyHref({ mode: "daily" }),
+      secondaryLabel: "Start review",
+    };
+  }
+
   if (input.dueCards.count > 0) {
     const deckText = input.dueCards.primaryDeckName ? ` in ${input.dueCards.primaryDeckName}` : "";
     return {
@@ -314,10 +334,10 @@ function buildNextAction(input: {
       title: `Review ${pluralize(input.dueCards.count, "due flashcard")}${deckText}.`,
       description: "Due cards are the most time-sensitive thing today. Start with memory, then repair weak topics.",
       href: getCustomStudyHref({ mode: "daily" }),
-      label: "Start Daily Review",
+      label: "Start review",
       priority: 3,
       secondaryHref: getCustomStudyHref({ mode: "custom" }),
-      secondaryLabel: "Focused Review",
+      secondaryLabel: "Focused review",
     };
   }
 
@@ -328,7 +348,7 @@ function buildNextAction(input: {
       title: "Repair your most recent mistake.",
       description: mistake.questionText,
       href: mistake.href,
-      label: "Retry in Practise",
+      label: "Retry mistake",
       priority: 4,
       secondaryHref: "/dashboard/progress",
       secondaryLabel: "See Progress",
@@ -341,7 +361,7 @@ function buildNextAction(input: {
       title: `Review ${pluralize(input.drafts.length, "flashcard draft")}.`,
       description: "Tutor-made drafts are not real cards until you approve or add them to a deck.",
       href: "/dashboard/progress",
-      label: "Review drafts",
+      label: "Review draft",
       priority: 5,
     };
   }
@@ -366,7 +386,7 @@ function buildNextAction(input: {
       title: "Keep your current goal moving.",
       description: input.goalSummary.detail,
       href: input.goalSummary.href,
-      label: "Open goals",
+      label: "Open goal",
       priority: 7,
     };
   }
@@ -396,6 +416,7 @@ function buildNextAction(input: {
 
 export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   const now = input.now ?? Date.now();
+  const smallDueRepairThreshold = input.smallDueRepairThreshold ?? 3;
   const dueCards = buildDueSummary(input, now);
   const recentMistakes = buildRecentMistakes(input);
   const drafts = buildDrafts(input);
@@ -411,6 +432,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     weakTopics,
     goalSummary,
     questions: input.questions,
+    smallDueRepairThreshold,
   });
 
   return {

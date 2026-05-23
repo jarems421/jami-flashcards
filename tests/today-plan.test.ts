@@ -97,6 +97,7 @@ describe("today plan", () => {
       card({ id: "due-1", deckId: "deck-b", front: "A", back: "B", dueDate: NOW - 1 }),
       card({ id: "due-2", deckId: "deck-b", front: "C", back: "D", dueDate: NOW - 1 }),
       card({ id: "due-3", deckId: "deck-a", front: "E", back: "F", dueDate: NOW - 1 }),
+      card({ id: "due-4", deckId: "deck-b", front: "G", back: "H", dueDate: NOW - 1 }),
     ];
     const plan = buildTodayPlan({
       ...basePlanInput(),
@@ -107,6 +108,22 @@ describe("today plan", () => {
 
     expect(plan.nextAction.type).toBe("review_due_cards");
     expect(plan.dueCards.primaryDeckName).toBe("Analysis");
+  });
+
+  it("repairs a fresh mistake before a small due queue", () => {
+    const dueCards = [
+      card({ id: "due-1", deckId: "deck-b", front: "A", back: "B", dueDate: NOW - 1 }),
+      card({ id: "due-2", deckId: "deck-b", front: "C", back: "D", dueDate: NOW - 1 }),
+    ];
+    const plan = buildTodayPlan({
+      ...basePlanInput(),
+      cards: dueCards,
+      dueCards,
+      attempts: [wrongAttempt],
+    });
+
+    expect(plan.nextAction.type).toBe("repair_mistake");
+    expect(plan.nextAction.secondaryLabel).toBe("Start review");
   });
 
   it("repairs recent mistakes when there are no due cards", () => {
