@@ -323,6 +323,123 @@ describe("Firestore security rules", () => {
     );
   });
 
+  it("restricts new learning-loop collections to the caller", async () => {
+    await seedData();
+
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const demoDb = testEnv.authenticatedContext(ALICE, { demo: true }).firestore();
+
+    const topicRef = doc(aliceDb, "users", ALICE, "topics", "topic-1");
+    await assertSucceeds(
+      setDoc(topicRef, {
+        name: "Eigenvalues",
+        slug: "eigenvalues",
+        subject: "Linear Algebra",
+        status: "active",
+        createdBy: "user",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(getDoc(topicRef));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "topics", "topic-1")));
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "questions", "question-1"), {
+        questionText: "Find the eigenvalues.",
+        topicIds: ["topic-1"],
+        sourceType: "manual",
+        origin: "user-authored",
+        contentStatus: "approved",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "attempts", "attempt-1"), {
+        questionId: "question-1",
+        userAnswer: "lambda = 2",
+        isCorrect: true,
+        confidence: 4,
+        tutorUsed: false,
+        mistakeLabels: [],
+        createdAt: 1,
+      })
+    );
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "masteryEvents", "event-1"), {
+        topicId: "topic-1",
+        sourceType: "question",
+        sourceId: "attempt-1",
+        weight: "high",
+        scoreDelta: 4,
+        reason: "Correct practice attempt",
+        algorithmVersion: "mvp-test",
+        createdAt: 1,
+      })
+    );
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "generatedContentDrafts", "draft-1"), {
+        kind: "flashcard",
+        title: "Eigenvalue definition",
+        front: "What is an eigenvalue?",
+        back: "A scalar lambda where Av = lambda v.",
+        topicIds: ["topic-1"],
+        origin: "ai-assisted",
+        contentStatus: "draft",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "tutorThreads", "thread-1"), {
+        contextType: "question",
+        contextId: "question-1",
+        title: "Find eigenvalues",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "tutorMessages", "message-1"), {
+        threadId: "thread-1",
+        role: "model",
+        text: "Try identifying the characteristic polynomial first.",
+        createdAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(bobDb, "users", ALICE, "attempts", "attempt-2"), {
+        questionId: "question-1",
+        userAnswer: "wrong user",
+        isCorrect: false,
+        confidence: 1,
+        tutorUsed: false,
+        mistakeLabels: [],
+        createdAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(demoDb, "users", ALICE, "topics", "demo-topic"), {
+        name: "Demo topic",
+        slug: "demo-topic",
+        subject: "Demo",
+        status: "active",
+        createdBy: "user",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+  });
+
   it("blocks demo accounts from mutating decks and notification setup", async () => {
     await seedData();
 

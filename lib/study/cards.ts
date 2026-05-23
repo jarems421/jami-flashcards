@@ -14,6 +14,8 @@ export type Card = {
   back: string;
   createdAt: number;
   tags: string[];
+  topicIds?: string[];
+  sourceIds?: string[];
   // Legacy SM-2 fields (kept for backward compat)
   interval?: number;
   repetitions?: number;
@@ -529,6 +531,8 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
     back: typeof data.back === "string" ? data.back : "",
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     tags: normalizeCardTags(data.tags),
+    topicIds: normalizeCardTags(data.topicIds),
+    sourceIds: normalizeCardTags(data.sourceIds),
     interval: typeof data.interval === "number" ? data.interval : undefined,
     repetitions: typeof data.repetitions === "number" ? data.repetitions : undefined,
     easeFactor: typeof data.easeFactor === "number" ? data.easeFactor : undefined,

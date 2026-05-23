@@ -37,6 +37,8 @@ import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
+import { getActiveTopics } from "@/services/study/topics";
+import type { Topic } from "@/lib/practice/topics";
 import { db } from "@/services/firebase/client";
 import { getDeckStudyHref } from "@/lib/app/routes";
 
@@ -65,6 +67,7 @@ export default function DeckDetailPageClient() {
 
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [feedback, setFeedback] = useState<{
@@ -75,6 +78,7 @@ export default function DeckDetailPageClient() {
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
   const [editingTags, setEditingTags] = useState<string[]>([]);
+  const [editingTopicIds, setEditingTopicIds] = useState<string[]>([]);
   const [editingPendingTag, setEditingPendingTag] = useState("");
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
@@ -97,6 +101,7 @@ export default function DeckDetailPageClient() {
     if (!deckId) {
       setDeck(null);
       setCards([]);
+      setTopics([]);
       setAvailableTags([]);
       setLoadingCards(false);
       setFeedback({
@@ -137,9 +142,10 @@ export default function DeckDetailPageClient() {
           where("userId", "==", user.uid)
         );
 
-        const [snapshot, allUserCardsSnapshot] = await Promise.all([
+        const [snapshot, allUserCardsSnapshot, nextTopics] = await Promise.all([
           getDocs(deckCardsQuery),
           getDocs(userCardsQuery),
+          getActiveTopics(user.uid).catch(() => []),
         ]);
 
         if (cancelled) {
@@ -161,12 +167,14 @@ export default function DeckDetailPageClient() {
 
         setDeck(ownedDeck);
         setCards(nextCards);
+        setTopics(nextTopics);
         setAvailableTags(nextAvailableTags);
       } catch (error) {
         console.error(error);
         if (!cancelled) {
           setDeck(null);
           setCards([]);
+          setTopics([]);
           setAvailableTags([]);
           setFeedback({
             type: "error",
@@ -190,6 +198,7 @@ export default function DeckDetailPageClient() {
     setEditingFront("");
     setEditingBack("");
     setEditingTags([]);
+    setEditingTopicIds([]);
     setEditingPendingTag("");
     setSavingCardId(null);
   };
@@ -199,6 +208,7 @@ export default function DeckDetailPageClient() {
     setEditingFront(card.front);
     setEditingBack(card.back);
     setEditingTags(card.tags);
+    setEditingTopicIds(card.topicIds ?? []);
     setEditingPendingTag("");
     setFeedback(null);
   };
@@ -374,6 +384,7 @@ export default function DeckDetailPageClient() {
     }
 
     const nextTags = tagResult.nextTags;
+    const nextTopicIds = editingTopicIds;
 
     setSavingCardId(cardId);
     setFeedback(null);
@@ -383,6 +394,7 @@ export default function DeckDetailPageClient() {
         front: nextFront,
         back: nextBack,
         tags: nextTags,
+        topicIds: nextTopicIds,
       });
 
       setCards((prev) =>
@@ -393,6 +405,7 @@ export default function DeckDetailPageClient() {
                 front: nextFront,
                 back: nextBack,
                 tags: nextTags,
+                topicIds: nextTopicIds,
               }
             : card
         )
@@ -472,6 +485,7 @@ export default function DeckDetailPageClient() {
   }, [cards, searchTerm]);
   const selectedCardIdSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
+  const topicsById = useMemo(() => new Map(topics.map((topic) => [topic.id, topic])), [topics]);
 
   const selectFilteredCards = () => {
     setSelectedCardIds((prev) =>
@@ -795,6 +809,49 @@ export default function DeckDetailPageClient() {
                         helperText="Suggestions come from tags you already use across all decks."
                         disabled={savingCardId === card.id}
                       />
+                      <div>
+                        <div className="mb-2 text-sm font-medium tracking-[0.01em] text-text-secondary">
+                          Topics
+                        </div>
+                        <div className="flex flex-wrap gap-2">
+                          {topics.length > 0 ? (
+                            topics.map((topic) => {
+                              const active = editingTopicIds.includes(topic.id);
+                              return (
+                                <button
+                                  key={topic.id}
+                                  type="button"
+                                  disabled={savingCardId === card.id}
+                                  onClick={() =>
+                                    setEditingTopicIds((current) =>
+                                      current.includes(topic.id)
+                                        ? current.filter((topicId) => topicId !== topic.id)
+                                        : [...current, topic.id]
+                                    )
+                                  }
+                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                                    active
+                                      ? "border-warm-accent bg-warm-glow text-warm-accent"
+                                      : "border-white/[0.10] bg-white/[0.05] text-text-secondary hover:border-white/[0.18]"
+                                  } disabled:opacity-50`}
+                                >
+                                  {topic.name}
+                                </button>
+                              );
+                            })
+                          ) : (
+                            <Link
+                              href="/dashboard/practise"
+                              className="text-sm font-medium text-warm-accent underline-offset-4 hover:underline"
+                            >
+                              Create topics in Practise first
+                            </Link>
+                          )}
+                        </div>
+                        <p className="mt-2 text-xs leading-5 text-text-muted">
+                          Tags organise cards. Topics connect this card to mastery and Progress.
+                        </p>
+                      </div>
                       <div className="grid gap-2 sm:flex sm:flex-wrap">
                         <Button
                           type="button"
@@ -867,6 +924,19 @@ export default function DeckDetailPageClient() {
                             <span className="block truncate">{tag}</span>
                           </span>
                         ))}
+                        {(card.topicIds ?? []).map((topicId) => {
+                          const topic = topicsById.get(topicId);
+                          if (!topic) return null;
+
+                          return (
+                            <span
+                              key={topicId}
+                              className="max-w-full rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent"
+                            >
+                              <span className="block truncate">{topic.name}</span>
+                            </span>
+                          );
+                        })}
                       </div>
                     </div>
                   )}

@@ -117,6 +117,41 @@ service cloud.firestore {
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
+      match /topics/{topicId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      match /questions/{questionId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      match /attempts/{attemptId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      match /tutorThreads/{threadId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      match /tutorMessages/{messageId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      match /masteryEvents/{eventId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      match /generatedContentDrafts/{draftId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
       match /pushSubscriptions/{subscriptionId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
