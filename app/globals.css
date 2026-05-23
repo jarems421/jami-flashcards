@@ -30,9 +30,9 @@
     --color-error-muted: rgba(255, 120, 183, 0.18);
 
     /* Warm accent (blush highlight from the star body) */
-    --color-warm-glow: rgba(145, 218, 204, 0.13);
-    --color-warm-border: rgba(145, 218, 204, 0.28);
-    --color-warm-accent: #b9f0e5;
+    --color-warm-glow: rgba(255, 214, 246, 0.12);
+    --color-warm-border: rgba(214, 163, 255, 0.26);
+    --color-warm-accent: #ffd6f6;
 
     /* Text */
     --color-text-primary: #fff8ff;
@@ -84,9 +84,9 @@
     min-height: 100vh;
     background-color: #0d1018;
     background:
-      radial-gradient(ellipse 72rem 40rem at 10% -10%, rgba(145, 218, 204, 0.1), rgba(145, 218, 204, 0) 68%),
-      radial-gradient(ellipse 68rem 42rem at 90% 0%, rgba(143, 125, 232, 0.11), rgba(143, 125, 232, 0) 72%),
-      radial-gradient(ellipse 54rem 34rem at 50% 118%, rgba(82, 102, 145, 0.12), rgba(82, 102, 145, 0) 72%),
+      radial-gradient(ellipse 72rem 40rem at 10% -10%, rgba(255, 214, 246, 0.1), rgba(255, 214, 246, 0) 68%),
+      radial-gradient(ellipse 68rem 42rem at 90% 0%, rgba(143, 125, 232, 0.13), rgba(143, 125, 232, 0) 72%),
+      radial-gradient(ellipse 54rem 34rem at 50% 118%, rgba(118, 76, 180, 0.1), rgba(118, 76, 180, 0) 72%),
       linear-gradient(180deg, #090c14 0%, #0d1018 42%, #101522 72%, #121725 100%);
     background-attachment: fixed;
     color: var(--color-text-primary);
@@ -110,7 +110,7 @@
     inset: 0;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0) 62%),
-      rgba(145, 218, 204, 0.014);
+      rgba(160, 120, 255, 0.014);
     z-index: 0;
   }
 
@@ -154,9 +154,9 @@
     position: relative;
     overflow: hidden;
     border: 1.5px solid var(--color-warm-border);
-    background-color: rgba(26, 37, 48, 0.84);
+    background-color: rgba(36, 27, 54, 0.84);
     background-image:
-      radial-gradient(circle at 20% 0%, rgba(145, 218, 204, 0.13), transparent 18rem),
+      radial-gradient(circle at 20% 0%, rgba(255, 214, 246, 0.12), transparent 18rem),
       var(--gradient-card);
     border-radius: 2.15rem;
     box-shadow: var(--shadow-bubble);

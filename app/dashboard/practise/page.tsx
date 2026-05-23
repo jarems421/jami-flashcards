@@ -407,7 +407,7 @@ export default function PractisePage() {
             ]}
           />
 
-          <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
+          <div className="grid gap-4 2xl:grid-cols-[minmax(460px,0.9fr)_minmax(0,1.1fr)]">
             <div className="space-y-4">
               <Card padding="lg">
                 <SectionHeader

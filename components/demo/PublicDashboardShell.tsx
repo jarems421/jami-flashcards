@@ -592,7 +592,7 @@ function PractisePanel({
   onTutorIntent: (intent: WalkthroughTutorIntent, prompt: string) => void;
 }) {
   return (
-    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
+    <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(460px,0.9fr)_minmax(0,1.1fr)]">
       <Card padding="lg">
         <SectionHeader
           eyebrow="Practise"
