@@ -46,40 +46,52 @@ const TUTOR_ACTIONS: Array<{
   intent: WalkthroughTutorIntent;
   label: string;
   prompt: string;
+  description: string;
   variant?: "secondary" | "danger" | "warm";
 }> = [
-  { intent: "hint", label: "Hint", prompt: "Give me one hint without revealing the answer." },
+  {
+    intent: "hint",
+    label: "Hint",
+    prompt: "Give me one hint without revealing the answer.",
+    description: "One nudge without the answer.",
+  },
   {
     intent: "check-working",
     label: "Check working",
     prompt: "Check my working and point me to the first thing to fix.",
+    description: "Check whether your steps are valid.",
   },
   {
     intent: "explain-concept",
     label: "Explain",
     prompt: "Explain the concept behind this question without dumping the final answer.",
+    description: "Understand the idea behind it.",
   },
   {
     intent: "show-method",
     label: "Method",
     prompt: "Show the setup or method, but leave a step for me.",
+    description: "See the structure, then fill the gap.",
   },
   {
     intent: "full-solution",
     label: "Full solution",
     prompt: "Show the full solution. I understand this is less independent evidence.",
+    description: "Reveal the answer deliberately.",
     variant: "danger",
   },
   {
     intent: "make-flashcard",
     label: "Make card",
     prompt: "Turn the misconception here into one flashcard draft.",
+    description: "Turn a useful mistake into a draft.",
     variant: "warm",
   },
   {
     intent: "similar-question",
     label: "Similar question",
     prompt: "Give me one similar question without a solution.",
+    description: "Practise the same skill again.",
   },
 ];
 
@@ -186,6 +198,7 @@ export default function PublicDashboardShell() {
   const [selfMark, setSelfMark] = useState<boolean | null>(false);
   const [busyIntent, setBusyIntent] = useState<WalkthroughTutorIntent | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [confirmFullSolution, setConfirmFullSolution] = useState(false);
 
   const selectedQuestion = useMemo(
     () =>
@@ -247,6 +260,7 @@ export default function PublicDashboardShell() {
   const handleTutorIntent = async (intent: WalkthroughTutorIntent, prompt: string) => {
     setBusyIntent(intent);
     setFeedback(null);
+    setConfirmFullSolution(false);
     setTutorMessages((current) => [...current, { role: "user", text: prompt }]);
 
     try {
@@ -290,7 +304,8 @@ export default function PublicDashboardShell() {
         setDrafts((current) => [nextDraft, ...current]);
         setFeedback({
           type: "success",
-          message: "Editable flashcard draft created locally. Nothing was written to Firebase.",
+          message:
+            "Flashcard draft created locally. Edit it, save it as a draft, or simulate adding it to a deck.",
         });
       } else if (payload?.fallback) {
         setFeedback({
@@ -317,6 +332,29 @@ export default function PublicDashboardShell() {
     setDrafts((current) =>
       current.map((draft) => (draft.id === draftId ? { ...draft, [field]: value } : draft))
     );
+  };
+
+  const saveLocalDraft = (draftId: string) => {
+    const draft = drafts.find((item) => item.id === draftId);
+    setFeedback({
+      type: "success",
+      message: draft
+        ? "Draft saved locally. Review it in Progress -> Flashcard Drafts."
+        : "Draft saved locally.",
+    });
+  };
+
+  const addLocalDraftToDeck = (draftId: string, deckId: string) => {
+    const deck = WALKTHROUGH_DECKS.find((item) => item.id === deckId);
+    setDrafts((current) =>
+      current.map((draft) =>
+        draft.id === draftId ? { ...draft, contentStatus: "approved", addedDeckId: deckId } : draft
+      )
+    );
+    setFeedback({
+      type: "success",
+      message: `Card added to ${deck?.name ?? "the selected deck"} in this local walkthrough. Nothing was written to Firebase.`,
+    });
   };
 
   return (
@@ -371,6 +409,8 @@ export default function PublicDashboardShell() {
               onSelfMarkChange={setSelfMark}
               onSaveAttempt={handleSaveAttempt}
               onTutorIntent={handleTutorIntent}
+              confirmFullSolution={confirmFullSolution}
+              onConfirmFullSolutionChange={setConfirmFullSolution}
             />
           ) : null}
           {surface === "progress" ? (
@@ -379,10 +419,19 @@ export default function PublicDashboardShell() {
               recentMistakes={recentMistakes}
               questions={WALKTHROUGH_QUESTIONS}
               drafts={drafts}
+              onSaveDraft={saveLocalDraft}
+              onAddDraftToDeck={addLocalDraftToDeck}
             />
           ) : null}
           {surface === "decks" ? <DecksPanel /> : null}
-          {surface === "cards" ? <CardsPanel drafts={drafts} onUpdateDraft={updateDraft} /> : null}
+          {surface === "cards" ? (
+            <CardsPanel
+              drafts={drafts}
+              onUpdateDraft={updateDraft}
+              onSaveDraft={saveLocalDraft}
+              onAddDraftToDeck={addLocalDraftToDeck}
+            />
+          ) : null}
           {surface === "goals" ? <GoalsPanel /> : null}
           {surface === "constellation" ? <ConstellationPanel /> : null}
           {surface === "profile" ? <ProfilePanel /> : null}
@@ -456,16 +505,17 @@ function HomePanel() {
       />
       <Card padding="lg">
         <SectionHeader
-          eyebrow="MVP loop"
-          title="Flashcards build memory. Practice tests application. Tutor repairs weaknesses. Progress tracks evidence."
-          description="The public walkthrough uses the same dashboard route family and product vocabulary as the private app."
+          eyebrow="How Jami works"
+          title="Learn, practise, repair, save, and track."
+          description="A first-time student should be able to follow the whole learning loop from this public dashboard."
         />
-        <div className="mt-6 grid gap-3 lg:grid-cols-4">
+        <div className="mt-6 grid gap-3 lg:grid-cols-5">
           {[
-            ["Learn", "Review due and weak flashcards.", "/dashboard/study"],
-            ["Practise", "Attempt topical questions and self-mark.", "/dashboard/practise"],
-            ["Tutor", "Ask hint-first help inside a question.", "/dashboard/practise"],
-            ["Progress", "See weak topics, mistakes, and support level.", "/dashboard/progress"],
+            ["1. Learn", "Review flashcards.", "/dashboard/study"],
+            ["2. Practise", "Try questions.", "/dashboard/practise"],
+            ["3. Tutor", "Get help when stuck.", "/dashboard/practise"],
+            ["4. Save", "Turn mistakes into card drafts.", "/dashboard/cards"],
+            ["5. Progress", "See weak topics.", "/dashboard/progress"],
           ].map(([title, text, href]) => (
             <Link
               key={title}
@@ -573,6 +623,8 @@ function PractisePanel({
   onSelfMarkChange,
   onSaveAttempt,
   onTutorIntent,
+  confirmFullSolution,
+  onConfirmFullSolutionChange,
 }: {
   attempts: WalkthroughAttempt[];
   selectedQuestion: WalkthroughQuestion;
@@ -590,6 +642,8 @@ function PractisePanel({
   onSelfMarkChange: (value: boolean) => void;
   onSaveAttempt: () => void;
   onTutorIntent: (intent: WalkthroughTutorIntent, prompt: string) => void;
+  confirmFullSolution: boolean;
+  onConfirmFullSolutionChange: (value: boolean) => void;
 }) {
   return (
     <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(460px,0.9fr)_minmax(0,1.1fr)]">
@@ -659,8 +713,10 @@ function PractisePanel({
             <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-3">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-sm font-semibold text-white">Attempt meta</div>
-                  <div className="mt-0.5 text-xs text-text-muted">Mark honestly; confidence is evidence, not judgement.</div>
+                  <div className="text-sm font-semibold text-white">How did your attempt go?</div>
+                  <div className="mt-0.5 text-xs text-text-muted">
+                    Confidence: 1 = guessed, 5 = fully confident.
+                  </div>
                 </div>
                 <span className={chipClass}>Local-only</span>
               </div>
@@ -686,6 +742,12 @@ function PractisePanel({
               </div>
               <ConfidencePicker value={confidence} onChange={onConfidenceChange} />
             </div>
+            {selfMark === false ? (
+              <div className="mt-3 rounded-[1rem] border border-rose-300/20 bg-rose-500/[0.07] p-3 text-xs leading-5 text-rose-100">
+                Add a short mistake label in the private app so Jami knows what to repair.
+                Example: sign error, forgot formula, misunderstood question.
+              </div>
+            ) : null}
             </div>
             <Button type="button" size="lg" onClick={onSaveAttempt}>
               Save local attempt
@@ -699,6 +761,8 @@ function PractisePanel({
           messages={tutorMessages}
           busyIntent={busyIntent}
           onTutorIntent={onTutorIntent}
+          confirmFullSolution={confirmFullSolution}
+          onConfirmFullSolutionChange={onConfirmFullSolutionChange}
         />
       </div>
     </div>
@@ -742,6 +806,8 @@ function TutorPanel({
   messages,
   busyIntent,
   onTutorIntent,
+  confirmFullSolution,
+  onConfirmFullSolutionChange,
 }: {
   selectedQuestion: WalkthroughQuestion;
   userAnswer: string;
@@ -749,6 +815,8 @@ function TutorPanel({
   messages: WalkthroughTutorMessage[];
   busyIntent: WalkthroughTutorIntent | null;
   onTutorIntent: (intent: WalkthroughTutorIntent, prompt: string) => void;
+  confirmFullSolution: boolean;
+  onConfirmFullSolutionChange: (value: boolean) => void;
 }) {
   return (
     <Card padding="lg">
@@ -764,11 +832,56 @@ function TutorPanel({
             type="button"
             variant={action.variant ?? "secondary"}
             disabled={busyIntent !== null}
+            title={action.description}
             className="min-h-[2.55rem] flex-1 rounded-full px-3 text-xs sm:flex-none"
-            onClick={() => onTutorIntent(action.intent, action.prompt)}
+            onClick={() => {
+              if (action.intent === "full-solution" && !confirmFullSolution) {
+                onConfirmFullSolutionChange(true);
+                return;
+              }
+              onTutorIntent(action.intent, action.prompt);
+            }}
           >
             {busyIntent === action.intent ? "Thinking..." : action.label}
           </Button>
+        ))}
+      </div>
+      {confirmFullSolution ? (
+        <div className="mt-3 rounded-[1.25rem] border border-rose-300/25 bg-rose-500/[0.08] p-4">
+          <div className="text-sm font-semibold text-rose-100">Show full solution?</div>
+          <p className="mt-1 text-sm leading-6 text-text-secondary">
+            Full solution gives the answer and may count as lower independent evidence. Try one
+            more step first if you can.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="danger"
+              onClick={() =>
+                onTutorIntent(
+                  "full-solution",
+                  TUTOR_ACTIONS.find((action) => action.intent === "full-solution")?.prompt ??
+                    "Show the full solution."
+                )
+              }
+            >
+              Show full solution
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => onConfirmFullSolutionChange(false)}>
+              Keep trying
+            </Button>
+          </div>
+        </div>
+      ) : null}
+      <div className="mt-4 grid gap-2 md:grid-cols-2">
+        {TUTOR_ACTIONS.map((action) => (
+          <div
+            key={`${action.intent}-description`}
+            className="rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2"
+          >
+            <div className="text-xs font-semibold text-white">{action.label}</div>
+            <div className="mt-0.5 text-xs leading-5 text-text-muted">{action.description}</div>
+          </div>
         ))}
       </div>
       <div className="mt-5 space-y-3">
@@ -811,6 +924,8 @@ function ProgressPanel({
   recentMistakes,
   questions,
   drafts,
+  onSaveDraft,
+  onAddDraftToDeck,
 }: {
   topicSummaries: Array<{
     topic: { id: string; name: string; subject: string };
@@ -823,8 +938,11 @@ function ProgressPanel({
   recentMistakes: WalkthroughAttempt[];
   questions: WalkthroughQuestion[];
   drafts: WalkthroughDraft[];
+  onSaveDraft: (draftId: string) => void;
+  onAddDraftToDeck: (draftId: string, deckId: string) => void;
 }) {
   const questionsById = new Map(questions.map((question) => [question.id, question]));
+  const recommendedTopic = topicSummaries[0];
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
@@ -834,6 +952,18 @@ function ProgressPanel({
           title="Constructive mastery evidence."
           description="Weak topics, weak cards, practice accuracy, recent mistakes, drafts, and support level."
         />
+        <div className={`${surfaceCardClass} mt-5 border-warm-border bg-warm-glow`}>
+          <div className="text-sm font-semibold text-white">Recommended next step</div>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            {recommendedTopic
+              ? `Review linked cards, then retry 1 practice question on ${recommendedTopic.topic.name}.`
+              : "Review due cards, then attempt one topical question."}
+          </p>
+          <p className="mt-2 text-xs leading-5 text-text-muted">
+            Support level shows how much Tutor help you used recently. It is not a judgement; it helps
+            Jami choose the right next task.
+          </p>
+        </div>
         <div className="mt-5 space-y-3">
           {topicSummaries.map((summary) => (
             <div key={summary.topic.id} className={surfaceCardClass}>
@@ -870,6 +1000,10 @@ function ProgressPanel({
                   ))}
                 </div>
               ) : null}
+              <div className="mt-4 rounded-[1rem] border border-white/[0.08] bg-white/[0.04] p-3 text-sm leading-6 text-text-secondary">
+                <span className="font-semibold text-white">Next action:</span> Review linked cards,
+                then retry 1 practice question.
+              </div>
             </div>
           ))}
         </div>
@@ -905,12 +1039,27 @@ function ProgressPanel({
                       </span>
                     ))}
                   </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link className="rounded-full border border-white/[0.1] px-3 py-1.5 text-xs font-semibold text-text-secondary hover:border-warm-border hover:text-white" href="/dashboard/practise">
+                      Retry question
+                    </Link>
+                    <Link className="rounded-full border border-white/[0.1] px-3 py-1.5 text-xs font-semibold text-text-secondary hover:border-warm-border hover:text-white" href="/dashboard/practise">
+                      Ask Tutor
+                    </Link>
+                    <Link className="rounded-full border border-white/[0.1] px-3 py-1.5 text-xs font-semibold text-text-secondary hover:border-warm-border hover:text-white" href="/dashboard/practise">
+                      Make flashcard
+                    </Link>
+                  </div>
                 </div>
               );
             })}
           </div>
         </Card>
-        <DraftsPanel drafts={drafts} />
+        <DraftsPanel
+          drafts={drafts}
+          onSaveDraft={onSaveDraft}
+          onAddDraftToDeck={onAddDraftToDeck}
+        />
       </div>
     </div>
   );
@@ -921,8 +1070,8 @@ function DecksPanel() {
     <Card padding="lg">
       <SectionHeader
         eyebrow="Decks"
-        title="Browse the seeded card workspace."
-        description="Deck creation is private-only, but the public walkthrough can inspect how the library is organised."
+        title="Decks are groups of flashcards."
+        description="Create a deck first. Then open it to add cards. The public walkthrough shows seeded deck structure without saving private data."
       />
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {WALKTHROUGH_DECKS.map((deck) => (
@@ -943,9 +1092,13 @@ function DecksPanel() {
 function CardsPanel({
   drafts,
   onUpdateDraft,
+  onSaveDraft,
+  onAddDraftToDeck,
 }: {
   drafts: WalkthroughDraft[];
   onUpdateDraft: (draftId: string, field: "front" | "back", value: string) => void;
+  onSaveDraft: (draftId: string) => void;
+  onAddDraftToDeck: (draftId: string, deckId: string) => void;
 }) {
   return (
     <div className="space-y-4">
@@ -953,7 +1106,7 @@ function CardsPanel({
         <SectionHeader
           eyebrow="Cards"
           title="Tags organise content. Topics measure learning."
-          description="The public version shows the card library and local draft editing without saving private data."
+          description="Search and edit cards across every deck. To create your first real card, choose a deck first in the private app."
         />
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {WALKTHROUGH_CARDS.map((card) => (
@@ -979,29 +1132,40 @@ function CardsPanel({
           ))}
         </div>
       </Card>
-      <EditableDraftsPanel drafts={drafts} onUpdateDraft={onUpdateDraft} />
+      <EditableDraftsPanel
+        drafts={drafts}
+        onUpdateDraft={onUpdateDraft}
+        onSaveDraft={onSaveDraft}
+        onAddDraftToDeck={onAddDraftToDeck}
+      />
     </div>
   );
 }
 
-function DraftsPanel({ drafts }: { drafts: WalkthroughDraft[] }) {
+function DraftsPanel({
+  drafts,
+  onSaveDraft,
+  onAddDraftToDeck,
+}: {
+  drafts: WalkthroughDraft[];
+  onSaveDraft: (draftId: string) => void;
+  onAddDraftToDeck: (draftId: string, deckId: string) => void;
+}) {
   return (
     <Card padding="lg">
-      <SectionHeader title="Flashcard drafts" description="AI-assisted content stays draft until reviewed." />
+      <SectionHeader
+        title="Flashcard drafts"
+        description="AI-assisted content stays draft until reviewed. Public actions are local simulations only."
+      />
       <div className="mt-5 space-y-3">
         {drafts.map((draft) => (
-          <div key={draft.id} className={surfaceCardClass}>
-            <div className="mb-3 flex flex-wrap gap-2">
-              <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
-                Draft
-              </span>
-              <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-3 py-1 text-xs text-text-secondary">
-                Local-only
-              </span>
-            </div>
-            <div className="text-sm font-semibold text-white">{draft.front}</div>
-            <p className="mt-2 text-sm leading-6 text-text-secondary">{draft.back}</p>
-          </div>
+          <DraftReviewCard
+            key={draft.id}
+            draft={draft}
+            readonly
+            onSaveDraft={onSaveDraft}
+            onAddDraftToDeck={onAddDraftToDeck}
+          />
         ))}
       </div>
     </Card>
@@ -1011,36 +1175,141 @@ function DraftsPanel({ drafts }: { drafts: WalkthroughDraft[] }) {
 function EditableDraftsPanel({
   drafts,
   onUpdateDraft,
+  onSaveDraft,
+  onAddDraftToDeck,
 }: {
   drafts: WalkthroughDraft[];
   onUpdateDraft: (draftId: string, field: "front" | "back", value: string) => void;
+  onSaveDraft: (draftId: string) => void;
+  onAddDraftToDeck: (draftId: string, deckId: string) => void;
 }) {
   return (
     <Card tone="warm" padding="lg">
       <SectionHeader
         title="Editable local drafts"
-        description="Editing here is deliberately session-only."
+        description="Drafts are not real cards until you add them to a deck. In public mode, that action is simulated locally."
       />
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {drafts.map((draft) => (
-          <div key={draft.id} className={surfaceCardClass}>
-            <Textarea
-              label="Front"
-              rows={3}
-              value={draft.front}
-              onChange={(event) => onUpdateDraft(draft.id, "front", event.target.value)}
-            />
-            <Textarea
-              label="Back"
-              rows={4}
-              value={draft.back}
-              onChange={(event) => onUpdateDraft(draft.id, "back", event.target.value)}
-              containerClassName="mt-3"
-            />
-          </div>
+          <DraftReviewCard
+            key={draft.id}
+            draft={draft}
+            onUpdateDraft={onUpdateDraft}
+            onSaveDraft={onSaveDraft}
+            onAddDraftToDeck={onAddDraftToDeck}
+          />
         ))}
       </div>
     </Card>
+  );
+}
+
+function DraftReviewCard({
+  draft,
+  readonly = false,
+  onUpdateDraft,
+  onSaveDraft,
+  onAddDraftToDeck,
+}: {
+  draft: WalkthroughDraft;
+  readonly?: boolean;
+  onUpdateDraft?: (draftId: string, field: "front" | "back", value: string) => void;
+  onSaveDraft: (draftId: string) => void;
+  onAddDraftToDeck: (draftId: string, deckId: string) => void;
+}) {
+  const defaultDeckId = draft.addedDeckId ?? WALKTHROUGH_DECKS[0]?.id ?? "";
+  const [destinationDeckId, setDestinationDeckId] = useState(defaultDeckId);
+  const added = draft.contentStatus === "approved";
+
+  return (
+    <div className={surfaceCardClass}>
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
+          Flashcard draft
+        </span>
+        <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-3 py-1 text-xs text-text-secondary">
+          Local-only
+        </span>
+        <span
+          className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+            added
+              ? "border-emerald-300/25 bg-emerald-400/[0.08] text-emerald-100"
+              : "border-white/[0.1] bg-white/[0.05] text-text-secondary"
+          }`}
+        >
+          {added ? `Added to ${deckName(draft.addedDeckId ?? destinationDeckId)}` : "Draft - not added to your deck yet"}
+        </span>
+      </div>
+
+      {readonly || !onUpdateDraft ? (
+        <>
+          <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Front</div>
+          <div className="mt-2 text-sm font-semibold text-white">{draft.front}</div>
+          <div className="mt-4 text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Back</div>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">{draft.back}</p>
+        </>
+      ) : (
+        <>
+          <Textarea
+            label="Front"
+            rows={3}
+            value={draft.front}
+            onChange={(event) => onUpdateDraft(draft.id, "front", event.target.value)}
+          />
+          <Textarea
+            label="Back"
+            rows={4}
+            value={draft.back}
+            onChange={(event) => onUpdateDraft(draft.id, "back", event.target.value)}
+            containerClassName="mt-3"
+          />
+        </>
+      )}
+
+      <div className="mt-4">
+        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+          Suggested topic
+        </div>
+        <div className="mt-2 flex flex-wrap gap-2">
+          {draft.topicIds.map((topicId) => (
+            <TopicChip key={topicId} topicId={topicId} />
+          ))}
+        </div>
+      </div>
+
+      <div className="mt-4">
+        <label className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted" htmlFor={`${draft.id}-deck`}>
+          Destination deck
+        </label>
+        <select
+          id={`${draft.id}-deck`}
+          value={destinationDeckId}
+          onChange={(event) => setDestinationDeckId(event.target.value)}
+          disabled={added}
+          className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-white/[0.1] bg-surface-raised px-3 text-sm text-white outline-none transition focus:border-warm-border"
+        >
+          {WALKTHROUGH_DECKS.map((deck) => (
+            <option key={deck.id} value={deck.id} className="bg-surface text-white">
+              {deck.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      <div className="mt-4 flex flex-wrap gap-2">
+        <Button type="button" variant="secondary" onClick={() => onSaveDraft(draft.id)}>
+          Save as draft
+        </Button>
+        <Button
+          type="button"
+          variant="warm"
+          disabled={added || !destinationDeckId}
+          onClick={() => onAddDraftToDeck(draft.id, destinationDeckId)}
+        >
+          Add to deck
+        </Button>
+      </div>
+    </div>
   );
 }
 

@@ -587,14 +587,23 @@ export default function CardsSearchPage() {
           </p>
         </div>
       ) : (
-        <CardCreationPanel
-          userId={user.uid}
-          decks={decks}
-          existingCards={cards}
-          availableTags={availableTags}
-          onCardsCreated={handleCardsCreated}
-          onFeedback={setFeedback}
-        />
+        <>
+          <section className="rounded-[1.45rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
+            <div className="font-semibold text-white">Cards are the individual flashcards inside your decks.</div>
+            <p className="mt-1">
+              This page lets you search and edit cards across every deck. To create your first card,
+              choose a deck first, then write the front and back.
+            </p>
+          </section>
+          <CardCreationPanel
+            userId={user.uid}
+            decks={decks}
+            existingCards={cards}
+            availableTags={availableTags}
+            onCardsCreated={handleCardsCreated}
+            onFeedback={setFeedback}
+          />
+        </>
       )}
 
       {!isDemoUser ? (

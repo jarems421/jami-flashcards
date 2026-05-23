@@ -12,6 +12,10 @@ import type { Card as StudyCard } from "@/lib/study/cards";
 import { getActiveTopics } from "@/services/study/topics";
 import { getActiveQuestions, getAttempts } from "@/services/study/practice";
 import { getMasteryEvents } from "@/services/study/mastery";
+import {
+  getGeneratedContentDrafts,
+  type GeneratedContentDraft,
+} from "@/services/study/generated-content";
 import { ensureStudyStateSetup, loadUserCards } from "@/services/study/daily-review";
 import AppPage from "@/components/layout/AppPage";
 import {
@@ -37,6 +41,7 @@ export default function ProgressPage() {
   const [questions, setQuestions] = useState<Question[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [masteryEvents, setMasteryEvents] = useState<MasteryEvent[]>([]);
+  const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
@@ -48,13 +53,14 @@ export default function ProgressPage() {
       setFeedback(null);
       try {
         await ensureStudyStateSetup(user.uid);
-        const [nextTopics, nextCards, nextQuestions, nextAttempts, nextMasteryEvents] =
+          const [nextTopics, nextCards, nextQuestions, nextAttempts, nextMasteryEvents, nextDrafts] =
           await Promise.all([
             getActiveTopics(user.uid),
             loadUserCards(user.uid),
             getActiveQuestions(user.uid),
             getAttempts(user.uid),
             getMasteryEvents(user.uid),
+            getGeneratedContentDrafts(user.uid).catch(() => [] as GeneratedContentDraft[]),
           ]);
 
         if (!cancelled) {
@@ -63,6 +69,7 @@ export default function ProgressPage() {
           setQuestions(nextQuestions);
           setAttempts(nextAttempts);
           setMasteryEvents(nextMasteryEvents);
+          setDrafts(nextDrafts);
         }
       } catch (error) {
         console.error(error);
@@ -112,6 +119,11 @@ export default function ProgressPage() {
     () => new Map(questions.map((question) => [question.id, question])),
     [questions]
   );
+  const activeDrafts = useMemo(
+    () => drafts.filter((draft) => draft.kind === "flashcard" && draft.contentStatus === "draft"),
+    [drafts]
+  );
+  const recommendedTopic = weakTopics[0];
 
   if (!featureFlags.enableMasteryProgress) {
     return (
@@ -144,7 +156,7 @@ export default function ProgressPage() {
 
       <PageHero
         eyebrow="Mastery tracks evidence"
-        title="Weak topics, practice accuracy, and support level."
+        title="See what you understand and what needs work."
         description="This MVP view stays intentionally narrow: it combines memory risk and practice attempts without becoming a full analytics suite yet."
         tone="warm"
         aside={
@@ -185,6 +197,20 @@ export default function ProgressPage() {
               { label: "Support level", value: supportLevel, tone: "warm" },
             ]}
           />
+
+          <Card tone="warm" padding="md">
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+              Recommended next step
+            </div>
+            <div className="mt-2 text-lg font-semibold text-white">
+              {recommendedTopic
+                ? `Review linked cards, then retry 1 question on ${recommendedTopic.topic.name}.`
+                : "Review due flashcards, then add one practice question when you are ready."}
+            </div>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              Support level shows how much Tutor help you used recently. It is not a judgement - it helps Jami choose the right next task.
+            </p>
+          </Card>
 
           {topics.length === 0 ? (
             <EmptyState
@@ -244,6 +270,9 @@ export default function ProgressPage() {
                           ))}
                         </div>
                       ) : null}
+                      <div className="mt-4 rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3 text-sm leading-6 text-text-secondary">
+                        <span className="font-semibold text-white">Next action:</span> Review linked cards, then retry 1 practice question.
+                      </div>
                     </div>
                   ))}
                 </div>
@@ -281,6 +310,26 @@ export default function ProgressPage() {
                               ))}
                             </div>
                           ) : null}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Link
+                              href="/dashboard/practise"
+                              className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/[0.2] hover:bg-white/[0.08]"
+                            >
+                              Retry question
+                            </Link>
+                            <Link
+                              href="/dashboard/practise"
+                              className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.08]"
+                            >
+                              Ask Tutor
+                            </Link>
+                            <Link
+                              href="/dashboard/practise"
+                              className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/[0.2] hover:bg-white/[0.08]"
+                            >
+                              Make flashcard
+                            </Link>
+                          </div>
                         </div>
                       );
                     })
@@ -288,6 +337,29 @@ export default function ProgressPage() {
                     <p className="text-sm leading-6 text-text-secondary">
                       No incorrect practice attempts yet. Once you miss a question, Jami will show
                       it here as a repair target.
+                    </p>
+                  )}
+                </div>
+              </Card>
+              <Card padding="lg">
+                <SectionHeader
+                  title="Flashcard drafts"
+                  description="Tutor-created cards stay as drafts until you review or add them to a deck."
+                />
+                <div className="mt-5 space-y-3">
+                  {activeDrafts.length > 0 ? (
+                    activeDrafts.slice(0, 4).map((draft) => (
+                      <div key={draft.id} className={surfaceCardClass}>
+                        <div className="mb-2 inline-flex rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
+                          Draft - not in a deck yet
+                        </div>
+                        <div className="text-sm font-semibold text-white">{draft.front}</div>
+                        <p className="mt-2 line-clamp-3 text-sm leading-6 text-text-secondary">{draft.back}</p>
+                      </div>
+                    ))
+                  ) : (
+                    <p className="text-sm leading-6 text-text-secondary">
+                      No flashcard drafts yet. Ask Tutor to make a card from a useful mistake, then review it here.
                     </p>
                   )}
                 </div>

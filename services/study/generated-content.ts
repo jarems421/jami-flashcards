@@ -1,6 +1,7 @@
-import { addDoc, collection, getDocs, orderBy, query, updateDoc, doc } from "firebase/firestore";
+import { addDoc, collection, getDoc, getDocs, orderBy, query, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { buildFlashcardDraftCardData } from "@/lib/practice/generated-content";
 import {
   isContentOrigin,
   isContentStatus,
@@ -144,4 +145,78 @@ export async function updateGeneratedContentDraftStatus(
     WRITE_MS,
     "Update generated content draft"
   );
+}
+
+export async function convertFlashcardDraftToCard(
+  userId: string,
+  input: {
+    draftId: string;
+    deckId: string;
+  }
+) {
+  const normalizedUserId = userId.trim();
+  const draftId = input.draftId.trim();
+  const deckId = input.deckId.trim();
+
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!draftId) {
+    throw new Error("Missing draftId.");
+  }
+  if (!deckId) {
+    throw new Error("Choose a destination deck first.");
+  }
+
+  const [draftSnapshot, deckSnapshot] = await Promise.all([
+    withTimeout(
+      getDoc(doc(db, "users", normalizedUserId, "generatedContentDrafts", draftId)),
+      LOAD_MS,
+      "Load flashcard draft"
+    ),
+    withTimeout(getDoc(doc(db, "decks", deckId)), LOAD_MS, "Load destination deck"),
+  ]);
+
+  if (!draftSnapshot.exists()) {
+    throw new Error("Flashcard draft not found.");
+  }
+
+  const deckData = deckSnapshot.exists() ? deckSnapshot.data() : null;
+  const deckOwner =
+    typeof deckData?.userId === "string"
+      ? deckData.userId
+      : typeof deckData?.uid === "string"
+        ? deckData.uid
+        : "";
+  if (!deckSnapshot.exists() || deckOwner !== normalizedUserId) {
+    throw new Error("Destination deck not found.");
+  }
+
+  const draft = mapGeneratedContentDraftData(
+    draftSnapshot.id,
+    draftSnapshot.data() as Record<string, unknown>
+  );
+  const cardData = buildFlashcardDraftCardData(draft, {
+    userId: normalizedUserId,
+    deckId,
+  });
+
+  const cardRef = await withTimeout(
+    addDoc(collection(db, "cards"), cardData),
+    WRITE_MS,
+    "Create card from flashcard draft"
+  );
+
+  await withTimeout(
+    updateDoc(doc(db, "users", normalizedUserId, "generatedContentDrafts", draftId), {
+      contentStatus: "approved",
+      reviewedAt: Date.now(),
+      reviewedBy: normalizedUserId,
+      updatedAt: Date.now(),
+    }),
+    WRITE_MS,
+    "Approve flashcard draft"
+  );
+
+  return cardRef.id;
 }

@@ -50,7 +50,8 @@ export type WalkthroughDraft = {
   back: string;
   topicIds: string[];
   sourceQuestionId: string;
-  contentStatus: "draft";
+  contentStatus: "draft" | "approved";
+  addedDeckId?: string;
 };
 
 export type WalkthroughTutorMessage = {

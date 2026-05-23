@@ -7,13 +7,17 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import type { Topic } from "@/lib/practice/topics";
 import type { Attempt, Question } from "@/lib/practice/questions";
 import { getActiveTopics, createTopic } from "@/services/study/topics";
+import { getDecks, type Deck } from "@/services/study/decks";
 import {
   createAttempt,
   createQuestion,
   getAttempts,
   getActiveQuestions,
 } from "@/services/study/practice";
-import { createFlashcardDraft } from "@/services/study/generated-content";
+import {
+  convertFlashcardDraftToCard,
+  createFlashcardDraft,
+} from "@/services/study/generated-content";
 import {
   sendPracticeTutorMessage,
   type PracticeTutorIntent,
@@ -35,14 +39,19 @@ import {
 type Feedback = { type: "success" | "error"; message: string };
 type TutorMessage = { role: "user" | "model"; text: string };
 
-const TUTOR_INTENTS: Array<{ intent: PracticeTutorIntent; label: string; prompt: string }> = [
-  { intent: "hint", label: "Hint", prompt: "Give me one hint without revealing the answer." },
-  { intent: "check-working", label: "Check working", prompt: "Check my working and point me to the first thing to fix." },
-  { intent: "explain-concept", label: "Explain concept", prompt: "Explain the core concept behind this question." },
-  { intent: "show-method", label: "Show method", prompt: "Show me the setup or method, but leave a step for me." },
-  { intent: "full-solution", label: "Full solution", prompt: "Show the full solution. I know this may reduce independent evidence." },
-  { intent: "make-flashcard", label: "Make card", prompt: "Turn the misconception here into one flashcard draft." },
-  { intent: "similar-question", label: "Similar question", prompt: "Give me one similar question without a solution." },
+const TUTOR_INTENTS: Array<{
+  intent: PracticeTutorIntent;
+  label: string;
+  prompt: string;
+  description: string;
+}> = [
+  { intent: "hint", label: "Hint", prompt: "Give me one hint without revealing the answer.", description: "One nudge without the answer." },
+  { intent: "check-working", label: "Check working", prompt: "Check my working and point me to the first thing to fix.", description: "Check whether your steps are valid." },
+  { intent: "explain-concept", label: "Explain concept", prompt: "Explain the core concept behind this question.", description: "Understand the idea behind it." },
+  { intent: "show-method", label: "Show method", prompt: "Show me the setup or method, but leave a step for me.", description: "See the general method." },
+  { intent: "full-solution", label: "Full solution", prompt: "Show the full solution. I know this may reduce independent evidence.", description: "Reveal the full answer deliberately." },
+  { intent: "make-flashcard", label: "Make card", prompt: "Turn the misconception here into one flashcard draft.", description: "Turn this mistake into a draft." },
+  { intent: "similar-question", label: "Similar question", prompt: "Give me one similar question without a solution.", description: "Practise the same skill again." },
 ];
 
 const surfaceCardClass =
@@ -67,6 +76,7 @@ function formatElapsed(seconds: number) {
 export default function PractisePage() {
   const { user, demoMode } = useUser();
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [decks, setDecks] = useState<Deck[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
@@ -92,12 +102,19 @@ export default function PractisePage() {
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
   const [tutorThreadId, setTutorThreadId] = useState<string | undefined>();
   const [tutorBusyIntent, setTutorBusyIntent] = useState<PracticeTutorIntent | null>(null);
+  const [confirmFullSolution, setConfirmFullSolution] = useState(false);
   const [lastSuggestedFlashcard, setLastSuggestedFlashcard] = useState<{
     front: string;
     back: string;
   } | null>(null);
+  const [draftFront, setDraftFront] = useState("");
+  const [draftBack, setDraftBack] = useState("");
+  const [draftDeckId, setDraftDeckId] = useState("");
+  const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
+  const [addingDraftToDeck, setAddingDraftToDeck] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mistakeLabelsInputRef = useRef<HTMLInputElement>(null);
 
   const selectedQuestion = useMemo(
     () => questions.find((question) => question.id === selectedQuestionId) ?? questions[0] ?? null,
@@ -123,12 +140,14 @@ export default function PractisePage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const [nextTopics, nextQuestions, nextAttempts] = await Promise.all([
+      const [nextTopics, nextDecks, nextQuestions, nextAttempts] = await Promise.all([
         getActiveTopics(user.uid),
+        getDecks(user.uid),
         getActiveQuestions(user.uid),
         getAttempts(user.uid),
       ]);
       setTopics(nextTopics);
+      setDecks(nextDecks);
       setQuestions(nextQuestions);
       setAttempts(nextAttempts);
       setSelectedQuestionId((current) =>
@@ -160,8 +179,24 @@ export default function PractisePage() {
     setTutorUsed(false);
     setTutorMessages([]);
     setTutorThreadId(undefined);
+    setConfirmFullSolution(false);
     setLastSuggestedFlashcard(null);
+    setDraftFront("");
+    setDraftBack("");
+    setSavedDraftId(null);
   }, [selectedQuestionId]);
+
+  useEffect(() => {
+    if (!draftDeckId && decks[0]?.id) {
+      setDraftDeckId(decks[0].id);
+    }
+  }, [decks, draftDeckId]);
+
+  useEffect(() => {
+    if (isCorrect === false) {
+      mistakeLabelsInputRef.current?.focus();
+    }
+  }, [isCorrect]);
 
   useEffect(() => {
     if (timerRef.current) clearInterval(timerRef.current);
@@ -218,7 +253,10 @@ export default function PractisePage() {
       setSelectedTopicIds([]);
       await loadAll();
       setSelectedQuestionId(questionId);
-      setFeedback({ type: "success", message: "Practice question created." });
+      setFeedback({
+        type: "success",
+        message: "Question created. Attempt it below to start building Progress evidence.",
+      });
     } catch (error) {
       setFeedback({
         type: "error",
@@ -256,7 +294,10 @@ export default function PractisePage() {
           .filter(Boolean),
       });
       await loadAll();
-      setFeedback({ type: "success", message: "Attempt saved and mastery evidence recorded." });
+      setFeedback({
+        type: "success",
+        message: "Attempt saved. Progress updated. Tutor now has this attempt as context.",
+      });
     } catch (error) {
       setFeedback({
         type: "error",
@@ -295,6 +336,12 @@ export default function PractisePage() {
       setTutorThreadId(response.threadId);
       setTutorMessages((current) => [...current, { role: "model", text: response.reply }]);
       setLastSuggestedFlashcard(response.suggestedFlashcard);
+      if (response.suggestedFlashcard) {
+        setDraftFront(response.suggestedFlashcard.front);
+        setDraftBack(response.suggestedFlashcard.back);
+        setSavedDraftId(null);
+        setDraftDeckId((current) => current || (decks[0]?.id ?? ""));
+      }
     } catch (error) {
       setTutorMessages((current) => [
         ...current,
@@ -313,14 +360,18 @@ export default function PractisePage() {
 
     setSavingDraft(true);
     try {
-      await createFlashcardDraft(user.uid, {
-        ...lastSuggestedFlashcard,
+      const draftId = await createFlashcardDraft(user.uid, {
+        front: draftFront,
+        back: draftBack,
         topicIds: selectedQuestion.topicIds,
         sourceType: "question",
         sourceId: selectedQuestion.id,
       });
-      setLastSuggestedFlashcard(null);
-      setFeedback({ type: "success", message: "Flashcard draft saved for review." });
+      setSavedDraftId(draftId);
+      setFeedback({
+        type: "success",
+        message: "Draft saved. Review it in Progress -> Flashcard Drafts.",
+      });
     } catch (error) {
       setFeedback({
         type: "error",
@@ -328,6 +379,47 @@ export default function PractisePage() {
       });
     } finally {
       setSavingDraft(false);
+    }
+  };
+
+  const handleAddFlashcardDraftToDeck = async () => {
+    if (!selectedQuestion || !lastSuggestedFlashcard) return;
+    if (!draftDeckId) {
+      setFeedback({ type: "error", message: "Choose a destination deck first." });
+      return;
+    }
+
+    setAddingDraftToDeck(true);
+    try {
+      const draftId =
+        savedDraftId ??
+        (await createFlashcardDraft(user.uid, {
+          front: draftFront,
+          back: draftBack,
+          topicIds: selectedQuestion.topicIds,
+          sourceType: "question",
+          sourceId: selectedQuestion.id,
+        }));
+      await convertFlashcardDraftToCard(user.uid, {
+        draftId,
+        deckId: draftDeckId,
+      });
+      const deckName = decks.find((deck) => deck.id === draftDeckId)?.name ?? "your deck";
+      setLastSuggestedFlashcard(null);
+      setDraftFront("");
+      setDraftBack("");
+      setSavedDraftId(null);
+      setFeedback({
+        type: "success",
+        message: `Card added to ${deckName}. You can review it in Learn.`,
+      });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not add draft to deck.",
+      });
+    } finally {
+      setAddingDraftToDeck(false);
     }
   };
 
@@ -466,26 +558,32 @@ export default function PractisePage() {
                   title="Create a question"
                   description="Keep this manual for MVP. OCR, mark schemes, and paper extraction come later."
                 />
+                <div className="mt-4 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
+                  <div className="font-semibold text-white">Example</div>
+                  <p className="mt-1">Question: Solve x^2 - 5x + 6 = 0</p>
+                  <p>Expected answer: x = 2 or x = 3</p>
+                  <p>Solution notes: Factorise into (x - 2)(x - 3)</p>
+                </div>
                 <div className="mt-4 space-y-3">
                   <Textarea
                     label="Question"
                     value={questionText}
                     onChange={(event) => setQuestionText(event.target.value)}
-                    placeholder="Prove that..."
+                    placeholder="Write the question you want to practise."
                   />
                   <Textarea
-                    label="Answer or checkpoint"
+                    label="Expected answer / checkpoint"
                     rows={3}
                     value={answerText}
                     onChange={(event) => setAnswerText(event.target.value)}
-                    placeholder="Optional expected answer."
+                    placeholder="Optional. Add the answer or mark-scheme idea."
                   />
                   <Textarea
                     label="Solution notes"
                     rows={3}
                     value={solutionText}
                     onChange={(event) => setSolutionText(event.target.value)}
-                    placeholder="Optional method or mark notes."
+                    placeholder="Optional. Add method notes for yourself or Tutor."
                   />
                   <Button
                     type="button"
@@ -588,7 +686,7 @@ export default function PractisePage() {
                       <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-3">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <div>
-                            <div className="text-sm font-semibold text-white">Attempt meta</div>
+                            <div className="text-sm font-semibold text-white">How did your attempt go?</div>
                             <div className="mt-0.5 text-xs text-text-muted">
                               Mark the outcome, then add confidence and repair labels.
                             </div>
@@ -618,7 +716,7 @@ export default function PractisePage() {
                           </div>
                         </div>
                         <Input
-                          label="Confidence 1-5"
+                          label="How confident were you? 1 = guessed, 5 = fully confident"
                           type="number"
                           min={1}
                           max={5}
@@ -628,11 +726,17 @@ export default function PractisePage() {
                       </div>
                       </div>
                       <Input
-                        label="Mistake labels"
+                        ref={mistakeLabelsInputRef}
+                        label="What went wrong?"
                         value={mistakeLabelsInput}
                         onChange={(event) => setMistakeLabelsInput(event.target.value)}
-                        placeholder="conceptual mix-up, sign error, full solution needed"
+                        placeholder="sign error, forgot formula, misunderstood question"
                       />
+                      {isCorrect === false ? (
+                        <p className="rounded-[1rem] border border-warm-border bg-warm-glow px-3 py-2 text-sm text-warm-accent">
+                          Add a short mistake label so Jami knows what to repair.
+                        </p>
+                      ) : null}
                       <MetricStrip
                         items={[
                           { label: "Hints used", value: hintsUsed, tone: hintsUsed > 0 ? "warm" : "default" },
@@ -665,12 +769,49 @@ export default function PractisePage() {
                             variant={item.intent === "full-solution" ? "danger" : "secondary"}
                             disabled={tutorBusyIntent !== null}
                             className="min-h-[2.55rem] flex-1 rounded-full px-3 text-xs sm:flex-none"
-                            onClick={() => void handleTutorIntent(item.intent, item.prompt)}
+                            title={item.description}
+                            onClick={() => {
+                              if (item.intent === "full-solution" && !confirmFullSolution) {
+                                setConfirmFullSolution(true);
+                                return;
+                              }
+                              setConfirmFullSolution(false);
+                              void handleTutorIntent(item.intent, item.prompt);
+                            }}
                           >
                             {tutorBusyIntent === item.intent ? "Thinking..." : item.label}
                           </Button>
                         ))}
                       </div>
+                      <div className="mt-3 grid gap-2 md:grid-cols-2">
+                        {TUTOR_INTENTS.map((item) => (
+                          <div key={item.intent} className="rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-xs leading-5 text-text-secondary">
+                            <span className="font-semibold text-white">{item.label}:</span> {item.description}
+                          </div>
+                        ))}
+                      </div>
+                      {confirmFullSolution ? (
+                        <div className="mt-4 rounded-[1.25rem] border border-error-muted bg-error-muted p-4 text-sm leading-6 text-rose-100">
+                          <div className="font-semibold text-white">Full solution gives the answer.</div>
+                          <p className="mt-1">It may count as lower independent evidence. Use it when you are ready to reveal the full method.</p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="danger"
+                              onClick={() => {
+                                const fullSolution = TUTOR_INTENTS.find((item) => item.intent === "full-solution");
+                                if (fullSolution) void handleTutorIntent(fullSolution.intent, fullSolution.prompt);
+                                setConfirmFullSolution(false);
+                              }}
+                            >
+                              Show full solution
+                            </Button>
+                            <Button type="button" variant="secondary" onClick={() => setConfirmFullSolution(false)}>
+                              Keep trying
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
                       <div className="mt-5 space-y-3">
                         {tutorMessages.length > 0 ? (
                           tutorMessages.map((message, index) => (
@@ -697,23 +838,90 @@ export default function PractisePage() {
                       </div>
                       {lastSuggestedFlashcard ? (
                         <div className={`mt-5 ${surfaceCardClass}`}>
-                          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                            Flashcard draft
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                                Flashcard draft
+                              </div>
+                              <h3 className="mt-2 text-lg font-semibold text-white">
+                                Draft - not added to your deck yet
+                              </h3>
+                              <p className="mt-1 text-sm leading-6 text-text-secondary">
+                                Edit it first, save it for review, or add it straight to a destination deck.
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
+                              {savedDraftId ? "Saved draft" : "Unsaved draft"}
+                            </span>
                           </div>
-                          <div className="mt-3 text-sm text-white">
-                            <strong>Front:</strong> {lastSuggestedFlashcard.front}
+                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                            <Textarea
+                              label="Front"
+                              rows={3}
+                              value={draftFront}
+                              onChange={(event) => {
+                                setDraftFront(event.target.value);
+                                setSavedDraftId(null);
+                              }}
+                            />
+                            <Textarea
+                              label="Back"
+                              rows={4}
+                              value={draftBack}
+                              onChange={(event) => {
+                                setDraftBack(event.target.value);
+                                setSavedDraftId(null);
+                              }}
+                            />
                           </div>
-                          <div className="mt-2 text-sm text-text-secondary">
-                            <strong>Back:</strong> {lastSuggestedFlashcard.back}
+                          <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                            <div>
+                              <div className="mb-2 text-sm font-medium text-text-secondary">Suggested topic</div>
+                              <div className="flex flex-wrap gap-2">
+                                {selectedQuestionTopics.length > 0 ? (
+                                  selectedQuestionTopics.map((topic) => (
+                                    <span key={topic.id} className="rounded-full border border-white/[0.12] bg-white/[0.07] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                                      {topic.name}
+                                    </span>
+                                  ))
+                                ) : (
+                                  <span className="text-sm text-text-muted">No topic linked yet.</span>
+                                )}
+                              </div>
+                            </div>
+                            <label className="block">
+                              <span className="mb-2 block text-sm font-medium text-text-secondary">Destination deck</span>
+                              <select
+                                value={draftDeckId}
+                                onChange={(event) => setDraftDeckId(event.target.value)}
+                                className="w-full rounded-[1.4rem] border border-white/[0.12] bg-surface-panel-strong px-4 py-3 text-sm text-white outline-none focus:border-warm-accent"
+                              >
+                                <option value="">Choose a deck</option>
+                                {decks.map((deck) => (
+                                  <option key={deck.id} value={deck.id}>
+                                    {deck.name}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
                           </div>
-                          <Button
-                            type="button"
-                            className="mt-4"
-                            disabled={savingDraft}
-                            onClick={() => void handleSaveFlashcardDraft()}
-                          >
-                            {savingDraft ? "Saving..." : "Save editable draft"}
-                          </Button>
+                          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={savingDraft || !draftFront.trim() || !draftBack.trim()}
+                              onClick={() => void handleSaveFlashcardDraft()}
+                            >
+                              {savingDraft ? "Saving..." : savedDraftId ? "Save changes as draft" : "Save as draft"}
+                            </Button>
+                            <Button
+                              type="button"
+                              disabled={addingDraftToDeck || !draftFront.trim() || !draftBack.trim() || !draftDeckId}
+                              onClick={() => void handleAddFlashcardDraftToDeck()}
+                            >
+                              {addingDraftToDeck ? "Adding..." : "Add to deck"}
+                            </Button>
+                          </div>
                         </div>
                       ) : null}
                     </Card>

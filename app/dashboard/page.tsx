@@ -24,7 +24,7 @@ import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
-import { FeedbackBanner, PageHero, StatTile } from "@/components/ui";
+import { Card, FeedbackBanner, PageHero, SectionHeader, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { loadInAppUsername } from "@/services/profile";
 import { formatTimeRemaining } from "@/lib/study/time";
@@ -311,6 +311,62 @@ export default function DashboardHome() {
             </div>
           }
         />
+
+        <Card padding="lg">
+          <SectionHeader
+            eyebrow="How Jami works"
+            title="Learn, practise, repair, then track what is improving."
+            description="Jami works best when each study action feeds the next one."
+          />
+          <div className="mt-5 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
+            <div className="grid gap-2 sm:grid-cols-5">
+              {[
+                ["1", "Learn", "Review with flashcards."],
+                ["2", "Practise", "Try questions."],
+                ["3", "Tutor", "Ask for help when stuck."],
+                ["4", "Draft", "Save useful mistakes as cards."],
+                ["5", "Progress", "Track weak topics."],
+              ].map(([step, title, detail]) => (
+                <div
+                  key={step}
+                  className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-3"
+                >
+                  <div className="flex h-7 w-7 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-xs font-semibold text-warm-accent">
+                    {step}
+                  </div>
+                  <div className="mt-3 text-sm font-semibold text-white">{title}</div>
+                  <p className="mt-1 text-xs leading-5 text-text-muted">{detail}</p>
+                </div>
+              ))}
+            </div>
+            <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4">
+              <div className="text-sm font-semibold text-white">Getting started</div>
+              <div className="mt-3 space-y-2 text-sm text-text-secondary">
+                {[
+                  ["Create your first deck", decks.length > 0],
+                  ["Add 5 flashcards", cards.length >= 5],
+                  ["Review your cards", todayReviews > 0],
+                  ["Create a practice question", false],
+                  ["Ask Tutor for a hint", false],
+                  ["Check Progress", false],
+                ].map(([label, done]) => (
+                  <div key={label as string} className="flex items-center gap-2">
+                    <span
+                      className={`flex h-5 w-5 items-center justify-center rounded-full border text-[0.65rem] ${
+                        done
+                          ? "border-warm-border bg-warm-glow text-warm-accent"
+                          : "border-white/[0.12] bg-white/[0.04] text-text-muted"
+                      }`}
+                    >
+                      {done ? "OK" : ""}
+                    </span>
+                    <span>{label as string}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </Card>
 
         <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
           <StatTile

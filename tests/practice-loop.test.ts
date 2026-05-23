@@ -5,6 +5,7 @@ import { getAttemptMasteryWeight, getMasteryScoreDelta } from "@/lib/practice/ma
 import { buildTopicProgress } from "@/lib/practice/progress";
 import { mapQuestionData, normalizeConfidence } from "@/lib/practice/questions";
 import { mapTopicData, slugifyTopicName } from "@/lib/practice/topics";
+import { buildFlashcardDraftCardData } from "@/lib/practice/generated-content";
 
 describe("Jami learning loop foundations", () => {
   afterEach(() => {
@@ -160,5 +161,94 @@ describe("Jami learning loop foundations", () => {
     expect(summary[0].supportLevel).toBe("High");
     expect(summary[0].recentMistakes).toEqual(["conceptual mix-up"]);
     expect(summary[0].masteryScore).toBe(-2);
+  });
+
+  it("turns an approved tutor flashcard draft into card data without losing provenance", () => {
+    const card = buildFlashcardDraftCardData(
+      {
+        id: "draft-1",
+        kind: "flashcard",
+        title: "Multiplicity",
+        front: " What is geometric multiplicity? ",
+        back: " The dimension of the eigenspace. ",
+        topicIds: ["topic-multiplicity"],
+        origin: "ai-assisted",
+        contentStatus: "draft",
+        sourceType: "question",
+        sourceId: "question-1",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        userId: "user-1",
+        deckId: "deck-1",
+        now: 10,
+      }
+    );
+
+    expect(card).toMatchObject({
+      deckId: "deck-1",
+      userId: "user-1",
+      front: "What is geometric multiplicity?",
+      back: "The dimension of the eigenspace.",
+      tags: [],
+      topicIds: ["topic-multiplicity"],
+      sourceIds: ["question-1"],
+      createdAt: 10,
+    });
+  });
+
+  it("rejects draft-to-card conversion for unsafe draft states", () => {
+    expect(() =>
+      buildFlashcardDraftCardData(
+        {
+          kind: "practice-question",
+          front: "Front",
+          back: "Back",
+          topicIds: [],
+          contentStatus: "draft",
+        },
+        { userId: "user-1", deckId: "deck-1" }
+      )
+    ).toThrow("Only flashcard drafts");
+
+    expect(() =>
+      buildFlashcardDraftCardData(
+        {
+          kind: "flashcard",
+          front: "Front",
+          back: "",
+          topicIds: [],
+          contentStatus: "draft",
+        },
+        { userId: "user-1", deckId: "deck-1" }
+      )
+    ).toThrow("both a front and back");
+
+    expect(() =>
+      buildFlashcardDraftCardData(
+        {
+          kind: "flashcard",
+          front: "Front",
+          back: "Back",
+          topicIds: [],
+          contentStatus: "approved",
+        },
+        { userId: "user-1", deckId: "deck-1" }
+      )
+    ).toThrow("must still be a draft");
+
+    expect(() =>
+      buildFlashcardDraftCardData(
+        {
+          kind: "flashcard",
+          front: "Front",
+          back: "Back",
+          topicIds: [],
+          contentStatus: "draft",
+        },
+        { userId: "user-1", deckId: "" }
+      )
+    ).toThrow("destination deck");
   });
 });

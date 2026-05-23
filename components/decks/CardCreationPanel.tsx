@@ -299,7 +299,10 @@ export default function CardCreationPanel({
       setSingleTags([]);
       setSinglePendingTag("");
       onCardsCreated([card], { source: "single", selectCreated: false });
-      onFeedback({ type: "success", message: "Card added." });
+      onFeedback({
+        type: "success",
+        message: "Card added. Review it in Learn when it becomes due.",
+      });
     } catch (error) {
       console.error(error);
       onFeedback({ type: "error", message: "Failed to add card." });
@@ -394,12 +397,12 @@ export default function CardCreationPanel({
     <section className="app-panel p-4 sm:p-5">
       <SectionHeader
         eyebrow="Add cards"
-        title="Add a card or import a batch."
-        description="Start small or paste a list. After a batch saves, you can tag the selected cards together."
+        title="Add one flashcard."
+        description="Default flow: choose deck, write front, write back, optionally add a topic/tag, then add the card."
         action={
           <div className="flex flex-wrap gap-2">
             <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
-            <ModeButton active={mode === "list"} onClick={() => setMode("list")}>Paste list</ModeButton>
+            <ModeButton active={mode === "list"} onClick={() => setMode("list")}>Advanced: Paste list</ModeButton>
           </div>
         }
       />
@@ -412,10 +415,15 @@ export default function CardCreationPanel({
 
       {mode === "single" ? (
         <div className="mt-5 space-y-4 animate-fade-in">
-          {renderDeckSelect(singleDeckId, setSingleDeckId, addingSingleCard)}
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Step 1: Choose deck
+            </div>
+            {renderDeckSelect(singleDeckId, setSingleDeckId, addingSingleCard)}
+          </div>
           <div className="grid gap-4 lg:grid-cols-2">
             <Input
-              label="Front"
+              label="Step 2: Front"
               placeholder="Question, prompt, or cue"
               value={singleFront}
               onChange={(event) => setSingleFront(event.target.value)}
@@ -424,7 +432,7 @@ export default function CardCreationPanel({
             />
             <div className="space-y-3">
               <CardBackEditor
-                label="Back"
+                label="Step 3: Back"
                 placeholder="Answer or explanation"
                 value={singleBack}
                 onChange={setSingleBack}
@@ -449,7 +457,7 @@ export default function CardCreationPanel({
             availableTags={availableTags}
             onTagsChange={setSingleTags}
             onPendingTagChange={setSinglePendingTag}
-            helperText="For batches, save the cards first, then select the ones that need the same tag."
+            helperText="Optional. Topics are learning concepts; tags are extra organisation labels."
             disabled={addingSingleCard}
           />
           <Button
@@ -459,7 +467,7 @@ export default function CardCreationPanel({
             size="lg"
             className="w-full sm:w-auto"
           >
-            {addingSingleCard ? "Adding..." : "Add card"}
+            {addingSingleCard ? "Adding..." : "Step 5: Add card"}
           </Button>
         </div>
       ) : null}

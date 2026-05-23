@@ -204,8 +204,8 @@ export default function DecksPage() {
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <PageHero
             eyebrow="Library"
-            title="Group your cards by topic."
-            description="Use decks to keep subjects tidy. Open any deck to edit its cards or jump into a focused study session."
+            title="Decks are groups of flashcards."
+            description="Create a deck first. Then open it to add cards, edit the set, or jump into a focused study session."
             action={
               <div className="flex w-full flex-col gap-3 sm:flex-row">
                 <Input
@@ -229,9 +229,14 @@ export default function DecksPage() {
           />
 
           <div className="grid gap-4">
-            <StatTile label="Decks" value={decks.length} detail="Topics ready to study." />
+            <StatTile label="Decks" value={decks.length} detail="Card sets ready to study." />
             <StatTile label="Card library" value="Open" detail="Search and edit cards across every deck." href="/dashboard/cards" />
           </div>
+        </div>
+
+        <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
+          <span className="font-semibold text-white">Decks vs Cards:</span> Decks are the groups, like
+          Linear Algebra or GCSE Biology. Cards are the individual prompts inside those groups.
         </div>
 
         {isDemoUser ? (
@@ -254,7 +259,7 @@ export default function DecksPage() {
             emoji="Deck"
             eyebrow="Start here"
             title="Create your first deck"
-            description="Decks help you group cards by topic, module, or exam. Add one now, then start filling it with flashcards."
+            description="Decks help you group cards by subject, module, or exam. Add one now, then open it to add your first flashcards."
             action={<Button type="button" onClick={() => nameInputRef.current?.focus()} variant="warm">Name a deck</Button>}
           />
         ) : (
