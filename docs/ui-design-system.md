@@ -89,6 +89,16 @@ Use language like:
 
 Progress MVP should stay focused on weak topics, weak/due cards by topic, practice accuracy, recent mistakes, and support level. Do not turn it into an advanced analytics dashboard yet.
 
+### Library
+
+Library is a focused source workspace, not a file manager.
+
+- Save useful study sources, pasted notes, manual notes, links, and file references.
+- Make the selected source feel central: source list, source preview, source actions.
+- Source actions should feed the Jami loop: Tutor context, flashcard drafts, practice drafts, topics, Today, and Progress.
+- Keep AI generation small and draft-only until the student approves it.
+- File support in Phase 3 is metadata/reference only. Do not imply OCR, PDF reading, upload storage, or automatic parsing exists.
+
 ## Component Rules
 
 Prefer reusable shared components over page-specific styling.
@@ -129,6 +139,7 @@ Check:
 - `/dashboard/study`
 - `/dashboard/practise`
 - `/dashboard/progress`
+- `/dashboard/library`
 
 Verify:
 - desktop
@@ -145,11 +156,10 @@ Do not use or build:
 - Figma
 - Figma MCP
 - Figma design-to-code
-- Today
-- Library
 - Anywhere
 - OCR
 - PDF parsing
+- file storage upload
 - full-paper mode
 - automatic mark schemes
 - browser extension

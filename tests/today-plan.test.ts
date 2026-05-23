@@ -140,6 +140,20 @@ describe("today plan", () => {
     const plan = buildTodayPlan({
       ...basePlanInput(),
       questions: [question],
+      sources: [
+        {
+          id: "source-1",
+          title: "Lecture 5 notes",
+          type: "pasted_text",
+          subject: "Linear Algebra",
+          topicIds: [topic.id],
+          contentText: "Eigenvalue notes",
+          status: "active",
+          createdBy: "user-1",
+          createdAt: 1,
+          updatedAt: 1,
+        },
+      ],
       drafts: [
         {
           id: "draft-1",
@@ -148,6 +162,8 @@ describe("today plan", () => {
           front: "What is geometric multiplicity?",
           back: "The eigenspace dimension.",
           topicIds: [topic.id],
+          sourceType: "source",
+          sourceId: "source-1",
         },
         {
           id: "draft-2",
@@ -171,6 +187,8 @@ describe("today plan", () => {
     expect(plan.nextAction.type).toBe("review_drafts");
     expect(plan.drafts).toHaveLength(1);
     expect(plan.drafts[0].suggestedTopic).toBe("Eigenvalues");
+    expect(plan.drafts[0].sourceTitle).toBe("Lecture 5 notes");
+    expect(plan.drafts[0].href).toBe("/dashboard/library");
   });
 
   it("uses weak topic summaries after drafts and mistakes", () => {

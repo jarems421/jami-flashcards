@@ -8,9 +8,9 @@ This version has breaking changes - APIs, conventions, and file structure may al
 
 Follow `docs/ui-design-system.md` for all UI work.
 
-During the UI polish phase:
-- Do not add new product features.
-- Do not build Today, Library, Anywhere, OCR, PDF parsing, full-paper mode, browser extension, voice, or iPad companion.
+During the current Basic Library implementation phase:
+- Library is in scope as a narrow source-to-learning-loop feature.
+- Do not build Anywhere, OCR, PDF parsing, file storage upload, full-paper mode, browser extension, voice, or iPad companion.
 - Preserve existing functionality, routes, Firebase logic, AI logic, data models, and tests.
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.
 - Keep the app responsive across mobile, tablet, and desktop.

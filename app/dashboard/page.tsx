@@ -24,6 +24,7 @@ import { getAttempts, getActiveQuestions } from "@/services/study/practice";
 import { getActiveTopics } from "@/services/study/topics";
 import { getMasteryEvents } from "@/services/study/mastery";
 import { getGeneratedContentDrafts } from "@/services/study/generated-content";
+import { getActiveSources } from "@/services/study/sources";
 import type { GeneratedContentDraft } from "@/services/study/generated-content";
 import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
@@ -37,6 +38,7 @@ import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
 import type { Topic } from "@/lib/practice/topics";
 import type { Question, Attempt } from "@/lib/practice/questions";
 import type { MasteryEvent } from "@/lib/practice/mastery";
+import type { Source } from "@/lib/practice/sources";
 import { buildTodayPlan, type TodayPlan } from "@/lib/dashboard/today-plan";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
@@ -366,10 +368,15 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
           plan.drafts.slice(0, 2).map((draft) => (
             <div key={draft.id} className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-                Draft
+                {draft.sourceTitle ? "Source draft" : "Draft"}
               </div>
               <div className="mt-2 text-sm font-semibold text-white">{draft.front}</div>
               <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{draft.back}</p>
+              {draft.sourceTitle ? (
+                <p className="mt-2 text-xs text-text-muted">
+                  From Library source: {draft.sourceTitle}
+                </p>
+              ) : null}
               {draft.suggestedTopic ? (
                 <div className="mt-3 rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
                   Suggested topic: {draft.suggestedTopic}
@@ -384,7 +391,7 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
         )}
       </div>
       <div className="mt-5">
-        <ActionPill href="/dashboard/progress" variant="secondary">Review drafts</ActionPill>
+        <ActionPill href={plan.drafts[0]?.href ?? "/dashboard/progress"} variant="secondary">Review drafts</ActionPill>
       </div>
     </Card>
   );
@@ -545,6 +552,7 @@ export default function DashboardHome() {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [masteryEvents, setMasteryEvents] = useState<MasteryEvent[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
   const [progressVisited, setProgressVisited] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -620,6 +628,7 @@ export default function DashboardHome() {
         nextAttempts,
         nextMasteryEvents,
         nextDrafts,
+        nextSources,
       ] = await Promise.all([
         getDocs(collection(db, "users", uid, "goals")).catch(() => null),
         loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
@@ -628,6 +637,7 @@ export default function DashboardHome() {
         getAttempts(uid).catch(() => []),
         getMasteryEvents(uid).catch(() => [] as MasteryEvent[]),
         getGeneratedContentDrafts(uid).catch(() => [] as GeneratedContentDraft[]),
+        getActiveSources(uid).catch(() => [] as Source[]),
       ]);
 
       setStudyActivity(activity);
@@ -636,6 +646,7 @@ export default function DashboardHome() {
       setAttempts(nextAttempts);
       setMasteryEvents(nextMasteryEvents);
       setDrafts(nextDrafts);
+      setSources(nextSources);
 
       if (goalsSnapshot) {
         const now2 = Date.now();
@@ -712,6 +723,7 @@ export default function DashboardHome() {
         attempts,
         masteryEvents,
         drafts,
+        sources,
         activeGoals,
         reviewedToday: todayReviews,
         progressVisited,
@@ -726,6 +738,7 @@ export default function DashboardHome() {
       masteryEvents,
       progressVisited,
       questions,
+      sources,
       todayReviews,
       topics,
     ]

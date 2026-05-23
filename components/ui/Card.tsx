@@ -29,7 +29,7 @@ export default function Card({
 }: CardProps) {
   return (
     <div
-      className={`relative overflow-hidden rounded-[1.45rem] backdrop-blur-md transition duration-fast sm:rounded-[1.9rem] ${toneClasses[tone]} ${paddingClasses[padding]} ${className}`}
+      className={`relative w-full min-w-0 max-w-full overflow-hidden rounded-[1.45rem] backdrop-blur-md transition duration-fast sm:rounded-[1.9rem] ${toneClasses[tone]} ${paddingClasses[padding]} ${className}`}
       {...props}
     >
       {children}

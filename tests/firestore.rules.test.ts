@@ -397,6 +397,23 @@ describe("Firestore security rules", () => {
     );
 
     await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "sources", "source-1"), {
+        title: "Lecture 5 notes",
+        type: "pasted_text",
+        subject: "Linear Algebra",
+        topicIds: ["topic-1"],
+        contentText: "Eigenvalues are scalars where Av = lambda v.",
+        status: "active",
+        createdBy: ALICE,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "sources", "source-1")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "sources", "source-1")));
+
+    await assertSucceeds(
       setDoc(doc(aliceDb, "users", ALICE, "tutorThreads", "thread-1"), {
         contextType: "question",
         contextId: "question-1",
@@ -434,6 +451,19 @@ describe("Firestore security rules", () => {
         subject: "Demo",
         status: "active",
         createdBy: "user",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(demoDb, "users", ALICE, "sources", "demo-source"), {
+        title: "Demo source",
+        type: "manual_note",
+        topicIds: [],
+        contentText: "Demo should not write real Library data.",
+        status: "active",
+        createdBy: ALICE,
         createdAt: 1,
         updatedAt: 1,
       })

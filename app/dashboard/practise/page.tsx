@@ -6,8 +6,10 @@ import { useUser } from "@/lib/auth/user-context";
 import { featureFlags } from "@/lib/app/feature-flags";
 import type { Topic } from "@/lib/practice/topics";
 import type { Attempt, Question } from "@/lib/practice/questions";
+import type { Source } from "@/lib/practice/sources";
 import { getActiveTopics, createTopic } from "@/services/study/topics";
 import { getDecks, type Deck } from "@/services/study/decks";
+import { getActiveSources } from "@/services/study/sources";
 import {
   createAttempt,
   createQuestion,
@@ -99,6 +101,7 @@ export default function PractisePage() {
   const { user, demoMode } = useUser();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
@@ -150,9 +153,14 @@ export default function PractisePage() {
   );
 
   const topicsById = useMemo(() => new Map(topics.map((topic) => [topic.id, topic])), [topics]);
+  const sourcesById = useMemo(() => new Map(sources.map((source) => [source.id, source])), [sources]);
   const selectedQuestionTopics = useMemo(
     () => selectedQuestion?.topicIds.map((topicId) => topicsById.get(topicId)).filter((topic): topic is Topic => Boolean(topic)) ?? [],
     [selectedQuestion?.topicIds, topicsById]
+  );
+  const selectedQuestionSources = useMemo(
+    () => selectedQuestion?.sourceIds?.map((sourceId) => sourcesById.get(sourceId)).filter((source): source is Source => Boolean(source)) ?? [],
+    [selectedQuestion?.sourceIds, sourcesById]
   );
   const selectedQuestionAttempts = useMemo(
     () => (selectedQuestion ? getQuestionAttempts(selectedQuestion.id, attempts) : []),
@@ -187,16 +195,18 @@ export default function PractisePage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const [nextTopics, nextDecks, nextQuestions, nextAttempts] = await Promise.all([
+      const [nextTopics, nextDecks, nextQuestions, nextAttempts, nextSources] = await Promise.all([
         getActiveTopics(user.uid),
         getDecks(user.uid),
         getActiveQuestions(user.uid),
         getAttempts(user.uid),
+        getActiveSources(user.uid).catch(() => [] as Source[]),
       ]);
       setTopics(nextTopics);
       setDecks(nextDecks);
       setQuestions(nextQuestions);
       setAttempts(nextAttempts);
+      setSources(nextSources);
       const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const targetQuestionId = params?.get("question")?.trim() ?? "";
       const targetTopicId = params?.get("topic")?.trim() ?? "";
@@ -718,7 +728,7 @@ export default function PractisePage() {
             </div>
           ) : null}
 
-          <div className="grid gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
+          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
             <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
                 <SectionHeader
@@ -790,6 +800,7 @@ export default function PractisePage() {
                   {questions.length > 0 ? (
                     questions.map((question) => {
                       const questionAttempts = getQuestionAttempts(question.id, attempts);
+                      const source = question.sourceIds?.[0] ? sourcesById.get(question.sourceIds[0]) : undefined;
                       return (
                         <button
                           key={question.id}
@@ -807,6 +818,11 @@ export default function PractisePage() {
                           <div className="mt-2 text-xs text-text-muted">
                             {questionAttempts.length} attempt{questionAttempts.length === 1 ? "" : "s"} - {getAccuracy(questionAttempts)}% correct
                           </div>
+                          {source ? (
+                            <div className="mt-2 rounded-full border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-secondary">
+                              Source: {source.title}
+                            </div>
+                          ) : null}
                         </button>
                       );
                     })
@@ -843,6 +859,19 @@ export default function PractisePage() {
                               >
                                 {topic.name}
                               </span>
+                            ))}
+                          </div>
+                        ) : null}
+                        {selectedQuestionSources.length > 0 ? (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            {selectedQuestionSources.map((source) => (
+                              <Link
+                                key={source.id}
+                                href="/dashboard/library"
+                                className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.08]"
+                              >
+                                Source: {source.title}
+                              </Link>
                             ))}
                           </div>
                         ) : null}

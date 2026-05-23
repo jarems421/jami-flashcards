@@ -7,7 +7,10 @@ export type AiBudgetAction =
   | "practiceFullSolution"
   | "flashcardDraft"
   | "similarQuestion"
-  | "chat";
+  | "chat"
+  | "sourceTutorExplain"
+  | "sourceFlashcardDrafts"
+  | "sourcePracticeDrafts";
 
 type AiBudgetConfig = {
   dailyRequestLimit: number;
@@ -23,6 +26,9 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
   flashcardDraft: { dailyRequestLimit: 20, tokenCap: 5_000, demoDailyRequestLimit: 2 },
   similarQuestion: { dailyRequestLimit: 12, tokenCap: 7_000, demoDailyRequestLimit: 1 },
   chat: { dailyRequestLimit: 50, tokenCap: 8_000, demoDailyRequestLimit: 4 },
+  sourceTutorExplain: { dailyRequestLimit: 20, tokenCap: 10_000, demoDailyRequestLimit: 2 },
+  sourceFlashcardDrafts: { dailyRequestLimit: 10, tokenCap: 12_000, demoDailyRequestLimit: 1 },
+  sourcePracticeDrafts: { dailyRequestLimit: 10, tokenCap: 12_000, demoDailyRequestLimit: 1 },
 };
 
 function getBudgetDayKey(now = Date.now()) {

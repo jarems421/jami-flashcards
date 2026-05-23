@@ -58,6 +58,7 @@ export async function createQuestion(
     solutionText?: string;
     topicIds: string[];
     difficulty?: "easy" | "medium" | "hard";
+    sourceIds?: string[];
   }
 ) {
   const questionText = input.questionText.trim();
@@ -79,6 +80,7 @@ export async function createQuestion(
       contentStatus: "approved",
       reviewedAt: now,
       reviewedBy: userId,
+      sourceIds: input.sourceIds ?? [],
       createdAt: now,
       updatedAt: now,
     }),

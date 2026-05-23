@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import TabBar from "@/components/layout/TabBar";
 import { buildTodayPlan } from "@/lib/dashboard/today-plan";
@@ -23,6 +23,7 @@ import {
   WALKTHROUGH_INITIAL_DRAFTS,
   WALKTHROUGH_INITIAL_TUTOR_MESSAGES,
   WALKTHROUGH_QUESTIONS,
+  WALKTHROUGH_SOURCES,
   WALKTHROUGH_TOPICS,
   type WalkthroughAttempt,
   type WalkthroughDraft,
@@ -39,6 +40,7 @@ type PublicSurface =
   | "progress"
   | "decks"
   | "cards"
+  | "library"
   | "goals"
   | "constellation"
   | "profile";
@@ -138,10 +140,30 @@ function getSurface(pathname: string): PublicSurface {
   if (pathname.startsWith("/dashboard/progress") || pathname.startsWith("/dashboard/stats")) return "progress";
   if (pathname.startsWith("/dashboard/decks")) return "decks";
   if (pathname.startsWith("/dashboard/cards")) return "cards";
+  if (pathname.startsWith("/dashboard/library")) return "library";
   if (pathname.startsWith("/dashboard/goals")) return "goals";
   if (pathname.startsWith("/dashboard/constellation")) return "constellation";
   if (pathname.startsWith("/dashboard/profile")) return "profile";
   return "home";
+}
+
+function getPreselectedWalkthroughQuestionId() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  const targetQuestionId = params.get("question")?.trim() ?? "";
+  const targetTopicId = params.get("topic")?.trim() ?? "";
+  const targetQuestion = targetQuestionId
+    ? WALKTHROUGH_QUESTIONS.find((question) => question.id === targetQuestionId)
+    : undefined;
+  const topicQuestion =
+    !targetQuestion && targetTopicId
+      ? WALKTHROUGH_QUESTIONS.find((question) => question.topicIds.includes(targetTopicId))
+      : undefined;
+
+  return targetQuestion?.id ?? topicQuestion?.id ?? null;
 }
 
 function getSurfaceTitle(surface: PublicSurface) {
@@ -156,6 +178,8 @@ function getSurfaceTitle(surface: PublicSurface) {
       return "Decks";
     case "cards":
       return "Cards";
+    case "library":
+      return "Library";
     case "goals":
       return "Goals";
     case "constellation":
@@ -218,6 +242,17 @@ export default function PublicDashboardShell() {
   const [busyIntent, setBusyIntent] = useState<WalkthroughTutorIntent | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [confirmFullSolution, setConfirmFullSolution] = useState(false);
+
+  useEffect(() => {
+    if (surface !== "practise") {
+      return;
+    }
+
+    const preselectedQuestionId = getPreselectedWalkthroughQuestionId();
+    if (preselectedQuestionId) {
+      setSelectedQuestionId(preselectedQuestionId);
+    }
+  }, [pathname, surface]);
 
   const selectedQuestion = useMemo(
     () =>
@@ -378,7 +413,7 @@ export default function PublicDashboardShell() {
 
   return (
     <>
-      <div className="pb-32 md:pb-0 md:pl-[6.75rem] lg:pl-80">
+      <div className="min-w-0 pb-32 md:pb-0 md:pl-[6.75rem] lg:pl-80">
         <AppPage
           title={getSurfaceTitle(surface)}
           width="3xl"
@@ -449,6 +484,14 @@ export default function PublicDashboardShell() {
               onUpdateDraft={updateDraft}
               onSaveDraft={saveLocalDraft}
               onAddDraftToDeck={addLocalDraftToDeck}
+            />
+          ) : null}
+          {surface === "library" ? (
+            <LibraryPanel
+              drafts={drafts}
+              onSaveDraft={saveLocalDraft}
+              onAddDraftToDeck={addLocalDraftToDeck}
+              onCreateDraft={(draft) => setDrafts((current) => [draft, ...current])}
             />
           ) : null}
           {surface === "goals" ? <GoalsPanel /> : null}
@@ -545,7 +588,27 @@ function HomePanel({
     questions: publicQuestions,
     attempts: publicAttempts,
     masteryEvents: [],
-    drafts: drafts.map((draft) => ({ ...draft, kind: "flashcard" })),
+    drafts: drafts.map((draft) => ({
+      ...draft,
+      kind: "flashcard",
+      sourceId: draft.sourceQuestionId,
+      sourceType: draft.sourceQuestionId?.startsWith("source-") ? "source" : "question",
+    })),
+    sources: WALKTHROUGH_SOURCES.map((source) => ({
+      id: source.id,
+      title: source.title,
+      type: source.type,
+      subject: source.subject,
+      topicIds: source.topicIds,
+      contentText: source.contentText,
+      externalUrl: source.externalUrl,
+      fileName: source.fileName,
+      fileType: source.fileType,
+      status: "active" as const,
+      createdBy: "public-walkthrough",
+      createdAt: 1,
+      updatedAt: 1,
+    })),
     reviewedToday: 2,
     progressVisited: true,
     now: 10,
@@ -777,7 +840,7 @@ function PractisePanel({
   return (
     <div className="space-y-4">
     <PublicPractiseFlowHeader />
-    <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
       <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
         <SectionHeader
           eyebrow="Practise"
@@ -1417,6 +1480,152 @@ function EditableDraftsPanel({
         ))}
       </div>
     </Card>
+  );
+}
+
+function LibraryPanel({
+  drafts,
+  onSaveDraft,
+  onAddDraftToDeck,
+  onCreateDraft,
+}: {
+  drafts: WalkthroughDraft[];
+  onSaveDraft: (draftId: string) => void;
+  onAddDraftToDeck: (draftId: string, deckId: string) => void;
+  onCreateDraft: (draft: WalkthroughDraft) => void;
+}) {
+  const [selectedSourceId, setSelectedSourceId] = useState(WALKTHROUGH_SOURCES[0]?.id ?? "");
+  const [message, setMessage] = useState("Explain the key revision idea in this source.");
+  const [reply, setReply] = useState("");
+  const [practiceDraft, setPracticeDraft] = useState("");
+  const selectedSource =
+    WALKTHROUGH_SOURCES.find((source) => source.id === selectedSourceId) ?? WALKTHROUGH_SOURCES[0];
+  const linkedDrafts = drafts.filter((draft) => draft.sourceQuestionId === selectedSource?.id);
+
+  const makeFlashcardDraft = () => {
+    if (!selectedSource) return;
+    onCreateDraft({
+      id: makeLocalDraftId(),
+      front: `What is the key idea from ${selectedSource.title}?`,
+      back:
+        selectedSource.contentText?.split(".")[0]?.trim() ||
+        "Review the saved source reference, then turn one idea into active recall.",
+      topicIds: selectedSource.topicIds,
+      sourceQuestionId: selectedSource.id,
+      contentStatus: "draft",
+    });
+  };
+
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-[minmax(280px,0.75fr)_minmax(0,1.25fr)_minmax(280px,0.85fr)]">
+      <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
+        <SectionHeader
+          eyebrow="Library"
+          title="Saved sources"
+          description="Public Library actions are simulated locally. No private Firebase data is touched."
+        />
+        <div className="mt-5 space-y-3">
+          {WALKTHROUGH_SOURCES.map((source) => {
+            const active = source.id === selectedSource?.id;
+            return (
+              <button
+                key={source.id}
+                type="button"
+                onClick={() => setSelectedSourceId(source.id)}
+                className={`w-full rounded-[1.2rem] border p-4 text-left transition ${
+                  active
+                    ? selectedCardClass
+                    : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                }`}
+              >
+                <div className="font-semibold text-white">{source.title}</div>
+                <div className="mt-1 text-xs text-text-muted">{source.subject ?? "Source reference"}</div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {source.topicIds.map((topicId) => (
+                    <TopicChip key={topicId} topicId={topicId} />
+                  ))}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <div className="min-w-0 space-y-4">
+        <Card tone="warm" padding="lg">
+          <SectionHeader
+            eyebrow={selectedSource?.type.replace("_", " ") ?? "Source"}
+            title={selectedSource?.title ?? "Source"}
+            description="Library answers where knowledge came from and how to turn it into revision."
+          />
+          <div className="mt-5 max-h-[24rem] overflow-y-auto whitespace-pre-wrap rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
+            {selectedSource?.contentText ??
+              selectedSource?.externalUrl ??
+              selectedSource?.fileName ??
+              "This source is a saved reference. Automatic reading comes later."}
+          </div>
+        </Card>
+        <DraftsPanel
+          drafts={linkedDrafts.length ? linkedDrafts : drafts.filter((draft) => draft.contentStatus === "draft").slice(0, 2)}
+          onSaveDraft={onSaveDraft}
+          onAddDraftToDeck={onAddDraftToDeck}
+        />
+      </div>
+
+      <div className="space-y-4 2xl:sticky 2xl:top-4 2xl:self-start">
+        <Card padding="lg">
+          <SectionHeader
+            eyebrow="Source actions"
+            title="Turn it into study"
+            description="Tutor context, flashcard drafts, and practice drafts stay local in this walkthrough."
+          />
+          <div className="mt-5 space-y-3">
+            <Textarea
+              label="Tutor request"
+              rows={4}
+              value={message}
+              onChange={(event) => setMessage(event.target.value)}
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                setReply(
+                  "From this source, the revision move is to isolate one definition or criterion, then test it with a short question before saving a flashcard draft."
+                )
+              }
+            >
+              Ask Tutor about source
+            </Button>
+            <Button type="button" variant="secondary" onClick={makeFlashcardDraft}>
+              Make flashcard draft
+            </Button>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() =>
+                setPracticeDraft(
+                  `Practice draft: ${selectedSource?.contentText?.slice(0, 90) ?? "Use this source"}... Explain the key reason.`
+                )
+              }
+            >
+              Make practice draft
+            </Button>
+          </div>
+        </Card>
+        <Card padding="lg">
+          <SectionHeader eyebrow="Local source tutor" title="Response" description="This shows the source context pattern without writes." />
+          <p className="mt-5 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+            {reply || "Ask Tutor to explain this source, then generate draft study tasks from it."}
+          </p>
+          {practiceDraft ? (
+            <p className="mt-3 rounded-[1.2rem] border border-warm-border bg-warm-glow p-4 text-sm leading-6 text-white">
+              {practiceDraft}
+            </p>
+          ) : null}
+        </Card>
+      </div>
+    </div>
   );
 }
 

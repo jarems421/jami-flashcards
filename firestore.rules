@@ -152,6 +152,11 @@ service cloud.firestore {
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
+      match /sources/{sourceId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
       match /pushSubscriptions/{subscriptionId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();

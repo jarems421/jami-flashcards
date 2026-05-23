@@ -24,6 +24,23 @@ type FlashcardDraftInput = {
   updatedAt?: number;
 };
 
+export type PracticeQuestionDraftQuestionData = {
+  questionText: string;
+  answerText?: string | null;
+  solutionText?: string | null;
+  markScheme: null;
+  topicIds: string[];
+  difficulty: null;
+  sourceType: "ai-generated";
+  origin: "source-derived";
+  contentStatus: "approved";
+  reviewedAt: number;
+  reviewedBy: string;
+  sourceIds: string[];
+  createdAt: number;
+  updatedAt: number;
+};
+
 export function buildFlashcardDraftCardData(
   draft: FlashcardDraftInput,
   input: {
@@ -62,5 +79,53 @@ export function buildFlashcardDraftCardData(
     topicIds: draft.topicIds,
     sourceIds: draft.sourceId ? [draft.sourceId] : [],
     createdAt: input.now ?? Date.now(),
+  };
+}
+
+export function buildPracticeQuestionDraftData(
+  draft: FlashcardDraftInput & {
+    questionText?: string;
+    answerText?: string;
+    solutionText?: string;
+  },
+  input: {
+    userId: string;
+    now?: number;
+  }
+): PracticeQuestionDraftQuestionData {
+  const userId = input.userId.trim();
+  const questionText = draft.questionText?.trim() ?? "";
+  const answerText = draft.answerText?.trim() ?? "";
+  const solutionText = draft.solutionText?.trim() ?? "";
+  const now = input.now ?? Date.now();
+
+  if (!userId) {
+    throw new Error("Missing userId.");
+  }
+  if (draft.kind !== "practice-question") {
+    throw new Error("Only practice question drafts can become questions.");
+  }
+  if (draft.contentStatus !== "draft") {
+    throw new Error("Practice question draft must still be a draft before approval.");
+  }
+  if (!questionText) {
+    throw new Error("Practice question drafts need question text before approval.");
+  }
+
+  return {
+    questionText: questionText.slice(0, 4_000),
+    answerText: answerText ? answerText.slice(0, 4_000) : null,
+    solutionText: solutionText ? solutionText.slice(0, 8_000) : null,
+    markScheme: null,
+    topicIds: draft.topicIds,
+    difficulty: null,
+    sourceType: "ai-generated",
+    origin: "source-derived",
+    contentStatus: "approved",
+    reviewedAt: now,
+    reviewedBy: userId,
+    sourceIds: draft.sourceId ? [draft.sourceId] : [],
+    createdAt: now,
+    updatedAt: now,
   };
 }

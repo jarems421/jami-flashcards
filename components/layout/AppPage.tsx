@@ -41,9 +41,9 @@ export default function AppPage({
   return (
     <main
       data-app-surface="true"
-      className={`min-h-screen px-4 pb-32 pt-3 text-white sm:px-6 sm:pb-14 sm:pt-4 lg:px-10 ${className}`}
+      className={`min-h-screen min-w-0 overflow-x-hidden px-4 pb-32 pt-3 text-white sm:px-6 sm:pb-14 sm:pt-4 lg:px-10 ${className}`}
     >
-      <div className={`mx-auto ${widthClasses[width]}`}>
+      <div className={`mx-auto w-full min-w-0 ${widthClasses[width]}`}>
         <div
           className={`sticky top-0 z-40 mb-5 sm:mb-7 ${topBarClassName}`}
         >

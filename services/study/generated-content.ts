@@ -1,7 +1,10 @@
 import { addDoc, collection, getDoc, getDocs, orderBy, query, updateDoc, doc } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
-import { buildFlashcardDraftCardData } from "@/lib/practice/generated-content";
+import {
+  buildFlashcardDraftCardData,
+  buildPracticeQuestionDraftData,
+} from "@/lib/practice/generated-content";
 import {
   isContentOrigin,
   isContentStatus,
@@ -30,12 +33,13 @@ export type GeneratedContentDraft = {
   back?: string;
   questionText?: string;
   answerText?: string;
+  solutionText?: string;
   topicIds: string[];
   origin: ContentOrigin;
   contentStatus: ContentStatus;
   reviewedAt?: number;
   reviewedBy?: string;
-  sourceType?: "card" | "question" | "tutor" | "manual";
+  sourceType?: "card" | "question" | "tutor" | "manual" | "source";
   sourceId?: string;
   createdAt: number;
   updatedAt: number;
@@ -68,6 +72,7 @@ export function mapGeneratedContentDraftData(
     back: normalizeOptionalString(data.back, 4_000),
     questionText: normalizeOptionalString(data.questionText, 4_000),
     answerText: normalizeOptionalString(data.answerText, 4_000),
+    solutionText: normalizeOptionalString(data.solutionText, 8_000),
     topicIds: normalizeStringArray(data.topicIds, 20, 120),
     origin: isContentOrigin(data.origin) ? data.origin : "ai-assisted",
     contentStatus: isContentStatus(data.contentStatus) ? data.contentStatus : "draft",
@@ -77,7 +82,8 @@ export function mapGeneratedContentDraftData(
       data.sourceType === "card" ||
       data.sourceType === "question" ||
       data.sourceType === "tutor" ||
-      data.sourceType === "manual"
+      data.sourceType === "manual" ||
+      data.sourceType === "source"
         ? data.sourceType
         : undefined,
     sourceId: normalizeOptionalString(data.sourceId, 160),
@@ -104,7 +110,7 @@ export async function createFlashcardDraft(
     front: string;
     back: string;
     topicIds: string[];
-    sourceType?: "card" | "question" | "tutor" | "manual";
+    sourceType?: "card" | "question" | "tutor" | "manual" | "source";
     sourceId?: string;
   }
 ) {
@@ -130,6 +136,45 @@ export async function createFlashcardDraft(
   return docRef.id;
 }
 
+export async function createPracticeQuestionDraft(
+  userId: string,
+  input: {
+    questionText: string;
+    answerText?: string;
+    solutionText?: string;
+    topicIds: string[];
+    sourceType?: "question" | "tutor" | "manual" | "source";
+    sourceId?: string;
+  }
+) {
+  const now = Date.now();
+  const questionText = input.questionText.trim();
+  if (!questionText) {
+    throw new Error("Question text is required.");
+  }
+
+  const docRef = await withTimeout(
+    addDoc(draftsCollection(userId), {
+      kind: "practice-question",
+      title: questionText.slice(0, 120) || "Practice question draft",
+      questionText: questionText.slice(0, 4_000),
+      answerText: input.answerText?.trim().slice(0, 4_000) || null,
+      solutionText: input.solutionText?.trim().slice(0, 8_000) || null,
+      topicIds: input.topicIds,
+      origin: "source-derived",
+      contentStatus: "draft",
+      sourceType: input.sourceType ?? "source",
+      sourceId: input.sourceId ?? null,
+      createdAt: now,
+      updatedAt: now,
+    }),
+    WRITE_MS,
+    "Create practice question draft"
+  );
+
+  return docRef.id;
+}
+
 export async function updateGeneratedContentDraftStatus(
   userId: string,
   draftId: string,
@@ -144,6 +189,35 @@ export async function updateGeneratedContentDraftStatus(
     }),
     WRITE_MS,
     "Update generated content draft"
+  );
+}
+
+export async function updateGeneratedContentDraftContent(
+  userId: string,
+  draftId: string,
+  input: Partial<{
+    front: string;
+    back: string;
+    questionText: string;
+    answerText: string;
+    solutionText: string;
+    topicIds: string[];
+  }>
+) {
+  const payload: Record<string, unknown> = {
+    updatedAt: Date.now(),
+  };
+  if (typeof input.front === "string") payload.front = input.front.trim().slice(0, 1_000);
+  if (typeof input.back === "string") payload.back = input.back.trim().slice(0, 4_000);
+  if (typeof input.questionText === "string") payload.questionText = input.questionText.trim().slice(0, 4_000);
+  if (typeof input.answerText === "string") payload.answerText = input.answerText.trim().slice(0, 4_000) || null;
+  if (typeof input.solutionText === "string") payload.solutionText = input.solutionText.trim().slice(0, 8_000) || null;
+  if (Array.isArray(input.topicIds)) payload.topicIds = input.topicIds;
+
+  await withTimeout(
+    updateDoc(doc(db, "users", userId, "generatedContentDrafts", draftId), payload),
+    WRITE_MS,
+    "Update generated draft content"
   );
 }
 
@@ -219,4 +293,58 @@ export async function convertFlashcardDraftToCard(
   );
 
   return cardRef.id;
+}
+
+export async function convertPracticeQuestionDraftToQuestion(
+  userId: string,
+  input: {
+    draftId: string;
+  }
+) {
+  const normalizedUserId = userId.trim();
+  const draftId = input.draftId.trim();
+
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!draftId) {
+    throw new Error("Missing draftId.");
+  }
+
+  const draftSnapshot = await withTimeout(
+    getDoc(doc(db, "users", normalizedUserId, "generatedContentDrafts", draftId)),
+    LOAD_MS,
+    "Load practice question draft"
+  );
+
+  if (!draftSnapshot.exists()) {
+    throw new Error("Practice question draft not found.");
+  }
+
+  const draft = mapGeneratedContentDraftData(
+    draftSnapshot.id,
+    draftSnapshot.data() as Record<string, unknown>
+  );
+  const questionData = buildPracticeQuestionDraftData(draft, {
+    userId: normalizedUserId,
+  });
+
+  const questionRef = await withTimeout(
+    addDoc(collection(db, "users", normalizedUserId, "questions"), questionData),
+    WRITE_MS,
+    "Create question from practice draft"
+  );
+
+  await withTimeout(
+    updateDoc(doc(db, "users", normalizedUserId, "generatedContentDrafts", draftId), {
+      contentStatus: "approved",
+      reviewedAt: Date.now(),
+      reviewedBy: normalizedUserId,
+      updatedAt: Date.now(),
+    }),
+    WRITE_MS,
+    "Approve practice question draft"
+  );
+
+  return questionRef.id;
 }

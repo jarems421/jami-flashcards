@@ -5,7 +5,11 @@ import { getAttemptMasteryWeight, getMasteryScoreDelta } from "@/lib/practice/ma
 import { buildTopicProgress } from "@/lib/practice/progress";
 import { mapQuestionData, normalizeConfidence } from "@/lib/practice/questions";
 import { mapTopicData, slugifyTopicName } from "@/lib/practice/topics";
-import { buildFlashcardDraftCardData } from "@/lib/practice/generated-content";
+import {
+  buildFlashcardDraftCardData,
+  buildPracticeQuestionDraftData,
+} from "@/lib/practice/generated-content";
+import { buildSourcePayload, mapSourceData } from "@/lib/practice/sources";
 
 describe("Jami learning loop foundations", () => {
   afterEach(() => {
@@ -32,6 +36,10 @@ describe("Jami learning loop foundations", () => {
     vi.stubEnv("NEXT_PUBLIC_ENABLE_LIBRARY", "true");
 
     expect(isFeatureEnabled("enablePractise")).toBe(false);
+    expect(isFeatureEnabled("enableLibrary")).toBe(true);
+  });
+
+  it("keeps Library enabled by default for the source loop", () => {
     expect(isFeatureEnabled("enableLibrary")).toBe(true);
   });
 
@@ -195,6 +203,84 @@ describe("Jami learning loop foundations", () => {
       topicIds: ["topic-multiplicity"],
       sourceIds: ["question-1"],
       createdAt: 10,
+    });
+  });
+
+  it("validates and maps saved Library sources", () => {
+    const payload = buildSourcePayload("user-1", {
+      title: " Lecture 5 notes ",
+      type: "pasted_text",
+      subject: " Linear Algebra ",
+      topicIds: ["topic-eigenvalues"],
+      contentText: " Eigenvalues help test diagonalisation. ",
+      now: 10,
+    });
+    const source = mapSourceData("source-1", payload);
+
+    expect(source).toMatchObject({
+      id: "source-1",
+      title: "Lecture 5 notes",
+      type: "pasted_text",
+      subject: "Linear Algebra",
+      topicIds: ["topic-eigenvalues"],
+      contentText: "Eigenvalues help test diagonalisation.",
+      status: "active",
+      createdBy: "user-1",
+      createdAt: 10,
+      updatedAt: 10,
+    });
+    expect(() =>
+      buildSourcePayload("user-1", {
+        title: "Empty source",
+        type: "pasted_text",
+        contentText: "",
+      })
+    ).toThrow("Paste or write source text");
+    expect(() =>
+      buildSourcePayload("user-1", {
+        title: "Bad link",
+        type: "link",
+        externalUrl: "not a url",
+      })
+    ).toThrow("valid source link");
+  });
+
+  it("approves source practice drafts into questions with source links", () => {
+    const question = buildPracticeQuestionDraftData(
+      {
+        id: "draft-question-1",
+        kind: "practice-question",
+        title: "Diagonalisation",
+        questionText: "State the diagonalisation criterion.",
+        answerText: "There must be enough independent eigenvectors.",
+        solutionText: "Compare algebraic and geometric multiplicity.",
+        topicIds: ["topic-eigenvalues"],
+        origin: "source-derived",
+        contentStatus: "draft",
+        sourceType: "source",
+        sourceId: "source-lecture-5",
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        userId: "user-1",
+        now: 20,
+      }
+    );
+
+    expect(question).toMatchObject({
+      questionText: "State the diagonalisation criterion.",
+      answerText: "There must be enough independent eigenvectors.",
+      solutionText: "Compare algebraic and geometric multiplicity.",
+      topicIds: ["topic-eigenvalues"],
+      sourceType: "ai-generated",
+      origin: "source-derived",
+      contentStatus: "approved",
+      reviewedAt: 20,
+      reviewedBy: "user-1",
+      sourceIds: ["source-lecture-5"],
+      createdAt: 20,
+      updatedAt: 20,
     });
   });
 

@@ -8,6 +8,7 @@ import { buildTopicProgress } from "@/lib/practice/progress";
 import type { Topic } from "@/lib/practice/topics";
 import type { Question, Attempt } from "@/lib/practice/questions";
 import type { MasteryEvent } from "@/lib/practice/mastery";
+import type { Source } from "@/lib/practice/sources";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import { getActiveTopics } from "@/services/study/topics";
 import { getActiveQuestions, getAttempts } from "@/services/study/practice";
@@ -16,6 +17,7 @@ import {
   getGeneratedContentDrafts,
   type GeneratedContentDraft,
 } from "@/services/study/generated-content";
+import { getActiveSources } from "@/services/study/sources";
 import { ensureStudyStateSetup, loadUserCards } from "@/services/study/daily-review";
 import AppPage from "@/components/layout/AppPage";
 import {
@@ -43,6 +45,7 @@ export default function ProgressPage() {
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [masteryEvents, setMasteryEvents] = useState<MasteryEvent[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
@@ -60,7 +63,7 @@ export default function ProgressPage() {
       setFeedback(null);
       try {
         await ensureStudyStateSetup(user.uid);
-          const [nextTopics, nextCards, nextQuestions, nextAttempts, nextMasteryEvents, nextDrafts] =
+          const [nextTopics, nextCards, nextQuestions, nextAttempts, nextMasteryEvents, nextDrafts, nextSources] =
           await Promise.all([
             getActiveTopics(user.uid),
             loadUserCards(user.uid),
@@ -68,6 +71,7 @@ export default function ProgressPage() {
             getAttempts(user.uid),
             getMasteryEvents(user.uid),
             getGeneratedContentDrafts(user.uid).catch(() => [] as GeneratedContentDraft[]),
+            getActiveSources(user.uid).catch(() => [] as Source[]),
           ]);
 
         if (!cancelled) {
@@ -77,6 +81,7 @@ export default function ProgressPage() {
           setAttempts(nextAttempts);
           setMasteryEvents(nextMasteryEvents);
           setDrafts(nextDrafts);
+          setSources(nextSources);
         }
       } catch (error) {
         console.error(error);
@@ -130,6 +135,15 @@ export default function ProgressPage() {
     () => drafts.filter((draft) => draft.kind === "flashcard" && draft.contentStatus === "draft"),
     [drafts]
   );
+  const sourcesByTopicId = useMemo(() => {
+    const map = new Map<string, Source[]>();
+    for (const source of sources) {
+      for (const topicId of source.topicIds) {
+        map.set(topicId, [...(map.get(topicId) ?? []), source]);
+      }
+    }
+    return map;
+  }, [sources]);
   const recommendedTopic = weakTopics[0];
 
   if (!featureFlags.enableMasteryProgress) {
@@ -241,7 +255,9 @@ export default function ProgressPage() {
                   description="Topics answer: what learning concept does this test?"
                 />
                 <div className="mt-5 space-y-3">
-                  {weakTopics.map((summary) => (
+                  {weakTopics.map((summary) => {
+                    const linkedSource = sourcesByTopicId.get(summary.topic.id)?.[0];
+                    return (
                     <div key={summary.topic.id} className={surfaceCardClass}>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
@@ -278,10 +294,22 @@ export default function ProgressPage() {
                         </div>
                       ) : null}
                       <div className="mt-4 rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3 text-sm leading-6 text-text-secondary">
-                        <span className="font-semibold text-white">Next action:</span> Review linked cards, then retry 1 practice question.
+                        <span className="font-semibold text-white">Next action:</span>{" "}
+                        {linkedSource
+                          ? `Review linked source "${linkedSource.title}", then retry 1 practice question.`
+                          : "Review linked cards, then retry 1 practice question."}
                       </div>
+                      {linkedSource ? (
+                        <Link
+                          href="/dashboard/library"
+                          className="mt-3 inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.08]"
+                        >
+                          Linked source: {linkedSource.title}
+                        </Link>
+                      ) : null}
                     </div>
-                  ))}
+                  );
+                  })}
                 </div>
               </Card>
 

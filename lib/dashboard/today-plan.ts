@@ -6,6 +6,7 @@ import type { Topic } from "@/lib/practice/topics";
 import type { Goal } from "@/lib/study/goals";
 import type { Card } from "@/lib/study/cards";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
+import type { Source } from "@/lib/practice/sources";
 
 export type TodayNextActionType =
   | "create_first_deck"
@@ -60,6 +61,8 @@ export type TodayDraft = {
   front: string;
   back: string;
   suggestedTopic?: string;
+  sourceId?: string;
+  sourceTitle?: string;
   href: string;
 };
 
@@ -103,6 +106,8 @@ type TodayDraftInput = {
   front?: string;
   back?: string;
   topicIds?: string[];
+  sourceType?: string;
+  sourceId?: string;
 };
 
 export type BuildTodayPlanInput = {
@@ -114,6 +119,7 @@ export type BuildTodayPlanInput = {
   attempts: Attempt[];
   masteryEvents: MasteryEvent[];
   drafts: TodayDraftInput[];
+  sources?: Source[];
   activeGoals?: Goal[];
   reviewedToday?: number;
   progressVisited?: boolean;
@@ -185,16 +191,22 @@ function buildRecentMistakes(input: BuildTodayPlanInput): TodayRecentMistake[] {
 
 function buildDrafts(input: BuildTodayPlanInput): TodayDraft[] {
   const topicsById = new Map(input.topics.map((topic) => [topic.id, topic]));
+  const sourcesById = new Map((input.sources ?? []).map((source) => [source.id, source]));
 
   return input.drafts
     .filter((draft) => draft.kind === "flashcard" && draft.contentStatus === "draft")
-    .map((draft) => ({
-      id: draft.id,
-      front: draft.front?.trim() || "Untitled flashcard draft",
-      back: draft.back?.trim() || "No answer yet",
-      suggestedTopic: draft.topicIds?.map((topicId) => topicsById.get(topicId)?.name).find(Boolean),
-      href: "/dashboard/progress",
-    }))
+    .map((draft) => {
+      const source = draft.sourceId ? sourcesById.get(draft.sourceId) : undefined;
+      return {
+        id: draft.id,
+        front: draft.front?.trim() || "Untitled flashcard draft",
+        back: draft.back?.trim() || "No answer yet",
+        suggestedTopic: draft.topicIds?.map((topicId) => topicsById.get(topicId)?.name).find(Boolean),
+        sourceId: draft.sourceId,
+        sourceTitle: source?.title,
+        href: draft.sourceType === "source" ? "/dashboard/library" : "/dashboard/progress",
+      };
+    })
     .slice(0, 4);
 }
 

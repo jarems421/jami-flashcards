@@ -50,7 +50,7 @@ export default function MetricStrip({
 
   return (
     <div
-      className={`flex flex-wrap items-center gap-2 rounded-[1.35rem] border border-white/[0.09] bg-white/[0.035] px-3 py-2 shadow-[0_12px_22px_rgba(4,8,18,0.12)] ${className}`}
+      className={`flex max-w-full flex-wrap items-center gap-2 overflow-hidden rounded-[1.35rem] border border-white/[0.09] bg-white/[0.035] px-3 py-2 shadow-[0_12px_22px_rgba(4,8,18,0.12)] ${className}`}
     >
       {items.map((item) => (
         <div

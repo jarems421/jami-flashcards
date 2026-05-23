@@ -59,6 +59,19 @@ export type WalkthroughTutorMessage = {
   text: string;
 };
 
+export type WalkthroughSource = {
+  id: string;
+  title: string;
+  type: "pasted_text" | "manual_note" | "link" | "file";
+  subject?: string;
+  topicIds: string[];
+  contentText?: string;
+  externalUrl?: string;
+  fileName?: string;
+  fileType?: string;
+  status: "active" | "archived";
+};
+
 export type WalkthroughTutorIntent =
   | "hint"
   | "check-working"
@@ -216,6 +229,39 @@ export const WALKTHROUGH_INITIAL_DRAFTS: WalkthroughDraft[] = [
     topicIds: ["topic-multiplicity"],
     sourceQuestionId: "question-multiplicity",
     contentStatus: "draft",
+  },
+];
+
+export const WALKTHROUGH_SOURCES: WalkthroughSource[] = [
+  {
+    id: "source-linear-lecture",
+    title: "Linear Algebra Lecture 5",
+    type: "pasted_text",
+    subject: "Linear Algebra",
+    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
+    contentText:
+      "A matrix is diagonalizable when there is a basis of eigenvectors. For each eigenvalue, compare algebraic multiplicity with geometric multiplicity. If the total number of independent eigenvectors is less than the dimension of the matrix, the matrix is not diagonalizable.",
+    status: "active",
+  },
+  {
+    id: "source-analysis-note",
+    title: "Uniform convergence reminder",
+    type: "manual_note",
+    subject: "Analysis",
+    topicIds: ["topic-uniform-convergence"],
+    contentText:
+      "Uniform convergence preserves continuity when each function is continuous. To disprove uniform convergence on a closed interval, compare the pointwise limit with continuity.",
+    status: "active",
+  },
+  {
+    id: "source-file-ref",
+    title: "Methods worksheet reference",
+    type: "file",
+    subject: "Methods",
+    topicIds: ["topic-integration-by-parts"],
+    fileName: "methods-worksheet-3.pdf",
+    fileType: "PDF reference",
+    status: "active",
   },
 ];
 

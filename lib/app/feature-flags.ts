@@ -13,7 +13,7 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableTutorInPractice: true,
   enableMasteryProgress: true,
   enableToday: false,
-  enableLibrary: false,
+  enableLibrary: true,
   enableAnywhere: false,
 };
 

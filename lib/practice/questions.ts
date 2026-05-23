@@ -23,6 +23,7 @@ export type Question = {
   contentStatus: ContentStatus;
   reviewedAt?: number;
   reviewedBy?: string;
+  sourceIds?: string[];
   createdAt: number;
   updatedAt: number;
 };
@@ -79,6 +80,7 @@ export function mapQuestionData(id: string, data: Record<string, unknown>): Ques
     contentStatus: isContentStatus(data.contentStatus) ? data.contentStatus : "approved",
     reviewedAt: typeof data.reviewedAt === "number" ? data.reviewedAt : undefined,
     reviewedBy: typeof data.reviewedBy === "string" ? data.reviewedBy : undefined,
+    sourceIds: normalizeStringArray(data.sourceIds, 20, 160),
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
   };
