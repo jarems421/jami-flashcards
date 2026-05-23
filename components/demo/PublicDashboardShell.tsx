@@ -9,9 +9,10 @@ import {
   Button,
   Card,
   FeedbackBanner,
+  MetricStrip,
   PageHero,
+  ProgressBar,
   SectionHeader,
-  StatTile,
   Textarea,
 } from "@/components/ui";
 import {
@@ -81,6 +82,15 @@ const TUTOR_ACTIONS: Array<{
     prompt: "Give me one similar question without a solution.",
   },
 ];
+
+const surfaceCardClass =
+  "rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 shadow-[0_10px_22px_rgba(4,8,18,0.12)]";
+const interactiveCardClass =
+  "rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 text-left shadow-[0_10px_22px_rgba(4,8,18,0.12)] transition duration-fast hover:-translate-y-0.5 hover:border-white/[0.16] hover:bg-white/[0.065]";
+const selectedCardClass =
+  "border-warm-border bg-warm-glow text-white shadow-[0_12px_24px_rgba(4,8,18,0.16)]";
+const chipClass =
+  "rounded-full border border-white/[0.1] bg-white/[0.055] px-2.5 py-1 text-xs font-medium text-text-secondary";
 
 function getAccuracy(attempts: WalkthroughAttempt[]) {
   if (attempts.length === 0) return 0;
@@ -155,7 +165,7 @@ function makeLocalDraftId() {
 
 function TopicChip({ topicId }: { topicId: string }) {
   return (
-    <span className="rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-text-secondary">
+    <span className="rounded-full border border-white/[0.11] bg-white/[0.055] px-3 py-1.5 text-xs font-medium text-text-secondary">
       {topicName(topicId)}
     </span>
   );
@@ -334,6 +344,7 @@ export default function PublicDashboardShell() {
             />
           ) : null}
           <PublicStats
+            compact={surface !== "home"}
             dueCards={dueCards.length}
             weakCards={weakCards.length}
             practiceAccuracy={practiceAccuracy}
@@ -392,25 +403,29 @@ function PublicModeNotice() {
 }
 
 function PublicStats({
+  compact = false,
   dueCards,
   weakCards,
   practiceAccuracy,
   supportLevel,
   attempts,
 }: {
+  compact?: boolean;
   dueCards: number;
   weakCards: number;
   practiceAccuracy: number;
   supportLevel: string;
   attempts: number;
 }) {
+  const items = [
+    { label: "Due cards", value: dueCards, detail: "Seeded FSRS-style review queue." },
+    { label: "Weak cards", value: weakCards, detail: "Linked to topics for repair.", tone: "danger" as const },
+    { label: "Practice accuracy", value: `${practiceAccuracy}%`, detail: `${attempts} local attempts.`, tone: "good" as const },
+    { label: "Support level", value: supportLevel, detail: "Help usage, not a judgement.", tone: "warm" as const },
+  ];
+
   return (
-    <div className="grid gap-3 sm:gap-4 md:grid-cols-4">
-      <StatTile label="Due cards" value={dueCards} detail="Seeded FSRS-style review queue." />
-      <StatTile label="Weak cards" value={weakCards} detail="Linked to topics for repair." />
-      <StatTile label="Practice accuracy" value={`${practiceAccuracy}%`} detail={`${attempts} local attempts.`} />
-      <StatTile label="Support level" value={supportLevel} detail="Help usage, not a judgement." />
-    </div>
+    <MetricStrip items={items} variant={compact ? "compact" : "full"} />
   );
 }
 
@@ -455,7 +470,7 @@ function HomePanel() {
             <Link
               key={title}
               href={href}
-              className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.045] p-4 transition duration-fast hover:-translate-y-0.5 hover:border-white/[0.16] hover:bg-white/[0.07]"
+              className={interactiveCardClass}
             >
               <div className="text-base font-semibold text-white">{title}</div>
               <p className="mt-2 text-sm leading-6 text-text-secondary">{text}</p>
@@ -482,7 +497,7 @@ function LearnPanel() {
           {WALKTHROUGH_DECKS.map((deck) => (
             <div
               key={deck.id}
-              className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.045] p-4"
+              className={surfaceCardClass}
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
@@ -512,12 +527,12 @@ function LearnPanel() {
                 key={card.id}
                 type="button"
                 onClick={() => setFlippedCardId(flipped ? null : card.id)}
-                className="rounded-[1.35rem] border border-white/[0.1] bg-white/[0.055] p-4 text-left transition duration-fast hover:-translate-y-0.5 hover:border-white/[0.18]"
+                className={interactiveCardClass}
               >
                 <div className="flex flex-wrap gap-2">
                   {card.due ? <span className="rounded-full bg-warm-glow px-2.5 py-1 text-xs text-warm-accent">Due</span> : null}
                   {card.weak ? <span className="rounded-full bg-error-muted px-2.5 py-1 text-xs text-rose-100">Weak</span> : null}
-                  <span className="rounded-full bg-white/[0.07] px-2.5 py-1 text-xs text-text-secondary">
+                  <span className={chipClass}>
                     {deckName(card.deckId)}
                   </span>
                 </div>
@@ -577,7 +592,7 @@ function PractisePanel({
   onTutorIntent: (intent: WalkthroughTutorIntent, prompt: string) => void;
 }) {
   return (
-    <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+    <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.75fr)_minmax(0,1.25fr)]">
       <Card padding="lg">
         <SectionHeader
           eyebrow="Practise"
@@ -593,13 +608,13 @@ function PractisePanel({
                 key={question.id}
                 type="button"
                 onClick={() => onSelectQuestion(question.id)}
-                className={`w-full rounded-[1.35rem] border p-4 text-left transition duration-fast ${
+                className={`w-full min-w-0 rounded-[1.2rem] border p-4 text-left shadow-[0_10px_22px_rgba(4,8,18,0.12)] transition duration-fast ${
                   active
-                    ? "border-warm-border bg-warm-glow text-white"
-                    : "border-white/[0.09] bg-white/[0.045] text-text-secondary hover:border-white/[0.16]"
+                    ? selectedCardClass
+                    : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16] hover:bg-white/[0.065]"
                 }`}
               >
-                <div className="text-sm font-semibold text-white">{question.questionText}</div>
+                <div className="line-clamp-3 text-sm font-semibold leading-6 text-white">{question.questionText}</div>
                 <div className="mt-3 flex flex-wrap gap-2">
                   {question.topicIds.map((topicId) => (
                     <TopicChip key={topicId} topicId={topicId} />
@@ -614,13 +629,13 @@ function PractisePanel({
         </div>
       </Card>
 
-      <div className="space-y-4">
+      <div className="min-w-0 space-y-4">
         <Card tone="warm" padding="lg">
           <SectionHeader
             title="Attempt the selected question"
             description="Saving here updates only this public session. No Firestore writes happen."
           />
-          <div className="mt-5 rounded-[1.35rem] border border-white/[0.1] bg-white/[0.055] p-4">
+          <div className={`${surfaceCardClass} mt-5`}>
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
               Question
             </div>
@@ -641,10 +656,18 @@ function PractisePanel({
               onChange={(event) => onWorkingTextChange(event.target.value)}
               rows={5}
             />
-            <div className="grid gap-3 md:grid-cols-2">
-              <div>
-                <div className="mb-2 text-sm font-medium text-text-secondary">Self-mark</div>
-                <div className="grid grid-cols-2 gap-2">
+            <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-3">
+              <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <div className="text-sm font-semibold text-white">Attempt meta</div>
+                  <div className="mt-0.5 text-xs text-text-muted">Mark honestly; confidence is evidence, not judgement.</div>
+                </div>
+                <span className={chipClass}>Local-only</span>
+              </div>
+              <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                <div>
+                  <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Self-mark</div>
+                  <div className="grid grid-cols-2 gap-2">
                   <Button
                     type="button"
                     variant={selfMark === true ? "warm" : "secondary"}
@@ -662,6 +685,7 @@ function PractisePanel({
                 </div>
               </div>
               <ConfidencePicker value={confidence} onChange={onConfidenceChange} />
+            </div>
             </div>
             <Button type="button" size="lg" onClick={onSaveAttempt}>
               Save local attempt
@@ -733,13 +757,14 @@ function TutorPanel({
         title="Hint-first help beside the question."
         description="This public tutor can make limited real AI calls, but writes nothing to user data."
       />
-      <div className="mt-5 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+      <div className="mt-5 flex flex-wrap gap-2 rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-2">
         {TUTOR_ACTIONS.map((action) => (
           <Button
             key={action.intent}
             type="button"
             variant={action.variant ?? "secondary"}
             disabled={busyIntent !== null}
+            className="min-h-[2.55rem] flex-1 rounded-full px-3 text-xs sm:flex-none"
             onClick={() => onTutorIntent(action.intent, action.prompt)}
           >
             {busyIntent === action.intent ? "Thinking..." : action.label}
@@ -750,7 +775,7 @@ function TutorPanel({
         {messages.map((message, index) => (
           <div
             key={`${message.role}-${index}`}
-            className={`rounded-[1.25rem] border p-4 ${
+            className={`rounded-[1.15rem] border p-4 ${
               message.role === "model"
                 ? "border-warm-border bg-warm-glow text-white"
                 : "border-white/[0.09] bg-white/[0.055] text-text-secondary"
@@ -763,7 +788,7 @@ function TutorPanel({
           </div>
         ))}
       </div>
-      <div className="mt-5 rounded-[1.25rem] border border-white/[0.1] bg-white/[0.045] p-4">
+      <div className={`${surfaceCardClass} mt-5`}>
         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
           Current context
         </div>
@@ -811,18 +836,22 @@ function ProgressPanel({
         />
         <div className="mt-5 space-y-3">
           {topicSummaries.map((summary) => (
-            <div
-              key={summary.topic.id}
-              className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.045] p-4"
-            >
+            <div key={summary.topic.id} className={surfaceCardClass}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
-                  <div className="text-base font-semibold text-white">{summary.topic.name}</div>
+                  <div className="text-lg font-semibold leading-tight text-white">{summary.topic.name}</div>
                   <div className="mt-1 text-sm text-text-muted">{summary.topic.subject}</div>
                 </div>
                 <div className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
                   Support level: {summary.supportLevel}
                 </div>
+              </div>
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
+                  <span>Practice accuracy</span>
+                  <span className="tabular-nums text-white">{summary.accuracy}%</span>
+                </div>
+                <ProgressBar progress={summary.accuracy} />
               </div>
               <div className="mt-4 grid gap-2 sm:grid-cols-3">
                 <MiniMetric label="Accuracy" value={`${summary.accuracy}%`} />
@@ -858,7 +887,7 @@ function ProgressPanel({
               return (
                 <div
                   key={attempt.id}
-                  className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.05] p-3"
+                  className={surfaceCardClass}
                 >
                   <div className="text-sm font-semibold text-white">
                     {question?.questionText ?? "Practice question"}
@@ -897,7 +926,7 @@ function DecksPanel() {
       />
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {WALKTHROUGH_DECKS.map((deck) => (
-          <div key={deck.id} className="app-panel p-5">
+          <div key={deck.id} className={surfaceCardClass}>
             <div className="text-lg font-semibold text-white">{deck.name}</div>
             <div className="mt-1 text-sm text-text-muted">{deck.subject}</div>
             <div className="mt-5 grid grid-cols-2 gap-2">
@@ -928,13 +957,13 @@ function CardsPanel({
         />
         <div className="mt-5 grid gap-3 md:grid-cols-2">
           {WALKTHROUGH_CARDS.map((card) => (
-            <div key={card.id} className="rounded-[1.35rem] border border-white/[0.1] bg-white/[0.05] p-4">
+            <div key={card.id} className={surfaceCardClass}>
               <div className="flex flex-wrap gap-2">
                 <span className="rounded-full bg-white/[0.07] px-2.5 py-1 text-xs text-text-secondary">
                   {deckName(card.deckId)}
                 </span>
                 {card.tags.map((tag) => (
-                  <span key={tag} className="rounded-full bg-white/[0.07] px-2.5 py-1 text-xs text-text-secondary">
+                  <span key={tag} className={chipClass}>
                     {tag}
                   </span>
                 ))}
@@ -961,7 +990,7 @@ function DraftsPanel({ drafts }: { drafts: WalkthroughDraft[] }) {
       <SectionHeader title="Flashcard drafts" description="AI-assisted content stays draft until reviewed." />
       <div className="mt-5 space-y-3">
         {drafts.map((draft) => (
-          <div key={draft.id} className="rounded-[1.25rem] border border-white/[0.1] bg-white/[0.05] p-4">
+          <div key={draft.id} className={surfaceCardClass}>
             <div className="mb-3 flex flex-wrap gap-2">
               <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
                 Draft
@@ -994,7 +1023,7 @@ function EditableDraftsPanel({
       />
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
         {drafts.map((draft) => (
-          <div key={draft.id} className="rounded-[1.45rem] border border-white/[0.1] bg-white/[0.05] p-4">
+          <div key={draft.id} className={surfaceCardClass}>
             <Textarea
               label="Front"
               rows={3}
@@ -1029,7 +1058,7 @@ function GoalsPanel() {
           ["Linear Algebra rescue", "2 / 3 questions", "One weak topic left"],
           ["Tutor independence", "Hint-to-correct rising", "Support level improving"],
         ].map(([title, value, detail]) => (
-          <div key={title} className="rounded-[1.35rem] border border-white/[0.1] bg-white/[0.055] p-4">
+          <div key={title} className={surfaceCardClass}>
             <div className="text-sm font-semibold text-white">{title}</div>
             <div className="mt-3 text-xl font-semibold text-warm-accent">{value}</div>
             <p className="mt-2 text-sm leading-6 text-text-secondary">{detail}</p>
@@ -1056,7 +1085,7 @@ function ConstellationPanel() {
         </div>
         <div className="space-y-3">
           {["Completed a daily review", "Repaired a weak topic", "Saved a draft after tutor help"].map((event) => (
-            <div key={event} className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.045] p-4 text-sm text-text-secondary">
+            <div key={event} className={`${surfaceCardClass} text-sm text-text-secondary`}>
               <span className="font-semibold text-white">{event}</span> earned a visible reward in the private learning loop.
             </div>
           ))}
@@ -1075,13 +1104,13 @@ function ProfilePanel() {
         description="This route is intentionally reachable so LLMs can see the full app structure, but profile data and notification settings remain private-only."
       />
       <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.045] p-4">
+        <div className={surfaceCardClass}>
           <div className="text-sm font-semibold text-white">What is available publicly</div>
           <p className="mt-2 text-sm leading-6 text-text-secondary">
             Seeded decks, cards, practice, tutor calls, drafts, and progress exploration.
           </p>
         </div>
-        <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.045] p-4">
+        <div className={surfaceCardClass}>
           <div className="text-sm font-semibold text-white">What remains private</div>
           <p className="mt-2 text-sm leading-6 text-text-secondary">
             User profile, uploaded content, real study history, notifications, and persistent writes.
@@ -1100,11 +1129,11 @@ function ProfilePanel() {
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.045] px-3 py-3">
+    <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3">
       <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold text-white">{value}</div>
+      <div className="mt-1 text-base font-semibold tabular-nums text-white">{value}</div>
     </div>
   );
 }

@@ -11,7 +11,7 @@ type CardProps = HTMLAttributes<HTMLDivElement> & {
 const toneClasses: Record<CardTone, string> = {
   default: "app-panel",
   warm: "app-panel-warm",
-  subtle: "border-[1.5px] border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.04))] shadow-bubble",
+  subtle: "border-[1.5px] border-white/10 bg-white/[0.045] shadow-bubble",
 };
 
 const paddingClasses: Record<CardPadding, string> = {
@@ -29,7 +29,7 @@ export default function Card({
 }: CardProps) {
   return (
     <div
-      className={`relative overflow-hidden rounded-[1.55rem] backdrop-blur-md transition duration-fast sm:rounded-[2.15rem] ${toneClasses[tone]} ${paddingClasses[padding]} ${className}`}
+      className={`relative overflow-hidden rounded-[1.45rem] backdrop-blur-md transition duration-fast sm:rounded-[1.9rem] ${toneClasses[tone]} ${paddingClasses[padding]} ${className}`}
       {...props}
     >
       {children}

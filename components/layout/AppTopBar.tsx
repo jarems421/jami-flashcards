@@ -21,10 +21,10 @@ export default function AppTopBar({
       className={className}
       style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.45rem)" }}
     >
-      <div className="app-topbar rounded-[1.55rem] border-[1.5px] border-white/[0.14] bg-[linear-gradient(180deg,rgba(29,20,51,0.86),rgba(15,9,30,0.78))] px-3 py-3 shadow-[0_18px_38px_rgba(7,2,22,0.22)] backdrop-blur-xl sm:rounded-[2rem] sm:px-4">
+      <div className="app-topbar rounded-[1.45rem] border-[1.5px] border-white/[0.12] bg-[linear-gradient(180deg,rgba(18,23,35,0.86),rgba(10,13,22,0.78))] px-3 py-3 shadow-[0_18px_38px_rgba(4,8,18,0.26)] backdrop-blur-xl sm:rounded-[1.8rem] sm:px-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.15rem] border border-white/14 bg-[radial-gradient(circle_at_35%_20%,rgba(255,214,246,0.34),rgba(157,99,223,0.18)_44%,rgba(255,255,255,0.06)_100%)] text-sm font-semibold text-white shadow-[0_12px_24px_rgba(157,99,223,0.16)]">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.05rem] border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent shadow-[0_12px_24px_rgba(4,8,18,0.18)]">
               J
             </div>
             <div className="min-w-0">

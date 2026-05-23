@@ -8,6 +8,7 @@ type StatTileProps = {
   detail?: ReactNode;
   href?: string;
   tone?: "default" | "warm";
+  compact?: boolean;
   className?: string;
 };
 
@@ -17,17 +18,18 @@ export default function StatTile({
   detail,
   href,
   tone = "default",
+  compact = false,
   className = "",
 }: StatTileProps) {
   const content = (
     <>
-      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+      <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
         {label}
       </div>
-      <div className="mt-3 text-xl font-medium tracking-[0.01em] text-white sm:text-2xl">
+      <div className={`${compact ? "mt-1 text-lg" : "mt-3 text-xl sm:text-2xl"} font-semibold tracking-normal text-white`}>
         {value}
       </div>
-      {detail ? (
+      {detail && !compact ? (
         <p className="mt-2 text-sm leading-6 text-text-secondary">{detail}</p>
       ) : null}
     </>

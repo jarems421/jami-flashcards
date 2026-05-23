@@ -18,13 +18,17 @@ import {
   Card,
   EmptyState,
   FeedbackBanner,
+  MetricStrip,
   PageHero,
+  ProgressBar,
   SectionHeader,
   Skeleton,
-  StatTile,
 } from "@/components/ui";
 
 type Feedback = { type: "success" | "error"; message: string };
+
+const surfaceCardClass =
+  "rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 shadow-[0_10px_22px_rgba(4,8,18,0.12)]";
 
 export default function ProgressPage() {
   const { user } = useUser();
@@ -173,12 +177,14 @@ export default function ProgressPage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <StatTile label="Weak topics" value={weakTopics.length} detail="Prioritised by cards and attempts." />
-            <StatTile label="Weak cards" value={weakCardCount} detail="Linked cards with high risk." />
-            <StatTile label="Practice accuracy" value={`${practiceAccuracy}%`} detail={`${attempts.length} saved attempt${attempts.length === 1 ? "" : "s"}.`} />
-            <StatTile label="Support level" value={supportLevel} detail="Help usage, not a judgement." />
-          </div>
+          <MetricStrip
+            items={[
+              { label: "Weak topics", value: weakTopics.length, tone: weakTopics.length > 0 ? "danger" : "good" },
+              { label: "Weak cards", value: weakCardCount, tone: weakCardCount > 0 ? "danger" : "good" },
+              { label: "Practice accuracy", value: `${practiceAccuracy}%`, tone: "good" },
+              { label: "Support level", value: supportLevel, tone: "warm" },
+            ]}
+          />
 
           {topics.length === 0 ? (
             <EmptyState
@@ -203,18 +209,22 @@ export default function ProgressPage() {
                 />
                 <div className="mt-5 space-y-3">
                   {weakTopics.map((summary) => (
-                    <div
-                      key={summary.topic.id}
-                      className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.045] p-4"
-                    >
+                    <div key={summary.topic.id} className={surfaceCardClass}>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                         <div>
-                          <div className="text-base font-semibold text-white">{summary.topic.name}</div>
+                          <div className="text-lg font-semibold leading-tight text-white">{summary.topic.name}</div>
                           <div className="mt-1 text-sm text-text-muted">{summary.topic.subject}</div>
                         </div>
                         <div className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
                           Mastery {summary.masteryScore}
                         </div>
+                      </div>
+                      <div className="mt-4">
+                        <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
+                          <span>Practice accuracy</span>
+                          <span className="tabular-nums text-white">{summary.accuracy}%</span>
+                        </div>
+                        <ProgressBar progress={summary.accuracy} />
                       </div>
                       <div className="mt-4 grid gap-2 sm:grid-cols-4">
                         <MiniMetric label="Accuracy" value={`${summary.accuracy}%`} />
@@ -251,7 +261,7 @@ export default function ProgressPage() {
                       return (
                         <div
                           key={attempt.id}
-                          className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.045] p-3"
+                          className={surfaceCardClass}
                         >
                           <div className="line-clamp-2 text-sm font-semibold text-white">
                             {question?.questionText ?? "Practice question"}
@@ -292,11 +302,11 @@ export default function ProgressPage() {
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.045] px-3 py-3">
+    <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3">
       <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
         {label}
       </div>
-      <div className="mt-1 text-sm font-semibold text-white">{value}</div>
+      <div className="mt-1 text-base font-semibold tabular-nums text-white">{value}</div>
     </div>
   );
 }

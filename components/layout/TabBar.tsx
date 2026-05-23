@@ -110,19 +110,19 @@ function DesktopNavItem({
     <Link
       href={tab.href}
       aria-current={active ? "page" : undefined}
-      className={`group relative flex min-h-[3.65rem] items-center justify-center gap-3 rounded-[1.35rem] px-2.5 py-2 text-left transition duration-fast ease-spring lg:justify-start lg:px-3.5 ${
+      className={`group relative flex min-h-[3.65rem] items-center justify-center gap-3 rounded-[1.2rem] px-2.5 py-2 text-left transition duration-fast ease-spring lg:justify-start lg:px-3.5 ${
         active
-          ? "border border-white/16 bg-[linear-gradient(135deg,rgba(255,214,246,0.16),rgba(157,99,223,0.22)_46%,rgba(255,255,255,0.06))] text-white shadow-[0_16px_28px_rgba(157,99,223,0.16)]"
+          ? "border border-warm-border bg-[linear-gradient(135deg,rgba(145,218,204,0.15),rgba(255,255,255,0.075))] text-white shadow-[0_14px_24px_rgba(7,12,24,0.24)]"
           : "border border-transparent text-text-muted hover:border-white/10 hover:bg-white/[0.045] hover:text-white"
       }`}
     >
       {active ? (
-        <span className="absolute inset-y-2 left-0 hidden w-[3px] rounded-r-full bg-warm-accent lg:block" />
+        <span className="absolute inset-y-2 left-0 hidden w-1 rounded-r-full bg-warm-accent lg:block" />
       ) : null}
       <span
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.05rem] border transition duration-fast ${
           active
-            ? "border-white/18 bg-white/[0.1] text-warm-accent"
+            ? "border-warm-border bg-warm-glow text-warm-accent"
             : "border-white/8 bg-white/[0.035] text-text-muted group-hover:border-white/14 group-hover:text-white"
         }`}
       >
@@ -149,12 +149,13 @@ function MobileNavItem({
     <Link
       href={tab.href}
       aria-current={active ? "page" : undefined}
-      className={`flex min-h-[3.25rem] min-w-[4.35rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-[1.15rem] px-2 text-[10px] leading-tight transition duration-fast ease-spring ${
+      className={`relative flex min-h-[3.25rem] min-w-[4.35rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-[1.05rem] px-2 text-[10px] leading-tight transition duration-fast ease-spring ${
         active
-          ? "bg-[linear-gradient(180deg,rgba(255,214,246,0.14),rgba(157,99,223,0.22))] text-white shadow-[0_12px_22px_rgba(157,99,223,0.16)]"
+          ? "bg-[linear-gradient(180deg,rgba(145,218,204,0.16),rgba(255,255,255,0.07))] text-white shadow-[0_12px_22px_rgba(7,12,24,0.22)]"
           : "text-text-muted active:text-white"
       }`}
     >
+      {active ? <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-warm-accent" /> : null}
       <NavIcon tab={tab} active={active} />
       <span className={active ? "font-semibold" : "font-medium"}>
         {tab.mobileLabel ?? tab.label}
@@ -243,7 +244,7 @@ export default function TabBar() {
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className={`app-nav fixed left-3 right-3 z-30 mx-auto flex max-w-[31rem] snap-x snap-mandatory gap-1 overflow-x-auto rounded-[1.65rem] border-[1.5px] border-white/[0.16] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(14,8,28,0.96))] p-1.5 shadow-[0_18px_38px_rgba(7,2,22,0.28)] backdrop-blur-xl scrollbar-hide transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
+        className={`app-nav fixed left-3 right-3 z-30 mx-auto flex max-w-[31rem] snap-x snap-mandatory gap-1 overflow-x-auto rounded-[1.55rem] border-[1.5px] border-white/[0.13] bg-[linear-gradient(180deg,rgba(18,23,35,0.94),rgba(10,13,22,0.96))] p-1.5 shadow-[0_18px_38px_rgba(4,8,18,0.32)] backdrop-blur-xl scrollbar-hide transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
         {tabs.map((tab) => {
@@ -257,7 +258,7 @@ export default function TabBar() {
           type="button"
           aria-label="Show navigation"
           onClick={() => setMobileHidden(false)}
-          className="fixed inset-x-0 z-30 mx-auto flex h-8 w-28 items-center justify-center rounded-t-[1.4rem] border border-b-0 border-white/[0.16] bg-[linear-gradient(180deg,rgba(28,18,48,0.94),rgba(18,11,34,0.96))] text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted shadow-[0_12px_28px_rgba(7,2,22,0.26)] backdrop-blur-xl md:hidden"
+          className="fixed inset-x-0 z-30 mx-auto flex h-8 w-28 items-center justify-center rounded-t-[1.4rem] border border-b-0 border-white/[0.13] bg-[linear-gradient(180deg,rgba(18,23,35,0.94),rgba(10,13,22,0.96))] text-[10px] font-semibold uppercase tracking-[0.18em] text-text-muted shadow-[0_12px_28px_rgba(4,8,18,0.28)] backdrop-blur-xl md:hidden"
           style={{ bottom: "env(safe-area-inset-bottom, 0px)" }}
         >
           Show nav
@@ -266,10 +267,10 @@ export default function TabBar() {
 
       <nav
         aria-label="Primary"
-        className="app-nav fixed inset-y-4 left-4 z-30 hidden w-[5.75rem] flex-col rounded-[2rem] border-[1.5px] border-white/[0.14] bg-[linear-gradient(180deg,rgba(31,21,55,0.92),rgba(14,8,29,0.94))] p-2.5 shadow-[0_22px_44px_rgba(7,2,22,0.28)] backdrop-blur-xl md:flex lg:w-72"
+        className="app-nav fixed inset-y-4 left-4 z-30 hidden w-[5.75rem] flex-col rounded-[1.8rem] border-[1.5px] border-white/[0.12] bg-[linear-gradient(180deg,rgba(19,24,37,0.92),rgba(10,13,22,0.95))] p-2.5 shadow-[0_22px_44px_rgba(4,8,18,0.34)] backdrop-blur-xl md:flex lg:w-72"
       >
         <div className="flex items-center justify-center gap-3 border-b border-white/[0.07] px-1 pb-4 pt-2 lg:justify-start lg:px-2">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.2rem] border border-white/14 bg-[radial-gradient(circle_at_35%_20%,rgba(255,214,246,0.34),rgba(157,99,223,0.18)_44%,rgba(255,255,255,0.06)_100%)] text-sm font-semibold text-white shadow-[0_12px_24px_rgba(157,99,223,0.16)]">
+          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.1rem] border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent shadow-[0_12px_24px_rgba(7,12,24,0.18)]">
             J
           </div>
           <div className="hidden min-w-0 lg:block">

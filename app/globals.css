@@ -6,12 +6,12 @@
 
 @layer base {
   :root {
-    /* Surface colors - starry night palette */
-    --color-surface-base: #10091d;
-    --color-surface-raised: #170f29;
-    --color-surface-overlay: #201536;
-    --color-surface-panel: rgba(28, 19, 48, 0.82);
-    --color-surface-panel-strong: rgba(24, 16, 42, 0.92);
+    /* Surface colors - quiet night palette */
+    --color-surface-base: #0d1018;
+    --color-surface-raised: #121725;
+    --color-surface-overlay: #182033;
+    --color-surface-panel: rgba(20, 24, 36, 0.88);
+    --color-surface-panel-strong: rgba(17, 21, 33, 0.94);
 
     /* Glass layers */
     --color-glass-subtle: rgba(255, 255, 255, 0.05);
@@ -19,9 +19,9 @@
     --color-glass-strong: rgba(255, 255, 255, 0.16);
 
     /* Accent */
-    --color-accent: #9d63df;
-    --color-accent-hover: #b37bf0;
-    --color-accent-muted: rgba(157, 99, 223, 0.24);
+    --color-accent: #8f7de8;
+    --color-accent-hover: #a994f4;
+    --color-accent-muted: rgba(143, 125, 232, 0.2);
 
     /* Semantic */
     --color-success: #7de0cc;
@@ -30,14 +30,14 @@
     --color-error-muted: rgba(255, 120, 183, 0.18);
 
     /* Warm accent (blush highlight from the star body) */
-    --color-warm-glow: rgba(255, 214, 246, 0.12);
-    --color-warm-border: rgba(214, 163, 255, 0.26);
-    --color-warm-accent: #ffd6f6;
+    --color-warm-glow: rgba(145, 218, 204, 0.13);
+    --color-warm-border: rgba(145, 218, 204, 0.28);
+    --color-warm-accent: #b9f0e5;
 
     /* Text */
     --color-text-primary: #fff8ff;
-    --color-text-secondary: #f1e7ff;
-    --color-text-muted: #c6b7e3;
+    --color-text-secondary: #e7edf8;
+    --color-text-muted: #aeb8cd;
 
     /* Border */
     --color-border: rgba(214, 193, 244, 0.14);
@@ -46,9 +46,9 @@
     /* Gradient card overlay */
     --gradient-card: linear-gradient(
       160deg,
-      rgba(31, 20, 54, 0.96) 0%,
-      rgba(48, 28, 84, 0.9) 52%,
-      rgba(23, 15, 42, 0.98) 100%
+      rgba(24, 29, 43, 0.97) 0%,
+      rgba(30, 35, 52, 0.92) 52%,
+      rgba(16, 20, 32, 0.98) 100%
     );
     --gradient-panel: linear-gradient(
       180deg,
@@ -82,12 +82,12 @@
 
   body {
     min-height: 100vh;
-    background-color: #130b24;
+    background-color: #0d1018;
     background:
-      radial-gradient(ellipse 70rem 44rem at 12% -10%, rgba(255, 214, 246, 0.12), rgba(255, 214, 246, 0) 68%),
-      radial-gradient(ellipse 64rem 42rem at 88% 0%, rgba(157, 99, 223, 0.16), rgba(157, 99, 223, 0) 70%),
-      radial-gradient(ellipse 58rem 34rem at 50% 118%, rgba(120, 76, 180, 0.12), rgba(120, 76, 180, 0) 72%),
-      linear-gradient(180deg, #0e0820 0%, #110a21 42%, #130b24 72%, #150d26 100%);
+      radial-gradient(ellipse 72rem 40rem at 10% -10%, rgba(145, 218, 204, 0.1), rgba(145, 218, 204, 0) 68%),
+      radial-gradient(ellipse 68rem 42rem at 90% 0%, rgba(143, 125, 232, 0.11), rgba(143, 125, 232, 0) 72%),
+      radial-gradient(ellipse 54rem 34rem at 50% 118%, rgba(82, 102, 145, 0.12), rgba(82, 102, 145, 0) 72%),
+      linear-gradient(180deg, #090c14 0%, #0d1018 42%, #101522 72%, #121725 100%);
     background-attachment: fixed;
     color: var(--color-text-primary);
     font-family:
@@ -110,7 +110,7 @@
     inset: 0;
     background:
       linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0) 62%),
-      rgba(160, 120, 255, 0.018);
+      rgba(145, 218, 204, 0.014);
     z-index: 0;
   }
 
@@ -144,7 +144,7 @@
     border: 1.5px solid var(--color-border-strong);
     background-color: var(--color-surface-panel);
     background-image:
-      radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.08), transparent 18rem),
+      radial-gradient(circle at 18% 0%, rgba(255, 255, 255, 0.055), transparent 18rem),
       var(--gradient-card);
     border-radius: 2.15rem;
     box-shadow: var(--shadow-bubble);
@@ -154,9 +154,9 @@
     position: relative;
     overflow: hidden;
     border: 1.5px solid var(--color-warm-border);
-    background-color: rgba(43, 29, 72, 0.82);
+    background-color: rgba(26, 37, 48, 0.84);
     background-image:
-      radial-gradient(circle at 20% 0%, rgba(255, 214, 246, 0.12), transparent 18rem),
+      radial-gradient(circle at 20% 0%, rgba(145, 218, 204, 0.13), transparent 18rem),
       var(--gradient-card);
     border-radius: 2.15rem;
     box-shadow: var(--shadow-bubble);

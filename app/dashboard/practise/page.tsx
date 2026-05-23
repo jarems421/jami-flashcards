@@ -25,10 +25,10 @@ import {
   EmptyState,
   FeedbackBanner,
   Input,
+  MetricStrip,
   PageHero,
   SectionHeader,
   Skeleton,
-  StatTile,
   Textarea,
 } from "@/components/ui";
 
@@ -44,6 +44,9 @@ const TUTOR_INTENTS: Array<{ intent: PracticeTutorIntent; label: string; prompt:
   { intent: "make-flashcard", label: "Make card", prompt: "Turn the misconception here into one flashcard draft." },
   { intent: "similar-question", label: "Similar question", prompt: "Give me one similar question without a solution." },
 ];
+
+const surfaceCardClass =
+  "rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 shadow-[0_10px_22px_rgba(4,8,18,0.12)]";
 
 function getQuestionAttempts(questionId: string, attempts: Attempt[]) {
   return attempts.filter((attempt) => attempt.questionId === questionId);
@@ -387,12 +390,22 @@ export default function PractisePage() {
         </div>
       ) : (
         <>
-          <div className="grid gap-4 md:grid-cols-4">
-            <StatTile label="Topics" value={topics.length} detail="Structured concepts for mastery." />
-            <StatTile label="Support level" value={supportAttempts > attempts.length / 2 && attempts.length > 0 ? "High" : supportAttempts > 0 ? "Medium" : "Low"} detail="Hints and tutor usage, not a judgement." />
-            <StatTile label="Hint-to-correct" value={`${getAccuracy(attempts.filter((attempt) => (attempt.hintsUsed ?? 0) > 0 || attempt.tutorUsed))}%`} detail="Correct after support." />
-            <StatTile label="Selected timer" value={formatElapsed(elapsedSeconds)} detail="Used as lightweight evidence." />
-          </div>
+          <MetricStrip
+            items={[
+              { label: "Topics", value: topics.length },
+              {
+                label: "Support level",
+                value: supportAttempts > attempts.length / 2 && attempts.length > 0 ? "High" : supportAttempts > 0 ? "Medium" : "Low",
+                tone: "warm",
+              },
+              {
+                label: "Hint-to-correct",
+                value: `${getAccuracy(attempts.filter((attempt) => (attempt.hintsUsed ?? 0) > 0 || attempt.tutorUsed))}%`,
+                tone: "good",
+              },
+              { label: "Timer", value: formatElapsed(elapsedSeconds) },
+            ]}
+          />
 
           <div className="grid gap-4 xl:grid-cols-[minmax(320px,0.8fr)_minmax(0,1.2fr)]">
             <div className="space-y-4">
@@ -495,10 +508,10 @@ export default function PractisePage() {
                           key={question.id}
                           type="button"
                           onClick={() => setSelectedQuestionId(question.id)}
-                          className={`w-full rounded-[1.2rem] border p-3 text-left transition ${
+                          className={`w-full min-w-0 rounded-[1.2rem] border p-3 text-left shadow-[0_10px_22px_rgba(4,8,18,0.12)] transition ${
                             selectedQuestion?.id === question.id
-                              ? "border-warm-accent bg-warm-glow"
-                              : "border-white/[0.09] bg-white/[0.045] hover:border-white/[0.18]"
+                              ? "border-warm-border bg-warm-glow"
+                              : "border-white/[0.09] bg-white/[0.04] hover:border-white/[0.18] hover:bg-white/[0.065]"
                           }`}
                         >
                           <div className="line-clamp-2 text-sm font-semibold text-white">
@@ -547,7 +560,7 @@ export default function PractisePage() {
                           </div>
                         ) : null}
                       </div>
-                      <div className="rounded-[1.2rem] border border-white/[0.10] bg-white/[0.06] px-4 py-3 text-sm text-text-secondary">
+                      <div className="rounded-[1.2rem] border border-white/[0.10] bg-white/[0.04] px-4 py-3 text-sm text-text-secondary">
                         <span className="font-semibold text-white">{selectedQuestionAttempts.length}</span> attempts
                       </div>
                     </div>
@@ -572,10 +585,22 @@ export default function PractisePage() {
                         onChange={(event) => setWorkingText(event.target.value)}
                         placeholder="Show the steps you tried."
                       />
-                      <div className="grid gap-3 md:grid-cols-2">
-                        <div>
-                          <div className="mb-2 text-sm font-medium text-text-secondary">Self-mark</div>
-                          <div className="grid grid-cols-2 gap-2">
+                      <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-3">
+                        <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <div className="text-sm font-semibold text-white">Attempt meta</div>
+                            <div className="mt-0.5 text-xs text-text-muted">
+                              Mark the outcome, then add confidence and repair labels.
+                            </div>
+                          </div>
+                          <div className="rounded-full border border-white/[0.1] bg-white/[0.055] px-2.5 py-1 text-xs font-medium text-text-secondary">
+                            {formatElapsed(elapsedSeconds)}
+                          </div>
+                        </div>
+                        <div className="grid gap-3 lg:grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)]">
+                          <div>
+                            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Self-mark</div>
+                            <div className="grid grid-cols-2 gap-2">
                             <Button
                               type="button"
                               variant={isCorrect === true ? "warm" : "secondary"}
@@ -601,17 +626,20 @@ export default function PractisePage() {
                           onChange={(event) => setConfidence(Number(event.target.value))}
                         />
                       </div>
+                      </div>
                       <Input
                         label="Mistake labels"
                         value={mistakeLabelsInput}
                         onChange={(event) => setMistakeLabelsInput(event.target.value)}
                         placeholder="conceptual mix-up, sign error, full solution needed"
                       />
-                      <div className="grid gap-3 md:grid-cols-3">
-                        <StatTile label="Time" value={formatElapsed(elapsedSeconds)} detail="Current attempt." />
-                        <StatTile label="Hints used" value={hintsUsed} detail="Tutor/help steps." />
-                        <StatTile label="Tutor used" value={tutorUsed ? "Yes" : "No"} detail="Support level signal." />
-                      </div>
+                      <MetricStrip
+                        items={[
+                          { label: "Hints used", value: hintsUsed, tone: hintsUsed > 0 ? "warm" : "default" },
+                          { label: "Tutor used", value: tutorUsed ? "Yes" : "No", tone: tutorUsed ? "warm" : "default" },
+                          { label: "Evidence", value: isCorrect === null ? "Pending" : isCorrect ? "Correct" : "Repair", tone: isCorrect === true ? "good" : isCorrect === false ? "danger" : "default" },
+                        ]}
+                      />
                       <Button
                         type="button"
                         size="lg"
@@ -629,13 +657,14 @@ export default function PractisePage() {
                         title="Contextual tutor"
                         description="Hint-first help attached to this exact question. Full solution is explicit."
                       />
-                      <div className="mt-4 flex flex-wrap gap-2">
+                      <div className="mt-4 flex flex-wrap gap-2 rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-2">
                         {TUTOR_INTENTS.map((item) => (
                           <Button
                             key={item.intent}
                             type="button"
                             variant={item.intent === "full-solution" ? "danger" : "secondary"}
                             disabled={tutorBusyIntent !== null}
+                            className="min-h-[2.55rem] flex-1 rounded-full px-3 text-xs sm:flex-none"
                             onClick={() => void handleTutorIntent(item.intent, item.prompt)}
                           >
                             {tutorBusyIntent === item.intent ? "Thinking..." : item.label}
@@ -647,7 +676,7 @@ export default function PractisePage() {
                           tutorMessages.map((message, index) => (
                             <div
                               key={`${message.role}-${index}`}
-                              className={`rounded-[1.2rem] border p-4 text-sm leading-6 ${
+                            className={`rounded-[1.15rem] border p-4 text-sm leading-6 ${
                                 message.role === "user"
                                   ? "border-white/[0.09] bg-white/[0.045] text-text-secondary"
                                   : "border-warm-border bg-warm-glow text-white"
@@ -667,7 +696,7 @@ export default function PractisePage() {
                         )}
                       </div>
                       {lastSuggestedFlashcard ? (
-                        <div className="mt-5 rounded-[1.3rem] border border-white/[0.12] bg-white/[0.06] p-4">
+                        <div className={`mt-5 ${surfaceCardClass}`}>
                           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                             Flashcard draft
                           </div>
@@ -697,7 +726,7 @@ export default function PractisePage() {
                         selectedQuestionAttempts.map((attempt) => (
                           <div
                             key={attempt.id}
-                            className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.045] p-3"
+                            className={surfaceCardClass}
                           >
                             <div className="flex flex-wrap items-center justify-between gap-2">
                               <span className={attempt.isCorrect ? "text-emerald-100" : "text-rose-100"}>
