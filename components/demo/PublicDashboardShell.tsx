@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import TabBar from "@/components/layout/TabBar";
+import { buildTodayPlan } from "@/lib/dashboard/today-plan";
 import {
   Button,
   Card,
@@ -389,7 +390,7 @@ export default function PublicDashboardShell() {
             supportLevel={supportLevel}
             attempts={attempts.length}
           />
-          {surface === "home" ? <HomePanel /> : null}
+          {surface === "home" ? <HomePanel attempts={attempts} drafts={drafts} /> : null}
           {surface === "learn" ? <LearnPanel /> : null}
           {surface === "practise" ? (
             <PractisePanel
@@ -478,12 +479,65 @@ function PublicStats({
   );
 }
 
-function HomePanel() {
+function HomePanel({
+  attempts,
+  drafts,
+}: {
+  attempts: WalkthroughAttempt[];
+  drafts: WalkthroughDraft[];
+}) {
+  const publicCards = WALKTHROUGH_CARDS.map((card) => ({
+    id: card.id,
+    deckId: card.deckId,
+    userId: "public-walkthrough",
+    front: card.front,
+    back: card.back,
+    tags: card.tags,
+    topicIds: card.topicIds,
+    createdAt: 1,
+    dueDate: card.due ? 1 : undefined,
+    difficulty: card.weak ? 8 : 3,
+    reps: card.status === "learning" ? 0 : 2,
+  }));
+  const publicQuestions = WALKTHROUGH_QUESTIONS.map((question) => ({
+    ...question,
+    sourceType: "manual" as const,
+    origin: "user-authored" as const,
+    contentStatus: "approved" as const,
+    createdAt: 1,
+    updatedAt: 1,
+  }));
+  const publicAttempts = attempts.map((attempt) => ({
+    ...attempt,
+    userAnswer: "",
+  }));
+  const publicTopics = WALKTHROUGH_TOPICS.map((topic) => ({
+    ...topic,
+    slug: topic.name.toLowerCase().replace(/\s+/g, "-"),
+    status: "active" as const,
+    createdBy: "system" as const,
+    createdAt: 1,
+    updatedAt: 1,
+  }));
+  const plan = buildTodayPlan({
+    decks: WALKTHROUGH_DECKS,
+    cards: publicCards,
+    dueCards: publicCards.filter((card) => typeof card.dueDate === "number"),
+    topics: publicTopics,
+    questions: publicQuestions,
+    attempts: publicAttempts,
+    masteryEvents: [],
+    drafts: drafts.map((draft) => ({ ...draft, kind: "flashcard" })),
+    reviewedToday: 2,
+    progressVisited: true,
+    now: 10,
+  });
+
   return (
     <>
       <PageHero
         eyebrow="Public dashboard"
-        title="Jami is a learning loop, not a feature pile."
+        title="Today answers what to do next."
         description="LLM browsers can now land directly on the main dashboard, follow the nav, inspect each feature, and try local-only interactions without needing an account."
         tone="warm"
         action={
@@ -503,6 +557,52 @@ function HomePanel() {
           </Link>
         }
       />
+      <Card tone="warm" padding="lg">
+        <SectionHeader
+          eyebrow="Recommended next action"
+          title={plan.nextAction.title}
+          description={plan.nextAction.description}
+        />
+        <div className="mt-5 flex flex-wrap gap-2">
+          <Link
+            href={plan.nextAction.href}
+            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover"
+          >
+            {plan.nextAction.label}
+          </Link>
+          {plan.nextAction.secondaryHref && plan.nextAction.secondaryLabel ? (
+            <Link
+              href={plan.nextAction.secondaryHref}
+              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+            >
+              {plan.nextAction.secondaryLabel}
+            </Link>
+          ) : null}
+        </div>
+      </Card>
+      <div className="grid gap-4 lg:grid-cols-3">
+        <Card padding="md">
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Today&apos;s review</div>
+          <div className="mt-2 text-xl font-semibold text-white">{plan.dueCards.count} due cards</div>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            {plan.dueCards.primaryDeckName ?? "Seeded review queue"} is ready for review.
+          </p>
+        </Card>
+        <Card padding="md">
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Repair queue</div>
+          <div className="mt-2 text-xl font-semibold text-white">{plan.recentMistakes.length} mistakes</div>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            Retry, ask Tutor, or turn a useful mistake into a card.
+          </p>
+        </Card>
+        <Card padding="md">
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Drafts</div>
+          <div className="mt-2 text-xl font-semibold text-white">{plan.drafts.length} waiting</div>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">
+            Public drafts stay local until the walkthrough simulates adding them.
+          </p>
+        </Card>
+      </div>
       <Card padding="lg">
         <SectionHeader
           eyebrow="How Jami works"

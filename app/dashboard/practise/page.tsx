@@ -150,11 +150,27 @@ export default function PractisePage() {
       setDecks(nextDecks);
       setQuestions(nextQuestions);
       setAttempts(nextAttempts);
+      const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const targetQuestionId = params?.get("question")?.trim() ?? "";
+      const targetTopicId = params?.get("topic")?.trim() ?? "";
+      const queryQuestion = targetQuestionId
+        ? nextQuestions.find((question) => question.id === targetQuestionId)
+        : undefined;
+      const queryTopicQuestion =
+        !queryQuestion && targetTopicId
+          ? nextQuestions.find((question) => question.topicIds.includes(targetTopicId))
+          : undefined;
+      const validTargetTopic = targetTopicId && nextTopics.some((topic) => topic.id === targetTopicId);
       setSelectedQuestionId((current) =>
-        current && nextQuestions.some((question) => question.id === current)
+        queryQuestion?.id ??
+        queryTopicQuestion?.id ??
+        (current && nextQuestions.some((question) => question.id === current)
           ? current
-          : nextQuestions[0]?.id ?? null
+          : nextQuestions[0]?.id ?? null)
       );
+      if (validTargetTopic) {
+        setSelectedTopicIds([targetTopicId]);
+      }
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "Failed to load Practise." });

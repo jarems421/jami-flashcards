@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
   collection,
   getDocs,
@@ -12,7 +12,7 @@ import { useUser } from "@/lib/auth/user-context";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { db } from "@/services/firebase/client";
 import { FirebaseError } from "firebase/app";
-import { getGoalAccuracy, normalizeGoal, type Goal } from "@/lib/study/goals";
+import { normalizeGoal, type Goal } from "@/lib/study/goals";
 import { getCustomStudyHref } from "@/lib/app/routes";
 import {
   countTodayReviews,
@@ -21,43 +21,27 @@ import {
 import { predictStudyStreak } from "@/lib/study/streak-prediction";
 import { loadStudyActivity } from "@/services/study/activity";
 import { getAttempts, getActiveQuestions } from "@/services/study/practice";
+import { getActiveTopics } from "@/services/study/topics";
+import { getMasteryEvents } from "@/services/study/mastery";
 import { getGeneratedContentDrafts } from "@/services/study/generated-content";
+import type { GeneratedContentDraft } from "@/services/study/generated-content";
 import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
-import { Card, FeedbackBanner, PageHero, SectionHeader, StatTile } from "@/components/ui";
+import { Card, FeedbackBanner, MetricStrip, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { loadInAppUsername } from "@/services/profile";
-import { formatTimeRemaining } from "@/lib/study/time";
 import { getStudyDayKey } from "@/lib/study/day";
 import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
+import type { Topic } from "@/lib/practice/topics";
+import type { Question, Attempt } from "@/lib/practice/questions";
+import type { MasteryEvent } from "@/lib/practice/mastery";
+import { buildTodayPlan, type TodayPlan } from "@/lib/dashboard/today-plan";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
-const URGENT_GOAL_WINDOW_MS = 48 * 60 * 60 * 1000;
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
-
-type DashboardAction = {
-  eyebrow: string;
-  title: string;
-  description: string;
-  href: string;
-  label: string;
-  secondaryHref?: string;
-  secondaryLabel?: string;
-};
-
-function getGoalProgressPercent(goal: Goal) {
-  if (goal.targetCards <= 0) return 0;
-  return Math.min(100, Math.round((goal.progress.cardsCompleted / goal.targetCards) * 100));
-}
-
-function getUrgentGoal(goals: Goal[], now: number) {
-  return goals
-    .filter((goal) => goal.deadline > now && goal.deadline - now <= URGENT_GOAL_WINDOW_MS)
-    .sort((left, right) => left.deadline - right.deadline)[0] ?? null;
-}
 
 type ChecklistItem = {
   label: string;
@@ -99,7 +83,23 @@ function GettingStartedChecklist({
     return () => window.clearTimeout(timeoutId);
   }, [showComplete]);
 
-  if (allDone && dismissed) return null;
+  if (allDone && dismissed) {
+    return (
+      <Card padding="md" className="border-warm-border/70 bg-warm-glow/60">
+        <div className="flex items-center gap-3">
+          <span className="h-4 w-4 shrink-0 rounded-full bg-warm-accent shadow-[0_0_18px_rgba(255,214,246,0.28)]" />
+          <div>
+            <div className="text-sm font-semibold text-white">
+              Getting started complete - you&apos;re ready to use Jami.
+            </div>
+            <p className="mt-1 text-xs leading-5 text-text-muted">
+              The setup checklist is finished, so Today can focus on your next study action.
+            </p>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   if (showComplete) {
     return (
@@ -158,17 +158,290 @@ function GettingStartedChecklist({
   );
 }
 
+function ActionPill({
+  href,
+  children,
+  variant = "primary",
+}: {
+  href: string;
+  children: ReactNode;
+  variant?: "primary" | "secondary";
+}) {
+  const className =
+    variant === "primary"
+      ? "inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover"
+      : "inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]";
+
+  return (
+    <Link href={href} className={className}>
+      {children}
+    </Link>
+  );
+}
+
+function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
+  return (
+    <Card tone="warm" padding="lg" className="animate-slide-up">
+      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+        <div className="min-w-0">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+            Recommended next action
+          </div>
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">
+            {plan.nextAction.title}
+          </h2>
+          <p className="mt-3 max-w-3xl text-sm leading-6 text-text-secondary">
+            {plan.nextAction.description}
+          </p>
+        </div>
+        <div className="flex shrink-0 flex-wrap gap-2">
+          <ActionPill href={plan.nextAction.href}>{plan.nextAction.label}</ActionPill>
+          {plan.nextAction.secondaryHref && plan.nextAction.secondaryLabel ? (
+            <ActionPill href={plan.nextAction.secondaryHref} variant="secondary">
+              {plan.nextAction.secondaryLabel}
+            </ActionPill>
+          ) : null}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function TodayReviewCard({ plan }: { plan: TodayPlan }) {
+  return (
+    <Card padding="lg">
+      <SectionHeader
+        eyebrow="Today's review"
+        title={plan.dueCards.count > 0 ? `${plan.dueCards.count} cards due` : "Daily Review is clear"}
+        description={
+          plan.dueCards.primaryDeckName
+            ? `Most due cards are from ${plan.dueCards.primaryDeckName}.`
+            : "Start here when cards become due."
+        }
+      />
+      <div className="mt-5 grid gap-3 sm:grid-cols-2">
+        <MiniMetric label="Due cards" value={plan.dueCards.count} />
+        <MiniMetric label="Weak cards" value={plan.dueCards.weakCount} />
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        <ActionPill href={getCustomStudyHref({ mode: "daily" })}>Start Daily Review</ActionPill>
+        <ActionPill href={getCustomStudyHref({ mode: "custom" })} variant="secondary">
+          Focused Review
+        </ActionPill>
+      </div>
+    </Card>
+  );
+}
+
+function RepairQueueCard({ plan }: { plan: TodayPlan }) {
+  return (
+    <Card padding="lg">
+      <SectionHeader
+        eyebrow="Repair queue"
+        title="Recent mistakes"
+        description="Mistakes are useful when they point to the next repair action."
+      />
+      <div className="mt-5 space-y-3">
+        {plan.recentMistakes.length > 0 ? (
+          plan.recentMistakes.slice(0, 3).map((mistake) => (
+            <div key={mistake.attemptId} className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
+              <div className="line-clamp-2 text-sm font-semibold text-white">
+                {mistake.questionText}
+              </div>
+              <div className="mt-2 text-xs text-text-muted">
+                Confidence {mistake.confidence} - {mistake.tutorUsed ? "Tutor used" : "No tutor yet"}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <ActionPill href={mistake.href} variant="secondary">Retry</ActionPill>
+                <ActionPill href={mistake.href} variant="secondary">Ask Tutor</ActionPill>
+                <ActionPill href={mistake.href} variant="secondary">Make card</ActionPill>
+              </div>
+            </div>
+          ))
+        ) : (
+          <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+            No recent mistakes to repair yet. Attempt a practice question and self-mark it to build
+            this queue.
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function DraftQueueCard({ plan }: { plan: TodayPlan }) {
+  return (
+    <Card padding="lg">
+      <SectionHeader
+        eyebrow="Flashcard drafts"
+        title={plan.drafts.length > 0 ? `${plan.drafts.length} draft${plan.drafts.length === 1 ? "" : "s"} to review` : "No drafts waiting"}
+        description="Tutor drafts stay separate until you approve or add them to a deck."
+      />
+      <div className="mt-5 space-y-3">
+        {plan.drafts.length > 0 ? (
+          plan.drafts.slice(0, 2).map((draft) => (
+            <div key={draft.id} className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
+              <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                Draft
+              </div>
+              <div className="mt-2 text-sm font-semibold text-white">{draft.front}</div>
+              <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{draft.back}</p>
+              {draft.suggestedTopic ? (
+                <div className="mt-3 rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
+                  Suggested topic: {draft.suggestedTopic}
+                </div>
+              ) : null}
+            </div>
+          ))
+        ) : (
+          <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+            Ask Tutor to make a flashcard from a useful mistake and it will appear here.
+          </p>
+        )}
+      </div>
+      <div className="mt-5">
+        <ActionPill href="/dashboard/progress" variant="secondary">Review drafts</ActionPill>
+      </div>
+    </Card>
+  );
+}
+
+function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
+  return (
+    <Card padding="lg">
+      <SectionHeader
+        eyebrow="Weak-topic practice"
+        title="Topics to repair"
+        description="Progress feeds Today with the weakest concepts."
+      />
+      <div className="mt-5 space-y-3">
+        {plan.weakTopics.length > 0 ? (
+          plan.weakTopics.map((topic) => (
+            <Link
+              key={topic.topicId}
+              href={topic.href}
+              className="block rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4 transition duration-fast hover:border-warm-border hover:bg-white/[0.065]"
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <div className="text-sm font-semibold text-white">{topic.name}</div>
+                  <div className="mt-1 text-xs text-text-muted">{topic.subject}</div>
+                </div>
+                <div className="rounded-full border border-white/[0.1] bg-white/[0.05] px-3 py-1 text-xs font-semibold text-text-secondary">
+                  {topic.accuracy}%
+                </div>
+              </div>
+              <p className="mt-3 text-sm leading-6 text-text-secondary">{topic.reason}</p>
+            </Link>
+          ))
+        ) : (
+          <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+            Weak topics appear after you link cards or questions to topics.
+          </p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
+  return (
+    <Card padding="lg">
+      <SectionHeader
+        eyebrow="Goals"
+        title={plan.goalSummary ? "Goal in motion" : "No urgent goal"}
+        description="Goals stay light here so Today remains action-first."
+      />
+      {plan.goalSummary ? (
+        <div className="mt-5">
+          <div className="text-sm font-semibold text-white">{plan.goalSummary.title}</div>
+          <p className="mt-2 text-sm leading-6 text-text-secondary">{plan.goalSummary.detail}</p>
+          <div className="mt-4">
+            <div className="mb-2 flex items-center justify-between text-xs text-text-muted">
+              <span>Progress</span>
+              <span>{plan.goalSummary.progressPercent}%</span>
+            </div>
+            <ProgressBar progress={plan.goalSummary.progressPercent} />
+          </div>
+          <div className="mt-5">
+            <ActionPill href={plan.goalSummary.href} variant="secondary">Open goals</ActionPill>
+          </div>
+        </div>
+      ) : (
+        <p className="mt-5 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+          Add a goal when you want a target, but Today can still guide the next study step without one.
+        </p>
+      )}
+    </Card>
+  );
+}
+
+function HowJamiWorksCard({ compact }: { compact: boolean }) {
+  const steps = [
+    ["1", "Learn", "Review flashcards so facts and definitions stay available."],
+    ["2", "Practise", "Try questions to test whether the idea transfers."],
+    ["3", "Tutor", "Ask for hint-first help when you get stuck."],
+    ["4", "Draft", "Save useful mistakes as flashcards before they fade."],
+    ["5", "Progress", "Check weak topics and choose the next repair action."],
+  ];
+
+  return (
+    <Card padding={compact ? "md" : "lg"}>
+      <SectionHeader
+        eyebrow="How Jami works"
+        title="Learn, practise, repair, then track what is improving."
+        description="Jami works best when each study action feeds the next one."
+      />
+      <div className="mt-5 space-y-3">
+        {steps.map(([step, title, detail], index) => (
+          <div
+            key={step}
+            className="relative rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-4 sm:flex sm:items-center sm:gap-4"
+          >
+            <div className="flex items-start gap-3 sm:items-center">
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent">
+                {step}
+              </div>
+              <div>
+                <div className="text-base font-semibold text-white">{title}</div>
+                <p className="mt-1 text-sm leading-6 text-text-secondary">{detail}</p>
+              </div>
+            </div>
+            {index < steps.length - 1 ? (
+              <div className="ml-5 mt-3 h-6 w-px bg-white/[0.12] sm:ml-auto sm:mt-0 sm:h-px sm:w-14" />
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3">
+      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
+        {label}
+      </div>
+      <div className="mt-1 text-base font-semibold tabular-nums text-white">{value}</div>
+    </div>
+  );
+}
+
 export default function DashboardHome() {
   const { user } = useUser();
 
   const [decks, setDecks] = useState<Deck[]>([]);
-  const [dueCount, setDueCount] = useState(0);
+  const [dueCards, setDueCards] = useState<StudyCard[]>([]);
   const [remainingOptionalCount, setRemainingOptionalCount] = useState(0);
-  const [urgentGoal, setUrgentGoal] = useState<Goal | null>(null);
+  const [activeGoals, setActiveGoals] = useState<Goal[]>([]);
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
-  const [practiceQuestionCount, setPracticeQuestionCount] = useState(0);
-  const [tutorHelpCount, setTutorHelpCount] = useState(0);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [questions, setQuestions] = useState<Question[]>([]);
+  const [attempts, setAttempts] = useState<Attempt[]>([]);
+  const [masteryEvents, setMasteryEvents] = useState<MasteryEvent[]>([]);
+  const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [progressVisited, setProgressVisited] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -232,33 +505,43 @@ export default function DashboardHome() {
         .filter((card): card is StudyCard => card !== null)
         .filter((card) => !completedOptionalIds.has(card.id));
 
-      setDueCount(requiredCards.length);
+      setDueCards(requiredCards);
       setRemainingOptionalCount(optionalCards.length);
       setCards(allCards);
 
-      const [goalsSnapshot, activity, questions, attempts, drafts] = await Promise.all([
+      const [
+        goalsSnapshot,
+        activity,
+        nextTopics,
+        nextQuestions,
+        nextAttempts,
+        nextMasteryEvents,
+        nextDrafts,
+      ] = await Promise.all([
         getDocs(collection(db, "users", uid, "goals")).catch(() => null),
         loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
+        getActiveTopics(uid).catch(() => [] as Topic[]),
         getActiveQuestions(uid).catch(() => []),
         getAttempts(uid).catch(() => []),
-        getGeneratedContentDrafts(uid).catch(() => []),
+        getMasteryEvents(uid).catch(() => [] as MasteryEvent[]),
+        getGeneratedContentDrafts(uid).catch(() => [] as GeneratedContentDraft[]),
       ]);
 
       setStudyActivity(activity);
-      setPracticeQuestionCount(questions.length);
-      setTutorHelpCount(
-        attempts.filter((attempt) => attempt.tutorUsed || (attempt.hintsUsed ?? 0) > 0).length +
-          drafts.filter((draft) => draft.kind === "flashcard").length
-      );
+      setTopics(nextTopics);
+      setQuestions(nextQuestions);
+      setAttempts(nextAttempts);
+      setMasteryEvents(nextMasteryEvents);
+      setDrafts(nextDrafts);
 
       if (goalsSnapshot) {
         const now2 = Date.now();
         const activeGoals = goalsSnapshot.docs
           .map((d) => normalizeGoal(d.id, d.data() as Record<string, unknown>))
           .filter((goal) => goal.status === "active" && goal.deadline > now2);
-        setUrgentGoal(getUrgentGoal(activeGoals, now2));
+        setActiveGoals(activeGoals);
       } else {
-        setUrgentGoal(null);
+        setActiveGoals([]);
       }
     } finally {
       setIsLoading(false);
@@ -315,104 +598,78 @@ export default function DashboardHome() {
     () => predictStudyStreak(cards, studyActivity),
     [cards, studyActivity]
   );
+  const todayPlan = useMemo<TodayPlan>(
+    () =>
+      buildTodayPlan({
+        decks,
+        cards,
+        dueCards,
+        topics,
+        questions,
+        attempts,
+        masteryEvents,
+        drafts,
+        activeGoals,
+        reviewedToday: todayReviews,
+        progressVisited,
+      }),
+    [
+      activeGoals,
+      attempts,
+      cards,
+      decks,
+      drafts,
+      dueCards,
+      masteryEvents,
+      progressVisited,
+      questions,
+      todayReviews,
+      topics,
+    ]
+  );
   const gettingStartedItems = useMemo<ChecklistItem[]>(
     () => [
       {
         label: "Create your first deck",
         detail: "Decks are groups of flashcards.",
         href: "/dashboard/decks",
-        done: decks.length > 0,
+        done: todayPlan.checklist.createDeck,
       },
       {
         label: "Add 5 flashcards",
         detail: "Give Learn enough material to schedule reviews.",
         href: "/dashboard/cards",
-        done: cards.length >= 5,
+        done: todayPlan.checklist.addCards,
       },
       {
         label: "Review your cards",
         detail: "Complete at least one study action in Learn.",
         href: "/dashboard/study",
-        done: todayReviews > 0,
+        done: todayPlan.checklist.reviewCards,
       },
       {
         label: "Create a practice question",
         detail: "Practise turns memory into application.",
         href: "/dashboard/practise",
-        done: practiceQuestionCount > 0,
+        done: todayPlan.checklist.createQuestion,
       },
       {
         label: "Ask Tutor for a hint or make a draft",
         detail: "Use Tutor when stuck, then save useful mistakes.",
         href: "/dashboard/practise",
-        done: tutorHelpCount > 0,
+        done: todayPlan.checklist.askTutor,
       },
       {
         label: "Check Progress",
         detail: "See weak topics and the next repair action.",
         href: "/dashboard/progress",
-        done: progressVisited,
+        done: todayPlan.checklist.checkProgress,
       },
     ],
-    [cards.length, decks.length, practiceQuestionCount, progressVisited, todayReviews, tutorHelpCount]
+    [todayPlan.checklist]
   );
-  const dashboardAction = useMemo<DashboardAction>(() => {
-    if (decks.length === 0) {
-      return {
-        eyebrow: "Start here",
-        title: "Create your first deck.",
-        description: "Start with one subject, module, or exam. Once it exists, you can add cards and let Jami shape the review flow.",
-        href: "/dashboard/decks",
-        label: "Create a deck",
-      };
-    }
-
-    if (cards.length === 0) {
-      return {
-        eyebrow: "Next step",
-        title: "Add your first cards.",
-        description: "Your deck is ready. Add a few prompts and answers so Daily Review has something real to work with.",
-        href: "/dashboard/cards",
-        label: "Create cards",
-        secondaryHref: "/dashboard/decks",
-        secondaryLabel: "Open decks",
-      };
-    }
-
-    if (dueCount > 0) {
-      return {
-        eyebrow: "Recommended today",
-        title: `${dueCount} card${dueCount === 1 ? "" : "s"} need attention today.`,
-        description: "Start with Daily Review, then use Focused Review if you want a targeted session afterwards.",
-        href: getCustomStudyHref({ mode: "daily" }),
-        label: "Start Daily Review",
-        secondaryHref: getCustomStudyHref({ mode: "custom" }),
-        secondaryLabel: "Start Focused Review",
-      };
-    }
-
-    if (remainingOptionalCount > 0) {
-      return {
-        eyebrow: "Daily is clear",
-        title: `${remainingOptionalCount} easy card${remainingOptionalCount === 1 ? "" : "s"} left if you want extra reps.`,
-        description: "Your main queue is clear. These are lighter passes if you want a little more practice today.",
-        href: getCustomStudyHref({ mode: "daily" }),
-        label: "Review easy extras",
-        secondaryHref: getCustomStudyHref({ mode: "custom" }),
-        secondaryLabel: "Start Focused Review",
-      };
-    }
-
-    return {
-      eyebrow: "Focused practice",
-      title: "Focused Review is open.",
-      description: "Daily Review is clear. Pick any deck or tag and practise the area you want to sharpen.",
-      href: getCustomStudyHref({ mode: "custom" }),
-      label: "Start Focused Review",
-      secondaryHref: "/dashboard/cards",
-      secondaryLabel: "Edit cards",
-    };
-  }, [cards.length, decks.length, dueCount, remainingOptionalCount]);
+  const dueCount = todayPlan.dueCards.count;
+  const hasStartedLoop = decks.length > 0 || cards.length > 0 || questions.length > 0 || attempts.length > 0;
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -428,8 +685,8 @@ export default function DashboardHome() {
 
         <PageHero
           className="animate-slide-up"
-          eyebrow={isLoading ? "Getting ready" : dashboardAction.eyebrow}
-          title={isLoading ? "Getting today ready." : dashboardAction.title}
+          eyebrow={isLoading ? "Getting ready" : "Daily command centre"}
+          title={isLoading ? "Getting today ready." : "What should I do next today?"}
           description={
             <>
               <span className="mb-3 block text-sm text-text-secondary">
@@ -438,27 +695,9 @@ export default function DashboardHome() {
                   : "Welcome back. Here is today at a glance."}
               </span>
               {isLoading
-                ? "Jami is loading today's review queue, cards, and goals."
-                : dashboardAction.description}
+                ? "Jami is loading reviews, practice, mistakes, drafts, and goals."
+                : "Today pulls the learning loop into one action-first study plan."}
             </>
-          }
-          action={
-            <Link
-              href={isLoading ? "/dashboard/study" : dashboardAction.href}
-              className="inline-flex min-h-[3.15rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
-            >
-              {isLoading ? "Open Study" : dashboardAction.label}
-            </Link>
-          }
-          secondaryAction={
-            !isLoading && dashboardAction.secondaryHref ? (
-                <Link
-                  href={dashboardAction.secondaryHref}
-                  className="inline-flex min-h-[3.15rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
-                >
-                  {dashboardAction.secondaryLabel}
-                </Link>
-            ) : null
           }
           aside={
             <div className="grid min-w-[14rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
@@ -468,95 +707,64 @@ export default function DashboardHome() {
               </div>
               <div className="h-px bg-white/[0.08]" />
               <div>
-                <div className="text-xs text-text-muted">Recommended left</div>
+                <div className="text-xs text-text-muted">Due now</div>
                 <div className="mt-1 text-lg font-medium text-white sm:text-xl">{isLoading ? "..." : dueCount}</div>
               </div>
             </div>
           }
         />
 
-        <Card padding="lg">
-          <SectionHeader
-            eyebrow="How Jami works"
-            title="Learn, practise, repair, then track what is improving."
-            description="Jami works best when each study action feeds the next one."
-          />
-          <div className="mt-5 space-y-3">
-            {[
-              ["1", "Learn", "Review flashcards so facts and definitions stay available."],
-              ["2", "Practise", "Try questions to test whether the idea transfers."],
-              ["3", "Tutor", "Ask for hint-first help when you get stuck."],
-              ["4", "Draft", "Save useful mistakes as flashcards before they fade."],
-              ["5", "Progress", "Check weak topics and choose the next repair action."],
-            ].map(([step, title, detail], index, steps) => (
-              <div
-                key={step}
-                className="relative rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-4 sm:flex sm:items-center sm:gap-4"
-              >
-                <div className="flex items-start gap-3 sm:items-center">
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent">
-                    {step}
-                  </div>
-                  <div>
-                    <div className="text-base font-semibold text-white">{title}</div>
-                    <p className="mt-1 text-sm leading-6 text-text-secondary">{detail}</p>
-                  </div>
-                </div>
-                {index < steps.length - 1 ? (
-                  <div className="ml-5 mt-3 h-6 w-px bg-white/[0.12] sm:ml-auto sm:mt-0 sm:h-px sm:w-14" />
-                ) : null}
-              </div>
-            ))}
-          </div>
-        </Card>
-
-        <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
-
-        <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
-          <StatTile
-            label="Daily Review"
-            value={isLoading ? "..." : dueCount}
-            detail={dueCount > 0 ? "The cards that need attention first." : "Your main queue is clear."}
-            href="/dashboard/study"
-          />
-          <StatTile
-            label="Card library"
-            value={isLoading ? "..." : cards.length}
-            detail={`${decks.length} deck${decks.length === 1 ? "" : "s"} ready for study.`}
-            href="/dashboard/cards"
-          />
-          {urgentGoal ? (
-            <Link
-              href="/dashboard/goals"
-              className="app-panel-warm block p-4 transition duration-fast hover:-translate-y-0.5 hover:shadow-shell sm:p-5"
-            >
-              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Goal due soon</div>
-              <div className="mt-3 text-xl font-medium tracking-tight text-white">
-                {urgentGoal.progress.cardsCompleted} / {urgentGoal.targetCards} cards
-              </div>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">
-                {formatTimeRemaining(urgentGoal.deadline)} left at {Math.round(getGoalAccuracy(urgentGoal.progress) * 100)}% accuracy.
-              </p>
-              <div className="mt-4 h-2 rounded-full bg-white/[0.08]">
-                <div
-                  className="h-full rounded-full bg-warm-accent transition-all"
-                  style={{ width: `${Math.max(getGoalProgressPercent(urgentGoal), 4)}%` }}
-                />
-              </div>
-            </Link>
-          ) : (
-            <StatTile
-              label="Focused Review"
-              value={isLoading ? "..." : cards.length > 0 ? "Open" : "Set up"}
-              detail={cards.length === 0 ? "Add cards first." : dueCount > 0 ? "Still available after Daily Review." : "Targeted practice is ready."}
-              href="/dashboard/study"
+        {isLoading ? (
+          <Card tone="warm" padding="lg">
+            <SectionHeader
+              eyebrow="Recommended next action"
+              title="Building your study plan."
+              description="Today waits for real data before showing counts or priorities."
             />
-          )}
-        </div>
+          </Card>
+        ) : (
+          <>
+            <RecommendedActionCard plan={todayPlan} />
+            <MetricStrip
+              variant="compact"
+              items={[
+                { label: "Due cards", value: todayPlan.dueCards.count },
+                { label: "Recent mistakes", value: todayPlan.recentMistakes.length, tone: todayPlan.recentMistakes.length > 0 ? "danger" : "good" },
+                { label: "Drafts", value: todayPlan.drafts.length, tone: todayPlan.drafts.length > 0 ? "warm" : "good" },
+                { label: "Weak topics", value: todayPlan.weakTopics.length, tone: todayPlan.weakTopics.length > 0 ? "danger" : "good" },
+              ]}
+            />
 
-        {!isLoading && cards.length > 0 ? (
-          <StreakPredictionPanel prediction={streakPrediction} />
-        ) : null}
+            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.85fr)]">
+              <div className="space-y-4">
+                <TodayReviewCard plan={todayPlan} />
+                <RepairQueueCard plan={todayPlan} />
+                <DraftQueueCard plan={todayPlan} />
+              </div>
+              <div className="space-y-4">
+                <WeakTopicsCard plan={todayPlan} />
+                <GoalSnapshotCard plan={todayPlan} />
+              </div>
+            </div>
+
+            <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
+
+            {remainingOptionalCount > 0 ? (
+              <StatTile
+                label="Easy extras"
+                value={remainingOptionalCount}
+                detail="Daily Review is clear, but these lighter passes are still available."
+                href={getCustomStudyHref({ mode: "daily" })}
+              />
+            ) : null}
+
+            {cards.length > 0 ? (
+              <StreakPredictionPanel prediction={streakPrediction} />
+            ) : null}
+
+            <HowJamiWorksCard compact={hasStartedLoop} />
+          </>
+        )}
       </AppPage>
     </Refreshable>
   );
