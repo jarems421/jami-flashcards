@@ -1,5 +1,5 @@
-import PublicDemoWalkthrough from "@/components/demo/PublicDemoWalkthrough";
+import { redirect } from "next/navigation";
 
 export default function DemoPage() {
-  return <PublicDemoWalkthrough />;
+  redirect("/dashboard");
 }
