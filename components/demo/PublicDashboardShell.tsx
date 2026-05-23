@@ -184,6 +184,24 @@ function TopicChip({ topicId }: { topicId: string }) {
   );
 }
 
+function PublicPractiseFlowHeader() {
+  return (
+    <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.035] px-3 py-3">
+      <div className="flex flex-wrap items-center gap-2">
+        {["Choose question", "Attempt", "Mark", "Repair"].map((step, index) => (
+          <div key={step} className="flex items-center gap-2">
+            <span className="flex min-h-[2.2rem] items-center gap-2 rounded-full border border-warm-border bg-warm-glow px-3 text-xs font-semibold text-warm-accent">
+              <span className="h-2 w-2 rounded-full bg-warm-accent" />
+              {step}
+            </span>
+            {index < 3 ? <span className="hidden h-px w-5 bg-white/[0.14] sm:block" /> : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function PublicDashboardShell() {
   const pathname = usePathname();
   const surface = getSurface(pathname);
@@ -757,6 +775,8 @@ function PractisePanel({
     showTutor || tutorMessages.length > 0 || busyIntent !== null || confirmFullSolution;
 
   return (
+    <div className="space-y-4">
+    <PublicPractiseFlowHeader />
     <div className="grid min-w-0 gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
       <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
         <SectionHeader
@@ -938,6 +958,7 @@ function PractisePanel({
           )}
         </Card>
       </div>
+    </div>
     </div>
   );
 }

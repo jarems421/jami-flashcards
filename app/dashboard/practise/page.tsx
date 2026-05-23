@@ -73,6 +73,28 @@ function formatElapsed(seconds: number) {
   return `${minutes}m ${remainingSeconds.toString().padStart(2, "0")}s`;
 }
 
+function PractiseFlowHeader() {
+  const steps = ["Choose question", "Attempt", "Mark", "Repair"];
+
+  return (
+    <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.035] px-3 py-3 shadow-[0_12px_22px_rgba(4,8,18,0.12)]">
+      <div className="flex flex-wrap items-center gap-2">
+        {steps.map((step, index) => (
+          <div key={step} className="flex items-center gap-2">
+            <span className="flex min-h-[2.2rem] items-center gap-2 rounded-full border border-warm-border bg-warm-glow px-3 text-xs font-semibold text-warm-accent">
+              <span className="h-2 w-2 rounded-full bg-warm-accent" />
+              {step}
+            </span>
+            {index < steps.length - 1 ? (
+              <span className="hidden h-px w-5 bg-white/[0.14] sm:block" />
+            ) : null}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 export default function PractisePage() {
   const { user, demoMode } = useUser();
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -117,6 +139,8 @@ export default function PractisePage() {
   const [savedDraftId, setSavedDraftId] = useState<string | null>(null);
   const [savingDraft, setSavingDraft] = useState(false);
   const [addingDraftToDeck, setAddingDraftToDeck] = useState(false);
+  const [lastSavedAttemptSnapshot, setLastSavedAttemptSnapshot] = useState<string | null>(null);
+  const [lastSavedAttemptResult, setLastSavedAttemptResult] = useState<"correct" | "incorrect" | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mistakeLabelsInputRef = useRef<HTMLInputElement>(null);
 
@@ -139,6 +163,25 @@ export default function PractisePage() {
     () => attempts.filter((attempt) => attempt.tutorUsed || (attempt.hintsUsed ?? 0) > 0).length,
     [attempts]
   );
+  const currentAttemptSnapshot = useMemo(
+    () =>
+      JSON.stringify({
+        userAnswer: userAnswer.trim(),
+        workingText: workingText.trim(),
+        isCorrect,
+        confidence,
+        mistakeLabelsInput: mistakeLabelsInput.trim(),
+      }),
+    [confidence, isCorrect, mistakeLabelsInput, userAnswer, workingText]
+  );
+  const hasAttemptContent =
+    userAnswer.trim().length > 0 ||
+    workingText.trim().length > 0 ||
+    isCorrect !== null ||
+    confidence !== 3 ||
+    mistakeLabelsInput.trim().length > 0;
+  const hasUnsavedAttemptDraft =
+    hasAttemptContent && currentAttemptSnapshot !== lastSavedAttemptSnapshot;
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -204,6 +247,8 @@ export default function PractisePage() {
     setDraftFront("");
     setDraftBack("");
     setSavedDraftId(null);
+    setLastSavedAttemptSnapshot(null);
+    setLastSavedAttemptResult(null);
     setShowTutorPanel(false);
     setShowAttemptHistory(false);
   }, [selectedQuestionId]);
@@ -255,6 +300,17 @@ export default function PractisePage() {
     }
   };
 
+  const handleSelectQuestion = (questionId: string) => {
+    if (questionId === selectedQuestionId) return;
+    if (
+      hasUnsavedAttemptDraft &&
+      !window.confirm("Switch questions? Your unsaved attempt will be cleared.")
+    ) {
+      return;
+    }
+    setSelectedQuestionId(questionId);
+  };
+
   const handleCreateQuestion = async () => {
     if (demoMode === "demo-test") {
       setFeedback({ type: "error", message: "Demo mode cannot create practice questions." });
@@ -302,6 +358,8 @@ export default function PractisePage() {
     }
 
     setSavingAttempt(true);
+    const savedSnapshot = currentAttemptSnapshot;
+    const savedResult = isCorrect ? "correct" : "incorrect";
     try {
       await createAttempt(user.uid, selectedQuestion, {
         userAnswer,
@@ -317,6 +375,8 @@ export default function PractisePage() {
           .filter(Boolean),
       });
       await loadAll();
+      setLastSavedAttemptSnapshot(savedSnapshot);
+      setLastSavedAttemptResult(savedResult);
       setShowAttemptHistory(true);
       setFeedback({
         type: "success",
@@ -378,6 +438,18 @@ export default function PractisePage() {
     } finally {
       setTutorBusyIntent(null);
     }
+  };
+
+  const handleTutorShortcut = (intent: PracticeTutorIntent) => {
+    const tutorAction = TUTOR_INTENTS.find((item) => item.intent === intent);
+    if (!tutorAction) return;
+    setShowTutorPanel(true);
+    if (intent === "full-solution" && !confirmFullSolution) {
+      setConfirmFullSolution(true);
+      return;
+    }
+    setConfirmFullSolution(false);
+    void handleTutorIntent(tutorAction.intent, tutorAction.prompt);
   };
 
   const handleSaveFlashcardDraft = async () => {
@@ -530,6 +602,121 @@ export default function PractisePage() {
               { label: "Timer", value: formatElapsed(elapsedSeconds) },
             ]}
           />
+          <PractiseFlowHeader />
+          {showAddQuestion || questions.length === 0 ? (
+            <div className="fixed inset-0 z-50 flex items-end justify-center px-4 py-5 sm:items-center">
+              <button
+                type="button"
+                aria-label="Close add question"
+                className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                onClick={() => {
+                  if (questions.length > 0) setShowAddQuestion(false);
+                }}
+              />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="add-practice-question-title"
+                className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-[1.6rem] border border-white/[0.12] bg-surface-panel-strong p-5 shadow-[0_24px_70px_rgba(0,0,0,0.42)]"
+              >
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                      Add question
+                    </div>
+                    <h2 id="add-practice-question-title" className="mt-2 text-xl font-semibold text-white">
+                      Add one practice question.
+                    </h2>
+                    <p className="mt-2 text-sm leading-6 text-text-secondary">
+                      Add the question, optional checkpoint, method notes, and any topic links. Then
+                      you’ll return to the Practise workspace.
+                    </p>
+                  </div>
+                  {questions.length > 0 ? (
+                    <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(false)}>
+                      Close
+                    </Button>
+                  ) : null}
+                </div>
+
+                <div className="mt-5 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.035] p-3 text-sm leading-6 text-text-secondary">
+                  <span className="font-semibold text-white">Example:</span> Question: Solve x^2 -
+                  5x + 6 = 0. Expected answer: x = 2 or x = 3. Solution notes: Factorise into
+                  (x - 2)(x - 3).
+                </div>
+
+                <div className="mt-5 space-y-3">
+                  <Textarea
+                    label="Question"
+                    value={questionText}
+                    onChange={(event) => setQuestionText(event.target.value)}
+                    placeholder="Write the question you want to practise."
+                  />
+                  <Textarea
+                    label="Expected answer / checkpoint"
+                    rows={3}
+                    value={answerText}
+                    onChange={(event) => setAnswerText(event.target.value)}
+                    placeholder="Optional. Add the answer or mark-scheme idea."
+                  />
+                  <Textarea
+                    label="Solution notes"
+                    rows={3}
+                    value={solutionText}
+                    onChange={(event) => setSolutionText(event.target.value)}
+                    placeholder="Optional. Add method notes for yourself or Tutor."
+                  />
+
+                  <div>
+                    <div className="mb-2 text-sm font-medium text-text-secondary">Topic</div>
+                    <div className="flex flex-wrap gap-2">
+                      {topics.length > 0 ? (
+                        topics.map((topic) => (
+                          <button
+                            key={topic.id}
+                            type="button"
+                            onClick={() =>
+                              setSelectedTopicIds((current) =>
+                                current.includes(topic.id)
+                                  ? current.filter((topicId) => topicId !== topic.id)
+                                  : [...current, topic.id]
+                              )
+                            }
+                            className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                              selectedTopicIds.includes(topic.id)
+                                ? "border-warm-accent bg-warm-glow text-warm-accent"
+                                : "border-white/[0.10] bg-white/[0.05] text-text-secondary hover:border-white/[0.18]"
+                            }`}
+                          >
+                            {topic.name}
+                          </button>
+                        ))
+                      ) : (
+                        <span className="text-sm text-text-muted">
+                          No topics yet. You can add one from the question bank.
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-2 sm:flex-row">
+                    <Button
+                      type="button"
+                      disabled={creatingQuestion || !questionText.trim()}
+                      onClick={() => void handleCreateQuestion()}
+                    >
+                      {creatingQuestion ? "Creating..." : "Create question"}
+                    </Button>
+                    {questions.length > 0 ? (
+                      <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(false)}>
+                        Cancel
+                      </Button>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          ) : null}
 
           <div className="grid gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
             <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
@@ -541,9 +728,9 @@ export default function PractisePage() {
                 <Button
                   type="button"
                   variant={showAddQuestion ? "warm" : "secondary"}
-                  onClick={() => setShowAddQuestion((value) => !value)}
+                  onClick={() => setShowAddQuestion(true)}
                 >
-                  {showAddQuestion ? "Close" : "+ Add question"}
+                  + Add question
                 </Button>
               </div>
 
@@ -580,24 +767,12 @@ export default function PractisePage() {
               <div className="mt-4 flex flex-wrap gap-2">
                 {topics.length > 0 ? (
                   topics.map((topic) => (
-                    <button
+                    <span
                       key={topic.id}
-                      type="button"
-                      onClick={() =>
-                        setSelectedTopicIds((current) =>
-                          current.includes(topic.id)
-                            ? current.filter((topicId) => topicId !== topic.id)
-                            : [...current, topic.id]
-                        )
-                      }
-                      className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                        selectedTopicIds.includes(topic.id)
-                          ? "border-warm-accent bg-warm-glow text-warm-accent"
-                          : "border-white/[0.10] bg-white/[0.05] text-text-secondary hover:border-white/[0.18]"
-                      }`}
+                      className="rounded-full border border-white/[0.10] bg-white/[0.05] px-3 py-1.5 text-xs font-medium text-text-secondary"
                     >
                       {topic.name}
-                    </button>
+                    </span>
                   ))
                 ) : (
                   <p className="text-sm leading-6 text-text-secondary">
@@ -605,44 +780,6 @@ export default function PractisePage() {
                   </p>
                 )}
               </div>
-
-              {showAddQuestion || questions.length === 0 ? (
-                <div className="mt-5 rounded-[1.25rem] border border-warm-border bg-warm-glow p-4">
-                  <div className="text-sm font-semibold text-white">Add a practice question</div>
-                  <p className="mt-1 text-xs leading-5 text-text-secondary">
-                    Example: Solve x^2 - 5x + 6 = 0. Expected answer: x = 2 or x = 3.
-                  </p>
-                  <div className="mt-4 space-y-3">
-                    <Textarea
-                      label="Question"
-                      value={questionText}
-                      onChange={(event) => setQuestionText(event.target.value)}
-                      placeholder="Write the question you want to practise."
-                    />
-                    <Textarea
-                      label="Expected answer / checkpoint"
-                      rows={3}
-                      value={answerText}
-                      onChange={(event) => setAnswerText(event.target.value)}
-                      placeholder="Optional. Add the answer or mark-scheme idea."
-                    />
-                    <Textarea
-                      label="Solution notes"
-                      rows={3}
-                      value={solutionText}
-                      onChange={(event) => setSolutionText(event.target.value)}
-                      placeholder="Optional. Add method notes for yourself or Tutor."
-                    />
-                    <Button
-                      type="button"
-                      disabled={creatingQuestion}
-                      onClick={() => void handleCreateQuestion()}
-                    >
-                      {creatingQuestion ? "Creating..." : "Create question"}
-                    </Button>
-                  </div>
-                </div>
-              ) : null}
 
               <div className="mt-5">
                 <div className="mb-3 flex items-center justify-between gap-3">
@@ -657,7 +794,7 @@ export default function PractisePage() {
                         <button
                           key={question.id}
                           type="button"
-                          onClick={() => setSelectedQuestionId(question.id)}
+                          onClick={() => handleSelectQuestion(question.id)}
                           className={`w-full min-w-0 rounded-[1.2rem] border p-3 text-left shadow-[0_10px_22px_rgba(4,8,18,0.12)] transition ${
                             selectedQuestion?.id === question.id
                               ? "border-warm-border bg-warm-glow"
@@ -804,17 +941,56 @@ export default function PractisePage() {
                       >
                         {savingAttempt ? "Saving..." : "Save attempt"}
                       </Button>
-                      <div className="flex flex-wrap items-center gap-2 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] px-3 py-2">
-                        <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-                          Next
-                        </span>
-                        <Button type="button" variant="secondary" onClick={() => setShowTutorPanel(true)}>
-                          Ask Tutor
-                        </Button>
-                        <Button type="button" variant="secondary" onClick={() => setShowAttemptHistory(true)}>
-                          View history
-                        </Button>
-                      </div>
+                      {lastSavedAttemptResult ? (
+                        <div className="rounded-[1.2rem] border border-warm-border bg-warm-glow p-4">
+                          <div className="text-sm font-semibold text-white">
+                            Attempt saved.
+                          </div>
+                          <p className="mt-1 text-sm leading-6 text-text-secondary">
+                            {lastSavedAttemptResult === "incorrect"
+                              ? "Repair it while it is fresh, then turn the useful bit into a flashcard if needed."
+                              : "Good evidence. You can still review history or ask for a method check."}
+                          </p>
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button type="button" variant="secondary" onClick={() => setShowTutorPanel(true)}>
+                              Ask Tutor
+                            </Button>
+                            {lastSavedAttemptResult === "incorrect" ? (
+                              <>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => handleTutorShortcut("make-flashcard")}
+                                >
+                                  Make flashcard
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="secondary"
+                                  onClick={() => handleTutorShortcut("similar-question")}
+                                >
+                                  Try similar question
+                                </Button>
+                              </>
+                            ) : null}
+                            <Button type="button" variant="secondary" onClick={() => setShowAttemptHistory(true)}>
+                              View history
+                            </Button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap items-center gap-2 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] px-3 py-2">
+                          <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                            Need help?
+                          </span>
+                          <Button type="button" variant="secondary" onClick={() => setShowTutorPanel(true)}>
+                            Ask Tutor
+                          </Button>
+                          <Button type="button" variant="secondary" onClick={() => setShowAttemptHistory(true)}>
+                            View history
+                          </Button>
+                        </div>
+                      )}
                     </div>
                   </Card>
 
