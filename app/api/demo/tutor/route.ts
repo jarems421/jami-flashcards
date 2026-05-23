@@ -1,0 +1,241 @@
+import { createHash } from "node:crypto";
+import type { NextRequest } from "next/server";
+import type { AiBudgetAction } from "@/lib/ai/budgets";
+import {
+  getWalkthroughQuestion,
+  getWalkthroughTopicNames,
+  type WalkthroughTutorIntent,
+} from "@/lib/demo/public-walkthrough";
+
+export const runtime = "nodejs";
+
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
+const REQUEST_TIMEOUT_MS = 12_000;
+
+function isWalkthroughTutorIntent(value: unknown): value is WalkthroughTutorIntent {
+  return (
+    value === "hint" ||
+    value === "check-working" ||
+    value === "explain-concept" ||
+    value === "show-method" ||
+    value === "full-solution" ||
+    value === "make-flashcard" ||
+    value === "similar-question"
+  );
+}
+
+function getBudgetAction(intent: WalkthroughTutorIntent): AiBudgetAction {
+  if (intent === "full-solution") return "practiceFullSolution";
+  if (intent === "make-flashcard") return "flashcardDraft";
+  if (intent === "similar-question") return "similarQuestion";
+  return "practiceHint";
+}
+
+function getVisitorBudgetKey(request: NextRequest) {
+  const forwardedFor = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "";
+  const realIp = request.headers.get("x-real-ip")?.trim() ?? "";
+  const userAgent = request.headers.get("user-agent")?.trim() ?? "";
+  const raw = `${forwardedFor || realIp || "unknown"}:${userAgent || "unknown"}`;
+  return `public-demo:${createHash("sha256").update(raw).digest("hex").slice(0, 32)}`;
+}
+
+function getIntentInstruction(intent: WalkthroughTutorIntent) {
+  if (intent === "hint") {
+    return "Give one hint only. Do not reveal the answer. End by asking the student to try the next step.";
+  }
+  if (intent === "check-working") {
+    return "Check the student's working. Identify the first incorrect or missing step, then ask them to repair that step. Do not complete the whole solution.";
+  }
+  if (intent === "explain-concept") {
+    return "Explain the underlying concept in plain language, then connect it back to this exact question. Avoid dumping the final answer.";
+  }
+  if (intent === "show-method") {
+    return "Show the setup or method, but leave a meaningful step for the student to complete.";
+  }
+  if (intent === "make-flashcard") {
+    return "Suggest one compact flashcard that targets the likely misconception. Include exactly one 'Front:' line and one 'Back:' line.";
+  }
+  if (intent === "similar-question") {
+    return "Give one similar practice question, with no solution.";
+  }
+  return "The student explicitly requested the full solution. Give a concise worked solution, then end with one follow-up check question.";
+}
+
+function getFallbackReply(intent: WalkthroughTutorIntent) {
+  if (intent === "full-solution") {
+    return "Here is the safe walkthrough version: diagonalizability depends on having enough independent eigenvectors. Compare the algebraic multiplicity with the eigenspace dimension, then explain whether the eigenspaces span the whole space.";
+  }
+  if (intent === "make-flashcard") {
+    return "Front: What must be true for a matrix to be diagonalizable?\nBack: It must have enough linearly independent eigenvectors to form a basis; equivalently, the sum of eigenspace dimensions must equal the matrix size.";
+  }
+  if (intent === "similar-question") {
+    return "Similar question: A 2 by 2 matrix has characteristic polynomial (lambda - 5)^2 and a one-dimensional eigenspace. Is it diagonalizable? Explain briefly.";
+  }
+  return "Try this hint: first name the concept being tested, then write the one condition that decides the question. After that, attempt only the next line before asking for more help.";
+}
+
+function extractSuggestedFlashcard(text: string) {
+  const frontMatch = text.match(/(?:front|question)\s*:\s*(.+)/i);
+  const backMatch = text.match(/(?:back|answer)\s*:\s*(.+)/i);
+
+  if (!frontMatch?.[1] || !backMatch?.[1]) {
+    return null;
+  }
+
+  return {
+    front: frontMatch[1].trim().slice(0, 400),
+    back: backMatch[1].trim().slice(0, 2_000),
+  };
+}
+
+function getFallbackFlashcard(reply: string) {
+  return (
+    extractSuggestedFlashcard(reply) ?? {
+      front: "What condition makes a matrix diagonalizable?",
+      back: "It needs enough linearly independent eigenvectors to form a basis for the vector space.",
+    }
+  );
+}
+
+export async function POST(request: NextRequest) {
+  let intent: WalkthroughTutorIntent = "hint";
+  let message = "";
+  let questionId = "";
+  let userAnswer: string | undefined;
+  let workingText: string | undefined;
+
+  try {
+    const body = await request.json();
+    intent = isWalkthroughTutorIntent(body.intent) ? body.intent : "hint";
+    message = typeof body.message === "string" ? body.message.slice(0, 1_000) : "";
+    const rawContext = body.context && typeof body.context === "object" ? body.context : {};
+    questionId =
+      typeof rawContext.questionId === "string" ? rawContext.questionId.slice(0, 160) : "";
+    userAnswer =
+      typeof rawContext.userAnswer === "string" && rawContext.userAnswer.trim()
+        ? rawContext.userAnswer.slice(0, 2_000)
+        : undefined;
+    workingText =
+      typeof rawContext.workingText === "string" && rawContext.workingText.trim()
+        ? rawContext.workingText.slice(0, 2_000)
+        : undefined;
+  } catch {
+    return Response.json({
+      reply: getFallbackReply("hint"),
+      fallback: true,
+      error: "Invalid request body.",
+    });
+  }
+
+  const question = getWalkthroughQuestion(questionId);
+  if (!message || !question) {
+    return Response.json({
+      reply: getFallbackReply("hint"),
+      fallback: true,
+      error: "Walkthrough question context is required.",
+    });
+  }
+
+  const budgetKey = getVisitorBudgetKey(request);
+  try {
+    const { checkAiBudget } = await import("@/lib/ai/budgets");
+    const budgetAllowed = await checkAiBudget({
+      uid: budgetKey,
+      action: getBudgetAction(intent),
+      demo: true,
+    });
+    if (!budgetAllowed) {
+      const reply =
+        "The public tutor budget for this walkthrough is used up for now. You can still click through the product, edit the local attempt, and inspect how drafts and Progress update.";
+      return Response.json({
+        reply,
+        fallback: true,
+        budgetExhausted: true,
+        suggestedFlashcard: intent === "make-flashcard" ? getFallbackFlashcard(reply) : null,
+      });
+    }
+  } catch (error) {
+    console.error("Public demo tutor budget check failed:", error);
+    const reply =
+      "The public tutor budget check is unavailable, so Jami is using a safe walkthrough hint instead: compare the topic, the attempted answer, and the next missing step before asking for more.";
+    return Response.json({
+      reply,
+      fallback: true,
+      suggestedFlashcard: intent === "make-flashcard" ? getFallbackFlashcard(reply) : null,
+    });
+  }
+
+  if (!GEMINI_API_KEY) {
+    const reply = getFallbackReply(intent);
+    return Response.json({
+      reply,
+      fallback: true,
+      suggestedFlashcard: intent === "make-flashcard" ? getFallbackFlashcard(reply) : null,
+    });
+  }
+
+  try {
+    const [{ cleanGeneratedStudyText }, { generateGeminiText }] = await Promise.all([
+      import("@/lib/ai/card-autocomplete"),
+      import("@/lib/ai/gemini"),
+    ]);
+    const systemPrompt = `You are Jami's public walkthrough tutor.
+This is a no-login demo attached to a seeded practice question.
+Do not ask for account data. Do not claim any persistent progress was saved.
+Default to scaffolding and anti-overhelp:
+- encourage the student to attempt the next step before revealing more;
+- do not claim mastery just because you explained something;
+- do not reveal a full worked answer unless the intent is full-solution;
+- be concise, kind, and specific.
+
+Intent:
+${getIntentInstruction(intent)}
+
+Question:
+${question.questionText}
+
+Known answer:
+${question.answerText}
+
+Stored solution:
+${question.solutionText}
+
+Topics:
+${getWalkthroughTopicNames(question.topicIds).join(", ")}
+
+Student answer:
+${userAnswer ?? "Not supplied"}
+
+Student working:
+${workingText ?? "Not supplied"}`;
+
+    const text = await generateGeminiText({
+      apiKey: GEMINI_API_KEY,
+      timeoutMs: REQUEST_TIMEOUT_MS,
+      request: {
+        systemInstruction: systemPrompt,
+        contents: [{ role: "user", parts: [{ text: message }] }],
+      },
+      onRetry: ({ error, modelName, nextModelName }) => {
+        console.warn(
+          `Public demo tutor failed on ${modelName}; retrying with ${nextModelName}.`,
+          error
+        );
+      },
+    });
+
+    const reply = cleanGeneratedStudyText(text) || getFallbackReply(intent);
+    return Response.json({
+      reply,
+      suggestedFlashcard: intent === "make-flashcard" ? getFallbackFlashcard(reply) : null,
+    });
+  } catch (error) {
+    console.error("Public demo tutor error:", error);
+    const reply = getFallbackReply(intent);
+    return Response.json({
+      reply,
+      fallback: true,
+      suggestedFlashcard: intent === "make-flashcard" ? getFallbackFlashcard(reply) : null,
+    });
+  }
+}
