@@ -19,33 +19,42 @@ export default function AppTopBar({
   return (
     <div
       className={className}
-      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.35rem)" }}
+      style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.45rem)" }}
     >
-      <div className="app-topbar rounded-[1.45rem] border-[1.5px] border-white/[0.16] bg-[linear-gradient(180deg,rgba(31,22,56,0.86),rgba(19,12,38,0.86))] px-2.5 py-2.5 shadow-[0_16px_34px_rgba(7,2,22,0.22)] backdrop-blur-xl sm:rounded-[2rem] sm:px-4 sm:py-3">
-        <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-3">
-          <div className="flex min-h-[2.35rem] min-w-[4.75rem] items-center sm:min-h-[2.5rem] sm:min-w-[6rem]">
+      <div className="app-topbar rounded-[1.55rem] border-[1.5px] border-white/[0.14] bg-[linear-gradient(180deg,rgba(29,20,51,0.86),rgba(15,9,30,0.78))] px-3 py-3 shadow-[0_18px_38px_rgba(7,2,22,0.22)] backdrop-blur-xl sm:rounded-[2rem] sm:px-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.15rem] border border-white/14 bg-[radial-gradient(circle_at_35%_20%,rgba(255,214,246,0.34),rgba(157,99,223,0.18)_44%,rgba(255,255,255,0.06)_100%)] text-sm font-semibold text-white shadow-[0_12px_24px_rgba(157,99,223,0.16)]">
+              J
+            </div>
+            <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">
+                <span className="hidden sm:inline">Jami learning loop</span>
+                <span className="sm:hidden">Jami</span>
+              </div>
+              <h1 className="mt-1 truncate text-[1.05rem] font-semibold leading-tight text-white sm:text-[1.25rem]">
+                {title}
+              </h1>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2 sm:justify-end">
             {backHref && backLabel ? (
               <Link
                 href={backHref}
-                className="inline-flex items-center gap-1.5 rounded-full border border-border bg-white/[0.04] px-2.5 py-1.5 text-xs font-medium text-text-secondary transition duration-fast hover:border-border-strong hover:bg-white/[0.07] hover:text-white sm:gap-2 sm:px-3 sm:py-2 sm:text-sm"
+                className="inline-flex min-h-[2.45rem] items-center gap-2 rounded-full border border-white/14 bg-white/[0.045] px-3 py-2 text-xs font-semibold text-text-secondary transition duration-fast hover:border-white/22 hover:bg-white/[0.08] hover:text-white sm:text-sm"
               >
                 <span aria-hidden="true">&larr;</span>
                 <span className="truncate">{backLabel}</span>
               </Link>
-            ) : null}
-          </div>
-
-          <div className="min-w-0 text-center">
-            <span className="text-[0.82rem] font-semibold text-warm-accent sm:text-[0.95rem]">
-              Jami
-            </span>
-            <div className="mt-1.5 truncate text-sm font-medium text-white/95 sm:mt-2 sm:text-base">
-              {title}
-            </div>
-          </div>
-
-          <div className="flex min-h-[2.35rem] min-w-[4.75rem] items-center justify-end sm:min-h-[2.5rem] sm:min-w-[6rem]">
-            {action ?? <div className="h-9 w-9 sm:h-10 sm:w-10" aria-hidden="true" />}
+            ) : (
+              <div aria-hidden="true" />
+            )}
+            {action ? (
+              <div className="shrink-0">{action}</div>
+            ) : (
+              <div className="h-10 w-10 shrink-0" aria-hidden="true" />
+            )}
           </div>
         </div>
       </div>
