@@ -20,3 +20,13 @@ During the UI polish phase:
   - `npm run lint`
   - `npm test`
   - `npm run build`
+
+## UI Polish Expectations
+
+For UI tasks, do not make minor surface-level tweaks only.
+
+The expected standard is a full visual redesign of the relevant UI surface using reusable components and the Jami design system.
+
+Preserve functionality, but feel free to substantially restructure JSX, layout, component composition, spacing, and visual hierarchy when needed.
+
+The result should look like a designed product, not a quick prototype.

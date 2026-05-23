@@ -8,6 +8,31 @@ Jami should feel calm, modern, study-focused, and slightly cosmic. It should loo
 
 The UI should make studying feel steady and focused, not like managing a cluttered productivity suite.
 
+## UI Redesign Standard
+
+This UI phase is not for tiny cosmetic tweaks.
+
+The goal is a full visual redesign of the current MVP surfaces so Jami feels like a polished, refreshing, Figma-quality learning product rather than a functional prototype.
+
+The redesign should:
+- rethink layout, spacing, hierarchy, cards, page structure, and visual rhythm;
+- create a distinctive Jami identity;
+- feel calm, modern, study-focused, and slightly cosmic;
+- avoid generic SaaS/dashboard slop;
+- avoid cramped forms, plain boxes, and inconsistent Tailwind one-offs;
+- make Learn, Practise, Tutor, and Progress feel like one coherent product.
+
+This is a UI-layer rewrite only.
+
+Do not rewrite:
+- Firebase logic
+- AI logic
+- routes
+- data models
+- tests
+- study scheduling
+- practice/tutor/mastery behaviour
+
 ## Visual Principles
 
 - Use clean layouts with clear hierarchy.
