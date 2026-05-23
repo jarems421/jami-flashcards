@@ -20,6 +20,8 @@ import {
 } from "@/lib/study/activity";
 import { predictStudyStreak } from "@/lib/study/streak-prediction";
 import { loadStudyActivity } from "@/services/study/activity";
+import { getAttempts, getActiveQuestions } from "@/services/study/practice";
+import { getGeneratedContentDrafts } from "@/services/study/generated-content";
 import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
@@ -33,6 +35,8 @@ import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
 const URGENT_GOAL_WINDOW_MS = 48 * 60 * 60 * 1000;
+const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
+const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
 type DashboardAction = {
   eyebrow: string;
@@ -55,6 +59,105 @@ function getUrgentGoal(goals: Goal[], now: number) {
     .sort((left, right) => left.deadline - right.deadline)[0] ?? null;
 }
 
+type ChecklistItem = {
+  label: string;
+  detail: string;
+  href: string;
+  done: boolean;
+};
+
+function GettingStartedChecklist({
+  items,
+  isLoading,
+}: {
+  items: ChecklistItem[];
+  isLoading: boolean;
+}) {
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === "undefined") return false;
+    try {
+      return sessionStorage.getItem(GETTING_STARTED_DISMISSED_KEY) === "true";
+    } catch {
+      return false;
+    }
+  });
+  const allDone = !isLoading && items.length > 0 && items.every((item) => item.done);
+  const showComplete = allDone && !dismissed;
+
+  useEffect(() => {
+    if (!showComplete) return;
+
+    const timeoutId = window.setTimeout(() => {
+      setDismissed(true);
+      try {
+        sessionStorage.setItem(GETTING_STARTED_DISMISSED_KEY, "true");
+      } catch {
+        // Non-critical.
+      }
+    }, 1800);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [showComplete]);
+
+  if (allDone && dismissed) return null;
+
+  if (showComplete) {
+    return (
+      <Card tone="warm" padding="lg" className="animate-reward-pulse">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+              Getting started complete
+            </div>
+            <div className="mt-2 text-xl font-semibold text-white">
+              The starter loop is ready.
+            </div>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              Jami will keep the core loop visible above, but this setup checklist can step out of
+              the way now.
+            </p>
+          </div>
+          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow">
+            <span className="h-8 w-8 rounded-full bg-warm-accent shadow-[0_0_28px_rgba(255,214,246,0.35)]" />
+          </div>
+        </div>
+      </Card>
+    );
+  }
+
+  return (
+    <Card padding="lg">
+      <SectionHeader
+        eyebrow="Getting started"
+        title="Set up the first learning loop."
+        description="Finish these once, then this card disappears and the dashboard stays focused on what to do next."
+      />
+      <div className="mt-5 space-y-2">
+        {items.map((item) => (
+          <Link
+            key={item.label}
+            href={item.href}
+            className="flex items-start gap-3 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-3 transition duration-fast hover:border-white/[0.16] hover:bg-white/[0.06]"
+          >
+            <span
+              aria-label={item.done ? "Complete" : "Incomplete"}
+              className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border transition ${
+                item.done
+                  ? "border-warm-border bg-warm-accent shadow-[0_0_18px_rgba(255,214,246,0.28)]"
+                  : "border-white/[0.16] bg-white/[0.035]"
+              }`}
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-white">{item.label}</span>
+              <span className="mt-0.5 block text-xs leading-5 text-text-muted">{item.detail}</span>
+            </span>
+          </Link>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export default function DashboardHome() {
   const { user } = useUser();
 
@@ -64,6 +167,9 @@ export default function DashboardHome() {
   const [urgentGoal, setUrgentGoal] = useState<Goal | null>(null);
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
+  const [practiceQuestionCount, setPracticeQuestionCount] = useState(0);
+  const [tutorHelpCount, setTutorHelpCount] = useState(0);
+  const [progressVisited, setProgressVisited] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<DashboardFeedback | null>(null);
@@ -130,12 +236,20 @@ export default function DashboardHome() {
       setRemainingOptionalCount(optionalCards.length);
       setCards(allCards);
 
-      const [goalsSnapshot, activity] = await Promise.all([
+      const [goalsSnapshot, activity, questions, attempts, drafts] = await Promise.all([
         getDocs(collection(db, "users", uid, "goals")).catch(() => null),
         loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
+        getActiveQuestions(uid).catch(() => []),
+        getAttempts(uid).catch(() => []),
+        getGeneratedContentDrafts(uid).catch(() => []),
       ]);
 
       setStudyActivity(activity);
+      setPracticeQuestionCount(questions.length);
+      setTutorHelpCount(
+        attempts.filter((attempt) => attempt.tutorUsed || (attempt.hintsUsed ?? 0) > 0).length +
+          drafts.filter((draft) => draft.kind === "flashcard").length
+      );
 
       if (goalsSnapshot) {
         const now2 = Date.now();
@@ -155,6 +269,14 @@ export default function DashboardHome() {
     setIsLoading(true);
     void loadAll(user.uid);
   }, [user.uid, loadAll]);
+
+  useEffect(() => {
+    try {
+      setProgressVisited(localStorage.getItem(PROGRESS_VISITED_KEY) === "true");
+    } catch {
+      setProgressVisited(false);
+    }
+  }, []);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -192,6 +314,47 @@ export default function DashboardHome() {
   const streakPrediction = useMemo(
     () => predictStudyStreak(cards, studyActivity),
     [cards, studyActivity]
+  );
+  const gettingStartedItems = useMemo<ChecklistItem[]>(
+    () => [
+      {
+        label: "Create your first deck",
+        detail: "Decks are groups of flashcards.",
+        href: "/dashboard/decks",
+        done: decks.length > 0,
+      },
+      {
+        label: "Add 5 flashcards",
+        detail: "Give Learn enough material to schedule reviews.",
+        href: "/dashboard/cards",
+        done: cards.length >= 5,
+      },
+      {
+        label: "Review your cards",
+        detail: "Complete at least one study action in Learn.",
+        href: "/dashboard/study",
+        done: todayReviews > 0,
+      },
+      {
+        label: "Create a practice question",
+        detail: "Practise turns memory into application.",
+        href: "/dashboard/practise",
+        done: practiceQuestionCount > 0,
+      },
+      {
+        label: "Ask Tutor for a hint or make a draft",
+        detail: "Use Tutor when stuck, then save useful mistakes.",
+        href: "/dashboard/practise",
+        done: tutorHelpCount > 0,
+      },
+      {
+        label: "Check Progress",
+        detail: "See weak topics and the next repair action.",
+        href: "/dashboard/progress",
+        done: progressVisited,
+      },
+    ],
+    [cards.length, decks.length, practiceQuestionCount, progressVisited, todayReviews, tutorHelpCount]
   );
   const dashboardAction = useMemo<DashboardAction>(() => {
     if (decks.length === 0) {
@@ -318,55 +481,36 @@ export default function DashboardHome() {
             title="Learn, practise, repair, then track what is improving."
             description="Jami works best when each study action feeds the next one."
           />
-          <div className="mt-5 grid gap-3 lg:grid-cols-[1.2fr_0.8fr]">
-            <div className="grid gap-2 sm:grid-cols-5">
-              {[
-                ["1", "Learn", "Review with flashcards."],
-                ["2", "Practise", "Try questions."],
-                ["3", "Tutor", "Ask for help when stuck."],
-                ["4", "Draft", "Save useful mistakes as cards."],
-                ["5", "Progress", "Track weak topics."],
-              ].map(([step, title, detail]) => (
-                <div
-                  key={step}
-                  className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-3"
-                >
-                  <div className="flex h-7 w-7 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-xs font-semibold text-warm-accent">
+          <div className="mt-5 space-y-3">
+            {[
+              ["1", "Learn", "Review flashcards so facts and definitions stay available."],
+              ["2", "Practise", "Try questions to test whether the idea transfers."],
+              ["3", "Tutor", "Ask for hint-first help when you get stuck."],
+              ["4", "Draft", "Save useful mistakes as flashcards before they fade."],
+              ["5", "Progress", "Check weak topics and choose the next repair action."],
+            ].map(([step, title, detail], index, steps) => (
+              <div
+                key={step}
+                className="relative rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-4 sm:flex sm:items-center sm:gap-4"
+              >
+                <div className="flex items-start gap-3 sm:items-center">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent">
                     {step}
                   </div>
-                  <div className="mt-3 text-sm font-semibold text-white">{title}</div>
-                  <p className="mt-1 text-xs leading-5 text-text-muted">{detail}</p>
-                </div>
-              ))}
-            </div>
-            <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4">
-              <div className="text-sm font-semibold text-white">Getting started</div>
-              <div className="mt-3 space-y-2 text-sm text-text-secondary">
-                {[
-                  ["Create your first deck", decks.length > 0],
-                  ["Add 5 flashcards", cards.length >= 5],
-                  ["Review your cards", todayReviews > 0],
-                  ["Create a practice question", false],
-                  ["Ask Tutor for a hint", false],
-                  ["Check Progress", false],
-                ].map(([label, done]) => (
-                  <div key={label as string} className="flex items-center gap-2">
-                    <span
-                      className={`flex h-5 w-5 items-center justify-center rounded-full border text-[0.65rem] ${
-                        done
-                          ? "border-warm-border bg-warm-glow text-warm-accent"
-                          : "border-white/[0.12] bg-white/[0.04] text-text-muted"
-                      }`}
-                    >
-                      {done ? "OK" : ""}
-                    </span>
-                    <span>{label as string}</span>
+                  <div>
+                    <div className="text-base font-semibold text-white">{title}</div>
+                    <p className="mt-1 text-sm leading-6 text-text-secondary">{detail}</p>
                   </div>
-                ))}
+                </div>
+                {index < steps.length - 1 ? (
+                  <div className="ml-5 mt-3 h-6 w-px bg-white/[0.12] sm:ml-auto sm:mt-0 sm:h-px sm:w-14" />
+                ) : null}
               </div>
-            </div>
+            ))}
           </div>
         </Card>
+
+        <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
 
         <div className="grid gap-3 sm:gap-4 md:grid-cols-3">
           <StatTile

@@ -458,6 +458,7 @@ export default function CardCreationPanel({
             onTagsChange={setSingleTags}
             onPendingTagChange={setSinglePendingTag}
             helperText="Optional. Topics are learning concepts; tags are extra organisation labels."
+            suggestionLabel="topic"
             disabled={addingSingleCard}
           />
           <Button

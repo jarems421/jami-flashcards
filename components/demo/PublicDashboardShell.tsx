@@ -509,21 +509,26 @@ function HomePanel() {
           title="Learn, practise, repair, save, and track."
           description="A first-time student should be able to follow the whole learning loop from this public dashboard."
         />
-        <div className="mt-6 grid gap-3 lg:grid-cols-5">
+        <div className="mt-6 space-y-3">
           {[
             ["1. Learn", "Review flashcards.", "/dashboard/study"],
             ["2. Practise", "Try questions.", "/dashboard/practise"],
             ["3. Tutor", "Get help when stuck.", "/dashboard/practise"],
             ["4. Save", "Turn mistakes into card drafts.", "/dashboard/cards"],
             ["5. Progress", "See weak topics.", "/dashboard/progress"],
-          ].map(([title, text, href]) => (
+          ].map(([title, text, href], index, steps) => (
             <Link
               key={title}
               href={href}
-              className={interactiveCardClass}
+              className={`${interactiveCardClass} flex items-center justify-between gap-4`}
             >
-              <div className="text-base font-semibold text-white">{title}</div>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">{text}</p>
+              <span className="min-w-0">
+                <span className="block text-base font-semibold text-white">{title}</span>
+                <span className="mt-1 block text-sm leading-6 text-text-secondary">{text}</span>
+              </span>
+              {index < steps.length - 1 ? (
+                <span className="hidden h-px w-14 shrink-0 bg-white/[0.12] sm:block" />
+              ) : null}
             </Link>
           ))}
         </div>

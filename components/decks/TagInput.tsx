@@ -19,6 +19,7 @@ type TagInputProps = {
   placeholder?: string;
   disabled?: boolean;
   helperText?: string;
+  suggestionLabel?: string;
 };
 
 export default function TagInput({
@@ -30,6 +31,7 @@ export default function TagInput({
   placeholder = "Type a tag and press Add",
   disabled = false,
   helperText,
+  suggestionLabel = "tag",
 }: TagInputProps) {
   const [localError, setLocalError] = useState<string | null>(null);
   const [showAllSuggestions, setShowAllSuggestions] = useState(false);
@@ -141,7 +143,10 @@ export default function TagInput({
       {suggestions.length > 0 ? (
         <div className="space-y-2">
           <div className="flex items-center justify-between gap-3 text-xs text-text-muted">
-            <span>Suggested tags</span>
+            <span>
+              Suggested {suggestionLabel}
+              {allSuggestions.length === 1 ? "" : "s"}
+            </span>
             <span>
               {suggestions.length} of {allSuggestions.length}
             </span>
@@ -155,7 +160,10 @@ export default function TagInput({
                 disabled={disabled}
                 className="max-w-full rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-left text-xs text-text-muted transition duration-fast hover:border-border-strong hover:bg-white/[0.08] disabled:opacity-50 sm:max-w-[16rem]"
               >
-                <span className="block truncate">Use {tag}</span>
+                <span className="block truncate">
+                  Suggested {suggestionLabel}: {tag}
+                </span>
+                <span className="mt-1 block font-semibold text-white">Use {suggestionLabel}</span>
               </button>
             ))}
           </div>

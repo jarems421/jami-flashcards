@@ -33,6 +33,7 @@ type Feedback = { type: "success" | "error"; message: string };
 
 const surfaceCardClass =
   "rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 shadow-[0_10px_22px_rgba(4,8,18,0.12)]";
+const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
 export default function ProgressPage() {
   const { user } = useUser();
@@ -46,6 +47,12 @@ export default function ProgressPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   useEffect(() => {
+    try {
+      localStorage.setItem(PROGRESS_VISITED_KEY, "true");
+    } catch {
+      // This only supports the dashboard starter checklist.
+    }
+
     let cancelled = false;
 
     void (async () => {
@@ -162,15 +169,15 @@ export default function ProgressPage() {
         aside={
           <div className="grid min-w-[18rem] grid-cols-3 gap-2 text-center">
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
-              <div className="text-lg font-medium tabular-nums text-white">{topics.length}</div>
+              <div className="text-lg font-medium tabular-nums text-white">{loading ? "..." : topics.length}</div>
               <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Topics</div>
             </div>
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
-              <div className="text-lg font-medium tabular-nums text-white">{practiceAccuracy}%</div>
+              <div className="text-lg font-medium tabular-nums text-white">{loading ? "..." : `${practiceAccuracy}%`}</div>
               <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Practice</div>
             </div>
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
-              <div className="text-lg font-medium tabular-nums text-white">{supportLevel}</div>
+              <div className="text-lg font-medium tabular-nums text-white">{loading ? "..." : supportLevel}</div>
               <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Support</div>
             </div>
           </div>
