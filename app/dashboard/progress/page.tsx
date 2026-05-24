@@ -275,13 +275,13 @@ export default function ProgressPage() {
             <EmptyState
               emoji="Topics"
               title="Progress needs topics"
-              description="Create topics in Practise, then link questions and cards to start building mastery evidence."
+              description="Create topics in Practice, then link questions and cards to start building mastery evidence."
               action={
                 <Link
                   href="/dashboard/practise"
                   className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-4 py-2 text-sm font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105"
                 >
-                  Open Practise
+                  Open Practice
                 </Link>
               }
             />

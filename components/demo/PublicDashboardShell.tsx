@@ -128,7 +128,7 @@ const TUTOR_ACTIONS: Array<{
     intent: "similar-question",
     label: "Similar question",
     prompt: "Give me one similar question without a solution.",
-    description: "Practise the same skill again.",
+    description: "Practice the same skill again.",
   },
 ];
 
@@ -962,7 +962,7 @@ function HomePanel({
             href="/dashboard/practise"
             className="inline-flex min-h-[3.15rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover"
           >
-            Try Practise
+            Try Practice
           </Link>
         }
         secondaryAction={
@@ -1082,7 +1082,7 @@ function HomePanel({
           <div className="mt-6 space-y-3">
             {[
               ["1. Learn", "Review flashcards.", "/dashboard/study"],
-              ["2. Practise", "Try questions.", "/dashboard/practise"],
+              ["2. Practice", "Try questions.", "/dashboard/practise"],
               ["3. Tutor", "Get help when stuck.", "/dashboard/practise"],
               ["4. Save", "Turn mistakes into card drafts.", "/dashboard/cards"],
               ["5. Progress", "See weak topics.", "/dashboard/progress"],
@@ -2651,18 +2651,52 @@ function notebookPointerPoint(event: ReactPointerEvent<SVGSVGElement>): Scratchp
   };
 }
 
+type PublicNotebookStoredState = {
+  pages?: typeof WALKTHROUGH_NOTEBOOK_PAGES;
+  pageTextById?: Record<string, string>;
+  strokesByPage?: Record<string, ScratchpadStroke[]>;
+  selectedPageId?: string;
+};
+
+function readStoredPublicNotebookState(storageKey: string): PublicNotebookStoredState | null {
+  if (!storageKey || typeof window === "undefined") return null;
+
+  try {
+    const stored = window.localStorage.getItem(storageKey);
+    if (!stored) return null;
+    return JSON.parse(stored) as PublicNotebookStoredState;
+  } catch {
+    window.localStorage.removeItem(storageKey);
+    return null;
+  }
+}
+
 function NotebookPanel({ pathname }: { pathname: string }) {
   const routeNotebookId = getNotebookIdFromPath(pathname);
   const notebook =
     WALKTHROUGH_NOTEBOOKS.find((entry) => entry.id === routeNotebookId) ??
     WALKTHROUGH_NOTEBOOKS[0];
-  const [pages, setPages] = useState(
-    WALKTHROUGH_NOTEBOOK_PAGES.filter((page) => page.notebookId === notebook?.id)
+  const storageKey = notebook ? `jami-public-notebook:${notebook.id}` : "";
+  const seededPages = WALKTHROUGH_NOTEBOOK_PAGES.filter((page) => page.notebookId === notebook?.id);
+  const storedNotebookState = useMemo(
+    () => readStoredPublicNotebookState(storageKey),
+    [storageKey]
   );
-  const [selectedPageId, setSelectedPageId] = useState(pages[0]?.id ?? "");
+  const initialPages =
+    storedNotebookState?.pages && storedNotebookState.pages.length > 0
+      ? storedNotebookState.pages
+      : seededPages;
+  const [pages, setPages] = useState(initialPages);
+  const [selectedPageId, setSelectedPageId] = useState(
+    storedNotebookState?.selectedPageId ?? initialPages[0]?.id ?? ""
+  );
   const selectedPage = pages.find((page) => page.id === selectedPageId) ?? pages[0];
-  const [pageTextById, setPageTextById] = useState<Record<string, string>>({});
-  const [strokesByPage, setStrokesByPage] = useState<Record<string, ScratchpadStroke[]>>({});
+  const [pageTextById, setPageTextById] = useState<Record<string, string>>(
+    storedNotebookState?.pageTextById ?? {}
+  );
+  const [strokesByPage, setStrokesByPage] = useState<Record<string, ScratchpadStroke[]>>(
+    storedNotebookState?.strokesByPage ?? {}
+  );
   const [drawing, setDrawing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
@@ -2733,14 +2767,29 @@ function NotebookPanel({ pathname }: { pathname: string }) {
 
   const savePage = () => {
     if (!selectedPage) return;
-    setPages((current) =>
-      current.map((page) =>
-        page.id === selectedPage.id ? { ...page, typedContent: typedContent.trim() } : page
-      )
+    const nextPages = pages.map((page) =>
+      page.id === selectedPage.id ? { ...page, typedContent: typedContent.trim() } : page
     );
+    const nextTextById = {
+      ...pageTextById,
+      [selectedPage.id]: typedContent.trim(),
+    };
+    setPages(nextPages);
+    setPageTextById(nextTextById);
+    if (storageKey && typeof window !== "undefined") {
+      window.localStorage.setItem(
+        storageKey,
+        JSON.stringify({
+          pages: nextPages,
+          pageTextById: nextTextById,
+          strokesByPage,
+          selectedPageId: selectedPage.id,
+        })
+      );
+    }
     setFeedback({
       type: "success",
-      message: "Notebook page saved locally. Public walkthrough writes stay on this device/session.",
+      message: "Notebook page saved locally. Public walkthrough writes stay on this device and survive reloads.",
     });
   };
 
@@ -2811,9 +2860,11 @@ function NotebookPanel({ pathname }: { pathname: string }) {
             description="This public notebook shows the Phase 5 direction: page-based typed and drawn working inside a study folder."
           />
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" disabled={!fullNotebookEditingEnabled} onClick={addPage}>
-              New page
-            </Button>
+            {fullNotebookEditingEnabled ? (
+              <Button type="button" variant="secondary" onClick={addPage}>
+                New page
+              </Button>
+            ) : null}
             <Button type="button" onClick={savePage}>
               Save local page
             </Button>
@@ -2826,7 +2877,11 @@ function NotebookPanel({ pathname }: { pathname: string }) {
           <SectionHeader
             eyebrow="Pages"
             title={`${pages.length} page${pages.length === 1 ? "" : "s"}`}
-            description="Agents can click pages, type working, draw locally, and save without Firebase writes."
+            description={
+              fullNotebookEditingEnabled
+                ? "Agents can click pages, type working, draw locally, and save without Firebase writes."
+                : "Phone light mode lets agents view pages and save typed notes. Continue anyway unlocks page and pen controls."
+            }
           />
           <div className="mt-4 space-y-2">
             {pages.map((page) => {

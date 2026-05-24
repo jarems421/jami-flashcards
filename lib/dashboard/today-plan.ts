@@ -433,10 +433,10 @@ function buildNextAction(input: {
     const topic = input.weakTopics[0];
     return {
       type: "practice_weak_topic",
-      title: `Practise ${topic.name}.`,
+      title: `Practice ${topic.name}.`,
       description: topic.reason,
       href: topic.href,
-      label: "Practise topic",
+      label: "Practice topic",
       priority: 6,
       secondaryHref: "/dashboard/study",
       secondaryLabel: "Review linked cards",
@@ -488,7 +488,7 @@ function buildNextAction(input: {
     label: "Focused Review",
     priority: 9,
     secondaryHref: "/dashboard/practise",
-    secondaryLabel: "Open Practise",
+    secondaryLabel: "Open Practice",
   };
 }
 

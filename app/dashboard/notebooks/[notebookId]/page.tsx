@@ -323,32 +323,39 @@ export default function NotebookEditorPage() {
               title={notebook.title}
               description="This is the new answer surface: page-based working first, Tutor and marking later."
             />
-            <div className="flex flex-wrap gap-2">
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={addingPage || !fullNotebookEditingEnabled}
-                onClick={() => void handleAddPage()}
-              >
-                {addingPage ? "Adding..." : "New page"}
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={strokes.length === 0 || !fullNotebookEditingEnabled}
-                onClick={() => setStrokes((current) => current.slice(0, -1))}
-              >
-                Undo stroke
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                disabled={strokes.length === 0 || !fullNotebookEditingEnabled}
-                onClick={() => setStrokes([])}
-              >
-                Clear drawing
-              </Button>
-            </div>
+            {fullNotebookEditingEnabled ? (
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={addingPage}
+                  onClick={() => void handleAddPage()}
+                >
+                  {addingPage ? "Adding..." : "New page"}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={strokes.length === 0}
+                  onClick={() => setStrokes((current) => current.slice(0, -1))}
+                >
+                  Undo stroke
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={strokes.length === 0}
+                  onClick={() => setStrokes([])}
+                >
+                  Clear drawing
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] px-4 py-3 text-sm leading-6 text-text-secondary">
+                Phone light mode keeps page viewing and typed notes visible. Use Continue anyway for page
+                creation and pen controls.
+              </div>
+            )}
           </div>
         </Card>
 

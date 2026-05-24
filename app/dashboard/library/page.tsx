@@ -102,7 +102,7 @@ function DraftEditor({
             {isFlashcard ? "Flashcard draft" : "Practice question draft"}
           </div>
           <div className="mt-1 text-xs text-text-muted">
-            Draft - based on a saved source. Review before it enters Learn or Practise.
+            Draft - based on a saved source. Review before it enters Learn or Practice.
           </div>
         </div>
         <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
@@ -208,7 +208,7 @@ function DraftEditor({
                   onSaved("Card added to your deck. You can review it in Learn.");
                 } else {
                   await convertPracticeQuestionDraftToQuestion(userId, { draftId: draft.id });
-                  onSaved("Practice question approved. You can attempt it in Practise.");
+                  onSaved("Practice question approved. You can attempt it in Practice.");
                 }
               } finally {
                 setBusy(false);
@@ -475,7 +475,7 @@ export default function LibraryPage() {
         <SectionHeader
           eyebrow="Basic Library"
           title="Turn sources into revision."
-          description="Save notes, references, or pasted material, then use Tutor and reviewed drafts to connect it back to Learn, Practise, Today, and Progress."
+          description="Save notes, references, or pasted material, then use Tutor and reviewed drafts to connect it back to Learn, Practice, Today, and Progress."
         />
         <div className="mt-5">
           <MetricStrip items={metrics} variant="compact" />
@@ -550,7 +550,7 @@ export default function LibraryPage() {
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Topics</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {topics.length === 0 ? (
-                      <span className="text-sm text-text-secondary">Create topics in Practise, then link them here.</span>
+                      <span className="text-sm text-text-secondary">Create topics in Practice, then link them here.</span>
                     ) : (
                       topics.map((topic) => {
                         const active = selectedTopicIds.includes(topic.id);
@@ -677,7 +677,7 @@ export default function LibraryPage() {
                   <SectionHeader
                     eyebrow="Draft review"
                     title="Source-generated drafts"
-                    description="Approve useful drafts into Learn or Practise. Reject anything weak."
+                    description="Approve useful drafts into Learn or Practice. Reject anything weak."
                   />
                   <div className="mt-5 space-y-3">
                     {sourceDrafts.length === 0 ? (
@@ -693,7 +693,7 @@ export default function LibraryPage() {
                                 Draft queue: {sourceDrafts.length}
                               </div>
                               <p className="mt-1 text-xs leading-5 text-text-muted">
-                                Review one draft at a time so generated content does not flood Learn or Practise.
+                                Review one draft at a time so generated content does not flood Learn or Practice.
                               </p>
                             </div>
                             <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
@@ -807,7 +807,7 @@ export default function LibraryPage() {
                   })
                 ) : (
                   <p className="text-sm leading-6 text-text-secondary">
-                    Create topics in Practise, then link sources here.
+                    Create topics in Practice, then link sources here.
                   </p>
                 )}
               </div>

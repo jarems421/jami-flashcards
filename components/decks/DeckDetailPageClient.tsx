@@ -844,7 +844,7 @@ export default function DeckDetailPageClient() {
                               href="/dashboard/practise"
                               className="text-sm font-medium text-warm-accent underline-offset-4 hover:underline"
                             >
-                              Create topics in Practise first
+                              Create topics in Practice first
                             </Link>
                           )}
                         </div>

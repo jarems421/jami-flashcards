@@ -264,7 +264,7 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
       : null,
     plan.weakTopics[0]
       ? {
-          label: "Practise topic",
+          label: "Practice topic",
           title: plan.weakTopics[0].name,
           detail: plan.weakTopics[0].reason,
           href: plan.weakTopics[0].href,
@@ -522,7 +522,7 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
   const [open, setOpen] = useState(!compact);
   const steps = [
     ["1", "Learn", "Review flashcards so facts and definitions stay available."],
-    ["2", "Practise", "Try questions to test whether the idea transfers."],
+    ["2", "Practice", "Try questions to test whether the idea transfers."],
     ["3", "Tutor", "Ask for hint-first help when you get stuck."],
     ["4", "Draft", "Save useful mistakes as flashcards before they fade."],
     ["5", "Progress", "Check weak topics and choose the next repair action."],
@@ -835,7 +835,7 @@ export default function DashboardHome() {
       },
       {
         label: "Create a practice question",
-        detail: "Practise turns memory into application.",
+        detail: "Practice turns memory into application.",
         href: "/dashboard/practise",
         done: todayPlan.checklist.createQuestion,
       },

@@ -10,7 +10,7 @@ Core loop:
 4. Create a practice question.
 5. Attempt the question and self-mark it.
 6. Mark one attempt incorrect and add a mistake label.
-7. Ask Tutor for a hint inside Practise.
+7. Ask Tutor for a hint inside Practice.
 8. Ask Tutor to make a flashcard.
 9. Confirm the result is a draft, not a real card yet.
 10. Save the draft.
@@ -30,7 +30,7 @@ Library loop:
 9. Confirm the card appears in Learn/Cards with the source link preserved.
 10. Generate practice question drafts from the source and confirm each has an expected answer.
 11. Edit and approve one practice draft.
-12. Confirm the approved question appears in Practise with a source label.
+12. Confirm the approved question appears in Practice with a source label.
 13. Check Today for source-linked draft actions.
 14. Check Progress for linked source recommendations on weak topics.
 15. On mobile/tablet widths, confirm Library uses Sources/Source/Actions navigation without horizontal scroll.
@@ -58,12 +58,12 @@ Public walkthrough checks:
 3. Open `/llms.txt` and confirm it lists the same route map in plain text.
 4. Open `/dashboard` while signed out.
 5. Confirm it does not redirect to auth.
-6. Click through Learn, Practise, Progress, Decks, Cards, Library, Goals, Stars, and Account.
+6. Click through Learn, Practice, Progress, Decks, Cards, Library, Goals, Stars, and Account.
 7. Confirm there are no Firebase permission errors in the browser console.
 8. Save a local practice attempt and confirm Progress updates in the same session.
 9. Ask the public Tutor for a hint.
 10. Create a local flashcard draft from Tutor.
-11. Confirm the in-Practise draft panel shows status, front, back, topic, destination deck, Save as draft, Add to deck, and Reject.
+11. Confirm the in-Practice draft panel shows status, front, back, topic, destination deck, Save as draft, Add to deck, and Reject.
 12. Open Working tools, draw on the scratchpad, test Undo/Clear, and send a typed voice transcript fallback.
 13. Save at least two attempts and confirm the local session summary updates attempts, correct count, Tutor uses, drafts, weakest topic, and next action.
 14. Edit the draft and simulate adding it to a deck.
@@ -100,6 +100,23 @@ Phase 5 notebook workspace checks:
 12. On phone width, confirm users can still view pages and add light typed notes.
 13. On phone width, confirm pen drawing and page creation are limited by default but can be deliberately unlocked with `Continue anyway`.
 14. Confirm mobile flashcards, Today, and Progress remain the priority mobile surfaces.
+
+Phase 5.5 live QA notes:
+
+- Date: 2026-05-24.
+- Target checked: `https://jami-jarems421s-projects.vercel.app`.
+- Routes checked with `?agent=1`: `/dashboard/folders`, `/dashboard/notebooks/notebook-eigenvalues`, `/dashboard/practise`, `/dashboard`, and `/dashboard/progress`.
+- Result: all checked live routes returned HTTP 200 and rendered the public local walkthrough without auth redirect.
+- Folder page: passed. It presents folders as study spaces and shows notebooks, decks, sources, practice work, and paper shells.
+- Notebook desktop/tablet: passed structurally. The live editor showed typed working, page list, save, new page, and pen controls without horizontal overflow.
+- Notebook phone: live warning appeared, but the deployed build still showed a disabled `New page` control in phone light mode. Local polish now hides full page/pen controls until `Continue anyway`.
+- Public notebook save/reload: live build allowed typing and saving, but reload reset the local typed note. Local polish now saves public notebook page state to `localStorage`, so saved local notes survive reloads without Firebase writes.
+- Phone `Continue anyway`: local post-fix check passed. Phone light mode shows `Continue anyway` and `Save local page`; after continuing it unlocks `New page`, `Undo`, `Clear`, and pen mode.
+- Drawing check: local post-fix check passed. Drawing on the public notebook canvas created a stroke and enabled Undo/Clear.
+- Practice: passed. Public Practice is folder-first, keeps the old question bank as a supporting tool, uses user-facing `Practice` spelling, and had no horizontal overflow at phone width.
+- Learn/flashcards on phone: passed. `/dashboard/study?agent=1` loaded with no horizontal overflow and remained focused on review.
+- Today/Progress: passed. Today kept a dominant next action and Progress stayed narrow/actionable with linked folders/notebooks/sources.
+- Deployment note: the local fixes in this pass must be deployed before the live site reflects the localStorage save/reload and stricter phone light-mode control gating.
 
 Phase 5 Practice transition checks:
 
