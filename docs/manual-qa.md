@@ -95,6 +95,11 @@ Phase 5 notebook workspace checks:
 7. Confirm the notebook remains linked to its folder and topics.
 8. Confirm the public walkthrough notebook at `/dashboard/notebooks/notebook-eigenvalues?agent=1` stays local-only.
 9. Confirm the notebook is framed as the main working surface, not a scratchpad side tool.
+10. On desktop/tablet width, confirm page creation, typed working, pen drawing, undo, clear, and save are visible and usable.
+11. On phone width, confirm the page explains that notebook editing works best on iPad or desktop.
+12. On phone width, confirm users can still view pages and add light typed notes.
+13. On phone width, confirm pen drawing and page creation are limited by default but can be deliberately unlocked with `Continue anyway`.
+14. Confirm mobile flashcards, Today, and Progress remain the priority mobile surfaces.
 
 Phase 5 Practice transition checks:
 

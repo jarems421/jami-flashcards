@@ -89,6 +89,16 @@ Folders are broad study spaces.
 
 ### Notebooks
 
+Notebooks are the main working surface for serious problem solving.
+
+- Optimise full notebook creation/editing for desktop and iPad/tablet.
+- Phone should stay usable for viewing notebook pages and adding light typed notes.
+- Do not squeeze page lists, canvas tools, Tutor, and full working controls onto phone screens.
+- On phone-sized screens, show honest copy: "Notebook editing works best on iPad or desktop."
+- Do not hard-block phone users unless necessary; let them view pages and optionally continue anyway.
+- Keep mobile excellence focused on Today, Learn/flashcards, Progress, decks, and light folder viewing.
+- Full pen drawing, page creation, paper-style working, and later AI marking should feel designed for larger screens.
+
 Notebooks are the future main answer surface.
 
 - Use Notebook or Working Page, not Scratchpad, for persistent work.

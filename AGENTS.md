@@ -14,6 +14,7 @@ During the current Phase 5 folder/notebook foundation phase:
 - Use user-facing spelling `Practice`, while keeping existing routes such as `/dashboard/practise` compatible until a safe alias exists.
 - Do not build Anywhere, OCR, PDF parsing, file storage upload, full-paper mode, browser extension, always-on screen watching, voice tutor expansion, or iPad companion.
 - Do not build a full GoodNotes clone. Notebook V1 should stay humble and page-based.
+- Optimise notebook creation/editing for desktop and iPad/tablet. Phone should support viewing and light typed notes, not serious pen/page editing.
 - AI should be planned into notebooks/papers/practice sets, but the Phase 5 focus is workflow structure, not new AI depth.
 - Preserve existing functionality, routes, Firebase logic, AI logic, data models, and tests.
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.

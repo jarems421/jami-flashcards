@@ -91,6 +91,9 @@ export default function NotebookEditorPage() {
   const [saving, setSaving] = useState(false);
   const [addingPage, setAddingPage] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [isPhoneLayout, setIsPhoneLayout] = useState(false);
+  const [phoneFullEditing, setPhoneFullEditing] = useState(false);
+  const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
 
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
@@ -128,6 +131,16 @@ export default function NotebookEditorPage() {
   }, [loadNotebook]);
 
   useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsPhoneLayout(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
     if (!selectedPage) {
       setTypedContent("");
       setStrokes([]);
@@ -139,6 +152,7 @@ export default function NotebookEditorPage() {
   }, [selectedPage]);
 
   const handleStartDrawing = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!fullNotebookEditingEnabled) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     const point = getPointFromPointer(event);
     setDrawing(true);
@@ -146,7 +160,7 @@ export default function NotebookEditorPage() {
   };
 
   const handleDraw = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!drawing) return;
+    if (!drawing || !fullNotebookEditingEnabled) return;
     const point = getPointFromPointer(event);
     setStrokes((current) => {
       if (current.length === 0) return current;
@@ -198,7 +212,7 @@ export default function NotebookEditorPage() {
   };
 
   const handleAddPage = async () => {
-    if (!user?.uid || !notebook) return;
+    if (!user?.uid || !notebook || !fullNotebookEditingEnabled) return;
     setAddingPage(true);
     try {
       const nextPageNumber =
@@ -275,6 +289,33 @@ export default function NotebookEditorPage() {
           />
         ) : null}
 
+        {isPhoneLayout ? (
+          <Card tone="warm" padding="md">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <SectionHeader
+                eyebrow="Notebook device mode"
+                title="Notebook editing works best on iPad or desktop."
+                description="You can view pages and add light typed notes here. Pen drawing, page creation, and longer workings are designed for a larger screen."
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant={phoneFullEditing ? "secondary" : "primary"}
+                  onClick={() => setPhoneFullEditing((value) => !value)}
+                >
+                  {phoneFullEditing ? "Use light mode" : "Continue anyway"}
+                </Button>
+                <Link
+                  href="/dashboard/study"
+                  className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+                >
+                  Go to flashcards
+                </Link>
+              </div>
+            </div>
+          </Card>
+        ) : null}
+
         <Card padding="md">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <SectionHeader
@@ -283,13 +324,18 @@ export default function NotebookEditorPage() {
               description="This is the new answer surface: page-based working first, Tutor and marking later."
             />
             <div className="flex flex-wrap gap-2">
-              <Button type="button" variant="secondary" disabled={addingPage} onClick={() => void handleAddPage()}>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={addingPage || !fullNotebookEditingEnabled}
+                onClick={() => void handleAddPage()}
+              >
                 {addingPage ? "Adding..." : "New page"}
               </Button>
               <Button
                 type="button"
                 variant="secondary"
-                disabled={strokes.length === 0}
+                disabled={strokes.length === 0 || !fullNotebookEditingEnabled}
                 onClick={() => setStrokes((current) => current.slice(0, -1))}
               >
                 Undo stroke
@@ -297,7 +343,7 @@ export default function NotebookEditorPage() {
               <Button
                 type="button"
                 variant="secondary"
-                disabled={strokes.length === 0}
+                disabled={strokes.length === 0 || !fullNotebookEditingEnabled}
                 onClick={() => setStrokes([])}
               >
                 Clear drawing
@@ -368,37 +414,47 @@ export default function NotebookEditorPage() {
               />
             </Card>
 
-            <Card padding="md">
-              <SectionHeader
-                eyebrow="Pen mode"
-                title="Draw working on the page."
-                description="Simple drawing only for now: pen, undo, clear, save. No handwriting recognition or AI image reading yet."
-              />
-              <div className="mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] bg-[linear-gradient(180deg,rgba(255,255,255,0.075),rgba(255,255,255,0.035))] shadow-[0_18px_40px_rgba(0,0,0,0.14)]">
-                <svg
-                  role="img"
-                  aria-label="Notebook drawing page"
-                  viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
-                  className="block aspect-[1.45/1] w-full touch-none bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:40px_40px]"
-                  onPointerDown={handleStartDrawing}
-                  onPointerMove={handleDraw}
-                  onPointerUp={handleStopDrawing}
-                  onPointerCancel={handleStopDrawing}
-                >
-                  {strokes.map((stroke, index) => (
-                    <path
-                      key={index}
-                      d={makePath(stroke.points)}
-                      fill="none"
-                      stroke="var(--color-warm-accent)"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="5"
-                    />
-                  ))}
-                </svg>
-              </div>
-            </Card>
+            {fullNotebookEditingEnabled ? (
+              <Card padding="md">
+                <SectionHeader
+                  eyebrow="Pen mode"
+                  title="Draw working on the page."
+                  description="Simple drawing only for now: pen, undo, clear, save. No handwriting recognition or AI image reading yet."
+                />
+                <div className="mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] bg-[linear-gradient(180deg,rgba(255,255,255,0.075),rgba(255,255,255,0.035))] shadow-[0_18px_40px_rgba(0,0,0,0.14)]">
+                  <svg
+                    role="img"
+                    aria-label="Notebook drawing page"
+                    viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
+                    className="block aspect-[1.45/1] w-full touch-none bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:40px_40px]"
+                    onPointerDown={handleStartDrawing}
+                    onPointerMove={handleDraw}
+                    onPointerUp={handleStopDrawing}
+                    onPointerCancel={handleStopDrawing}
+                  >
+                    {strokes.map((stroke, index) => (
+                      <path
+                        key={index}
+                        d={makePath(stroke.points)}
+                        fill="none"
+                        stroke="var(--color-warm-accent)"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="5"
+                      />
+                    ))}
+                  </svg>
+                </div>
+              </Card>
+            ) : (
+              <Card padding="md">
+                <SectionHeader
+                  eyebrow="Pen mode"
+                  title="Drawing is paused on phone."
+                  description="View this notebook and add typed notes here. Use an iPad, tablet, or desktop for pen working and page editing, or choose Continue anyway above."
+                />
+              </Card>
+            )}
           </div>
         </div>
       </div>

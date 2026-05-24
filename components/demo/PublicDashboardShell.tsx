@@ -2665,11 +2665,24 @@ function NotebookPanel({ pathname }: { pathname: string }) {
   const [strokesByPage, setStrokesByPage] = useState<Record<string, ScratchpadStroke[]>>({});
   const [drawing, setDrawing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [isPhoneLayout, setIsPhoneLayout] = useState(false);
+  const [phoneFullEditing, setPhoneFullEditing] = useState(false);
   const currentStrokes = selectedPage ? strokesByPage[selectedPage.id] ?? [] : [];
   const typedContent = selectedPage
     ? pageTextById[selectedPage.id] ?? selectedPage.typedContent ?? ""
     : "";
   const folder = WALKTHROUGH_FOLDERS.find((entry) => entry.id === notebook?.folderId);
+  const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const mediaQuery = window.matchMedia("(max-width: 767px)");
+    const update = () => setIsPhoneLayout(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
 
   if (!notebook) {
     return (
@@ -2690,6 +2703,7 @@ function NotebookPanel({ pathname }: { pathname: string }) {
   };
 
   const startDrawing = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!fullNotebookEditingEnabled) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     const point = notebookPointerPoint(event);
     setDrawing(true);
@@ -2697,7 +2711,7 @@ function NotebookPanel({ pathname }: { pathname: string }) {
   };
 
   const draw = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!drawing) return;
+    if (!drawing || !fullNotebookEditingEnabled) return;
     const point = notebookPointerPoint(event);
     updateCurrentStrokes((current) => {
       if (current.length === 0) return current;
@@ -2731,6 +2745,14 @@ function NotebookPanel({ pathname }: { pathname: string }) {
   };
 
   const addPage = () => {
+    if (!fullNotebookEditingEnabled) {
+      setFeedback({
+        type: "error",
+        message: "Page creation is designed for iPad, tablet, or desktop. Choose Continue anyway to use it on phone.",
+      });
+      return;
+    }
+
     const nextPageNumber =
       pages.length > 0 ? Math.max(...pages.map((page) => page.pageNumber)) + 1 : 1;
     const page = {
@@ -2755,6 +2777,32 @@ function NotebookPanel({ pathname }: { pathname: string }) {
           onDismiss={() => setFeedback(null)}
         />
       ) : null}
+      {isPhoneLayout ? (
+        <Card tone="warm" padding="md">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+            <SectionHeader
+              eyebrow="Notebook device mode"
+              title="Notebook editing works best on iPad or desktop."
+              description="You can view this notebook and add light typed notes on phone. Pen drawing, page creation, and longer workings are designed for larger screens."
+            />
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={phoneFullEditing ? "secondary" : "primary"}
+                onClick={() => setPhoneFullEditing((value) => !value)}
+              >
+                {phoneFullEditing ? "Use light mode" : "Continue anyway"}
+              </Button>
+              <Link
+                href="/dashboard/study"
+                className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+              >
+                Go to flashcards
+              </Link>
+            </div>
+          </div>
+        </Card>
+      ) : null}
       <Card tone="warm" padding="lg">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <SectionHeader
@@ -2763,7 +2811,7 @@ function NotebookPanel({ pathname }: { pathname: string }) {
             description="This public notebook shows the Phase 5 direction: page-based typed and drawn working inside a study folder."
           />
           <div className="flex flex-wrap gap-2">
-            <Button type="button" variant="secondary" onClick={addPage}>
+            <Button type="button" variant="secondary" disabled={!fullNotebookEditingEnabled} onClick={addPage}>
               New page
             </Button>
             <Button type="button" onClick={savePage}>
@@ -2835,57 +2883,67 @@ function NotebookPanel({ pathname }: { pathname: string }) {
             />
           </Card>
 
-          <Card padding="md">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          {fullNotebookEditingEnabled ? (
+            <Card padding="md">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <SectionHeader
+                  eyebrow="Pen mode"
+                  title="Draw working"
+                  description="Simple local drawing only. No OCR, handwriting recognition, or image AI is claimed here."
+                />
+                <div className="flex flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={currentStrokes.length === 0}
+                    onClick={() => updateCurrentStrokes((current) => current.slice(0, -1))}
+                  >
+                    Undo
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    disabled={currentStrokes.length === 0}
+                    onClick={() => updateCurrentStrokes(() => [])}
+                  >
+                    Clear
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] bg-white/[0.04]">
+                <svg
+                  role="img"
+                  aria-label="Public notebook drawing page"
+                  viewBox={`0 0 ${NOTEBOOK_CANVAS_WIDTH} ${NOTEBOOK_CANVAS_HEIGHT}`}
+                  className="block aspect-[1.45/1] w-full touch-none bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:40px_40px]"
+                  onPointerDown={startDrawing}
+                  onPointerMove={draw}
+                  onPointerUp={stopDrawing}
+                  onPointerCancel={stopDrawing}
+                >
+                  {currentStrokes.map((stroke, index) => (
+                    <path
+                      key={index}
+                      d={notebookPath(stroke.points)}
+                      fill="none"
+                      stroke="var(--color-warm-accent)"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="5"
+                    />
+                  ))}
+                </svg>
+              </div>
+            </Card>
+          ) : (
+            <Card padding="md">
               <SectionHeader
                 eyebrow="Pen mode"
-                title="Draw working"
-                description="Simple local drawing only. No OCR, handwriting recognition, or image AI is claimed here."
+                title="Drawing is paused on phone."
+                description="View this notebook and add typed notes here. Use iPad, tablet, or desktop for pen working and page editing, or choose Continue anyway above."
               />
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={currentStrokes.length === 0}
-                  onClick={() => updateCurrentStrokes((current) => current.slice(0, -1))}
-                >
-                  Undo
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={currentStrokes.length === 0}
-                  onClick={() => updateCurrentStrokes(() => [])}
-                >
-                  Clear
-                </Button>
-              </div>
-            </div>
-            <div className="mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] bg-white/[0.04]">
-              <svg
-                role="img"
-                aria-label="Public notebook drawing page"
-                viewBox={`0 0 ${NOTEBOOK_CANVAS_WIDTH} ${NOTEBOOK_CANVAS_HEIGHT}`}
-                className="block aspect-[1.45/1] w-full touch-none bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:40px_40px]"
-                onPointerDown={startDrawing}
-                onPointerMove={draw}
-                onPointerUp={stopDrawing}
-                onPointerCancel={stopDrawing}
-              >
-                {currentStrokes.map((stroke, index) => (
-                  <path
-                    key={index}
-                    d={notebookPath(stroke.points)}
-                    fill="none"
-                    stroke="var(--color-warm-accent)"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth="5"
-                  />
-                ))}
-              </svg>
-            </div>
-          </Card>
+            </Card>
+          )}
         </div>
       </div>
     </div>
