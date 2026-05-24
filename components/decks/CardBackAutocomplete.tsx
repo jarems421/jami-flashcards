@@ -20,7 +20,7 @@ type Props = {
 const STYLE_OPTIONS: { value: CardBackAutocompleteStyle; label: string }[] = [
   { value: "auto", label: "Auto" },
   { value: "definition", label: "Definition" },
-  { value: "equation", label: "Maths" },
+  { value: "equation", label: "Formula" },
   { value: "explanation", label: "Simple explanation" },
   { value: "steps", label: "Step by step" },
   { value: "example", label: "Example" },
@@ -75,7 +75,7 @@ export default function CardBackAutocomplete({
         <div className="min-w-0">
           <div className="text-sm font-semibold text-white">Draft the answer with AI</div>
           <div className="mt-0.5 text-xs leading-5 text-text-muted">
-            Choose the kind of answer you want. Maths keeps symbols clean and formulas short.
+            Choose the kind of answer you want. Formula mode keeps symbols clean and explanations short.
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">

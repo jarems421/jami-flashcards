@@ -135,15 +135,15 @@ function buildDemoSeed(userId: string, now = Date.now()): DemoSeed {
     "rose",
     "book"
   );
-  const algebraDeck = createDemoDeck(
+  const historyDeck = createDemoDeck(
     userId,
-    "demo-algebra",
-    "Linear Algebra",
+    "demo-history",
+    "History",
     now - 15 * DAY_MS,
     "lagoon",
-    "calculator"
+    "book"
   );
-  const decks = [biologyDeck, frenchDeck, algebraDeck];
+  const decks = [biologyDeck, frenchDeck, historyDeck];
 
   const cards: Card[] = [
     createDemoCard(
@@ -288,12 +288,12 @@ function buildDemoSeed(userId: string, now = Date.now()): DemoSeed {
     ),
     createDemoCard(
       {
-        id: "card-eigenvector",
-        deckId: algebraDeck.id,
-        front: "What is an eigenvector?",
-        back: "A non-zero vector whose direction is unchanged by a linear transformation, changing only by a scalar factor.",
+        id: "card-containment",
+        deckId: historyDeck.id,
+        front: "What was containment?",
+        back: "A US policy aiming to stop communism spreading into more countries after World War II.",
         createdAt: now - 12 * DAY_MS,
-        tags: ["definitions", "matrices"],
+        tags: ["cold war", "definitions"],
         dueDate: now + 3 * DAY_MS,
         stability: 8.4,
         difficulty: 4.2,
@@ -311,12 +311,12 @@ function buildDemoSeed(userId: string, now = Date.now()): DemoSeed {
     ),
     createDemoCard(
       {
-        id: "card-determinant",
-        deckId: algebraDeck.id,
-        front: "What does a determinant of zero tell you about a matrix?",
-        back: "The matrix is singular, not invertible, and its columns are linearly dependent.",
+        id: "card-truman-doctrine",
+        deckId: historyDeck.id,
+        front: "What was the Truman Doctrine?",
+        back: "A 1947 policy promising US support for countries resisting communism.",
         createdAt: now - 11 * DAY_MS,
-        tags: ["matrices", "invertibility"],
+        tags: ["cold war", "policy"],
         dueDate: now - 4 * DAY_MS,
         stability: 2.8,
         difficulty: 7.9,
@@ -335,23 +335,23 @@ function buildDemoSeed(userId: string, now = Date.now()): DemoSeed {
     ),
     createDemoCard(
       {
-        id: "card-rank",
-        deckId: algebraDeck.id,
-        front: "What is the rank of a matrix?",
-        back: "The dimension of the column space, or equivalently the maximum number of linearly independent columns.",
+        id: "card-berlin-blockade",
+        deckId: historyDeck.id,
+        front: "Why did the Berlin Blockade increase Cold War tension?",
+        back: "It showed open confrontation over Germany and led to the Western airlift into Berlin.",
         createdAt: now - 4 * DAY_MS,
-        tags: ["matrices", "definitions"],
+        tags: ["cold war", "berlin"],
       },
       userId
     ),
     createDemoCard(
       {
-        id: "card-row-echelon",
-        deckId: algebraDeck.id,
-        front: "Why do we reduce a matrix to row echelon form?",
-        back: "To solve systems efficiently, identify pivots, and compute rank or inverse-related information.",
+        id: "card-marshall-plan",
+        deckId: historyDeck.id,
+        front: "What was the Marshall Plan?",
+        back: "A US programme of economic aid to help rebuild Western Europe and resist communist influence.",
         createdAt: now - 6 * DAY_MS,
-        tags: ["methods", "matrices"],
+        tags: ["cold war", "recovery"],
         dueDate: now + DAY_MS,
         stability: 5.2,
         difficulty: 5.8,

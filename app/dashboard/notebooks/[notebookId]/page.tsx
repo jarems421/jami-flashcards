@@ -20,20 +20,51 @@ import {
   Textarea,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
-import type { Notebook, NotebookPage } from "@/lib/workspace/notebooks";
+import type {
+  Notebook,
+  NotebookFile,
+  NotebookPage,
+  NotebookPageColor,
+  NotebookPageStatus,
+  NotebookPenColor,
+  NotebookStrokeTool,
+} from "@/lib/workspace/notebooks";
 import {
   createNotebookPage,
   getNotebookById,
+  getNotebookFiles,
   getNotebookPages,
   updateNotebookPage,
 } from "@/services/study/notebooks";
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
-type Stroke = { points: Point[] };
+type Stroke = {
+  points: Point[];
+  color: NotebookPenColor;
+  width: number;
+  tool: NotebookStrokeTool;
+};
+type SaveStatus = "saved" | "unsaved" | "saving";
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 620;
+const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
+  white: "bg-[#f8fafc] text-slate-950",
+  black: "bg-[#080a10] text-white",
+  grey: "bg-[#d8dde6] text-slate-950",
+};
+const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
+  white: "#f8fafc",
+  black: "#080a10",
+  grey: "#d8dde6",
+};
+const PEN_COLOR_HEX: Record<NotebookPenColor, string> = {
+  black: "#111827",
+  white: "#f8fafc",
+  red: "#ef4444",
+  green: "#22c55e",
+};
 
 function isPoint(value: unknown): value is Point {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -51,7 +82,22 @@ function normalizeStrokes(value: unknown): Stroke[] {
     if (!Array.isArray(points)) continue;
     const cleanPoints = points.filter(isPoint).slice(0, 1_200);
     if (cleanPoints.length > 0) {
-      strokes.push({ points: cleanPoints });
+      const stroke = entry as Record<string, unknown>;
+      const color =
+        stroke.color === "white" ||
+        stroke.color === "red" ||
+        stroke.color === "green" ||
+        stroke.color === "black"
+          ? stroke.color
+          : "black";
+      const tool = stroke.tool === "eraser" ? "eraser" : "pen";
+      const width =
+        typeof stroke.width === "number" && Number.isFinite(stroke.width)
+          ? Math.max(1, Math.min(48, Math.round(stroke.width)))
+          : tool === "eraser"
+            ? 18
+            : 5;
+      strokes.push({ points: cleanPoints, color, tool, width });
     }
   }
 
@@ -83,9 +129,14 @@ export default function NotebookEditorPage() {
     : params.notebookId;
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [pages, setPages] = useState<NotebookPage[]>([]);
+  const [files, setFiles] = useState<NotebookFile[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [typedContent, setTypedContent] = useState("");
   const [strokes, setStrokes] = useState<Stroke[]>([]);
+  const [pageColor, setPageColor] = useState<NotebookPageColor>("white");
+  const [penColor, setPenColor] = useState<NotebookPenColor>("black");
+  const [tool, setTool] = useState<NotebookStrokeTool>("pen");
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [drawing, setDrawing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -112,8 +163,10 @@ export default function NotebookEditorPage() {
         getNotebookById(user.uid, notebookId),
         getNotebookPages(user.uid, notebookId),
       ]);
+      const nextFiles = nextNotebook ? await getNotebookFiles(user.uid, notebookId) : [];
       setNotebook(nextNotebook);
       setPages(nextPages);
+      setFiles(nextFiles);
       setSelectedPageId(nextPages[0]?.id ?? null);
     } catch (error) {
       console.error(error);
@@ -149,14 +202,25 @@ export default function NotebookEditorPage() {
 
     setTypedContent(selectedPage.typedContent ?? "");
     setStrokes(normalizeStrokes(selectedPage.strokeData?.strokes));
-  }, [selectedPage]);
+    setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
+    setSaveStatus("saved");
+  }, [notebook?.pageColor, selectedPage]);
 
   const handleStartDrawing = (event: ReactPointerEvent<SVGSVGElement>) => {
     if (!fullNotebookEditingEnabled) return;
     event.currentTarget.setPointerCapture(event.pointerId);
     const point = getPointFromPointer(event);
     setDrawing(true);
-    setStrokes((current) => [...current, { points: [point] }]);
+    setSaveStatus("unsaved");
+    setStrokes((current) => [
+      ...current,
+      {
+        points: [point],
+        color: tool === "eraser" ? "white" : penColor,
+        tool,
+        width: tool === "eraser" ? 20 : 5,
+      },
+    ]);
   };
 
   const handleDraw = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -167,6 +231,7 @@ export default function NotebookEditorPage() {
       const next = [...current];
       const lastStroke = next[next.length - 1];
       next[next.length - 1] = {
+        ...lastStroke,
         points: [...lastStroke.points, point].slice(0, 1_200),
       };
       return next;
@@ -182,11 +247,16 @@ export default function NotebookEditorPage() {
 
   const handleSavePage = async () => {
     if (!user?.uid || !selectedPage) return;
+    setSaveStatus("saving");
     setSaving(true);
     try {
+      const status: NotebookPageStatus =
+        typedContent.trim() || strokes.length > 0 ? "working" : "blank";
       await updateNotebookPage(user.uid, selectedPage.id, {
         typedContent,
         strokeData: { version: 1, strokes },
+        pageColor,
+        status,
       });
       setPages((current) =>
         current.map((page) =>
@@ -195,11 +265,14 @@ export default function NotebookEditorPage() {
                 ...page,
                 typedContent: typedContent.trim() || undefined,
                 strokeData: { version: 1, strokes },
+                pageColor,
+                status,
                 updatedAt: Date.now(),
               }
             : page
         )
       );
+      setSaveStatus("saved");
       setFeedback({ type: "success", message: "Notebook page saved." });
     } catch (error) {
       setFeedback({
@@ -223,6 +296,7 @@ export default function NotebookEditorPage() {
         pageNumber: nextPageNumber,
         pageType: "free_working",
         title: `Page ${nextPageNumber}`,
+        pageColor: notebook.pageColor,
       });
       setPages((current) => [...current, page].sort((a, b) => a.pageNumber - b.pageNumber));
       setSelectedPageId(page.id);
@@ -276,7 +350,7 @@ export default function NotebookEditorPage() {
       width="3xl"
       action={
         <Button type="button" disabled={saving || !selectedPage} onClick={() => void handleSavePage()}>
-          {saving ? "Saving..." : "Save page"}
+          {saving ? "Saving..." : saveStatus === "unsaved" ? "Save changes" : "Saved"}
         </Button>
       }
     >
@@ -321,10 +395,13 @@ export default function NotebookEditorPage() {
             <SectionHeader
               eyebrow="Notebook workspace"
               title={notebook.title}
-              description="This is the new answer surface: page-based working first, Tutor and marking later."
+              description="This is the answer surface: type, write, add pages, and save your working here."
             />
             {fullNotebookEditingEnabled ? (
               <div className="flex flex-wrap gap-2">
+                <span className="inline-flex min-h-[2.5rem] items-center rounded-full border border-white/[0.1] bg-white/[0.045] px-3 text-xs font-semibold text-text-secondary">
+                  {saveStatus === "saving" ? "Saving..." : saveStatus === "unsaved" ? "Unsaved changes" : "Saved just now"}
+                </span>
                 <Button
                   type="button"
                   variant="secondary"
@@ -337,7 +414,10 @@ export default function NotebookEditorPage() {
                   type="button"
                   variant="secondary"
                   disabled={strokes.length === 0}
-                  onClick={() => setStrokes((current) => current.slice(0, -1))}
+                  onClick={() => {
+                    setStrokes((current) => current.slice(0, -1));
+                    setSaveStatus("unsaved");
+                  }}
                 >
                   Undo stroke
                 </Button>
@@ -345,7 +425,10 @@ export default function NotebookEditorPage() {
                   type="button"
                   variant="secondary"
                   disabled={strokes.length === 0}
-                  onClick={() => setStrokes([])}
+                  onClick={() => {
+                    setStrokes([]);
+                    setSaveStatus("unsaved");
+                  }}
                 >
                   Clear drawing
                 </Button>
@@ -406,6 +489,26 @@ export default function NotebookEditorPage() {
               </Card>
             ) : null}
 
+            {files.length > 0 ? (
+              <Card padding="md">
+                <SectionHeader
+                  eyebrow="Attached file"
+                  title="File saved with this notebook."
+                  description="Full PDF annotation, OCR, and automatic file reading come later. For now, this keeps the paper/reference linked to your working pages."
+                />
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {files.map((file) => (
+                    <span
+                      key={file.id}
+                      className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent"
+                    >
+                      {file.fileName} · {Math.round((file.sizeBytes ?? 0) / 1024)} KB
+                    </span>
+                  ))}
+                </div>
+              </Card>
+            ) : null}
+
             <Card padding="md">
               <SectionHeader
                 eyebrow={`Page ${selectedPage?.pageNumber ?? 1}`}
@@ -415,7 +518,10 @@ export default function NotebookEditorPage() {
               <Textarea
                 rows={10}
                 value={typedContent}
-                onChange={(event) => setTypedContent(event.target.value)}
+                onChange={(event) => {
+                  setTypedContent(event.target.value);
+                  setSaveStatus("unsaved");
+                }}
                 placeholder="Work through the question here..."
                 containerClassName="mt-4"
               />
@@ -424,16 +530,68 @@ export default function NotebookEditorPage() {
             {fullNotebookEditingEnabled ? (
               <Card padding="md">
                 <SectionHeader
-                  eyebrow="Pen mode"
-                  title="Draw working on the page."
-                  description="Simple drawing only for now: pen, undo, clear, save. No handwriting recognition or AI image reading yet."
+                  eyebrow="Page tools"
+                  title="Write on a solid notebook page."
+                  description="Use pen, eraser, colours, and page colour. No handwriting recognition or AI image reading yet."
                 />
-                <div className="mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] bg-[linear-gradient(180deg,rgba(255,255,255,0.075),rgba(255,255,255,0.035))] shadow-[0_18px_40px_rgba(0,0,0,0.14)]">
+                <div className="mt-4 flex flex-wrap items-center gap-3">
+                  <div className="flex rounded-full border border-white/[0.1] bg-white/[0.045] p-1">
+                    {(["pen", "eraser"] as NotebookStrokeTool[]).map((nextTool) => (
+                      <button
+                        key={nextTool}
+                        type="button"
+                        onClick={() => setTool(nextTool)}
+                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+                          tool === nextTool ? "bg-warm-glow text-warm-accent" : "text-text-secondary"
+                        }`}
+                      >
+                        {nextTool === "pen" ? "Pen" : "Eraser"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    {(["black", "white", "red", "green"] as NotebookPenColor[]).map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        aria-label={`${color} pen`}
+                        onClick={() => {
+                          setPenColor(color);
+                          setTool("pen");
+                        }}
+                        className={`h-8 w-8 rounded-full border ${
+                          penColor === color && tool === "pen" ? "border-warm-accent ring-2 ring-warm-accent/40" : "border-white/[0.2]"
+                        }`}
+                        style={{ background: PEN_COLOR_HEX[color] }}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex gap-2">
+                    {(["white", "black", "grey"] as NotebookPageColor[]).map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => {
+                          setPageColor(color);
+                          setSaveStatus("unsaved");
+                        }}
+                        className={`min-h-[2rem] rounded-full border px-3 text-xs font-semibold transition ${
+                          pageColor === color
+                            ? "border-warm-accent bg-warm-glow text-warm-accent"
+                            : "border-white/[0.1] bg-white/[0.045] text-text-secondary"
+                        }`}
+                      >
+                        {color}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div className={`mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] shadow-[0_18px_40px_rgba(0,0,0,0.14)] ${PAGE_COLOR_CLASS[pageColor]}`}>
                   <svg
                     role="img"
                     aria-label="Notebook drawing page"
                     viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
-                    className="block aspect-[1.45/1] w-full touch-none bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:40px_40px]"
+                    className="block aspect-[1.45/1] w-full touch-none"
                     onPointerDown={handleStartDrawing}
                     onPointerMove={handleDraw}
                     onPointerUp={handleStopDrawing}
@@ -444,10 +602,10 @@ export default function NotebookEditorPage() {
                         key={index}
                         d={makePath(stroke.points)}
                         fill="none"
-                        stroke="var(--color-warm-accent)"
+                        stroke={stroke.tool === "eraser" ? PAGE_COLOR_HEX[pageColor] : PEN_COLOR_HEX[stroke.color]}
                         strokeLinecap="round"
                         strokeLinejoin="round"
-                        strokeWidth="5"
+                        strokeWidth={stroke.width}
                       />
                     ))}
                   </svg>

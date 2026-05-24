@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { FirebaseError } from "firebase/app";
 import { collection, deleteDoc, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
@@ -44,6 +45,10 @@ function cardMatchesSearch(card: Card, term: string, deckName?: string) {
 
 const CARD_RESULT_PAGE_SIZE = 50;
 type SelectionDragMode = "select" | "deselect";
+
+function isPermissionDenied(error: unknown) {
+  return error instanceof FirebaseError && error.code === "permission-denied";
+}
 
 export default function CardsSearchPage() {
   const { user, isDemoUser } = useUser();
@@ -123,7 +128,9 @@ export default function CardsSearchPage() {
         setAvailableTags(tags);
       } catch (error) {
         console.error(error);
-        setFeedback({ type: "error", message: "Failed to load cards." });
+        if (!isPermissionDenied(error)) {
+          setFeedback({ type: "error", message: "Failed to load cards." });
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }

@@ -14,10 +14,15 @@ import { withTimeout } from "@/services/firebase/firestore";
 import {
   buildNotebookPagePayload,
   buildNotebookPayload,
+  buildNotebookFilePayload,
   mapNotebookData,
+  mapNotebookFileData,
   mapNotebookPageData,
   normalizeNotebookTitle,
   type Notebook,
+  type NotebookFile,
+  type NotebookPageColor,
+  type NotebookPageStatus,
   type NotebookPage,
   type NotebookPageType,
   type NotebookStrokeData,
@@ -33,6 +38,10 @@ function notebooksCollection(userId: string) {
 
 function notebookPagesCollection(userId: string) {
   return collection(db, "users", userId, "notebookPages");
+}
+
+function notebookFilesCollection(userId: string) {
+  return collection(db, "users", userId, "notebookFiles");
 }
 
 export async function getNotebooks(userId: string): Promise<Notebook[]> {
@@ -122,6 +131,10 @@ export async function createNotebook(
     sourceIds?: string[];
     practiceSetId?: string;
     pastPaperId?: string;
+    color?: string;
+    icon?: string;
+    pageColor?: NotebookPageColor;
+    uploadedFileId?: string;
   }
 ) {
   const normalizedUserId = userId.trim();
@@ -147,6 +160,10 @@ export async function updateNotebook(
     type: NotebookType;
     topicIds: string[];
     sourceIds: string[];
+    color: string;
+    icon: string;
+    pageColor: NotebookPageColor;
+    uploadedFileId: string;
     archived: boolean;
   }>
 ) {
@@ -173,6 +190,12 @@ export async function updateNotebook(
   if (input.type !== undefined) updates.type = input.type;
   if (input.topicIds !== undefined) updates.topicIds = input.topicIds;
   if (input.sourceIds !== undefined) updates.sourceIds = input.sourceIds;
+  if (input.color !== undefined) updates.color = input.color.trim().slice(0, 80) || null;
+  if (input.icon !== undefined) updates.icon = input.icon.trim().slice(0, 40) || null;
+  if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
+  if (input.uploadedFileId !== undefined) {
+    updates.uploadedFileId = input.uploadedFileId.trim().slice(0, 160) || null;
+  }
   if (typeof input.archived === "boolean") updates.archived = input.archived;
 
   await withTimeout(
@@ -222,6 +245,8 @@ export async function createNotebookPage(
     pageType?: NotebookPageType;
     typedContent?: string;
     strokeData?: NotebookStrokeData;
+    pageColor?: NotebookPageColor;
+    status?: NotebookPageStatus;
     questionPrompt?: string;
     linkedQuestionId?: string;
     linkedSourceId?: string;
@@ -251,6 +276,8 @@ export async function updateNotebookPage(
     pageType: NotebookPageType;
     typedContent: string;
     strokeData: NotebookStrokeData | null;
+    pageColor: NotebookPageColor;
+    status: NotebookPageStatus;
     questionPrompt: string;
     linkedQuestionId: string;
     linkedSourceId: string;
@@ -274,6 +301,8 @@ export async function updateNotebookPage(
   if (input.pageType !== undefined) updates.pageType = input.pageType;
   if (input.typedContent !== undefined) updates.typedContent = input.typedContent.trim().slice(0, 30_000) || null;
   if (input.strokeData !== undefined) updates.strokeData = input.strokeData;
+  if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
+  if (input.status !== undefined) updates.status = input.status;
   if (input.questionPrompt !== undefined) updates.questionPrompt = input.questionPrompt.trim().slice(0, 4_000) || null;
   if (input.linkedQuestionId !== undefined) updates.linkedQuestionId = input.linkedQuestionId.trim().slice(0, 160) || null;
   if (input.linkedSourceId !== undefined) updates.linkedSourceId = input.linkedSourceId.trim().slice(0, 160) || null;
@@ -284,4 +313,54 @@ export async function updateNotebookPage(
     WRITE_MS,
     "Update notebook page"
   );
+}
+
+export async function getNotebookFiles(
+  userId: string,
+  notebookId: string
+): Promise<NotebookFile[]> {
+  const normalizedUserId = userId.trim();
+  const normalizedNotebookId = notebookId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (!normalizedNotebookId) throw new Error("Missing notebookId.");
+
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        notebookFilesCollection(normalizedUserId),
+        where("notebookId", "==", normalizedNotebookId),
+        orderBy("uploadedAt", "desc")
+      )
+    ),
+    LOAD_MS,
+    "Load notebook files"
+  );
+
+  return snapshot.docs.map((fileDoc) =>
+    mapNotebookFileData(fileDoc.id, fileDoc.data() as Record<string, unknown>)
+  );
+}
+
+export async function createNotebookFileMetadata(
+  userId: string,
+  input: {
+    notebookId: string;
+    folderId: string;
+    fileName: string;
+    fileType: string;
+    storagePath: string;
+    sizeBytes?: number;
+  }
+) {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+
+  const payload = buildNotebookFilePayload(input);
+  const docRef = await withTimeout(
+    addDoc(notebookFilesCollection(normalizedUserId), payload),
+    WRITE_MS,
+    "Create notebook file metadata"
+  );
+
+  return mapNotebookFileData(docRef.id, payload);
 }

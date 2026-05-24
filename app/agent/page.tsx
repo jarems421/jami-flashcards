@@ -16,7 +16,7 @@ const dashboardRoutes = [
   {
     href: "/dashboard/practise?agent=1",
     label: "Practice",
-    purpose: "Try a question, self-mark, use Tutor, make a flashcard draft.",
+    purpose: "Verify notebook-first Practice, continue working, and open the tucked-away legacy question flow.",
   },
   {
     href: "/dashboard/practise?agent=1&forceTutorFallback=1",
@@ -27,6 +27,11 @@ const dashboardRoutes = [
     href: "/dashboard/folders?agent=1",
     label: "Folders",
     purpose: "Inspect the folder-first study-space foundation with seeded local data.",
+  },
+  {
+    href: "/dashboard/notebooks/notebook-photosynthesis?agent=1",
+    label: "Notebook",
+    purpose: "Open the public notebook editor: typed page, pen tools, page colours, save/reload, and phone warning.",
   },
   {
     href: "/dashboard/progress?agent=1",
@@ -68,27 +73,27 @@ const dashboardRoutes = [
 const testFlow = [
   "Open Today and identify the recommended next action.",
   "Go to Learn and flip/review one seeded flashcard.",
-  "Go to Practice, type an answer and working, then self-mark an attempt.",
-  "Use Tutor: ask for a hint, use I'm stuck here, then make a flashcard draft.",
+  "Go to Practice and confirm Continue working plus Folders are the main entry points.",
+  "Open a notebook, type on a page, draw, change colours, save, add a page, and reload.",
+  "Open a folder and confirm notebooks, decks, sources, templates, and legacy question records are clearly separated.",
   "Go to Progress and confirm the mistake/draft/weak-topic state changed locally.",
   "Go to Library and inspect a source; source actions in public mode remain local-only.",
   "Go to Cards/Decks to confirm card organisation and draft status.",
   "Go to Account and confirm signed-out mode did not access private data.",
 ];
 
-const phase4TestFlow = [
+const phase6TestFlow = [
   "Open Practice.",
-  "Type an answer and typed working.",
-  "Click I'm stuck here.",
-  "Highlight part of the Working textarea.",
-  "Click Ask about selected text.",
-  "Open Working tools.",
-  "Draw on the scratchpad, then test Undo and Clear.",
-  "Type a voice transcript fallback and send it to Tutor.",
-  "Save one correct and one incorrect local attempt.",
-  "Ask Tutor to make a flashcard and confirm the draft panel appears.",
-  "Check the local practice session summary.",
-  "Use /dashboard/practise?agent=1&forceTutorFallback=1 when you need deterministic Tutor responses.",
+  "Confirm the old question-bank UI is collapsed under Legacy questions.",
+  "Click a Continue working notebook.",
+  "Type inside the notebook page and save.",
+  "Use Pen, Eraser, Undo, Clear, and the black/white/red/green colour swatches.",
+  "Change the page colour between white, black, and grey.",
+  "Add a page and navigate between pages.",
+  "Resize to phone width and confirm the iPad/desktop warning appears.",
+  "Click Continue anyway on phone and confirm full controls unlock deliberately.",
+  "Open a folder and inspect Blank, Uploaded file / paper, and AI-created questions templates.",
+  "Confirm uploaded-file copy says file saved only; no OCR, PDF annotation, or automatic reading is claimed.",
 ];
 
 function AgentLink({
@@ -202,11 +207,11 @@ export default function AgentPage() {
 
       <Card padding="lg">
         <SectionHeader
-          title="Phase 4 Practice/Tutor test"
-          description="Use this checklist to verify the context packet, scratchpad, voice fallback, draft panel, and session summary in the public walkthrough."
+          title="Phase 6 notebook-first Practice test"
+          description="Use this checklist to verify the folder -> notebook -> pages -> working flow in the public walkthrough."
         />
         <ol className="mt-5 grid gap-2">
-          {phase4TestFlow.map((step, index) => (
+          {phase6TestFlow.map((step, index) => (
             <li
               key={step}
               className="flex gap-3 rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-3 text-sm leading-6 text-text-secondary"

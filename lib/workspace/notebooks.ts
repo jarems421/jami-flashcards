@@ -4,6 +4,10 @@ import {
 } from "@/lib/practice/content";
 
 export type NotebookType =
+  | "blank"
+  | "uploaded_file"
+  | "ai_questions"
+  | "general_working"
   | "free_working"
   | "practice"
   | "past_paper"
@@ -19,7 +23,24 @@ export type NotebookPageType =
 
 export type NotebookStrokeData = {
   version: number;
-  strokes: unknown[];
+  strokes: NotebookStroke[];
+};
+
+export type NotebookPenColor = "black" | "white" | "red" | "green";
+export type NotebookStrokeTool = "pen" | "eraser";
+export type NotebookPageColor = "white" | "black" | "grey";
+export type NotebookPageStatus = "blank" | "working" | "needs_review" | "marked";
+
+export type NotebookStrokePoint = {
+  x: number;
+  y: number;
+};
+
+export type NotebookStroke = {
+  points: NotebookStrokePoint[];
+  color: NotebookPenColor;
+  width: number;
+  tool: NotebookStrokeTool;
 };
 
 export type NotebookImageRef = {
@@ -39,6 +60,10 @@ export type Notebook = {
   sourceIds: string[];
   practiceSetId?: string;
   pastPaperId?: string;
+  color?: string;
+  icon?: string;
+  pageColor: NotebookPageColor;
+  uploadedFileId?: string;
   createdAt: number;
   updatedAt: number;
   archived: boolean;
@@ -54,10 +79,25 @@ export type NotebookPage = {
   typedContent?: string;
   strokeData?: NotebookStrokeData;
   imageRefs: NotebookImageRef[];
+  pageColor: NotebookPageColor;
+  status: NotebookPageStatus;
   questionPrompt?: string;
   linkedQuestionId?: string;
   linkedSourceId?: string;
   linkedPastPaperId?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
+export type NotebookFile = {
+  id: string;
+  notebookId: string;
+  folderId: string;
+  fileName: string;
+  fileType: string;
+  storagePath: string;
+  sizeBytes?: number;
+  uploadedAt: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -68,9 +108,17 @@ export const MAX_NOTEBOOK_SOURCE_IDS = 30;
 export const MAX_NOTEBOOK_PAGE_TYPED_CONTENT = 30_000;
 export const MAX_NOTEBOOK_IMAGE_REFS = 12;
 export const MAX_NOTEBOOK_STROKES = 3_000;
+export const MAX_NOTEBOOK_STROKE_POINTS = 1_200;
+export const MAX_NOTEBOOK_FILE_NAME_LENGTH = 500;
+export const MAX_NOTEBOOK_FILE_TYPE_LENGTH = 120;
+export const MAX_NOTEBOOK_FILE_STORAGE_PATH_LENGTH = 1_000;
 
 export function isNotebookType(value: unknown): value is NotebookType {
   return (
+    value === "blank" ||
+    value === "uploaded_file" ||
+    value === "ai_questions" ||
+    value === "general_working" ||
     value === "free_working" ||
     value === "practice" ||
     value === "past_paper" ||
@@ -89,8 +137,58 @@ export function isNotebookPageType(value: unknown): value is NotebookPageType {
   );
 }
 
+export function isNotebookPageColor(value: unknown): value is NotebookPageColor {
+  return value === "white" || value === "black" || value === "grey";
+}
+
+export function isNotebookPenColor(value: unknown): value is NotebookPenColor {
+  return value === "black" || value === "white" || value === "red" || value === "green";
+}
+
+export function isNotebookStrokeTool(value: unknown): value is NotebookStrokeTool {
+  return value === "pen" || value === "eraser";
+}
+
+export function isNotebookPageStatus(value: unknown): value is NotebookPageStatus {
+  return value === "blank" || value === "working" || value === "needs_review" || value === "marked";
+}
+
 export function normalizeNotebookTitle(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, MAX_NOTEBOOK_TITLE_LENGTH);
+}
+
+function normalizeNotebookStrokePoint(value: unknown): NotebookStrokePoint | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const point = value as Record<string, unknown>;
+  if (typeof point.x !== "number" || typeof point.y !== "number") return null;
+  if (!Number.isFinite(point.x) || !Number.isFinite(point.y)) return null;
+  return {
+    x: Math.max(0, Math.min(10_000, point.x)),
+    y: Math.max(0, Math.min(10_000, point.y)),
+  };
+}
+
+function normalizeNotebookStroke(value: unknown): NotebookStroke | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const stroke = value as Record<string, unknown>;
+  const rawPoints = Array.isArray(stroke.points) ? stroke.points : [];
+  const points = rawPoints
+    .map(normalizeNotebookStrokePoint)
+    .filter((point): point is NotebookStrokePoint => Boolean(point))
+    .slice(0, MAX_NOTEBOOK_STROKE_POINTS);
+  if (points.length === 0) return null;
+
+  const width =
+    typeof stroke.width === "number" && Number.isFinite(stroke.width)
+      ? Math.max(1, Math.min(48, Math.round(stroke.width)))
+      : 5;
+
+  return {
+    points,
+    color: isNotebookPenColor(stroke.color) ? stroke.color : "black",
+    width,
+    tool: isNotebookStrokeTool(stroke.tool) ? stroke.tool : "pen",
+  };
 }
 
 function normalizeStrokeData(value: unknown): NotebookStrokeData | undefined {
@@ -103,9 +201,14 @@ function normalizeStrokeData(value: unknown): NotebookStrokeData | undefined {
     return undefined;
   }
 
+  const strokes = data.strokes
+    .map(normalizeNotebookStroke)
+    .filter((stroke): stroke is NotebookStroke => Boolean(stroke))
+    .slice(0, MAX_NOTEBOOK_STROKES);
+
   return {
     version: typeof data.version === "number" ? data.version : 1,
-    strokes: data.strokes.slice(0, MAX_NOTEBOOK_STROKES),
+    strokes,
   };
 }
 
@@ -143,6 +246,10 @@ export function mapNotebookData(id: string, data: Record<string, unknown>): Note
     sourceIds: normalizeStringArray(data.sourceIds, MAX_NOTEBOOK_SOURCE_IDS, 160),
     practiceSetId: normalizeOptionalString(data.practiceSetId, 160),
     pastPaperId: normalizeOptionalString(data.pastPaperId, 160),
+    color: normalizeOptionalString(data.color, 80),
+    icon: normalizeOptionalString(data.icon, 40),
+    pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
+    uploadedFileId: normalizeOptionalString(data.uploadedFileId, 160),
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
     archived: data.archived === true,
@@ -168,6 +275,8 @@ export function mapNotebookPageData(
     typedContent: normalizeOptionalString(data.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT),
     strokeData: normalizeStrokeData(data.strokeData),
     imageRefs: normalizeImageRefs(data.imageRefs),
+    pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
+    status: isNotebookPageStatus(data.status) ? data.status : "blank",
     questionPrompt: normalizeOptionalString(data.questionPrompt, 4_000),
     linkedQuestionId: normalizeOptionalString(data.linkedQuestionId, 160),
     linkedSourceId: normalizeOptionalString(data.linkedSourceId, 160),
@@ -185,6 +294,10 @@ export function buildNotebookPayload(input: {
   sourceIds?: string[];
   practiceSetId?: string;
   pastPaperId?: string;
+  color?: string;
+  icon?: string;
+  pageColor?: NotebookPageColor;
+  uploadedFileId?: string;
   now?: number;
 }) {
   const folderId = input.folderId.trim();
@@ -206,6 +319,10 @@ export function buildNotebookPayload(input: {
     sourceIds: normalizeStringArray(input.sourceIds ?? [], MAX_NOTEBOOK_SOURCE_IDS, 160),
     practiceSetId: normalizeOptionalString(input.practiceSetId, 160) ?? null,
     pastPaperId: normalizeOptionalString(input.pastPaperId, 160) ?? null,
+    color: normalizeOptionalString(input.color, 80) ?? null,
+    icon: normalizeOptionalString(input.icon, 40) ?? null,
+    pageColor: input.pageColor ?? "white",
+    uploadedFileId: normalizeOptionalString(input.uploadedFileId, 160) ?? null,
     archived: false,
     createdAt: now,
     updatedAt: now,
@@ -221,6 +338,8 @@ export function buildNotebookPagePayload(input: {
   typedContent?: string;
   strokeData?: NotebookStrokeData;
   imageRefs?: NotebookImageRef[];
+  pageColor?: NotebookPageColor;
+  status?: NotebookPageStatus;
   questionPrompt?: string;
   linkedQuestionId?: string;
   linkedSourceId?: string;
@@ -256,10 +375,72 @@ export function buildNotebookPagePayload(input: {
         }
       : null,
     imageRefs: (input.imageRefs ?? []).slice(0, MAX_NOTEBOOK_IMAGE_REFS),
+    pageColor: input.pageColor ?? "white",
+    status: input.status ?? "blank",
     questionPrompt: normalizeOptionalString(input.questionPrompt, 4_000) ?? null,
     linkedQuestionId: normalizeOptionalString(input.linkedQuestionId, 160) ?? null,
     linkedSourceId: normalizeOptionalString(input.linkedSourceId, 160) ?? null,
     linkedPastPaperId: normalizeOptionalString(input.linkedPastPaperId, 160) ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function mapNotebookFileData(id: string, data: Record<string, unknown>): NotebookFile {
+  return {
+    id,
+    notebookId: normalizeOptionalString(data.notebookId, 160) ?? "",
+    folderId: normalizeOptionalString(data.folderId, 160) ?? "",
+    fileName:
+      normalizeOptionalString(data.fileName, MAX_NOTEBOOK_FILE_NAME_LENGTH) ??
+      "Untitled file",
+    fileType:
+      normalizeOptionalString(data.fileType, MAX_NOTEBOOK_FILE_TYPE_LENGTH) ??
+      "application/octet-stream",
+    storagePath: normalizeOptionalString(data.storagePath, MAX_NOTEBOOK_FILE_STORAGE_PATH_LENGTH) ?? "",
+    sizeBytes:
+      typeof data.sizeBytes === "number" && Number.isFinite(data.sizeBytes)
+        ? Math.max(0, Math.round(data.sizeBytes))
+        : undefined,
+    uploadedAt: typeof data.uploadedAt === "number" ? data.uploadedAt : 0,
+    createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
+    updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
+  };
+}
+
+export function buildNotebookFilePayload(input: {
+  notebookId: string;
+  folderId: string;
+  fileName: string;
+  fileType: string;
+  storagePath: string;
+  sizeBytes?: number;
+  now?: number;
+}) {
+  const notebookId = input.notebookId.trim();
+  const folderId = input.folderId.trim();
+  const fileName = normalizeOptionalString(input.fileName, MAX_NOTEBOOK_FILE_NAME_LENGTH);
+  const fileType = normalizeOptionalString(input.fileType, MAX_NOTEBOOK_FILE_TYPE_LENGTH);
+  const storagePath = normalizeOptionalString(input.storagePath, MAX_NOTEBOOK_FILE_STORAGE_PATH_LENGTH);
+  if (!notebookId) throw new Error("Missing notebook.");
+  if (!folderId) throw new Error("Missing folder.");
+  if (!fileName) throw new Error("File name is required.");
+  if (!fileType) throw new Error("File type is required.");
+  if (!storagePath) throw new Error("File storage path is required.");
+
+  const now = input.now ?? Date.now();
+
+  return {
+    notebookId,
+    folderId,
+    fileName,
+    fileType,
+    storagePath,
+    sizeBytes:
+      typeof input.sizeBytes === "number" && Number.isFinite(input.sizeBytes)
+        ? Math.max(0, Math.round(input.sizeBytes))
+        : null,
+    uploadedAt: now,
     createdAt: now,
     updatedAt: now,
   };

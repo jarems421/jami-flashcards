@@ -72,25 +72,25 @@ function getIntentInstruction(intent: WalkthroughTutorIntent) {
 
 function getFallbackReply(intent: WalkthroughTutorIntent) {
   if (intent === "check-working") {
-    return "I can see your current working. The first issue is that the arithmetic line does not match the linear algebra question. This question is asking you to compare algebraic multiplicity with geometric multiplicity, not add numbers. Start by writing: algebraic multiplicity = 3, geometric multiplicity = 1.";
+    return "I can see your current working. The first issue is that 'gets too hot' needs the biological reason. Say that high temperature denatures the enzyme, changing the active site so the substrate no longer fits well.";
   }
   if (intent === "stuck-here") {
-    return "Next useful step: identify the two multiplicities. The characteristic polynomial gives algebraic multiplicity 3, and the one-dimensional eigenspace gives geometric multiplicity 1. Try writing those two facts before deciding diagonalizability.";
+    return "Next useful step: name the process. Above the optimum temperature, the enzyme denatures. Now connect that to the active site changing shape.";
   }
   if (intent === "full-solution") {
-    return "Step-by-step walkthrough:\n1. The characteristic polynomial is (lambda - 2)^3, so the only eigenvalue is 2 with algebraic multiplicity 3.\n2. The eigenspace for lambda = 2 is one-dimensional, so the geometric multiplicity is 1.\n3. A 3 by 3 matrix is diagonalizable only if it has 3 independent eigenvectors.\n4. Here it has only 1 independent eigenvector, so it is not diagonalizable.";
+    return "Step-by-step walkthrough:\n1. As temperature rises toward 37 C, particles have more kinetic energy, so enzyme-substrate collisions happen more often.\n2. 37 C is around the enzyme's optimum, so activity is highest there.\n3. Above about 45 C, heat breaks bonds that hold the enzyme in shape.\n4. The active site changes shape, so the substrate no longer fits well.\n5. Fewer enzyme-substrate complexes form, so the reaction rate falls sharply.";
   }
   if (intent === "make-flashcard") {
-    return "Front: What must be true for a matrix to be diagonalizable?\nBack: It must have enough linearly independent eigenvectors to form a basis; equivalently, the sum of eigenspace dimensions must equal the matrix size.";
+    return "Front: What happens when an enzyme is denatured?\nBack: Its active site changes shape, so the substrate no longer fits properly and the reaction rate falls.";
   }
   if (intent === "similar-question") {
-    return "Similar question: A 2 by 2 matrix has characteristic polynomial (lambda - 5)^2 and a one-dimensional eigenspace. Is it diagonalizable? Explain briefly.";
+    return "Similar question: A student tests an enzyme at different pH values and finds the rate drops sharply away from pH 7. Explain why the enzyme works best near its optimum pH.";
   }
   if (intent === "show-method") {
-    return "Method: compare algebraic multiplicity from the characteristic polynomial with geometric multiplicity from the eigenspace dimension. If the total number of independent eigenvectors is less than the matrix size, it is not diagonalizable.";
+    return "Method: describe the rise first, then the fall. Use collision frequency for the rise toward the optimum, and denaturing plus active-site shape for the sharp fall after the optimum.";
   }
   if (intent === "explain-concept") {
-    return "Concept: algebraic multiplicity counts how often an eigenvalue appears in the characteristic polynomial. Geometric multiplicity counts how many independent eigenvectors it has. Diagonalization needs enough independent eigenvectors to form a basis.";
+    return "Concept: enzymes have active sites with specific shapes. High temperature can denature the enzyme, which changes that shape. If the substrate no longer fits, the reaction slows down.";
   }
   return "Try this hint: first name the concept being tested, then write the one condition that decides the question. After that, attempt only the next line before asking for more help.";
 }
@@ -112,8 +112,8 @@ function extractSuggestedFlashcard(text: string) {
 function getFallbackFlashcard(reply: string) {
   return (
     extractSuggestedFlashcard(reply) ?? {
-      front: "What condition makes a matrix diagonalizable?",
-      back: "It needs enough linearly independent eigenvectors to form a basis for the vector space.",
+      front: "Why does enzyme activity fall at high temperature?",
+      back: "High temperature denatures the enzyme, changing the active site so the substrate no longer fits well.",
     }
   );
 }
@@ -192,7 +192,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error("Public demo tutor budget check failed:", error);
     const reply =
-      "The public tutor budget check is unavailable, so Jami is using a safe walkthrough hint instead: compare the topic, the attempted answer, and the next missing step before asking for more.";
+      "The public tutor budget check is unavailable, so Jami is using a safe walkthrough hint instead: name the key concept, connect it to the evidence in the question, and try the next sentence before asking for more.";
     return Response.json({
       reply,
       fallback: true,

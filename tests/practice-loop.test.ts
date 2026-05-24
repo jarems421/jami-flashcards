@@ -22,7 +22,9 @@ import {
 import {
   buildNotebookPagePayload,
   buildNotebookPayload,
+  buildNotebookFilePayload,
   mapNotebookData,
+  mapNotebookFileData,
   mapNotebookPageData,
 } from "@/lib/workspace/notebooks";
 import {
@@ -31,6 +33,7 @@ import {
   mapPastPaperData,
   mapPracticeSetData,
 } from "@/lib/workspace/practice-sets";
+import { buildNotebookStoragePath } from "@/services/study/notebook-files";
 
 describe("Jami learning loop foundations", () => {
   afterEach(() => {
@@ -302,6 +305,7 @@ describe("Jami learning loop foundations", () => {
       type: "practice",
       topicIds: ["topic-eigenvalues"],
       sourceIds: ["source-lecture-5"],
+      pageColor: "black",
       now: 50,
     });
     const notebook = mapNotebookData("notebook-1", notebookPayload);
@@ -314,8 +318,10 @@ describe("Jami learning loop foundations", () => {
       typedContent: "I will start with det(A - lambda I).",
       strokeData: {
         version: 1,
-        strokes: [{ points: [{ x: 1, y: 2 }] }],
+        strokes: [{ points: [{ x: 1, y: 2 }], color: "white", width: 5, tool: "pen" }],
       },
+      pageColor: "black",
+      status: "working",
       linkedSourceId: "source-lecture-5",
       now: 60,
     });
@@ -328,6 +334,7 @@ describe("Jami learning loop foundations", () => {
       type: "practice",
       topicIds: ["topic-eigenvalues"],
       sourceIds: ["source-lecture-5"],
+      pageColor: "black",
       archived: false,
       createdAt: 50,
       updatedAt: 50,
@@ -338,6 +345,8 @@ describe("Jami learning loop foundations", () => {
       folderId: "folder-linear-algebra",
       pageNumber: 1,
       pageType: "question",
+      pageColor: "black",
+      status: "working",
       questionPrompt: "Find the eigenvalues of A.",
       typedContent: "I will start with det(A - lambda I).",
       linkedSourceId: "source-lecture-5",
@@ -345,6 +354,11 @@ describe("Jami learning loop foundations", () => {
       updatedAt: 60,
     });
     expect(page.strokeData?.strokes).toHaveLength(1);
+    expect(page.strokeData?.strokes[0]).toMatchObject({
+      color: "white",
+      width: 5,
+      tool: "pen",
+    });
     expect(() => buildNotebookPayload({ folderId: "", title: "Notebook" })).toThrow("folder");
     expect(() =>
       buildNotebookPagePayload({
@@ -353,6 +367,46 @@ describe("Jami learning loop foundations", () => {
         pageNumber: 0,
       })
     ).toThrow("Page number");
+  });
+
+  it("validates notebook file metadata for uploaded-file notebooks", () => {
+    const payload = buildNotebookFilePayload({
+      notebookId: "notebook-1",
+      folderId: "folder-1",
+      fileName: "  Biology paper.pdf  ",
+      fileType: "application/pdf",
+      storagePath: "users/alice/notebookFiles/notebook-1/file-1-biology-paper.pdf",
+      sizeBytes: 1024,
+      now: 70,
+    });
+    const file = mapNotebookFileData("file-1", payload);
+
+    expect(file).toMatchObject({
+      id: "file-1",
+      notebookId: "notebook-1",
+      folderId: "folder-1",
+      fileName: "Biology paper.pdf",
+      fileType: "application/pdf",
+      sizeBytes: 1024,
+      uploadedAt: 70,
+    });
+    expect(() =>
+      buildNotebookFilePayload({
+        notebookId: "",
+        folderId: "folder-1",
+        fileName: "paper.pdf",
+        fileType: "application/pdf",
+        storagePath: "users/alice/notebookFiles/notebook-1/paper.pdf",
+      })
+    ).toThrow("notebook");
+    expect(
+      buildNotebookStoragePath({
+        userId: "alice",
+        notebookId: "notebook-1",
+        fileId: "file-1",
+        fileName: "Biology Paper 2024.pdf",
+      })
+    ).toBe("users/alice/notebookFiles/notebook-1/file-1-biology-paper-2024.pdf");
   });
 
   it("validates practice set and past paper shells without PDF annotation", () => {

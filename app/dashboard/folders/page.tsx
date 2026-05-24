@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { FirebaseError } from "firebase/app";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import {
@@ -23,11 +24,15 @@ import { getActiveTopics } from "@/services/study/topics";
 
 type Feedback = { type: "success" | "error"; message: string };
 
+function isPermissionDenied(error: unknown) {
+  return error instanceof FirebaseError && error.code === "permission-denied";
+}
+
 const starterFolders = [
-  "Linear Algebra",
-  "Calculus",
-  "Mechanics",
-  "Statistics",
+  "Biology",
+  "History",
+  "Spanish",
+  "Computer Science",
 ];
 
 function getTopicNames(folder: StudyFolder, topics: Topic[]) {
@@ -65,10 +70,16 @@ export default function FoldersPage() {
       setTopics(nextTopics);
     } catch (error) {
       console.error(error);
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not load folders.",
-      });
+      setFolders([]);
+      setTopics([]);
+      setFeedback(
+        isPermissionDenied(error)
+          ? null
+          : {
+              type: "error",
+              message: "Could not load folders. Try refreshing in a moment.",
+            }
+      );
     } finally {
       setLoading(false);
     }
@@ -174,7 +185,7 @@ export default function FoldersPage() {
         <PageHero
           eyebrow="Study spaces"
           title="Open a folder and keep the whole topic together."
-          description="Folders are broad study spaces like Linear Algebra. They will hold notebooks, decks, sources, practice sets, and recent work without forcing everything through one form-heavy Practice page."
+          description="Folders are broad study spaces like Biology, History, Spanish, or Computer Science. They hold notebooks, decks, sources, and recent work without forcing everything through one form-heavy Practice page."
           action={
             <Button type="button" onClick={() => setShowCreate(true)}>
               Create folder
@@ -206,7 +217,7 @@ export default function FoldersPage() {
                   Create a study space
                 </h2>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-                  Start broad. Use topics for concepts inside the folder, such as eigenvalues or integration by parts.
+                  Start broad. Use topics for concepts inside the folder, such as enzymes, essay evidence, verb endings, or algorithms.
                 </p>
               </div>
               <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
@@ -219,13 +230,13 @@ export default function FoldersPage() {
                 <Input
                   label="Folder name"
                   value={name}
-                  placeholder="Linear Algebra"
+                  placeholder="Biology"
                   onChange={(event) => setName(event.target.value)}
                 />
                 <Input
                   label="Subject"
                   value={subject}
-                  placeholder="Maths"
+                  placeholder="Science"
                   onChange={(event) => setSubject(event.target.value)}
                 />
                 <Textarea
@@ -315,7 +326,7 @@ export default function FoldersPage() {
                   </div>
                   <p className="mt-4 line-clamp-3 text-sm leading-6 text-text-secondary">
                     {folder.description ??
-                      "A home for notebooks, decks, sources, and practice work."}
+                      "A home for notebooks, decks, sources, and recent work."}
                   </p>
                   <div className="mt-5 flex flex-wrap gap-2">
                     {names.length > 0 ? (
@@ -344,7 +355,7 @@ export default function FoldersPage() {
           <EmptyState
             emoji="Folder"
             title="Create your first study folder"
-            description="Start with a broad area like Linear Algebra. Decks, sources, notebooks, and practice work will live together there."
+            description="Start with a broad area like Biology, History, Spanish, or Computer Science. Decks, sources, notebooks, and recent work will live together there."
             action={
               <Button type="button" onClick={() => setShowCreate(true)}>
                 Create folder

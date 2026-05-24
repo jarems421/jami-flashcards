@@ -142,7 +142,34 @@ const chipClass =
   "rounded-full border border-white/[0.1] bg-white/[0.055] px-2.5 py-1 text-xs font-medium text-text-secondary";
 
 type ScratchpadPoint = { x: number; y: number };
-type ScratchpadStroke = { points: ScratchpadPoint[] };
+type PublicPenColor = "black" | "white" | "red" | "green";
+type PublicPageColor = "white" | "black" | "grey";
+type PublicStrokeTool = "pen" | "eraser";
+type ScratchpadStroke = {
+  points: ScratchpadPoint[];
+  color?: PublicPenColor;
+  width?: number;
+  tool?: PublicStrokeTool;
+};
+
+const publicPenColorHex: Record<PublicPenColor, string> = {
+  black: "#111827",
+  white: "#f8fafc",
+  red: "#f87171",
+  green: "#34d399",
+};
+
+const publicPageColorHex: Record<PublicPageColor, string> = {
+  white: "#f8fafc",
+  black: "#111827",
+  grey: "#d9dee8",
+};
+
+const publicPageGridColor: Record<PublicPageColor, string> = {
+  white: "rgba(17,24,39,0.08)",
+  black: "rgba(248,250,252,0.10)",
+  grey: "rgba(17,24,39,0.09)",
+};
 
 function getAccuracy(attempts: WalkthroughAttempt[]) {
   if (attempts.length === 0) return 0;
@@ -266,7 +293,7 @@ function PublicPractiseFlowHeader() {
   return (
     <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.035] px-3 py-3">
       <div className="flex flex-wrap items-center gap-2">
-        {["Choose question", "Attempt", "Mark", "Repair"].map((step, index) => (
+        {["Open folder", "Choose notebook", "Work on pages", "Save"].map((step, index) => (
           <div key={step} className="flex items-center gap-2">
             <span className="flex min-h-[2.2rem] items-center gap-2 rounded-full border border-warm-border bg-warm-glow px-3 text-xs font-semibold text-warm-accent">
               <span className="h-2 w-2 rounded-full bg-warm-accent" />
@@ -344,8 +371,8 @@ export default function PublicDashboardShell() {
   const [tutorMessages, setTutorMessages] = useState<WalkthroughTutorMessage[]>(
     WALKTHROUGH_INITIAL_TUTOR_MESSAGES
   );
-  const [userAnswer, setUserAnswer] = useState("I think it is diagonalizable because the eigenvalue repeats three times.");
-  const [workingText, setWorkingText] = useState("Characteristic polynomial has one eigenvalue, lambda = 2. I am unsure whether the repeated root gives three eigenvectors.");
+  const [userAnswer, setUserAnswer] = useState("I think the enzyme slows down because it gets too hot.");
+  const [workingText, setWorkingText] = useState("The rate increases at first, then drops after 45 C. I need to explain denaturing and the active site.");
   const [confidence, setConfidence] = useState<1 | 2 | 3 | 4 | 5>(2);
   const [selfMark, setSelfMark] = useState<boolean | null>(false);
   const [busyIntent, setBusyIntent] = useState<WalkthroughTutorIntent | null>(null);
@@ -770,7 +797,7 @@ function AgentModeNotice() {
     ["/dashboard/practise?agent=1", "Practice"],
     ["/dashboard/progress?agent=1", "Progress"],
     ["/dashboard/folders?agent=1", "Folders"],
-    ["/dashboard/notebooks/notebook-eigenvalues?agent=1", "Notebook"],
+    ["/dashboard/notebooks/notebook-photosynthesis?agent=1", "Notebook"],
     ["/dashboard/library?agent=1", "Library"],
     ["/dashboard/cards?agent=1", "Cards"],
     ["/dashboard/decks?agent=1", "Decks"],
@@ -924,6 +951,7 @@ function HomePanel({
     })),
     notebooks: WALKTHROUGH_NOTEBOOKS.map((notebook) => ({
       ...notebook,
+      pageColor: "white" as const,
       createdAt: 1,
       archived: false,
     })),
@@ -1028,7 +1056,7 @@ function HomePanel({
               ? `Continue ${plan.workspace.recentNotebook.title}`
               : "Folders keep work together."
           }
-          description="The walkthrough now shows the Phase 5 direction: study folders hold notebooks, decks, sources, sets, and papers."
+          description="The walkthrough now shows the Phase 6 direction: study folders hold notebooks, decks, sources, and recent work."
         />
         <div className="mt-5 grid gap-3 sm:grid-cols-4">
           {[
@@ -1277,9 +1305,6 @@ function PractisePanel({
     intent: previewIntent,
   };
   const publicFolderSummaries = WALKTHROUGH_FOLDERS.slice(0, 3).map((folder) => {
-    const folderQuestions = questions.filter((question) =>
-      question.topicIds.some((topicId) => folder.topicIds.includes(topicId))
-    );
     const folderNotebooks = WALKTHROUGH_NOTEBOOKS.filter(
       (notebook) => notebook.folderId === folder.id
     );
@@ -1290,10 +1315,10 @@ function PractisePanel({
           card.topicIds.some((topicId) => folder.topicIds.includes(topicId))
       )
     );
-    const folderPracticeSets = WALKTHROUGH_PRACTICE_SETS.filter(
-      (practiceSet) => practiceSet.folderId === folder.id
+    const folderSources = WALKTHROUGH_SOURCES.filter((source) =>
+      source.topicIds.some((topicId) => folder.topicIds.includes(topicId))
     );
-    return { folder, folderQuestions, folderNotebooks, folderDecks, folderPracticeSets };
+    return { folder, folderNotebooks, folderDecks, folderSources };
   });
   const publicRecentNotebooks = [...WALKTHROUGH_NOTEBOOKS]
     .sort((left, right) => right.updatedAt - left.updatedAt)
@@ -1419,8 +1444,8 @@ function PractisePanel({
       <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
         <SectionHeader
           eyebrow="Practice workspace"
-          title="Start from a folder, then work naturally."
-          description="Public Practice now shows the Phase 5 direction: folders and notebooks first, with the old question bank as a supporting local tool."
+          title="Continue a notebook or open a folder."
+          description="Public Practice shows the Phase 6 direction: folders and notebook pages first. Legacy seeded questions are tucked away for compatibility."
         />
         <div className="flex flex-wrap gap-2">
           <Link
@@ -1430,7 +1455,7 @@ function PractisePanel({
             Open folders
           </Link>
           <Link
-            href="/dashboard/notebooks/notebook-eigenvalues?agent=1"
+            href="/dashboard/notebooks/notebook-photosynthesis?agent=1"
             className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)] transition hover:-translate-y-[1px]"
           >
             Open notebook
@@ -1443,7 +1468,7 @@ function PractisePanel({
             Study folders
           </div>
           <div className="grid gap-3 md:grid-cols-2">
-            {publicFolderSummaries.map(({ folder, folderQuestions, folderNotebooks, folderDecks, folderPracticeSets }) => (
+            {publicFolderSummaries.map(({ folder, folderNotebooks, folderDecks, folderSources }) => (
               <Link
                 key={folder.id}
                 href="/dashboard/folders?agent=1"
@@ -1455,9 +1480,8 @@ function PractisePanel({
                 </p>
                 <div className="mt-3 flex flex-wrap gap-2">
                   <span className={chipClass}>{folderNotebooks.length} notebooks</span>
-                  <span className={chipClass}>{folderQuestions.length} questions</span>
                   <span className={chipClass}>{folderDecks.length} decks</span>
-                  <span className={chipClass}>{folderPracticeSets.length} sets</span>
+                  <span className={chipClass}>{folderSources.length} sources</span>
                 </div>
               </Link>
             ))}
@@ -1465,7 +1489,7 @@ function PractisePanel({
         </div>
         <div>
           <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-            Continue notebooks
+            Continue working
           </div>
           <div className="space-y-3">
             {publicRecentNotebooks.map((notebook) => (
@@ -1517,7 +1541,14 @@ function PractisePanel({
         </div>
       </Card>
     ) : null}
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.25fr)_minmax(260px,0.78fr)]">
+    <details className="rounded-[1.45rem] border border-white/[0.09] bg-white/[0.035] p-4">
+      <summary className="cursor-pointer text-sm font-semibold text-text-secondary transition hover:text-white">
+        Legacy questions
+        <span className="ml-2 text-xs font-normal text-text-muted">
+          local seeded flow kept for agent QA compatibility
+        </span>
+      </summary>
+      <div className="mt-4 grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.25fr)_minmax(260px,0.78fr)]">
       <Card padding="lg" className="xl:sticky xl:top-4 xl:self-start">
         <SectionHeader
           eyebrow="Practice"
@@ -1901,9 +1932,10 @@ function PractisePanel({
           )}
         </Card>
       </div>
-    </div>
-    </div>
-  );
+      </div>
+    </details>
+  </div>
+);
 }
 
 function ConfidencePicker({
@@ -2436,12 +2468,17 @@ function FoldersPanel() {
   const relatedNotebooks = WALKTHROUGH_NOTEBOOKS.filter(
     (notebook) => notebook.folderId === selectedFolder?.id
   );
-  const relatedPracticeSets = WALKTHROUGH_PRACTICE_SETS.filter(
-    (practiceSet) => practiceSet.folderId === selectedFolder?.id
-  );
-  const relatedPastPapers = WALKTHROUGH_PAST_PAPERS.filter(
-    (paper) => paper.folderId === selectedFolder?.id
-  );
+  const notebookTemplates = [
+    ["Blank notebook", "Start with an empty working book for notes, questions, and free practice."],
+    [
+      "Uploaded file / paper notebook",
+      "Public walkthrough simulates the saved file reference. Full PDF annotation and OCR come later.",
+    ],
+    [
+      "AI-created questions notebook",
+      "Placeholder only. Question notebooks will come after the notebook workspace is stable.",
+    ],
+  ];
 
   return (
     <div className="grid gap-4 xl:grid-cols-[0.9fr_1.35fr]">
@@ -2481,19 +2518,18 @@ function FoldersPanel() {
           <SectionHeader
             eyebrow="Selected folder"
             title={selectedFolder?.name ?? "Folder"}
-            description="Phase 5 starts by making this folder the home for notebooks, decks, sources, practice sets, and recent work."
+            description="Phase 6 makes this folder the home for notebooks, decks, sources, and recent work. Practice sets and papers are notebook templates, not separate products."
           />
           <div className="mt-5 flex flex-wrap gap-2">
             {folderTopicIds.map((topicId) => (
               <TopicChip key={topicId} topicId={topicId} />
             ))}
           </div>
-          <div className="mt-6 grid gap-3 sm:grid-cols-5">
-            <MiniMetric label="Decks" value={relatedDecks.length} />
+          <div className="mt-6 grid gap-3 sm:grid-cols-4">
             <MiniMetric label="Notebooks" value={relatedNotebooks.length} />
+            <MiniMetric label="Decks" value={relatedDecks.length} />
             <MiniMetric label="Sources" value={relatedSources.length} />
-            <MiniMetric label="Sets" value={relatedPracticeSets.length} />
-            <MiniMetric label="Papers" value={relatedPastPapers.length} />
+            <MiniMetric label="Legacy questions" value={relatedQuestions.length} />
           </div>
         </Card>
 
@@ -2512,13 +2548,29 @@ function FoldersPanel() {
                       href={`/dashboard/notebooks/${notebook.id}?agent=1`}
                       className="block rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3 transition duration-fast hover:-translate-y-0.5 hover:border-warm-border"
                     >
-                      <div className="text-sm font-semibold text-white">{notebook.title}</div>
-                      <div className="mt-1 text-xs text-text-muted">{pages.length} pages</div>
+                      <div className="flex items-start gap-3">
+                        <span className="flex h-10 w-8 shrink-0 items-center justify-center rounded-[0.6rem] border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent">
+                          {notebook.type === "uploaded_file" ? "PDF" : "NB"}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block text-sm font-semibold text-white">{notebook.title}</span>
+                          <span className="mt-1 block text-xs text-text-muted">
+                            {notebook.type.replace("_", " ")} · {pages.length} pages
+                          </span>
+                          {notebook.uploadedFileName ? (
+                            <span className="mt-1 block text-xs text-text-muted">
+                              File saved: {notebook.uploadedFileName}
+                            </span>
+                          ) : null}
+                        </span>
+                      </div>
                     </Link>
                   );
                 })
               ) : (
-                <p className="text-sm leading-6 text-text-muted">Notebook pages arrive in Phase 5.4.</p>
+                <p className="text-sm leading-6 text-text-muted">
+                  No notebooks yet. Start with a blank notebook or uploaded-file notebook.
+                </p>
               )}
             </div>
           </Card>
@@ -2536,7 +2588,7 @@ function FoldersPanel() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm leading-6 text-text-muted">Deck links arrive in Phase 5.2.</p>
+                <p className="text-sm leading-6 text-text-muted">No linked decks yet.</p>
               )}
             </div>
           </Card>
@@ -2554,70 +2606,62 @@ function FoldersPanel() {
                   </div>
                 ))
               ) : (
-                <p className="text-sm leading-6 text-text-muted">Source links arrive in Phase 5.2.</p>
+                <p className="text-sm leading-6 text-text-muted">No linked sources yet.</p>
               )}
             </div>
           </Card>
 
           <Card padding="md">
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-              Practice work
+              Notebook templates
+            </div>
+            <div className="mt-4 space-y-3">
+              {notebookTemplates.map(([title, detail]) => (
+                <div key={title} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
+                  <div className="text-sm font-semibold text-white">{title}</div>
+                  <p className="mt-1 text-xs leading-5 text-text-muted">{detail}</p>
+                  <span className="mt-3 inline-flex rounded-full border border-white/[0.1] bg-white/[0.045] px-3 py-1 text-[0.68rem] font-semibold text-text-secondary">
+                    Local simulation
+                  </span>
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          <Card padding="md">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Legacy question records
             </div>
             <div className="mt-4 space-y-3">
               {relatedQuestions.length > 0 ? (
-                relatedQuestions.map((question) => (
+                relatedQuestions.slice(0, 3).map((question) => (
                   <div key={question.id} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
                     <div className="line-clamp-3 text-sm font-semibold leading-5 text-white">
                       {question.questionText}
                     </div>
                     <Link
                       href={`/dashboard/practise?question=${question.id}`}
-                      className="mt-3 inline-flex rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent"
+                      className="mt-3 inline-flex rounded-full border border-white/[0.1] bg-white/[0.045] px-3 py-1 text-xs font-semibold text-text-secondary transition hover:border-warm-border hover:text-warm-accent"
                     >
-                      Practice
+                      Open legacy question
                     </Link>
                   </div>
                 ))
               ) : (
-                <p className="text-sm leading-6 text-text-muted">Practice sets arrive in Phase 5.5.</p>
+                <p className="text-sm leading-6 text-text-muted">
+                  No legacy questions linked. New practice work should start as notebook pages.
+                </p>
               )}
             </div>
           </Card>
 
           <Card padding="md">
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-              Practice sets
+              Recent activity
             </div>
-            <div className="mt-4 space-y-3">
-              {relatedPracticeSets.length > 0 ? (
-                relatedPracticeSets.map((practiceSet) => (
-                  <div key={practiceSet.id} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
-                    <div className="text-sm font-semibold text-white">{practiceSet.title}</div>
-                    <div className="mt-1 text-xs text-text-muted">{practiceSet.questionIds.length} questions</div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm leading-6 text-text-muted">Practice set shells arrive here.</p>
-              )}
-            </div>
-          </Card>
-
-          <Card padding="md">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-              Past papers
-            </div>
-            <div className="mt-4 space-y-3">
-              {relatedPastPapers.length > 0 ? (
-                relatedPastPapers.map((paper) => (
-                  <div key={paper.id} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
-                    <div className="text-sm font-semibold text-white">{paper.title}</div>
-                    <div className="mt-1 text-xs text-text-muted">{paper.year ?? "Paper shell"}</div>
-                  </div>
-                ))
-              ) : (
-                <p className="text-sm leading-6 text-text-muted">Past paper shells stay metadata-only for now.</p>
-              )}
-            </div>
+            <p className="mt-4 text-sm leading-6 text-text-secondary">
+              Continue a notebook, review related flashcards, then return to Progress. Uploaded files stay as saved references until full annotation is built later.
+            </p>
           </Card>
         </div>
       </div>
@@ -2631,7 +2675,8 @@ const NOTEBOOK_CANVAS_HEIGHT = 620;
 function getNotebookIdFromPath(pathname: string) {
   const parts = pathname.split("/").filter(Boolean);
   const notebookIndex = parts.findIndex((part) => part === "notebooks");
-  return notebookIndex >= 0 ? parts[notebookIndex + 1] : undefined;
+  const notebookId = notebookIndex >= 0 ? parts[notebookIndex + 1] : undefined;
+  return notebookId === "notebook-eigenvalues" ? "notebook-photosynthesis" : notebookId;
 }
 
 function notebookPath(points: ScratchpadPoint[]) {
@@ -2655,6 +2700,7 @@ type PublicNotebookStoredState = {
   pages?: typeof WALKTHROUGH_NOTEBOOK_PAGES;
   pageTextById?: Record<string, string>;
   strokesByPage?: Record<string, ScratchpadStroke[]>;
+  pageColorById?: Record<string, PublicPageColor>;
   selectedPageId?: string;
 };
 
@@ -2697,6 +2743,11 @@ function NotebookPanel({ pathname }: { pathname: string }) {
   const [strokesByPage, setStrokesByPage] = useState<Record<string, ScratchpadStroke[]>>(
     storedNotebookState?.strokesByPage ?? {}
   );
+  const [pageColorById, setPageColorById] = useState<Record<string, PublicPageColor>>(
+    storedNotebookState?.pageColorById ?? {}
+  );
+  const [penColor, setPenColor] = useState<PublicPenColor>("black");
+  const [tool, setTool] = useState<PublicStrokeTool>("pen");
   const [drawing, setDrawing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
@@ -2705,6 +2756,9 @@ function NotebookPanel({ pathname }: { pathname: string }) {
   const typedContent = selectedPage
     ? pageTextById[selectedPage.id] ?? selectedPage.typedContent ?? ""
     : "";
+  const currentPageColor: PublicPageColor = selectedPage
+    ? pageColorById[selectedPage.id] ?? selectedPage.pageColor ?? notebook.pageColor ?? "white"
+    : "white";
   const folder = WALKTHROUGH_FOLDERS.find((entry) => entry.id === notebook?.folderId);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
 
@@ -2741,7 +2795,15 @@ function NotebookPanel({ pathname }: { pathname: string }) {
     event.currentTarget.setPointerCapture(event.pointerId);
     const point = notebookPointerPoint(event);
     setDrawing(true);
-    updateCurrentStrokes((current) => [...current, { points: [point] }]);
+    updateCurrentStrokes((current) => [
+      ...current,
+      {
+        points: [point],
+        color: penColor,
+        width: tool === "eraser" ? 26 : 5,
+        tool,
+      },
+    ]);
   };
 
   const draw = (event: ReactPointerEvent<SVGSVGElement>) => {
@@ -2752,6 +2814,7 @@ function NotebookPanel({ pathname }: { pathname: string }) {
       const next = [...current];
       const lastStroke = next[next.length - 1];
       next[next.length - 1] = {
+        ...lastStroke,
         points: [...lastStroke.points, point].slice(0, 1_200),
       };
       return next;
@@ -2783,6 +2846,7 @@ function NotebookPanel({ pathname }: { pathname: string }) {
           pages: nextPages,
           pageTextById: nextTextById,
           strokesByPage,
+          pageColorById,
           selectedPageId: selectedPage.id,
         })
       );
@@ -2810,6 +2874,7 @@ function NotebookPanel({ pathname }: { pathname: string }) {
       folderId: notebook.folderId,
       pageNumber: nextPageNumber,
       pageType: "free_working" as const,
+      pageColor: currentPageColor,
       typedContent: "",
     };
     setPages((current) => [...current, page]);
@@ -2857,7 +2922,7 @@ function NotebookPanel({ pathname }: { pathname: string }) {
           <SectionHeader
             eyebrow={folder?.name ?? "Notebook"}
             title={notebook.title}
-            description="This public notebook shows the Phase 5 direction: page-based typed and drawn working inside a study folder."
+            description="This public notebook shows the Phase 6 direction: page-based typed and drawn working inside a study folder."
           />
           <div className="flex flex-wrap gap-2">
             {fullNotebookEditingEnabled ? (
@@ -2949,6 +3014,20 @@ function NotebookPanel({ pathname }: { pathname: string }) {
                 <div className="flex flex-wrap gap-2">
                   <Button
                     type="button"
+                    variant={tool === "pen" ? "warm" : "secondary"}
+                    onClick={() => setTool("pen")}
+                  >
+                    Pen
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={tool === "eraser" ? "warm" : "secondary"}
+                    onClick={() => setTool("eraser")}
+                  >
+                    Eraser
+                  </Button>
+                  <Button
+                    type="button"
                     variant="secondary"
                     disabled={currentStrokes.length === 0}
                     onClick={() => updateCurrentStrokes((current) => current.slice(0, -1))}
@@ -2965,12 +3044,70 @@ function NotebookPanel({ pathname }: { pathname: string }) {
                   </Button>
                 </div>
               </div>
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+                <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.035] p-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                    Pen colour
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(["black", "white", "red", "green"] as PublicPenColor[]).map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => {
+                          setPenColor(color);
+                          setTool("pen");
+                        }}
+                        className={`h-9 w-9 rounded-full border transition ${
+                          penColor === color && tool === "pen"
+                            ? "border-warm-accent ring-2 ring-warm-border"
+                            : "border-white/[0.18]"
+                        }`}
+                        style={{ backgroundColor: publicPenColorHex[color] }}
+                        aria-label={`Use ${color} pen`}
+                      />
+                    ))}
+                  </div>
+                </div>
+                <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.035] p-3">
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                    Page colour
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {(["white", "black", "grey"] as PublicPageColor[]).map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => {
+                          if (!selectedPage) return;
+                          setPageColorById((current) => ({
+                            ...current,
+                            [selectedPage.id]: color,
+                          }));
+                        }}
+                        className={`min-h-[2.25rem] rounded-full border px-3 text-xs font-semibold capitalize transition ${
+                          currentPageColor === color
+                            ? "border-warm-border bg-warm-glow text-warm-accent"
+                            : "border-white/[0.1] bg-white/[0.045] text-text-secondary"
+                        }`}
+                      >
+                        {color}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
               <div className="mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] bg-white/[0.04]">
                 <svg
                   role="img"
                   aria-label="Public notebook drawing page"
                   viewBox={`0 0 ${NOTEBOOK_CANVAS_WIDTH} ${NOTEBOOK_CANVAS_HEIGHT}`}
-                  className="block aspect-[1.45/1] w-full touch-none bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:40px_40px]"
+                  className="block aspect-[1.45/1] w-full touch-none"
+                  style={{
+                    backgroundColor: publicPageColorHex[currentPageColor],
+                    backgroundImage: `linear-gradient(${publicPageGridColor[currentPageColor]} 1px, transparent 1px), linear-gradient(90deg, ${publicPageGridColor[currentPageColor]} 1px, transparent 1px)`,
+                    backgroundSize: "40px 40px",
+                  }}
                   onPointerDown={startDrawing}
                   onPointerMove={draw}
                   onPointerUp={stopDrawing}
@@ -2981,10 +3118,14 @@ function NotebookPanel({ pathname }: { pathname: string }) {
                       key={index}
                       d={notebookPath(stroke.points)}
                       fill="none"
-                      stroke="var(--color-warm-accent)"
+                      stroke={
+                        stroke.tool === "eraser"
+                          ? publicPageColorHex[currentPageColor]
+                          : publicPenColorHex[stroke.color ?? "black"]
+                      }
                       strokeLinecap="round"
                       strokeLinejoin="round"
-                      strokeWidth="5"
+                      strokeWidth={stroke.width ?? 5}
                     />
                   ))}
                 </svg>
@@ -3345,7 +3486,7 @@ function GoalsPanel() {
       <div className="mt-6 grid gap-4 md:grid-cols-3">
         {[
           ["Daily repair", "18 / 20 cards", "90% complete"],
-          ["Linear Algebra rescue", "2 / 3 questions", "One weak topic left"],
+          ["Topic repair", "2 / 3 questions", "One weak area left"],
           ["Tutor independence", "Hint-to-correct rising", "Support level improving"],
         ].map(([title, value, detail]) => (
           <div key={title} className={surfaceCardClass}>

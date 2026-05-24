@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { FirebaseError } from "firebase/app";
 import Link from "next/link";
 import { useUser } from "@/lib/auth/user-context";
 import type { Source, SourceType } from "@/lib/practice/sources";
@@ -34,6 +35,10 @@ import {
 type Feedback = { type: "success" | "error"; message: string };
 type TutorMessage = { role: "user" | "model"; text: string };
 type LibraryMobileTab = "sources" | "source" | "actions";
+
+function isPermissionDenied(error: unknown) {
+  return error instanceof FirebaseError && error.code === "permission-denied";
+}
 
 const sourceTypes: Array<{ value: SourceType; label: string; helper: string }> = [
   { value: "pasted_text", label: "Paste text", helper: "Notes, extracts, worked examples." },
@@ -309,7 +314,13 @@ export default function LibraryPage() {
       );
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to load Library." });
+      setSources([]);
+      setTopics([]);
+      setDecks([]);
+      setDrafts([]);
+      if (!isPermissionDenied(error)) {
+        setFeedback({ type: "error", message: "Failed to load Library." });
+      }
     } finally {
       setLoading(false);
     }

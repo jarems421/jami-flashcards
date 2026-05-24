@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { FirebaseError } from "firebase/app";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
@@ -29,18 +30,23 @@ import {
   createNotebook,
   createNotebookPage,
   getNotebooksForFolder,
+  updateNotebook,
 } from "@/services/study/notebooks";
 import {
-  createPastPaper,
-  createPracticeSet,
   getPastPapersForFolder,
   getPracticeSetsForFolder,
 } from "@/services/study/practice-work";
+import { uploadNotebookFile } from "@/services/study/notebook-files";
 import { getActiveQuestions, updateQuestionFolders } from "@/services/study/practice";
 import { getActiveSources, updateSource } from "@/services/study/sources";
 import { getActiveTopics } from "@/services/study/topics";
 
 type Feedback = { type: "success" | "error"; message: string };
+type NotebookTemplate = "blank" | "uploaded_file" | "ai_questions";
+
+function isPermissionDenied(error: unknown) {
+  return error instanceof FirebaseError && error.code === "permission-denied";
+}
 
 function getTopicNames(folder: StudyFolder, topics: Topic[]) {
   return folder.topicIds
@@ -73,11 +79,9 @@ export default function FolderDetailPage() {
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [showNotebookForm, setShowNotebookForm] = useState(false);
   const [notebookTitle, setNotebookTitle] = useState("");
+  const [notebookTemplate, setNotebookTemplate] = useState<NotebookTemplate>("blank");
+  const [notebookFile, setNotebookFile] = useState<File | null>(null);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
-  const [practiceSetTitle, setPracticeSetTitle] = useState("");
-  const [pastPaperTitle, setPastPaperTitle] = useState("");
-  const [pastPaperYear, setPastPaperYear] = useState("");
-  const [creatingPracticeShell, setCreatingPracticeShell] = useState(false);
 
   const loadFolder = useCallback(async () => {
     if (!user?.uid || !folderId || !featureFlags.enableFolders) {
@@ -118,7 +122,9 @@ export default function FolderDetailPage() {
       console.error(error);
       setFeedback({
         type: "error",
-        message: error instanceof Error ? error.message : "Could not load this folder.",
+        message: isPermissionDenied(error)
+          ? "Could not open this folder yet. Refresh once the workspace has finished syncing."
+          : "Could not load this folder. Try refreshing in a moment.",
       });
     } finally {
       setLoading(false);
@@ -249,28 +255,64 @@ export default function FolderDetailPage() {
       setFeedback({ type: "error", message: "Name the notebook before creating it." });
       return;
     }
+    if (notebookTemplate === "ai_questions") {
+      setFeedback({
+        type: "error",
+        message:
+          "AI-created question notebooks are planned, but Phase 6 is focused on the notebook workspace first.",
+      });
+      return;
+    }
+    if (notebookTemplate === "uploaded_file" && !notebookFile) {
+      setFeedback({ type: "error", message: "Choose a PDF or image file for this notebook." });
+      return;
+    }
 
     setCreatingNotebook(true);
     try {
       const notebook = await createNotebook(user.uid, {
         folderId: folder.id,
         title,
-        type: "free_working",
+        type: notebookTemplate === "uploaded_file" ? "uploaded_file" : "blank",
         topicIds: folder.topicIds,
+        icon: notebookTemplate === "uploaded_file" ? "file" : "book",
+        pageColor: "white",
       });
       await createNotebookPage(user.uid, {
         notebookId: notebook.id,
         folderId: folder.id,
         pageNumber: 1,
-        pageType: "free_working",
+        pageType: notebookTemplate === "uploaded_file" ? "past_paper_page" : "free_working",
         title: "Page 1",
+        pageColor: "white",
       });
-      setNotebooks((current) => [notebook, ...current]);
+
+      let uploadedFileId: string | undefined;
+      if (notebookTemplate === "uploaded_file" && notebookFile) {
+        const fileMetadata = await uploadNotebookFile({
+          userId: user.uid,
+          notebookId: notebook.id,
+          folderId: folder.id,
+          file: notebookFile,
+        });
+        uploadedFileId = fileMetadata.id;
+        await updateNotebook(user.uid, notebook.id, { uploadedFileId });
+      }
+
+      setNotebooks((current) => [
+        uploadedFileId ? { ...notebook, uploadedFileId } : notebook,
+        ...current,
+      ]);
       setNotebookTitle("");
+      setNotebookTemplate("blank");
+      setNotebookFile(null);
       setShowNotebookForm(false);
       setFeedback({
         type: "success",
-        message: `${notebook.title} created. Open it to type or draw on page 1.`,
+        message:
+          notebookTemplate === "uploaded_file"
+            ? `${notebook.title} created and file saved. Full paper annotation comes later.`
+            : `${notebook.title} created. Open it to type or draw on page 1.`,
       });
     } catch (error) {
       setFeedback({
@@ -279,71 +321,6 @@ export default function FolderDetailPage() {
       });
     } finally {
       setCreatingNotebook(false);
-    }
-  };
-
-  const handleCreatePracticeSet = async () => {
-    if (!user?.uid || !folder) return;
-    const title = practiceSetTitle.trim();
-    if (!title) {
-      setFeedback({ type: "error", message: "Name the practice set before creating it." });
-      return;
-    }
-
-    setCreatingPracticeShell(true);
-    try {
-      const practiceSet = await createPracticeSet(user.uid, {
-        folderId: folder.id,
-        title,
-        type: "manual",
-        topicIds: folder.topicIds,
-      });
-      setPracticeSets((current) => [practiceSet, ...current]);
-      setPracticeSetTitle("");
-      setFeedback({
-        type: "success",
-        message: `${practiceSet.title} created as a folder practice set shell.`,
-      });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not create practice set.",
-      });
-    } finally {
-      setCreatingPracticeShell(false);
-    }
-  };
-
-  const handleCreatePastPaper = async () => {
-    if (!user?.uid || !folder) return;
-    const title = pastPaperTitle.trim();
-    if (!title) {
-      setFeedback({ type: "error", message: "Name the past paper before creating it." });
-      return;
-    }
-
-    setCreatingPracticeShell(true);
-    try {
-      const pastPaper = await createPastPaper(user.uid, {
-        folderId: folder.id,
-        title,
-        year: pastPaperYear,
-        module: folder.name,
-      });
-      setPastPapers((current) => [pastPaper, ...current]);
-      setPastPaperTitle("");
-      setPastPaperYear("");
-      setFeedback({
-        type: "success",
-        message: `${pastPaper.title} saved as a past paper shell. PDF annotation comes later.`,
-      });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not create past paper shell.",
-      });
-    } finally {
-      setCreatingPracticeShell(false);
     }
   };
 
@@ -415,7 +392,7 @@ export default function FolderDetailPage() {
           title={folder.name}
           description={
             folder.description ??
-            "This folder is the broad home for related notebooks, decks, sources, practice sets, and recent work."
+            "This folder is the broad home for related notebooks, decks, sources, and recent work."
           }
           action={
             <Button type="button" onClick={() => setShowNotebookForm((current) => !current)}>
@@ -437,8 +414,7 @@ export default function FolderDetailPage() {
                 { label: "Topics", value: topicNames.length },
                 { label: "Decks", value: linkedDecks.length },
                 { label: "Sources", value: linkedSources.length },
-                { label: "Questions", value: linkedQuestions.length },
-                { label: "Sets", value: practiceSets.length + pastPapers.length },
+                { label: "Legacy questions", value: linkedQuestions.length },
               ]}
             />
           }
@@ -447,18 +423,56 @@ export default function FolderDetailPage() {
         {showNotebookForm ? (
           <Card padding="md">
             <SectionHeader
-              eyebrow="New notebook"
-              title="Create a working notebook inside this folder."
-              description="Use notebooks for natural typed or handwritten working. Expected answers and solution notes are optional metadata later, not the starting point."
+              eyebrow="Notebook template"
+              title="Add a notebook to this folder."
+              description="Question sets, papers, drills, and blank working books all start as notebooks. AI questions are planned, but the workspace comes first."
             />
-            <div className="mt-4 flex flex-col gap-3 lg:flex-row lg:items-end">
+            <div className="mt-5 grid gap-3 md:grid-cols-3">
+              {[
+                ["blank", "Blank notebook", "For free working, notes, and questions you write yourself."],
+                ["uploaded_file", "Uploaded file / paper", "Upload a PDF or image, then work on notebook pages beside it."],
+                ["ai_questions", "AI-created questions", "Placeholder for future question notebooks."],
+              ].map(([value, title, detail]) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setNotebookTemplate(value as NotebookTemplate)}
+                  className={`rounded-[1.25rem] border p-4 text-left transition ${
+                    notebookTemplate === value
+                      ? "border-warm-border bg-warm-glow"
+                      : "border-white/[0.09] bg-white/[0.04] hover:border-white/[0.16]"
+                  }`}
+                >
+                  <div className="text-sm font-semibold text-white">{title}</div>
+                  <p className="mt-2 text-sm leading-6 text-text-secondary">{detail}</p>
+                </button>
+              ))}
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto] lg:items-end">
               <Input
                 label="Notebook title"
                 value={notebookTitle}
                 onChange={(event) => setNotebookTitle(event.target.value)}
-                placeholder="Eigenvalues practice"
-                containerClassName="flex-1"
+                placeholder={
+                  notebookTemplate === "uploaded_file"
+                    ? "2024 Biology paper"
+                    : notebookTemplate === "ai_questions"
+                      ? "Biology exam questions"
+                      : "Biology revision notes"
+                }
               />
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-text-secondary">
+                  File
+                </label>
+                <input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  disabled={notebookTemplate !== "uploaded_file" || creatingNotebook}
+                  onChange={(event) => setNotebookFile(event.target.files?.[0] ?? null)}
+                  className="block min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:opacity-50"
+                />
+              </div>
               <div className="flex gap-2">
                 <Button
                   type="button"
@@ -467,6 +481,8 @@ export default function FolderDetailPage() {
                   onClick={() => {
                     setShowNotebookForm(false);
                     setNotebookTitle("");
+                    setNotebookTemplate("blank");
+                    setNotebookFile(null);
                   }}
                 >
                   Cancel
@@ -480,6 +496,16 @@ export default function FolderDetailPage() {
                 </Button>
               </div>
             </div>
+            {notebookTemplate === "uploaded_file" ? (
+              <p className="mt-3 text-sm leading-6 text-text-muted">
+                File saved to your notebook. Full paper annotation, OCR, and automatic reading come later.
+              </p>
+            ) : null}
+            {notebookTemplate === "ai_questions" ? (
+              <p className="mt-3 text-sm leading-6 text-text-muted">
+                This template is intentionally a placeholder in Phase 6 so the notebook workflow stays stable before AI generation moves in.
+              </p>
+            ) : null}
           </Card>
         ) : null}
 
@@ -487,7 +513,7 @@ export default function FolderDetailPage() {
           <SectionHeader
             eyebrow="Folder map"
             title="Everything for this study area will live here."
-            description="Phase 5.1 creates the stable folder shell. The next passes link decks, sources and questions, then add notebook pages."
+            description="Notebooks are the working surface. Decks and sources still live globally, but this folder keeps the study area together."
           />
           <div className="mt-4 flex flex-wrap gap-2">
             {topicNames.length > 0 ? (
@@ -532,8 +558,9 @@ export default function FolderDetailPage() {
               ))
             ) : (
               <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary md:col-span-2 xl:col-span-3">
-                No notebooks yet. Create one here, then Jami has a real place for your
-                Linear Algebra-style working instead of forcing every attempt through a form.
+                No notebooks yet. Create one here, then Jami has a real place for
+                your working, notes, and revision plans instead of forcing every
+                attempt through a form.
               </div>
             )}
           </div>
@@ -541,98 +568,33 @@ export default function FolderDetailPage() {
 
         <Card padding="md">
           <SectionHeader
-            eyebrow="Practice sets and papers"
-            title="Create shells for grouped question work."
-            description="This prepares the folder for drills and past-paper working without building PDF annotation or AI generation yet."
+            eyebrow="Recent activity"
+            title="Notebook work is the main practice record."
+            description="Older records stay compatible in the background, but new work should start from notebook templates."
           />
-          <div className="mt-5 grid gap-4 xl:grid-cols-2">
-            <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4">
-              <div className="text-sm font-semibold text-white">Practice set shell</div>
-              <p className="mt-1 text-sm leading-6 text-text-secondary">
-                Use this for manual or future AI-generated grouped questions inside this folder.
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Notebooks</div>
+              <div className="mt-2 text-2xl font-semibold text-white">{notebooks.length}</div>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                Working books, papers, and drills now live here.
               </p>
-              <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <Input
-                  label="Set title"
-                  value={practiceSetTitle}
-                  onChange={(event) => setPracticeSetTitle(event.target.value)}
-                  placeholder="Eigenvalues drill"
-                  containerClassName="flex-1"
-                />
-                <Button
-                  type="button"
-                  disabled={creatingPracticeShell}
-                  onClick={() => void handleCreatePracticeSet()}
-                >
-                  Create set
-                </Button>
-              </div>
-              <div className="mt-4 space-y-2">
-                {practiceSets.length > 0 ? (
-                  practiceSets.map((practiceSet) => (
-                    <div
-                      key={practiceSet.id}
-                      className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3"
-                    >
-                      <div className="text-sm font-semibold text-white">{practiceSet.title}</div>
-                      <div className="mt-1 text-xs text-text-muted">
-                        {practiceSet.type.replace("_", " ")} - {practiceSet.questionIds.length} questions
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm leading-6 text-text-muted">
-                    No practice sets yet. Create a shell now, then connect questions in a later pass.
-                  </p>
-                )}
-              </div>
             </div>
-
-            <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4">
-              <div className="text-sm font-semibold text-white">Past paper shell</div>
-              <p className="mt-1 text-sm leading-6 text-text-secondary">
-                Save the paper identity and folder context first. Upload/PDF annotation stays out of Phase 5.
+            <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Linked decks</div>
+              <div className="mt-2 text-2xl font-semibold text-white">{linkedDecks.length}</div>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                Decks still appear globally and inside this folder.
               </p>
-              <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_8rem_auto] sm:items-end">
-                <Input
-                  label="Paper title"
-                  value={pastPaperTitle}
-                  onChange={(event) => setPastPaperTitle(event.target.value)}
-                  placeholder="2024 Linear Algebra paper"
-                />
-                <Input
-                  label="Year"
-                  value={pastPaperYear}
-                  onChange={(event) => setPastPaperYear(event.target.value)}
-                  placeholder="2024"
-                />
-                <Button
-                  type="button"
-                  disabled={creatingPracticeShell}
-                  onClick={() => void handleCreatePastPaper()}
-                >
-                  Create paper
-                </Button>
+            </div>
+            <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
+              <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Older records</div>
+              <div className="mt-2 text-2xl font-semibold text-white">
+                {practiceSets.length + pastPapers.length}
               </div>
-              <div className="mt-4 space-y-2">
-                {pastPapers.length > 0 ? (
-                  pastPapers.map((paper) => (
-                    <div
-                      key={paper.id}
-                      className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3"
-                    >
-                      <div className="text-sm font-semibold text-white">{paper.title}</div>
-                      <div className="mt-1 text-xs text-text-muted">
-                        {paper.year ?? "No year"} - metadata shell only
-                      </div>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-sm leading-6 text-text-muted">
-                    No past paper shells yet. Add one to reserve the working space without promising PDF tools.
-                  </p>
-                )}
-              </div>
+              <p className="mt-2 text-sm leading-6 text-text-secondary">
+                Existing sets and paper shells remain readable, but new grouped work should be notebooks.
+              </p>
             </div>
           </div>
         </Card>
@@ -729,7 +691,7 @@ export default function FolderDetailPage() {
             <SectionHeader
               eyebrow="Questions"
               title="Practice questions in this folder"
-              description="Question records stay available to Practice, but folder links prepare them for notebook and practice-set workflows."
+              description="Question records stay available to Practice, but notebook pages are the new working surface."
             />
             <div className="mt-4 space-y-3">
               {questions.length > 0 ? (
@@ -763,7 +725,7 @@ export default function FolderDetailPage() {
                 })
               ) : (
                 <p className="text-sm leading-6 text-text-muted">
-                  No questions yet. Practice will become folder-first after the notebook foundation is stable.
+                  No questions yet. New practice work should start from notebooks inside this folder.
                 </p>
               )}
             </div>

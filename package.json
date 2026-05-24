@@ -10,8 +10,8 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "test:rules": "firebase emulators:exec --only firestore \"vitest run --config vitest.rules.config.ts\"",
-    "emulators:firestore": "firebase emulators:start --only firestore",
+    "test:rules": "firebase emulators:exec --only firestore,storage \"vitest run --config vitest.rules.config.ts\"",
+    "emulators:firestore": "firebase emulators:start --only firestore,storage",
     "firebase:login": "firebase login",
     "firebase:projects": "firebase projects:list",
     "firebase:rules:deploy": "firebase deploy --only firestore"

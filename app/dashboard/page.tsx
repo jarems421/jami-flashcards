@@ -618,10 +618,12 @@ export default function DashboardHome() {
         getDecks(uid).catch((e) => {
           console.error(e);
           const code = e instanceof FirebaseError ? e.code : undefined;
-          setFeedback({
-            type: "error",
-            message: code ? `Failed to load decks (${code}).` : "Failed to load decks.",
-          });
+          if (code !== "permission-denied") {
+            setFeedback({
+              type: "error",
+              message: code ? `Failed to load decks (${code}).` : "Failed to load decks.",
+            });
+          }
           return [] as Deck[];
         }),
       ]);

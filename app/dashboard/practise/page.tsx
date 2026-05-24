@@ -9,13 +9,11 @@ import type { Attempt, Question } from "@/lib/practice/questions";
 import type { Source } from "@/lib/practice/sources";
 import { buildTutorContextPacket } from "@/lib/practice/tutor-context";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import type { PastPaper, PracticeSet } from "@/lib/workspace/practice-sets";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getActiveTopics, createTopic } from "@/services/study/topics";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
-import { getActivePastPapers, getActivePracticeSets } from "@/services/study/practice-work";
 import { getActiveSources } from "@/services/study/sources";
 import {
   createAttempt,
@@ -115,7 +113,7 @@ function summarizeSessionNextAction(hasIncorrectAttempt: boolean, draftsCreated:
 }
 
 function PractiseFlowHeader() {
-  const steps = ["Choose question", "Attempt", "Mark", "Repair"];
+  const steps = ["Open folder", "Choose notebook", "Work on pages", "Save"];
 
   return (
     <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.035] px-3 py-3 shadow-[0_12px_22px_rgba(4,8,18,0.12)]">
@@ -143,8 +141,6 @@ export default function PractisePage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [practiceSets, setPracticeSets] = useState<PracticeSet[]>([]);
-  const [pastPapers, setPastPapers] = useState<PastPaper[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
@@ -252,32 +248,23 @@ export default function PractisePage() {
     sessionAttempts.some((attempt) => !attempt.isCorrect),
     sessionDraftsCreated
   );
-  const totalAccuracy = useMemo(() => getAccuracy(attempts), [attempts]);
   const folderSummaries = useMemo(
     () =>
       folders.slice(0, 4).map((folder) => {
-        const questionCount = questions.filter(
-          (question) =>
-            question.folderIds.includes(folder.id) ||
-            question.topicIds.some((topicId) => folder.topicIds.includes(topicId))
-        ).length;
         const deckCount = decks.filter((deck) => deck.folderIds.includes(folder.id)).length;
-        const notebookCount = notebooks.filter((notebook) => notebook.folderId === folder.id).length;
-        const practiceSetCount = practiceSets.filter(
-          (practiceSet) => practiceSet.folderId === folder.id
+        const sourceCount = sources.filter(
+          (source) =>
+            source.folderIds.includes(folder.id) ||
+            source.topicIds.some((topicId) => folder.topicIds.includes(topicId))
         ).length;
-        const pastPaperCount = pastPapers.filter((paper) => paper.folderId === folder.id).length;
-        return { folder, questionCount, deckCount, notebookCount, practiceSetCount, pastPaperCount };
+        const notebookCount = notebooks.filter((notebook) => notebook.folderId === folder.id).length;
+        return { folder, deckCount, notebookCount, sourceCount };
       }),
-    [decks, folders, notebooks, pastPapers, practiceSets, questions]
+    [decks, folders, notebooks, sources]
   );
   const recentNotebooks = useMemo(
     () => [...notebooks].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 3),
     [notebooks]
-  );
-  const supportAttempts = useMemo(
-    () => attempts.filter((attempt) => attempt.tutorUsed || (attempt.hintsUsed ?? 0) > 0).length,
-    [attempts]
   );
   const currentAttemptSnapshot = useMemo(
     () =>
@@ -311,8 +298,6 @@ export default function PractisePage() {
         nextSources,
         nextFolders,
         nextNotebooks,
-        nextPracticeSets,
-        nextPastPapers,
       ] = await Promise.all([
         getActiveTopics(user.uid),
         getDecks(user.uid),
@@ -321,8 +306,6 @@ export default function PractisePage() {
         getActiveSources(user.uid).catch(() => [] as Source[]),
         getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
         getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
-        getActivePracticeSets(user.uid).catch(() => [] as PracticeSet[]),
-        getActivePastPapers(user.uid).catch(() => [] as PastPaper[]),
       ]);
       setTopics(nextTopics);
       setDecks(nextDecks);
@@ -331,8 +314,6 @@ export default function PractisePage() {
       setSources(nextSources);
       setFolders(nextFolders);
       setNotebooks(nextNotebooks);
-      setPracticeSets(nextPracticeSets);
-      setPastPapers(nextPastPapers);
       const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const targetQuestionId = params?.get("question")?.trim() ?? "";
       const targetTopicId = params?.get("topic")?.trim() ?? "";
@@ -867,22 +848,22 @@ export default function PractisePage() {
 
       <PageHero
         eyebrow="Practice"
-        title="Start from a study space, then work naturally."
-        description="Folders and notebooks are becoming the main workspace. The question bank remains here while the notebook flow becomes stable."
+        title="Open a notebook and work naturally."
+        description="Practice is now folder-first: continue a notebook, open a study folder, or create a new working book. Legacy questions stay available, but they are no longer the main workspace."
         tone="warm"
         aside={
           <div className="grid min-w-[18rem] grid-cols-3 gap-2 text-center">
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
-              <div className="text-lg font-medium tabular-nums text-white">{questions.length}</div>
-              <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Questions</div>
+              <div className="text-lg font-medium tabular-nums text-white">{recentNotebooks.length}</div>
+              <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Continue</div>
             </div>
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
-              <div className="text-lg font-medium tabular-nums text-white">{attempts.length}</div>
-              <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Attempts</div>
+              <div className="text-lg font-medium tabular-nums text-white">{folders.length}</div>
+              <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Folders</div>
             </div>
             <div className="rounded-2xl border border-white/[0.08] bg-white/[0.045] px-3 py-3">
-              <div className="text-lg font-medium tabular-nums text-white">{totalAccuracy}%</div>
-              <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Accuracy</div>
+              <div className="text-lg font-medium tabular-nums text-white">{notebooks.length}</div>
+              <div className="mt-1 text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">Notebooks</div>
             </div>
           </div>
         }
@@ -897,17 +878,9 @@ export default function PractisePage() {
         <>
           <MetricStrip
             items={[
-              { label: "Topics", value: topics.length },
-              {
-                label: "Support level",
-                value: supportAttempts > attempts.length / 2 && attempts.length > 0 ? "High" : supportAttempts > 0 ? "Medium" : "Low",
-                tone: "warm",
-              },
-              {
-                label: "Hint-to-correct",
-                value: `${getAccuracy(attempts.filter((attempt) => (attempt.hintsUsed ?? 0) > 0 || attempt.tutorUsed))}%`,
-                tone: "good",
-              },
+              { label: "Folders", value: folders.length },
+              { label: "Notebooks", value: notebooks.length, tone: "warm" },
+              { label: "Legacy questions", value: questions.length },
               { label: "Timer", value: formatElapsed(elapsedSeconds) },
             ]}
           />
@@ -917,7 +890,7 @@ export default function PractisePage() {
               <SectionHeader
                 eyebrow="Practice workspace"
                 title="Open a folder or continue a notebook."
-                description="The new direction is folder-first: decks, sources, notebooks and practice work sit together inside a study space. The question bank below stays as a supporting tool while notebooks mature."
+                description="The new direction is notebook-first: blank working, papers, and drills all start as notebook templates inside a folder."
               />
               <div className="flex flex-wrap gap-2">
                 <Link
@@ -926,9 +899,6 @@ export default function PractisePage() {
                 >
                   Open folders
                 </Link>
-                <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(true)}>
-                  Add question
-                </Button>
               </div>
             </div>
 
@@ -940,7 +910,7 @@ export default function PractisePage() {
                 <div className="grid gap-3 md:grid-cols-2">
                   {folderSummaries.length > 0 ? (
                     folderSummaries.map(
-                      ({ folder, questionCount, deckCount, notebookCount, practiceSetCount, pastPaperCount }) => (
+                      ({ folder, deckCount, notebookCount, sourceCount }) => (
                       <Link
                         key={folder.id}
                         href={`/dashboard/folders/${folder.id}`}
@@ -955,20 +925,17 @@ export default function PractisePage() {
                             {notebookCount} notebook{notebookCount === 1 ? "" : "s"}
                           </span>
                           <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-muted">
-                            {questionCount} question{questionCount === 1 ? "" : "s"}
-                          </span>
-                          <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-muted">
                             {deckCount} deck{deckCount === 1 ? "" : "s"}
                           </span>
                           <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-muted">
-                            {practiceSetCount + pastPaperCount} set{practiceSetCount + pastPaperCount === 1 ? "" : "s"}
+                            {sourceCount} source{sourceCount === 1 ? "" : "s"}
                           </span>
                         </div>
                       </Link>
                     ))
                   ) : (
                     <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary md:col-span-2">
-                      No folders yet. Create a study folder such as Linear Algebra, then keep
+                      No folders yet. Create a study folder such as Biology or History, then keep
                       notebooks, decks, sources and practice work together there.
                     </div>
                   )}
@@ -1081,9 +1048,10 @@ export default function PractisePage() {
                 </div>
 
                 <div className="mt-5 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.035] p-3 text-sm leading-6 text-text-secondary">
-                  <span className="font-semibold text-white">Example:</span> Question: Solve x^2 -
-                  5x + 6 = 0. Expected answer: x = 2 or x = 3. Solution notes: Factorise into
-                  (x - 2)(x - 3).
+                  <span className="font-semibold text-white">Example:</span> Question: Explain why
+                  enzyme activity drops above 45 C. Expected answer: the enzyme denatures and the
+                  active site changes shape. Solution notes: mention optimum temperature, active
+                  site, and substrate fit.
                 </div>
 
                 <div className="mt-5 space-y-3">
@@ -1157,7 +1125,14 @@ export default function PractisePage() {
             </div>
           ) : null}
 
-          <div className="grid grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
+          <details className="rounded-[1.45rem] border border-white/[0.09] bg-white/[0.035] p-4">
+            <summary className="cursor-pointer text-sm font-semibold text-text-secondary transition hover:text-white">
+              Legacy questions
+              <span className="ml-2 text-xs font-normal text-text-muted">
+                old question-bank workflow kept for compatibility
+              </span>
+            </summary>
+            <div className="mt-4 grid grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
             <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
                 <SectionHeader
@@ -1188,13 +1163,13 @@ export default function PractisePage() {
                       label="New topic"
                       value={newTopicName}
                       onChange={(event) => setNewTopicName(event.target.value)}
-                      placeholder="Eigenvalues"
+                      placeholder="Enzyme activity"
                     />
                     <Input
                       label="Subject"
                       value={newTopicSubject}
                       onChange={(event) => setNewTopicSubject(event.target.value)}
-                      placeholder="Linear Algebra"
+                      placeholder="Biology"
                     />
                     <Button type="button" variant="secondary" onClick={() => void handleCreateTopic()}>
                       Add topic
@@ -1906,7 +1881,8 @@ export default function PractisePage() {
                 )}
               </Card>
             </div>
-          </div>
+            </div>
+          </details>
         </>
       )}
     </AppPage>

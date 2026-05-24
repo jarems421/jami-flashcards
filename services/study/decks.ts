@@ -1,5 +1,6 @@
 import { db } from "../firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { FirebaseError } from "firebase/app";
 import {
   DEFAULT_DECK_COLOR_PRESET,
   DEFAULT_DECK_ICON_PRESET,
@@ -48,6 +49,10 @@ const DELETE_MS = 30_000;
 const BATCH_DELETE_LIMIT = 400;
 
 type DeckSnapshot = QueryDocumentSnapshot | DocumentSnapshot;
+
+function isPermissionDenied(error: unknown) {
+  return error instanceof FirebaseError && error.code === "permission-denied";
+}
 
 function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
   if (!docSnap.exists()) {
@@ -201,10 +206,16 @@ export const getDecks = async (userId: string): Promise<Deck[]> => {
   const qByUserId = query(col, where("userId", "==", normalizedUserId));
   const qByLegacyUid = query(col, where("uid", "==", normalizedUserId));
 
-  const [byUserId, byLegacyUid] = await Promise.all([
-    withTimeout(getDocs(qByUserId), LOAD_MS, "Load decks (userId)"),
-    withTimeout(getDocs(qByLegacyUid), LOAD_MS, "Load decks (uid)"),
-  ]);
+  const byUserId = await withTimeout(getDocs(qByUserId), LOAD_MS, "Load decks (userId)");
+  const byLegacyUid = await withTimeout(getDocs(qByLegacyUid), LOAD_MS, "Load decks (uid)").catch(
+    (error: unknown) => {
+      if (isPermissionDenied(error)) {
+        console.warn("Legacy deck lookup was denied; continuing with current userId decks.");
+        return null;
+      }
+      throw error;
+    }
+  );
 
   const merged = new Map<string, Deck>();
 
@@ -212,9 +223,11 @@ export const getDecks = async (userId: string): Promise<Deck[]> => {
     const deck = snapshotToDeck(d);
     if (deck && deck.userId === normalizedUserId) merged.set(d.id, deck);
   }
-  for (const d of byLegacyUid.docs) {
-    const deck = snapshotToDeck(d);
-    if (deck && deck.userId === normalizedUserId) merged.set(d.id, deck);
+  if (byLegacyUid) {
+    for (const d of byLegacyUid.docs) {
+      const deck = snapshotToDeck(d);
+      if (deck && deck.userId === normalizedUserId) merged.set(d.id, deck);
+    }
   }
 
   return Array.from(merged.values()).sort((a, b) => b.createdAt - a.createdAt);

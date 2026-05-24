@@ -85,9 +85,20 @@ export type WalkthroughNotebook = {
   id: string;
   folderId: string;
   title: string;
-  type: "free_working" | "practice" | "past_paper" | "generated_drill" | "source_notes";
+  type:
+    | "blank"
+    | "uploaded_file"
+    | "ai_questions"
+    | "general_working"
+    | "free_working"
+    | "practice"
+    | "past_paper"
+    | "generated_drill"
+    | "source_notes";
   topicIds: string[];
   sourceIds: string[];
+  pageColor?: "white" | "black" | "grey";
+  uploadedFileName?: string;
   updatedAt: number;
 };
 
@@ -97,6 +108,7 @@ export type WalkthroughNotebookPage = {
   folderId: string;
   pageNumber: number;
   pageType: "blank" | "question" | "past_paper_page" | "source_note" | "free_working";
+  pageColor?: "white" | "black" | "grey";
   typedContent?: string;
   questionPrompt?: string;
 };
@@ -130,96 +142,96 @@ export type WalkthroughTutorIntent =
   | "stuck-here";
 
 export const WALKTHROUGH_TOPICS: WalkthroughTopic[] = [
-  { id: "topic-eigenvalues", name: "Eigenvalues", subject: "Linear Algebra" },
-  { id: "topic-multiplicity", name: "Algebraic vs geometric multiplicity", subject: "Linear Algebra" },
-  { id: "topic-uniform-convergence", name: "Uniform convergence", subject: "Analysis" },
-  { id: "topic-integration-by-parts", name: "Integration by parts", subject: "Methods" },
+  { id: "topic-photosynthesis", name: "Photosynthesis", subject: "Biology" },
+  { id: "topic-enzymes", name: "Enzyme activity", subject: "Biology" },
+  { id: "topic-cold-war", name: "Cold War causes", subject: "History" },
+  { id: "topic-spanish-preterite", name: "Spanish preterite verbs", subject: "Spanish" },
 ];
 
 export const WALKTHROUGH_FOLDERS: WalkthroughStudyFolder[] = [
   {
-    id: "folder-linear-algebra",
-    name: "Linear Algebra",
-    subject: "Maths",
+    id: "folder-biology",
+    name: "Biology",
+    subject: "Science",
     description:
-      "Flashcards, lecture sources, practice work, and future notebook pages for eigenvalues and diagonalisation.",
-    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
+      "Flashcards, source notes, practice work, and notebook pages for cells, enzymes, and exam-style biology questions.",
+    topicIds: ["topic-photosynthesis", "topic-enzymes"],
   },
   {
-    id: "folder-analysis",
-    name: "Analysis",
-    subject: "Maths",
+    id: "folder-history",
+    name: "History",
+    subject: "Humanities",
     description:
-      "A study space for convergence, proofs, and source notes that feed Practice and Progress.",
-    topicIds: ["topic-uniform-convergence"],
+      "A study space for timelines, source analysis, essay plans, and retrieval practice.",
+    topicIds: ["topic-cold-war"],
   },
   {
-    id: "folder-methods",
-    name: "Methods",
-    subject: "Maths",
+    id: "folder-spanish",
+    name: "Spanish",
+    subject: "Languages",
     description:
-      "A home for technique drills, flashcard decks, and later paper-style working notebooks.",
-    topicIds: ["topic-integration-by-parts"],
+      "A home for vocabulary decks, grammar notebooks, speaking prompts, and short practice drills.",
+    topicIds: ["topic-spanish-preterite"],
   },
 ];
 
 export const WALKTHROUGH_DECKS: WalkthroughDeck[] = [
-  { id: "deck-linear-algebra", name: "Linear Algebra", subject: "Maths", cardCount: 5, weakCount: 2 },
-  { id: "deck-analysis", name: "Analysis 2", subject: "Maths", cardCount: 4, weakCount: 1 },
-  { id: "deck-methods", name: "Methods", subject: "Maths", cardCount: 3, weakCount: 1 },
+  { id: "deck-biology", name: "Biology key terms", subject: "Science", cardCount: 5, weakCount: 2 },
+  { id: "deck-history", name: "Cold War timeline", subject: "Humanities", cardCount: 4, weakCount: 1 },
+  { id: "deck-spanish", name: "Spanish verbs", subject: "Languages", cardCount: 3, weakCount: 1 },
 ];
 
 export const WALKTHROUGH_CARDS: WalkthroughCard[] = [
   {
-    id: "card-eigenvector",
-    deckId: "deck-linear-algebra",
-    front: "What is an eigenvector?",
-    back: "A non-zero vector whose direction is unchanged by a linear transformation.",
-    topicIds: ["topic-eigenvalues"],
+    id: "card-chlorophyll",
+    deckId: "deck-biology",
+    front: "What does chlorophyll do in photosynthesis?",
+    back: "It absorbs light energy so the plant can make glucose from carbon dioxide and water.",
+    topicIds: ["topic-photosynthesis"],
     tags: ["definition", "core"],
     due: true,
     weak: false,
     status: "review",
   },
   {
-    id: "card-geometric-multiplicity",
-    deckId: "deck-linear-algebra",
-    front: "What does geometric multiplicity measure?",
-    back: "The dimension of the eigenspace for an eigenvalue.",
-    topicIds: ["topic-multiplicity"],
+    id: "card-active-site",
+    deckId: "deck-biology",
+    front: "What is an enzyme active site?",
+    back: "The region of an enzyme where a specific substrate binds and the reaction is catalysed.",
+    topicIds: ["topic-enzymes"],
     tags: ["weak", "exam"],
     due: true,
     weak: true,
     status: "relearning",
   },
   {
-    id: "card-algebraic-multiplicity",
-    deckId: "deck-linear-algebra",
-    front: "What does algebraic multiplicity measure?",
-    back: "The power of an eigenvalue as a root of the characteristic polynomial.",
-    topicIds: ["topic-multiplicity"],
+    id: "card-containment",
+    deckId: "deck-history",
+    front: "What was containment?",
+    back: "A US policy aiming to stop communism spreading into more countries after World War II.",
+    topicIds: ["topic-cold-war"],
     tags: ["definition"],
     due: false,
     weak: true,
     status: "learning",
   },
   {
-    id: "card-uniform-convergence",
-    deckId: "deck-analysis",
-    front: "State the uniform convergence criterion using epsilon.",
-    back: "For every epsilon > 0, there is N such that for all n >= N and all x in the domain, |f_n(x)-f(x)| < epsilon.",
-    topicIds: ["topic-uniform-convergence"],
-    tags: ["proof", "definition"],
+    id: "card-spanish-preterite",
+    deckId: "deck-spanish",
+    front: "What are the regular -ar preterite endings in Spanish?",
+    back: "e, aste, o, amos, asteis, aron.",
+    topicIds: ["topic-spanish-preterite"],
+    tags: ["grammar", "definition"],
     due: true,
     weak: true,
     status: "relearning",
   },
   {
-    id: "card-integration-by-parts",
-    deckId: "deck-methods",
-    front: "When is integration by parts a good move?",
-    back: "When the integrand is a product and one factor simplifies after differentiation.",
-    topicIds: ["topic-integration-by-parts"],
+    id: "card-photosynthesis-equation",
+    deckId: "deck-biology",
+    front: "What is the word equation for photosynthesis?",
+    back: "Carbon dioxide + water -> glucose + oxygen.",
+    topicIds: ["topic-photosynthesis"],
     tags: ["method"],
     due: false,
     weak: false,
@@ -229,36 +241,36 @@ export const WALKTHROUGH_CARDS: WalkthroughCard[] = [
 
 export const WALKTHROUGH_QUESTIONS: WalkthroughQuestion[] = [
   {
-    id: "question-multiplicity",
+    id: "question-enzyme-temperature",
     questionText:
-      "A 3 by 3 matrix has characteristic polynomial (lambda - 2)^3. Its eigenspace for lambda = 2 is one-dimensional. Is the matrix diagonalizable? Explain why.",
+      "A student measures enzyme activity at different temperatures. The rate rises up to 37 C, then drops sharply above 45 C. Explain why.",
     answerText:
-      "No. The algebraic multiplicity is 3 but the geometric multiplicity is 1, so there are not enough independent eigenvectors to diagonalize the matrix.",
+      "The enzyme works faster as temperature rises until its optimum, but high temperatures denature the enzyme and change the active site shape, so fewer substrates fit.",
     solutionText:
-      "A matrix is diagonalizable only if the sum of the eigenspace dimensions equals the matrix size. Here the only eigenvalue has algebraic multiplicity 3 but geometric multiplicity 1, so there is only one independent eigenvector.",
-    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
+      "Explain the rise first: particles have more kinetic energy, so enzyme-substrate collisions increase. Then explain the drop: high temperature denatures the enzyme, changing the active site so the substrate no longer fits well.",
+    topicIds: ["topic-enzymes"],
     difficulty: "medium",
   },
   {
-    id: "question-uniform-convergence",
+    id: "question-cold-war",
     questionText:
-      "Suppose f_n(x) = x^n on [0, 1]. Does f_n converge uniformly on [0, 1]? Give the key reason.",
+      "Give two reasons why tension between the USA and USSR increased after 1945.",
     answerText:
-      "No. The pointwise limit is 0 for x < 1 and 1 at x = 1, which is discontinuous, while each f_n is continuous. A uniform limit of continuous functions is continuous.",
+      "Ideological differences between capitalism and communism, plus mistrust after World War II, including disagreements over Eastern Europe and nuclear weapons.",
     solutionText:
-      "Each f_n is continuous on [0,1]. If convergence were uniform, the limit would be continuous. The pointwise limit jumps at x=1, so convergence cannot be uniform.",
-    topicIds: ["topic-uniform-convergence"],
-    difficulty: "hard",
+      "A strong answer names two causes and explains each one. For example: ideology made both sides suspicious of each other's aims, while Soviet control in Eastern Europe and the US atomic bomb increased mistrust.",
+    topicIds: ["topic-cold-war"],
+    difficulty: "medium",
   },
   {
-    id: "question-parts",
+    id: "question-spanish-preterite",
     questionText:
-      "Use integration by parts to set up integral x e^x dx. Which factor should you differentiate, and why?",
+      "Translate into Spanish: Yesterday I spoke with my friend.",
     answerText:
-      "Differentiate x and integrate e^x. Differentiating x simplifies it to 1 while e^x stays manageable when integrated.",
+      "Ayer hable con mi amigo/amiga.",
     solutionText:
-      "Let u = x and dv = e^x dx. Then du = dx and v = e^x, so the integral becomes x e^x - integral e^x dx.",
-    topicIds: ["topic-integration-by-parts"],
+      "Use ayer for yesterday, the preterite yo form hable for I spoke, and con mi amigo/amiga for with my friend.",
+    topicIds: ["topic-spanish-preterite"],
     difficulty: "easy",
   },
 ];
@@ -266,27 +278,27 @@ export const WALKTHROUGH_QUESTIONS: WalkthroughQuestion[] = [
 export const WALKTHROUGH_ATTEMPTS: WalkthroughAttempt[] = [
   {
     id: "attempt-1",
-    questionId: "question-multiplicity",
+    questionId: "question-enzyme-temperature",
     isCorrect: false,
     confidence: 2,
     hintsUsed: 2,
     tutorUsed: true,
-    mistakeLabels: ["mixed up multiplicities", "not enough eigenvectors"],
+    mistakeLabels: ["forgot denaturing", "active site explanation missing"],
     createdAt: Date.now() - 1000 * 60 * 60 * 8,
   },
   {
     id: "attempt-2",
-    questionId: "question-uniform-convergence",
+    questionId: "question-cold-war",
     isCorrect: false,
     confidence: 2,
     hintsUsed: 1,
     tutorUsed: true,
-    mistakeLabels: ["missed discontinuous limit"],
+    mistakeLabels: ["too vague", "needs explained cause"],
     createdAt: Date.now() - 1000 * 60 * 60 * 4,
   },
   {
     id: "attempt-3",
-    questionId: "question-parts",
+    questionId: "question-spanish-preterite",
     isCorrect: true,
     confidence: 4,
     hintsUsed: 0,
@@ -298,43 +310,43 @@ export const WALKTHROUGH_ATTEMPTS: WalkthroughAttempt[] = [
 
 export const WALKTHROUGH_INITIAL_DRAFTS: WalkthroughDraft[] = [
   {
-    id: "draft-multiplicity",
-    front: "What is the difference between algebraic and geometric multiplicity?",
-    back: "Algebraic multiplicity is how often an eigenvalue appears as a root of the characteristic polynomial; geometric multiplicity is the dimension of its eigenspace.",
-    topicIds: ["topic-multiplicity"],
-    sourceQuestionId: "question-multiplicity",
+    id: "draft-enzyme-denaturing",
+    front: "What happens when an enzyme is denatured?",
+    back: "Its active site changes shape, so the substrate no longer fits properly and the reaction rate falls.",
+    topicIds: ["topic-enzymes"],
+    sourceQuestionId: "question-enzyme-temperature",
     contentStatus: "draft",
   },
 ];
 
 export const WALKTHROUGH_SOURCES: WalkthroughSource[] = [
   {
-    id: "source-linear-lecture",
-    title: "Linear Algebra Lecture 5",
+    id: "source-biology-notes",
+    title: "Enzyme activity class notes",
     type: "pasted_text",
-    subject: "Linear Algebra",
-    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
+    subject: "Biology",
+    topicIds: ["topic-enzymes"],
     contentText:
-      "A matrix is diagonalizable when there is a basis of eigenvectors. For each eigenvalue, compare algebraic multiplicity with geometric multiplicity. If the total number of independent eigenvectors is less than the dimension of the matrix, the matrix is not diagonalizable.",
+      "Enzyme activity increases with temperature up to an optimum because particles collide more often. Above the optimum, bonds in the enzyme structure break, the active site changes shape, and the substrate no longer fits well.",
     status: "active",
   },
   {
-    id: "source-analysis-note",
-    title: "Uniform convergence reminder",
+    id: "source-history-note",
+    title: "Cold War causes summary",
     type: "manual_note",
-    subject: "Analysis",
-    topicIds: ["topic-uniform-convergence"],
+    subject: "History",
+    topicIds: ["topic-cold-war"],
     contentText:
-      "Uniform convergence preserves continuity when each function is continuous. To disprove uniform convergence on a closed interval, compare the pointwise limit with continuity.",
+      "After 1945, the USA and USSR disagreed over ideology, security, control of Eastern Europe, and the meaning of free elections. These disagreements created suspicion and competition.",
     status: "active",
   },
   {
     id: "source-file-ref",
-    title: "Methods worksheet reference",
+    title: "Spanish speaking prompt reference",
     type: "file",
-    subject: "Methods",
-    topicIds: ["topic-integration-by-parts"],
-    fileName: "methods-worksheet-3.pdf",
+    subject: "Spanish",
+    topicIds: ["topic-spanish-preterite"],
+    fileName: "spanish-speaking-prompts.pdf",
     fileType: "PDF reference",
     status: "active",
   },
@@ -342,74 +354,101 @@ export const WALKTHROUGH_SOURCES: WalkthroughSource[] = [
 
 export const WALKTHROUGH_NOTEBOOKS: WalkthroughNotebook[] = [
   {
-    id: "notebook-eigenvalues",
-    folderId: "folder-linear-algebra",
-    title: "Eigenvalues practice",
-    type: "practice",
-    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
-    sourceIds: ["source-linear-lecture"],
+    id: "notebook-photosynthesis",
+    folderId: "folder-biology",
+    title: "Enzyme activity practice",
+    type: "general_working",
+    topicIds: ["topic-enzymes"],
+    sourceIds: ["source-biology-notes"],
+    pageColor: "white",
     updatedAt: Date.now() - 1000 * 60 * 45,
   },
   {
-    id: "notebook-analysis",
-    folderId: "folder-analysis",
-    title: "Uniform convergence notes",
+    id: "notebook-biology-paper",
+    folderId: "folder-biology",
+    title: "Biology mock paper working",
+    type: "uploaded_file",
+    topicIds: ["topic-photosynthesis", "topic-enzymes"],
+    sourceIds: [],
+    pageColor: "white",
+    uploadedFileName: "biology-mock-paper.pdf",
+    updatedAt: Date.now() - 1000 * 60 * 90,
+  },
+  {
+    id: "notebook-history",
+    folderId: "folder-history",
+    title: "Cold War source notes",
     type: "source_notes",
-    topicIds: ["topic-uniform-convergence"],
-    sourceIds: ["source-analysis-note"],
+    topicIds: ["topic-cold-war"],
+    sourceIds: ["source-history-note"],
+    pageColor: "grey",
     updatedAt: Date.now() - 1000 * 60 * 60 * 5,
   },
 ];
 
 export const WALKTHROUGH_NOTEBOOK_PAGES: WalkthroughNotebookPage[] = [
   {
-    id: "page-eigenvalues-1",
-    notebookId: "notebook-eigenvalues",
-    folderId: "folder-linear-algebra",
+    id: "page-enzymes-1",
+    notebookId: "notebook-photosynthesis",
+    folderId: "folder-biology",
     pageNumber: 1,
     pageType: "question",
+    pageColor: "white",
     questionPrompt:
-      "A 3 by 3 matrix has characteristic polynomial (lambda - 2)^3. Its eigenspace for lambda = 2 is one-dimensional. Is it diagonalizable?",
+      "A student measures enzyme activity at different temperatures. The rate rises up to 37 C, then drops sharply above 45 C. Explain why.",
     typedContent:
-      "I need to compare algebraic multiplicity with geometric multiplicity before deciding.",
+      "I need to explain both the collision increase before the optimum and denaturing after the optimum.",
   },
   {
-    id: "page-analysis-1",
-    notebookId: "notebook-analysis",
-    folderId: "folder-analysis",
+    id: "page-biology-paper-1",
+    notebookId: "notebook-biology-paper",
+    folderId: "folder-biology",
+    pageNumber: 1,
+    pageType: "past_paper_page",
+    pageColor: "white",
+    questionPrompt:
+      "Uploaded file reference: biology-mock-paper.pdf. Full PDF annotation and OCR come later; use this page for working notes.",
+    typedContent:
+      "Public walkthrough simulation: the file is represented as local notebook metadata only.",
+  },
+  {
+    id: "page-history-1",
+    notebookId: "notebook-history",
+    folderId: "folder-history",
     pageNumber: 1,
     pageType: "source_note",
+    pageColor: "grey",
     typedContent:
-      "Uniform convergence keeps continuity, so a discontinuous pointwise limit is a warning sign.",
+      "Useful causes to compare: ideological conflict, Eastern Europe, nuclear tension, and post-war mistrust.",
   },
 ];
 
 export const WALKTHROUGH_PRACTICE_SETS: WalkthroughPracticeSet[] = [
   {
-    id: "practice-set-eigenvalues",
-    folderId: "folder-linear-algebra",
-    title: "Eigenvalues drill",
+    id: "practice-set-enzymes",
+    folderId: "folder-biology",
+    title: "Enzyme activity drill",
     type: "manual",
-    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
-    questionIds: ["question-multiplicity"],
+    topicIds: ["topic-enzymes"],
+    questionIds: ["question-enzyme-temperature"],
   },
   {
-    id: "practice-set-analysis",
-    folderId: "folder-analysis",
-    title: "Uniform convergence checks",
+    id: "practice-set-history",
+    folderId: "folder-history",
+    title: "Cold War causes checks",
     type: "manual",
-    topicIds: ["topic-uniform-convergence"],
-    questionIds: ["question-uniform-convergence"],
+    topicIds: ["topic-cold-war"],
+    questionIds: ["question-cold-war"],
   },
 ];
 
 export const WALKTHROUGH_PAST_PAPERS: WalkthroughPastPaper[] = [
   {
-    id: "past-paper-linear-2024",
-    folderId: "folder-linear-algebra",
-    title: "2024 Linear Algebra paper",
+    id: "past-paper-biology-2024",
+    folderId: "folder-biology",
+    title: "2024 Biology practice paper",
     year: "2024",
-    module: "Linear Algebra",
+    module: "Biology",
     pageCount: 0,
   },
 ];
@@ -421,7 +460,7 @@ export const WALKTHROUGH_INITIAL_TUTOR_MESSAGES: WalkthroughTutorMessage[] = [
   },
   {
     role: "model",
-    text: "Start by comparing the algebraic multiplicity with the dimension of the eigenspace. Diagonalizable matrices need enough independent eigenvectors. Try stating those two numbers first.",
+    text: "Start by naming what happens to the enzyme above its optimum temperature. Then connect that change to the active site and substrate fit.",
   },
 ];
 

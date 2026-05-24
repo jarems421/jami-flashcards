@@ -16,7 +16,8 @@ Important rules:
 Core route family:
 - /dashboard?agent=1 - Today / daily command centre.
 - /dashboard/study?agent=1 - Learn / flashcard review.
-- /dashboard/practise?agent=1 - Practice / questions, attempts, contextual Tutor, notebook-style working tools, voice transcript fallback, drafts.
+- /dashboard/practise?agent=1 - Practice / notebook-first landing with Continue working, Folders, and a collapsed legacy question flow.
+- /dashboard/notebooks/notebook-photosynthesis?agent=1 - Notebook / typed page, pen and eraser tools, page colours, local save/reload, mobile warning.
 - /dashboard/progress?agent=1 - Progress / weak topics, mistakes, support level, drafts.
 - /dashboard/folders?agent=1 - Folders / folder-first study spaces with seeded local data.
 - /dashboard/library?agent=1 - Library / seeded sources and local source actions.
@@ -30,25 +31,24 @@ Suggested click test:
 1. Open /agent.
 2. Click "Start public dashboard".
 3. Open Learn and flip/review a seeded card.
-4. Open Practice, type answer/working, save a local attempt.
-5. Ask Tutor for a hint or use "I'm stuck here".
-6. Make a flashcard draft from Tutor.
-7. Open Progress and confirm local mistake/draft state is visible.
-8. Open Library and inspect seeded source actions.
-9. Open Account and confirm no private data was accessed.
+4. Open Practice and confirm Continue working plus Folders are the main entry points.
+5. Open /dashboard/notebooks/notebook-photosynthesis?agent=1.
+6. Type on the notebook page, draw, change pen/page colours, save, add a page, and reload.
+7. Resize to phone width and confirm "Notebook editing works best on iPad or desktop" appears.
+8. Open Folders and confirm notebooks, decks, sources, templates, and legacy question records are clearly separated.
+9. Open Library and inspect seeded source actions.
+10. Open Account and confirm no private data was accessed.
 
-Phase 4 Practice/Tutor test:
+Phase 6 notebook-first Practice test:
 1. Open /dashboard/practise?agent=1.
-2. Type an answer and typed working.
-3. Click "I'm stuck here".
-4. Highlight part of the Working textarea.
-5. Click "Ask about selected text".
-6. Open Working tools.
-7. Draw on the scratchpad, then test Undo and Clear.
-8. Type a voice transcript fallback and send it to Tutor.
-9. Save one correct and one incorrect local attempt.
-10. Ask Tutor to make a flashcard and confirm the draft panel appears.
-11. Check the local practice session summary.
+2. Confirm the old question bank is collapsed under Legacy questions.
+3. Open a Continue working notebook.
+4. Type inside the notebook page and save.
+5. Use Pen, Eraser, Undo, Clear, black/white/red/green pen colours, and white/black/grey page colours.
+6. Add a page and navigate between pages.
+7. Check phone width, then click Continue anyway to deliberately unlock full controls.
+8. Open /dashboard/folders?agent=1 and inspect notebook templates.
+9. Confirm uploaded-file copy says file saved only; no OCR, PDF annotation, or automatic reading is claimed.
 
 Out of scope in public walkthrough:
 - Persistent writes.

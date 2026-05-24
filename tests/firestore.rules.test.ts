@@ -8,7 +8,7 @@ import {
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import { beforeAll, afterAll, afterEach, describe, it } from "vitest";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const rules = readFileSync(path.join(rootDir, "firestore.rules"), "utf8");
@@ -97,6 +97,19 @@ describe("Firestore security rules", () => {
     await assertSucceeds(getDoc(doc(aliceDb, "decks", ALICE_DECK_ID)));
     await assertSucceeds(getDoc(doc(aliceDb, "decks", LEGACY_ALICE_DECK_ID)));
     await assertFails(getDoc(doc(bobDb, "decks", LEGACY_ALICE_DECK_ID)));
+  });
+
+  it("allows owner deck list queries by current userId and legacy uid", async () => {
+    await seedData();
+
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+
+    await assertSucceeds(
+      getDocs(query(collection(aliceDb, "decks"), where("userId", "==", ALICE)))
+    );
+    await assertSucceeds(
+      getDocs(query(collection(aliceDb, "decks"), where("uid", "==", ALICE)))
+    );
   });
 
   it("allows creating only self-owned top-level decks", async () => {
@@ -428,6 +441,7 @@ describe("Firestore security rules", () => {
     await assertSucceeds(
       getDoc(doc(aliceDb, "users", ALICE, "studyFolders", "folder-linear-algebra"))
     );
+    await assertSucceeds(getDocs(collection(aliceDb, "users", ALICE, "studyFolders")));
     await assertFails(
       getDoc(doc(bobDb, "users", ALICE, "studyFolders", "folder-linear-algebra"))
     );
@@ -459,6 +473,21 @@ describe("Firestore security rules", () => {
     await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "notebookPages", "page-1")));
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebooks", "notebook-1")));
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebookPages", "page-1")));
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "notebookFiles", "file-1"), {
+        notebookId: "notebook-1",
+        folderId: "folder-linear-algebra",
+        fileName: "biology-paper.pdf",
+        fileType: "application/pdf",
+        storagePath: "users/alice/notebookFiles/notebook-1/file-1-biology-paper.pdf",
+        sizeBytes: 1024,
+        uploadedAt: 1,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "notebookFiles", "file-1")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebookFiles", "file-1")));
 
     await assertSucceeds(
       setDoc(doc(aliceDb, "users", ALICE, "practiceSets", "set-1"), {
@@ -559,6 +588,19 @@ describe("Firestore security rules", () => {
         folderId: "folder-linear-algebra",
         title: "Demo notebook",
         type: "free_working",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(demoDb, "users", ALICE, "notebookFiles", "demo-file"), {
+        notebookId: "demo-notebook",
+        folderId: "folder-linear-algebra",
+        fileName: "demo.pdf",
+        fileType: "application/pdf",
+        storagePath: "users/alice/notebookFiles/demo-notebook/demo-file-demo.pdf",
+        uploadedAt: 1,
         createdAt: 1,
         updatedAt: 1,
       })

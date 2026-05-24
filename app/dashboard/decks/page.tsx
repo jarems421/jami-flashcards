@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { FirebaseError } from "firebase/app";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
@@ -21,6 +22,10 @@ import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 
 type DeckCounts = Record<string, { due: number; total: number }>;
 type Feedback = { type: "success" | "error"; message: string };
+
+function isPermissionDenied(error: unknown) {
+  return error instanceof FirebaseError && error.code === "permission-denied";
+}
 
 export default function DecksPage() {
   const { user, isDemoUser } = useUser();
@@ -72,7 +77,9 @@ export default function DecksPage() {
       console.error(error);
       setDecks([]);
       setDeckCounts({});
-      setFeedback({ type: "error", message: "Failed to load decks." });
+      if (!isPermissionDenied(error)) {
+        setFeedback({ type: "error", message: "Failed to load decks." });
+      }
     } finally {
       setIsLoadingDecks(false);
     }
@@ -236,7 +243,7 @@ export default function DecksPage() {
 
         <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
           <span className="font-semibold text-white">Decks vs Cards:</span> Decks are the groups, like
-          Linear Algebra or GCSE Biology. Cards are the individual prompts inside those groups.
+          Biology key terms, Cold War dates, or Spanish verbs. Cards are the individual prompts inside those groups.
         </div>
 
         {isDemoUser ? (

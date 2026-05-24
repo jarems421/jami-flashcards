@@ -4,15 +4,15 @@
 
 Jami should feel calm, modern, study-focused, and slightly cosmic. It should look polished but not childish. The product should feel like one coherent learning loop:
 
-**Learn -> Practise -> Tutor -> Flashcard Drafts -> Progress**
+**Learn -> Practice -> Tutor -> Flashcard Drafts -> Progress**
 
 The UI should make studying feel steady and focused, not like managing a cluttered productivity suite.
 
-Phase 5 shifts the product metaphor toward a folder-first notebook workspace:
+Phase 6 shifts the product metaphor toward a folder-first notebook workspace:
 
 **Folder -> notebook / paper / deck / source -> work naturally -> save -> later AI help / marking / flashcards**
 
-Folders are broad study spaces such as Linear Algebra. Topics are smaller concepts such as eigenvalues or integration by parts. Decks and sources should still be globally accessible, but they should also feel at home inside relevant folders.
+Folders are broad study spaces such as Biology, History, Spanish, or Computer Science. Topics are smaller concepts such as enzymes, essay evidence, verb endings, or algorithms. Decks and sources should still be globally accessible, but they should also feel at home inside relevant folders.
 
 ## UI Redesign Standard
 
@@ -26,7 +26,7 @@ The redesign should:
 - feel calm, modern, study-focused, and slightly cosmic;
 - avoid generic SaaS/dashboard slop;
 - avoid cramped forms, plain boxes, and inconsistent Tailwind one-offs;
-- make Learn, Practise, Tutor, and Progress feel like one coherent product.
+- make Learn, Practice, Tutor, and Progress feel like one coherent product.
 
 This is a UI-layer rewrite only.
 
@@ -74,13 +74,13 @@ Practice should become folder-first and notebook-led rather than question-bank-f
 - Let expected answers, solution notes, and mark schemes stay optional metadata for imported, AI-generated, or reviewed questions.
 - Keep topic chips, attempt state, confidence, mistake labels, and attempt history visually organized.
 - Make "start", "continue", "self-mark", and "review" states clear.
-- Long-term direction: folders, notebooks, practice sets, and paper-style work should replace endless stacked forms.
+- Practice sets, paper-style work, AI-created drills, and blank working books should be presented as notebook templates rather than separate main products.
 
 ### Folders
 
 Folders are broad study spaces.
 
-- A folder can contain notebooks, decks, sources, practice sets, past paper shells, and recent work.
+- A folder can contain notebooks, decks, sources, recent work, and legacy question records.
 - A deck can appear inside a folder and still appear globally in Decks.
 - A source can appear inside a folder and still appear globally in Library.
 - Cards should inherit folder context through decks rather than carrying folder links directly in V1.
@@ -104,7 +104,7 @@ Notebooks are the future main answer surface.
 - Use Notebook or Working Page, not Scratchpad, for persistent work.
 - V1 should be humble: pages, typed content, a simple drawing canvas, save/reload, and page navigation.
 - Do not imply OCR, handwriting recognition, PDF annotation, or AI screen watching.
-- AI will later live as an on-demand drawer/dropdown inside notebooks, papers, and practice sets.
+- AI will later live as an on-demand drawer/dropdown inside notebooks, papers, and notebook-based question sets.
 
 ### Tutor
 
@@ -138,7 +138,7 @@ Library is a focused source workspace, not a file manager.
 - Make the selected source feel central: source list, source preview, source actions.
 - Source actions should feed the Jami loop: Tutor context, flashcard drafts, practice drafts, topics, Today, and Progress.
 - Keep AI generation small and draft-only until the student approves it.
-- File support in Phase 3 is metadata/reference only. Do not imply OCR, PDF reading, upload storage, or automatic parsing exists.
+- Library file support is still metadata/reference only. Notebook uploaded-file support may store the original PDF/image, but do not imply OCR, PDF reading, automatic parsing, or annotation exists.
 
 ## Component Rules
 
@@ -165,7 +165,7 @@ Do not create one-off Tailwind styling unless the design need is genuinely local
 
 1. App shell / nav
 2. Shared UI components
-3. Practise
+3. Practice
 4. Tutor panel
 5. Progress
 6. Learn
@@ -200,7 +200,8 @@ Do not use or build:
 - Anywhere
 - OCR
 - PDF parsing
-- file storage upload
+- Library file storage upload
+- PDF annotation
 - full-paper mode
 - automatic mark schemes
 - browser extension
@@ -215,7 +216,7 @@ Tutor should feel present because Jami sends the current practice context only w
 Use wording like:
 - Tutor uses your current question and working when you ask.
 - Voice is push-to-talk only.
-- Scratchpad drawings stay local unless you ask Tutor and add a typed note.
+- Legacy Practice drawings stay local unless you ask Tutor and add a typed note.
 
 Avoid wording like:
 - AI is watching you work.
