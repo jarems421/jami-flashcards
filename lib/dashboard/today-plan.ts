@@ -7,6 +7,9 @@ import type { Goal } from "@/lib/study/goals";
 import type { Card } from "@/lib/study/cards";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import type { Source } from "@/lib/practice/sources";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
+import type { Notebook } from "@/lib/workspace/notebooks";
+import type { PracticeSet, PastPaper } from "@/lib/workspace/practice-sets";
 
 export type TodayNextActionType =
   | "create_first_deck"
@@ -16,6 +19,7 @@ export type TodayNextActionType =
   | "review_drafts"
   | "practice_weak_topic"
   | "continue_goal"
+  | "continue_notebook"
   | "create_first_question"
   | "focused_review";
 
@@ -83,6 +87,19 @@ export type TodayChecklist = {
   checkProgress: boolean;
 };
 
+export type TodayWorkspaceSummary = {
+  folderCount: number;
+  notebookCount: number;
+  practiceSetCount: number;
+  pastPaperCount: number;
+  recentNotebook?: {
+    id: string;
+    title: string;
+    folderId: string;
+    href: string;
+  };
+};
+
 export type TodayPlan = {
   nextAction: TodayNextAction;
   dueCards: TodayDueCardsSummary;
@@ -90,6 +107,7 @@ export type TodayPlan = {
   recentMistakes: TodayRecentMistake[];
   drafts: TodayDraft[];
   goalSummary?: TodayGoalSummary;
+  workspace: TodayWorkspaceSummary;
   checklist: TodayChecklist;
   topicProgress: TopicProgressSummary[];
 };
@@ -120,6 +138,10 @@ export type BuildTodayPlanInput = {
   masteryEvents: MasteryEvent[];
   drafts: TodayDraftInput[];
   sources?: Source[];
+  studyFolders?: StudyFolder[];
+  notebooks?: Notebook[];
+  practiceSets?: PracticeSet[];
+  pastPapers?: PastPaper[];
   activeGoals?: Goal[];
   reviewedToday?: number;
   progressVisited?: boolean;
@@ -151,6 +173,10 @@ function getQuestionHref(questionId: string) {
 
 function getTopicHref(topicId: string) {
   return `/dashboard/practise?topic=${encodeURIComponent(topicId)}`;
+}
+
+function getNotebookHref(notebookId: string) {
+  return `/dashboard/notebooks/${encodeURIComponent(notebookId)}`;
 }
 
 function buildDueSummary(input: BuildTodayPlanInput, now: number): TodayDueCardsSummary {
@@ -273,12 +299,36 @@ function buildGoalSummary(input: BuildTodayPlanInput, now: number): TodayGoalSum
   };
 }
 
+function buildWorkspaceSummary(input: BuildTodayPlanInput): TodayWorkspaceSummary {
+  const recentNotebook = (input.notebooks ?? [])
+    .filter((notebook) => !notebook.archived)
+    .sort((left, right) => right.updatedAt - left.updatedAt)[0];
+
+  return {
+    folderCount: (input.studyFolders ?? []).filter((folder) => !folder.archived).length,
+    notebookCount: (input.notebooks ?? []).filter((notebook) => !notebook.archived).length,
+    practiceSetCount: (input.practiceSets ?? []).filter((set) => !set.archived).length,
+    pastPaperCount: (input.pastPapers ?? []).filter((paper) => !paper.archived).length,
+    recentNotebook: recentNotebook
+      ? {
+          id: recentNotebook.id,
+          title: recentNotebook.title,
+          folderId: recentNotebook.folderId,
+          href: getNotebookHref(recentNotebook.id),
+        }
+      : undefined,
+  };
+}
+
 function buildChecklist(input: BuildTodayPlanInput): TodayChecklist {
   return {
     createDeck: input.decks.length > 0,
     addCards: input.cards.length >= 5,
     reviewCards: (input.reviewedToday ?? 0) > 0,
-    createQuestion: input.questions.length > 0,
+    createQuestion:
+      input.questions.length > 0 ||
+      (input.notebooks ?? []).some((notebook) => !notebook.archived) ||
+      (input.practiceSets ?? []).some((set) => !set.archived),
     askTutor:
       input.attempts.some((attempt) => attempt.tutorUsed || (attempt.hintsUsed ?? 0) > 0) ||
       input.drafts.some((draft) => draft.kind === "flashcard"),
@@ -294,6 +344,7 @@ function buildNextAction(input: {
   drafts: TodayDraft[];
   weakTopics: TodayWeakTopic[];
   goalSummary?: TodayGoalSummary;
+  workspace: TodayWorkspaceSummary;
   questions: Question[];
   smallDueRepairThreshold: number;
 }): TodayNextAction {
@@ -403,14 +454,29 @@ function buildNextAction(input: {
     };
   }
 
+  if (input.workspace.recentNotebook) {
+    return {
+      type: "continue_notebook",
+      title: `Continue ${input.workspace.recentNotebook.title}.`,
+      description: "Open the latest notebook page and keep the working surface moving.",
+      href: input.workspace.recentNotebook.href,
+      label: "Continue notebook",
+      priority: 8,
+      secondaryHref: "/dashboard/folders",
+      secondaryLabel: "Open folders",
+    };
+  }
+
   if (input.questions.length === 0) {
     return {
       type: "create_first_question",
-      title: "Create your first practice question.",
-      description: "Practise turns memorised ideas into application.",
-      href: "/dashboard/practise",
-      label: "Create question",
+      title: "Start your Practice workspace.",
+      description: "Create a notebook or practice question so Jami has a place for your working.",
+      href: "/dashboard/folders",
+      label: "Open folders",
       priority: 8,
+      secondaryHref: "/dashboard/practise",
+      secondaryLabel: "Open Practice",
     };
   }
 
@@ -434,6 +500,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
   const drafts = buildDrafts(input);
   const { topicProgress, weakTopics } = buildWeakTopics(input, now);
   const goalSummary = buildGoalSummary(input, now);
+  const workspace = buildWorkspaceSummary(input);
   const checklist = buildChecklist(input);
   const nextAction = buildNextAction({
     decks: input.decks,
@@ -443,6 +510,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     drafts,
     weakTopics,
     goalSummary,
+    workspace,
     questions: input.questions,
     smallDueRepairThreshold,
   });
@@ -454,6 +522,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     recentMistakes,
     drafts,
     goalSummary,
+    workspace,
     checklist,
     topicProgress,
   };

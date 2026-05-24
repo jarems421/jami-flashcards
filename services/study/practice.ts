@@ -1,10 +1,12 @@
 import {
   addDoc,
   collection,
+  doc,
   getDocs,
   limit,
   orderBy,
   query,
+  updateDoc,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
@@ -56,6 +58,7 @@ export async function createQuestion(
     questionText: string;
     answerText?: string;
     solutionText?: string;
+    folderIds?: string[];
     topicIds: string[];
     difficulty?: "easy" | "medium" | "hard";
     sourceIds?: string[];
@@ -73,6 +76,7 @@ export async function createQuestion(
       answerText: input.answerText?.trim() || null,
       solutionText: input.solutionText?.trim() || null,
       markScheme: null,
+      folderIds: input.folderIds ?? [],
       topicIds: input.topicIds,
       difficulty: input.difficulty ?? null,
       sourceType: "manual",
@@ -89,6 +93,38 @@ export async function createQuestion(
   );
 
   return docRef.id;
+}
+
+export async function updateQuestionFolders(
+  userId: string,
+  questionId: string,
+  folderIds: string[]
+) {
+  const normalizedUserId = userId.trim();
+  const normalizedQuestionId = questionId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!normalizedQuestionId) {
+    throw new Error("Missing questionId.");
+  }
+
+  const normalizedFolderIds = Array.from(
+    new Set(
+      folderIds
+        .map((folderId) => folderId.trim().slice(0, 160))
+        .filter(Boolean)
+    )
+  ).slice(0, 12);
+
+  await withTimeout(
+    updateDoc(doc(db, "users", normalizedUserId, "questions", normalizedQuestionId), {
+      folderIds: normalizedFolderIds,
+      updatedAt: Date.now(),
+    }),
+    WRITE_MS,
+    "Update question folders"
+  );
 }
 
 export async function getAttempts(userId: string): Promise<Attempt[]> {

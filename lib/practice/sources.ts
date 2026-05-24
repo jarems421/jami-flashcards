@@ -8,6 +8,7 @@ export type Source = {
   title: string;
   type: SourceType;
   subject?: string;
+  folderIds: string[];
   topicIds: string[];
   contentText?: string;
   externalUrl?: string;
@@ -22,6 +23,7 @@ export type Source = {
 export const MAX_SOURCE_TITLE_LENGTH = 160;
 export const MAX_SOURCE_CONTENT_LENGTH = 20_000;
 export const MAX_SOURCE_TOPIC_IDS = 20;
+export const MAX_SOURCE_FOLDER_IDS = 12;
 
 export function isSourceType(value: unknown): value is SourceType {
   return value === "pasted_text" || value === "manual_note" || value === "link" || value === "file";
@@ -49,6 +51,7 @@ export function mapSourceData(id: string, data: Record<string, unknown>): Source
     title: normalizeOptionalString(data.title, MAX_SOURCE_TITLE_LENGTH) ?? "Untitled source",
     type: isSourceType(data.type) ? data.type : "manual_note",
     subject: normalizeOptionalString(data.subject, 120),
+    folderIds: normalizeStringArray(data.folderIds, MAX_SOURCE_FOLDER_IDS, 160),
     topicIds: normalizeStringArray(data.topicIds, MAX_SOURCE_TOPIC_IDS, 120),
     contentText: normalizeOptionalString(data.contentText, MAX_SOURCE_CONTENT_LENGTH),
     externalUrl: normalizeUrl(data.externalUrl),
@@ -67,6 +70,7 @@ export function buildSourcePayload(
     title: string;
     type: SourceType;
     subject?: string;
+    folderIds?: string[];
     topicIds?: string[];
     contentText?: string;
     externalUrl?: string;
@@ -100,6 +104,7 @@ export function buildSourcePayload(
     title,
     type,
     subject: input.subject?.trim().slice(0, 120) || null,
+    folderIds: normalizeStringArray(input.folderIds ?? [], MAX_SOURCE_FOLDER_IDS, 160),
     topicIds: normalizeStringArray(input.topicIds ?? [], MAX_SOURCE_TOPIC_IDS, 120),
     contentText: contentText || null,
     externalUrl: normalizeUrl(input.externalUrl) ?? null,

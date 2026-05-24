@@ -15,6 +15,22 @@ import {
   formatTutorContextPacketForPrompt,
   normalizeTutorContextPacket,
 } from "@/lib/practice/tutor-context";
+import {
+  buildStudyFolderPayload,
+  mapStudyFolderData,
+} from "@/lib/workspace/study-folders";
+import {
+  buildNotebookPagePayload,
+  buildNotebookPayload,
+  mapNotebookData,
+  mapNotebookPageData,
+} from "@/lib/workspace/notebooks";
+import {
+  buildPastPaperPayload,
+  buildPracticeSetPayload,
+  mapPastPaperData,
+  mapPracticeSetData,
+} from "@/lib/workspace/practice-sets";
 
 describe("Jami learning loop foundations", () => {
   afterEach(() => {
@@ -46,6 +62,12 @@ describe("Jami learning loop foundations", () => {
 
   it("keeps Library enabled by default for the source loop", () => {
     expect(isFeatureEnabled("enableLibrary")).toBe(true);
+  });
+
+  it("keeps the folder and notebook workspace enabled by default while flashcard AI stays scoped down", () => {
+    expect(isFeatureEnabled("enableFolders")).toBe(true);
+    expect(isFeatureEnabled("enableNotebooks")).toBe(true);
+    expect(isFeatureEnabled("enableFlashcardAi")).toBe(false);
   });
 
   it("normalizes topic and question data for the practice loop", () => {
@@ -248,6 +270,139 @@ describe("Jami learning loop foundations", () => {
         externalUrl: "not a url",
       })
     ).toThrow("valid source link");
+  });
+
+  it("validates and maps broad study folders separately from topics", () => {
+    const payload = buildStudyFolderPayload({
+      name: "  Linear   Algebra  ",
+      description: " Eigenvalues, diagonalisation, decks, sources, and notebook work. ",
+      subject: " Maths ",
+      topicIds: ["topic-eigenvalues", "topic-eigenvalues", "topic-diagonalisation"],
+      now: 40,
+    });
+    const folder = mapStudyFolderData("folder-1", payload);
+
+    expect(folder).toMatchObject({
+      id: "folder-1",
+      name: "Linear Algebra",
+      description: "Eigenvalues, diagonalisation, decks, sources, and notebook work.",
+      subject: "Maths",
+      topicIds: ["topic-eigenvalues", "topic-diagonalisation"],
+      archived: false,
+      createdAt: 40,
+      updatedAt: 40,
+    });
+    expect(() => buildStudyFolderPayload({ name: "" })).toThrow("Folder name is required");
+  });
+
+  it("validates and maps notebook pages as the future working surface", () => {
+    const notebookPayload = buildNotebookPayload({
+      folderId: "folder-linear-algebra",
+      title: "  Eigenvalues   practice  ",
+      type: "practice",
+      topicIds: ["topic-eigenvalues"],
+      sourceIds: ["source-lecture-5"],
+      now: 50,
+    });
+    const notebook = mapNotebookData("notebook-1", notebookPayload);
+    const pagePayload = buildNotebookPagePayload({
+      notebookId: notebook.id,
+      folderId: notebook.folderId,
+      pageNumber: 1,
+      pageType: "question",
+      questionPrompt: "Find the eigenvalues of A.",
+      typedContent: "I will start with det(A - lambda I).",
+      strokeData: {
+        version: 1,
+        strokes: [{ points: [{ x: 1, y: 2 }] }],
+      },
+      linkedSourceId: "source-lecture-5",
+      now: 60,
+    });
+    const page = mapNotebookPageData("page-1", pagePayload);
+
+    expect(notebook).toMatchObject({
+      id: "notebook-1",
+      folderId: "folder-linear-algebra",
+      title: "Eigenvalues practice",
+      type: "practice",
+      topicIds: ["topic-eigenvalues"],
+      sourceIds: ["source-lecture-5"],
+      archived: false,
+      createdAt: 50,
+      updatedAt: 50,
+    });
+    expect(page).toMatchObject({
+      id: "page-1",
+      notebookId: "notebook-1",
+      folderId: "folder-linear-algebra",
+      pageNumber: 1,
+      pageType: "question",
+      questionPrompt: "Find the eigenvalues of A.",
+      typedContent: "I will start with det(A - lambda I).",
+      linkedSourceId: "source-lecture-5",
+      createdAt: 60,
+      updatedAt: 60,
+    });
+    expect(page.strokeData?.strokes).toHaveLength(1);
+    expect(() => buildNotebookPayload({ folderId: "", title: "Notebook" })).toThrow("folder");
+    expect(() =>
+      buildNotebookPagePayload({
+        notebookId: "notebook-1",
+        folderId: "folder-1",
+        pageNumber: 0,
+      })
+    ).toThrow("Page number");
+  });
+
+  it("validates practice set and past paper shells without PDF annotation", () => {
+    const practiceSetPayload = buildPracticeSetPayload({
+      folderId: "folder-linear-algebra",
+      title: "  Eigenvalues   drill  ",
+      type: "manual",
+      topicIds: ["topic-eigenvalues"],
+      questionIds: ["question-1", "question-1"],
+      now: 70,
+    });
+    const practiceSet = mapPracticeSetData("set-1", practiceSetPayload);
+    const pastPaperPayload = buildPastPaperPayload({
+      folderId: "folder-linear-algebra",
+      title: "  2024   Linear Algebra paper  ",
+      year: " 2024 ",
+      module: " Linear Algebra ",
+      fileName: "linear-algebra-2024.pdf",
+      pageCount: 0,
+      now: 80,
+    });
+    const pastPaper = mapPastPaperData("paper-1", pastPaperPayload);
+
+    expect(practiceSet).toMatchObject({
+      id: "set-1",
+      folderId: "folder-linear-algebra",
+      title: "Eigenvalues drill",
+      type: "manual",
+      topicIds: ["topic-eigenvalues"],
+      questionIds: ["question-1"],
+      archived: false,
+      createdAt: 70,
+      updatedAt: 70,
+    });
+    expect(pastPaper).toMatchObject({
+      id: "paper-1",
+      folderId: "folder-linear-algebra",
+      title: "2024 Linear Algebra paper",
+      year: "2024",
+      module: "Linear Algebra",
+      fileName: "linear-algebra-2024.pdf",
+      pageCount: 0,
+      archived: false,
+      createdAt: 80,
+      updatedAt: 80,
+    });
+    expect(() => buildPracticeSetPayload({ folderId: "", title: "Set" })).toThrow("folder");
+    expect(() => buildPastPaperPayload({ folderId: "folder-1", title: "" })).toThrow(
+      "Past paper title"
+    );
   });
 
   it("approves source practice drafts into questions with source links", () => {

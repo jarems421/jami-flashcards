@@ -8,10 +8,13 @@ This version has breaking changes - APIs, conventions, and file structure may al
 
 Follow `docs/ui-design-system.md` for all UI work.
 
-During the current Phase 4 contextual Tutor implementation phase:
-- Tutor context packets, practice session summaries, scratchpad V1, ask-about-this interactions, and push-to-talk voice messages are in scope.
-- Do not build Anywhere, OCR, PDF parsing, file storage upload, full-paper mode, browser extension, always-on screen watching, or iPad companion.
-- Scratchpad and voice must be explicit user-triggered inputs. Do not imply the AI is passively watching the student work.
+During the current Phase 5 folder/notebook foundation phase:
+- Build toward a folder-first study workspace: folder -> notebook / paper / deck / source -> natural work -> save -> later AI help / marking / flashcards.
+- Folders are broad study spaces. Topics are concepts/subtopics.
+- Use user-facing spelling `Practice`, while keeping existing routes such as `/dashboard/practise` compatible until a safe alias exists.
+- Do not build Anywhere, OCR, PDF parsing, file storage upload, full-paper mode, browser extension, always-on screen watching, voice tutor expansion, or iPad companion.
+- Do not build a full GoodNotes clone. Notebook V1 should stay humble and page-based.
+- AI should be planned into notebooks/papers/practice sets, but the Phase 5 focus is workflow structure, not new AI depth.
 - Preserve existing functionality, routes, Firebase logic, AI logic, data models, and tests.
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.
 - Keep the app responsive across mobile, tablet, and desktop.

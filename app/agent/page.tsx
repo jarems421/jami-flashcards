@@ -15,13 +15,18 @@ const dashboardRoutes = [
   },
   {
     href: "/dashboard/practise?agent=1",
-    label: "Practise",
+    label: "Practice",
     purpose: "Try a question, self-mark, use Tutor, make a flashcard draft.",
   },
   {
     href: "/dashboard/practise?agent=1&forceTutorFallback=1",
-    label: "Practise fallback QA",
+    label: "Practice fallback QA",
     purpose: "Test every Tutor mode with deterministic local fallback responses and no AI budget use.",
+  },
+  {
+    href: "/dashboard/folders?agent=1",
+    label: "Folders",
+    purpose: "Inspect the folder-first study-space foundation with seeded local data.",
   },
   {
     href: "/dashboard/progress?agent=1",
@@ -63,7 +68,7 @@ const dashboardRoutes = [
 const testFlow = [
   "Open Today and identify the recommended next action.",
   "Go to Learn and flip/review one seeded flashcard.",
-  "Go to Practise, type an answer and working, then self-mark an attempt.",
+  "Go to Practice, type an answer and working, then self-mark an attempt.",
   "Use Tutor: ask for a hint, use I'm stuck here, then make a flashcard draft.",
   "Go to Progress and confirm the mistake/draft/weak-topic state changed locally.",
   "Go to Library and inspect a source; source actions in public mode remain local-only.",
@@ -72,7 +77,7 @@ const testFlow = [
 ];
 
 const phase4TestFlow = [
-  "Open Practise.",
+  "Open Practice.",
   "Type an answer and typed working.",
   "Click I'm stuck here.",
   "Highlight part of the Working textarea.",
@@ -197,7 +202,7 @@ export default function AgentPage() {
 
       <Card padding="lg">
         <SectionHeader
-          title="Phase 4 Practise/Tutor test"
+          title="Phase 4 Practice/Tutor test"
           description="Use this checklist to verify the context packet, scratchpad, voice fallback, draft panel, and session summary in the public walkthrough."
         />
         <ol className="mt-5 grid gap-2">

@@ -46,6 +46,7 @@ export async function createSource(
     title: string;
     type: SourceType;
     subject?: string;
+    folderIds?: string[];
     topicIds?: string[];
     contentText?: string;
     externalUrl?: string;
@@ -69,6 +70,7 @@ export async function updateSource(
   input: Partial<{
     title: string;
     subject: string;
+    folderIds: string[];
     topicIds: string[];
     contentText: string;
     externalUrl: string;
@@ -83,6 +85,7 @@ export async function updateSource(
 
   if (typeof input.title === "string") payload.title = input.title.trim().slice(0, 160);
   if (typeof input.subject === "string") payload.subject = input.subject.trim().slice(0, 120) || null;
+  if (Array.isArray(input.folderIds)) payload.folderIds = input.folderIds;
   if (Array.isArray(input.topicIds)) payload.topicIds = input.topicIds;
   if (typeof input.contentText === "string") payload.contentText = input.contentText.trim().slice(0, 20_000) || null;
   if (typeof input.externalUrl === "string") payload.externalUrl = input.externalUrl.trim().slice(0, 1_000) || null;

@@ -19,6 +19,7 @@ import {
 } from "@/lib/study/cards";
 import { db } from "@/services/firebase/client";
 import type { Deck } from "@/services/study/decks";
+import { featureFlags } from "@/lib/app/feature-flags";
 import TagInput from "@/components/decks/TagInput";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
@@ -440,15 +441,17 @@ export default function CardCreationPanel({
                 rows={6}
                 disabled={addingSingleCard}
               />
-              <CardBackAutocomplete
-                front={singleFront}
-                currentBack={singleBack}
-                deckId={singleDeckId || undefined}
-                deckName={deckNamesById[singleDeckId]}
-                tags={singleTags}
-                disabled={addingSingleCard}
-                onApply={setSingleBack}
-              />
+              {featureFlags.enableFlashcardAi ? (
+                <CardBackAutocomplete
+                  front={singleFront}
+                  currentBack={singleBack}
+                  deckId={singleDeckId || undefined}
+                  deckName={deckNamesById[singleDeckId]}
+                  tags={singleTags}
+                  disabled={addingSingleCard}
+                  onApply={setSingleBack}
+                />
+              ) : null}
             </div>
           </div>
           <TagInput

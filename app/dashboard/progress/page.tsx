@@ -10,6 +10,8 @@ import type { Question, Attempt } from "@/lib/practice/questions";
 import type { MasteryEvent } from "@/lib/practice/mastery";
 import type { Source } from "@/lib/practice/sources";
 import type { Card as StudyCard } from "@/lib/study/cards";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
+import type { Notebook } from "@/lib/workspace/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
 import { getActiveQuestions, getAttempts } from "@/services/study/practice";
 import { getMasteryEvents } from "@/services/study/mastery";
@@ -18,6 +20,8 @@ import {
   type GeneratedContentDraft,
 } from "@/services/study/generated-content";
 import { getActiveSources } from "@/services/study/sources";
+import { getActiveStudyFolders } from "@/services/study/folders";
+import { getActiveNotebooks } from "@/services/study/notebooks";
 import { ensureStudyStateSetup, loadUserCards } from "@/services/study/daily-review";
 import AppPage from "@/components/layout/AppPage";
 import {
@@ -46,6 +50,8 @@ export default function ProgressPage() {
   const [masteryEvents, setMasteryEvents] = useState<MasteryEvent[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([]);
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
@@ -63,7 +69,17 @@ export default function ProgressPage() {
       setFeedback(null);
       try {
         await ensureStudyStateSetup(user.uid);
-          const [nextTopics, nextCards, nextQuestions, nextAttempts, nextMasteryEvents, nextDrafts, nextSources] =
+          const [
+            nextTopics,
+            nextCards,
+            nextQuestions,
+            nextAttempts,
+            nextMasteryEvents,
+            nextDrafts,
+            nextSources,
+            nextStudyFolders,
+            nextNotebooks,
+          ] =
           await Promise.all([
             getActiveTopics(user.uid),
             loadUserCards(user.uid),
@@ -72,6 +88,8 @@ export default function ProgressPage() {
             getMasteryEvents(user.uid),
             getGeneratedContentDrafts(user.uid).catch(() => [] as GeneratedContentDraft[]),
             getActiveSources(user.uid).catch(() => [] as Source[]),
+            getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
+            getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
           ]);
 
         if (!cancelled) {
@@ -82,6 +100,8 @@ export default function ProgressPage() {
           setMasteryEvents(nextMasteryEvents);
           setDrafts(nextDrafts);
           setSources(nextSources);
+          setStudyFolders(nextStudyFolders);
+          setNotebooks(nextNotebooks);
         }
       } catch (error) {
         console.error(error);
@@ -144,6 +164,24 @@ export default function ProgressPage() {
     }
     return map;
   }, [sources]);
+  const foldersByTopicId = useMemo(() => {
+    const map = new Map<string, StudyFolder[]>();
+    for (const folder of studyFolders) {
+      for (const topicId of folder.topicIds) {
+        map.set(topicId, [...(map.get(topicId) ?? []), folder]);
+      }
+    }
+    return map;
+  }, [studyFolders]);
+  const notebooksByTopicId = useMemo(() => {
+    const map = new Map<string, Notebook[]>();
+    for (const notebook of notebooks) {
+      for (const topicId of notebook.topicIds) {
+        map.set(topicId, [...(map.get(topicId) ?? []), notebook]);
+      }
+    }
+    return map;
+  }, [notebooks]);
   const recommendedTopic = weakTopics[0];
 
   if (!featureFlags.enableMasteryProgress) {
@@ -257,6 +295,8 @@ export default function ProgressPage() {
                 <div className="mt-5 space-y-3">
                   {weakTopics.map((summary) => {
                     const linkedSource = sourcesByTopicId.get(summary.topic.id)?.[0];
+                    const linkedFolder = foldersByTopicId.get(summary.topic.id)?.[0];
+                    const linkedNotebook = notebooksByTopicId.get(summary.topic.id)?.[0];
                     return (
                     <div key={summary.topic.id} className={surfaceCardClass}>
                       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -295,18 +335,38 @@ export default function ProgressPage() {
                       ) : null}
                       <div className="mt-4 rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3 text-sm leading-6 text-text-secondary">
                         <span className="font-semibold text-white">Next action:</span>{" "}
-                        {linkedSource
-                          ? `Review linked source "${linkedSource.title}", then retry 1 practice question.`
-                          : "Review linked cards, then retry 1 practice question."}
+                        {linkedNotebook
+                          ? `Continue "${linkedNotebook.title}", then retry 1 practice question.`
+                          : linkedSource
+                            ? `Review linked source "${linkedSource.title}", then retry 1 practice question.`
+                            : "Review linked cards, then retry 1 practice question."}
                       </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                      {linkedFolder ? (
+                        <Link
+                          href={`/dashboard/folders/${encodeURIComponent(linkedFolder.id)}`}
+                          className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/[0.2] hover:bg-white/[0.08]"
+                        >
+                          Folder: {linkedFolder.name}
+                        </Link>
+                      ) : null}
+                      {linkedNotebook ? (
+                        <Link
+                          href={`/dashboard/notebooks/${encodeURIComponent(linkedNotebook.id)}`}
+                          className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/[0.2] hover:bg-white/[0.08]"
+                        >
+                          Notebook: {linkedNotebook.title}
+                        </Link>
+                      ) : null}
                       {linkedSource ? (
                         <Link
                           href="/dashboard/library"
-                          className="mt-3 inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.08]"
+                          className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.08]"
                         >
                           Linked source: {linkedSource.title}
                         </Link>
                       ) : null}
+                      </div>
                     </div>
                   );
                   })}

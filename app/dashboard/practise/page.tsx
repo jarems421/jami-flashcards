@@ -8,8 +8,14 @@ import type { Topic } from "@/lib/practice/topics";
 import type { Attempt, Question } from "@/lib/practice/questions";
 import type { Source } from "@/lib/practice/sources";
 import { buildTutorContextPacket } from "@/lib/practice/tutor-context";
+import type { Notebook } from "@/lib/workspace/notebooks";
+import type { PastPaper, PracticeSet } from "@/lib/workspace/practice-sets";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getActiveTopics, createTopic } from "@/services/study/topics";
 import { getDecks, type Deck } from "@/services/study/decks";
+import { getActiveStudyFolders } from "@/services/study/folders";
+import { getActiveNotebooks } from "@/services/study/notebooks";
+import { getActivePastPapers, getActivePracticeSets } from "@/services/study/practice-work";
 import { getActiveSources } from "@/services/study/sources";
 import {
   createAttempt,
@@ -55,7 +61,7 @@ const TUTOR_INTENTS: Array<{
   { intent: "show-method", label: "Show method", prompt: "Show me the setup or method, but leave a step for me.", description: "See the general method." },
   { intent: "full-solution", label: "Full solution", prompt: "Show the full solution. I know this may reduce independent evidence.", description: "Reveal the full answer deliberately." },
   { intent: "make-flashcard", label: "Make card", prompt: "Turn the misconception here into one flashcard draft.", description: "Turn this mistake into a draft." },
-  { intent: "similar-question", label: "Similar question", prompt: "Give me one similar question without a solution.", description: "Practise the same skill again." },
+  { intent: "similar-question", label: "Similar question", prompt: "Give me one similar question without a solution.", description: "Practice the same skill again." },
 ];
 
 const surfaceCardClass =
@@ -135,6 +141,10 @@ export default function PractisePage() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [folders, setFolders] = useState<StudyFolder[]>([]);
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [practiceSets, setPracticeSets] = useState<PracticeSet[]>([]);
+  const [pastPapers, setPastPapers] = useState<PastPaper[]>([]);
   const [questions, setQuestions] = useState<Question[]>([]);
   const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [selectedQuestionId, setSelectedQuestionId] = useState<string | null>(null);
@@ -243,6 +253,28 @@ export default function PractisePage() {
     sessionDraftsCreated
   );
   const totalAccuracy = useMemo(() => getAccuracy(attempts), [attempts]);
+  const folderSummaries = useMemo(
+    () =>
+      folders.slice(0, 4).map((folder) => {
+        const questionCount = questions.filter(
+          (question) =>
+            question.folderIds.includes(folder.id) ||
+            question.topicIds.some((topicId) => folder.topicIds.includes(topicId))
+        ).length;
+        const deckCount = decks.filter((deck) => deck.folderIds.includes(folder.id)).length;
+        const notebookCount = notebooks.filter((notebook) => notebook.folderId === folder.id).length;
+        const practiceSetCount = practiceSets.filter(
+          (practiceSet) => practiceSet.folderId === folder.id
+        ).length;
+        const pastPaperCount = pastPapers.filter((paper) => paper.folderId === folder.id).length;
+        return { folder, questionCount, deckCount, notebookCount, practiceSetCount, pastPaperCount };
+      }),
+    [decks, folders, notebooks, pastPapers, practiceSets, questions]
+  );
+  const recentNotebooks = useMemo(
+    () => [...notebooks].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 3),
+    [notebooks]
+  );
   const supportAttempts = useMemo(
     () => attempts.filter((attempt) => attempt.tutorUsed || (attempt.hintsUsed ?? 0) > 0).length,
     [attempts]
@@ -271,18 +303,36 @@ export default function PractisePage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const [nextTopics, nextDecks, nextQuestions, nextAttempts, nextSources] = await Promise.all([
+      const [
+        nextTopics,
+        nextDecks,
+        nextQuestions,
+        nextAttempts,
+        nextSources,
+        nextFolders,
+        nextNotebooks,
+        nextPracticeSets,
+        nextPastPapers,
+      ] = await Promise.all([
         getActiveTopics(user.uid),
         getDecks(user.uid),
         getActiveQuestions(user.uid),
         getAttempts(user.uid),
         getActiveSources(user.uid).catch(() => [] as Source[]),
+        getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
+        getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
+        getActivePracticeSets(user.uid).catch(() => [] as PracticeSet[]),
+        getActivePastPapers(user.uid).catch(() => [] as PastPaper[]),
       ]);
       setTopics(nextTopics);
       setDecks(nextDecks);
       setQuestions(nextQuestions);
       setAttempts(nextAttempts);
       setSources(nextSources);
+      setFolders(nextFolders);
+      setNotebooks(nextNotebooks);
+      setPracticeSets(nextPracticeSets);
+      setPastPapers(nextPastPapers);
       const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
       const targetQuestionId = params?.get("question")?.trim() ?? "";
       const targetTopicId = params?.get("topic")?.trim() ?? "";
@@ -306,7 +356,7 @@ export default function PractisePage() {
       }
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to load Practise." });
+      setFeedback({ type: "error", message: "Failed to load Practice." });
     } finally {
       setLoading(false);
     }
@@ -781,12 +831,12 @@ export default function PractisePage() {
 
   if (!featureFlags.enablePractise) {
     return (
-      <AppPage title="Practise" backHref="/dashboard" backLabel="Today">
+      <AppPage title="Practice" backHref="/dashboard" backLabel="Today">
         <EmptyState
           emoji="Practice"
           eyebrow="Not enabled"
-          title="Practise is behind a feature flag."
-          description="Enable the Practise flag when you are ready to test the manual question loop."
+          title="Practice is behind a feature flag."
+          description="Enable the Practice flag when you are ready to test the manual question loop."
         />
       </AppPage>
     );
@@ -801,7 +851,7 @@ export default function PractisePage() {
 
   return (
     <AppPage
-      title="Practise"
+      title="Practice"
       backHref="/dashboard"
       backLabel="Today"
       width="3xl"
@@ -816,9 +866,9 @@ export default function PractisePage() {
       ) : null}
 
       <PageHero
-        eyebrow="Practise"
-        title="Choose a question, attempt it, repair what happened."
-        description="Keep one question at the centre. Add new questions only when you need them, then use Tutor to repair the attempt."
+        eyebrow="Practice"
+        title="Start from a study space, then work naturally."
+        description="Folders and notebooks are becoming the main workspace. The question bank remains here while the notebook flow becomes stable."
         tone="warm"
         aside={
           <div className="grid min-w-[18rem] grid-cols-3 gap-2 text-center">
@@ -862,6 +912,96 @@ export default function PractisePage() {
             ]}
           />
           <PractiseFlowHeader />
+          <Card padding="lg">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+              <SectionHeader
+                eyebrow="Practice workspace"
+                title="Open a folder or continue a notebook."
+                description="The new direction is folder-first: decks, sources, notebooks and practice work sit together inside a study space. The question bank below stays as a supporting tool while notebooks mature."
+              />
+              <div className="flex flex-wrap gap-2">
+                <Link
+                  href="/dashboard/folders"
+                  className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition hover:-translate-y-[1px]"
+                >
+                  Open folders
+                </Link>
+                <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(true)}>
+                  Add question
+                </Button>
+              </div>
+            </div>
+
+            <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(280px,0.8fr)]">
+              <div>
+                <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                  Study folders
+                </div>
+                <div className="grid gap-3 md:grid-cols-2">
+                  {folderSummaries.length > 0 ? (
+                    folderSummaries.map(
+                      ({ folder, questionCount, deckCount, notebookCount, practiceSetCount, pastPaperCount }) => (
+                      <Link
+                        key={folder.id}
+                        href={`/dashboard/folders/${folder.id}`}
+                        className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4 transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-white/[0.065]"
+                      >
+                        <div className="text-sm font-semibold text-white">{folder.name}</div>
+                        <p className="mt-1 line-clamp-2 text-sm leading-6 text-text-secondary">
+                          {folder.description ?? "Open the study space for related work."}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-muted">
+                            {notebookCount} notebook{notebookCount === 1 ? "" : "s"}
+                          </span>
+                          <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-muted">
+                            {questionCount} question{questionCount === 1 ? "" : "s"}
+                          </span>
+                          <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-muted">
+                            {deckCount} deck{deckCount === 1 ? "" : "s"}
+                          </span>
+                          <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] text-text-muted">
+                            {practiceSetCount + pastPaperCount} set{practiceSetCount + pastPaperCount === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary md:col-span-2">
+                      No folders yet. Create a study folder such as Linear Algebra, then keep
+                      notebooks, decks, sources and practice work together there.
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div>
+                <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                  Continue notebooks
+                </div>
+                <div className="space-y-3">
+                  {recentNotebooks.length > 0 ? (
+                    recentNotebooks.map((notebook) => (
+                      <Link
+                        key={notebook.id}
+                        href={`/dashboard/notebooks/${notebook.id}`}
+                        className="block rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4 transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-white/[0.065]"
+                      >
+                        <div className="text-sm font-semibold text-white">{notebook.title}</div>
+                        <div className="mt-1 text-xs text-text-muted">
+                          {notebook.type.replace("_", " ")}
+                        </div>
+                      </Link>
+                    ))
+                  ) : (
+                    <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+                      Notebooks appear here once you create them inside a folder.
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </Card>
           {hasSessionActivity ? (
             <Card padding="md" className="border-warm-border bg-warm-glow">
               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -932,7 +1072,7 @@ export default function PractisePage() {
                     </h2>
                     <p className="mt-2 text-sm leading-6 text-text-secondary">
                       Add the question, optional checkpoint, method notes, and any topic links. Then
-                      you&apos;ll return to the Practise workspace.
+                      you&apos;ll return to the Practice workspace.
                     </p>
                   </div>
                   <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(false)}>
@@ -951,7 +1091,7 @@ export default function PractisePage() {
                     label="Question"
                     value={questionText}
                     onChange={(event) => setQuestionText(event.target.value)}
-                    placeholder="Write the question you want to practise."
+                    placeholder="Write the question you want to practice."
                   />
                   <Textarea
                     label="Expected answer / checkpoint"
@@ -1492,7 +1632,7 @@ export default function PractisePage() {
                 <EmptyState
                   emoji="Practice"
                   title="Create a practice question"
-                  description="Practise starts manual and topical, but you can browse the page first. Add a question when you are ready."
+                  description="Practice starts manual and topical, but you can browse the page first. Add a question when you are ready."
                   action={
                     <Button type="button" onClick={() => setShowAddQuestion(true)}>
                       + Add practice question

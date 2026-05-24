@@ -11,6 +11,7 @@ import {
   isCardBackAutocompleteStyle,
   type CardBackAutocompleteStyle,
 } from "@/lib/ai/card-autocomplete";
+import { featureFlags } from "@/lib/app/feature-flags";
 import { hasDemoClaim } from "@/lib/demo/token";
 
 export const runtime = "nodejs";
@@ -73,6 +74,13 @@ function isLikelyIncompleteBack(text: string, front: string) {
 }
 
 export async function POST(request: NextRequest) {
+  if (!featureFlags.enableFlashcardAi) {
+    return Response.json(
+      { error: "Flashcard AI is disabled. Use source or Tutor drafts instead." },
+      { status: 403 },
+    );
+  }
+
   if (!GEMINI_API_KEY) {
     return Response.json(
       { error: "AI features are not configured" },

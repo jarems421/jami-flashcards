@@ -24,6 +24,14 @@ export type WalkthroughTopic = {
   subject: string;
 };
 
+export type WalkthroughStudyFolder = {
+  id: string;
+  name: string;
+  subject: string;
+  description: string;
+  topicIds: string[];
+};
+
 export type WalkthroughQuestion = {
   id: string;
   questionText: string;
@@ -73,6 +81,44 @@ export type WalkthroughSource = {
   status: "active" | "archived";
 };
 
+export type WalkthroughNotebook = {
+  id: string;
+  folderId: string;
+  title: string;
+  type: "free_working" | "practice" | "past_paper" | "generated_drill" | "source_notes";
+  topicIds: string[];
+  sourceIds: string[];
+  updatedAt: number;
+};
+
+export type WalkthroughNotebookPage = {
+  id: string;
+  notebookId: string;
+  folderId: string;
+  pageNumber: number;
+  pageType: "blank" | "question" | "past_paper_page" | "source_note" | "free_working";
+  typedContent?: string;
+  questionPrompt?: string;
+};
+
+export type WalkthroughPracticeSet = {
+  id: string;
+  folderId: string;
+  title: string;
+  type: "manual" | "ai_generated" | "imported" | "past_paper_section";
+  topicIds: string[];
+  questionIds: string[];
+};
+
+export type WalkthroughPastPaper = {
+  id: string;
+  folderId: string;
+  title: string;
+  year?: string;
+  module?: string;
+  pageCount?: number;
+};
+
 export type WalkthroughTutorIntent =
   | "hint"
   | "check-working"
@@ -88,6 +134,33 @@ export const WALKTHROUGH_TOPICS: WalkthroughTopic[] = [
   { id: "topic-multiplicity", name: "Algebraic vs geometric multiplicity", subject: "Linear Algebra" },
   { id: "topic-uniform-convergence", name: "Uniform convergence", subject: "Analysis" },
   { id: "topic-integration-by-parts", name: "Integration by parts", subject: "Methods" },
+];
+
+export const WALKTHROUGH_FOLDERS: WalkthroughStudyFolder[] = [
+  {
+    id: "folder-linear-algebra",
+    name: "Linear Algebra",
+    subject: "Maths",
+    description:
+      "Flashcards, lecture sources, practice work, and future notebook pages for eigenvalues and diagonalisation.",
+    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
+  },
+  {
+    id: "folder-analysis",
+    name: "Analysis",
+    subject: "Maths",
+    description:
+      "A study space for convergence, proofs, and source notes that feed Practice and Progress.",
+    topicIds: ["topic-uniform-convergence"],
+  },
+  {
+    id: "folder-methods",
+    name: "Methods",
+    subject: "Maths",
+    description:
+      "A home for technique drills, flashcard decks, and later paper-style working notebooks.",
+    topicIds: ["topic-integration-by-parts"],
+  },
 ];
 
 export const WALKTHROUGH_DECKS: WalkthroughDeck[] = [
@@ -264,6 +337,80 @@ export const WALKTHROUGH_SOURCES: WalkthroughSource[] = [
     fileName: "methods-worksheet-3.pdf",
     fileType: "PDF reference",
     status: "active",
+  },
+];
+
+export const WALKTHROUGH_NOTEBOOKS: WalkthroughNotebook[] = [
+  {
+    id: "notebook-eigenvalues",
+    folderId: "folder-linear-algebra",
+    title: "Eigenvalues practice",
+    type: "practice",
+    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
+    sourceIds: ["source-linear-lecture"],
+    updatedAt: Date.now() - 1000 * 60 * 45,
+  },
+  {
+    id: "notebook-analysis",
+    folderId: "folder-analysis",
+    title: "Uniform convergence notes",
+    type: "source_notes",
+    topicIds: ["topic-uniform-convergence"],
+    sourceIds: ["source-analysis-note"],
+    updatedAt: Date.now() - 1000 * 60 * 60 * 5,
+  },
+];
+
+export const WALKTHROUGH_NOTEBOOK_PAGES: WalkthroughNotebookPage[] = [
+  {
+    id: "page-eigenvalues-1",
+    notebookId: "notebook-eigenvalues",
+    folderId: "folder-linear-algebra",
+    pageNumber: 1,
+    pageType: "question",
+    questionPrompt:
+      "A 3 by 3 matrix has characteristic polynomial (lambda - 2)^3. Its eigenspace for lambda = 2 is one-dimensional. Is it diagonalizable?",
+    typedContent:
+      "I need to compare algebraic multiplicity with geometric multiplicity before deciding.",
+  },
+  {
+    id: "page-analysis-1",
+    notebookId: "notebook-analysis",
+    folderId: "folder-analysis",
+    pageNumber: 1,
+    pageType: "source_note",
+    typedContent:
+      "Uniform convergence keeps continuity, so a discontinuous pointwise limit is a warning sign.",
+  },
+];
+
+export const WALKTHROUGH_PRACTICE_SETS: WalkthroughPracticeSet[] = [
+  {
+    id: "practice-set-eigenvalues",
+    folderId: "folder-linear-algebra",
+    title: "Eigenvalues drill",
+    type: "manual",
+    topicIds: ["topic-eigenvalues", "topic-multiplicity"],
+    questionIds: ["question-multiplicity"],
+  },
+  {
+    id: "practice-set-analysis",
+    folderId: "folder-analysis",
+    title: "Uniform convergence checks",
+    type: "manual",
+    topicIds: ["topic-uniform-convergence"],
+    questionIds: ["question-uniform-convergence"],
+  },
+];
+
+export const WALKTHROUGH_PAST_PAPERS: WalkthroughPastPaper[] = [
+  {
+    id: "past-paper-linear-2024",
+    folderId: "folder-linear-algebra",
+    title: "2024 Linear Algebra paper",
+    year: "2024",
+    module: "Linear Algebra",
+    pageCount: 0,
   },
 ];
 

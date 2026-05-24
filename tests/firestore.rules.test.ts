@@ -414,6 +414,81 @@ describe("Firestore security rules", () => {
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "sources", "source-1")));
 
     await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "studyFolders", "folder-linear-algebra"), {
+        name: "Linear Algebra",
+        description: "Decks, sources, and notebook work for eigenvalues.",
+        subject: "Maths",
+        topicIds: ["topic-1"],
+        archived: false,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertSucceeds(
+      getDoc(doc(aliceDb, "users", ALICE, "studyFolders", "folder-linear-algebra"))
+    );
+    await assertFails(
+      getDoc(doc(bobDb, "users", ALICE, "studyFolders", "folder-linear-algebra"))
+    );
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "notebooks", "notebook-1"), {
+        folderId: "folder-linear-algebra",
+        title: "Eigenvalues practice",
+        type: "practice",
+        topicIds: ["topic-1"],
+        sourceIds: ["source-1"],
+        archived: false,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "notebookPages", "page-1"), {
+        notebookId: "notebook-1",
+        folderId: "folder-linear-algebra",
+        pageNumber: 1,
+        pageType: "question",
+        typedContent: "I start by finding the characteristic polynomial.",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "notebooks", "notebook-1")));
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "notebookPages", "page-1")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebooks", "notebook-1")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebookPages", "page-1")));
+
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "practiceSets", "set-1"), {
+        folderId: "folder-linear-algebra",
+        title: "Eigenvalues drill",
+        type: "manual",
+        topicIds: ["topic-1"],
+        questionIds: ["question-1"],
+        archived: false,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "pastPapers", "paper-1"), {
+        folderId: "folder-linear-algebra",
+        title: "2024 Linear Algebra paper",
+        year: "2024",
+        module: "Linear Algebra",
+        archived: false,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "practiceSets", "set-1")));
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "pastPapers", "paper-1")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "practiceSets", "set-1")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "pastPapers", "paper-1")));
+
+    await assertSucceeds(
       setDoc(doc(aliceDb, "users", ALICE, "tutorThreads", "thread-1"), {
         contextType: "question",
         contextId: "question-1",
@@ -464,6 +539,45 @@ describe("Firestore security rules", () => {
         contentText: "Demo should not write real Library data.",
         status: "active",
         createdBy: ALICE,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(demoDb, "users", ALICE, "studyFolders", "demo-folder"), {
+        name: "Demo folder",
+        topicIds: [],
+        archived: false,
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(demoDb, "users", ALICE, "notebooks", "demo-notebook"), {
+        folderId: "folder-linear-algebra",
+        title: "Demo notebook",
+        type: "free_working",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(demoDb, "users", ALICE, "practiceSets", "demo-set"), {
+        folderId: "folder-linear-algebra",
+        title: "Demo practice set",
+        type: "manual",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+
+    await assertFails(
+      setDoc(doc(demoDb, "users", ALICE, "pastPapers", "demo-paper"), {
+        folderId: "folder-linear-algebra",
+        title: "Demo past paper",
         createdAt: 1,
         updatedAt: 1,
       })

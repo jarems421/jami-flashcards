@@ -34,7 +34,7 @@ const tabs: Tab[] = [
   },
   {
     href: "/dashboard/practise",
-    label: "Practise",
+    label: "Practice",
     description: "Try questions",
     group: "loop",
     icon: "M4.5 4.75A2.75 2.75 0 017.25 2h9.5a2.75 2.75 0 012.75 2.75v14.5A2.75 2.75 0 0116.75 22h-9.5a2.75 2.75 0 01-2.75-2.75V4.75zm4 2a.75.75 0 000 1.5h7a.75.75 0 000-1.5h-7zm0 4a.75.75 0 000 1.5h4a.75.75 0 000-1.5h-4zm-.53 4.72a.75.75 0 011.06 0l1.22 1.22 3.72-3.72a.75.75 0 111.06 1.06l-4.25 4.25a.75.75 0 01-1.06 0l-1.75-1.75a.75.75 0 010-1.06z",
@@ -45,6 +45,13 @@ const tabs: Tab[] = [
     description: "See weak topics",
     group: "loop",
     icon: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z",
+  },
+  {
+    href: "/dashboard/folders",
+    label: "Folders",
+    description: "Study spaces",
+    group: "support",
+    icon: "M3.75 6.75A2.75 2.75 0 016.5 4h4.19c.73 0 1.43.29 1.945.805l.56.56c.235.235.553.367.884.367H17.5a2.75 2.75 0 012.75 2.75v8.768A2.75 2.75 0 0117.5 20h-11a2.75 2.75 0 01-2.75-2.75V6.75zm2.75-1.25c-.69 0-1.25.56-1.25 1.25v10.5c0 .69.56 1.25 1.25 1.25h11c.69 0 1.25-.56 1.25-1.25V8.482c0-.69-.56-1.25-1.25-1.25h-3.421a2.75 2.75 0 01-1.945-.805l-.56-.56A1.25 1.25 0 0010.69 5.5H6.5z",
   },
   {
     href: "/dashboard/decks",
@@ -126,7 +133,7 @@ function DesktopNavItem({
       aria-current={active ? "page" : undefined}
       data-agent-nav={tab.label}
       data-agent-route={tab.href}
-      className={`group relative flex min-h-[3.65rem] items-center justify-center gap-3 rounded-[1.2rem] px-2.5 py-2 text-left transition duration-fast ease-spring lg:justify-start lg:px-3.5 ${
+      className={`group relative flex min-h-[3.35rem] items-center justify-center gap-3 rounded-[1.2rem] px-2.5 py-1.5 text-left transition duration-fast ease-spring lg:justify-start lg:px-3.5 ${
         active
           ? "border border-[var(--nav-active-border)] bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-[var(--nav-active-shadow)]"
           : "border border-transparent text-text-muted hover:border-[var(--color-border)] hover:bg-[var(--nav-hover-bg)] hover:text-text-primary"
@@ -136,7 +143,7 @@ function DesktopNavItem({
         <span className="absolute inset-y-2 left-0 hidden w-1 rounded-r-full bg-warm-accent lg:block" />
       ) : null}
       <span
-        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-[1.05rem] border transition duration-fast ${
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[1.05rem] border transition duration-fast ${
           active
             ? "border-warm-border bg-warm-glow text-warm-accent"
             : "border-white/8 bg-white/[0.035] text-text-muted group-hover:border-white/14 group-hover:text-white"
@@ -299,7 +306,7 @@ export default function TabBar() {
           </div>
         </div>
 
-        <div className="flex flex-1 flex-col gap-5 overflow-y-auto scrollbar-hide px-0.5 py-4">
+        <div className="flex flex-1 flex-col gap-4 overflow-y-auto scrollbar-hide px-0.5 py-3">
           {navGroups.map((group) => (
             <section key={group.id} className="space-y-2">
               <div className="hidden px-3 lg:block">
@@ -310,7 +317,7 @@ export default function TabBar() {
                   {group.helper}
                 </div>
               </div>
-              <div className="space-y-1.5">
+              <div className="space-y-1">
                 {tabs
                   .filter((tab) => tab.group === group.id)
                   .map((tab) => {

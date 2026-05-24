@@ -38,7 +38,7 @@ export default function AppTopBar({
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-2 sm:justify-end">
+          <div className="flex min-w-0 flex-wrap items-center gap-2 sm:justify-end">
             {backHref && backLabel ? (
               <Link
                 href={backHref}
@@ -48,10 +48,10 @@ export default function AppTopBar({
                 <span className="truncate">{backLabel}</span>
               </Link>
             ) : (
-              <div aria-hidden="true" />
+              <div className="hidden sm:block" aria-hidden="true" />
             )}
             {action ? (
-              <div className="shrink-0">{action}</div>
+              <div className="min-w-0 shrink-0">{action}</div>
             ) : (
               <div className="h-10 w-10 shrink-0" aria-hidden="true" />
             )}

@@ -5,6 +5,9 @@ export type FeatureFlagKey =
   | "enableMasteryProgress"
   | "enableToday"
   | "enableLibrary"
+  | "enableFolders"
+  | "enableNotebooks"
+  | "enableFlashcardAi"
   | "enableAnywhere";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
@@ -14,6 +17,9 @@ const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableMasteryProgress: true,
   enableToday: false,
   enableLibrary: true,
+  enableFolders: true,
+  enableNotebooks: true,
+  enableFlashcardAi: false,
   enableAnywhere: false,
 };
 
@@ -24,6 +30,9 @@ const ENV_KEYS: Record<FeatureFlagKey, string> = {
   enableMasteryProgress: "NEXT_PUBLIC_ENABLE_MASTERY_PROGRESS",
   enableToday: "NEXT_PUBLIC_ENABLE_TODAY",
   enableLibrary: "NEXT_PUBLIC_ENABLE_LIBRARY",
+  enableFolders: "NEXT_PUBLIC_ENABLE_FOLDERS",
+  enableNotebooks: "NEXT_PUBLIC_ENABLE_NOTEBOOKS",
+  enableFlashcardAi: "NEXT_PUBLIC_ENABLE_FLASHCARD_AI",
   enableAnywhere: "NEXT_PUBLIC_ENABLE_ANYWHERE",
 };
 
@@ -46,5 +55,8 @@ export const featureFlags: Record<FeatureFlagKey, boolean> = {
   enableMasteryProgress: isFeatureEnabled("enableMasteryProgress"),
   enableToday: isFeatureEnabled("enableToday"),
   enableLibrary: isFeatureEnabled("enableLibrary"),
+  enableFolders: isFeatureEnabled("enableFolders"),
+  enableNotebooks: isFeatureEnabled("enableNotebooks"),
+  enableFlashcardAi: isFeatureEnabled("enableFlashcardAi"),
   enableAnywhere: isFeatureEnabled("enableAnywhere"),
 };

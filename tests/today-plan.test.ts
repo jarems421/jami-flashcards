@@ -35,6 +35,7 @@ const topic: Topic = {
 const question: Question = {
   id: "question-1",
   questionText: "Is the matrix diagonalizable?",
+  folderIds: [],
   topicIds: [topic.id],
   sourceType: "manual",
   origin: "user-authored",
@@ -146,6 +147,7 @@ describe("today plan", () => {
           title: "Lecture 5 notes",
           type: "pasted_text",
           subject: "Linear Algebra",
+          folderIds: [],
           topicIds: [topic.id],
           contentText: "Eigenvalue notes",
           status: "active",

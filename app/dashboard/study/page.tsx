@@ -56,6 +56,7 @@ import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActive
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
+import { featureFlags } from "@/lib/app/feature-flags";
 import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, PageHero, ProgressBar, Skeleton, StudyText } from "@/components/ui";
@@ -306,6 +307,7 @@ export default function StudyPage() {
   const lastForegroundRefreshAtRef = useRef(0);
   const remoteCloseKeyRef = useRef<string | null>(null);
   const demoAiDisabled = demoMode === "demo-test";
+  const flashcardAiEnabled = featureFlags.enableFlashcardAi && !demoAiDisabled;
 
   useEffect(() => {
     setSelectedDeckIds(requestedDeckIds);
@@ -1196,7 +1198,7 @@ export default function StudyPage() {
 
     if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
       requeueCurrentCard(nextCard);
-    } else if (isStruggle && sessionKind !== "daily-required" && !demoAiDisabled) {
+    } else if (isStruggle && sessionKind !== "daily-required" && flashcardAiEnabled) {
       setShowExplanation(true);
     } else {
       goNext();
@@ -1362,7 +1364,7 @@ export default function StudyPage() {
       setAnswerFeedback(getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)));
       if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
         requeueCurrentCard(nextCard);
-      } else if (isStruggle && sessionKind !== "daily-required" && !demoAiDisabled) {
+      } else if (isStruggle && sessionKind !== "daily-required" && flashcardAiEnabled) {
         setShowExplanation(true);
       } else {
         goNext();
@@ -2051,7 +2053,7 @@ export default function StudyPage() {
               </SurfaceCard>
               {!flipped ? (
                 <div className="animate-fade-in space-y-3">
-                  {!demoAiDisabled ? (
+                  {flashcardAiEnabled ? (
                     <StudyAssistant
                       card={current}
                       autoExplain={false}
@@ -2066,7 +2068,7 @@ export default function StudyPage() {
                 <div className="sticky bottom-3 z-30 animate-fade-in space-y-3 rounded-[1.5rem] border border-white/[0.08] bg-surface-panel/95 p-2 shadow-[0_18px_36px_rgba(8,2,26,0.28)] backdrop-blur-md sm:static sm:z-auto sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
                   {savingRating ? <div className="text-center text-sm text-text-muted">Saving...</div> : null}
                   {showExplanation ? (
-                    !demoAiDisabled ? (
+                    flashcardAiEnabled ? (
                       <StudyAssistant card={current} autoExplain mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
                     ) : null
                   ) : (
@@ -2116,7 +2118,7 @@ export default function StudyPage() {
                           })}
                         </div>
                       )}
-                      {!demoAiDisabled ? (
+                      {flashcardAiEnabled ? (
                         <StudyAssistant card={current} autoExplain={false} mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
                       ) : null}
                     </div>

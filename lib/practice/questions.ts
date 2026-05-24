@@ -16,6 +16,7 @@ export type Question = {
   answerText?: string;
   solutionText?: string;
   markScheme?: string;
+  folderIds: string[];
   topicIds: string[];
   difficulty?: QuestionDifficulty;
   sourceType: QuestionSourceType;
@@ -47,6 +48,7 @@ export type Attempt = {
 export const MAX_QUESTION_TEXT_LENGTH = 4_000;
 export const MAX_ATTEMPT_ANSWER_LENGTH = 8_000;
 export const MAX_MISTAKE_LABELS = 8;
+export const MAX_QUESTION_FOLDER_IDS = 12;
 
 export function isQuestionDifficulty(value: unknown): value is QuestionDifficulty {
   return value === "easy" || value === "medium" || value === "hard";
@@ -73,6 +75,7 @@ export function mapQuestionData(id: string, data: Record<string, unknown>): Ques
     answerText: normalizeOptionalString(data.answerText, MAX_QUESTION_TEXT_LENGTH),
     solutionText: normalizeOptionalString(data.solutionText, 8_000),
     markScheme: normalizeOptionalString(data.markScheme, 8_000),
+    folderIds: normalizeStringArray(data.folderIds, MAX_QUESTION_FOLDER_IDS, 160),
     topicIds: normalizeStringArray(data.topicIds, 20, 120),
     difficulty: isQuestionDifficulty(data.difficulty) ? data.difficulty : undefined,
     sourceType: isQuestionSourceType(data.sourceType) ? data.sourceType : "manual",

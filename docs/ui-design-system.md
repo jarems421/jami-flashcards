@@ -8,6 +8,12 @@ Jami should feel calm, modern, study-focused, and slightly cosmic. It should loo
 
 The UI should make studying feel steady and focused, not like managing a cluttered productivity suite.
 
+Phase 5 shifts the product metaphor toward a folder-first notebook workspace:
+
+**Folder -> notebook / paper / deck / source -> work naturally -> save -> later AI help / marking / flashcards**
+
+Folders are broad study spaces such as Linear Algebra. Topics are smaller concepts such as eigenvalues or integration by parts. Decks and sources should still be globally accessible, but they should also feel at home inside relevant folders.
+
 ## UI Redesign Standard
 
 This UI phase is not for tiny cosmetic tweaks.
@@ -56,14 +62,39 @@ Learn is the stable flashcard surface. It should feel familiar, reliable, and fo
 - Keep Daily Review, Focused Review, Simple Study, decks, cards, goals, stars, and offline behavior intact.
 - Polish visual hierarchy gradually rather than changing the learning mechanics.
 
-### Practise
+### Practice
 
-Practise should feel exam-focused, calm, and structured.
+Use user-facing spelling **Practice**. Keep old route names only for compatibility.
+
+Practice should become folder-first and notebook-led rather than question-bank-first.
 
 - Avoid making it feel like an admin form.
-- Make the selected question feel like the center of the session.
+- Make the current working surface feel like the center of the session.
+- Do not force students to enter an expected answer or solution notes before they can work.
+- Let expected answers, solution notes, and mark schemes stay optional metadata for imported, AI-generated, or reviewed questions.
 - Keep topic chips, attempt state, confidence, mistake labels, and attempt history visually organized.
 - Make "start", "continue", "self-mark", and "review" states clear.
+- Long-term direction: folders, notebooks, practice sets, and paper-style work should replace endless stacked forms.
+
+### Folders
+
+Folders are broad study spaces.
+
+- A folder can contain notebooks, decks, sources, practice sets, past paper shells, and recent work.
+- A deck can appear inside a folder and still appear globally in Decks.
+- A source can appear inside a folder and still appear globally in Library.
+- Cards should inherit folder context through decks rather than carrying folder links directly in V1.
+- Folder pages should feel like calm workspaces, not analytics dashboards.
+- Empty folders should clearly explain what will come next: notebooks, decks, sources, and practice work.
+
+### Notebooks
+
+Notebooks are the future main answer surface.
+
+- Use Notebook or Working Page, not Scratchpad, for persistent work.
+- V1 should be humble: pages, typed content, a simple drawing canvas, save/reload, and page navigation.
+- Do not imply OCR, handwriting recognition, PDF annotation, or AI screen watching.
+- AI will later live as an on-demand drawer/dropdown inside notebooks, papers, and practice sets.
 
 ### Tutor
 

@@ -22,6 +22,7 @@ import {
 import {
   Button,
   Card,
+  EmptyState,
   FeedbackBanner,
   MetricStrip,
   PageHero,
@@ -33,8 +34,13 @@ import {
   WALKTHROUGH_ATTEMPTS,
   WALKTHROUGH_CARDS,
   WALKTHROUGH_DECKS,
+  WALKTHROUGH_FOLDERS,
   WALKTHROUGH_INITIAL_DRAFTS,
   WALKTHROUGH_INITIAL_TUTOR_MESSAGES,
+  WALKTHROUGH_NOTEBOOKS,
+  WALKTHROUGH_NOTEBOOK_PAGES,
+  WALKTHROUGH_PAST_PAPERS,
+  WALKTHROUGH_PRACTICE_SETS,
   WALKTHROUGH_QUESTIONS,
   WALKTHROUGH_SOURCES,
   WALKTHROUGH_TOPICS,
@@ -60,6 +66,8 @@ type PublicSurface =
   | "progress"
   | "decks"
   | "cards"
+  | "folders"
+  | "notebook"
   | "library"
   | "goals"
   | "constellation"
@@ -174,6 +182,8 @@ function getSurface(pathname: string): PublicSurface {
   if (pathname.startsWith("/dashboard/study") || pathname.startsWith("/dashboard/learn")) return "learn";
   if (pathname.startsWith("/dashboard/practise")) return "practise";
   if (pathname.startsWith("/dashboard/progress") || pathname.startsWith("/dashboard/stats")) return "progress";
+  if (pathname.startsWith("/dashboard/notebooks")) return "notebook";
+  if (pathname.startsWith("/dashboard/folders")) return "folders";
   if (pathname.startsWith("/dashboard/decks")) return "decks";
   if (pathname.startsWith("/dashboard/cards")) return "cards";
   if (pathname.startsWith("/dashboard/library")) return "library";
@@ -207,13 +217,17 @@ function getSurfaceTitle(surface: PublicSurface) {
     case "learn":
       return "Learn";
     case "practise":
-      return "Practise";
+      return "Practice";
     case "progress":
       return "Progress";
     case "decks":
       return "Decks";
     case "cards":
       return "Cards";
+    case "folders":
+      return "Folders";
+    case "notebook":
+      return "Notebook";
     case "library":
       return "Library";
     case "goals":
@@ -720,6 +734,8 @@ export default function PublicDashboardShell() {
               onAddDraftToDeck={addLocalDraftToDeck}
             />
           ) : null}
+          {surface === "folders" ? <FoldersPanel /> : null}
+          {surface === "notebook" ? <NotebookPanel pathname={pathname} /> : null}
           {surface === "library" ? (
             <LibraryPanel
               drafts={drafts}
@@ -751,8 +767,10 @@ function AgentModeNotice() {
   const routes = [
     ["/dashboard?agent=1", "Today"],
     ["/dashboard/study?agent=1", "Learn"],
-    ["/dashboard/practise?agent=1", "Practise"],
+    ["/dashboard/practise?agent=1", "Practice"],
     ["/dashboard/progress?agent=1", "Progress"],
+    ["/dashboard/folders?agent=1", "Folders"],
+    ["/dashboard/notebooks/notebook-eigenvalues?agent=1", "Notebook"],
     ["/dashboard/library?agent=1", "Library"],
     ["/dashboard/cards?agent=1", "Cards"],
     ["/dashboard/decks?agent=1", "Decks"],
@@ -849,6 +867,7 @@ function HomePanel({
   }));
   const publicQuestions = WALKTHROUGH_QUESTIONS.map((question) => ({
     ...question,
+    folderIds: [],
     sourceType: "manual" as const,
     origin: "user-authored" as const,
     contentStatus: "approved" as const,
@@ -886,6 +905,7 @@ function HomePanel({
       title: source.title,
       type: source.type,
       subject: source.subject,
+      folderIds: [],
       topicIds: source.topicIds,
       contentText: source.contentText,
       externalUrl: source.externalUrl,
@@ -895,6 +915,35 @@ function HomePanel({
       createdBy: "public-walkthrough",
       createdAt: 1,
       updatedAt: 1,
+    })),
+    studyFolders: WALKTHROUGH_FOLDERS.map((folder) => ({
+      ...folder,
+      createdAt: 1,
+      updatedAt: 1,
+      archived: false,
+    })),
+    notebooks: WALKTHROUGH_NOTEBOOKS.map((notebook) => ({
+      ...notebook,
+      createdAt: 1,
+      archived: false,
+    })),
+    practiceSets: WALKTHROUGH_PRACTICE_SETS.map((set) => ({
+      ...set,
+      sourceIds: [],
+      notebookId: undefined,
+      createdAt: 1,
+      updatedAt: 1,
+      archived: false,
+    })),
+    pastPapers: WALKTHROUGH_PAST_PAPERS.map((paper) => ({
+      ...paper,
+      sourceId: undefined,
+      fileName: undefined,
+      fileType: undefined,
+      notebookId: undefined,
+      createdAt: 1,
+      updatedAt: 1,
+      archived: false,
     })),
     reviewedToday: 2,
     progressVisited: true,
@@ -971,6 +1020,48 @@ function HomePanel({
           </p>
         </Card>
       </div>
+      <Card padding="lg">
+        <SectionHeader
+          eyebrow="Workspace"
+          title={
+            plan.workspace.recentNotebook
+              ? `Continue ${plan.workspace.recentNotebook.title}`
+              : "Folders keep work together."
+          }
+          description="The walkthrough now shows the Phase 5 direction: study folders hold notebooks, decks, sources, sets, and papers."
+        />
+        <div className="mt-5 grid gap-3 sm:grid-cols-4">
+          {[
+            ["Folders", plan.workspace.folderCount],
+            ["Notebooks", plan.workspace.notebookCount],
+            ["Sets", plan.workspace.practiceSetCount],
+            ["Papers", plan.workspace.pastPaperCount],
+          ].map(([label, value]) => (
+            <div key={label} className="rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3">
+              <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
+                {label}
+              </div>
+              <div className="mt-1 text-base font-semibold tabular-nums text-white">{value}</div>
+            </div>
+          ))}
+        </div>
+        <div className="mt-5 flex flex-wrap gap-2">
+          {plan.workspace.recentNotebook ? (
+            <Link
+              href={plan.workspace.recentNotebook.href}
+              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover"
+            >
+              Continue notebook
+            </Link>
+          ) : null}
+          <Link
+            href="/dashboard/folders"
+            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+          >
+            Open folders
+          </Link>
+        </div>
+      </Card>
       <Card padding="lg">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <SectionHeader
@@ -1185,6 +1276,28 @@ function PractisePanel({
     selectedText: selectedWorkingText || undefined,
     intent: previewIntent,
   };
+  const publicFolderSummaries = WALKTHROUGH_FOLDERS.slice(0, 3).map((folder) => {
+    const folderQuestions = questions.filter((question) =>
+      question.topicIds.some((topicId) => folder.topicIds.includes(topicId))
+    );
+    const folderNotebooks = WALKTHROUGH_NOTEBOOKS.filter(
+      (notebook) => notebook.folderId === folder.id
+    );
+    const folderDecks = WALKTHROUGH_DECKS.filter((deck) =>
+      WALKTHROUGH_CARDS.some(
+        (card) =>
+          card.deckId === deck.id &&
+          card.topicIds.some((topicId) => folder.topicIds.includes(topicId))
+      )
+    );
+    const folderPracticeSets = WALKTHROUGH_PRACTICE_SETS.filter(
+      (practiceSet) => practiceSet.folderId === folder.id
+    );
+    return { folder, folderQuestions, folderNotebooks, folderDecks, folderPracticeSets };
+  });
+  const publicRecentNotebooks = [...WALKTHROUGH_NOTEBOOKS]
+    .sort((left, right) => right.updatedAt - left.updatedAt)
+    .slice(0, 3);
   const sendTutorIntent = (
     intent: WalkthroughTutorIntent,
     prompt: string,
@@ -1302,6 +1415,75 @@ function PractisePanel({
   return (
     <div className="space-y-4">
     <PublicPractiseFlowHeader />
+    <Card padding="lg">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <SectionHeader
+          eyebrow="Practice workspace"
+          title="Start from a folder, then work naturally."
+          description="Public Practice now shows the Phase 5 direction: folders and notebooks first, with the old question bank as a supporting local tool."
+        />
+        <div className="flex flex-wrap gap-2">
+          <Link
+            href="/dashboard/folders?agent=1"
+            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition hover:-translate-y-[1px]"
+          >
+            Open folders
+          </Link>
+          <Link
+            href="/dashboard/notebooks/notebook-eigenvalues?agent=1"
+            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)] transition hover:-translate-y-[1px]"
+          >
+            Open notebook
+          </Link>
+        </div>
+      </div>
+      <div className="mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
+        <div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+            Study folders
+          </div>
+          <div className="grid gap-3 md:grid-cols-2">
+            {publicFolderSummaries.map(({ folder, folderQuestions, folderNotebooks, folderDecks, folderPracticeSets }) => (
+              <Link
+                key={folder.id}
+                href="/dashboard/folders?agent=1"
+                className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4 transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-white/[0.065]"
+              >
+                <div className="text-sm font-semibold text-white">{folder.name}</div>
+                <p className="mt-1 line-clamp-2 text-sm leading-6 text-text-secondary">
+                  {folder.description}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className={chipClass}>{folderNotebooks.length} notebooks</span>
+                  <span className={chipClass}>{folderQuestions.length} questions</span>
+                  <span className={chipClass}>{folderDecks.length} decks</span>
+                  <span className={chipClass}>{folderPracticeSets.length} sets</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+        <div>
+          <div className="mb-3 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+            Continue notebooks
+          </div>
+          <div className="space-y-3">
+            {publicRecentNotebooks.map((notebook) => (
+              <Link
+                key={notebook.id}
+                href={`/dashboard/notebooks/${notebook.id}?agent=1`}
+                className="block rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4 transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-white/[0.065]"
+              >
+                <div className="text-sm font-semibold text-white">{notebook.title}</div>
+                <div className="mt-1 text-xs text-text-muted">
+                  {notebook.type.replace("_", " ")}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Card>
     {hasSessionActivity ? (
       <Card padding="md" className="border-warm-border bg-warm-glow">
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -1338,7 +1520,7 @@ function PractisePanel({
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.25fr)_minmax(260px,0.78fr)]">
       <Card padding="lg" className="xl:sticky xl:top-4 xl:self-start">
         <SectionHeader
-          eyebrow="Practise"
+          eyebrow="Practice"
           title="Question bank"
           description="Choose one seeded question, attempt it, then repair what happened."
         />
@@ -1980,6 +2162,24 @@ function ProgressPanel({
 }) {
   const questionsById = new Map(questions.map((question) => [question.id, question]));
   const recommendedTopic = topicSummaries[0];
+  const foldersByTopicId = new Map<string, (typeof WALKTHROUGH_FOLDERS)[number]>();
+  for (const folder of WALKTHROUGH_FOLDERS) {
+    for (const topicId of folder.topicIds) {
+      if (!foldersByTopicId.has(topicId)) foldersByTopicId.set(topicId, folder);
+    }
+  }
+  const notebooksByTopicId = new Map<string, (typeof WALKTHROUGH_NOTEBOOKS)[number]>();
+  for (const notebook of WALKTHROUGH_NOTEBOOKS) {
+    for (const topicId of notebook.topicIds) {
+      if (!notebooksByTopicId.has(topicId)) notebooksByTopicId.set(topicId, notebook);
+    }
+  }
+  const sourcesByTopicId = new Map<string, (typeof WALKTHROUGH_SOURCES)[number]>();
+  for (const source of WALKTHROUGH_SOURCES) {
+    for (const topicId of source.topicIds) {
+      if (!sourcesByTopicId.has(topicId)) sourcesByTopicId.set(topicId, source);
+    }
+  }
 
   return (
     <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
@@ -2002,7 +2202,12 @@ function ProgressPanel({
           </p>
         </div>
         <div className="mt-5 space-y-3">
-          {topicSummaries.map((summary) => (
+          {topicSummaries.map((summary) => {
+            const linkedFolder = foldersByTopicId.get(summary.topic.id);
+            const linkedNotebook = notebooksByTopicId.get(summary.topic.id);
+            const linkedSource = sourcesByTopicId.get(summary.topic.id);
+
+            return (
             <div key={summary.topic.id} className={surfaceCardClass}>
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -2038,11 +2243,42 @@ function ProgressPanel({
                 </div>
               ) : null}
               <div className="mt-4 rounded-[1rem] border border-white/[0.08] bg-white/[0.04] p-3 text-sm leading-6 text-text-secondary">
-                <span className="font-semibold text-white">Next action:</span> Review linked cards,
-                then retry 1 practice question.
+                <span className="font-semibold text-white">Next action:</span>{" "}
+                {linkedNotebook
+                  ? `Continue "${linkedNotebook.title}", then retry 1 practice question.`
+                  : linkedSource
+                    ? `Review linked source "${linkedSource.title}", then retry 1 practice question.`
+                    : "Review linked cards, then retry 1 practice question."}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {linkedFolder ? (
+                  <Link
+                    href={`/dashboard/folders/${linkedFolder.id}`}
+                    className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/[0.2] hover:bg-white/[0.08]"
+                  >
+                    Folder: {linkedFolder.name}
+                  </Link>
+                ) : null}
+                {linkedNotebook ? (
+                  <Link
+                    href={`/dashboard/notebooks/${linkedNotebook.id}`}
+                    className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-white transition hover:border-white/[0.2] hover:bg-white/[0.08]"
+                  >
+                    Notebook: {linkedNotebook.title}
+                  </Link>
+                ) : null}
+                {linkedSource ? (
+                  <Link
+                    href="/dashboard/library"
+                    className="inline-flex min-h-[2.35rem] items-center justify-center rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.08]"
+                  >
+                    Source: {linkedSource.title}
+                  </Link>
+                ) : null}
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       </Card>
 
@@ -2175,6 +2411,483 @@ function CardsPanel({
         onSaveDraft={onSaveDraft}
         onAddDraftToDeck={onAddDraftToDeck}
       />
+    </div>
+  );
+}
+
+function FoldersPanel() {
+  const [selectedFolderId, setSelectedFolderId] = useState(WALKTHROUGH_FOLDERS[0]?.id ?? "");
+  const selectedFolder =
+    WALKTHROUGH_FOLDERS.find((folder) => folder.id === selectedFolderId) ?? WALKTHROUGH_FOLDERS[0];
+  const folderTopicIds = selectedFolder?.topicIds ?? [];
+  const relatedDecks = WALKTHROUGH_DECKS.filter((deck) =>
+    WALKTHROUGH_CARDS.some(
+      (card) =>
+        card.deckId === deck.id &&
+        card.topicIds.some((topicId) => folderTopicIds.includes(topicId))
+    )
+  );
+  const relatedSources = WALKTHROUGH_SOURCES.filter((source) =>
+    source.topicIds.some((topicId) => folderTopicIds.includes(topicId))
+  );
+  const relatedQuestions = WALKTHROUGH_QUESTIONS.filter((question) =>
+    question.topicIds.some((topicId) => folderTopicIds.includes(topicId))
+  );
+  const relatedNotebooks = WALKTHROUGH_NOTEBOOKS.filter(
+    (notebook) => notebook.folderId === selectedFolder?.id
+  );
+  const relatedPracticeSets = WALKTHROUGH_PRACTICE_SETS.filter(
+    (practiceSet) => practiceSet.folderId === selectedFolder?.id
+  );
+  const relatedPastPapers = WALKTHROUGH_PAST_PAPERS.filter(
+    (paper) => paper.folderId === selectedFolder?.id
+  );
+
+  return (
+    <div className="grid gap-4 xl:grid-cols-[0.9fr_1.35fr]">
+      <Card padding="lg">
+        <SectionHeader
+          eyebrow="Folders"
+          title="Study spaces keep related work together."
+          description="This is the public local version of the new folder foundation. Signed-in users can create real folders; public walkthrough actions stay simulated."
+        />
+        <div className="mt-5 space-y-3">
+          {WALKTHROUGH_FOLDERS.map((folder) => {
+            const selected = folder.id === selectedFolder?.id;
+            return (
+              <button
+                key={folder.id}
+                type="button"
+                onClick={() => setSelectedFolderId(folder.id)}
+                className={`${interactiveCardClass} w-full ${selected ? selectedCardClass : ""}`}
+              >
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                  {folder.subject}
+                </div>
+                <div className="mt-2 text-lg font-semibold text-white">
+                  {folder.name}
+                </div>
+                <p className="mt-2 text-sm leading-6 text-text-secondary">
+                  {folder.description}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      <div className="space-y-4">
+        <Card tone="warm" padding="lg">
+          <SectionHeader
+            eyebrow="Selected folder"
+            title={selectedFolder?.name ?? "Folder"}
+            description="Phase 5 starts by making this folder the home for notebooks, decks, sources, practice sets, and recent work."
+          />
+          <div className="mt-5 flex flex-wrap gap-2">
+            {folderTopicIds.map((topicId) => (
+              <TopicChip key={topicId} topicId={topicId} />
+            ))}
+          </div>
+          <div className="mt-6 grid gap-3 sm:grid-cols-5">
+            <MiniMetric label="Decks" value={relatedDecks.length} />
+            <MiniMetric label="Notebooks" value={relatedNotebooks.length} />
+            <MiniMetric label="Sources" value={relatedSources.length} />
+            <MiniMetric label="Sets" value={relatedPracticeSets.length} />
+            <MiniMetric label="Papers" value={relatedPastPapers.length} />
+          </div>
+        </Card>
+
+        <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+          <Card padding="md">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Notebooks
+            </div>
+            <div className="mt-4 space-y-3">
+              {relatedNotebooks.length > 0 ? (
+                relatedNotebooks.map((notebook) => {
+                  const pages = WALKTHROUGH_NOTEBOOK_PAGES.filter((page) => page.notebookId === notebook.id);
+                  return (
+                    <Link
+                      key={notebook.id}
+                      href={`/dashboard/notebooks/${notebook.id}?agent=1`}
+                      className="block rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3 transition duration-fast hover:-translate-y-0.5 hover:border-warm-border"
+                    >
+                      <div className="text-sm font-semibold text-white">{notebook.title}</div>
+                      <div className="mt-1 text-xs text-text-muted">{pages.length} pages</div>
+                    </Link>
+                  );
+                })
+              ) : (
+                <p className="text-sm leading-6 text-text-muted">Notebook pages arrive in Phase 5.4.</p>
+              )}
+            </div>
+          </Card>
+
+          <Card padding="md">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Decks
+            </div>
+            <div className="mt-4 space-y-3">
+              {relatedDecks.length > 0 ? (
+                relatedDecks.map((deck) => (
+                  <div key={deck.id} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
+                    <div className="text-sm font-semibold text-white">{deck.name}</div>
+                    <div className="mt-1 text-xs text-text-muted">{deck.cardCount} cards</div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm leading-6 text-text-muted">Deck links arrive in Phase 5.2.</p>
+              )}
+            </div>
+          </Card>
+
+          <Card padding="md">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Sources
+            </div>
+            <div className="mt-4 space-y-3">
+              {relatedSources.length > 0 ? (
+                relatedSources.map((source) => (
+                  <div key={source.id} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
+                    <div className="text-sm font-semibold text-white">{source.title}</div>
+                    <div className="mt-1 text-xs text-text-muted">{source.subject ?? "Source"}</div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm leading-6 text-text-muted">Source links arrive in Phase 5.2.</p>
+              )}
+            </div>
+          </Card>
+
+          <Card padding="md">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Practice work
+            </div>
+            <div className="mt-4 space-y-3">
+              {relatedQuestions.length > 0 ? (
+                relatedQuestions.map((question) => (
+                  <div key={question.id} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
+                    <div className="line-clamp-3 text-sm font-semibold leading-5 text-white">
+                      {question.questionText}
+                    </div>
+                    <Link
+                      href={`/dashboard/practise?question=${question.id}`}
+                      className="mt-3 inline-flex rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent"
+                    >
+                      Practice
+                    </Link>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm leading-6 text-text-muted">Practice sets arrive in Phase 5.5.</p>
+              )}
+            </div>
+          </Card>
+
+          <Card padding="md">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Practice sets
+            </div>
+            <div className="mt-4 space-y-3">
+              {relatedPracticeSets.length > 0 ? (
+                relatedPracticeSets.map((practiceSet) => (
+                  <div key={practiceSet.id} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
+                    <div className="text-sm font-semibold text-white">{practiceSet.title}</div>
+                    <div className="mt-1 text-xs text-text-muted">{practiceSet.questionIds.length} questions</div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm leading-6 text-text-muted">Practice set shells arrive here.</p>
+              )}
+            </div>
+          </Card>
+
+          <Card padding="md">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Past papers
+            </div>
+            <div className="mt-4 space-y-3">
+              {relatedPastPapers.length > 0 ? (
+                relatedPastPapers.map((paper) => (
+                  <div key={paper.id} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3">
+                    <div className="text-sm font-semibold text-white">{paper.title}</div>
+                    <div className="mt-1 text-xs text-text-muted">{paper.year ?? "Paper shell"}</div>
+                  </div>
+                ))
+              ) : (
+                <p className="text-sm leading-6 text-text-muted">Past paper shells stay metadata-only for now.</p>
+              )}
+            </div>
+          </Card>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const NOTEBOOK_CANVAS_WIDTH = 900;
+const NOTEBOOK_CANVAS_HEIGHT = 620;
+
+function getNotebookIdFromPath(pathname: string) {
+  const parts = pathname.split("/").filter(Boolean);
+  const notebookIndex = parts.findIndex((part) => part === "notebooks");
+  return notebookIndex >= 0 ? parts[notebookIndex + 1] : undefined;
+}
+
+function notebookPath(points: ScratchpadPoint[]) {
+  if (points.length === 0) return "";
+  const [firstPoint, ...remainingPoints] = points;
+  return [
+    `M ${firstPoint.x.toFixed(1)} ${firstPoint.y.toFixed(1)}`,
+    ...remainingPoints.map((point) => `L ${point.x.toFixed(1)} ${point.y.toFixed(1)}`),
+  ].join(" ");
+}
+
+function notebookPointerPoint(event: ReactPointerEvent<SVGSVGElement>): ScratchpadPoint {
+  const rect = event.currentTarget.getBoundingClientRect();
+  return {
+    x: ((event.clientX - rect.left) / rect.width) * NOTEBOOK_CANVAS_WIDTH,
+    y: ((event.clientY - rect.top) / rect.height) * NOTEBOOK_CANVAS_HEIGHT,
+  };
+}
+
+function NotebookPanel({ pathname }: { pathname: string }) {
+  const routeNotebookId = getNotebookIdFromPath(pathname);
+  const notebook =
+    WALKTHROUGH_NOTEBOOKS.find((entry) => entry.id === routeNotebookId) ??
+    WALKTHROUGH_NOTEBOOKS[0];
+  const [pages, setPages] = useState(
+    WALKTHROUGH_NOTEBOOK_PAGES.filter((page) => page.notebookId === notebook?.id)
+  );
+  const [selectedPageId, setSelectedPageId] = useState(pages[0]?.id ?? "");
+  const selectedPage = pages.find((page) => page.id === selectedPageId) ?? pages[0];
+  const [pageTextById, setPageTextById] = useState<Record<string, string>>({});
+  const [strokesByPage, setStrokesByPage] = useState<Record<string, ScratchpadStroke[]>>({});
+  const [drawing, setDrawing] = useState(false);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const currentStrokes = selectedPage ? strokesByPage[selectedPage.id] ?? [] : [];
+  const typedContent = selectedPage
+    ? pageTextById[selectedPage.id] ?? selectedPage.typedContent ?? ""
+    : "";
+  const folder = WALKTHROUGH_FOLDERS.find((entry) => entry.id === notebook?.folderId);
+
+  if (!notebook) {
+    return (
+      <EmptyState
+        emoji="Notebook"
+        title="Notebook not found"
+        description="The public walkthrough could not find that seeded notebook."
+      />
+    );
+  }
+
+  const updateCurrentStrokes = (updater: (current: ScratchpadStroke[]) => ScratchpadStroke[]) => {
+    if (!selectedPage) return;
+    setStrokesByPage((current) => ({
+      ...current,
+      [selectedPage.id]: updater(current[selectedPage.id] ?? []),
+    }));
+  };
+
+  const startDrawing = (event: ReactPointerEvent<SVGSVGElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    const point = notebookPointerPoint(event);
+    setDrawing(true);
+    updateCurrentStrokes((current) => [...current, { points: [point] }]);
+  };
+
+  const draw = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (!drawing) return;
+    const point = notebookPointerPoint(event);
+    updateCurrentStrokes((current) => {
+      if (current.length === 0) return current;
+      const next = [...current];
+      const lastStroke = next[next.length - 1];
+      next[next.length - 1] = {
+        points: [...lastStroke.points, point].slice(0, 1_200),
+      };
+      return next;
+    });
+  };
+
+  const stopDrawing = (event: ReactPointerEvent<SVGSVGElement>) => {
+    if (drawing && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setDrawing(false);
+  };
+
+  const savePage = () => {
+    if (!selectedPage) return;
+    setPages((current) =>
+      current.map((page) =>
+        page.id === selectedPage.id ? { ...page, typedContent: typedContent.trim() } : page
+      )
+    );
+    setFeedback({
+      type: "success",
+      message: "Notebook page saved locally. Public walkthrough writes stay on this device/session.",
+    });
+  };
+
+  const addPage = () => {
+    const nextPageNumber =
+      pages.length > 0 ? Math.max(...pages.map((page) => page.pageNumber)) + 1 : 1;
+    const page = {
+      id: `public-page-${Date.now()}`,
+      notebookId: notebook.id,
+      folderId: notebook.folderId,
+      pageNumber: nextPageNumber,
+      pageType: "free_working" as const,
+      typedContent: "",
+    };
+    setPages((current) => [...current, page]);
+    setSelectedPageId(page.id);
+    setFeedback({ type: "success", message: `Local page ${nextPageNumber} added.` });
+  };
+
+  return (
+    <div className="space-y-4">
+      {feedback ? (
+        <FeedbackBanner
+          type={feedback.type}
+          message={feedback.message}
+          onDismiss={() => setFeedback(null)}
+        />
+      ) : null}
+      <Card tone="warm" padding="lg">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <SectionHeader
+            eyebrow={folder?.name ?? "Notebook"}
+            title={notebook.title}
+            description="This public notebook shows the Phase 5 direction: page-based typed and drawn working inside a study folder."
+          />
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={addPage}>
+              New page
+            </Button>
+            <Button type="button" onClick={savePage}>
+              Save local page
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
+        <Card padding="md" className="xl:sticky xl:top-4 xl:self-start">
+          <SectionHeader
+            eyebrow="Pages"
+            title={`${pages.length} page${pages.length === 1 ? "" : "s"}`}
+            description="Agents can click pages, type working, draw locally, and save without Firebase writes."
+          />
+          <div className="mt-4 space-y-2">
+            {pages.map((page) => {
+              const selected = page.id === selectedPage?.id;
+              return (
+                <button
+                  key={page.id}
+                  type="button"
+                  onClick={() => setSelectedPageId(page.id)}
+                  className={`w-full rounded-[1rem] border p-3 text-left transition ${
+                    selected
+                      ? "border-warm-border bg-warm-glow text-white"
+                      : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                  }`}
+                >
+                  <div className="text-sm font-semibold">Page {page.pageNumber}</div>
+                  <div className="mt-1 text-xs text-text-muted">
+                    {page.questionPrompt ? "Question page" : "Working page"}
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+        </Card>
+
+        <div className="min-w-0 space-y-4">
+          {selectedPage?.questionPrompt ? (
+            <Card tone="warm" padding="md">
+              <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                Question prompt
+              </div>
+              <p className="mt-2 text-base leading-7 text-white">{selectedPage.questionPrompt}</p>
+            </Card>
+          ) : null}
+
+          <Card padding="md">
+            <SectionHeader
+              eyebrow={`Page ${selectedPage?.pageNumber ?? 1}`}
+              title="Typed working"
+              description="Typing lives inside the notebook page, not in a separate attempt form."
+            />
+            <Textarea
+              rows={9}
+              value={typedContent}
+              onChange={(event) => {
+                if (!selectedPage) return;
+                setPageTextById((current) => ({
+                  ...current,
+                  [selectedPage.id]: event.target.value,
+                }));
+              }}
+              placeholder="Work through the question here..."
+              containerClassName="mt-4"
+            />
+          </Card>
+
+          <Card padding="md">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <SectionHeader
+                eyebrow="Pen mode"
+                title="Draw working"
+                description="Simple local drawing only. No OCR, handwriting recognition, or image AI is claimed here."
+              />
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={currentStrokes.length === 0}
+                  onClick={() => updateCurrentStrokes((current) => current.slice(0, -1))}
+                >
+                  Undo
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={currentStrokes.length === 0}
+                  onClick={() => updateCurrentStrokes(() => [])}
+                >
+                  Clear
+                </Button>
+              </div>
+            </div>
+            <div className="mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] bg-white/[0.04]">
+              <svg
+                role="img"
+                aria-label="Public notebook drawing page"
+                viewBox={`0 0 ${NOTEBOOK_CANVAS_WIDTH} ${NOTEBOOK_CANVAS_HEIGHT}`}
+                className="block aspect-[1.45/1] w-full touch-none bg-[linear-gradient(rgba(255,255,255,0.045)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:40px_40px]"
+                onPointerDown={startDrawing}
+                onPointerMove={draw}
+                onPointerUp={stopDrawing}
+                onPointerCancel={stopDrawing}
+              >
+                {currentStrokes.map((stroke, index) => (
+                  <path
+                    key={index}
+                    d={notebookPath(stroke.points)}
+                    fill="none"
+                    stroke="var(--color-warm-accent)"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="5"
+                  />
+                ))}
+              </svg>
+            </div>
+          </Card>
+        </div>
+      </div>
     </div>
   );
 }

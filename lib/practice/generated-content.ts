@@ -29,6 +29,7 @@ export type PracticeQuestionDraftQuestionData = {
   answerText?: string | null;
   solutionText?: string | null;
   markScheme: null;
+  folderIds: string[];
   topicIds: string[];
   difficulty: null;
   sourceType: "ai-generated";
@@ -117,6 +118,7 @@ export function buildPracticeQuestionDraftData(
     answerText: answerText ? answerText.slice(0, 4_000) : null,
     solutionText: solutionText ? solutionText.slice(0, 8_000) : null,
     markScheme: null,
+    folderIds: [],
     topicIds: draft.topicIds,
     difficulty: null,
     sourceType: "ai-generated",

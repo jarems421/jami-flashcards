@@ -70,6 +70,64 @@ Public walkthrough checks:
 15. Open Library and confirm source actions are simulated/local-only.
 16. Confirm the UI says public actions are local-only and do not write to Firebase.
 
+Phase 5 folder foundation checks:
+
+1. Open `/dashboard/folders`.
+2. Confirm the page explains folders as broad study spaces, not topics.
+3. Create a folder called Linear Algebra.
+4. Optionally link existing topics such as Eigenvalues.
+5. Confirm the folder appears in the folder grid.
+6. Open the folder detail page.
+7. Confirm it shows Notebooks, Decks, Sources, Practice sets, Past paper shells, and linked questions.
+8. Link an existing deck to the folder and confirm it still appears globally in Decks.
+9. Link an existing source to the folder and confirm it still appears globally in Library.
+10. Link an existing practice question to the folder and confirm it still appears in Practice.
+11. Confirm Cards do not expose folder linking directly; cards inherit folder context through decks.
+
+Phase 5 notebook workspace checks:
+
+1. From a folder detail page, create a notebook called Eigenvalues practice.
+2. Confirm the notebook appears inside the folder.
+3. Open the notebook editor.
+4. Type working into page 1 and save.
+5. Draw on the page canvas, then test Undo and Clear.
+6. Add page 2, navigate between pages, and save/reload.
+7. Confirm the notebook remains linked to its folder and topics.
+8. Confirm the public walkthrough notebook at `/dashboard/notebooks/notebook-eigenvalues?agent=1` stays local-only.
+9. Confirm the notebook is framed as the main working surface, not a scratchpad side tool.
+
+Phase 5 Practice transition checks:
+
+1. Open `/dashboard/practise`.
+2. Confirm user-facing copy says Practice.
+3. Confirm the page starts with folders/recent notebooks rather than forcing the old question-bank form.
+4. Confirm the old question bank remains accessible as a supporting tool.
+5. Confirm no user is forced into an unclosable create-question screen.
+6. Confirm `/dashboard/practise?question=...` and `/dashboard/practise?topic=...` still work.
+
+Phase 5 practice set and paper shell checks:
+
+1. From a folder detail page, create a manual practice set shell.
+2. Confirm it appears under Practice sets and does not claim AI generation yet.
+3. Create a past paper shell with year/module metadata.
+4. Confirm it appears under Past papers and does not claim PDF annotation, OCR, or parsing.
+5. Confirm signed-out `/dashboard/folders?agent=1` shows seeded folders, notebooks, practice sets, and paper shells as local-only.
+
+Phase 5 Today/Progress checks:
+
+1. Open Today and confirm the main recommendation still prioritises due cards, mistakes, drafts, weak topics, and goals before workspace continuation.
+2. Confirm Today can show a light Workspace card with folder/notebook/set/paper counts.
+3. Open Progress and confirm weak topics can point to linked folders, notebooks, and sources.
+4. Confirm Progress remains narrow and constructive rather than becoming a folder analytics page.
+
+Phase 5 flashcard AI de-scope checks:
+
+1. Open Cards or a Deck detail page.
+2. Confirm normal card creation does not show AI answer autocomplete when `enableFlashcardAi` is false.
+3. Confirm `/api/ai/autocomplete-card` returns disabled when the flag is false.
+4. Confirm source-generated flashcard drafts and Tutor-generated flashcard drafts still work.
+5. Confirm flashcard review remains fast and not AI-centred.
+
 Authenticated checks:
 
 1. Sign in with a normal account.

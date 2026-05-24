@@ -40,6 +40,12 @@ import type { Question, Attempt } from "@/lib/practice/questions";
 import type { MasteryEvent } from "@/lib/practice/mastery";
 import type { Source } from "@/lib/practice/sources";
 import { buildTodayPlan, type TodayPlan } from "@/lib/dashboard/today-plan";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
+import type { Notebook } from "@/lib/workspace/notebooks";
+import type { PracticeSet, PastPaper } from "@/lib/workspace/practice-sets";
+import { getActiveStudyFolders } from "@/services/study/folders";
+import { getActiveNotebooks } from "@/services/study/notebooks";
+import { getActivePastPapers, getActivePracticeSets } from "@/services/study/practice-work";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
@@ -232,6 +238,14 @@ function TodayStatusRow({ plan }: { plan: TodayPlan }) {
 
 function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
   const actions = [
+    plan.workspace.recentNotebook
+      ? {
+          label: "Continue notebook",
+          title: plan.workspace.recentNotebook.title,
+          detail: "Pick up your latest working page.",
+          href: plan.workspace.recentNotebook.href,
+        }
+      : null,
     plan.recentMistakes[0]
       ? {
           label: "Retry mistake",
@@ -287,6 +301,44 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
             <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.detail}</p>
           </Link>
         ))}
+      </div>
+    </Card>
+  );
+}
+
+function WorkspaceSnapshotCard({ plan }: { plan: TodayPlan }) {
+  const hasWorkspace =
+    plan.workspace.folderCount > 0 ||
+    plan.workspace.notebookCount > 0 ||
+    plan.workspace.practiceSetCount > 0 ||
+    plan.workspace.pastPaperCount > 0;
+
+  if (!hasWorkspace) return null;
+
+  return (
+    <Card padding="lg">
+      <SectionHeader
+        eyebrow="Workspace"
+        title={
+          plan.workspace.recentNotebook
+            ? `Continue ${plan.workspace.recentNotebook.title}`
+            : "Study folders are ready"
+        }
+        description="Folders keep notebooks, decks, sources, and practice work together without replacing the fast global pages."
+      />
+      <div className="mt-5 grid gap-3 sm:grid-cols-4">
+        <MiniMetric label="Folders" value={plan.workspace.folderCount} />
+        <MiniMetric label="Notebooks" value={plan.workspace.notebookCount} />
+        <MiniMetric label="Sets" value={plan.workspace.practiceSetCount} />
+        <MiniMetric label="Papers" value={plan.workspace.pastPaperCount} />
+      </div>
+      <div className="mt-5 flex flex-wrap gap-2">
+        {plan.workspace.recentNotebook ? (
+          <ActionPill href={plan.workspace.recentNotebook.href}>Continue notebook</ActionPill>
+        ) : null}
+        <ActionPill href="/dashboard/folders" variant="secondary">
+          Open folders
+        </ActionPill>
       </div>
     </Card>
   );
@@ -547,6 +599,10 @@ export default function DashboardHome() {
   const [masteryEvents, setMasteryEvents] = useState<MasteryEvent[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([]);
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [practiceSets, setPracticeSets] = useState<PracticeSet[]>([]);
+  const [pastPapers, setPastPapers] = useState<PastPaper[]>([]);
   const [progressVisited, setProgressVisited] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -623,6 +679,10 @@ export default function DashboardHome() {
         nextMasteryEvents,
         nextDrafts,
         nextSources,
+        nextStudyFolders,
+        nextNotebooks,
+        nextPracticeSets,
+        nextPastPapers,
       ] = await Promise.all([
         getDocs(collection(db, "users", uid, "goals")).catch(() => null),
         loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
@@ -632,6 +692,10 @@ export default function DashboardHome() {
         getMasteryEvents(uid).catch(() => [] as MasteryEvent[]),
         getGeneratedContentDrafts(uid).catch(() => [] as GeneratedContentDraft[]),
         getActiveSources(uid).catch(() => [] as Source[]),
+        getActiveStudyFolders(uid).catch(() => [] as StudyFolder[]),
+        getActiveNotebooks(uid).catch(() => [] as Notebook[]),
+        getActivePracticeSets(uid).catch(() => [] as PracticeSet[]),
+        getActivePastPapers(uid).catch(() => [] as PastPaper[]),
       ]);
 
       setStudyActivity(activity);
@@ -641,6 +705,10 @@ export default function DashboardHome() {
       setMasteryEvents(nextMasteryEvents);
       setDrafts(nextDrafts);
       setSources(nextSources);
+      setStudyFolders(nextStudyFolders);
+      setNotebooks(nextNotebooks);
+      setPracticeSets(nextPracticeSets);
+      setPastPapers(nextPastPapers);
 
       if (goalsSnapshot) {
         const now2 = Date.now();
@@ -718,6 +786,10 @@ export default function DashboardHome() {
         masteryEvents,
         drafts,
         sources,
+        studyFolders,
+        notebooks,
+        practiceSets,
+        pastPapers,
         activeGoals,
         reviewedToday: todayReviews,
         progressVisited,
@@ -728,11 +800,15 @@ export default function DashboardHome() {
       cards,
       decks,
       drafts,
+      notebooks,
+      pastPapers,
+      practiceSets,
       dueCards,
       masteryEvents,
       progressVisited,
       questions,
       sources,
+      studyFolders,
       todayReviews,
       topics,
     ]
@@ -842,6 +918,7 @@ export default function DashboardHome() {
               <TodayReviewCard plan={todayPlan} />
               <RepairQueueCard plan={todayPlan} />
               <DraftQueueCard plan={todayPlan} />
+              <WorkspaceSnapshotCard plan={todayPlan} />
               <WeakTopicsCard plan={todayPlan} />
               <GoalSnapshotCard plan={todayPlan} />
             </div>

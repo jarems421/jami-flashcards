@@ -1,0 +1,287 @@
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  orderBy,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
+import { db } from "@/services/firebase/client";
+import { withTimeout } from "@/services/firebase/firestore";
+import {
+  buildNotebookPagePayload,
+  buildNotebookPayload,
+  mapNotebookData,
+  mapNotebookPageData,
+  normalizeNotebookTitle,
+  type Notebook,
+  type NotebookPage,
+  type NotebookPageType,
+  type NotebookStrokeData,
+  type NotebookType,
+} from "@/lib/workspace/notebooks";
+
+const LOAD_MS = 30_000;
+const WRITE_MS = 30_000;
+
+function notebooksCollection(userId: string) {
+  return collection(db, "users", userId, "notebooks");
+}
+
+function notebookPagesCollection(userId: string) {
+  return collection(db, "users", userId, "notebookPages");
+}
+
+export async function getNotebooks(userId: string): Promise<Notebook[]> {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+
+  const snapshot = await withTimeout(
+    getDocs(query(notebooksCollection(normalizedUserId), orderBy("updatedAt", "desc"))),
+    LOAD_MS,
+    "Load notebooks"
+  );
+
+  return snapshot.docs.map((notebookDoc) =>
+    mapNotebookData(notebookDoc.id, notebookDoc.data() as Record<string, unknown>)
+  );
+}
+
+export async function getActiveNotebooks(userId: string) {
+  const notebooks = await getNotebooks(userId);
+  return notebooks.filter((notebook) => !notebook.archived);
+}
+
+export async function getNotebookById(
+  userId: string,
+  notebookId: string
+): Promise<Notebook | null> {
+  const normalizedUserId = userId.trim();
+  const normalizedNotebookId = notebookId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!normalizedNotebookId) {
+    throw new Error("Missing notebookId.");
+  }
+
+  const snapshot = await withTimeout(
+    getDoc(doc(db, "users", normalizedUserId, "notebooks", normalizedNotebookId)),
+    LOAD_MS,
+    "Load notebook"
+  );
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return mapNotebookData(snapshot.id, snapshot.data() as Record<string, unknown>);
+}
+
+export async function getNotebooksForFolder(userId: string, folderId: string) {
+  const normalizedUserId = userId.trim();
+  const normalizedFolderId = folderId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!normalizedFolderId) {
+    throw new Error("Missing folderId.");
+  }
+
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        notebooksCollection(normalizedUserId),
+        where("folderId", "==", normalizedFolderId),
+        orderBy("updatedAt", "desc")
+      )
+    ),
+    LOAD_MS,
+    "Load folder notebooks"
+  );
+
+  return snapshot.docs
+    .map((notebookDoc) =>
+      mapNotebookData(notebookDoc.id, notebookDoc.data() as Record<string, unknown>)
+    )
+    .filter((notebook) => !notebook.archived);
+}
+
+export async function createNotebook(
+  userId: string,
+  input: {
+    folderId: string;
+    title: string;
+    type?: NotebookType;
+    topicIds?: string[];
+    sourceIds?: string[];
+    practiceSetId?: string;
+    pastPaperId?: string;
+  }
+) {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+
+  const payload = buildNotebookPayload(input);
+  const docRef = await withTimeout(
+    addDoc(notebooksCollection(normalizedUserId), payload),
+    WRITE_MS,
+    "Create notebook"
+  );
+
+  return mapNotebookData(docRef.id, payload);
+}
+
+export async function updateNotebook(
+  userId: string,
+  notebookId: string,
+  input: Partial<{
+    title: string;
+    type: NotebookType;
+    topicIds: string[];
+    sourceIds: string[];
+    archived: boolean;
+  }>
+) {
+  const normalizedUserId = userId.trim();
+  const normalizedNotebookId = notebookId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!normalizedNotebookId) {
+    throw new Error("Missing notebookId.");
+  }
+
+  const updates: Record<string, unknown> = {
+    updatedAt: Date.now(),
+  };
+
+  if (input.title !== undefined) {
+    const title = normalizeNotebookTitle(input.title);
+    if (!title) {
+      throw new Error("Notebook title is required.");
+    }
+    updates.title = title;
+  }
+  if (input.type !== undefined) updates.type = input.type;
+  if (input.topicIds !== undefined) updates.topicIds = input.topicIds;
+  if (input.sourceIds !== undefined) updates.sourceIds = input.sourceIds;
+  if (typeof input.archived === "boolean") updates.archived = input.archived;
+
+  await withTimeout(
+    updateDoc(doc(db, "users", normalizedUserId, "notebooks", normalizedNotebookId), updates),
+    WRITE_MS,
+    "Update notebook"
+  );
+}
+
+export async function getNotebookPages(
+  userId: string,
+  notebookId: string
+): Promise<NotebookPage[]> {
+  const normalizedUserId = userId.trim();
+  const normalizedNotebookId = notebookId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!normalizedNotebookId) {
+    throw new Error("Missing notebookId.");
+  }
+
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        notebookPagesCollection(normalizedUserId),
+        where("notebookId", "==", normalizedNotebookId),
+        orderBy("pageNumber", "asc")
+      )
+    ),
+    LOAD_MS,
+    "Load notebook pages"
+  );
+
+  return snapshot.docs.map((pageDoc) =>
+    mapNotebookPageData(pageDoc.id, pageDoc.data() as Record<string, unknown>)
+  );
+}
+
+export async function createNotebookPage(
+  userId: string,
+  input: {
+    notebookId: string;
+    folderId: string;
+    pageNumber: number;
+    title?: string;
+    pageType?: NotebookPageType;
+    typedContent?: string;
+    strokeData?: NotebookStrokeData;
+    questionPrompt?: string;
+    linkedQuestionId?: string;
+    linkedSourceId?: string;
+    linkedPastPaperId?: string;
+  }
+) {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+
+  const payload = buildNotebookPagePayload(input);
+  const docRef = await withTimeout(
+    addDoc(notebookPagesCollection(normalizedUserId), payload),
+    WRITE_MS,
+    "Create notebook page"
+  );
+
+  return mapNotebookPageData(docRef.id, payload);
+}
+
+export async function updateNotebookPage(
+  userId: string,
+  pageId: string,
+  input: Partial<{
+    title: string;
+    pageType: NotebookPageType;
+    typedContent: string;
+    strokeData: NotebookStrokeData | null;
+    questionPrompt: string;
+    linkedQuestionId: string;
+    linkedSourceId: string;
+    linkedPastPaperId: string;
+  }>
+) {
+  const normalizedUserId = userId.trim();
+  const normalizedPageId = pageId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!normalizedPageId) {
+    throw new Error("Missing pageId.");
+  }
+
+  const updates: Record<string, unknown> = {
+    updatedAt: Date.now(),
+  };
+
+  if (input.title !== undefined) updates.title = input.title.trim().slice(0, 120) || null;
+  if (input.pageType !== undefined) updates.pageType = input.pageType;
+  if (input.typedContent !== undefined) updates.typedContent = input.typedContent.trim().slice(0, 30_000) || null;
+  if (input.strokeData !== undefined) updates.strokeData = input.strokeData;
+  if (input.questionPrompt !== undefined) updates.questionPrompt = input.questionPrompt.trim().slice(0, 4_000) || null;
+  if (input.linkedQuestionId !== undefined) updates.linkedQuestionId = input.linkedQuestionId.trim().slice(0, 160) || null;
+  if (input.linkedSourceId !== undefined) updates.linkedSourceId = input.linkedSourceId.trim().slice(0, 160) || null;
+  if (input.linkedPastPaperId !== undefined) updates.linkedPastPaperId = input.linkedPastPaperId.trim().slice(0, 160) || null;
+
+  await withTimeout(
+    updateDoc(doc(db, "users", normalizedUserId, "notebookPages", normalizedPageId), updates),
+    WRITE_MS,
+    "Update notebook page"
+  );
+}

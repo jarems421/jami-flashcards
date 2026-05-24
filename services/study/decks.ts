@@ -28,6 +28,7 @@ export type Deck = {
   createdAt: number;
   colorPreset: DeckColorPresetId;
   iconPreset: DeckIconPresetId;
+  folderIds: string[];
 };
 
 type DeckDoc = {
@@ -37,6 +38,7 @@ type DeckDoc = {
   createdAt?: number;
   colorPreset?: string;
   iconPreset?: string;
+  folderIds?: unknown;
 };
 
 const LOAD_MS = 30_000;
@@ -66,6 +68,12 @@ function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
     typeof data.iconPreset === "string"
       ? (data.iconPreset as DeckIconPresetId)
       : DEFAULT_DECK_ICON_PRESET;
+  const folderIds = Array.isArray(data.folderIds)
+    ? data.folderIds
+        .filter((folderId): folderId is string => typeof folderId === "string" && Boolean(folderId.trim()))
+        .map((folderId) => folderId.trim().slice(0, 160))
+        .slice(0, 12)
+    : [];
 
   return {
     id: docSnap.id,
@@ -74,6 +82,7 @@ function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
     createdAt,
     colorPreset,
     iconPreset,
+    folderIds,
   };
 }
 
@@ -165,6 +174,7 @@ export const createDeck = async (userId: string, name: string): Promise<Deck> =>
       createdAt,
       colorPreset: DEFAULT_DECK_COLOR_PRESET,
       iconPreset: DEFAULT_DECK_ICON_PRESET,
+      folderIds: [],
     }),
     CREATE_MS,
     "Create deck"
@@ -177,6 +187,7 @@ export const createDeck = async (userId: string, name: string): Promise<Deck> =>
     createdAt,
     colorPreset: DEFAULT_DECK_COLOR_PRESET,
     iconPreset: DEFAULT_DECK_ICON_PRESET,
+    folderIds: [],
   };
 };
 
@@ -257,6 +268,31 @@ export const updateDeckStyle = async (
     }),
     UPDATE_MS,
     "Update deck style"
+  );
+};
+
+export const updateDeckFolders = async (
+  userId: string,
+  deckId: string,
+  folderIds: string[]
+): Promise<void> => {
+  const normalizedDeckId = deckId.trim();
+  await requireOwnedDeck(userId, normalizedDeckId);
+
+  const normalizedFolderIds = Array.from(
+    new Set(
+      folderIds
+        .map((folderId) => folderId.trim().slice(0, 160))
+        .filter(Boolean)
+    )
+  ).slice(0, 12);
+
+  await withTimeout(
+    updateDoc(doc(db, "decks", normalizedDeckId), {
+      folderIds: normalizedFolderIds,
+    }),
+    UPDATE_MS,
+    "Update deck folders"
   );
 };
 

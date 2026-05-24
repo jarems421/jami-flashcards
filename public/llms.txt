@@ -16,8 +16,9 @@ Important rules:
 Core route family:
 - /dashboard?agent=1 - Today / daily command centre.
 - /dashboard/study?agent=1 - Learn / flashcard review.
-- /dashboard/practise?agent=1 - Practise / questions, attempts, contextual Tutor, scratchpad, voice transcript fallback, drafts.
+- /dashboard/practise?agent=1 - Practice / questions, attempts, contextual Tutor, notebook-style working tools, voice transcript fallback, drafts.
 - /dashboard/progress?agent=1 - Progress / weak topics, mistakes, support level, drafts.
+- /dashboard/folders?agent=1 - Folders / folder-first study spaces with seeded local data.
 - /dashboard/library?agent=1 - Library / seeded sources and local source actions.
 - /dashboard/cards?agent=1 - Cards / browse cards and drafts.
 - /dashboard/decks?agent=1 - Decks / card-set organisation.
@@ -29,14 +30,14 @@ Suggested click test:
 1. Open /agent.
 2. Click "Start public dashboard".
 3. Open Learn and flip/review a seeded card.
-4. Open Practise, type answer/working, save a local attempt.
+4. Open Practice, type answer/working, save a local attempt.
 5. Ask Tutor for a hint or use "I'm stuck here".
 6. Make a flashcard draft from Tutor.
 7. Open Progress and confirm local mistake/draft state is visible.
 8. Open Library and inspect seeded source actions.
 9. Open Account and confirm no private data was accessed.
 
-Phase 4 Practise/Tutor test:
+Phase 4 Practice/Tutor test:
 1. Open /dashboard/practise?agent=1.
 2. Type an answer and typed working.
 3. Click "I'm stuck here".
