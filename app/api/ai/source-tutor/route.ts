@@ -13,7 +13,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const REQUEST_TIMEOUT_MS = 15_000;
 
 function getFallbackReply() {
-  return "Tutor is taking longer than usual. For this source, pick one key definition, restate it in your own words, then turn it into one flashcard or one short practice question.";
+  return "Based on this source, pick one key definition, restate it in your own words, then turn it into one flashcard or one short practice question.";
 }
 
 export async function POST(request: NextRequest) {
@@ -65,7 +65,10 @@ export async function POST(request: NextRequest) {
   const source = mapSourceData(sourceSnapshot.id, sourceSnapshot.data() ?? {});
   if (!source.contentText) {
     return Response.json(
-      { error: "This source has no pasted text yet. File and link parsing comes later." },
+      {
+        error:
+          "This source is saved as a reference only. Paste the relevant text before using Tutor or generating drafts.",
+      },
       { status: 400 }
     );
   }
@@ -76,8 +79,9 @@ export async function POST(request: NextRequest) {
       timeoutMs: REQUEST_TIMEOUT_MS,
       request: {
         systemInstruction: `You are Jami's source tutor.
-Ground your answer in the supplied source text.
-If you use outside knowledge, label it clearly as outside context.
+Ground your answer in the supplied source text and start with "Based on this source".
+If the source does not contain enough information, say that clearly before offering a next step.
+If you use outside knowledge, label it under "Outside context".
 Be concise, student-friendly, and revision-focused.
 Do not create final flashcards or questions unless asked by a separate draft action.`,
         contents: [

@@ -6,6 +6,12 @@ import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { generateGeminiText } from "@/lib/ai/gemini";
 import { parseGeneratedQuestionDrafts } from "@/lib/ai/question-generation";
+import {
+  clampSourceDraftCount,
+  filterSourceFlashcardDrafts,
+  filterSourceQuestionDrafts,
+  type SourceDraftKind,
+} from "@/lib/ai/source-draft-quality";
 import { hasDemoClaim } from "@/lib/demo/token";
 import { mapSourceData } from "@/lib/practice/sources";
 
@@ -13,10 +19,6 @@ export const runtime = "nodejs";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const REQUEST_TIMEOUT_MS = 20_000;
-const MAX_FLASHCARD_DRAFTS = 8;
-const MAX_PRACTICE_DRAFTS = 5;
-
-type SourceDraftKind = "flashcard" | "practice-question";
 
 function isSourceDraftKind(value: unknown): value is SourceDraftKind {
   return value === "flashcard" || value === "practice-question";
@@ -24,15 +26,20 @@ function isSourceDraftKind(value: unknown): value is SourceDraftKind {
 
 function getPrompt(kind: SourceDraftKind, count: number) {
   if (kind === "flashcard") {
-    return `Create ${count} concise flashcard drafts from the source.
+    return `Create up to ${count} concise flashcard drafts from the source.
 Return JSON only as an array of objects with "front" and "back".
 Each card should test one concept or distinction.
+Every card must be directly answerable from the source text.
+Do not make vague cards such as "summarise this source".
+If the source does not support ${count} useful cards, return fewer.
 Do not invent facts that are not grounded in the source.`;
   }
 
-  return `Create ${count} practice question drafts from the source.
+  return `Create up to ${count} practice question drafts from the source.
 Return JSON only as an array of objects with "questionText", "answerText", and "solutionText".
 Questions should be short, useful for revision, and answerable from the source.
+Every question must include an expected answer.
+If the source does not support ${count} useful questions, return fewer.
 Do not invent facts that are not grounded in the source.`;
 }
 
@@ -62,11 +69,7 @@ export async function POST(request: NextRequest) {
     const body = await request.json();
     sourceId = typeof body.sourceId === "string" ? body.sourceId.trim().slice(0, 160) : "";
     kind = isSourceDraftKind(body.kind) ? body.kind : "flashcard";
-    const requestedCount = typeof body.count === "number" ? Math.round(body.count) : kind === "flashcard" ? 5 : 3;
-    count =
-      kind === "flashcard"
-        ? Math.max(1, Math.min(MAX_FLASHCARD_DRAFTS, requestedCount))
-        : Math.max(1, Math.min(MAX_PRACTICE_DRAFTS, requestedCount));
+    count = clampSourceDraftCount(kind, body.count);
     if (!sourceId) {
       return Response.json({ error: "sourceId is required" }, { status: 400 });
     }
@@ -91,7 +94,10 @@ export async function POST(request: NextRequest) {
   const source = mapSourceData(sourceSnapshot.id, sourceSnapshot.data() ?? {});
   if (!source.contentText) {
     return Response.json(
-      { error: "This source has no pasted text yet. File and link parsing comes later." },
+      {
+        error:
+          "This source is saved as a reference only. Paste the relevant text before using Tutor or generating drafts.",
+      },
       { status: 400 }
     );
   }
@@ -103,7 +109,8 @@ export async function POST(request: NextRequest) {
       request: {
         systemInstruction: `You create reviewed-by-human draft learning content for Jami.
 Everything you produce remains a draft until the student approves it.
-Use only the supplied source. Return valid JSON only.`,
+Use only the supplied source. Discard uncertain or weak items instead of padding the list.
+Return valid JSON only.`,
         contents: [
           {
             role: "user",
@@ -127,9 +134,19 @@ ${source.contentText.slice(0, 12_000)}`,
 
     const now = Date.now();
     const draftsCollection = adminDb.collection("users").doc(uid).collection("generatedContentDrafts");
+    const parsedCardDrafts = kind === "flashcard" ? parseGeneratedCardDrafts(generated) : [];
+    const parsedQuestionDrafts = kind === "practice-question" ? parseGeneratedQuestionDrafts(generated) : [];
+    const filteredCardDrafts =
+      kind === "flashcard" ? filterSourceFlashcardDrafts(parsedCardDrafts, count) : [];
+    const filteredQuestionDrafts =
+      kind === "practice-question" ? filterSourceQuestionDrafts(parsedQuestionDrafts, count) : [];
+    const removedDraftCount =
+      kind === "flashcard"
+        ? Math.max(0, parsedCardDrafts.length - filteredCardDrafts.length)
+        : Math.max(0, parsedQuestionDrafts.length - filteredQuestionDrafts.length);
     const drafts =
       kind === "flashcard"
-        ? parseGeneratedCardDrafts(generated).slice(0, MAX_FLASHCARD_DRAFTS).map((draft) => ({
+        ? filteredCardDrafts.map((draft) => ({
             kind: "flashcard" as const,
             title: draft.front.slice(0, 120) || "Source flashcard draft",
             front: draft.front,
@@ -142,7 +159,7 @@ ${source.contentText.slice(0, 12_000)}`,
             createdAt: now,
             updatedAt: now,
           }))
-        : parseGeneratedQuestionDrafts(generated).slice(0, MAX_PRACTICE_DRAFTS).map((draft) => ({
+        : filteredQuestionDrafts.map((draft) => ({
             kind: "practice-question" as const,
             title: draft.questionText.slice(0, 120) || "Source practice question draft",
             questionText: draft.questionText,
@@ -157,7 +174,17 @@ ${source.contentText.slice(0, 12_000)}`,
             updatedAt: now,
           }));
 
-    const safeDrafts = drafts.length > 0 ? drafts : [];
+    if (drafts.length === 0) {
+      return Response.json(
+        {
+          error:
+            "Jami could not find enough source-grounded draft material. Try a longer pasted source or generate fewer drafts.",
+        },
+        { status: 422 }
+      );
+    }
+
+    const safeDrafts = drafts;
     const refs = await Promise.all(safeDrafts.map((draft) => draftsCollection.add(draft)));
 
     return Response.json({
@@ -165,6 +192,8 @@ ${source.contentText.slice(0, 12_000)}`,
         id: refs[index].id,
         ...draft,
       })),
+      removedDraftCount,
+      requestedCount: count,
     });
   } catch (error) {
     console.error("Source draft generation error:", error);

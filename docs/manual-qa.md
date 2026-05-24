@@ -23,14 +23,18 @@ Library loop:
 2. Add a pasted source or manual note.
 3. Link it to an existing topic.
 4. Ask Tutor about the selected source.
-5. Generate flashcard drafts from the source.
-6. Edit one draft and approve/add it to a deck.
-7. Confirm the card appears in Learn/Cards with the source link preserved.
-8. Generate practice question drafts from the source.
-9. Edit and approve one practice draft.
-10. Confirm the approved question appears in Practise with a source label.
-11. Check Today for source-linked draft actions.
-12. Check Progress for linked source recommendations on weak topics.
+5. Confirm the reply starts from the source context and separates outside context if needed.
+6. Generate flashcard drafts from the source and confirm the batch stays small.
+7. Confirm each draft is labelled as based on the selected source.
+8. Edit one draft and approve/add it to a deck.
+9. Confirm the card appears in Learn/Cards with the source link preserved.
+10. Generate practice question drafts from the source and confirm each has an expected answer.
+11. Edit and approve one practice draft.
+12. Confirm the approved question appears in Practise with a source label.
+13. Check Today for source-linked draft actions.
+14. Check Progress for linked source recommendations on weak topics.
+15. On mobile/tablet widths, confirm Library uses Sources/Source/Actions navigation without horizontal scroll.
+16. Confirm the Source Tutor transcript can be collapsed and does not take over the page.
 
 Public walkthrough checks:
 

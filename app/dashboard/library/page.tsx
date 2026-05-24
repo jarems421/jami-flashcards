@@ -33,6 +33,7 @@ import {
 
 type Feedback = { type: "success" | "error"; message: string };
 type TutorMessage = { role: "user" | "model"; text: string };
+type LibraryMobileTab = "sources" | "source" | "actions";
 
 const sourceTypes: Array<{ value: SourceType; label: string; helper: string }> = [
   { value: "pasted_text", label: "Paste text", helper: "Notes, extracts, worked examples." },
@@ -66,6 +67,7 @@ function DraftEditor({
   onDeckChange,
   onSaved,
   userId,
+  sourceTitle,
 }: {
   draft: GeneratedContentDraft;
   topics: Topic[];
@@ -74,6 +76,7 @@ function DraftEditor({
   onDeckChange: (value: string) => void;
   onSaved: (message: string) => void;
   userId: string;
+  sourceTitle?: string;
 }) {
   const [front, setFront] = useState(draft.front ?? "");
   const [back, setBack] = useState(draft.back ?? "");
@@ -99,11 +102,11 @@ function DraftEditor({
             {isFlashcard ? "Flashcard draft" : "Practice question draft"}
           </div>
           <div className="mt-1 text-xs text-text-muted">
-            Draft - review before it enters Learn or Practise.
+            Draft - based on a saved source. Review before it enters Learn or Practise.
           </div>
         </div>
         <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
-          Source-linked
+          Based on: {sourceTitle ?? "Library source"}
         </span>
       </div>
       <div className="mt-4 space-y-3">
@@ -142,22 +145,39 @@ function DraftEditor({
           ))}
         </div>
         {isFlashcard ? (
-          <label className="block">
-            <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-              Destination deck
-            </span>
-            <select
-              value={selectedDeckId}
-              onChange={(event) => onDeckChange(event.target.value)}
-              className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-white/[0.1] bg-surface-panel-strong px-3 text-sm text-white outline-none focus:border-warm-accent"
-            >
-              {decks.map((deck) => (
-                <option key={deck.id} value={deck.id}>
-                  {deck.name}
-                </option>
-              ))}
-            </select>
-          </label>
+          decks.length > 0 ? (
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                Destination deck
+              </span>
+              <select
+                value={selectedDeckId}
+                onChange={(event) => onDeckChange(event.target.value)}
+                className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-white/[0.1] bg-surface-panel-strong px-3 text-sm text-white outline-none focus:border-warm-accent"
+              >
+                {decks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>
+                    {deck.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="rounded-[1.15rem] border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
+              <div className="font-semibold text-white">
+                Create a deck before adding this flashcard.
+              </div>
+              <p className="mt-1">
+                Drafts can stay here, but flashcards need a deck before they join Learn.
+              </p>
+              <Link
+                href="/dashboard/decks"
+                className="mt-3 inline-flex min-h-[2.4rem] items-center justify-center rounded-full border border-warm-border bg-white/[0.06] px-3 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.1]"
+              >
+                Create deck
+              </Link>
+            </div>
+          )
         ) : null}
         <div className="flex flex-wrap gap-2">
           <Button
@@ -241,6 +261,9 @@ export default function LibraryPage() {
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [deckIdByDraft, setDeckIdByDraft] = useState<Record<string, string>>({});
+  const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
+  const [showTutorTranscript, setShowTutorTranscript] = useState(true);
+  const [mobileTab, setMobileTab] = useState<LibraryMobileTab>("source");
 
   const selectedSource = useMemo(
     () => sources.find((source) => source.id === selectedSourceId) ?? sources[0] ?? null,
@@ -256,6 +279,13 @@ export default function LibraryPage() {
           draft.sourceId === selectedSource.id
       ),
     [drafts, selectedSource]
+  );
+  const selectedDraft = useMemo(
+    () =>
+      sourceDrafts.find((draft) => draft.id === selectedDraftId) ??
+      sourceDrafts[0] ??
+      null,
+    [selectedDraftId, sourceDrafts]
   );
 
   const loadAll = useCallback(async () => {
@@ -302,6 +332,14 @@ export default function LibraryPage() {
       });
     }
   }, [decks, drafts]);
+
+  useEffect(() => {
+    setSelectedDraftId((current) =>
+      current && sourceDrafts.some((draft) => draft.id === current)
+        ? current
+        : sourceDrafts[0]?.id ?? null
+    );
+  }, [sourceDrafts]);
 
   const createNextSource = async () => {
     setBusyAction("create-source");
@@ -356,11 +394,15 @@ export default function LibraryPage() {
     setBusyAction(kind);
     setFeedback(null);
     try {
-      const created = await generateSourceDrafts({ sourceId: selectedSource.id, kind });
+      const result = await generateSourceDrafts({ sourceId: selectedSource.id, kind });
       await loadAll();
+      const removedMessage =
+        result.removedDraftCount > 0
+          ? ` ${result.removedDraftCount} weaker suggestion${result.removedDraftCount === 1 ? " was" : "s were"} removed.`
+          : "";
       setFeedback({
         type: "success",
-        message: `${created.length} ${kind === "flashcard" ? "flashcard" : "practice question"} draft${created.length === 1 ? "" : "s"} created. Review before approving.`,
+        message: `${result.drafts.length} source-grounded ${kind === "flashcard" ? "flashcard" : "practice question"} draft${result.drafts.length === 1 ? "" : "s"} created.${removedMessage} Review before approving.`,
       });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Could not generate drafts." });
@@ -398,6 +440,11 @@ export default function LibraryPage() {
       tone: "good" as const,
     },
   ];
+  const mobileTabs: Array<{ value: LibraryMobileTab; label: string }> = [
+    { value: "sources", label: "Sources" },
+    { value: "source", label: "Source" },
+    { value: "actions", label: "Actions" },
+  ];
 
   if (loading) {
     return (
@@ -415,7 +462,7 @@ export default function LibraryPage() {
       title="Library"
       backHref="/dashboard"
       backLabel="Today"
-      width="3xl"
+      width="study"
       action={
         <Button type="button" onClick={() => setShowAddSource(true)}>
           Add source
@@ -436,91 +483,106 @@ export default function LibraryPage() {
       </Card>
 
       {showAddSource ? (
-        <Card padding="lg">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <SectionHeader
-              eyebrow="Add source"
-              title="Save study material"
-              description="Pasted text and manual notes work best right now. Links and files are saved as references; automatic reading comes later."
-            />
-            <Button type="button" variant="secondary" onClick={() => setShowAddSource(false)}>
-              Close
-            </Button>
-          </div>
-          <div className="mt-5 grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
-            <div className="space-y-3">
-              {sourceTypes.map((item) => (
-                <button
-                  key={item.value}
-                  type="button"
-                  onClick={() => setSourceType(item.value)}
-                  className={`w-full rounded-[1.2rem] border p-4 text-left transition ${
-                    sourceType === item.value
-                      ? "border-warm-border bg-warm-glow text-white"
-                      : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
-                  }`}
-                >
-                  <div className="font-semibold">{item.label}</div>
-                  <div className="mt-1 text-xs text-text-muted">{item.helper}</div>
-                </button>
-              ))}
-            </div>
-            <div className="space-y-4">
-              <Input label="Title" value={title} onChange={(event) => setTitle(event.target.value)} />
-              <Input label="Subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
-              {(sourceType === "pasted_text" || sourceType === "manual_note") ? (
-                <Textarea
-                  label="Source text"
-                  rows={8}
-                  value={contentText}
-                  onChange={(event) => setContentText(event.target.value)}
-                />
-              ) : null}
-              {sourceType === "link" ? (
-                <Input label="Source link" value={externalUrl} onChange={(event) => setExternalUrl(event.target.value)} />
-              ) : null}
-              {sourceType === "file" ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <Input label="File name" value={fileName} onChange={(event) => setFileName(event.target.value)} />
-                  <Input label="File type" value={fileType} onChange={(event) => setFileType(event.target.value)} />
-                </div>
-              ) : null}
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Topics</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {topics.length === 0 ? (
-                    <span className="text-sm text-text-secondary">Create topics in Practise, then link them here.</span>
-                  ) : (
-                    topics.map((topic) => {
-                      const active = selectedTopicIds.includes(topic.id);
-                      return (
-                        <button
-                          key={topic.id}
-                          type="button"
-                          onClick={() =>
-                            setSelectedTopicIds((current) =>
-                              active ? current.filter((id) => id !== topic.id) : [...current, topic.id]
-                            )
-                          }
-                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                            active
-                              ? "border-warm-border bg-warm-glow text-warm-accent"
-                              : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
-                          }`}
-                        >
-                          {topic.name}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              </div>
-              <Button type="button" disabled={busyAction === "create-source"} onClick={createNextSource}>
-                {busyAction === "create-source" ? "Saving..." : "Save source"}
+        <div className="fixed inset-0 z-50 flex items-end justify-center px-4 py-5 sm:items-center">
+          <button
+            type="button"
+            aria-label="Close add source"
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={() => setShowAddSource(false)}
+          />
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="add-library-source-title"
+            className="relative max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[1.6rem] border border-white/[0.12] bg-surface-panel-strong p-5 shadow-[0_24px_70px_rgba(0,0,0,0.42)]"
+          >
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <SectionHeader
+                eyebrow="Add source"
+                title="Save study material"
+                description="Pasted text and manual notes work best right now. Links and files are saved as references; automatic reading comes later."
+              />
+              <Button type="button" variant="secondary" onClick={() => setShowAddSource(false)}>
+                Close
               </Button>
             </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-[0.75fr_1.25fr]">
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+                {sourceTypes.map((item) => (
+                  <button
+                    key={item.value}
+                    type="button"
+                    onClick={() => setSourceType(item.value)}
+                    className={`w-full rounded-[1.2rem] border p-4 text-left transition ${
+                      sourceType === item.value
+                        ? "border-warm-border bg-warm-glow text-white"
+                        : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                    }`}
+                  >
+                    <div className="font-semibold">{item.label}</div>
+                    <div className="mt-1 text-xs text-text-muted">{item.helper}</div>
+                  </button>
+                ))}
+              </div>
+              <div className="space-y-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Input label="Title" value={title} onChange={(event) => setTitle(event.target.value)} />
+                  <Input label="Subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
+                </div>
+                {(sourceType === "pasted_text" || sourceType === "manual_note") ? (
+                  <Textarea
+                    label="Source text"
+                    rows={8}
+                    value={contentText}
+                    onChange={(event) => setContentText(event.target.value)}
+                  />
+                ) : null}
+                {sourceType === "link" ? (
+                  <Input label="Source link" value={externalUrl} onChange={(event) => setExternalUrl(event.target.value)} />
+                ) : null}
+                {sourceType === "file" ? (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <Input label="File name" value={fileName} onChange={(event) => setFileName(event.target.value)} />
+                    <Input label="File type" value={fileType} onChange={(event) => setFileType(event.target.value)} />
+                  </div>
+                ) : null}
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Topics</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {topics.length === 0 ? (
+                      <span className="text-sm text-text-secondary">Create topics in Practise, then link them here.</span>
+                    ) : (
+                      topics.map((topic) => {
+                        const active = selectedTopicIds.includes(topic.id);
+                        return (
+                          <button
+                            key={topic.id}
+                            type="button"
+                            onClick={() =>
+                              setSelectedTopicIds((current) =>
+                                active ? current.filter((id) => id !== topic.id) : [...current, topic.id]
+                              )
+                            }
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                              active
+                                ? "border-warm-border bg-warm-glow text-warm-accent"
+                                : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
+                            }`}
+                          >
+                            {topic.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+                <Button type="button" disabled={busyAction === "create-source"} onClick={createNextSource}>
+                  {busyAction === "create-source" ? "Saving..." : "Save source"}
+                </Button>
+              </div>
+            </div>
           </div>
-        </Card>
+        </div>
       ) : null}
 
       {sources.length === 0 ? (
@@ -536,8 +598,28 @@ export default function LibraryPage() {
           }
         />
       ) : (
-        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-[minmax(280px,0.75fr)_minmax(0,1.25fr)_minmax(280px,0.85fr)]">
-          <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
+        <>
+        <div className="grid grid-cols-3 gap-2 rounded-[1.15rem] border border-white/[0.08] bg-white/[0.035] p-1.5 lg:hidden">
+          {mobileTabs.map((tab) => (
+            <button
+              key={tab.value}
+              type="button"
+              onClick={() => setMobileTab(tab.value)}
+              className={`min-h-[2.4rem] rounded-[0.9rem] px-3 text-xs font-semibold transition ${
+                mobileTab === tab.value
+                  ? "bg-warm-glow text-warm-accent"
+                  : "text-text-muted hover:bg-white/[0.05] hover:text-white"
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+        <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(210px,0.72fr)_minmax(0,1.28fr)_minmax(230px,0.82fr)]">
+          <Card
+            padding="lg"
+            className={`${mobileTab === "sources" ? "block" : "hidden"} lg:sticky lg:top-4 lg:block lg:self-start`}
+          >
             <SectionHeader eyebrow="Sources" title="Saved material" description="Choose a source to preview, link, or turn into drafts." />
             <div className="mt-5 space-y-3">
               {sources.map((source) => {
@@ -546,7 +628,10 @@ export default function LibraryPage() {
                   <button
                     key={source.id}
                     type="button"
-                    onClick={() => setSelectedSourceId(source.id)}
+                    onClick={() => {
+                      setSelectedSourceId(source.id);
+                      setMobileTab("source");
+                    }}
                     className={`w-full rounded-[1.2rem] border p-4 text-left transition ${
                       active
                         ? "border-warm-border bg-warm-glow text-white"
@@ -568,7 +653,7 @@ export default function LibraryPage() {
             </div>
           </Card>
 
-          <div className="min-w-0 space-y-4">
+          <div className={`${mobileTab === "source" ? "block" : "hidden"} min-w-0 space-y-4 lg:block`}>
             {selectedSource ? (
               <>
                 <Card tone="warm" padding="lg">
@@ -600,18 +685,65 @@ export default function LibraryPage() {
                         No drafts waiting from this source. Generate a small batch, then review before adding.
                       </p>
                     ) : (
-                      sourceDrafts.map((draft) => (
-                        <DraftEditor
-                          key={draft.id}
-                          draft={draft}
-                          topics={topics}
-                          decks={decks}
-                          selectedDeckId={deckIdByDraft[draft.id] ?? decks[0]?.id ?? ""}
-                          onDeckChange={(value) => setDeckIdByDraft((current) => ({ ...current, [draft.id]: value }))}
-                          onSaved={handleDraftSaved}
-                          userId={user.uid}
-                        />
-                      ))
+                      <>
+                        <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <div className="text-sm font-semibold text-white">
+                                Draft queue: {sourceDrafts.length}
+                              </div>
+                              <p className="mt-1 text-xs leading-5 text-text-muted">
+                                Review one draft at a time so generated content does not flood Learn or Practise.
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
+                              Draft-only
+                            </span>
+                          </div>
+                          <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+                            {sourceDrafts.map((draft, index) => {
+                              const active = selectedDraft?.id === draft.id;
+                              return (
+                                <button
+                                  key={draft.id}
+                                  type="button"
+                                  onClick={() => setSelectedDraftId(draft.id)}
+                                  className={`min-w-[13rem] rounded-[1rem] border p-3 text-left transition ${
+                                    active
+                                      ? "border-warm-border bg-warm-glow text-white"
+                                      : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                                  }`}
+                                >
+                                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                                    Draft {index + 1}
+                                  </div>
+                                  <div className="mt-1 line-clamp-2 text-sm font-semibold text-white">
+                                    {draft.kind === "flashcard"
+                                      ? draft.front ?? "Flashcard draft"
+                                      : draft.questionText ?? "Practice question draft"}
+                                  </div>
+                                  <div className="mt-2 text-xs text-text-muted">
+                                    {draft.kind === "flashcard" ? "Flashcard" : "Practice question"}
+                                  </div>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        {selectedDraft ? (
+                          <DraftEditor
+                            key={selectedDraft.id}
+                            draft={selectedDraft}
+                            topics={topics}
+                            decks={decks}
+                            selectedDeckId={deckIdByDraft[selectedDraft.id] ?? decks[0]?.id ?? ""}
+                            onDeckChange={(value) => setDeckIdByDraft((current) => ({ ...current, [selectedDraft.id]: value }))}
+                            onSaved={handleDraftSaved}
+                            userId={user.uid}
+                            sourceTitle={selectedSource.title}
+                          />
+                        ) : null}
+                      </>
                     )}
                   </div>
                 </Card>
@@ -619,12 +751,12 @@ export default function LibraryPage() {
             ) : null}
           </div>
 
-          <div className="space-y-4 2xl:sticky 2xl:top-4 2xl:self-start">
+          <div className={`${mobileTab === "actions" ? "block" : "hidden"} space-y-4 lg:sticky lg:top-4 lg:block lg:self-start`}>
             <Card padding="lg">
               <SectionHeader
                 eyebrow="Actions"
                 title="Use this source"
-                description="Keep generation small. Everything stays draft-only until you approve it."
+                description="Keep generation small: up to 8 flashcards or 5 practice questions. Everything stays draft-only until you approve it."
               />
               {selectedSource ? (
                 <div className="mt-5 space-y-3">
@@ -639,10 +771,10 @@ export default function LibraryPage() {
                       {busyAction === "source-tutor" ? "Asking..." : "Ask Tutor about source"}
                     </Button>
                     <Button type="button" variant="secondary" disabled={busyAction === "flashcard"} onClick={() => generateDrafts("flashcard")}>
-                      {busyAction === "flashcard" ? "Generating..." : "Make flashcard drafts"}
+                      {busyAction === "flashcard" ? "Generating..." : "Make up to 8 flashcards"}
                     </Button>
                     <Button type="button" variant="secondary" disabled={busyAction === "practice-question"} onClick={() => generateDrafts("practice-question")}>
-                      {busyAction === "practice-question" ? "Generating..." : "Make practice drafts"}
+                      {busyAction === "practice-question" ? "Generating..." : "Make up to 5 questions"}
                     </Button>
                   </div>
                 </div>
@@ -681,33 +813,55 @@ export default function LibraryPage() {
               </div>
             </Card>
             <Card padding="lg">
-              <SectionHeader eyebrow="Source Tutor" title="Tutor transcript" description="Context stays attached to this source." />
-              <div className="mt-5 space-y-3">
-                {tutorMessages.length === 0 ? (
-                  <p className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-                    Ask Tutor to explain, summarise, or find revision ideas in the selected source.
-                  </p>
-                ) : (
-                  tutorMessages.map((message, index) => (
-                    <div
-                      key={`${message.role}-${index}`}
-                      className={`rounded-[1.1rem] border p-4 text-sm leading-6 ${
-                        message.role === "model"
-                          ? "border-warm-border bg-warm-glow text-white"
-                          : "border-white/[0.09] bg-white/[0.04] text-text-secondary"
-                      }`}
-                    >
-                      <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
-                        {message.role === "model" ? "Jami Tutor" : "You"}
-                      </div>
-                      {message.text}
-                    </div>
-                  ))
-                )}
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <SectionHeader
+                  eyebrow="Source Tutor"
+                  title="Tutor transcript"
+                  description="Context stays attached to this source."
+                />
+                {tutorMessages.length > 0 ? (
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setShowTutorTranscript((value) => !value)}
+                  >
+                    {showTutorTranscript ? "Collapse" : "Show"}
+                  </Button>
+                ) : null}
               </div>
+              {showTutorTranscript ? (
+                <div className="mt-5 max-h-80 space-y-3 overflow-y-auto pr-1">
+                  {tutorMessages.length === 0 ? (
+                    <p className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+                      Ask Tutor to explain, summarise, or find revision ideas in the selected source.
+                    </p>
+                  ) : (
+                    tutorMessages.map((message, index) => (
+                      <div
+                        key={`${message.role}-${index}`}
+                        className={`rounded-[1.1rem] border p-4 text-sm leading-6 ${
+                          message.role === "model"
+                            ? "border-warm-border bg-warm-glow text-white"
+                            : "border-white/[0.09] bg-white/[0.04] text-text-secondary"
+                        }`}
+                      >
+                        <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
+                          {message.role === "model" ? "Jami Tutor" : "You"}
+                        </div>
+                        {message.text}
+                      </div>
+                    ))
+                  )}
+                </div>
+              ) : (
+                <p className="mt-4 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+                  Transcript collapsed. Source Tutor has {tutorMessages.length} message{tutorMessages.length === 1 ? "" : "s"} in this session.
+                </p>
+              )}
             </Card>
           </div>
         </div>
+        </>
       )}
       <div className="text-sm text-text-muted">
         Need cards instead? <Link className="text-warm-accent hover:text-white" href="/dashboard/cards">Open Cards</Link>.

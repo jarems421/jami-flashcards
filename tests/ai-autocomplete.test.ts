@@ -6,6 +6,11 @@ import {
   normalizeMathNotation,
 } from "@/lib/ai/card-autocomplete";
 import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
+import {
+  clampSourceDraftCount,
+  filterSourceFlashcardDrafts,
+  filterSourceQuestionDrafts,
+} from "@/lib/ai/source-draft-quality";
 
 describe("card autocomplete helpers", () => {
   it("normalizes common maths notation into readable symbols", () => {
@@ -121,6 +126,84 @@ describe("card generation helpers", () => {
       {
         front: "What is diffusion?",
         back: "Net movement from high to low concentration.",
+      },
+    ]);
+  });
+});
+
+describe("source draft quality helpers", () => {
+  it("clamps source draft generation to small reviewable batches", () => {
+    expect(clampSourceDraftCount("flashcard", 99)).toBe(8);
+    expect(clampSourceDraftCount("practice-question", 99)).toBe(5);
+    expect(clampSourceDraftCount("flashcard", undefined)).toBe(5);
+    expect(clampSourceDraftCount("practice-question", undefined)).toBe(3);
+    expect(clampSourceDraftCount("flashcard", -10)).toBe(1);
+  });
+
+  it("filters weak or duplicate source flashcard drafts", () => {
+    expect(
+      filterSourceFlashcardDrafts(
+        [
+          { front: "What is an eigenvalue?", back: "A scalar lambda where Av = lambda v." },
+          { front: "What is an eigenvalue?", back: "A scalar lambda where Av = lambda v." },
+          { front: "What is 3 + 5?", back: "8" },
+          { front: "Summarise this source", back: "Read the notes." },
+          { front: "Tiny", back: "ok" },
+          { front: "When is a matrix diagonalizable?", back: "When it has enough independent eigenvectors." },
+        ],
+        4
+      )
+    ).toEqual([
+      { front: "What is an eigenvalue?", back: "A scalar lambda where Av = lambda v." },
+      { front: "What is 3 + 5?", back: "8" },
+      { front: "When is a matrix diagonalizable?", back: "When it has enough independent eigenvectors." },
+    ]);
+  });
+
+  it("requires source practice drafts to have useful questions and expected answers", () => {
+    expect(
+      filterSourceQuestionDrafts(
+        [
+          {
+            questionText: "State the diagonalisation criterion.",
+            answerText: "There must be enough independent eigenvectors.",
+            solutionText: "Compare eigenspace dimensions.",
+          },
+          {
+            questionText: "State the diagonalisation criterion.",
+            answerText: "There must be enough independent eigenvectors.",
+          },
+          {
+            questionText: "What is 3 + 5?",
+            answerText: "8",
+          },
+          {
+            questionText: "Explain this source",
+            answerText: "Generic.",
+          },
+          {
+            questionText: "Find the missing expected answer.",
+          },
+          {
+            questionText: "What does geometric multiplicity measure?",
+            answerText: "The dimension of the eigenspace.",
+          },
+        ],
+        5
+      )
+    ).toEqual([
+      {
+        questionText: "State the diagonalisation criterion.",
+        answerText: "There must be enough independent eigenvectors.",
+        solutionText: "Compare eigenspace dimensions.",
+      },
+      {
+        questionText: "What is 3 + 5?",
+        answerText: "8",
+      },
+      {
+        questionText: "What does geometric multiplicity measure?",
+        answerText: "The dimension of the eigenspace.",
       },
     ]);
   });

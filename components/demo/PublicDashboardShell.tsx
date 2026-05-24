@@ -1517,8 +1517,8 @@ function LibraryPanel({
   };
 
   return (
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-[minmax(280px,0.75fr)_minmax(0,1.25fr)_minmax(280px,0.85fr)]">
-      <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-[minmax(220px,0.72fr)_minmax(0,1.28fr)_minmax(240px,0.82fr)]">
+      <Card padding="lg" className="lg:sticky lg:top-4 lg:self-start">
         <SectionHeader
           eyebrow="Library"
           title="Saved sources"
@@ -1572,12 +1572,12 @@ function LibraryPanel({
         />
       </div>
 
-      <div className="space-y-4 2xl:sticky 2xl:top-4 2xl:self-start">
+      <div className="space-y-4 lg:sticky lg:top-4 lg:self-start">
         <Card padding="lg">
           <SectionHeader
             eyebrow="Source actions"
             title="Turn it into study"
-            description="Tutor context, flashcard drafts, and practice drafts stay local in this walkthrough."
+            description="Tutor context and small draft batches stay local in this walkthrough."
           />
           <div className="mt-5 space-y-3">
             <Textarea
@@ -1591,14 +1591,14 @@ function LibraryPanel({
               variant="secondary"
               onClick={() =>
                 setReply(
-                  "From this source, the revision move is to isolate one definition or criterion, then test it with a short question before saving a flashcard draft."
+                  "Based on this source, the revision move is to isolate one definition or criterion, then test it with a short question before saving a flashcard draft."
                 )
               }
             >
               Ask Tutor about source
             </Button>
             <Button type="button" variant="secondary" onClick={makeFlashcardDraft}>
-              Make flashcard draft
+              Make source flashcard draft
             </Button>
             <Button
               type="button"

@@ -5,6 +5,7 @@ import { collection, deleteDoc, doc, getDocs, query, updateDoc, where, writeBatc
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { getDecks, type Deck } from "@/services/study/decks";
+import { getActiveSources } from "@/services/study/sources";
 import {
   addCardTag,
   getCardContentKey,
@@ -16,6 +17,7 @@ import {
   normalizeCardTags,
   type Card,
 } from "@/lib/study/cards";
+import type { Source } from "@/lib/practice/sources";
 import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { getDeckHref } from "@/lib/app/routes";
 import { removeUserTag, renameUserTag } from "@/services/study/tags";
@@ -48,6 +50,7 @@ export default function CardsSearchPage() {
 
   const [cards, setCards] = useState<Card[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
+  const [sources, setSources] = useState<Source[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
@@ -91,7 +94,7 @@ export default function CardsSearchPage() {
     void (async () => {
       setLoading(true);
       try {
-        const [userDecks, cardsSnapshot] = await Promise.all([
+        const [userDecks, cardsSnapshot, userSources] = await Promise.all([
           getDecks(user.uid),
           getDocs(
             query(
@@ -99,6 +102,7 @@ export default function CardsSearchPage() {
               where("userId", "==", user.uid)
             )
           ),
+          getActiveSources(user.uid),
         ]);
 
         if (cancelled) return;
@@ -115,6 +119,7 @@ export default function CardsSearchPage() {
 
         setDecks(userDecks);
         setCards(allCards);
+        setSources(userSources);
         setAvailableTags(tags);
       } catch (error) {
         console.error(error);
@@ -136,6 +141,13 @@ export default function CardsSearchPage() {
     }
     return map;
   }, [decks]);
+  const sourceNamesById = useMemo(() => {
+    const map: Record<string, string> = {};
+    for (const source of sources) {
+      map[source.id] = source.title;
+    }
+    return map;
+  }, [sources]);
 
   const filtered = useMemo(() => {
     if (!debouncedTerm) return cards;
@@ -946,6 +958,18 @@ export default function CardsSearchPage() {
                           </svg>
                         </Link>
                       ) : null}
+                      {card.sourceIds?.map((sourceId) => {
+                        const sourceName = sourceNamesById[sourceId];
+                        if (!sourceName) return null;
+                        return (
+                          <span
+                            key={sourceId}
+                            className="max-w-full rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent"
+                          >
+                            <span className="block truncate">Based on: {sourceName}</span>
+                          </span>
+                        );
+                      })}
                       {card.tags.map((tag) => (
                         <span
                           key={tag}

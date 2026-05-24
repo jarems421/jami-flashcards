@@ -43,6 +43,15 @@ export async function generateSourceDrafts(input: {
   kind: "flashcard" | "practice-question";
   count?: number;
 }) {
-  const data = await authedPost<{ drafts?: GeneratedContentDraft[] }>("/api/ai/source-drafts", input);
-  return Array.isArray(data.drafts) ? data.drafts : [];
+  const data = await authedPost<{
+    drafts?: GeneratedContentDraft[];
+    removedDraftCount?: number;
+    requestedCount?: number;
+  }>("/api/ai/source-drafts", input);
+
+  return {
+    drafts: Array.isArray(data.drafts) ? data.drafts : [],
+    removedDraftCount: typeof data.removedDraftCount === "number" ? data.removedDraftCount : 0,
+    requestedCount: typeof data.requestedCount === "number" ? data.requestedCount : undefined,
+  };
 }
