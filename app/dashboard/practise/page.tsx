@@ -905,15 +905,13 @@ export default function PractisePage() {
               ) : null}
             </Card>
           ) : null}
-          {showAddQuestion || questions.length === 0 ? (
+          {showAddQuestion ? (
             <div className="fixed inset-0 z-50 flex items-end justify-center px-4 py-5 sm:items-center">
               <button
                 type="button"
                 aria-label="Close add question"
                 className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                onClick={() => {
-                  if (questions.length > 0) setShowAddQuestion(false);
-                }}
+                onClick={() => setShowAddQuestion(false)}
               />
               <div
                 role="dialog"
@@ -934,11 +932,9 @@ export default function PractisePage() {
                       you&apos;ll return to the Practise workspace.
                     </p>
                   </div>
-                  {questions.length > 0 ? (
-                    <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(false)}>
-                      Close
-                    </Button>
-                  ) : null}
+                  <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(false)}>
+                    Close
+                  </Button>
                 </div>
 
                 <div className="mt-5 rounded-[1.1rem] border border-white/[0.08] bg-white/[0.035] p-3 text-sm leading-6 text-text-secondary">
@@ -1009,11 +1005,9 @@ export default function PractisePage() {
                     >
                       {creatingQuestion ? "Creating..." : "Create question"}
                     </Button>
-                    {questions.length > 0 ? (
-                      <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(false)}>
-                        Cancel
-                      </Button>
-                    ) : null}
+                    <Button type="button" variant="secondary" onClick={() => setShowAddQuestion(false)}>
+                      Cancel
+                    </Button>
                   </div>
                 </div>
               </div>
@@ -1500,7 +1494,12 @@ export default function PractisePage() {
                 <EmptyState
                   emoji="Practice"
                   title="Create a practice question"
-                  description="Practise starts manual and topical so the learning loop can prove itself before documents and OCR arrive."
+                  description="Practise starts manual and topical, but you can browse the page first. Add a question when you are ready."
+                  action={
+                    <Button type="button" onClick={() => setShowAddQuestion(true)}>
+                      + Add practice question
+                    </Button>
+                  }
                   secondaryAction={
                     <Link
                       href="/dashboard/study"

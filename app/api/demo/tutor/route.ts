@@ -71,14 +71,26 @@ function getIntentInstruction(intent: WalkthroughTutorIntent) {
 }
 
 function getFallbackReply(intent: WalkthroughTutorIntent) {
+  if (intent === "check-working") {
+    return "I can see your current working. The first issue is that the arithmetic line does not match the linear algebra question. This question is asking you to compare algebraic multiplicity with geometric multiplicity, not add numbers. Start by writing: algebraic multiplicity = 3, geometric multiplicity = 1.";
+  }
+  if (intent === "stuck-here") {
+    return "Next useful step: identify the two multiplicities. The characteristic polynomial gives algebraic multiplicity 3, and the one-dimensional eigenspace gives geometric multiplicity 1. Try writing those two facts before deciding diagonalizability.";
+  }
   if (intent === "full-solution") {
-    return "Here is the safe walkthrough version: diagonalizability depends on having enough independent eigenvectors. Compare the algebraic multiplicity with the eigenspace dimension, then explain whether the eigenspaces span the whole space.";
+    return "Step-by-step walkthrough:\n1. The characteristic polynomial is (lambda - 2)^3, so the only eigenvalue is 2 with algebraic multiplicity 3.\n2. The eigenspace for lambda = 2 is one-dimensional, so the geometric multiplicity is 1.\n3. A 3 by 3 matrix is diagonalizable only if it has 3 independent eigenvectors.\n4. Here it has only 1 independent eigenvector, so it is not diagonalizable.";
   }
   if (intent === "make-flashcard") {
     return "Front: What must be true for a matrix to be diagonalizable?\nBack: It must have enough linearly independent eigenvectors to form a basis; equivalently, the sum of eigenspace dimensions must equal the matrix size.";
   }
   if (intent === "similar-question") {
     return "Similar question: A 2 by 2 matrix has characteristic polynomial (lambda - 5)^2 and a one-dimensional eigenspace. Is it diagonalizable? Explain briefly.";
+  }
+  if (intent === "show-method") {
+    return "Method: compare algebraic multiplicity from the characteristic polynomial with geometric multiplicity from the eigenspace dimension. If the total number of independent eigenvectors is less than the matrix size, it is not diagonalizable.";
+  }
+  if (intent === "explain-concept") {
+    return "Concept: algebraic multiplicity counts how often an eigenvalue appears in the characteristic polynomial. Geometric multiplicity counts how many independent eigenvectors it has. Diagonalization needs enough independent eigenvectors to form a basis.";
   }
   return "Try this hint: first name the concept being tested, then write the one condition that decides the question. After that, attempt only the next line before asking for more help.";
 }
@@ -157,8 +169,7 @@ export async function POST(request: NextRequest) {
       demo: true,
     });
     if (!budgetAllowed) {
-      const reply =
-        "The public tutor budget for this walkthrough is used up for now. You can still click through the product, edit the local attempt, and inspect how drafts and Progress update.";
+      const reply = getFallbackReply(intent);
       return Response.json({
         reply,
         fallback: true,

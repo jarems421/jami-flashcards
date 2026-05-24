@@ -10,6 +10,11 @@ import {
   readConstellationBackgroundConstellationId,
   readConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
+import {
+  APP_BACKGROUND_EVENT,
+  readAppBackgroundPreference,
+  type AppBackgroundPreference,
+} from "@/lib/app/background-preference";
 
 const ConstellationBackground = dynamic(
   () => import("@/components/constellation/ConstellationBackground"),
@@ -28,6 +33,23 @@ export default function ConstellationBackgroundShell({
   const [isCrashMarked, setIsCrashMarked] = useState(false);
   const [backgroundConstellationId, setBackgroundConstellationId] = useState("");
   const [isBackgroundReady, setIsBackgroundReady] = useState(false);
+  const [appBackground, setAppBackground] =
+    useState<AppBackgroundPreference>("purple-pink");
+
+  useEffect(() => {
+    const syncAppBackgroundPreference = () => {
+      setAppBackground(readAppBackgroundPreference());
+    };
+
+    syncAppBackgroundPreference();
+    window.addEventListener("storage", syncAppBackgroundPreference);
+    window.addEventListener(APP_BACKGROUND_EVENT, syncAppBackgroundPreference);
+
+    return () => {
+      window.removeEventListener("storage", syncAppBackgroundPreference);
+      window.removeEventListener(APP_BACKGROUND_EVENT, syncAppBackgroundPreference);
+    };
+  }, []);
 
   useEffect(() => {
     const syncBackgroundPreference = () => {
@@ -90,6 +112,20 @@ export default function ConstellationBackgroundShell({
       }
     };
   }, [isBackgroundReady, shouldShowBackground]);
+
+  useEffect(() => {
+    document.body.classList.toggle("app-background-purple-pink", appBackground === "purple-pink");
+    document.body.classList.toggle("app-background-paper-white", appBackground === "paper-white");
+    document.body.classList.toggle("app-background-soft-grey", appBackground === "soft-grey");
+
+    return () => {
+      document.body.classList.remove(
+        "app-background-purple-pink",
+        "app-background-paper-white",
+        "app-background-soft-grey"
+      );
+    };
+  }, [appBackground]);
 
   useEffect(() => {
     document.body.classList.toggle(

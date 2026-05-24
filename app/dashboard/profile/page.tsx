@@ -14,6 +14,63 @@ import {
   MAX_USERNAME_LENGTH,
   saveInAppUsername,
 } from "@/services/profile";
+import {
+  APP_BACKGROUND_OPTIONS,
+  readAppBackgroundPreference,
+  saveAppBackgroundPreference,
+  type AppBackgroundPreference,
+} from "@/lib/app/background-preference";
+
+function BackgroundPreferenceCard() {
+  const [selectedBackground, setSelectedBackground] =
+    useState<AppBackgroundPreference>(() => readAppBackgroundPreference());
+
+  const handleSelectBackground = (value: AppBackgroundPreference) => {
+    setSelectedBackground(value);
+    saveAppBackgroundPreference(value);
+  };
+
+  return (
+    <Card padding="md" className="sm:p-6">
+      <SectionHeader
+        title="Background"
+        description="Choose the app gradient on this device. This is a local display setting, not study data."
+      />
+      <div className="mt-5 flex flex-wrap gap-3">
+        {APP_BACKGROUND_OPTIONS.map((option) => {
+          const active = selectedBackground === option.value;
+          return (
+            <button
+              key={option.value}
+              type="button"
+              onClick={() => handleSelectBackground(option.value)}
+              className={`flex min-w-[8rem] items-center gap-3 rounded-[1.15rem] border p-3 text-left transition duration-fast ${
+                active
+                  ? "border-warm-border bg-warm-glow text-white"
+                  : "border-white/[0.09] bg-white/[0.035] text-text-secondary hover:border-white/[0.18] hover:bg-white/[0.06]"
+              }`}
+              aria-pressed={active}
+            >
+              <span
+                className={`h-11 w-11 shrink-0 rounded-full border shadow-[0_10px_24px_rgba(4,8,18,0.18)] ${
+                  active ? "border-warm-accent" : "border-white/[0.18]"
+                }`}
+                style={{ backgroundImage: option.preview }}
+                aria-hidden="true"
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-white">{option.label}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-text-muted">
+                  {option.description}
+                </span>
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    </Card>
+  );
+}
 
 export default function ProfilePage() {
   const { user, isDemoUser } = useUser();
@@ -183,6 +240,8 @@ export default function ProfilePage() {
       >
         Sign out
       </Button>
+
+      <BackgroundPreferenceCard />
 
       {isDemoUser ? (
         <Card padding="md" className="sm:p-6">

@@ -63,9 +63,12 @@ Public walkthrough checks:
 8. Save a local practice attempt and confirm Progress updates in the same session.
 9. Ask the public Tutor for a hint.
 10. Create a local flashcard draft from Tutor.
-11. Edit the draft and simulate adding it to a deck.
-12. Open Library and confirm source actions are simulated/local-only.
-13. Confirm the UI says public actions are local-only and do not write to Firebase.
+11. Confirm the in-Practise draft panel shows status, front, back, topic, destination deck, Save as draft, Add to deck, and Reject.
+12. Open Working tools, draw on the scratchpad, test Undo/Clear, and send a typed voice transcript fallback.
+13. Save at least two attempts and confirm the local session summary updates attempts, correct count, Tutor uses, drafts, weakest topic, and next action.
+14. Edit the draft and simulate adding it to a deck.
+15. Open Library and confirm source actions are simulated/local-only.
+16. Confirm the UI says public actions are local-only and do not write to Firebase.
 
 Authenticated checks:
 

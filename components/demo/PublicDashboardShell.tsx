@@ -2,10 +2,23 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import AppPage from "@/components/layout/AppPage";
 import TabBar from "@/components/layout/TabBar";
 import { buildTodayPlan } from "@/lib/dashboard/today-plan";
+import {
+  APP_BACKGROUND_OPTIONS,
+  readAppBackgroundPreference,
+  saveAppBackgroundPreference,
+  type AppBackgroundPreference,
+} from "@/lib/app/background-preference";
 import {
   Button,
   Card,
@@ -113,6 +126,9 @@ const selectedCardClass =
 const chipClass =
   "rounded-full border border-white/[0.1] bg-white/[0.055] px-2.5 py-1 text-xs font-medium text-text-secondary";
 
+type ScratchpadPoint = { x: number; y: number };
+type ScratchpadStroke = { points: ScratchpadPoint[] };
+
 function getAccuracy(attempts: WalkthroughAttempt[]) {
   if (attempts.length === 0) return 0;
   return Math.round((attempts.filter((attempt) => attempt.isCorrect).length / attempts.length) * 100);
@@ -125,6 +141,13 @@ function getSupportLevel(attempts: WalkthroughAttempt[]) {
   if (ratio >= 0.6) return "High";
   if (ratio >= 0.25) return "Medium";
   return "Low";
+}
+
+function formatElapsed(seconds: number) {
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  if (minutes === 0) return `${remainingSeconds}s`;
+  return `${minutes}m ${remainingSeconds.toString().padStart(2, "0")}s`;
 }
 
 function getQuestionAttempts(questionId: string, attempts: WalkthroughAttempt[]) {
@@ -206,6 +229,10 @@ function makeLocalDraftId() {
   return `public-draft-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 }
 
+function makeLocalQuestionId() {
+  return `public-question-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+}
+
 function TopicChip({ topicId }: { topicId: string }) {
   return (
     <span className="rounded-full border border-white/[0.11] bg-white/[0.055] px-3 py-1.5 text-xs font-medium text-text-secondary">
@@ -237,6 +264,7 @@ export default function PublicDashboardShell() {
   const searchParams = useSearchParams();
   const surface = getSurface(pathname);
   const agentMode = searchParams.get("agent") === "1";
+  const [questions, setQuestions] = useState<WalkthroughQuestion[]>(WALKTHROUGH_QUESTIONS);
   const [selectedQuestionId, setSelectedQuestionId] = useState(WALKTHROUGH_QUESTIONS[0].id);
   const [attempts, setAttempts] = useState<WalkthroughAttempt[]>(WALKTHROUGH_ATTEMPTS);
   const [drafts, setDrafts] = useState<WalkthroughDraft[]>(WALKTHROUGH_INITIAL_DRAFTS);
@@ -250,6 +278,12 @@ export default function PublicDashboardShell() {
   const [busyIntent, setBusyIntent] = useState<WalkthroughTutorIntent | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [confirmFullSolution, setConfirmFullSolution] = useState(false);
+  const [sessionStartedAt] = useState(Date.now());
+  const [sessionAttemptIds, setSessionAttemptIds] = useState<string[]>([]);
+  const [sessionQuestionIds, setSessionQuestionIds] = useState<string[]>([]);
+  const [sessionTutorUses, setSessionTutorUses] = useState(0);
+  const [sessionDraftIds, setSessionDraftIds] = useState<string[]>([]);
+  const [lastPractiseDraftId, setLastPractiseDraftId] = useState<string | null>(null);
 
   useEffect(() => {
     if (surface !== "practise") {
@@ -264,9 +298,10 @@ export default function PublicDashboardShell() {
 
   const selectedQuestion = useMemo(
     () =>
-      WALKTHROUGH_QUESTIONS.find((question) => question.id === selectedQuestionId) ??
+      questions.find((question) => question.id === selectedQuestionId) ??
+      questions[0] ??
       WALKTHROUGH_QUESTIONS[0],
-    [selectedQuestionId]
+    [questions, selectedQuestionId]
   );
   const dueCards = WALKTHROUGH_CARDS.filter((card) => card.due);
   const weakCards = WALKTHROUGH_CARDS.filter((card) => card.weak);
@@ -277,7 +312,7 @@ export default function PublicDashboardShell() {
     () =>
       WALKTHROUGH_TOPICS.map((topic) => {
         const topicCards = WALKTHROUGH_CARDS.filter((card) => card.topicIds.includes(topic.id));
-        const topicQuestions = WALKTHROUGH_QUESTIONS.filter((question) =>
+        const topicQuestions = questions.filter((question) =>
           question.topicIds.includes(topic.id)
         );
         const topicAttempts = attempts.filter((attempt) =>
@@ -292,7 +327,7 @@ export default function PublicDashboardShell() {
           mistakes: topicAttempts.flatMap((attempt) => attempt.mistakeLabels).slice(0, 3),
         };
       }).sort((left, right) => left.accuracy - right.accuracy || right.weakCards - left.weakCards),
-    [attempts]
+    [attempts, questions]
   );
 
   const handleSaveAttempt = () => {
@@ -313,6 +348,10 @@ export default function PublicDashboardShell() {
     };
 
     setAttempts((current) => [nextAttempt, ...current]);
+    setSessionAttemptIds((current) => [nextAttempt.id, ...current]);
+    setSessionQuestionIds((current) =>
+      current.includes(selectedQuestion.id) ? current : [...current, selectedQuestion.id]
+    );
     setFeedback({
       type: "success",
       message: "Local walkthrough attempt saved. Progress updates in this public session only.",
@@ -322,12 +361,14 @@ export default function PublicDashboardShell() {
   const handleTutorIntent = async (
     intent: WalkthroughTutorIntent,
     prompt: string,
-    options?: { selectedWorkingText?: string }
+    options?: { selectedWorkingText?: string; scratchpadNote?: string; scratchpadStrokeCount?: number; voiceTranscript?: string }
   ) => {
     setBusyIntent(intent);
     setFeedback(null);
     setConfirmFullSolution(false);
-    setTutorMessages((current) => [...current, { role: "user", text: prompt, intent }]);
+    setSessionTutorUses((current) => current + 1);
+    const displayedPrompt = options?.voiceTranscript ?? prompt;
+    setTutorMessages((current) => [...current, { role: "user", text: displayedPrompt, intent }]);
 
     try {
       const selectedQuestionAttempts = getQuestionAttempts(selectedQuestion.id, attempts)
@@ -348,6 +389,15 @@ export default function PublicDashboardShell() {
           typedAnswer: userAnswer,
           typedWorking: workingText,
           selectedWorkingText: options?.selectedWorkingText,
+          scratchpad:
+            options?.scratchpadNote || options?.scratchpadStrokeCount
+              ? {
+                  hasDrawing: Boolean(options?.scratchpadStrokeCount),
+                  strokeCount: options?.scratchpadStrokeCount ?? 0,
+                  note: options?.scratchpadNote,
+                  imageAttached: false,
+                }
+              : undefined,
           confidence,
           mistakeLabels: selfMark === false ? ["public walkthrough self-mark", "needs repair"] : [],
         },
@@ -360,7 +410,14 @@ export default function PublicDashboardShell() {
         tutorHistory: tutorMessages.slice(-6),
         intent,
         privacy: {
-          sendsUnsavedWorking: Boolean(userAnswer.trim() || workingText.trim() || options?.selectedWorkingText),
+          sendsUnsavedWorking: Boolean(
+            userAnswer.trim() ||
+              workingText.trim() ||
+              options?.selectedWorkingText ||
+              options?.scratchpadNote ||
+              options?.scratchpadStrokeCount ||
+              options?.voiceTranscript
+          ),
           persistsUnsavedWorking: false,
         },
       };
@@ -369,7 +426,7 @@ export default function PublicDashboardShell() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           intent,
-          message: prompt,
+          message: displayedPrompt,
           context: {
             questionId: selectedQuestion.id,
             userAnswer,
@@ -403,10 +460,32 @@ export default function PublicDashboardShell() {
           contentStatus: "draft",
         };
         setDrafts((current) => [nextDraft, ...current]);
+        setSessionDraftIds((current) => [nextDraft.id, ...current]);
+        setLastPractiseDraftId(nextDraft.id);
         setFeedback({
           type: "success",
           message:
             "Flashcard draft created locally. Edit it, save it as a draft, or simulate adding it to a deck.",
+        });
+      } else if (intent === "similar-question") {
+        const nextQuestion: WalkthroughQuestion = {
+          id: makeLocalQuestionId(),
+          questionText: reply.replace(/^similar question:\s*/i, "").trim().slice(0, 1_000),
+          answerText:
+            "Compare the relevant definitions or criteria, then justify the conclusion in one or two sentences.",
+          solutionText:
+            "Use the same topic method as the selected question. Identify the key data, compare it with the criterion, then state the conclusion.",
+          topicIds: selectedQuestion.topicIds,
+          difficulty: selectedQuestion.difficulty,
+        };
+        setQuestions((current) => [nextQuestion, ...current]);
+        setSelectedQuestionId(nextQuestion.id);
+        setSessionQuestionIds((current) =>
+          current.includes(nextQuestion.id) ? current : [...current, nextQuestion.id]
+        );
+        setFeedback({
+          type: "success",
+          message: "Similar question added locally to the public question bank.",
         });
       } else if (payload?.fallback) {
         setFeedback({
@@ -458,6 +537,41 @@ export default function PublicDashboardShell() {
     });
   };
 
+  const rejectLocalDraft = (draftId: string) => {
+    setDrafts((current) => current.filter((draft) => draft.id !== draftId));
+    setSessionDraftIds((current) => current.filter((id) => id !== draftId));
+    setLastPractiseDraftId((current) => (current === draftId ? null : current));
+    setFeedback({ type: "success", message: "Draft rejected locally. Nothing was written to Firebase." });
+  };
+
+  const sessionAttempts = attempts.filter((attempt) => sessionAttemptIds.includes(attempt.id));
+  const sessionWeakestTopic = (() => {
+    const counts = new Map<string, number>();
+    sessionAttempts
+      .filter((attempt) => !attempt.isCorrect)
+      .forEach((attempt) => {
+        const question = questions.find((item) => item.id === attempt.questionId);
+        question?.topicIds.forEach((topicId) => counts.set(topicId, (counts.get(topicId) ?? 0) + 1));
+      });
+    const topicId = [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return topicId ? topicName(topicId) : undefined;
+  })();
+  const sessionSummary = {
+    startedAt: sessionStartedAt,
+    attempts: sessionAttempts.length,
+    correct: sessionAttempts.filter((attempt) => attempt.isCorrect).length,
+    tutorUses: sessionTutorUses,
+    draftsMade: sessionDraftIds.length,
+    questionsTouched: sessionQuestionIds.length,
+    weakestTopic: sessionWeakestTopic,
+    nextAction: sessionAttempts.some((attempt) => !attempt.isCorrect)
+      ? "Repair the latest mistake with Tutor, then retry one similar question."
+      : sessionDraftIds.length > 0
+        ? "Review the local flashcard draft, then simulate adding it to a deck."
+        : "Attempt another question or check Progress.",
+  };
+  const lastPractiseDraft = drafts.find((draft) => draft.id === lastPractiseDraftId) ?? null;
+
   return (
     <>
       <div className="min-w-0 pb-32 md:pb-0 md:pl-[6.75rem] lg:pl-80">
@@ -495,6 +609,7 @@ export default function PublicDashboardShell() {
           {surface === "learn" ? <LearnPanel /> : null}
           {surface === "practise" ? (
             <PractisePanel
+              questions={questions}
               attempts={attempts}
               selectedQuestion={selectedQuestion}
               selectedQuestionId={selectedQuestionId}
@@ -511,6 +626,13 @@ export default function PublicDashboardShell() {
               onSelfMarkChange={setSelfMark}
               onSaveAttempt={handleSaveAttempt}
               onTutorIntent={handleTutorIntent}
+              drafts={drafts}
+              latestDraft={lastPractiseDraft}
+              sessionSummary={sessionSummary}
+              onUpdateDraft={updateDraft}
+              onSaveDraft={saveLocalDraft}
+              onAddDraftToDeck={addLocalDraftToDeck}
+              onRejectDraft={rejectLocalDraft}
               confirmFullSolution={confirmFullSolution}
               onConfirmFullSolutionChange={setConfirmFullSolution}
             />
@@ -519,7 +641,7 @@ export default function PublicDashboardShell() {
             <ProgressPanel
               topicSummaries={topicSummaries}
               recentMistakes={recentMistakes}
-              questions={WALKTHROUGH_QUESTIONS}
+              questions={questions}
               drafts={drafts}
               onSaveDraft={saveLocalDraft}
               onAddDraftToDeck={addLocalDraftToDeck}
@@ -647,6 +769,7 @@ function HomePanel({
   attempts: WalkthroughAttempt[];
   drafts: WalkthroughDraft[];
 }) {
+  const [showHowJamiWorks, setShowHowJamiWorks] = useState(false);
   const publicCards = WALKTHROUGH_CARDS.map((card) => ({
     id: card.id,
     deckId: card.deckId,
@@ -785,34 +908,43 @@ function HomePanel({
         </Card>
       </div>
       <Card padding="lg">
-        <SectionHeader
-          eyebrow="How Jami works"
-          title="Learn, practise, repair, save, and track."
-          description="A first-time student should be able to follow the whole learning loop from this public dashboard."
-        />
-        <div className="mt-6 space-y-3">
-          {[
-            ["1. Learn", "Review flashcards.", "/dashboard/study"],
-            ["2. Practise", "Try questions.", "/dashboard/practise"],
-            ["3. Tutor", "Get help when stuck.", "/dashboard/practise"],
-            ["4. Save", "Turn mistakes into card drafts.", "/dashboard/cards"],
-            ["5. Progress", "See weak topics.", "/dashboard/progress"],
-          ].map(([title, text, href], index, steps) => (
-            <Link
-              key={title}
-              href={href}
-              className={`${interactiveCardClass} flex items-center justify-between gap-4`}
-            >
-              <span className="min-w-0">
-                <span className="block text-base font-semibold text-white">{title}</span>
-                <span className="mt-1 block text-sm leading-6 text-text-secondary">{text}</span>
-              </span>
-              {index < steps.length - 1 ? (
-                <span className="hidden h-px w-14 shrink-0 bg-white/[0.12] sm:block" />
-              ) : null}
-            </Link>
-          ))}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <SectionHeader
+            eyebrow="How Jami works"
+            title="Learn, practise, repair, save, and track."
+            description="A first-time student should be able to follow the whole learning loop from this public dashboard."
+          />
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => setShowHowJamiWorks((value) => !value)}
+            aria-expanded={showHowJamiWorks}
+          >
+            {showHowJamiWorks ? "Hide" : "Show"}
+          </Button>
         </div>
+        {showHowJamiWorks ? (
+          <div className="mt-6 space-y-3">
+            {[
+              ["1. Learn", "Review flashcards.", "/dashboard/study"],
+              ["2. Practise", "Try questions.", "/dashboard/practise"],
+              ["3. Tutor", "Get help when stuck.", "/dashboard/practise"],
+              ["4. Save", "Turn mistakes into card drafts.", "/dashboard/cards"],
+              ["5. Progress", "See weak topics.", "/dashboard/progress"],
+            ].map(([title, text, href]) => (
+              <Link
+                key={title}
+                href={href}
+                className={`${interactiveCardClass} flex items-center justify-between gap-4`}
+              >
+                <span className="min-w-0">
+                  <span className="block text-base font-semibold text-white">{title}</span>
+                  <span className="mt-1 block text-sm leading-6 text-text-secondary">{text}</span>
+                </span>
+              </Link>
+            ))}
+          </div>
+        ) : null}
       </Card>
     </>
   );
@@ -893,6 +1025,7 @@ function LearnPanel() {
 }
 
 function PractisePanel({
+  questions,
   attempts,
   selectedQuestion,
   selectedQuestionId,
@@ -909,9 +1042,16 @@ function PractisePanel({
   onSelfMarkChange,
   onSaveAttempt,
   onTutorIntent,
+  latestDraft,
+  sessionSummary,
+  onUpdateDraft,
+  onSaveDraft,
+  onAddDraftToDeck,
+  onRejectDraft,
   confirmFullSolution,
   onConfirmFullSolutionChange,
 }: {
+  questions: WalkthroughQuestion[];
   attempts: WalkthroughAttempt[];
   selectedQuestion: WalkthroughQuestion;
   selectedQuestionId: string;
@@ -930,36 +1070,183 @@ function PractisePanel({
   onTutorIntent: (
     intent: WalkthroughTutorIntent,
     prompt: string,
-    options?: { selectedWorkingText?: string }
+    options?: { selectedWorkingText?: string; scratchpadNote?: string; scratchpadStrokeCount?: number; voiceTranscript?: string }
   ) => void;
+  drafts: WalkthroughDraft[];
+  latestDraft: WalkthroughDraft | null;
+  sessionSummary: {
+    startedAt: number;
+    attempts: number;
+    correct: number;
+    tutorUses: number;
+    draftsMade: number;
+    questionsTouched: number;
+    weakestTopic?: string;
+    nextAction: string;
+  };
+  onUpdateDraft: (draftId: string, field: "front" | "back", value: string) => void;
+  onSaveDraft: (draftId: string) => void;
+  onAddDraftToDeck: (draftId: string, deckId: string) => void;
+  onRejectDraft: (draftId: string) => void;
   confirmFullSolution: boolean;
   onConfirmFullSolutionChange: (value: boolean) => void;
 }) {
   const [showTutor, setShowTutor] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [showWorkingTools, setShowWorkingTools] = useState(false);
+  const [showSessionSummary, setShowSessionSummary] = useState(false);
   const [selectedWorkingText, setSelectedWorkingText] = useState("");
+  const [scratchpadStrokes, setScratchpadStrokes] = useState<ScratchpadStroke[]>([]);
+  const [scratchpadNote, setScratchpadNote] = useState("");
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceNotice, setVoiceNotice] = useState("");
+  const [sessionNow, setSessionNow] = useState(() => Date.now());
   const workingTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const scratchpadCanvasRef = useRef<HTMLCanvasElement>(null);
+  const scratchpadDraftStrokeRef = useRef<ScratchpadPoint[] | null>(null);
   const selectedQuestionAttempts = getQuestionAttempts(selectedQuestion.id, attempts);
   const tutorOpen =
     showTutor || tutorMessages.length > 0 || busyIntent !== null || confirmFullSolution;
+  const hasSessionActivity =
+    sessionSummary.attempts > 0 || sessionSummary.tutorUses > 0 || sessionSummary.draftsMade > 0;
   const updateSelectedWorkingText = () => {
     const textarea = workingTextareaRef.current;
     if (!textarea) return;
     setSelectedWorkingText(textarea.value.slice(textarea.selectionStart, textarea.selectionEnd).trim());
   };
+  const redrawScratchpad = useCallback(() => {
+    const canvas = scratchpadCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = 3;
+    context.strokeStyle = "rgba(255, 232, 247, 0.92)";
+    scratchpadStrokes.forEach((stroke) => {
+      if (stroke.points.length === 0) return;
+      context.beginPath();
+      context.moveTo(stroke.points[0].x, stroke.points[0].y);
+      stroke.points.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+      context.stroke();
+    });
+  }, [scratchpadStrokes]);
+
+  useEffect(() => {
+    redrawScratchpad();
+  }, [redrawScratchpad]);
+
+  useEffect(() => {
+    if (!hasSessionActivity) return;
+    const timer = window.setInterval(() => setSessionNow(Date.now()), 30_000);
+    return () => window.clearInterval(timer);
+  }, [hasSessionActivity]);
+
+  const getScratchpadPoint = (event: ReactPointerEvent<HTMLCanvasElement>): ScratchpadPoint | null => {
+    const canvas = scratchpadCanvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const drawScratchpadSegment = (from: ScratchpadPoint, to: ScratchpadPoint) => {
+    const canvas = scratchpadCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = 3;
+    context.strokeStyle = "rgba(255, 232, 247, 0.92)";
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.lineTo(to.x, to.y);
+    context.stroke();
+  };
+
+  const handleScratchpadPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const point = getScratchpadPoint(event);
+    if (!point) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    scratchpadDraftStrokeRef.current = [point];
+  };
+
+  const handleScratchpadPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const draftStroke = scratchpadDraftStrokeRef.current;
+    const point = getScratchpadPoint(event);
+    if (!draftStroke || !point) return;
+    event.preventDefault();
+    const previousPoint = draftStroke[draftStroke.length - 1];
+    draftStroke.push(point);
+    drawScratchpadSegment(previousPoint, point);
+  };
+
+  const handleScratchpadPointerEnd = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const draftStroke = scratchpadDraftStrokeRef.current;
+    if (!draftStroke) return;
+    event.preventDefault();
+    scratchpadDraftStrokeRef.current = null;
+    if (draftStroke.length > 1) {
+      setScratchpadStrokes((current) => [...current, { points: [...draftStroke] }]);
+    }
+  };
 
   return (
     <div className="space-y-4">
     <PublicPractiseFlowHeader />
-    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 2xl:grid-cols-[minmax(280px,0.72fr)_minmax(0,1.25fr)_minmax(280px,0.78fr)]">
-      <Card padding="lg" className="2xl:sticky 2xl:top-4 2xl:self-start">
+    {hasSessionActivity ? (
+      <Card padding="md" className="border-warm-border bg-warm-glow">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+              Local practice session
+            </div>
+            <div className="mt-1 text-lg font-semibold text-white">
+              {sessionSummary.attempts} attempted / {sessionSummary.correct} correct / {sessionSummary.tutorUses} Tutor use{sessionSummary.tutorUses === 1 ? "" : "s"}
+            </div>
+            <p className="mt-1 text-sm leading-6 text-text-secondary">
+              {showSessionSummary ? sessionSummary.nextAction : "Session evidence is local-only in this public walkthrough."}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <span className="rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-text-secondary">
+              Started {formatElapsed(Math.max(0, Math.round((sessionNow - sessionSummary.startedAt) / 1000)))} ago
+            </span>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setShowSessionSummary((value) => !value)}
+              aria-expanded={showSessionSummary}
+            >
+              {showSessionSummary ? "Hide summary" : "Show summary"}
+            </Button>
+          </div>
+        </div>
+        {showSessionSummary ? (
+          <div className="mt-4 grid gap-3 md:grid-cols-4">
+            <MiniMetric label="Questions" value={sessionSummary.questionsTouched} />
+            <MiniMetric label="Drafts" value={sessionSummary.draftsMade} />
+            <MiniMetric label="Weakest topic" value={sessionSummary.weakestTopic ?? "None yet"} />
+            <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
+              <div className="text-xs text-text-muted">Next action</div>
+              <div className="mt-1 text-sm font-semibold text-white">{sessionSummary.nextAction}</div>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+    ) : null}
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.25fr)_minmax(260px,0.78fr)]">
+      <Card padding="lg" className="xl:sticky xl:top-4 xl:self-start">
         <SectionHeader
           eyebrow="Practise"
           title="Question bank"
           description="Choose one seeded question, attempt it, then repair what happened."
         />
         <div className="mt-5 space-y-3">
-          {WALKTHROUGH_QUESTIONS.map((question) => {
+          {questions.map((question) => {
             const active = question.id === selectedQuestionId;
             const questionAttempts = getQuestionAttempts(question.id, attempts);
             return (
@@ -1072,6 +1359,141 @@ function PractisePanel({
                   Ask about selected text
                 </Button>
               </div>
+              {selectedWorkingText ? (
+                <p className="mt-3 rounded-[1rem] border border-white/[0.1] bg-white/[0.05] px-3 py-2 text-xs leading-5 text-text-secondary">
+                  Selected: {selectedWorkingText}
+                </p>
+              ) : null}
+            </div>
+            <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-3">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-sm font-semibold text-white">Working tools</div>
+                  <p className="mt-1 text-xs leading-5 text-text-secondary">
+                    Scratchpad and voice transcript are local-only testing tools in this public walkthrough.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => setShowWorkingTools((value) => !value)}
+                  aria-expanded={showWorkingTools}
+                >
+                  {showWorkingTools ? "Hide tools" : "Open tools"}
+                </Button>
+              </div>
+              {showWorkingTools ? (
+                <div className="mt-4 grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
+                  <div className="rounded-[1.1rem] border border-white/[0.09] bg-white/[0.035] p-3">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <div className="text-sm font-semibold text-white">Scratchpad</div>
+                        <p className="mt-1 text-xs leading-5 text-text-secondary">
+                          Draw locally. Tutor receives only your typed note and stroke count, not OCR.
+                        </p>
+                      </div>
+                      <span className={chipClass}>
+                        {scratchpadStrokes.length} stroke{scratchpadStrokes.length === 1 ? "" : "s"}
+                      </span>
+                    </div>
+                    <canvas
+                      ref={scratchpadCanvasRef}
+                      width={900}
+                      height={260}
+                      className="mt-3 h-52 w-full touch-none rounded-[1rem] border border-white/[0.10] bg-[#0d1019]"
+                      onPointerDown={handleScratchpadPointerDown}
+                      onPointerMove={handleScratchpadPointerMove}
+                      onPointerUp={handleScratchpadPointerEnd}
+                      onPointerCancel={handleScratchpadPointerEnd}
+                      aria-label="Local practice scratchpad"
+                    />
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={scratchpadStrokes.length === 0}
+                        onClick={() => setScratchpadStrokes((current) => current.slice(0, -1))}
+                      >
+                        Undo
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={scratchpadStrokes.length === 0 && !scratchpadNote.trim()}
+                        onClick={() => {
+                          setScratchpadStrokes([]);
+                          setScratchpadNote("");
+                        }}
+                      >
+                        Clear
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={busyIntent !== null || (scratchpadStrokes.length === 0 && !scratchpadNote.trim())}
+                        onClick={() =>
+                          onTutorIntent(
+                            "stuck-here",
+                            "Ask about my scratchpad and current working. Use the typed scratchpad note if the drawing itself is not available.",
+                            { scratchpadNote, scratchpadStrokeCount: scratchpadStrokes.length }
+                          )
+                        }
+                      >
+                        Ask about scratchpad
+                      </Button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-[1.1rem] border border-white/[0.09] bg-white/[0.035] p-3">
+                    <div className="text-sm font-semibold text-white">Voice transcript fallback</div>
+                    <p className="mt-1 text-xs leading-5 text-text-secondary">
+                      Browser agents often cannot use a microphone, so type the transcript here.
+                    </p>
+                    <Textarea
+                      label="Scratchpad note / voice transcript"
+                      rows={4}
+                      value={voiceTranscript || scratchpadNote}
+                      onChange={(event) => {
+                        setScratchpadNote(event.target.value);
+                        setVoiceTranscript("");
+                      }}
+                      placeholder="I'm stuck on the line where..."
+                      containerClassName="mt-3"
+                    />
+                    {voiceNotice ? (
+                      <p className="mt-2 text-xs leading-5 text-text-muted">{voiceNotice}</p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        onClick={() => {
+                          setVoiceNotice("Microphone capture is not enabled in the public walkthrough. Type the transcript and send it instead.");
+                        }}
+                      >
+                        Record voice
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="secondary"
+                        disabled={busyIntent !== null || !(voiceTranscript.trim() || scratchpadNote.trim())}
+                        onClick={() => {
+                          const transcript = (voiceTranscript || scratchpadNote).trim();
+                          if (!transcript) return;
+                          onTutorIntent("stuck-here", transcript, {
+                            selectedWorkingText,
+                            scratchpadNote,
+                            scratchpadStrokeCount: scratchpadStrokes.length,
+                            voiceTranscript: transcript,
+                          });
+                        }}
+                      >
+                        Send to Tutor
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
             </div>
             <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-3">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -1130,7 +1552,7 @@ function PractisePanel({
         </Card>
       </div>
 
-      <div className="space-y-4 2xl:sticky 2xl:top-4 2xl:self-start">
+      <div className="space-y-4 xl:sticky xl:top-4 xl:self-start">
         <TutorPanel
           selectedQuestion={selectedQuestion}
           userAnswer={userAnswer}
@@ -1143,8 +1565,17 @@ function PractisePanel({
           open={tutorOpen}
           onOpenChange={setShowTutor}
         />
+        {latestDraft ? (
+          <PractiseDraftPanel
+            draft={latestDraft}
+            onUpdateDraft={onUpdateDraft}
+            onSaveDraft={onSaveDraft}
+            onAddDraftToDeck={onAddDraftToDeck}
+            onRejectDraft={onRejectDraft}
+          />
+        ) : null}
         <Card padding="lg">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between xl:flex-col">
             <SectionHeader
               title="Attempt history"
               description={`${selectedQuestionAttempts.length} attempt${selectedQuestionAttempts.length === 1 ? "" : "s"} on this public question.`}
@@ -1225,6 +1656,39 @@ function ConfidencePicker({
   );
 }
 
+function PractiseDraftPanel({
+  draft,
+  onUpdateDraft,
+  onSaveDraft,
+  onAddDraftToDeck,
+  onRejectDraft,
+}: {
+  draft: WalkthroughDraft;
+  onUpdateDraft: (draftId: string, field: "front" | "back", value: string) => void;
+  onSaveDraft: (draftId: string) => void;
+  onAddDraftToDeck: (draftId: string, deckId: string) => void;
+  onRejectDraft: (draftId: string) => void;
+}) {
+  return (
+    <Card tone="warm" padding="lg" data-agent-flashcard-draft="practise">
+      <SectionHeader
+        eyebrow="Tutor -> flashcard"
+        title="Flashcard draft"
+        description="Status: Draft / local-only in public walkthrough. It is not a real card until you add it to a deck."
+      />
+      <div className="mt-5">
+        <DraftReviewCard
+          draft={draft}
+          onUpdateDraft={onUpdateDraft}
+          onSaveDraft={onSaveDraft}
+          onAddDraftToDeck={onAddDraftToDeck}
+          onRejectDraft={onRejectDraft}
+        />
+      </div>
+    </Card>
+  );
+}
+
 function TutorPanel({
   selectedQuestion,
   userAnswer,
@@ -1245,13 +1709,20 @@ function TutorPanel({
   onTutorIntent: (
     intent: WalkthroughTutorIntent,
     prompt: string,
-    options?: { selectedWorkingText?: string }
+    options?: {
+      selectedWorkingText?: string;
+      scratchpadNote?: string;
+      scratchpadStrokeCount?: number;
+      voiceTranscript?: string;
+    }
   ) => void;
   confirmFullSolution: boolean;
   onConfirmFullSolutionChange: (value: boolean) => void;
   open: boolean;
   onOpenChange: (value: boolean) => void;
 }) {
+  const [showModeGuide, setShowModeGuide] = useState(false);
+
   return (
     <Card padding="lg">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between 2xl:flex-col">
@@ -1323,17 +1794,33 @@ function TutorPanel({
           </div>
         </div>
       ) : null}
-      <div className="mt-4 grid gap-2 md:grid-cols-2">
-        {TUTOR_ACTIONS.map((action) => (
-          <div
-            key={`${action.intent}-description`}
-            className="rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2"
-          >
-            <div className="text-xs font-semibold text-white">{action.label}</div>
-            <div className="mt-0.5 text-xs leading-5 text-text-muted">{action.description}</div>
-          </div>
-        ))}
+      <div className="mt-4 flex flex-col gap-2 rounded-[1rem] border border-white/[0.08] bg-white/[0.035] p-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs leading-5 text-text-secondary">
+          Use the quick actions first. Open the mode guide if you need the full button meanings.
+        </p>
+        <Button
+          type="button"
+          variant="secondary"
+          className="min-h-[2.35rem] rounded-full px-3 text-xs"
+          onClick={() => setShowModeGuide((value) => !value)}
+          aria-expanded={showModeGuide}
+        >
+          {showModeGuide ? "Hide mode guide" : "Mode guide"}
+        </Button>
       </div>
+      {showModeGuide ? (
+        <div className="mt-3 grid gap-2 md:grid-cols-2">
+          {TUTOR_ACTIONS.map((action) => (
+            <div
+              key={`${action.intent}-description`}
+              className="rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2"
+            >
+              <div className="text-xs font-semibold text-white">{action.label}</div>
+              <div className="mt-0.5 text-xs leading-5 text-text-muted">{action.description}</div>
+            </div>
+          ))}
+        </div>
+      ) : null}
       <div className="mt-5 space-y-3">
         {messages.map((message, index) => (
           <div
@@ -1808,12 +2295,14 @@ function DraftReviewCard({
   onUpdateDraft,
   onSaveDraft,
   onAddDraftToDeck,
+  onRejectDraft,
 }: {
   draft: WalkthroughDraft;
   readonly?: boolean;
   onUpdateDraft?: (draftId: string, field: "front" | "back", value: string) => void;
   onSaveDraft: (draftId: string) => void;
   onAddDraftToDeck: (draftId: string, deckId: string) => void;
+  onRejectDraft?: (draftId: string) => void;
 }) {
   const defaultDeckId = draft.addedDeckId ?? WALKTHROUGH_DECKS[0]?.id ?? "";
   const [destinationDeckId, setDestinationDeckId] = useState(defaultDeckId);
@@ -1906,6 +2395,16 @@ function DraftReviewCard({
         >
           Add to deck
         </Button>
+        {onRejectDraft ? (
+          <Button
+            type="button"
+            variant="secondary"
+            disabled={added}
+            onClick={() => onRejectDraft(draft.id)}
+          >
+            Reject
+          </Button>
+        ) : null}
       </div>
     </div>
   );
@@ -1963,34 +2462,82 @@ function ConstellationPanel() {
 }
 
 function ProfilePanel() {
+  const [selectedBackground, setSelectedBackground] =
+    useState<AppBackgroundPreference>(() => readAppBackgroundPreference());
+
   return (
-    <Card padding="lg">
-      <SectionHeader
-        eyebrow="Account"
-        title="Public walkthrough mode has no account."
-        description="This route is intentionally reachable so LLMs can see the full app structure, but profile data and notification settings remain private-only."
-      />
-      <div className="mt-6 grid gap-4 md:grid-cols-2">
-        <div className={surfaceCardClass}>
-          <div className="text-sm font-semibold text-white">What is available publicly</div>
-          <p className="mt-2 text-sm leading-6 text-text-secondary">
-            Seeded decks, cards, practice, tutor calls, drafts, and progress exploration.
-          </p>
+    <div className="space-y-4">
+      <Card padding="lg">
+        <SectionHeader
+          eyebrow="Account"
+          title="Public walkthrough mode has no account."
+          description="This route is intentionally reachable so LLMs can see the full app structure, but profile data and notification settings remain private-only."
+        />
+        <div className="mt-6 grid gap-4 md:grid-cols-2">
+          <div className={surfaceCardClass}>
+            <div className="text-sm font-semibold text-white">What is available publicly</div>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              Seeded decks, cards, practice, tutor calls, drafts, and progress exploration.
+            </p>
+          </div>
+          <div className={surfaceCardClass}>
+            <div className="text-sm font-semibold text-white">What remains private</div>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              User profile, uploaded content, real study history, notifications, and persistent writes.
+            </p>
+          </div>
         </div>
-        <div className={surfaceCardClass}>
-          <div className="text-sm font-semibold text-white">What remains private</div>
-          <p className="mt-2 text-sm leading-6 text-text-secondary">
-            User profile, uploaded content, real study history, notifications, and persistent writes.
-          </p>
+        <Link
+          href="/auth"
+          className="mt-6 inline-flex min-h-[3.15rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover"
+        >
+          Sign in for private workspace
+        </Link>
+      </Card>
+
+      <Card padding="lg">
+        <SectionHeader
+          eyebrow="Display"
+          title="Background"
+          description="Public walkthrough agents can switch the local gradient too. This does not touch private data."
+        />
+        <div className="mt-5 flex flex-wrap gap-3">
+          {APP_BACKGROUND_OPTIONS.map((option) => {
+            const active = selectedBackground === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                onClick={() => {
+                  setSelectedBackground(option.value);
+                  saveAppBackgroundPreference(option.value);
+                }}
+                className={`flex min-w-[8rem] items-center gap-3 rounded-[1.15rem] border p-3 text-left transition duration-fast ${
+                  active
+                    ? "border-warm-border bg-warm-glow text-white"
+                    : "border-white/[0.09] bg-white/[0.035] text-text-secondary hover:border-white/[0.18] hover:bg-white/[0.06]"
+                }`}
+                aria-pressed={active}
+              >
+                <span
+                  className={`h-11 w-11 shrink-0 rounded-full border shadow-[0_10px_24px_rgba(4,8,18,0.18)] ${
+                    active ? "border-warm-accent" : "border-white/[0.18]"
+                  }`}
+                  style={{ backgroundImage: option.preview }}
+                  aria-hidden="true"
+                />
+                <span className="min-w-0">
+                  <span className="block text-sm font-semibold text-white">{option.label}</span>
+                  <span className="mt-0.5 block text-xs leading-5 text-text-muted">
+                    {option.description}
+                  </span>
+                </span>
+              </button>
+            );
+          })}
         </div>
-      </div>
-      <Link
-        href="/auth"
-        className="mt-6 inline-flex min-h-[3.15rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover"
-      >
-        Sign in for private workspace
-      </Link>
-    </Card>
+      </Card>
+    </div>
   );
 }
 

@@ -14,16 +14,16 @@ Important rules:
 - Do not assume the public walkthrough is a real user account.
 
 Core route family:
-- /dashboard?agent=1 — Today / daily command centre.
-- /dashboard/study?agent=1 — Learn / flashcard review.
-- /dashboard/practise?agent=1 — Practise / questions, attempts, contextual Tutor, drafts.
-- /dashboard/progress?agent=1 — Progress / weak topics, mistakes, support level, drafts.
-- /dashboard/library?agent=1 — Library / seeded sources and local source actions.
-- /dashboard/cards?agent=1 — Cards / browse cards and drafts.
-- /dashboard/decks?agent=1 — Decks / card-set organisation.
-- /dashboard/goals?agent=1 — Goals / study targets.
-- /dashboard/constellation?agent=1 — Stars / rewards.
-- /dashboard/profile?agent=1 — Account / public walkthrough explanation and sign-in boundary.
+- /dashboard?agent=1 - Today / daily command centre.
+- /dashboard/study?agent=1 - Learn / flashcard review.
+- /dashboard/practise?agent=1 - Practise / questions, attempts, contextual Tutor, scratchpad, voice transcript fallback, drafts.
+- /dashboard/progress?agent=1 - Progress / weak topics, mistakes, support level, drafts.
+- /dashboard/library?agent=1 - Library / seeded sources and local source actions.
+- /dashboard/cards?agent=1 - Cards / browse cards and drafts.
+- /dashboard/decks?agent=1 - Decks / card-set organisation.
+- /dashboard/goals?agent=1 - Goals / study targets.
+- /dashboard/constellation?agent=1 - Stars / rewards.
+- /dashboard/profile?agent=1 - Account / public walkthrough explanation and sign-in boundary.
 
 Suggested click test:
 1. Open /agent.
@@ -35,6 +35,19 @@ Suggested click test:
 7. Open Progress and confirm local mistake/draft state is visible.
 8. Open Library and inspect seeded source actions.
 9. Open Account and confirm no private data was accessed.
+
+Phase 4 Practise/Tutor test:
+1. Open /dashboard/practise?agent=1.
+2. Type an answer and typed working.
+3. Click "I'm stuck here".
+4. Highlight part of the Working textarea.
+5. Click "Ask about selected text".
+6. Open Working tools.
+7. Draw on the scratchpad, then test Undo and Clear.
+8. Type a voice transcript fallback and send it to Tutor.
+9. Save one correct and one incorrect local attempt.
+10. Ask Tutor to make a flashcard and confirm the draft panel appears.
+11. Check the local practice session summary.
 
 Out of scope in public walkthrough:
 - Persistent writes.

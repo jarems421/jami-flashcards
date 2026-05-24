@@ -66,6 +66,20 @@ const testFlow = [
   "Go to Account and confirm signed-out mode did not access private data.",
 ];
 
+const phase4TestFlow = [
+  "Open Practise.",
+  "Type an answer and typed working.",
+  "Click I'm stuck here.",
+  "Highlight part of the Working textarea.",
+  "Click Ask about selected text.",
+  "Open Working tools.",
+  "Draw on the scratchpad, then test Undo and Clear.",
+  "Type a voice transcript fallback and send it to Tutor.",
+  "Save one correct and one incorrect local attempt.",
+  "Ask Tutor to make a flashcard and confirm the draft panel appears.",
+  "Check the local practice session summary.",
+];
+
 function AgentLink({
   href,
   label,
@@ -162,6 +176,26 @@ export default function AgentPage() {
         />
         <ol className="mt-5 grid gap-2">
           {testFlow.map((step, index) => (
+            <li
+              key={step}
+              className="flex gap-3 rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-3 text-sm leading-6 text-text-secondary"
+            >
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-xs font-semibold text-warm-accent">
+                {index + 1}
+              </span>
+              <span>{step}</span>
+            </li>
+          ))}
+        </ol>
+      </Card>
+
+      <Card padding="lg">
+        <SectionHeader
+          title="Phase 4 Practise/Tutor test"
+          description="Use this checklist to verify the context packet, scratchpad, voice fallback, draft panel, and session summary in the public walkthrough."
+        />
+        <ol className="mt-5 grid gap-2">
+          {phase4TestFlow.map((step, index) => (
             <li
               key={step}
               className="flex gap-3 rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-3 text-sm leading-6 text-text-secondary"

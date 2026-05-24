@@ -59,6 +59,7 @@ function GettingStartedChecklist({
   items: ChecklistItem[];
   isLoading: boolean;
 }) {
+  const [open, setOpen] = useState(true);
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -80,27 +81,13 @@ function GettingStartedChecklist({
       } catch {
         // Non-critical.
       }
-    }, 1800);
+    }, 2600);
 
     return () => window.clearTimeout(timeoutId);
   }, [showComplete]);
 
   if (allDone && dismissed) {
-    return (
-      <Card padding="md" className="border-warm-border/70 bg-warm-glow/60">
-        <div className="flex items-center gap-3">
-          <span className="h-4 w-4 shrink-0 rounded-full bg-warm-accent shadow-[0_0_18px_rgba(255,214,246,0.28)]" />
-          <div>
-            <div className="text-sm font-semibold text-white">
-              Getting started complete - you&apos;re ready to use Jami.
-            </div>
-            <p className="mt-1 text-xs leading-5 text-text-muted">
-              The setup checklist is finished, so Today can focus on your next study action.
-            </p>
-          </div>
-        </div>
-      </Card>
-    );
+    return null;
   }
 
   if (showComplete) {
@@ -129,33 +116,45 @@ function GettingStartedChecklist({
 
   return (
     <Card padding="lg">
-      <SectionHeader
-        eyebrow="Getting started"
-        title="Set up the first learning loop."
-        description="Finish these once, then this card disappears and the dashboard stays focused on what to do next."
-      />
-      <div className="mt-5 space-y-2">
-        {items.map((item) => (
-          <Link
-            key={item.label}
-            href={item.href}
-            className="flex items-start gap-3 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-3 transition duration-fast hover:border-white/[0.16] hover:bg-white/[0.06]"
-          >
-            <span
-              aria-label={item.done ? "Complete" : "Incomplete"}
-              className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border transition ${
-                item.done
-                  ? "border-warm-border bg-warm-accent shadow-[0_0_18px_rgba(255,214,246,0.28)]"
-                  : "border-white/[0.16] bg-white/[0.035]"
-              }`}
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-semibold text-white">{item.label}</span>
-              <span className="mt-0.5 block text-xs leading-5 text-text-muted">{item.detail}</span>
-            </span>
-          </Link>
-        ))}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <SectionHeader
+          eyebrow="Getting started"
+          title="Set up the first learning loop."
+          description="Finish these once, then this card disappears and the dashboard stays focused on what to do next."
+        />
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+          aria-expanded={open}
+        >
+          {open ? "Hide" : "Show"}
+        </button>
       </div>
+      {open ? (
+        <div className="mt-5 grid gap-2 md:grid-cols-2">
+          {items.map((item) => (
+            <Link
+              key={item.label}
+              href={item.href}
+              className="flex items-start gap-3 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-3 transition duration-fast hover:border-white/[0.16] hover:bg-white/[0.06]"
+            >
+              <span
+                aria-label={item.done ? "Complete" : "Incomplete"}
+                className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border transition ${
+                  item.done
+                    ? "border-warm-border bg-warm-accent shadow-[0_0_18px_rgba(255,214,246,0.28)]"
+                    : "border-white/[0.16] bg-white/[0.035]"
+                }`}
+              />
+              <span className="min-w-0">
+                <span className="block text-sm font-semibold text-white">{item.label}</span>
+                <span className="mt-0.5 block text-xs leading-5 text-text-muted">{item.detail}</span>
+              </span>
+            </Link>
+          ))}
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -489,20 +488,18 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
               : "Jami works best when each study action feeds the next one."
           }
         />
-        {compact ? (
-          <button
-            type="button"
-            onClick={() => setOpen((value) => !value)}
-            className="inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
-            aria-expanded={open}
-          >
-            {open ? "Hide" : "Show"}
-          </button>
-        ) : null}
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          className="inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+          aria-expanded={open}
+        >
+          {open ? "Hide" : "Show"}
+        </button>
       </div>
       {!open ? null : (
       <div className="mt-5 space-y-3">
-        {steps.map(([step, title, detail], index) => (
+        {steps.map(([step, title, detail]) => (
           <div
             key={step}
             className="relative rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-4 sm:flex sm:items-center sm:gap-4"
@@ -516,9 +513,6 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
                 <p className="mt-1 text-sm leading-6 text-text-secondary">{detail}</p>
               </div>
             </div>
-            {index < steps.length - 1 ? (
-              <div className="ml-5 mt-3 h-6 w-px bg-white/[0.12] sm:ml-auto sm:mt-0 sm:h-px sm:w-14" />
-            ) : null}
           </div>
         ))}
       </div>
@@ -844,16 +838,12 @@ export default function DashboardHome() {
             <TodayStatusRow plan={todayPlan} />
             <SecondaryActionsPanel plan={todayPlan} />
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(320px,0.75fr)]">
-              <div className="space-y-4">
-                <TodayReviewCard plan={todayPlan} />
-                <DraftQueueCard plan={todayPlan} />
-              </div>
-              <div className="space-y-4">
-                <RepairQueueCard plan={todayPlan} />
-                <WeakTopicsCard plan={todayPlan} />
-                <GoalSnapshotCard plan={todayPlan} />
-              </div>
+            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+              <TodayReviewCard plan={todayPlan} />
+              <RepairQueueCard plan={todayPlan} />
+              <DraftQueueCard plan={todayPlan} />
+              <WeakTopicsCard plan={todayPlan} />
+              <GoalSnapshotCard plan={todayPlan} />
             </div>
 
             <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
