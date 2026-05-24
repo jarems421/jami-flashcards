@@ -125,10 +125,12 @@ export async function POST(request: NextRequest) {
   let userAnswer: string | undefined;
   let workingText: string | undefined;
   let contextPacket: TutorContextPacket | null = null;
+  let forceFallback = request.nextUrl.searchParams.get("forceTutorFallback") === "1";
 
   try {
     const body = await request.json();
     intent = isWalkthroughTutorIntent(body.intent) ? body.intent : "hint";
+    forceFallback = forceFallback || body.forceFallback === true;
     message = typeof body.message === "string" ? body.message.slice(0, 1_000) : "";
     contextPacket = normalizeTutorContextPacket(body.contextPacket, intent);
     const rawContext = body.context && typeof body.context === "object" ? body.context : {};
@@ -157,6 +159,16 @@ export async function POST(request: NextRequest) {
       reply: getFallbackReply("hint"),
       fallback: true,
       error: "Walkthrough question context is required.",
+    });
+  }
+
+  if (forceFallback) {
+    const reply = getFallbackReply(intent);
+    return Response.json({
+      reply,
+      fallback: true,
+      forcedFallback: true,
+      suggestedFlashcard: intent === "make-flashcard" ? getFallbackFlashcard(reply) : null,
     });
   }
 

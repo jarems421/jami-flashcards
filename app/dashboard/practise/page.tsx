@@ -155,6 +155,7 @@ export default function PractisePage() {
   const [userAnswer, setUserAnswer] = useState("");
   const [workingText, setWorkingText] = useState("");
   const [selectedWorkingText, setSelectedWorkingText] = useState("");
+  const [selectedTextNotice, setSelectedTextNotice] = useState("");
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [confidence, setConfidence] = useState(3);
   const [mistakeLabelsInput, setMistakeLabelsInput] = useState("");
@@ -180,10 +181,8 @@ export default function PractisePage() {
   const [lastSavedAttemptResult, setLastSavedAttemptResult] = useState<"correct" | "incorrect" | null>(null);
   const [sessionStartedAt] = useState(Date.now());
   const [sessionAttemptIds, setSessionAttemptIds] = useState<string[]>([]);
-  const [sessionQuestionIds, setSessionQuestionIds] = useState<string[]>([]);
   const [sessionTutorUses, setSessionTutorUses] = useState(0);
   const [sessionDraftsCreated, setSessionDraftsCreated] = useState(0);
-  const [showSessionSummary, setShowSessionSummary] = useState(false);
   const [scratchpadStrokes, setScratchpadStrokes] = useState<ScratchpadStroke[]>([]);
   const [scratchpadNote, setScratchpadNote] = useState("");
   const [voiceSupported, setVoiceSupported] = useState(false);
@@ -223,10 +222,6 @@ export default function PractisePage() {
   const sessionCorrectAttempts = useMemo(
     () => sessionAttempts.filter((attempt) => attempt.isCorrect).length,
     [sessionAttempts]
-  );
-  const sessionQuestions = useMemo(
-    () => questions.filter((question) => sessionQuestionIds.includes(question.id)),
-    [questions, sessionQuestionIds]
   );
   const sessionWeakestTopic = useMemo(() => {
     const topicCounts = new Map<string, number>();
@@ -327,6 +322,7 @@ export default function PractisePage() {
     setUserAnswer("");
     setWorkingText("");
     setSelectedWorkingText("");
+    setSelectedTextNotice("");
     setIsCorrect(null);
     setConfidence(3);
     setMistakeLabelsInput("");
@@ -471,10 +467,6 @@ export default function PractisePage() {
           .filter(Boolean),
       });
       setSessionAttemptIds((current) => (current.includes(attemptId) ? current : [...current, attemptId]));
-      setSessionQuestionIds((current) =>
-        current.includes(selectedQuestion.id) ? current : [...current, selectedQuestion.id]
-      );
-      setShowSessionSummary(true);
       await loadAll();
       setLastSavedAttemptSnapshot(savedSnapshot);
       setLastSavedAttemptResult(savedResult);
@@ -498,6 +490,23 @@ export default function PractisePage() {
     if (!textarea) return;
     const selected = textarea.value.slice(textarea.selectionStart, textarea.selectionEnd).trim();
     setSelectedWorkingText(selected);
+    if (selected) {
+      setSelectedTextNotice(`Selected text ready for Tutor: "${selected}"`);
+    }
+  };
+
+  const handleAskAboutSelectedText = () => {
+    const selected = selectedWorkingText.trim();
+    if (!selected) {
+      setSelectedTextNotice("Highlight text in the Working box first, then ask about selected text.");
+      return;
+    }
+    setSelectedTextNotice(`Tutor will focus on selected text: "${selected}"`);
+    void handleTutorIntent(
+      "stuck-here",
+      `Ask about the selected working text: "${selected}". Explain the next step only.`,
+      { selectedWorkingText: selected }
+    );
   };
 
   const redrawScratchpad = useCallback(() => {
@@ -625,6 +634,9 @@ export default function PractisePage() {
     if (!selectedQuestion) return;
 
     const scratchpadContextNote = options?.scratchpadNote ?? scratchpadNote;
+    const displayedPrompt = options?.selectedWorkingText
+      ? `${options.voiceTranscript ?? prompt}\n\nYou selected: "${options.selectedWorkingText}"`
+      : options?.voiceTranscript ?? prompt;
     const packet = buildTutorContextPacket({
       question: selectedQuestion,
       topics,
@@ -648,16 +660,15 @@ export default function PractisePage() {
     setTutorBusyIntent(intent);
     setTutorUsed(true);
     setSessionTutorUses((current) => current + 1);
-    setShowSessionSummary(true);
     if (intent === "hint" || intent === "show-method" || intent === "check-working" || intent === "stuck-here") {
       setHintsUsed((current) => current + 1);
     }
-    setTutorMessages((current) => [...current, { role: "user", text: options?.voiceTranscript ?? prompt, intent }]);
+    setTutorMessages((current) => [...current, { role: "user", text: displayedPrompt, intent }]);
 
     try {
       const response = await sendPracticeTutorMessage({
         intent,
-        message: options?.voiceTranscript ?? prompt,
+        message: displayedPrompt,
         threadId: tutorThreadId,
         contextPacket: packet,
       });
@@ -709,7 +720,6 @@ export default function PractisePage() {
       });
       if (!savedDraftId) {
         setSessionDraftsCreated((current) => current + 1);
-        setShowSessionSummary(true);
       }
       setSavedDraftId(draftId);
       setFeedback({
@@ -745,7 +755,6 @@ export default function PractisePage() {
           sourceId: selectedQuestion.id,
         });
         setSessionDraftsCreated((current) => current + 1);
-        setShowSessionSummary(true);
       }
       await convertFlashcardDraftToCard(user.uid, {
         draftId,
@@ -855,39 +864,34 @@ export default function PractisePage() {
           <PractiseFlowHeader />
           {hasSessionActivity ? (
             <Card padding="md" className="border-warm-border bg-warm-glow">
-              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                    Practice session
+                    Practice session summary
                   </div>
-                  <h2 className="mt-1 text-lg font-semibold text-white">
-                    {sessionAttempts.length} attempted · {sessionCorrectAttempts} correct · {sessionTutorUses} Tutor use{sessionTutorUses === 1 ? "" : "s"}
-                  </h2>
+                  <div className="mt-1 text-lg font-semibold text-white">
+                    {sessionAttempts.length} attempted / {sessionCorrectAttempts} correct / {sessionTutorUses} Tutor use{sessionTutorUses === 1 ? "" : "s"} / {sessionDraftsCreated} draft{sessionDraftsCreated === 1 ? "" : "s"}
+                  </div>
                   <p className="mt-1 text-sm leading-6 text-text-secondary">
-                    {showSessionSummary
-                      ? sessionNextAction
-                      : "Your session summary stays compact until you want to review it."}
+                    Jami keeps the current session visible once you have attempted, used Tutor, or made a draft.
                   </p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <span className="rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-text-secondary">
-                    Started {formatElapsed(Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)))} ago
-                  </span>
-                  <Button
-                    type="button"
-                    variant="secondary"
-                    onClick={() => setShowSessionSummary((value) => !value)}
-                    aria-expanded={showSessionSummary}
-                  >
-                    {showSessionSummary ? "Hide summary" : "Show summary"}
-                  </Button>
-                </div>
+                <span className="rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                  Started {formatElapsed(Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)))} ago
+                </span>
               </div>
-              {showSessionSummary ? (
-                <div className="mt-4 grid gap-3 md:grid-cols-4">
+              <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
                   <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
-                    <div className="text-xs text-text-muted">Questions touched</div>
-                    <div className="mt-1 text-xl font-semibold text-white">{sessionQuestions.length}</div>
+                    <div className="text-xs text-text-muted">Attempts</div>
+                    <div className="mt-1 text-xl font-semibold text-white">{sessionAttempts.length}</div>
+                  </div>
+                  <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
+                    <div className="text-xs text-text-muted">Correct</div>
+                    <div className="mt-1 text-xl font-semibold text-white">{sessionCorrectAttempts}</div>
+                  </div>
+                  <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
+                    <div className="text-xs text-text-muted">Tutor uses</div>
+                    <div className="mt-1 text-xl font-semibold text-white">{sessionTutorUses}</div>
                   </div>
                   <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
                     <div className="text-xs text-text-muted">Drafts made</div>
@@ -897,12 +901,11 @@ export default function PractisePage() {
                     <div className="text-xs text-text-muted">Weakest topic</div>
                     <div className="mt-1 text-sm font-semibold text-white">{sessionWeakestTopic ?? "None yet"}</div>
                   </div>
-                  <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
-                    <div className="text-xs text-text-muted">Next</div>
+                  <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3 md:col-span-3 xl:col-span-1">
+                    <div className="text-xs text-text-muted">Next action</div>
                     <div className="mt-1 text-sm font-semibold text-white">{sessionNextAction}</div>
                   </div>
                 </div>
-              ) : null}
             </Card>
           ) : null}
           {showAddQuestion ? (
@@ -1188,6 +1191,7 @@ export default function PractisePage() {
                         onChange={(event) => {
                           setWorkingText(event.target.value);
                           setSelectedWorkingText("");
+                          setSelectedTextNotice("");
                         }}
                         onSelect={updateSelectedWorkingText}
                         onKeyUp={updateSelectedWorkingText}
@@ -1234,23 +1238,17 @@ export default function PractisePage() {
                             <Button
                               type="button"
                               variant="secondary"
-                              disabled={tutorBusyIntent !== null || !selectedWorkingText}
+                              disabled={tutorBusyIntent !== null}
                               title={selectedWorkingText ? selectedWorkingText : "Highlight text in Working first"}
-                              onClick={() =>
-                                void handleTutorIntent(
-                                  "stuck-here",
-                                  "Ask about the selected working text and explain the next step only.",
-                                  { selectedWorkingText }
-                                )
-                              }
+                              onClick={handleAskAboutSelectedText}
                             >
                               Ask about selected text
                             </Button>
                           </div>
                         </div>
-                        {selectedWorkingText ? (
+                        {selectedTextNotice ? (
                           <p className="mt-3 rounded-[1rem] border border-white/[0.1] bg-white/[0.05] px-3 py-2 text-xs leading-5 text-text-secondary">
-                            Selected: {selectedWorkingText}
+                            {selectedTextNotice}
                           </p>
                         ) : null}
                       </div>

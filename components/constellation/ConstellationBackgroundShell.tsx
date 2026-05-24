@@ -115,13 +115,14 @@ export default function ConstellationBackgroundShell({
 
   useEffect(() => {
     document.body.classList.toggle("app-theme-normal", appTheme === "normal");
-    document.body.classList.toggle("app-theme-purple-pink", appTheme === "purple-pink");
+    document.body.classList.toggle("app-theme-purple", appTheme === "purple");
     document.body.classList.toggle("app-theme-paper-white", appTheme === "paper-white");
     document.body.classList.toggle("app-theme-soft-grey", appTheme === "soft-grey");
 
     return () => {
       document.body.classList.remove(
         "app-theme-normal",
+        "app-theme-purple",
         "app-theme-purple-pink",
         "app-theme-paper-white",
         "app-theme-soft-grey"

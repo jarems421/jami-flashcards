@@ -1,645 +1,372 @@
-# Phase 4 Live QA Report
+﻿# Phase 4 Live QA Report
 
-Audit target:
-- `https://jami-jarems421s-projects.vercel.app/agent`
-- `https://jami-jarems421s-projects.vercel.app/dashboard?agent=1`
+Date: 2026-05-24
 
-Method:
-- Ran direct Chrome DevTools Protocol automation against the live Vercel deployment.
-- Did not use Browser Use.
-- Tested as a signed-out visitor, so observations apply to the public local walkthrough only.
-- No product fixes were implemented during this audit.
+Targets tested:
+- https://jami-jarems421s-projects.vercel.app/agent
+- https://jami-jarems421s-projects.vercel.app/dashboard?agent=1
 
-## Agent Entry And Public Access
+Method: direct Chrome DevTools Protocol automation against the deployed Vercel app. Browser Use was not used.
 
-### Area tested
-`/agent` public launchpad.
+Summary: the live app now exposes the public agent walkthrough and most Phase 4 surfaces. The biggest remaining concern is not route access; it is polish and verification depth inside Practise, especially the session summary and keeping Tutor tools powerful without making the page feel busy.
 
-### What was clicked/typed
-Opened `/agent`.
+## Phase 4.6 Local Verification Update
 
-### What happened
-The page loaded successfully. It explained that signed-out agents get seeded local data and local-only interactions, while signed-in users get the real Firebase-backed app. It showed a direct route map and a suggested click test.
+Date: 2026-05-24
 
-### Pass/fail
-Pass.
+Scope: local implementation verification after the final Practise QA polish. This update was checked against the local production build, not a redeployed Vercel URL.
 
-### Severity
-Low.
+Automated checks:
+- `npm run typecheck`: PASS
+- `npm run lint`: PASS
+- `npm test`: PASS, 13 files and 116 tests passed
+- `npm run build`: PASS
 
-### Suggested fix
-Keep this route. It is useful. Consider making the signed-out/local-only warning even more visually prominent at the top of the route map.
+Local route checks:
+- `200 /agent`
+- `200 /dashboard?agent=1`
+- `200 /dashboard/practise?agent=1&forceTutorFallback=1`
+- `200 /dashboard/progress?agent=1`
 
-## Plain Text Agent Route Map
+### Phase 4.6 Areas
 
-### Area tested
-`/llms.txt`.
+#### Practice session summary
 
-### What was clicked/typed
-Opened `/llms.txt`.
+- Area tested: signed-in Practise UI and public walkthrough Practise UI.
+- What was clicked/typed: Code review plus local production route load.
+- What happened: The session summary is no longer hidden behind a vague show/hide button. Once attempts, Tutor uses, or drafts exist, the panel is visible and includes attempts, correct count, Tutor uses, drafts made, weakest topic, and next action.
+- Pass/fail: PASS locally
+- Severity: low
+- Suggested fix: Re-audit visually after deploy to confirm spacing on real browser widths.
 
-### What happened
-The plain-text route map loaded and listed `/agent`, `/dashboard?agent=1`, and the core dashboard route family. It clearly stated that signed-out mode is local-only and that real private data requires authentication.
+#### Agent-only Tutor context preview
 
-### Pass/fail
-Pass.
+- Area tested: public `/dashboard/practise?agent=1`.
+- What was clicked/typed: Code review plus local production route load.
+- What happened: Agent mode now renders an agent-only context preview showing current question, unsaved answer, unsaved working, selected text, and intent. This preview is only for public agent QA and is not part of normal signed-in UI.
+- Pass/fail: PASS locally
+- Severity: low
+- Suggested fix: In the next live audit, type fresh working and confirm the preview updates before clicking Tutor.
 
-### Severity
-Low.
+#### Selected-text Tutor acknowledgement
 
-### Suggested fix
-Use plain ASCII punctuation in `llms.txt`. The CDP text extraction displayed replacement characters around route separators, likely from non-ASCII dash characters.
+- Area tested: signed-in Practise and public walkthrough Practise.
+- What was clicked/typed: Code review.
+- What happened: If text is selected from the Working textarea, the UI acknowledges the selected text and the Tutor user message includes `You selected: ...`. If no text is selected, the UI now tells the user to highlight text first instead of silently doing nothing.
+- Pass/fail: PASS locally
+- Severity: low
+- Suggested fix: Re-test with real mouse selection in browser after deploy.
 
-## Public Dashboard Access
+#### Forced public Tutor fallback
 
-### Area tested
-`/dashboard?agent=1`.
+- Area tested: `/dashboard/practise?agent=1&forceTutorFallback=1` and `/api/demo/tutor`.
+- What was clicked/typed: Loaded the local route and reviewed request handling.
+- What happened: Public walkthrough Tutor requests can now force deterministic fallback replies without consuming live AI budget. The `/agent` route map includes a direct Practise fallback QA link.
+- Pass/fail: PASS locally
+- Severity: low
+- Suggested fix: In live audit, test every Tutor mode with the forced fallback URL and confirm Make flashcard still creates a visible local draft.
 
-### What was clicked/typed
-Opened `/dashboard?agent=1` in a fresh signed-out Chrome profile.
+#### No-question empty state, Getting Started completion, and theme contrast
+
+- Area tested: source review and existing local production route load.
+- What was clicked/typed: No fresh browser visual pass was completed for these edge cases in this local update.
+- What happened: The no-question Practise state remains an empty state with an Add Question action instead of an unclosable create-question modal. Getting Started completion and white/grey theme contrast still need direct visual confirmation after deploy.
+- Pass/fail: PARTIAL
+- Severity: medium
+- Suggested fix: Include these three checks in the next live browser audit.
 
-### What happened
-The dashboard loaded without sign-in. The agent route-map panel appeared. The page clearly said public walkthrough actions update the session only and private Firebase data stays protected.
+Status after Phase 4.6 local update: **Phase 4 is code-complete and close to QA-complete, but still needs one redeployed live audit for final visual confirmation.**
+
+## Detailed Checks
 
-### Pass/fail
-Pass.
+### 1. Agent entrypoint
 
-### Severity
-Low.
+- Area tested: `/agent`
+- What was clicked/typed: Opened `/agent` directly.
+- What happened: The page loaded and explained the LLM/browser agent entrypoint. It clearly said signed-out agents get seeded local data/local-only interactions, while signed-in users use the real Firebase-backed app.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep this page current as future phases add routes.
+
+### 2. Public dashboard entry
 
-### Suggested fix
-None required for access. This part works.
+- Area tested: `/dashboard?agent=1`
+- What was clicked/typed: Opened `/dashboard?agent=1` directly while signed out.
+- What happened: The main dashboard loaded without sign-in. It showed public walkthrough mode, agent test mode, local-only copy, route links, metrics, and a recommended next action.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: None required. The visible Sign in link is fine as long as it does not block the walkthrough.
+
+### 3. Agent route map and local-only clarity
 
-## Navigation
-
-### Area tested
-Today, Learn, Practise, Library, Cards, Progress.
-
-### What was clicked/typed
-Opened direct routes:
-- `/dashboard?agent=1`
-- `/dashboard/study?agent=1`
-- `/dashboard/practise?agent=1`
-- `/dashboard/library?agent=1`
-- `/dashboard/cards?agent=1`
-- `/dashboard/progress?agent=1`
-
-### What happened
-All tested routes loaded without sign-in. The agent route-map panel remained visible. No Firebase permission errors appeared in page text or captured console logs.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-Keep the route map. It makes the app much easier for browser agents to inspect.
-
-## Practise Layout
-
-### Area tested
-Practise page layout in public walkthrough.
-
-### What was clicked/typed
-Opened `/dashboard/practise?agent=1`.
-
-### What happened
-The page showed question bank, active question, answer and working fields, self-marking, Tutor controls, and attempt history. The core flow was understandable: choose question -> attempt -> working -> ask Tutor -> mark/save.
-
-However, the public walkthrough did not show the Phase 4 scratchpad, voice transcript controls, or practice session summary. This means an unauthenticated LLM agent cannot currently test all Phase 4 features from the public route.
-
-### Pass/fail
-Partial fail.
-
-### Severity
-High.
-
-### Suggested fix
-Expose the Phase 4 signed-in Practise UI affordances in public walkthrough mode as local-only simulations:
-- scratchpad V1;
-- scratchpad note;
-- voice transcript fallback;
-- practice session summary.
-
-Do not add Firebase writes. Keep it local-only.
-
-## Practise Context Typing
-
-### Area tested
-Typed answer and working.
-
-### What was clicked/typed
-Typed:
-- Answer: `9`
-- Working: `I added 3 and 5 but got 9`
-
-### What happened
-Both fields accepted the values. The Tutor area displayed current context after Tutor interactions, including the question, answer, and working.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-None for basic typing.
-
-## "I'm Stuck Here"
-
-### Area tested
-Context-aware stuck action.
-
-### What was clicked/typed
-Clicked `I'm stuck here`.
-
-### What happened
-Tutor did not ask me to paste the question or working. It used the current question context and prompted toward the next conceptual step about algebraic and geometric multiplicity. It did not dump the final solution.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-The behavior is directionally right. The answer/working I typed was intentionally irrelevant arithmetic for a linear algebra question, and Tutor still prioritized the actual question context. That is mostly good, but the product could also gently flag "your working does not seem to match this question."
-
-## Ask About My Working
-
-### Area tested
-Working-aware Tutor action.
-
-### What was clicked/typed
-Clicked `Ask about my working`.
-
-### What happened
-In the longer Tutor pass, this mode was blocked by the public Tutor budget after earlier interactions. The fallback message said the public Tutor budget was used up and allowed the walkthrough to continue. The UI still displayed the current context packet below.
-
-### Pass/fail
-Inconclusive.
-
-### Severity
-Medium.
-
-### Suggested fix
-For agent QA, provide a deterministic local fallback per Tutor mode that still demonstrates the intended behavior after budget exhaustion. Otherwise agents cannot reliably test all modes in one run.
-
-## Ask About Selected Text
-
-### Area tested
-Selected typed-working context.
-
-### What was clicked/typed
-Highlighted `3 and 5` in the Working textarea and clicked `Ask about selected text`.
-
-### What happened
-Tutor focused on the selected text and replied that "3 and 5" did not match the actual question, then redirected attention to the characteristic polynomial. This was one of the best Phase 4 signals: the Tutor clearly used selected text.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-Keep this. It makes the Tutor feel meaningfully context-aware.
-
-## Hint Mode
-
-### Area tested
-Tutor hint.
-
-### What was clicked/typed
-Clicked `Hint`.
-
-### What happened
-Tutor gave a nudge about comparing algebraic multiplicity and eigenspace dimension. It did not answer-dump.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-None required.
-
-## Check Working Mode
-
-### Area tested
-Tutor check-working mode.
-
-### What was clicked/typed
-Clicked `Check working`.
-
-### What happened
-The public Tutor budget was exhausted by the time this mode was tested. The fallback message appeared instead of a working-specific check.
-
-### Pass/fail
-Inconclusive.
-
-### Severity
-Medium.
-
-### Suggested fix
-Add mode-specific deterministic fallbacks for public walkthrough mode so `Check working` can still demonstrate "first issue" behavior after the live AI budget is exhausted.
-
-## Full Solution Mode
-
-### Area tested
-Full solution intent and confirmation.
-
-### What was clicked/typed
-Clicked `Full solution`, then clicked `Show full solution`.
-
-### What happened
-The confirmation panel appeared and clearly warned that full solution gives the answer and may count as lower independent evidence. After confirmation, the public Tutor budget was exhausted, so no real step-by-step full solution appeared.
-
-### Pass/fail
-Partial pass.
-
-### Severity
-Medium.
-
-### Suggested fix
-The confirmation UX passes. The actual step-by-step solution path needs a deterministic budget fallback so agents can test it after quota exhaustion.
-
-## Make Flashcard
-
-### Area tested
-Tutor-to-flashcard draft.
-
-### What was clicked/typed
-Clicked `Make card`.
-
-### What happened
-Tutor returned flashcard-shaped text:
-- Front: condition for diagonalizability;
-- Back: geometric multiplicity equals algebraic multiplicity.
-
-I did not observe a clear in-place "draft created" panel inside Practise during the live run. The public Cards/Progress pages had draft UI, but it was not clearly attributable to this newly generated card from the click sequence.
-
-### Pass/fail
-Partial fail.
-
-### Severity
-High.
-
-### Suggested fix
-After `Make card`, show an explicit local draft card in Practise:
-- Status: Draft, local-only;
-- Front;
-- Back;
-- Topic;
-- Destination deck simulation;
-- Buttons: Save draft, Add to deck.
-
-This is one of Jami's core differentiators and needs to be impossible to miss.
-
-## Similar Question
-
-### Area tested
-Similar question mode.
-
-### What was clicked/typed
-Clicked `Similar question`.
-
-### What happened
-The public Tutor budget was exhausted, so the mode returned the budget fallback rather than a follow-up question.
-
-### Pass/fail
-Inconclusive.
-
-### Severity
-Medium.
-
-### Suggested fix
-Add a deterministic public fallback that returns one seeded similar question.
-
-## Scratchpad
-
-### Area tested
-Scratchpad V1.
-
-### What was clicked/typed
-Attempted to find and draw on a scratchpad canvas. Attempted to click `Undo`, `Clear`, and `Ask about scratchpad`.
-
-### What happened
-No scratchpad canvas was found in the signed-out public walkthrough. `Undo`, `Clear`, and `Ask about scratchpad` buttons were not present.
-
-### Pass/fail
-Fail for public agent QA.
-
-### Severity
-High.
-
-### Suggested fix
-Add a local-only scratchpad simulation to public Practise. It does not need OCR or Firebase storage. It only needs enough surface for agents to verify the intended Phase 4 UX.
-
-## Scratchpad Claims
-
-### Area tested
-Whether UI claims handwriting/OCR.
-
-### What was clicked/typed
-Looked for scratchpad-related copy and controls in public Practise.
-
-### What happened
-No scratchpad UI was present, so I did not observe any misleading handwriting/OCR claim. This is not a pass for scratchpad functionality; it only means the public route did not overclaim.
-
-### Pass/fail
-Partial pass.
-
-### Severity
-Medium.
-
-### Suggested fix
-When scratchpad is exposed publicly, use explicit copy: "Draw locally. Tutor only receives your typed note unless image support is enabled."
-
-## Voice / Push-To-Talk
-
-### Area tested
-Voice message and fallback.
-
-### What was clicked/typed
-Attempted to click `Record voice` and `Stop recording`.
-
-### What happened
-No voice controls were present in the public walkthrough. No typed voice fallback was visible.
-
-### Pass/fail
-Fail for public agent QA.
-
-### Severity
-High.
-
-### Suggested fix
-Expose a local-only voice transcript field in public Practise. In headless/browser-agent environments, show the typed fallback by default because microphone APIs may be unavailable.
-
-## Session Summary
-
-### Area tested
-Practice session summary.
-
-### What was clicked/typed
-Saved one local correct attempt and one local incorrect attempt, used Tutor, and generated a flashcard-shaped Tutor response.
-
-### What happened
-The public walkthrough updated practice accuracy and attempt counts. I did not observe a Phase 4 session summary showing attempts, correct count, Tutor uses, drafts made, weakest topic, and next action.
-
-### Pass/fail
-Fail for public agent QA.
-
-### Severity
-High.
-
-### Suggested fix
-Expose a local-only session summary in public Practise, matching the signed-in Phase 4 summary pattern.
-
-## Today Regression
-
-### Area tested
-Today command centre.
-
-### What was clicked/typed
-Opened `/dashboard?agent=1`.
-
-### What happened
-Today showed one dominant recommended action: repair the most recent mistake. Secondary sections included review, repair queue, drafts, weak topics, goals, and how Jami works.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-Keep the action-first hierarchy. It is much clearer than a generic dashboard.
-
-## Library Regression
-
-### Area tested
-Library source list/detail/actions.
-
-### What was clicked/typed
-Opened `/dashboard/library?agent=1`.
-
-### What happened
-Library loaded with seeded sources, selected source detail, source text, a draft area, and actions: Ask Tutor about source, Make source flashcard draft, Make practice draft. The page stated public Library actions are simulated locally.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-The layout works, but keep watching vertical length. The page can still feel dense on smaller screens.
-
-## Library Source Provenance
-
-### Area tested
-Whether source-generated content is tied to selected source.
-
-### What was clicked/typed
-Inspected selected source and draft area.
-
-### What happened
-The selected source was visible beside source actions and draft content. The public copy made clear the actions were simulated. I did not generate a fresh source draft during this audit, so I only observed the existing seeded source/draft state.
-
-### Pass/fail
-Partial pass.
-
-### Severity
-Low.
-
-### Suggested fix
-When a source draft is generated, show `Based on: {source title}` directly on each draft card.
-
-## Progress Regression
-
-### Area tested
-Progress MVP scope.
-
-### What was clicked/typed
-Opened `/dashboard/progress?agent=1`.
-
-### What happened
-Progress stayed narrow and useful: recommended next step, support-level explanation, weak topics, accuracy, weak/due cards, recent mistakes, next action, and flashcard drafts.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-No immediate change. Do not turn this into a heavy analytics dashboard.
-
-## Cards Regression
-
-### Area tested
-Cards page.
-
-### What was clicked/typed
-Opened `/dashboard/cards?agent=1`.
-
-### What happened
-Cards loaded with seeded cards and draft editing controls. It explained tags vs topics and said real card creation should happen through decks in the private app.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-The page is usable. Keep the Decks vs Cards distinction.
-
-## Learn Regression
-
-### Area tested
-Learn/study public page.
-
-### What was clicked/typed
-Opened `/dashboard/study?agent=1`.
-
-### What happened
-Learn loaded seeded decks and a review queue. Cards were clickable and presented as local study preview without writing review history.
-
-### Pass/fail
-Pass.
-
-### Severity
-Low.
-
-### Suggested fix
-None for public walkthrough loading.
-
-## Responsive Practise
-
-### Area tested
-390px and 768px widths.
-
-### What was clicked/typed
-Loaded `/dashboard/practise?agent=1` with DevTools emulated widths around 390px and 768px.
-
-### What happened
-No horizontal overflow was detected. Core buttons remained available. The page is long, but usable. Since scratchpad, voice, and session summary are absent in the public walkthrough, this does not validate responsive behavior for the full Phase 4 UI.
-
-### Pass/fail
-Partial pass.
-
-### Severity
-Medium.
-
-### Suggested fix
-When public scratchpad/voice/session summary are added, keep them collapsed by default on mobile.
-
-## Responsive Library
-
-### Area tested
-390px and 768px widths.
-
-### What was clicked/typed
-Loaded `/dashboard/library?agent=1` with DevTools emulated widths around 390px and 768px.
-
-### What happened
-No horizontal overflow was detected. Source list/detail/actions remained present. The page is still vertically dense.
-
-### Pass/fail
-Pass with warning.
-
-### Severity
-Low.
-
-### Suggested fix
-Consider stronger mobile section tabs or collapsible source actions if the Library grows.
-
-## Console / Runtime Errors
-
-### Area tested
-Captured browser console/log entries during audit.
-
-### What was clicked/typed
-Ran the audit through direct Chrome automation.
-
-### What happened
-No Firebase permission errors were observed. No 502 was observed. One generic 404 resource error was captured early, but I did not identify a user-visible failure caused by it.
-
-### Pass/fail
-Pass with warning.
-
-### Severity
-Low.
-
-### Suggested fix
-Investigate the unidentified 404 later, but it did not block this audit.
+- Area tested: Agent route map inside public dashboard.
+- What was clicked/typed: Inspected the top dashboard guide and route links.
+- What happened: The dashboard clearly exposed route links for Today, Learn, Practise, Progress, Library, Cards, Decks, Goals, Stars, and Account. It also stated mutations are local-only unless signed in.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep the signed-out/local-only and signed-in/Firebase-backed distinction visible.
+
+### 4. Navigation coverage
+
+- Area tested: Today, Learn, Practise, Library, Cards, and Progress routes.
+- What was clicked/typed: Opened each route directly with `?agent=1`.
+- What happened: All tested routes loaded without a 502, auth redirect, or Firebase permission error. Cards and Learn loaded successfully in this run.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Continue watching the previous intermittent 502 issue, but it did not reproduce during this audit.
+
+### 5. Practise layout and flow
+
+- Area tested: `/dashboard/practise?agent=1`
+- What was clicked/typed: Opened Practise and inspected the visible workspace.
+- What happened: Practise showed the mini-flow `Choose question -> Attempt -> Mark -> Repair`, a question bank, active question, answer/working fields, local self-marking, contextual Tutor, and collapsed Working tools.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: The structure is much clearer than the old long-scroll version. It still has many controls visible, so future polish should keep pushing progressive disclosure.
+
+### 6. Public scratchpad visibility
+
+- Area tested: Working tools in public Practise.
+- What was clicked/typed: Clicked `Open tools`.
+- What happened: Scratchpad appeared with a canvas, `Undo`, `Clear`, and `Ask about scratchpad`. Copy said Tutor receives typed note/stroke count, not OCR.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Actual stroke drawing was inconclusive in automation because the later pointer test timed out, so do one manual mouse/stylus check before calling scratchpad fully QA-complete.
+
+### 7. Voice transcript fallback
+
+- Area tested: Working tools in public Practise.
+- What was clicked/typed: Clicked `Open tools` and inspected the voice area.
+- What happened: A `Voice transcript fallback` area appeared with copy explaining browser agents often cannot use a microphone. A transcript field and `Record voice` / `Send to Tutor` controls were visible.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Good for agents. Keep this collapsed by default so it does not distract normal students.
+
+### 8. Typed answer and working
+
+- Area tested: Active Practise question.
+- What was clicked/typed: Entered `Answer: 9` and `Working: I added 3 and 5 but got 9` using direct browser automation.
+- What happened: The fields were present and could be targeted. A later Tutor transcript still showed the seeded answer/working in one run, so I cannot fully prove from this audit that React state always used the freshly typed automation values.
+- Pass/fail: PARTIAL
+- Severity: medium
+- Suggested fix: Manually verify with real typing that `I'm stuck here`, `Ask about my working`, and `Ask about selected text` include the latest unsaved answer/working in the Tutor context packet.
+
+### 9. I'm stuck here
+
+- Area tested: Tutor context action.
+- What was clicked/typed: Clicked `I'm stuck here` after entering answer/working.
+- What happened: Tutor responded in the practice context and did not ask the user to paste the whole question manually.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep the response next-step-only. Manually confirm it uses freshly typed working, not just seeded public context.
+
+### 10. Ask about my working
+
+- Area tested: Tutor context action.
+- What was clicked/typed: Clicked `Ask about my working`.
+- What happened: Tutor responded with working-aware guidance. The observed transcript referenced working context, but the automation could not conclusively prove it used the freshly typed value rather than seeded public working.
+- Pass/fail: PARTIAL
+- Severity: medium
+- Suggested fix: Manually verify state sync with real keystrokes. If needed, add an agent-test debug label showing the current unsaved context that will be sent.
+
+### 11. Ask about selected text
+
+- Area tested: Selected typed-working flow.
+- What was clicked/typed: Selected text in the working textarea and clicked `Ask about selected text`.
+- What happened: Tutor returned contextual guidance. The audit did not conclusively prove the selected substring was isolated in the response.
+- Pass/fail: PARTIAL
+- Severity: medium
+- Suggested fix: Make selected-text mode visibly acknowledge the selected phrase, or show a clear fallback when no selection is captured.
+
+### 12. Tutor mode: Hint
+
+- Area tested: Tutor mode button.
+- What was clicked/typed: Clicked `Hint`.
+- What happened: Tutor gave a nudge about comparing algebraic multiplicity with eigenspace dimension. It did not simply dump the final answer.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: None urgent.
+
+### 13. Tutor mode: Check working
+
+- Area tested: Tutor mode button.
+- What was clicked/typed: Clicked `Check working`.
+- What happened: Tutor responded with checking-style guidance and focused on the conceptual issue.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep the first-issue behaviour tight; avoid long lectures here.
+
+### 14. Tutor mode: Full solution
+
+- Area tested: Full solution flow.
+- What was clicked/typed: Clicked `Full solution` and the explicit reveal control where presented.
+- What happened: Tutor returned a step-by-step solution. The mode remained visibly deliberate rather than silently answer-dumping.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep the confirmation copy because it supports Jami's anti-overhelp stance.
+
+### 15. Tutor mode: Make flashcard
+
+- Area tested: Tutor-to-flashcard draft loop in public Practise.
+- What was clicked/typed: Clicked `Make card`.
+- What happened: Tutor generated a flashcard-shaped response, then an in-place `TUTOR -> FLASHCARD` panel appeared with `Status: Draft / local-only in public walkthrough`, Front, Back, suggested topic, destination deck, and actions: Save as draft, Add to deck, Reject.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: The draft panel is now clear. Consider showing it a little faster or with a stronger loading state, because one intermediate capture still showed `Thinking...` before the panel appeared.
+
+### 16. Tutor mode: Similar question
+
+- Area tested: Similar question flow.
+- What was clicked/typed: Clicked `Similar question`.
+- What happened: Tutor created a sensible follow-up question about diagonalizability/eigenvalue multiplicity.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep this to one follow-up question so Practise does not become cluttered.
+
+### 17. Public Tutor budget fallback
+
+- Area tested: Public Tutor calls across multiple modes.
+- What was clicked/typed: Triggered several Tutor actions and modes in one agent session.
+- What happened: The UI continued returning usable Tutor content and did not break with a budget error. However, the audit did not force budget exhaustion, so the exhausted-budget branch itself was not conclusively verified.
+- Pass/fail: PARTIAL
+- Severity: medium
+- Suggested fix: Add or expose a deterministic QA path that forces the public fallback response for every Tutor mode without consuming live AI budget.
+
+### 18. Session summary
+
+- Area tested: Practice session summary after attempts.
+- What was clicked/typed: Marked attempts and clicked `Show summary` where available.
+- What happened: Attempt history updated and the draft panel appeared, but the audit did not clearly observe a complete session summary containing attempts, correct count, Tutor uses, drafts made, weakest topic, and next action in one place.
+- Pass/fail: FAIL
+- Severity: high
+- Suggested fix: Make `Show summary` reveal an unmistakable `Practice session summary` panel with those exact fields. This is the biggest remaining Phase 4 QA gap.
+
+### 19. Library route and source grounding
+
+- Area tested: `/dashboard/library?agent=1`
+- What was clicked/typed: Opened Library directly.
+- What happened: Library loaded with saved source/workspace language and public walkthrough constraints. It still reads as source-linked rather than a generic file manager.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep source-generated content labelled as based on the selected source.
+
+### 20. Progress route
+
+- Area tested: `/dashboard/progress?agent=1`
+- What was clicked/typed: Opened Progress directly.
+- What happened: Progress remained focused on weak topics, recent mistakes, support level, and useful next actions. It did not read like an analytics dump.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: None urgent.
+
+### 21. Theme settings visibility
+
+- Area tested: Account/Profile theme settings.
+- What was clicked/typed: Opened Account and inspected theme controls.
+- What happened: Theme controls were visible with Normal, Purple pink, White, and Grey options.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep this as a simple preference, not a theme-builder.
+
+### 22. Theme: Normal
+
+- Area tested: Normal theme.
+- What was clicked/typed: Clicked `Normal`.
+- What happened: The body class became `app-theme-normal` with a smooth dark blue-grey gradient.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: This should remain the default.
+
+### 23. Theme: Purple pink
+
+- Area tested: Purple/pink theme.
+- What was clicked/typed: Clicked `Purple pink`.
+- What happened: The body class became `app-theme-purple-pink` with a warmer purple/pink app-wide theme.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Keep restrained; avoid drifting back into purple glow clutter.
+
+### 24. Theme: White
+
+- Area tested: White theme.
+- What was clicked/typed: Clicked `White`.
+- What happened: The body class became `app-theme-paper-white`. Computed body text was dark on a pale background, so the broad contrast direction looked readable in this audit.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Do a manual visual scan of inputs, chips, Tutor panels, and disabled states because white mode is still the highest contrast-risk theme.
+
+### 25. Theme: Grey
+
+- Area tested: Grey theme.
+- What was clicked/typed: Clicked `Grey` using exact button matching.
+- What happened: The body class became `app-theme-soft-grey`. Computed body text was dark on a soft grey gradient, so the broad contrast direction looked readable.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: None urgent, but inspect muted text manually.
+
+### 26. Responsive: Practise
+
+- Area tested: Practise at roughly 390px and 768px widths.
+- What was clicked/typed: Applied mobile/tablet viewport widths and opened Practise.
+- What happened: No horizontal scroll was observed. Core content remained reachable.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Manually check tap comfort for Tutor mode buttons and Working tools.
+
+### 27. Responsive: Library
+
+- Area tested: Library at roughly 390px and 768px widths.
+- What was clicked/typed: Applied mobile/tablet viewport widths and opened Library.
+- What happened: No horizontal scroll was observed. Library content remained reachable.
+- Pass/fail: PASS
+- Severity: low
+- Suggested fix: Continue keeping Library as list/detail/actions rather than a stacked wall of cards.
+
+### 28. Practise empty state
+
+- Area tested: Public Practise empty state.
+- What was clicked/typed: Could not trigger no-question state in seeded public data during this audit.
+- What happened: Seeded questions were present.
+- Pass/fail: NOT VERIFIED
+- Severity: medium
+- Suggested fix: Manually verify a real account with zero practice questions is not trapped in the create-question screen and can close the add-question UI.
+
+### 29. Getting Started completion behaviour
+
+- Area tested: Home dashboard onboarding.
+- What was clicked/typed: Inspected dashboard, but did not complete all checklist actions in a fresh state.
+- What happened: Completion pulse/disappearing behaviour was not directly observed.
+- Pass/fail: NOT VERIFIED
+- Severity: medium
+- Suggested fix: Manually complete the checklist and confirm it shows a short completion moment before hiding.
 
 ## Top 5 Things That Work Well
 
-1. `/agent` is genuinely useful. It explains exactly how an LLM/browser agent should test the app.
-2. `/dashboard?agent=1` loads without sign-in and keeps the route-map panel visible.
-3. The public/private boundary is clear: signed-out equals local walkthrough, signed-in equals real Firebase-backed app.
-4. Selected-text Tutor context worked well. Tutor focused on `3 and 5` and corrected the mismatch with the actual question.
-5. Today, Learn, Library, Cards, and Progress all loaded cleanly and stayed understandable.
+- `/agent` and `/dashboard?agent=1` now work as real public agent entrypoints.
+- Public dashboard mode clearly says actions are local-only/simulated while signed-in mode remains private/Firebase-backed.
+- Practise now exposes Phase 4 tools in public mode: scratchpad, voice transcript fallback, contextual Tutor actions, and draft panel.
+- Theme switching is app-wide enough to affect the body/theme class and major visual direction, with Normal restored as the blue-grey default.
+- Learn, Cards, Library, Progress, and Practise all loaded in this audit without 502s or Firebase permission errors.
 
 ## Top 5 Things That Need Improvement
 
-1. Public agent mode cannot test scratchpad, voice, or practice session summary because those controls are missing from the signed-out walkthrough.
-2. Public Tutor budget exhaustion prevents a full end-to-end Tutor-mode audit in one run.
-3. Make-flashcard produced flashcard-shaped text, but the draft state was not obvious inside Practise.
-4. Practise still has many controls visible at once. It is understandable, but can feel heavy for GCSE/A-level users.
-5. Mobile/tablet checks pass for the current public UI, but do not validate the full Phase 4 UI because the newest tools are absent there.
+- Session summary is the main remaining gap: make the summary panel impossible to miss and include attempts, correct count, Tutor uses, drafts made, weakest topic, and next action.
+- Verify with real keystrokes that unsaved typed answer/working and selected text are definitely what Tutor receives, not seeded public fallback state.
+- Add a deterministic forced-budget QA path for all public Tutor fallbacks.
+- Do one manual scratchpad drawing test with mouse/stylus because CDP confirmed the canvas and controls but the pointer draw test timed out.
+- Manually verify white/grey contrast across inputs, chips, Tutor panels, and disabled states.
 
-## Phase Status
+## Phase 4 Status
 
-Phase 4 is code-complete from the implementation side, but not QA-complete for public agent testing.
+Phase 4 is **code-complete and close to QA-complete, but still needs Phase 4.5 polish/verification**.
 
-The main blocker is not that `/agent` fails. `/agent` works. The blocker is that signed-out agent mode does not expose every Phase 4 feature the user asked agents to test.
+The deployed app now feels meaningfully closer to “AI beside me while I work” because Practise has context actions, working tools, and Tutor beside the active question. The last trust gap is proving that the freshest unsaved working and selected text are always included in the Tutor context packet.
 
-Recommended status:
+Scratchpad and voice should **stay collapsed by default**. They are useful and agent-testable now, but if always expanded they would make Practise feel too heavy for GCSE/A-level users.
 
-**Needs Phase 4.5 polish before calling Phase 4 QA-complete.**
+## Critical Watch-Outs
 
-## Does Practise Feel Closer To "AI Beside Me While I Work"?
-
-Partly yes.
-
-Observed positives:
-- Tutor sees the current question and working.
-- `I'm stuck here` does not require manually pasting the question.
-- Selected typed text materially improves the feeling of contextual help.
-
-Observed limits:
-- Public walkthrough lacks scratchpad and voice, so the "beside me" feeling is still mostly text-context based.
-- Budget fallbacks interrupt the sense of a continuously available tutor.
-- The public UI still feels like a tool panel rather than a truly calm shared workspace.
-
-## Scratchpad / Voice Recommendation
-
-Scratchpad and voice should stay in the product direction, but they should be collapsed or progressively disclosed.
-
-Recommendation:
-- Desktop: show scratchpad/voice as a collapsible "Working tools" panel beside or below typed working.
-- Mobile: collapse both by default.
-- Public walkthrough: expose simulated/local-only versions so agents can test them.
-- Voice: keep a typed transcript fallback visible because browser-agent and headless environments often cannot use microphone APIs.
-
-Do not delay them indefinitely, but do not make them always-visible heavy blocks for first-time students.
-
-## Perspective Notes
-
-### GCSE student
-The core flow is understandable, but Practise still has a lot of buttons. The student may not know whether to use the top `I'm stuck here` button or the Tutor mode buttons.
-
-### A-level maths student
-The context-aware Tutor is promising. Selected text is especially useful. The app should more clearly say when a Tutor action has created a draft and where it went.
-
-### First-year university maths student
-The seeded linear algebra example is appropriate. Tutor handled multiplicity context reasonably. However, full-solution and check-working need reliable behavior beyond budget fallbacks to be trusted.
-
-### First-time user
-The agent route map and Today page are strong. Practise is still the page most likely to feel busy. The next polish should reduce visible controls until the user needs them.
+- White theme looked broadly readable by computed styles, but it still needs a human visual scan.
+- Getting Started should not disappear instantly after completion; completion should feel rewarding and understandable.
+- Practise empty state must not force users into an unclosable create-question flow.
+- Theme options should stay limited to Normal, Purple pink, White, and Grey for now.

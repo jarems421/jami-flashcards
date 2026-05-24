@@ -46,6 +46,13 @@ import {
 } from "@/lib/demo/public-walkthrough";
 
 type Feedback = { type: "success" | "error"; message: string };
+type AgentTutorContextPreview = {
+  questionText: string;
+  answer: string;
+  working: string;
+  selectedText?: string;
+  intent: WalkthroughTutorIntent | "none";
+};
 type PublicSurface =
   | "home"
   | "learn"
@@ -259,11 +266,63 @@ function PublicPractiseFlowHeader() {
   );
 }
 
+function AgentTutorContextPreviewCard({
+  preview,
+  forceTutorFallback,
+}: {
+  preview: AgentTutorContextPreview;
+  forceTutorFallback: boolean;
+}) {
+  return (
+    <div
+      className="rounded-[1.15rem] border border-amber-200/25 bg-amber-400/[0.08] p-3"
+      data-agent-tutor-context-preview="true"
+    >
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-amber-100">
+            Agent-only context preview
+          </div>
+          <p className="mt-1 text-xs leading-5 text-text-secondary">
+            This appears only in agent mode so QA can see exactly what Tutor will receive.
+          </p>
+        </div>
+        {forceTutorFallback ? (
+          <span className="rounded-full border border-amber-100/30 bg-amber-100/10 px-3 py-1 text-xs font-semibold text-amber-100">
+            Forced fallback on
+          </span>
+        ) : null}
+      </div>
+      <div className="mt-3 grid gap-2 text-xs leading-5 text-text-secondary">
+        <div>
+          <span className="font-semibold text-white">Intent:</span> {preview.intent}
+        </div>
+        <div>
+          <span className="font-semibold text-white">Current question:</span> {preview.questionText}
+        </div>
+        <div>
+          <span className="font-semibold text-white">Unsaved answer:</span>{" "}
+          {preview.answer || "Not supplied"}
+        </div>
+        <div>
+          <span className="font-semibold text-white">Unsaved working:</span>{" "}
+          {preview.working || "Not supplied"}
+        </div>
+        <div>
+          <span className="font-semibold text-white">Selected text:</span>{" "}
+          {preview.selectedText || "None selected"}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function PublicDashboardShell() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const surface = getSurface(pathname);
   const agentMode = searchParams.get("agent") === "1";
+  const forceTutorFallback = searchParams.get("forceTutorFallback") === "1";
   const [questions, setQuestions] = useState<WalkthroughQuestion[]>(WALKTHROUGH_QUESTIONS);
   const [selectedQuestionId, setSelectedQuestionId] = useState(WALKTHROUGH_QUESTIONS[0].id);
   const [attempts, setAttempts] = useState<WalkthroughAttempt[]>(WALKTHROUGH_ATTEMPTS);
@@ -367,7 +426,9 @@ export default function PublicDashboardShell() {
     setFeedback(null);
     setConfirmFullSolution(false);
     setSessionTutorUses((current) => current + 1);
-    const displayedPrompt = options?.voiceTranscript ?? prompt;
+    const displayedPrompt = options?.selectedWorkingText
+      ? `${options.voiceTranscript ?? prompt}\n\nYou selected: "${options.selectedWorkingText}"`
+      : options?.voiceTranscript ?? prompt;
     setTutorMessages((current) => [...current, { role: "user", text: displayedPrompt, intent }]);
 
     try {
@@ -427,6 +488,7 @@ export default function PublicDashboardShell() {
         body: JSON.stringify({
           intent,
           message: displayedPrompt,
+          forceFallback: forceTutorFallback,
           context: {
             questionId: selectedQuestion.id,
             userAnswer,
@@ -629,6 +691,8 @@ export default function PublicDashboardShell() {
               drafts={drafts}
               latestDraft={lastPractiseDraft}
               sessionSummary={sessionSummary}
+              agentMode={agentMode}
+              forceTutorFallback={forceTutorFallback}
               onUpdateDraft={updateDraft}
               onSaveDraft={saveLocalDraft}
               onAddDraftToDeck={addLocalDraftToDeck}
@@ -1044,6 +1108,8 @@ function PractisePanel({
   onTutorIntent,
   latestDraft,
   sessionSummary,
+  agentMode,
+  forceTutorFallback,
   onUpdateDraft,
   onSaveDraft,
   onAddDraftToDeck,
@@ -1084,6 +1150,8 @@ function PractisePanel({
     weakestTopic?: string;
     nextAction: string;
   };
+  agentMode: boolean;
+  forceTutorFallback: boolean;
   onUpdateDraft: (draftId: string, field: "front" | "back", value: string) => void;
   onSaveDraft: (draftId: string) => void;
   onAddDraftToDeck: (draftId: string, deckId: string) => void;
@@ -1094,8 +1162,9 @@ function PractisePanel({
   const [showTutor, setShowTutor] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showWorkingTools, setShowWorkingTools] = useState(false);
-  const [showSessionSummary, setShowSessionSummary] = useState(false);
   const [selectedWorkingText, setSelectedWorkingText] = useState("");
+  const [selectedTextNotice, setSelectedTextNotice] = useState("");
+  const [previewIntent, setPreviewIntent] = useState<WalkthroughTutorIntent | "none">("none");
   const [scratchpadStrokes, setScratchpadStrokes] = useState<ScratchpadStroke[]>([]);
   const [scratchpadNote, setScratchpadNote] = useState("");
   const [voiceTranscript, setVoiceTranscript] = useState("");
@@ -1109,10 +1178,46 @@ function PractisePanel({
     showTutor || tutorMessages.length > 0 || busyIntent !== null || confirmFullSolution;
   const hasSessionActivity =
     sessionSummary.attempts > 0 || sessionSummary.tutorUses > 0 || sessionSummary.draftsMade > 0;
+  const agentContextPreview: AgentTutorContextPreview = {
+    questionText: selectedQuestion.questionText,
+    answer: userAnswer,
+    working: workingText,
+    selectedText: selectedWorkingText || undefined,
+    intent: previewIntent,
+  };
+  const sendTutorIntent = (
+    intent: WalkthroughTutorIntent,
+    prompt: string,
+    options?: { selectedWorkingText?: string; scratchpadNote?: string; scratchpadStrokeCount?: number; voiceTranscript?: string }
+  ) => {
+    setPreviewIntent(intent);
+    if (options?.selectedWorkingText) {
+      setSelectedTextNotice(`Tutor will focus on selected text: "${options.selectedWorkingText}"`);
+    }
+    onTutorIntent(intent, prompt, options);
+  };
+  const askAboutSelectedText = (
+    options?: { scratchpadNote?: string; scratchpadStrokeCount?: number; voiceTranscript?: string }
+  ) => {
+    const selected = selectedWorkingText.trim();
+    if (!selected) {
+      setSelectedTextNotice("Highlight text in the Working box first, then ask about selected text.");
+      return;
+    }
+    sendTutorIntent(
+      "stuck-here",
+      `Ask about the selected working text: "${selected}". Explain the next step only.`,
+      { ...options, selectedWorkingText: selected }
+    );
+  };
   const updateSelectedWorkingText = () => {
     const textarea = workingTextareaRef.current;
     if (!textarea) return;
-    setSelectedWorkingText(textarea.value.slice(textarea.selectionStart, textarea.selectionEnd).trim());
+    const selected = textarea.value.slice(textarea.selectionStart, textarea.selectionEnd).trim();
+    setSelectedWorkingText(selected);
+    if (selected) {
+      setSelectedTextNotice(`Selected text ready for Tutor: "${selected}"`);
+    }
   };
   const redrawScratchpad = useCallback(() => {
     const canvas = scratchpadCanvasRef.current;
@@ -1202,40 +1307,32 @@ function PractisePanel({
         <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
           <div>
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-              Local practice session
+              Practice session summary
             </div>
             <div className="mt-1 text-lg font-semibold text-white">
-              {sessionSummary.attempts} attempted / {sessionSummary.correct} correct / {sessionSummary.tutorUses} Tutor use{sessionSummary.tutorUses === 1 ? "" : "s"}
+              {sessionSummary.attempts} attempted / {sessionSummary.correct} correct / {sessionSummary.tutorUses} Tutor use{sessionSummary.tutorUses === 1 ? "" : "s"} / {sessionSummary.draftsMade} draft{sessionSummary.draftsMade === 1 ? "" : "s"}
             </div>
             <p className="mt-1 text-sm leading-6 text-text-secondary">
-              {showSessionSummary ? sessionSummary.nextAction : "Session evidence is local-only in this public walkthrough."}
+              Session evidence is local-only in this public walkthrough.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
             <span className="rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-text-secondary">
               Started {formatElapsed(Math.max(0, Math.round((sessionNow - sessionSummary.startedAt) / 1000)))} ago
             </span>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => setShowSessionSummary((value) => !value)}
-              aria-expanded={showSessionSummary}
-            >
-              {showSessionSummary ? "Hide summary" : "Show summary"}
-            </Button>
           </div>
         </div>
-        {showSessionSummary ? (
-          <div className="mt-4 grid gap-3 md:grid-cols-4">
-            <MiniMetric label="Questions" value={sessionSummary.questionsTouched} />
-            <MiniMetric label="Drafts" value={sessionSummary.draftsMade} />
-            <MiniMetric label="Weakest topic" value={sessionSummary.weakestTopic ?? "None yet"} />
-            <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
-              <div className="text-xs text-text-muted">Next action</div>
-              <div className="mt-1 text-sm font-semibold text-white">{sessionSummary.nextAction}</div>
-            </div>
+        <div className="mt-4 grid gap-3 md:grid-cols-3 xl:grid-cols-6">
+          <MiniMetric label="Attempts" value={sessionSummary.attempts} />
+          <MiniMetric label="Correct" value={sessionSummary.correct} />
+          <MiniMetric label="Tutor uses" value={sessionSummary.tutorUses} />
+          <MiniMetric label="Drafts made" value={sessionSummary.draftsMade} />
+          <MiniMetric label="Weakest topic" value={sessionSummary.weakestTopic ?? "None yet"} />
+          <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3 md:col-span-3 xl:col-span-1">
+            <div className="text-xs text-text-muted">Next action</div>
+            <div className="mt-1 text-sm font-semibold text-white">{sessionSummary.nextAction}</div>
           </div>
-        ) : null}
+        </div>
       </Card>
     ) : null}
     <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-4 xl:grid-cols-[minmax(240px,0.72fr)_minmax(0,1.25fr)_minmax(260px,0.78fr)]">
@@ -1303,6 +1400,7 @@ function PractisePanel({
               onChange={(event) => {
                 onWorkingTextChange(event.target.value);
                 setSelectedWorkingText("");
+                setSelectedTextNotice("");
               }}
               onSelect={updateSelectedWorkingText}
               onKeyUp={updateSelectedWorkingText}
@@ -1322,7 +1420,7 @@ function PractisePanel({
                   variant="secondary"
                   disabled={busyIntent !== null}
                   onClick={() =>
-                    onTutorIntent(
+                    sendTutorIntent(
                       "stuck-here",
                       "I'm stuck here. Use my current working and give me the next useful step only."
                     )
@@ -1335,7 +1433,7 @@ function PractisePanel({
                   variant="secondary"
                   disabled={busyIntent !== null || !workingText.trim()}
                   onClick={() =>
-                    onTutorIntent(
+                    sendTutorIntent(
                       "check-working",
                       "Ask about my working. Check the steps I have written and point me to the first thing to fix."
                     )
@@ -1346,25 +1444,25 @@ function PractisePanel({
                 <Button
                   type="button"
                   variant="secondary"
-                  disabled={busyIntent !== null || !selectedWorkingText}
+                  disabled={busyIntent !== null}
                   title={selectedWorkingText ? selectedWorkingText : "Highlight text in Working first"}
-                  onClick={() =>
-                    onTutorIntent(
-                      "stuck-here",
-                      "Ask about the selected working text and explain the next step only.",
-                      { selectedWorkingText }
-                    )
-                  }
+                  onClick={() => askAboutSelectedText()}
                 >
                   Ask about selected text
                 </Button>
               </div>
-              {selectedWorkingText ? (
+              {selectedTextNotice ? (
                 <p className="mt-3 rounded-[1rem] border border-white/[0.1] bg-white/[0.05] px-3 py-2 text-xs leading-5 text-text-secondary">
-                  Selected: {selectedWorkingText}
+                  {selectedTextNotice}
                 </p>
               ) : null}
             </div>
+            {agentMode ? (
+              <AgentTutorContextPreviewCard
+                preview={agentContextPreview}
+                forceTutorFallback={forceTutorFallback}
+              />
+            ) : null}
             <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-3">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
@@ -1432,7 +1530,7 @@ function PractisePanel({
                         variant="secondary"
                         disabled={busyIntent !== null || (scratchpadStrokes.length === 0 && !scratchpadNote.trim())}
                         onClick={() =>
-                          onTutorIntent(
+                          sendTutorIntent(
                             "stuck-here",
                             "Ask about my scratchpad and current working. Use the typed scratchpad note if the drawing itself is not available.",
                             { scratchpadNote, scratchpadStrokeCount: scratchpadStrokes.length }
@@ -1480,8 +1578,8 @@ function PractisePanel({
                         onClick={() => {
                           const transcript = (voiceTranscript || scratchpadNote).trim();
                           if (!transcript) return;
-                          onTutorIntent("stuck-here", transcript, {
-                            selectedWorkingText,
+                          sendTutorIntent("stuck-here", transcript, {
+                            selectedWorkingText: selectedWorkingText || undefined,
                             scratchpadNote,
                             scratchpadStrokeCount: scratchpadStrokes.length,
                             voiceTranscript: transcript,
@@ -1559,7 +1657,7 @@ function PractisePanel({
           workingText={workingText}
           messages={tutorMessages}
           busyIntent={busyIntent}
-          onTutorIntent={onTutorIntent}
+          onTutorIntent={sendTutorIntent}
           confirmFullSolution={confirmFullSolution}
           onConfirmFullSolutionChange={onConfirmFullSolutionChange}
           open={tutorOpen}

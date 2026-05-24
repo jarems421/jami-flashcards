@@ -19,6 +19,11 @@ const dashboardRoutes = [
     purpose: "Try a question, self-mark, use Tutor, make a flashcard draft.",
   },
   {
+    href: "/dashboard/practise?agent=1&forceTutorFallback=1",
+    label: "Practise fallback QA",
+    purpose: "Test every Tutor mode with deterministic local fallback responses and no AI budget use.",
+  },
+  {
     href: "/dashboard/progress?agent=1",
     label: "Progress",
     purpose: "Check weak topics, recent mistakes, drafts, and support level.",
@@ -78,6 +83,7 @@ const phase4TestFlow = [
   "Save one correct and one incorrect local attempt.",
   "Ask Tutor to make a flashcard and confirm the draft panel appears.",
   "Check the local practice session summary.",
+  "Use /dashboard/practise?agent=1&forceTutorFallback=1 when you need deterministic Tutor responses.",
 ];
 
 function AgentLink({
