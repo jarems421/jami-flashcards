@@ -6,6 +6,11 @@ import {
   getWalkthroughTopicNames,
   type WalkthroughTutorIntent,
 } from "@/lib/demo/public-walkthrough";
+import {
+  formatTutorContextPacketForPrompt,
+  normalizeTutorContextPacket,
+  type TutorContextPacket,
+} from "@/lib/practice/tutor-context";
 
 export const runtime = "nodejs";
 
@@ -20,7 +25,8 @@ function isWalkthroughTutorIntent(value: unknown): value is WalkthroughTutorInte
     value === "show-method" ||
     value === "full-solution" ||
     value === "make-flashcard" ||
-    value === "similar-question"
+    value === "similar-question" ||
+    value === "stuck-here"
   );
 }
 
@@ -42,6 +48,9 @@ function getVisitorBudgetKey(request: NextRequest) {
 function getIntentInstruction(intent: WalkthroughTutorIntent) {
   if (intent === "hint") {
     return "Give one hint only. Do not reveal the answer. End by asking the student to try the next step.";
+  }
+  if (intent === "stuck-here") {
+    return "The student is stuck at the current step. Use the current working and selected text if supplied. Give the next useful step only.";
   }
   if (intent === "check-working") {
     return "Check the student's working. Identify the first incorrect or missing step, then ask them to repair that step. Do not complete the whole solution.";
@@ -103,14 +112,17 @@ export async function POST(request: NextRequest) {
   let questionId = "";
   let userAnswer: string | undefined;
   let workingText: string | undefined;
+  let contextPacket: TutorContextPacket | null = null;
 
   try {
     const body = await request.json();
     intent = isWalkthroughTutorIntent(body.intent) ? body.intent : "hint";
     message = typeof body.message === "string" ? body.message.slice(0, 1_000) : "";
+    contextPacket = normalizeTutorContextPacket(body.contextPacket, intent);
     const rawContext = body.context && typeof body.context === "object" ? body.context : {};
     questionId =
-      typeof rawContext.questionId === "string" ? rawContext.questionId.slice(0, 160) : "";
+      contextPacket?.question.id ||
+      (typeof rawContext.questionId === "string" ? rawContext.questionId.slice(0, 160) : "");
     userAnswer =
       typeof rawContext.userAnswer === "string" && rawContext.userAnswer.trim()
         ? rawContext.userAnswer.slice(0, 2_000)
@@ -179,19 +191,10 @@ export async function POST(request: NextRequest) {
       import("@/lib/ai/card-autocomplete"),
       import("@/lib/ai/gemini"),
     ]);
-    const systemPrompt = `You are Jami's public walkthrough tutor.
-This is a no-login demo attached to a seeded practice question.
-Do not ask for account data. Do not claim any persistent progress was saved.
-Default to scaffolding and anti-overhelp:
-- encourage the student to attempt the next step before revealing more;
-- do not claim mastery just because you explained something;
-- do not reveal a full worked answer unless the intent is full-solution;
-- be concise, kind, and specific.
-
-Intent:
-${getIntentInstruction(intent)}
-
-Question:
+    const contextText =
+      contextPacket ?
+        formatTutorContextPacketForPrompt(contextPacket) :
+        `Question:
 ${question.questionText}
 
 Known answer:
@@ -208,6 +211,21 @@ ${userAnswer ?? "Not supplied"}
 
 Student working:
 ${workingText ?? "Not supplied"}`;
+    const systemPrompt = `You are Jami's public walkthrough tutor.
+This is a no-login demo attached to a seeded practice question.
+Do not ask for account data. Do not claim any persistent progress was saved.
+Default to scaffolding and anti-overhelp:
+- encourage the student to attempt the next step before revealing more;
+- do not claim mastery just because you explained something;
+- do not reveal a full worked answer unless the intent is full-solution;
+- if scratchpad context is supplied without an attached image, use the student's note and typed working; do not claim you can see handwriting;
+- be concise, kind, and specific.
+
+Intent:
+${getIntentInstruction(intent)}
+
+Workspace context:
+${contextText}`;
 
     const text = await generateGeminiText({
       apiKey: GEMINI_API_KEY,

@@ -57,6 +57,7 @@ export type WalkthroughDraft = {
 export type WalkthroughTutorMessage = {
   role: "user" | "model";
   text: string;
+  intent?: WalkthroughTutorIntent;
 };
 
 export type WalkthroughSource = {
@@ -79,7 +80,8 @@ export type WalkthroughTutorIntent =
   | "show-method"
   | "full-solution"
   | "make-flashcard"
-  | "similar-question";
+  | "similar-question"
+  | "stuck-here";
 
 export const WALKTHROUGH_TOPICS: WalkthroughTopic[] = [
   { id: "topic-eigenvalues", name: "Eigenvalues", subject: "Linear Algebra" },

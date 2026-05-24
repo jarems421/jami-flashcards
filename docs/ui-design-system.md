@@ -163,6 +163,20 @@ Do not use or build:
 - full-paper mode
 - automatic mark schemes
 - browser extension
-- voice
+- always-on screen watching
 - iPad or desktop companion
 - advanced analytics
+
+## Phase 4 Tutor Context
+
+Tutor should feel present because Jami sends the current practice context only when the student asks.
+
+Use wording like:
+- Tutor uses your current question and working when you ask.
+- Voice is push-to-talk only.
+- Scratchpad drawings stay local unless you ask Tutor and add a typed note.
+
+Avoid wording like:
+- AI is watching you work.
+- Tutor can see everything on your screen.
+- Handwriting is automatically read.

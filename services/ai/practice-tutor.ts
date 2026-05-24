@@ -1,13 +1,10 @@
 import { auth } from "@/services/firebase/client";
+import type {
+  PracticeTutorIntent,
+  TutorContextPacket,
+} from "@/lib/practice/tutor-context";
 
-export type PracticeTutorIntent =
-  | "hint"
-  | "check-working"
-  | "explain-concept"
-  | "show-method"
-  | "full-solution"
-  | "make-flashcard"
-  | "similar-question";
+export type { PracticeTutorIntent, TutorContextPacket };
 
 export type PracticeTutorContext = {
   questionId: string;
@@ -38,7 +35,8 @@ function getFriendlyTutorError(status: number, message?: string) {
 export async function sendPracticeTutorMessage(input: {
   message: string;
   intent: PracticeTutorIntent;
-  context: PracticeTutorContext;
+  context?: PracticeTutorContext;
+  contextPacket?: TutorContextPacket;
   threadId?: string;
 }) {
   const user = auth.currentUser;

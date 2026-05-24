@@ -5,32 +5,19 @@ import { checkAiBudget, type AiBudgetAction } from "@/lib/ai/budgets";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { generateGeminiText } from "@/lib/ai/gemini";
 import { hasDemoClaim } from "@/lib/demo/token";
+import {
+  buildLegacyTutorContextPacket,
+  formatTutorContextPacketForPrompt,
+  isPracticeTutorIntent,
+  normalizeTutorContextPacket,
+  type PracticeTutorIntent,
+  type TutorContextPacket,
+} from "@/lib/practice/tutor-context";
 
 export const runtime = "nodejs";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const REQUEST_TIMEOUT_MS = 15_000;
-
-type PracticeTutorIntent =
-  | "hint"
-  | "check-working"
-  | "explain-concept"
-  | "show-method"
-  | "full-solution"
-  | "make-flashcard"
-  | "similar-question";
-
-function isPracticeTutorIntent(value: unknown): value is PracticeTutorIntent {
-  return (
-    value === "hint" ||
-    value === "check-working" ||
-    value === "explain-concept" ||
-    value === "show-method" ||
-    value === "full-solution" ||
-    value === "make-flashcard" ||
-    value === "similar-question"
-  );
-}
 
 function getBudgetAction(intent: PracticeTutorIntent): AiBudgetAction {
   if (intent === "full-solution") return "practiceFullSolution";
@@ -43,8 +30,11 @@ function getIntentInstruction(intent: PracticeTutorIntent) {
   if (intent === "hint") {
     return "Give one hint only. Do not reveal the answer. End by asking the student to try the next step.";
   }
+  if (intent === "stuck-here") {
+    return "The student is stuck at their current step. Use their current answer, working, selected text, attempts, and tutor history. Give the next useful step only. Do not reveal the final answer.";
+  }
   if (intent === "check-working") {
-    return "Check the student's working. Identify the first incorrect or missing step, then ask them to repair that step. Do not complete the whole solution unless the working is already essentially complete.";
+    return "Check the student's working. Identify the first incorrect, uncertain, or missing step, then ask them to repair that step. Do not complete the whole solution unless the working is already essentially complete.";
   }
   if (intent === "explain-concept") {
     return "Explain the underlying concept in plain language, then connect it back to this exact question. Avoid dumping the final answer.";
@@ -106,54 +96,50 @@ export async function POST(request: NextRequest) {
 
   let intent: PracticeTutorIntent;
   let message: string;
-  let context: {
-    questionId: string;
-    questionText: string;
-    answerText?: string;
-    solutionText?: string;
-    topicNames: string[];
-    userAnswer?: string;
-    workingText?: string;
-  };
+  let contextPacket: TutorContextPacket;
   let threadId: string | undefined;
 
   try {
     const body = await request.json();
     intent = isPracticeTutorIntent(body.intent) ? body.intent : "hint";
     message = typeof body.message === "string" ? body.message.slice(0, 1_000) : "";
-    const rawContext = body.context && typeof body.context === "object" ? body.context : {};
-    context = {
-      questionId:
-        typeof rawContext.questionId === "string" && rawContext.questionId.trim()
-          ? rawContext.questionId.slice(0, 160)
-          : "",
-      questionText:
-        typeof rawContext.questionText === "string" ? rawContext.questionText.slice(0, 4_000) : "",
-      answerText:
-        typeof rawContext.answerText === "string" && rawContext.answerText.trim()
-          ? rawContext.answerText.slice(0, 2_000)
-          : undefined,
-      solutionText:
-        typeof rawContext.solutionText === "string" && rawContext.solutionText.trim()
-          ? rawContext.solutionText.slice(0, 4_000)
-          : undefined,
-      topicNames: Array.isArray(rawContext.topicNames)
-        ? rawContext.topicNames
-            .filter((topic: unknown): topic is string => typeof topic === "string" && topic.trim().length > 0)
-            .slice(0, 8)
-        : [],
-      userAnswer:
-        typeof rawContext.userAnswer === "string" && rawContext.userAnswer.trim()
-          ? rawContext.userAnswer.slice(0, 3_000)
-          : undefined,
-      workingText:
-        typeof rawContext.workingText === "string" && rawContext.workingText.trim()
-          ? rawContext.workingText.slice(0, 3_000)
-          : undefined,
-    };
+    const normalizedPacket = normalizeTutorContextPacket(body.contextPacket, intent);
+    if (normalizedPacket) {
+      contextPacket = normalizedPacket;
+    } else {
+      const rawContext = body.context && typeof body.context === "object" ? body.context as Record<string, unknown> : {};
+      contextPacket = buildLegacyTutorContextPacket({
+        intent,
+        questionId:
+          typeof rawContext.questionId === "string" && rawContext.questionId.trim()
+            ? rawContext.questionId.slice(0, 160)
+            : "",
+        questionText:
+          typeof rawContext.questionText === "string" ? rawContext.questionText.slice(0, 4_000) : "",
+        answerText:
+          typeof rawContext.answerText === "string" && rawContext.answerText.trim()
+            ? rawContext.answerText.slice(0, 2_000)
+            : undefined,
+        solutionText:
+          typeof rawContext.solutionText === "string" && rawContext.solutionText.trim()
+            ? rawContext.solutionText.slice(0, 4_000)
+            : undefined,
+        topicNames: Array.isArray(rawContext.topicNames)
+          ? rawContext.topicNames.filter((topic): topic is string => typeof topic === "string")
+          : [],
+        userAnswer:
+          typeof rawContext.userAnswer === "string" && rawContext.userAnswer.trim()
+            ? rawContext.userAnswer.slice(0, 3_000)
+            : undefined,
+        workingText:
+          typeof rawContext.workingText === "string" && rawContext.workingText.trim()
+            ? rawContext.workingText.slice(0, 3_000)
+            : undefined,
+      });
+    }
     threadId = typeof body.threadId === "string" && body.threadId.trim() ? body.threadId.slice(0, 160) : undefined;
 
-    if (!message || !context.questionText) {
+    if (!message || !contextPacket.question.text) {
       return Response.json({ error: "message and question context are required" }, { status: 400 });
     }
   } catch {
@@ -175,28 +161,15 @@ Default to scaffolding and anti-overhelp:
 - encourage the student to attempt the next step before revealing more;
 - do not claim mastery just because you explained something;
 - do not reveal a full worked answer unless the intent is full-solution;
+- if student working is supplied, do not ask the student to paste their working;
+- if scratchpad context is supplied without an attached image, use the student's note and typed working; do not claim you can see handwriting;
 - be concise, kind, and specific.
 
 Intent:
 ${getIntentInstruction(intent)}
 
-Question:
-${context.questionText}
-
-Known answer:
-${context.answerText ?? "Not supplied"}
-
-Stored solution:
-${context.solutionText ?? "Not supplied"}
-
-Topics:
-${context.topicNames.length ? context.topicNames.join(", ") : "Unspecified"}
-
-Student answer:
-${context.userAnswer ?? "Not supplied"}
-
-Student working:
-${context.workingText ?? "Not supplied"}`;
+Workspace context:
+${formatTutorContextPacketForPrompt(contextPacket)}`;
 
     const text = await generateGeminiText({
       apiKey: GEMINI_API_KEY,
@@ -220,8 +193,8 @@ ${context.workingText ?? "Not supplied"}`;
     if (!nextThreadId) {
       const threadRef = await adminDb.collection("users").doc(uid).collection("tutorThreads").add({
         contextType: "question",
-        contextId: context.questionId,
-        title: context.questionText.slice(0, 120),
+        contextId: contextPacket.question.id,
+        title: contextPacket.question.text.slice(0, 120),
         createdAt: now,
         updatedAt: now,
       });
@@ -230,7 +203,7 @@ ${context.workingText ?? "Not supplied"}`;
       await adminDb.collection("users").doc(uid).collection("tutorThreads").doc(nextThreadId).set(
         {
           contextType: "question",
-          contextId: context.questionId,
+          contextId: contextPacket.question.id,
           updatedAt: now,
         },
         { merge: true }

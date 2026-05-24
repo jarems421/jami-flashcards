@@ -124,6 +124,8 @@ function DesktopNavItem({
     <Link
       href={tab.href}
       aria-current={active ? "page" : undefined}
+      data-agent-nav={tab.label}
+      data-agent-route={tab.href}
       className={`group relative flex min-h-[3.65rem] items-center justify-center gap-3 rounded-[1.2rem] px-2.5 py-2 text-left transition duration-fast ease-spring lg:justify-start lg:px-3.5 ${
         active
           ? "border border-warm-border bg-[linear-gradient(135deg,rgba(145,218,204,0.15),rgba(255,255,255,0.075))] text-white shadow-[0_14px_24px_rgba(7,12,24,0.24)]"
@@ -163,6 +165,8 @@ function MobileNavItem({
     <Link
       href={tab.href}
       aria-current={active ? "page" : undefined}
+      data-agent-nav={tab.label}
+      data-agent-route={tab.href}
       className={`relative flex min-h-[3.25rem] min-w-[4.35rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-[1.05rem] px-2 text-[10px] leading-tight transition duration-fast ease-spring ${
         active
           ? "bg-[linear-gradient(180deg,rgba(145,218,204,0.16),rgba(255,255,255,0.07))] text-white shadow-[0_12px_22px_rgba(7,12,24,0.22)]"

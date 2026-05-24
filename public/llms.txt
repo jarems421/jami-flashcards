@@ -1,0 +1,44 @@
+# Jami agent route map
+
+Jami exposes a safe public walkthrough for LLM/browser agents.
+
+Start here:
+- /agent
+- /dashboard?agent=1
+
+Important rules:
+- Signed-out visitors can open /dashboard and supported child routes without an account.
+- Signed-out dashboard mode uses seeded local walkthrough data.
+- Local walkthrough actions can change state in the browser session but do not write to Firebase.
+- Real private data and persistent writes still require authentication.
+- Do not assume the public walkthrough is a real user account.
+
+Core route family:
+- /dashboard?agent=1 — Today / daily command centre.
+- /dashboard/study?agent=1 — Learn / flashcard review.
+- /dashboard/practise?agent=1 — Practise / questions, attempts, contextual Tutor, drafts.
+- /dashboard/progress?agent=1 — Progress / weak topics, mistakes, support level, drafts.
+- /dashboard/library?agent=1 — Library / seeded sources and local source actions.
+- /dashboard/cards?agent=1 — Cards / browse cards and drafts.
+- /dashboard/decks?agent=1 — Decks / card-set organisation.
+- /dashboard/goals?agent=1 — Goals / study targets.
+- /dashboard/constellation?agent=1 — Stars / rewards.
+- /dashboard/profile?agent=1 — Account / public walkthrough explanation and sign-in boundary.
+
+Suggested click test:
+1. Open /agent.
+2. Click "Start public dashboard".
+3. Open Learn and flip/review a seeded card.
+4. Open Practise, type answer/working, save a local attempt.
+5. Ask Tutor for a hint or use "I'm stuck here".
+6. Make a flashcard draft from Tutor.
+7. Open Progress and confirm local mistake/draft state is visible.
+8. Open Library and inspect seeded source actions.
+9. Open Account and confirm no private data was accessed.
+
+Out of scope in public walkthrough:
+- Persistent writes.
+- Private user data.
+- OCR/PDF parsing.
+- Browser extension or Anywhere.
+- Always-on screen watching.

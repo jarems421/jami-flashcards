@@ -10,6 +10,11 @@ import {
   buildPracticeQuestionDraftData,
 } from "@/lib/practice/generated-content";
 import { buildSourcePayload, mapSourceData } from "@/lib/practice/sources";
+import {
+  buildTutorContextPacket,
+  formatTutorContextPacketForPrompt,
+  normalizeTutorContextPacket,
+} from "@/lib/practice/tutor-context";
 
 describe("Jami learning loop foundations", () => {
   afterEach(() => {
@@ -336,5 +341,138 @@ describe("Jami learning loop foundations", () => {
         { userId: "user-1", deckId: "" }
       )
     ).toThrow("destination deck");
+  });
+
+  it("builds a capped Tutor context packet from the current practice workspace", () => {
+    const question = mapQuestionData("question-1", {
+      questionText: "Solve x^2 - 5x + 6 = 0",
+      answerText: "x = 2 or x = 3",
+      solutionText: "Factorise into (x - 2)(x - 3), then use the zero-product rule.",
+      topicIds: ["topic-factorising"],
+      sourceIds: ["source-algebra"],
+      sourceType: "manual",
+      origin: "user-authored",
+      contentStatus: "approved",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+    const packet = buildTutorContextPacket({
+      question,
+      topics: [
+        mapTopicData("topic-factorising", {
+          name: "Factorising quadratics",
+          subject: "Algebra",
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      ],
+      sources: [
+        mapSourceData("source-algebra", {
+          title: "Quadratics notes",
+          type: "pasted_text",
+          topicIds: ["topic-factorising"],
+          contentText: "Use factor pairs to solve quadratics.",
+          status: "active",
+          createdBy: "user-1",
+          createdAt: 1,
+          updatedAt: 1,
+        }),
+      ],
+      attempts: Array.from({ length: 7 }, (_, index) => ({
+        id: `attempt-${index}`,
+        questionId: "question-1",
+        userAnswer: `answer ${index}`,
+        workingText: `working ${index}`,
+        isCorrect: index === 0,
+        confidence: 2,
+        tutorUsed: index > 2,
+        mistakeLabels: [`mistake ${index}`],
+        createdAt: index,
+      })),
+      tutorMessages: Array.from({ length: 8 }, (_, index) => ({
+        role: index % 2 === 0 ? ("user" as const) : ("model" as const),
+        text: `message ${index}`,
+        intent: "hint",
+      })),
+      intent: "stuck-here",
+      typedAnswer: "x = 2?",
+      typedWorking: "x^2 - 5x + 6 = (x - 2)(x - 3)",
+      selectedWorkingText: "(x - 2)(x - 3)",
+      scratchpad: {
+        hasDrawing: true,
+        strokeCount: 3,
+        note: "I circled the factorised line.",
+      },
+      confidence: 2,
+      mistakeLabels: "zero product rule, unsure final step",
+    });
+
+    expect(packet.question.text).toBe("Solve x^2 - 5x + 6 = 0");
+    expect(packet.question.topicNames).toEqual(["Factorising quadratics"]);
+    expect(packet.question.sourceTitles).toEqual(["Quadratics notes"]);
+    expect(packet.studentState.typedAnswer).toBe("x = 2?");
+    expect(packet.studentState.typedWorking).toContain("(x - 2)(x - 3)");
+    expect(packet.studentState.selectedWorkingText).toBe("(x - 2)(x - 3)");
+    expect(packet.studentState.scratchpad).toEqual({
+      hasDrawing: true,
+      strokeCount: 3,
+      note: "I circled the factorised line.",
+      imageAttached: false,
+    });
+    expect(packet.studentState.mistakeLabels).toEqual(["zero product rule", "unsure final step"]);
+    expect(packet.attemptHistory).toHaveLength(5);
+    expect(packet.attemptHistory[0].createdAt).toBe(6);
+    expect(packet.tutorHistory).toHaveLength(6);
+    expect(packet.tutorHistory[0].text).toBe("message 2");
+    expect(packet.intent).toBe("stuck-here");
+    expect(packet.privacy).toEqual({
+      sendsUnsavedWorking: true,
+      persistsUnsavedWorking: false,
+    });
+  });
+
+  it("normalizes Tutor context packets and preserves anti-overhelp prompt context", () => {
+    const packet = normalizeTutorContextPacket(
+      {
+        question: {
+          id: "question-1",
+          text: "Differentiate x^2",
+          topicNames: ["Differentiation"],
+          sourceTitles: ["Methods notes"],
+        },
+        studentState: {
+          typedWorking: "d/dx x^2 = x",
+          selectedWorkingText: "x",
+          mistakeLabels: ["power rule"],
+        },
+        attemptHistory: Array.from({ length: 10 }, (_, index) => ({
+          answer: `answer ${index}`,
+          correct: false,
+          confidence: 1,
+          mistakeLabels: ["rule"],
+          createdAt: index,
+        })),
+        tutorHistory: Array.from({ length: 10 }, (_, index) => ({
+          role: "user",
+          text: `message ${index}`,
+          intent: "hint",
+        })),
+        privacy: {
+          sendsUnsavedWorking: true,
+          persistsUnsavedWorking: true,
+        },
+      },
+      "check-working"
+    );
+
+    expect(packet?.attemptHistory).toHaveLength(5);
+    expect(packet?.tutorHistory).toHaveLength(6);
+    expect(packet?.privacy.persistsUnsavedWorking).toBe(false);
+
+    const prompt = packet ? formatTutorContextPacketForPrompt(packet) : "";
+    expect(prompt).toContain("Selected working text:");
+    expect(prompt).toContain("d/dx x^2 = x");
+    expect(prompt).toContain("Scratchpad:");
+    expect(prompt).toContain("Context was sent only because the student clicked a Tutor action");
   });
 });

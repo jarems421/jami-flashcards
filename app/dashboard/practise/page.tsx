@@ -1,12 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import Link from "next/link";
 import { useUser } from "@/lib/auth/user-context";
 import { featureFlags } from "@/lib/app/feature-flags";
 import type { Topic } from "@/lib/practice/topics";
 import type { Attempt, Question } from "@/lib/practice/questions";
 import type { Source } from "@/lib/practice/sources";
+import { buildTutorContextPacket } from "@/lib/practice/tutor-context";
 import { getActiveTopics, createTopic } from "@/services/study/topics";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
@@ -39,7 +40,7 @@ import {
 } from "@/components/ui";
 
 type Feedback = { type: "success" | "error"; message: string };
-type TutorMessage = { role: "user" | "model"; text: string };
+type TutorMessage = { role: "user" | "model"; text: string; intent?: PracticeTutorIntent };
 
 const TUTOR_INTENTS: Array<{
   intent: PracticeTutorIntent;
@@ -48,6 +49,7 @@ const TUTOR_INTENTS: Array<{
   description: string;
 }> = [
   { intent: "hint", label: "Hint", prompt: "Give me one hint without revealing the answer.", description: "One nudge without the answer." },
+  { intent: "stuck-here", label: "Stuck here", prompt: "I'm stuck here. Use my current working and give me the next useful step only.", description: "Use the current step and give one next move." },
   { intent: "check-working", label: "Check working", prompt: "Check my working and point me to the first thing to fix.", description: "Check whether your steps are valid." },
   { intent: "explain-concept", label: "Explain concept", prompt: "Explain the core concept behind this question.", description: "Understand the idea behind it." },
   { intent: "show-method", label: "Show method", prompt: "Show me the setup or method, but leave a step for me.", description: "See the general method." },
@@ -58,6 +60,22 @@ const TUTOR_INTENTS: Array<{
 
 const surfaceCardClass =
   "rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 shadow-[0_10px_22px_rgba(4,8,18,0.12)]";
+
+type ScratchpadPoint = { x: number; y: number };
+type ScratchpadStroke = { points: ScratchpadPoint[] };
+
+type SpeechRecognitionLike = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onresult: ((event: { results: ArrayLike<ArrayLike<{ transcript: string }>> }) => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+};
+
+type SpeechRecognitionConstructor = new () => SpeechRecognitionLike;
 
 function getQuestionAttempts(questionId: string, attempts: Attempt[]) {
   return attempts.filter((attempt) => attempt.questionId === questionId);
@@ -73,6 +91,21 @@ function formatElapsed(seconds: number) {
   const remainingSeconds = seconds % 60;
   if (minutes === 0) return `${remainingSeconds}s`;
   return `${minutes}m ${remainingSeconds.toString().padStart(2, "0")}s`;
+}
+
+function getSpeechRecognitionConstructor(): SpeechRecognitionConstructor | null {
+  if (typeof window === "undefined") return null;
+  const speechWindow = window as Window & {
+    SpeechRecognition?: SpeechRecognitionConstructor;
+    webkitSpeechRecognition?: SpeechRecognitionConstructor;
+  };
+  return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
+}
+
+function summarizeSessionNextAction(hasIncorrectAttempt: boolean, draftsCreated: number) {
+  if (hasIncorrectAttempt) return "Repair the latest mistake with Tutor, then retry one similar question.";
+  if (draftsCreated > 0) return "Review the flashcard draft, then add it to a deck if it is useful.";
+  return "Keep the session moving: attempt another question or review Progress.";
 }
 
 function PractiseFlowHeader() {
@@ -121,6 +154,7 @@ export default function PractisePage() {
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [userAnswer, setUserAnswer] = useState("");
   const [workingText, setWorkingText] = useState("");
+  const [selectedWorkingText, setSelectedWorkingText] = useState("");
   const [isCorrect, setIsCorrect] = useState<boolean | null>(null);
   const [confidence, setConfidence] = useState(3);
   const [mistakeLabelsInput, setMistakeLabelsInput] = useState("");
@@ -144,8 +178,24 @@ export default function PractisePage() {
   const [addingDraftToDeck, setAddingDraftToDeck] = useState(false);
   const [lastSavedAttemptSnapshot, setLastSavedAttemptSnapshot] = useState<string | null>(null);
   const [lastSavedAttemptResult, setLastSavedAttemptResult] = useState<"correct" | "incorrect" | null>(null);
+  const [sessionStartedAt] = useState(Date.now());
+  const [sessionAttemptIds, setSessionAttemptIds] = useState<string[]>([]);
+  const [sessionQuestionIds, setSessionQuestionIds] = useState<string[]>([]);
+  const [sessionTutorUses, setSessionTutorUses] = useState(0);
+  const [sessionDraftsCreated, setSessionDraftsCreated] = useState(0);
+  const [showSessionSummary, setShowSessionSummary] = useState(false);
+  const [scratchpadStrokes, setScratchpadStrokes] = useState<ScratchpadStroke[]>([]);
+  const [scratchpadNote, setScratchpadNote] = useState("");
+  const [voiceSupported, setVoiceSupported] = useState(false);
+  const [voiceListening, setVoiceListening] = useState(false);
+  const [voiceTranscript, setVoiceTranscript] = useState("");
+  const [voiceError, setVoiceError] = useState("");
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mistakeLabelsInputRef = useRef<HTMLInputElement>(null);
+  const workingTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const scratchpadCanvasRef = useRef<HTMLCanvasElement>(null);
+  const scratchpadDraftStrokeRef = useRef<ScratchpadPoint[] | null>(null);
+  const speechRecognitionRef = useRef<SpeechRecognitionLike | null>(null);
 
   const selectedQuestion = useMemo(
     () => questions.find((question) => question.id === selectedQuestionId) ?? questions[0] ?? null,
@@ -165,6 +215,37 @@ export default function PractisePage() {
   const selectedQuestionAttempts = useMemo(
     () => (selectedQuestion ? getQuestionAttempts(selectedQuestion.id, attempts) : []),
     [attempts, selectedQuestion]
+  );
+  const sessionAttempts = useMemo(
+    () => attempts.filter((attempt) => sessionAttemptIds.includes(attempt.id)),
+    [attempts, sessionAttemptIds]
+  );
+  const sessionCorrectAttempts = useMemo(
+    () => sessionAttempts.filter((attempt) => attempt.isCorrect).length,
+    [sessionAttempts]
+  );
+  const sessionQuestions = useMemo(
+    () => questions.filter((question) => sessionQuestionIds.includes(question.id)),
+    [questions, sessionQuestionIds]
+  );
+  const sessionWeakestTopic = useMemo(() => {
+    const topicCounts = new Map<string, number>();
+    sessionAttempts
+      .filter((attempt) => !attempt.isCorrect)
+      .forEach((attempt) => {
+        const question = questions.find((item) => item.id === attempt.questionId);
+        question?.topicIds.forEach((topicId) => {
+          topicCounts.set(topicId, (topicCounts.get(topicId) ?? 0) + 1);
+        });
+      });
+    const weakestTopicId = [...topicCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+    return weakestTopicId ? topicsById.get(weakestTopicId)?.name : undefined;
+  }, [questions, sessionAttempts, topicsById]);
+  const hasSessionActivity =
+    sessionAttempts.length > 0 || sessionTutorUses > 0 || sessionDraftsCreated > 0;
+  const sessionNextAction = summarizeSessionNextAction(
+    sessionAttempts.some((attempt) => !attempt.isCorrect),
+    sessionDraftsCreated
   );
   const totalAccuracy = useMemo(() => getAccuracy(attempts), [attempts]);
   const supportAttempts = useMemo(
@@ -245,6 +326,7 @@ export default function PractisePage() {
     setElapsedSeconds(0);
     setUserAnswer("");
     setWorkingText("");
+    setSelectedWorkingText("");
     setIsCorrect(null);
     setConfidence(3);
     setMistakeLabelsInput("");
@@ -261,6 +343,10 @@ export default function PractisePage() {
     setLastSavedAttemptResult(null);
     setShowTutorPanel(false);
     setShowAttemptHistory(false);
+    setScratchpadStrokes([]);
+    setScratchpadNote("");
+    setVoiceTranscript("");
+    setVoiceError("");
   }, [selectedQuestionId]);
 
   useEffect(() => {
@@ -371,7 +457,7 @@ export default function PractisePage() {
     const savedSnapshot = currentAttemptSnapshot;
     const savedResult = isCorrect ? "correct" : "incorrect";
     try {
-      await createAttempt(user.uid, selectedQuestion, {
+      const attemptId = await createAttempt(user.uid, selectedQuestion, {
         userAnswer,
         workingText,
         isCorrect,
@@ -384,6 +470,11 @@ export default function PractisePage() {
           .map((label) => label.trim())
           .filter(Boolean),
       });
+      setSessionAttemptIds((current) => (current.includes(attemptId) ? current : [...current, attemptId]));
+      setSessionQuestionIds((current) =>
+        current.includes(selectedQuestion.id) ? current : [...current, selectedQuestion.id]
+      );
+      setShowSessionSummary(true);
       await loadAll();
       setLastSavedAttemptSnapshot(savedSnapshot);
       setLastSavedAttemptResult(savedResult);
@@ -402,34 +493,176 @@ export default function PractisePage() {
     }
   };
 
-  const handleTutorIntent = async (intent: PracticeTutorIntent, prompt: string) => {
+  const updateSelectedWorkingText = () => {
+    const textarea = workingTextareaRef.current;
+    if (!textarea) return;
+    const selected = textarea.value.slice(textarea.selectionStart, textarea.selectionEnd).trim();
+    setSelectedWorkingText(selected);
+  };
+
+  const redrawScratchpad = useCallback(() => {
+    const canvas = scratchpadCanvasRef.current;
+    if (!canvas) return;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = 3;
+    context.strokeStyle = "rgba(255, 232, 247, 0.92)";
+    scratchpadStrokes.forEach((stroke) => {
+      if (stroke.points.length === 0) return;
+      context.beginPath();
+      context.moveTo(stroke.points[0].x, stroke.points[0].y);
+      stroke.points.slice(1).forEach((point) => context.lineTo(point.x, point.y));
+      context.stroke();
+    });
+  }, [scratchpadStrokes]);
+
+  useEffect(() => {
+    redrawScratchpad();
+  }, [redrawScratchpad]);
+
+  useEffect(() => {
+    setVoiceSupported(Boolean(getSpeechRecognitionConstructor()));
+    return () => {
+      speechRecognitionRef.current?.stop();
+    };
+  }, []);
+
+  const getScratchpadPoint = (event: ReactPointerEvent<HTMLCanvasElement>): ScratchpadPoint | null => {
+    const canvas = scratchpadCanvasRef.current;
+    if (!canvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    return {
+      x: ((event.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((event.clientY - rect.top) / rect.height) * canvas.height,
+    };
+  };
+
+  const drawScratchpadSegment = (from: ScratchpadPoint, to: ScratchpadPoint) => {
+    const canvas = scratchpadCanvasRef.current;
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.lineWidth = 3;
+    context.strokeStyle = "rgba(255, 232, 247, 0.92)";
+    context.beginPath();
+    context.moveTo(from.x, from.y);
+    context.lineTo(to.x, to.y);
+    context.stroke();
+  };
+
+  const handleScratchpadPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const point = getScratchpadPoint(event);
+    if (!point) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    scratchpadDraftStrokeRef.current = [point];
+  };
+
+  const handleScratchpadPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const draftStroke = scratchpadDraftStrokeRef.current;
+    const point = getScratchpadPoint(event);
+    if (!draftStroke || !point) return;
+    event.preventDefault();
+    const previousPoint = draftStroke[draftStroke.length - 1];
+    draftStroke.push(point);
+    drawScratchpadSegment(previousPoint, point);
+  };
+
+  const handleScratchpadPointerEnd = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const draftStroke = scratchpadDraftStrokeRef.current;
+    if (!draftStroke) return;
+    event.preventDefault();
+    scratchpadDraftStrokeRef.current = null;
+    if (draftStroke.length > 1) {
+      setScratchpadStrokes((current) => [...current, { points: [...draftStroke] }]);
+    }
+  };
+
+  const handleStartVoiceMessage = () => {
+    const Recognition = getSpeechRecognitionConstructor();
+    if (!Recognition) {
+      setVoiceError("Voice input is not supported in this browser. Type the message instead.");
+      return;
+    }
+
+    setVoiceError("");
+    setVoiceTranscript("");
+    const recognition = new Recognition();
+    recognition.lang = "en-GB";
+    recognition.interimResults = false;
+    recognition.continuous = false;
+    recognition.onresult = (event) => {
+      const transcript = Array.from(event.results)
+        .map((result) => result[0]?.transcript ?? "")
+        .join(" ")
+        .trim();
+      setVoiceTranscript(transcript);
+    };
+    recognition.onerror = (event) => {
+      setVoiceError(event.error ? `Voice input stopped: ${event.error}` : "Voice input stopped.");
+      setVoiceListening(false);
+    };
+    recognition.onend = () => setVoiceListening(false);
+    speechRecognitionRef.current = recognition;
+    setVoiceListening(true);
+    recognition.start();
+  };
+
+  const handleStopVoiceMessage = () => {
+    speechRecognitionRef.current?.stop();
+    setVoiceListening(false);
+  };
+
+  const handleTutorIntent = async (
+    intent: PracticeTutorIntent,
+    prompt: string,
+    options?: { selectedWorkingText?: string; scratchpadNote?: string; voiceTranscript?: string }
+  ) => {
     if (!selectedQuestion) return;
+
+    const scratchpadContextNote = options?.scratchpadNote ?? scratchpadNote;
+    const packet = buildTutorContextPacket({
+      question: selectedQuestion,
+      topics,
+      sources,
+      attempts,
+      tutorMessages,
+      intent,
+      typedAnswer: userAnswer,
+      typedWorking: workingText,
+      selectedWorkingText: options?.selectedWorkingText,
+      scratchpad: {
+        hasDrawing: scratchpadStrokes.length > 0,
+        strokeCount: scratchpadStrokes.length,
+        note: scratchpadContextNote,
+      },
+      confidence,
+      mistakeLabels: mistakeLabelsInput,
+    });
 
     setShowTutorPanel(true);
     setTutorBusyIntent(intent);
     setTutorUsed(true);
-    if (intent === "hint" || intent === "show-method" || intent === "check-working") {
+    setSessionTutorUses((current) => current + 1);
+    setShowSessionSummary(true);
+    if (intent === "hint" || intent === "show-method" || intent === "check-working" || intent === "stuck-here") {
       setHintsUsed((current) => current + 1);
     }
-    setTutorMessages((current) => [...current, { role: "user", text: prompt }]);
+    setTutorMessages((current) => [...current, { role: "user", text: options?.voiceTranscript ?? prompt, intent }]);
 
     try {
       const response = await sendPracticeTutorMessage({
         intent,
-        message: prompt,
+        message: options?.voiceTranscript ?? prompt,
         threadId: tutorThreadId,
-        context: {
-          questionId: selectedQuestion.id,
-          questionText: selectedQuestion.questionText,
-          answerText: selectedQuestion.answerText,
-          solutionText: selectedQuestion.solutionText,
-          topicNames: selectedQuestionTopics.map((topic) => topic.name),
-          userAnswer,
-          workingText,
-        },
+        contextPacket: packet,
       });
       setTutorThreadId(response.threadId);
-      setTutorMessages((current) => [...current, { role: "model", text: response.reply }]);
+      setTutorMessages((current) => [...current, { role: "model", text: response.reply, intent }]);
       setLastSuggestedFlashcard(response.suggestedFlashcard);
       if (response.suggestedFlashcard) {
         setDraftFront(response.suggestedFlashcard.front);
@@ -474,6 +707,10 @@ export default function PractisePage() {
         sourceType: "question",
         sourceId: selectedQuestion.id,
       });
+      if (!savedDraftId) {
+        setSessionDraftsCreated((current) => current + 1);
+        setShowSessionSummary(true);
+      }
       setSavedDraftId(draftId);
       setFeedback({
         type: "success",
@@ -498,15 +735,18 @@ export default function PractisePage() {
 
     setAddingDraftToDeck(true);
     try {
-      const draftId =
-        savedDraftId ??
-        (await createFlashcardDraft(user.uid, {
+      let draftId = savedDraftId;
+      if (!draftId) {
+        draftId = await createFlashcardDraft(user.uid, {
           front: draftFront,
           back: draftBack,
           topicIds: selectedQuestion.topicIds,
           sourceType: "question",
           sourceId: selectedQuestion.id,
-        }));
+        });
+        setSessionDraftsCreated((current) => current + 1);
+        setShowSessionSummary(true);
+      }
       await convertFlashcardDraftToCard(user.uid, {
         draftId,
         deckId: draftDeckId,
@@ -613,6 +853,58 @@ export default function PractisePage() {
             ]}
           />
           <PractiseFlowHeader />
+          {hasSessionActivity ? (
+            <Card padding="md" className="border-warm-border bg-warm-glow">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                    Practice session
+                  </div>
+                  <h2 className="mt-1 text-lg font-semibold text-white">
+                    {sessionAttempts.length} attempted · {sessionCorrectAttempts} correct · {sessionTutorUses} Tutor use{sessionTutorUses === 1 ? "" : "s"}
+                  </h2>
+                  <p className="mt-1 text-sm leading-6 text-text-secondary">
+                    {showSessionSummary
+                      ? sessionNextAction
+                      : "Your session summary stays compact until you want to review it."}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <span className="rounded-full border border-white/[0.12] bg-white/[0.06] px-3 py-1.5 text-xs font-medium text-text-secondary">
+                    Started {formatElapsed(Math.max(0, Math.round((Date.now() - sessionStartedAt) / 1000)))} ago
+                  </span>
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    onClick={() => setShowSessionSummary((value) => !value)}
+                    aria-expanded={showSessionSummary}
+                  >
+                    {showSessionSummary ? "Hide summary" : "Show summary"}
+                  </Button>
+                </div>
+              </div>
+              {showSessionSummary ? (
+                <div className="mt-4 grid gap-3 md:grid-cols-4">
+                  <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
+                    <div className="text-xs text-text-muted">Questions touched</div>
+                    <div className="mt-1 text-xl font-semibold text-white">{sessionQuestions.length}</div>
+                  </div>
+                  <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
+                    <div className="text-xs text-text-muted">Drafts made</div>
+                    <div className="mt-1 text-xl font-semibold text-white">{sessionDraftsCreated}</div>
+                  </div>
+                  <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
+                    <div className="text-xs text-text-muted">Weakest topic</div>
+                    <div className="mt-1 text-sm font-semibold text-white">{sessionWeakestTopic ?? "None yet"}</div>
+                  </div>
+                  <div className="rounded-[1rem] border border-white/[0.1] bg-white/[0.05] p-3">
+                    <div className="text-xs text-text-muted">Next</div>
+                    <div className="mt-1 text-sm font-semibold text-white">{sessionNextAction}</div>
+                  </div>
+                </div>
+              ) : null}
+            </Card>
+          ) : null}
           {showAddQuestion || questions.length === 0 ? (
             <div className="fixed inset-0 z-50 flex items-end justify-center px-4 py-5 sm:items-center">
               <button
@@ -639,7 +931,7 @@ export default function PractisePage() {
                     </h2>
                     <p className="mt-2 text-sm leading-6 text-text-secondary">
                       Add the question, optional checkpoint, method notes, and any topic links. Then
-                      you’ll return to the Practise workspace.
+                      you&apos;ll return to the Practise workspace.
                     </p>
                   </div>
                   {questions.length > 0 ? (
@@ -897,10 +1189,190 @@ export default function PractisePage() {
                       <Textarea
                         label="Working"
                         rows={5}
+                        ref={workingTextareaRef}
                         value={workingText}
-                        onChange={(event) => setWorkingText(event.target.value)}
+                        onChange={(event) => {
+                          setWorkingText(event.target.value);
+                          setSelectedWorkingText("");
+                        }}
+                        onSelect={updateSelectedWorkingText}
+                        onKeyUp={updateSelectedWorkingText}
+                        onMouseUp={updateSelectedWorkingText}
                         placeholder="Show the steps you tried."
                       />
+                      <div className="rounded-[1.2rem] border border-warm-border bg-warm-glow p-3">
+                        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                          <div>
+                            <div className="text-sm font-semibold text-white">
+                              Tutor uses this question and working when you ask.
+                            </div>
+                            <p className="mt-1 text-xs leading-5 text-text-secondary">
+                              Nothing is sent until you click a Tutor action. Unsaved working is used for the reply, not saved as an attempt.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={tutorBusyIntent !== null}
+                              onClick={() =>
+                                void handleTutorIntent(
+                                  "stuck-here",
+                                  "I'm stuck here. Use my current working and give me the next useful step only."
+                                )
+                              }
+                            >
+                              I&apos;m stuck here
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={tutorBusyIntent !== null || !workingText.trim()}
+                              onClick={() =>
+                                void handleTutorIntent(
+                                  "check-working",
+                                  "Ask about my working. Check the steps I have written and point me to the first thing to fix."
+                                )
+                              }
+                            >
+                              Ask about my working
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={tutorBusyIntent !== null || !selectedWorkingText}
+                              title={selectedWorkingText ? selectedWorkingText : "Highlight text in Working first"}
+                              onClick={() =>
+                                void handleTutorIntent(
+                                  "stuck-here",
+                                  "Ask about the selected working text and explain the next step only.",
+                                  { selectedWorkingText }
+                                )
+                              }
+                            >
+                              Ask about selected text
+                            </Button>
+                          </div>
+                        </div>
+                        {selectedWorkingText ? (
+                          <p className="mt-3 rounded-[1rem] border border-white/[0.1] bg-white/[0.05] px-3 py-2 text-xs leading-5 text-text-secondary">
+                            Selected: {selectedWorkingText}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.2fr)_minmax(260px,0.8fr)]">
+                        <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-3">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div>
+                              <div className="text-sm font-semibold text-white">Scratchpad</div>
+                              <p className="mt-1 text-xs leading-5 text-text-secondary">
+                                Draw locally while you work. Tutor only gets a text note about this pad when you ask.
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-xs text-text-muted">
+                              {scratchpadStrokes.length} stroke{scratchpadStrokes.length === 1 ? "" : "s"}
+                            </span>
+                          </div>
+                          <canvas
+                            ref={scratchpadCanvasRef}
+                            width={900}
+                            height={260}
+                            className="mt-3 h-52 w-full touch-none rounded-[1rem] border border-white/[0.10] bg-[#0d1019]"
+                            onPointerDown={handleScratchpadPointerDown}
+                            onPointerMove={handleScratchpadPointerMove}
+                            onPointerUp={handleScratchpadPointerEnd}
+                            onPointerCancel={handleScratchpadPointerEnd}
+                            aria-label="Local practice scratchpad"
+                          />
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={scratchpadStrokes.length === 0}
+                              onClick={() => setScratchpadStrokes((current) => current.slice(0, -1))}
+                            >
+                              Undo
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={scratchpadStrokes.length === 0 && !scratchpadNote.trim()}
+                              onClick={() => {
+                                setScratchpadStrokes([]);
+                                setScratchpadNote("");
+                              }}
+                            >
+                              Clear
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={tutorBusyIntent !== null || (scratchpadStrokes.length === 0 && !scratchpadNote.trim())}
+                              onClick={() =>
+                                void handleTutorIntent(
+                                  "stuck-here",
+                                  "Ask about my scratchpad and current working. Use the typed scratchpad note if the drawing itself is not available.",
+                                  { scratchpadNote }
+                                )
+                              }
+                            >
+                              Ask about scratchpad
+                            </Button>
+                          </div>
+                        </div>
+
+                        <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-3">
+                          <div className="text-sm font-semibold text-white">Voice message</div>
+                          <p className="mt-1 text-xs leading-5 text-text-secondary">
+                            Push-to-talk sends the transcript with this question and working. It is not always listening.
+                          </p>
+                          <Textarea
+                            label="Scratchpad note / voice transcript"
+                            rows={4}
+                            value={voiceTranscript || scratchpadNote}
+                            onChange={(event) => {
+                              setScratchpadNote(event.target.value);
+                              setVoiceTranscript("");
+                            }}
+                            placeholder="Optional: explain the part of the drawing or step you want Tutor to use."
+                            containerClassName="mt-3"
+                          />
+                          {voiceError ? (
+                            <p className="mt-2 text-xs leading-5 text-rose-100">{voiceError}</p>
+                          ) : null}
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant={voiceListening ? "danger" : "secondary"}
+                              disabled={!voiceSupported}
+                              onClick={voiceListening ? handleStopVoiceMessage : handleStartVoiceMessage}
+                            >
+                              {voiceListening ? "Stop recording" : "Record voice"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="secondary"
+                              disabled={tutorBusyIntent !== null || !(voiceTranscript.trim() || scratchpadNote.trim())}
+                              onClick={() => {
+                                const transcript = (voiceTranscript || scratchpadNote).trim();
+                                if (!transcript) return;
+                                void handleTutorIntent("stuck-here", transcript, {
+                                  selectedWorkingText,
+                                  scratchpadNote,
+                                  voiceTranscript: transcript,
+                                });
+                              }}
+                            >
+                              Send to Tutor
+                            </Button>
+                          </div>
+                          {!voiceSupported ? (
+                            <p className="mt-2 text-xs leading-5 text-text-muted">
+                              Voice input depends on browser support. You can type the same message here.
+                            </p>
+                          ) : null}
+                        </div>
+                      </div>
                       <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-3">
                         <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                           <div>

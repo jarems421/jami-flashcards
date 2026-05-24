@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useEffect, useMemo, useRef, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import TabBar from "@/components/layout/TabBar";
 import { buildTodayPlan } from "@/lib/dashboard/today-plan";
@@ -57,6 +57,12 @@ const TUTOR_ACTIONS: Array<{
     label: "Hint",
     prompt: "Give me one hint without revealing the answer.",
     description: "One nudge without the answer.",
+  },
+  {
+    intent: "stuck-here",
+    label: "Stuck here",
+    prompt: "I'm stuck here. Use my current working and give me the next useful step only.",
+    description: "Use the current step and give one next move.",
   },
   {
     intent: "check-working",
@@ -228,7 +234,9 @@ function PublicPractiseFlowHeader() {
 
 export default function PublicDashboardShell() {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const surface = getSurface(pathname);
+  const agentMode = searchParams.get("agent") === "1";
   const [selectedQuestionId, setSelectedQuestionId] = useState(WALKTHROUGH_QUESTIONS[0].id);
   const [attempts, setAttempts] = useState<WalkthroughAttempt[]>(WALKTHROUGH_ATTEMPTS);
   const [drafts, setDrafts] = useState<WalkthroughDraft[]>(WALKTHROUGH_INITIAL_DRAFTS);
@@ -311,13 +319,51 @@ export default function PublicDashboardShell() {
     });
   };
 
-  const handleTutorIntent = async (intent: WalkthroughTutorIntent, prompt: string) => {
+  const handleTutorIntent = async (
+    intent: WalkthroughTutorIntent,
+    prompt: string,
+    options?: { selectedWorkingText?: string }
+  ) => {
     setBusyIntent(intent);
     setFeedback(null);
     setConfirmFullSolution(false);
-    setTutorMessages((current) => [...current, { role: "user", text: prompt }]);
+    setTutorMessages((current) => [...current, { role: "user", text: prompt, intent }]);
 
     try {
+      const selectedQuestionAttempts = getQuestionAttempts(selectedQuestion.id, attempts)
+        .sort((a, b) => b.createdAt - a.createdAt)
+        .slice(0, 5);
+      const contextPacket = {
+        question: {
+          id: selectedQuestion.id,
+          text: selectedQuestion.questionText,
+          expectedAnswer: selectedQuestion.answerText,
+          solutionNotes: selectedQuestion.solutionText,
+          topicIds: selectedQuestion.topicIds,
+          topicNames: selectedQuestion.topicIds.map(topicName),
+          sourceIds: [],
+          sourceTitles: [],
+        },
+        studentState: {
+          typedAnswer: userAnswer,
+          typedWorking: workingText,
+          selectedWorkingText: options?.selectedWorkingText,
+          confidence,
+          mistakeLabels: selfMark === false ? ["public walkthrough self-mark", "needs repair"] : [],
+        },
+        attemptHistory: selectedQuestionAttempts.map((attempt) => ({
+          correct: attempt.isCorrect,
+          confidence: attempt.confidence,
+          mistakeLabels: attempt.mistakeLabels,
+          createdAt: attempt.createdAt,
+        })),
+        tutorHistory: tutorMessages.slice(-6),
+        intent,
+        privacy: {
+          sendsUnsavedWorking: Boolean(userAnswer.trim() || workingText.trim() || options?.selectedWorkingText),
+          persistsUnsavedWorking: false,
+        },
+      };
       const response = await fetch("/api/demo/tutor", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -329,6 +375,7 @@ export default function PublicDashboardShell() {
             userAnswer,
             workingText,
           },
+          contextPacket,
         }),
       });
       const payload = (await response.json().catch(() => null)) as
@@ -344,7 +391,7 @@ export default function PublicDashboardShell() {
         payload?.reply ??
         payload?.error ??
         "Tutor could not answer just now, but the public walkthrough can continue.";
-      setTutorMessages((current) => [...current, { role: "model", text: reply }]);
+      setTutorMessages((current) => [...current, { role: "model", text: reply, intent }]);
 
       if (intent === "make-flashcard" && payload?.suggestedFlashcard) {
         const nextDraft: WalkthroughDraft = {
@@ -428,6 +475,7 @@ export default function PublicDashboardShell() {
           }
         >
           <PublicModeNotice />
+          {agentMode ? <AgentModeNotice /> : null}
           {feedback ? (
             <FeedbackBanner
               type={feedback.type}
@@ -509,6 +557,58 @@ function PublicModeNotice() {
     <div className="rounded-[1.45rem] border border-warm-border bg-warm-glow px-4 py-3 text-sm leading-6 text-text-secondary">
       <span className="font-semibold text-warm-accent">Public walkthrough mode.</span>{" "}
       You are clicking the real dashboard routes with seeded local data. Actions update this session only; private Firebase data stays protected.
+    </div>
+  );
+}
+
+function AgentModeNotice() {
+  const routes = [
+    ["/dashboard?agent=1", "Today"],
+    ["/dashboard/study?agent=1", "Learn"],
+    ["/dashboard/practise?agent=1", "Practise"],
+    ["/dashboard/progress?agent=1", "Progress"],
+    ["/dashboard/library?agent=1", "Library"],
+    ["/dashboard/cards?agent=1", "Cards"],
+    ["/dashboard/decks?agent=1", "Decks"],
+    ["/dashboard/goals?agent=1", "Goals"],
+    ["/dashboard/constellation?agent=1", "Stars"],
+    ["/dashboard/profile?agent=1", "Account"],
+  ];
+
+  return (
+    <div
+      data-agent-panel="dashboard-route-map"
+      className="rounded-[1.45rem] border border-white/[0.10] bg-white/[0.045] p-4"
+    >
+      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+        <div>
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+            Agent test mode
+          </div>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-text-secondary">
+            Use these links to inspect every public walkthrough surface. Mutations are local-only
+            unless you sign in with a real account.
+          </p>
+        </div>
+        <Link
+          href="/agent"
+          className="inline-flex min-h-[2.45rem] items-center justify-center rounded-full border border-white/14 bg-white/[0.045] px-3 py-2 text-xs font-semibold text-text-secondary transition duration-fast hover:border-white/22 hover:bg-white/[0.08] hover:text-white"
+        >
+          Full guide
+        </Link>
+      </div>
+      <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+        {routes.map(([href, label]) => (
+          <Link
+            key={href}
+            href={href}
+            data-agent-route={href}
+            className="shrink-0 rounded-full border border-white/[0.10] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-text-secondary transition hover:border-warm-border hover:text-warm-accent"
+          >
+            {label}
+          </Link>
+        ))}
+      </div>
     </div>
   );
 }
@@ -827,15 +927,26 @@ function PractisePanel({
   onConfidenceChange: (value: 1 | 2 | 3 | 4 | 5) => void;
   onSelfMarkChange: (value: boolean) => void;
   onSaveAttempt: () => void;
-  onTutorIntent: (intent: WalkthroughTutorIntent, prompt: string) => void;
+  onTutorIntent: (
+    intent: WalkthroughTutorIntent,
+    prompt: string,
+    options?: { selectedWorkingText?: string }
+  ) => void;
   confirmFullSolution: boolean;
   onConfirmFullSolutionChange: (value: boolean) => void;
 }) {
   const [showTutor, setShowTutor] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  const [selectedWorkingText, setSelectedWorkingText] = useState("");
+  const workingTextareaRef = useRef<HTMLTextAreaElement>(null);
   const selectedQuestionAttempts = getQuestionAttempts(selectedQuestion.id, attempts);
   const tutorOpen =
     showTutor || tutorMessages.length > 0 || busyIntent !== null || confirmFullSolution;
+  const updateSelectedWorkingText = () => {
+    const textarea = workingTextareaRef.current;
+    if (!textarea) return;
+    setSelectedWorkingText(textarea.value.slice(textarea.selectionStart, textarea.selectionEnd).trim());
+  };
 
   return (
     <div className="space-y-4">
@@ -900,10 +1011,68 @@ function PractisePanel({
             />
             <Textarea
               label="Working"
+              ref={workingTextareaRef}
               value={workingText}
-              onChange={(event) => onWorkingTextChange(event.target.value)}
+              onChange={(event) => {
+                onWorkingTextChange(event.target.value);
+                setSelectedWorkingText("");
+              }}
+              onSelect={updateSelectedWorkingText}
+              onKeyUp={updateSelectedWorkingText}
+              onMouseUp={updateSelectedWorkingText}
               rows={5}
             />
+            <div className="rounded-[1.2rem] border border-warm-border bg-warm-glow p-3">
+              <div className="text-sm font-semibold text-white">
+                Tutor uses this public question and working when you ask.
+              </div>
+              <p className="mt-1 text-xs leading-5 text-text-secondary">
+                Walkthrough actions are local-only. Context is sent only after a Tutor click.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busyIntent !== null}
+                  onClick={() =>
+                    onTutorIntent(
+                      "stuck-here",
+                      "I'm stuck here. Use my current working and give me the next useful step only."
+                    )
+                  }
+                >
+                  I&apos;m stuck here
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busyIntent !== null || !workingText.trim()}
+                  onClick={() =>
+                    onTutorIntent(
+                      "check-working",
+                      "Ask about my working. Check the steps I have written and point me to the first thing to fix."
+                    )
+                  }
+                >
+                  Ask about my working
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busyIntent !== null || !selectedWorkingText}
+                  title={selectedWorkingText ? selectedWorkingText : "Highlight text in Working first"}
+                  onClick={() =>
+                    onTutorIntent(
+                      "stuck-here",
+                      "Ask about the selected working text and explain the next step only.",
+                      { selectedWorkingText }
+                    )
+                  }
+                >
+                  Ask about selected text
+                </Button>
+              </div>
+            </div>
             <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-3">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
                 <div>
@@ -1073,7 +1242,11 @@ function TutorPanel({
   workingText: string;
   messages: WalkthroughTutorMessage[];
   busyIntent: WalkthroughTutorIntent | null;
-  onTutorIntent: (intent: WalkthroughTutorIntent, prompt: string) => void;
+  onTutorIntent: (
+    intent: WalkthroughTutorIntent,
+    prompt: string,
+    options?: { selectedWorkingText?: string }
+  ) => void;
   confirmFullSolution: boolean;
   onConfirmFullSolutionChange: (value: boolean) => void;
   open: boolean;

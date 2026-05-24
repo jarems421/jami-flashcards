@@ -173,6 +173,15 @@ export default function Home() {
               >
                 Open public demo
               </Button>
+              <Button
+                type="button"
+                variant="ghost"
+                size="md"
+                className="mt-2 w-full justify-center"
+                onClick={() => router.push("/agent")}
+              >
+                Agent testing route map
+              </Button>
             </div>
           ) : null}
         </Card>
