@@ -15,35 +15,35 @@ import {
   saveInAppUsername,
 } from "@/services/profile";
 import {
-  APP_BACKGROUND_OPTIONS,
-  readAppBackgroundPreference,
-  saveAppBackgroundPreference,
-  type AppBackgroundPreference,
-} from "@/lib/app/background-preference";
+  APP_THEME_OPTIONS,
+  readAppThemePreference,
+  saveAppThemePreference,
+  type AppThemePreference,
+} from "@/lib/app/theme-preference";
 
-function BackgroundPreferenceCard() {
-  const [selectedBackground, setSelectedBackground] =
-    useState<AppBackgroundPreference>(() => readAppBackgroundPreference());
+function ThemePreferenceCard() {
+  const [selectedTheme, setSelectedTheme] =
+    useState<AppThemePreference>(() => readAppThemePreference());
 
-  const handleSelectBackground = (value: AppBackgroundPreference) => {
-    setSelectedBackground(value);
-    saveAppBackgroundPreference(value);
+  const handleSelectTheme = (value: AppThemePreference) => {
+    setSelectedTheme(value);
+    saveAppThemePreference(value);
   };
 
   return (
     <Card padding="md" className="sm:p-6">
       <SectionHeader
-        title="Background"
-        description="Choose the app gradient on this device. This is a local display setting, not study data."
+        title="Theme"
+        description="Choose the app look on this device. This changes the whole shell, not your study data."
       />
       <div className="mt-5 flex flex-wrap gap-3">
-        {APP_BACKGROUND_OPTIONS.map((option) => {
-          const active = selectedBackground === option.value;
+        {APP_THEME_OPTIONS.map((option) => {
+          const active = selectedTheme === option.value;
           return (
             <button
               key={option.value}
               type="button"
-              onClick={() => handleSelectBackground(option.value)}
+              onClick={() => handleSelectTheme(option.value)}
               className={`flex min-w-[8rem] items-center gap-3 rounded-[1.15rem] border p-3 text-left transition duration-fast ${
                 active
                   ? "border-warm-border bg-warm-glow text-white"
@@ -241,7 +241,7 @@ export default function ProfilePage() {
         Sign out
       </Button>
 
-      <BackgroundPreferenceCard />
+      <ThemePreferenceCard />
 
       {isDemoUser ? (
         <Card padding="md" className="sm:p-6">

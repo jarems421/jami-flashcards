@@ -21,7 +21,7 @@ export default function AppTopBar({
       className={className}
       style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.45rem)" }}
     >
-      <div className="app-topbar rounded-[1.45rem] border-[1.5px] border-white/[0.12] bg-[linear-gradient(180deg,rgba(18,23,35,0.86),rgba(10,13,22,0.78))] px-3 py-3 shadow-[0_18px_38px_rgba(4,8,18,0.26)] backdrop-blur-xl sm:rounded-[1.8rem] sm:px-4">
+      <div className="app-topbar rounded-[1.45rem] border-[1.5px] border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-3 py-3 shadow-[var(--topbar-shadow)] backdrop-blur-xl sm:rounded-[1.8rem] sm:px-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.05rem] border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent shadow-[0_12px_24px_rgba(4,8,18,0.18)]">

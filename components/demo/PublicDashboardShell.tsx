@@ -14,11 +14,11 @@ import AppPage from "@/components/layout/AppPage";
 import TabBar from "@/components/layout/TabBar";
 import { buildTodayPlan } from "@/lib/dashboard/today-plan";
 import {
-  APP_BACKGROUND_OPTIONS,
-  readAppBackgroundPreference,
-  saveAppBackgroundPreference,
-  type AppBackgroundPreference,
-} from "@/lib/app/background-preference";
+  APP_THEME_OPTIONS,
+  readAppThemePreference,
+  saveAppThemePreference,
+  type AppThemePreference,
+} from "@/lib/app/theme-preference";
 import {
   Button,
   Card,
@@ -2462,8 +2462,8 @@ function ConstellationPanel() {
 }
 
 function ProfilePanel() {
-  const [selectedBackground, setSelectedBackground] =
-    useState<AppBackgroundPreference>(() => readAppBackgroundPreference());
+  const [selectedTheme, setSelectedTheme] =
+    useState<AppThemePreference>(() => readAppThemePreference());
 
   return (
     <div className="space-y-4">
@@ -2498,19 +2498,19 @@ function ProfilePanel() {
       <Card padding="lg">
         <SectionHeader
           eyebrow="Display"
-          title="Background"
-          description="Public walkthrough agents can switch the local gradient too. This does not touch private data."
+          title="Theme"
+          description="Public walkthrough agents can switch the local app theme too. This does not touch private data."
         />
         <div className="mt-5 flex flex-wrap gap-3">
-          {APP_BACKGROUND_OPTIONS.map((option) => {
-            const active = selectedBackground === option.value;
+          {APP_THEME_OPTIONS.map((option) => {
+            const active = selectedTheme === option.value;
             return (
               <button
                 key={option.value}
                 type="button"
                 onClick={() => {
-                  setSelectedBackground(option.value);
-                  saveAppBackgroundPreference(option.value);
+                  setSelectedTheme(option.value);
+                  saveAppThemePreference(option.value);
                 }}
                 className={`flex min-w-[8rem] items-center gap-3 rounded-[1.15rem] border p-3 text-left transition duration-fast ${
                   active

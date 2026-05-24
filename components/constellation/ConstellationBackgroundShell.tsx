@@ -11,10 +11,10 @@ import {
   readConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
 import {
-  APP_BACKGROUND_EVENT,
-  readAppBackgroundPreference,
-  type AppBackgroundPreference,
-} from "@/lib/app/background-preference";
+  APP_THEME_EVENT,
+  readAppThemePreference,
+  type AppThemePreference,
+} from "@/lib/app/theme-preference";
 
 const ConstellationBackground = dynamic(
   () => import("@/components/constellation/ConstellationBackground"),
@@ -33,21 +33,21 @@ export default function ConstellationBackgroundShell({
   const [isCrashMarked, setIsCrashMarked] = useState(false);
   const [backgroundConstellationId, setBackgroundConstellationId] = useState("");
   const [isBackgroundReady, setIsBackgroundReady] = useState(false);
-  const [appBackground, setAppBackground] =
-    useState<AppBackgroundPreference>("purple-pink");
+  const [appTheme, setAppTheme] =
+    useState<AppThemePreference>("normal");
 
   useEffect(() => {
-    const syncAppBackgroundPreference = () => {
-      setAppBackground(readAppBackgroundPreference());
+    const syncAppThemePreference = () => {
+      setAppTheme(readAppThemePreference());
     };
 
-    syncAppBackgroundPreference();
-    window.addEventListener("storage", syncAppBackgroundPreference);
-    window.addEventListener(APP_BACKGROUND_EVENT, syncAppBackgroundPreference);
+    syncAppThemePreference();
+    window.addEventListener("storage", syncAppThemePreference);
+    window.addEventListener(APP_THEME_EVENT, syncAppThemePreference);
 
     return () => {
-      window.removeEventListener("storage", syncAppBackgroundPreference);
-      window.removeEventListener(APP_BACKGROUND_EVENT, syncAppBackgroundPreference);
+      window.removeEventListener("storage", syncAppThemePreference);
+      window.removeEventListener(APP_THEME_EVENT, syncAppThemePreference);
     };
   }, []);
 
@@ -114,18 +114,20 @@ export default function ConstellationBackgroundShell({
   }, [isBackgroundReady, shouldShowBackground]);
 
   useEffect(() => {
-    document.body.classList.toggle("app-background-purple-pink", appBackground === "purple-pink");
-    document.body.classList.toggle("app-background-paper-white", appBackground === "paper-white");
-    document.body.classList.toggle("app-background-soft-grey", appBackground === "soft-grey");
+    document.body.classList.toggle("app-theme-normal", appTheme === "normal");
+    document.body.classList.toggle("app-theme-purple-pink", appTheme === "purple-pink");
+    document.body.classList.toggle("app-theme-paper-white", appTheme === "paper-white");
+    document.body.classList.toggle("app-theme-soft-grey", appTheme === "soft-grey");
 
     return () => {
       document.body.classList.remove(
-        "app-background-purple-pink",
-        "app-background-paper-white",
-        "app-background-soft-grey"
+        "app-theme-normal",
+        "app-theme-purple-pink",
+        "app-theme-paper-white",
+        "app-theme-soft-grey"
       );
     };
-  }, [appBackground]);
+  }, [appTheme]);
 
   useEffect(() => {
     document.body.classList.toggle(

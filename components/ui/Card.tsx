@@ -11,7 +11,7 @@ type CardProps = HTMLAttributes<HTMLDivElement> & {
 const toneClasses: Record<CardTone, string> = {
   default: "app-panel",
   warm: "app-panel-warm",
-  subtle: "border-[1.5px] border-white/10 bg-white/[0.045] shadow-bubble",
+  subtle: "border-[1.5px] border-[var(--color-border)] bg-[var(--color-glass-subtle)] shadow-bubble",
 };
 
 const paddingClasses: Record<CardPadding, string> = {
