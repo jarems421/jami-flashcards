@@ -70,10 +70,8 @@ export default function FolderObjectCard({
             className="absolute inset-x-0 top-0 h-4 rounded-t-[0.9rem]"
             style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.28), transparent)" }}
           />
-          <div className="absolute inset-0 flex items-center justify-center">
-            <div className="flex h-9 w-9 items-center justify-center rounded-[0.8rem] border border-white/22 bg-white/16 text-white/82 shadow-[inset_0_1px_0_rgba(255,255,255,0.28)]">
-              <ObjectIcon icon={icon} className="h-5 w-5" />
-            </div>
+          <div className="absolute inset-x-0 top-[38%] flex justify-center">
+            <ObjectIcon icon={icon} className="h-7 w-7 text-white/72 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]" />
           </div>
         </div>
       </div>

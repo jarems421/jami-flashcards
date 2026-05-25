@@ -55,16 +55,33 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 3. Create a folder such as Biology, History, Spanish, Computer Science, or Art History.
 4. Optionally link existing topics such as Enzyme activity or Cold War causes.
 5. Open the folder detail page.
-6. Confirm the folder feels like a study space and shows Notebooks, Decks, Sources, and Recent activity.
+6. Confirm the folder feels like a study space and uses tabs for Notebooks, Decks, and Sources.
 7. Confirm there is no separate main `Practice sets` or `Past papers` section.
 8. Confirm the notebook template picker offers:
    - Blank notebook
    - Uploaded file / paper notebook
    - AI-created questions notebook
 9. Confirm AI-created questions are clearly a placeholder.
-10. Link an existing deck to the folder and confirm it still appears globally in Decks.
-11. Link an existing source to the folder and confirm it still appears globally in Library.
-12. Confirm Cards do not expose folder linking directly; cards inherit folder context through decks.
+10. Open the Decks tab and confirm it shows only decks already in this folder.
+11. Use `Add existing deck` to choose a global deck and confirm it appears in the folder.
+12. Use `Create deck` inside the folder and confirm the deck also appears globally in Decks.
+13. Use `Remove` on a folder deck and confirm it leaves the folder without deleting the global deck.
+14. Open the Sources tab and confirm it shows only sources already in this folder.
+15. Use `Add existing source` to choose a Library source and confirm it appears in the folder.
+16. Use `Create source` inside the folder and confirm the source also appears globally in Library.
+17. Use `Remove` on a folder source and confirm it leaves the folder without deleting the Library source.
+18. Open `Edit folder`, rename it, change colour/icon, and archive it only after confirming the warning says decks and sources are not deleted.
+19. Open a notebook and use `Edit notebook` to rename it, change cover colour/icon, and archive it safely.
+20. Confirm Cards do not expose folder linking directly; cards inherit folder context through decks.
+
+## Object Browser Polish
+
+1. Confirm folder cards show only a folder object and folder name.
+2. Confirm folder cards do not show notebook/deck/source counts, topic counts, descriptions, or stats.
+3. Confirm notebook cards show a notebook object, title, and at most one tiny metadata line.
+4. Confirm the weird white circular icon backing does not appear on folders or notebooks.
+5. Confirm folder/notebook icons sit visually balanced on the object, not low on the cover.
+6. Confirm folder and notebook grids feel compact on desktop/tablet and do not become giant dashboard blocks.
 
 ## Uploaded-File Notebook
 

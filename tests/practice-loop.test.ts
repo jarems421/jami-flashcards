@@ -13,6 +13,7 @@ import {
   buildStudyFolderPayload,
   mapStudyFolderData,
 } from "@/lib/workspace/study-folders";
+import { addFolderId, normalizeFolderIds, removeFolderId } from "@/lib/workspace/folder-links";
 import {
   getObjectColorPreset,
   normalizeObjectColor,
@@ -298,6 +299,16 @@ describe("Jami notebook-first learning foundations", () => {
       id: "rose",
       label: "Rose",
     });
+  });
+
+  it("adds and removes folder links without duplicating or deleting assets", () => {
+    expect(normalizeFolderIds([" folder-a ", "folder-a", "", "folder-b"])).toEqual([
+      "folder-a",
+      "folder-b",
+    ]);
+    expect(addFolderId(["folder-a"], "folder-b")).toEqual(["folder-a", "folder-b"]);
+    expect(addFolderId(["folder-a"], "folder-a")).toEqual(["folder-a"]);
+    expect(removeFolderId(["folder-a", "folder-b"], "folder-a")).toEqual(["folder-b"]);
   });
 
   it("validates notebook pages as the active working surface", () => {

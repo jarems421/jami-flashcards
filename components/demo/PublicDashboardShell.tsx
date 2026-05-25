@@ -25,10 +25,12 @@ import {
   WALKTHROUGH_NOTEBOOKS,
   WALKTHROUGH_NOTEBOOK_PAGES,
   WALKTHROUGH_SOURCES,
+  type WalkthroughDeck,
   getWalkthroughTopicNames,
   type WalkthroughDraft,
   type WalkthroughNotebook,
   type WalkthroughNotebookPage,
+  type WalkthroughSource,
   type WalkthroughStudyFolder,
 } from "@/lib/demo/public-walkthrough";
 import {
@@ -351,10 +353,64 @@ function FoldersPanel(props: {
   onCreateNotebook: (folderId: string, type?: WalkthroughNotebook["type"]) => void;
 }) {
   const [activeTab, setActiveTab] = useState<"notebooks" | "decks" | "sources">("notebooks");
+  const [demoDecks, setDemoDecks] = useState<WalkthroughDeck[]>(WALKTHROUGH_DECKS);
+  const [demoSources, setDemoSources] = useState<WalkthroughSource[]>(WALKTHROUGH_SOURCES);
+  const [showAddDeck, setShowAddDeck] = useState(false);
+  const [showAddSource, setShowAddSource] = useState(false);
+  const [newDeckName, setNewDeckName] = useState("");
+  const [newSourceTitle, setNewSourceTitle] = useState("");
   const selectedFolder = props.folders.find((folder) => folder.id === props.selectedFolderId) ?? props.folders[0];
   const folderNotebooks = props.notebooks.filter((notebook) => notebook.folderId === selectedFolder?.id);
-  const folderDecks = WALKTHROUGH_DECKS.filter((deck) => deck.folderId === selectedFolder?.id);
-  const folderSources = WALKTHROUGH_SOURCES.filter((source) => source.folderId === selectedFolder?.id);
+  const folderDecks = demoDecks.filter((deck) => deck.folderId === selectedFolder?.id);
+  const folderSources = demoSources.filter((source) => source.folderId === selectedFolder?.id);
+  const availableDeck = demoDecks.find((deck) => deck.folderId !== selectedFolder?.id);
+  const availableSource = demoSources.find((source) => source.folderId !== selectedFolder?.id);
+  const addExistingDeck = () => {
+    if (!selectedFolder || !availableDeck) return;
+    setDemoDecks((current) =>
+      current.map((deck) => deck.id === availableDeck.id ? { ...deck, folderId: selectedFolder.id } : deck)
+    );
+  };
+  const createLocalDeck = () => {
+    if (!selectedFolder || !newDeckName.trim()) return;
+    setDemoDecks((current) => [
+      {
+        id: `local-deck-${Date.now()}`,
+        name: newDeckName.trim(),
+        subject: selectedFolder.subject,
+        folderId: selectedFolder.id,
+        cardCount: 0,
+        weakCount: 0,
+      },
+      ...current,
+    ]);
+    setNewDeckName("");
+    setShowAddDeck(false);
+  };
+  const addExistingSource = () => {
+    if (!selectedFolder || !availableSource) return;
+    setDemoSources((current) =>
+      current.map((source) => source.id === availableSource.id ? { ...source, folderId: selectedFolder.id } : source)
+    );
+  };
+  const createLocalSource = () => {
+    if (!selectedFolder || !newSourceTitle.trim()) return;
+    setDemoSources((current) => [
+      {
+        id: `local-source-${Date.now()}`,
+        title: newSourceTitle.trim(),
+        type: "manual_note",
+        subject: selectedFolder.subject,
+        folderId: selectedFolder.id,
+        topicIds: selectedFolder.topicIds,
+        contentText: "Local-only walkthrough source. Signed-in users save this in Library.",
+        status: "active",
+      },
+      ...current,
+    ]);
+    setNewSourceTitle("");
+    setShowAddSource(false);
+  };
   return (
     <div className="space-y-5">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -403,10 +459,64 @@ function FoldersPanel(props: {
             <NotebookGrid notebooks={folderNotebooks} compact />
           ) : null}
           {activeTab === "decks" ? (
-            <AssetList title="Decks" items={folderDecks.map((deck) => `${deck.name} - ${deck.cardCount} cards`)} empty="No decks linked in this demo folder." />
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => setShowAddDeck((value) => !value)}>
+                  Add deck
+                </Button>
+                {availableDeck ? (
+                  <Button variant="secondary" onClick={addExistingDeck}>
+                    Add {availableDeck.name}
+                  </Button>
+                ) : null}
+              </div>
+              {showAddDeck ? (
+                <Card padding="sm">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={newDeckName}
+                      onChange={(event) => setNewDeckName(event.target.value)}
+                      placeholder="New local deck"
+                      className="min-h-[2.5rem] flex-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 text-sm text-[var(--color-text-primary)]"
+                    />
+                    <Button disabled={!newDeckName.trim()} onClick={createLocalDeck}>
+                      Create local deck
+                    </Button>
+                  </div>
+                </Card>
+              ) : null}
+              <AssetList title="Decks" items={folderDecks.map((deck) => `${deck.name} - ${deck.cardCount} cards`)} empty="No decks in this demo folder yet." />
+            </div>
           ) : null}
           {activeTab === "sources" ? (
-            <AssetList title="Sources" items={folderSources.map((source) => source.title)} empty="No sources linked in this demo folder." />
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                <Button variant="secondary" onClick={() => setShowAddSource((value) => !value)}>
+                  Create source
+                </Button>
+                {availableSource ? (
+                  <Button variant="secondary" onClick={addExistingSource}>
+                    Add {availableSource.title}
+                  </Button>
+                ) : null}
+              </div>
+              {showAddSource ? (
+                <Card padding="sm">
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <input
+                      value={newSourceTitle}
+                      onChange={(event) => setNewSourceTitle(event.target.value)}
+                      placeholder="New local source"
+                      className="min-h-[2.5rem] flex-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 text-sm text-[var(--color-text-primary)]"
+                    />
+                    <Button disabled={!newSourceTitle.trim()} onClick={createLocalSource}>
+                      Create local source
+                    </Button>
+                  </div>
+                </Card>
+              ) : null}
+              <AssetList title="Sources" items={folderSources.map((source) => source.title)} empty="No sources in this demo folder yet." />
+            </div>
           ) : null}
         </section>
       ) : null}

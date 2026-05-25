@@ -85,7 +85,11 @@ Folders are broad study spaces.
 - A source can appear inside a folder and still appear globally in Library.
 - Cards should inherit folder context through decks rather than carrying folder links directly in V1.
 - Folder pages should feel like calm workspaces, not analytics dashboards.
-- Empty folders should clearly explain what will come next: notebooks, decks, sources, and practice work.
+- Folder and notebook browsing should feel like a clean object browser, not a dashboard.
+- Folder cards should show only the folder object and folder name. Do not show counts, stats, descriptions, or topic chips on the folder face.
+- Inside a folder, use tabs or segmented navigation for Notebooks, Decks, and Sources instead of stacking every asset on one long page.
+- Decks and Sources tabs should show only assets already in that folder. Add existing assets through a picker/drawer; use `Add to folder` and `Remove from folder`, not database-style `Link/Unlink` copy.
+- Empty folders should clearly explain the next action with short copy only.
 
 ### Notebooks
 
@@ -103,6 +107,7 @@ Notebooks are the future main answer surface.
 
 - Use Notebook or Working Page, not Scratchpad, for persistent work.
 - V1 should be humble: pages, typed content, a simple drawing canvas, save/reload, and page navigation.
+- Notebook object cards should show the notebook object, title, and at most one tiny metadata line. Keep custom cover colours/icons, but avoid bulky dashboard metadata.
 - Do not imply OCR, handwriting recognition, PDF annotation, or AI screen watching.
 - AI will later live as an on-demand drawer/dropdown inside notebooks, papers, and notebook-based question sets.
 

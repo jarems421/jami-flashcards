@@ -5,7 +5,9 @@ import { FirebaseError } from "firebase/app";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
-import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckStyle, type Deck } from "@/services/study/decks";
+import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckFolders, updateDeckStyle, type Deck } from "@/services/study/decks";
+import { getActiveStudyFolders } from "@/services/study/folders";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
 import {
   DECK_COLOR_PRESETS,
   DECK_ICON_PRESETS,
@@ -30,14 +32,17 @@ function isPermissionDenied(error: unknown) {
 export default function DecksPage() {
   const { user, isDemoUser } = useUser();
   const [decks, setDecks] = useState<Deck[]>([]);
+  const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [deckCounts, setDeckCounts] = useState<DeckCounts>({});
   const [name, setName] = useState("");
+  const [createFolderId, setCreateFolderId] = useState("");
   const [isLoadingDecks, setIsLoadingDecks] = useState(true);
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
   const [editingDeckName, setEditingDeckName] = useState("");
   const [editingDeckColor, setEditingDeckColor] = useState<DeckColorPresetId>("aurora");
   const [editingDeckIcon, setEditingDeckIcon] = useState<DeckIconPresetId>("book");
+  const [editingDeckFolderId, setEditingDeckFolderId] = useState("");
   const [savingDeckId, setSavingDeckId] = useState<string | null>(null);
   const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -48,8 +53,9 @@ export default function DecksPage() {
   const loadAll = useCallback(async () => {
     setIsLoadingDecks(true);
     try {
-      const [nextDecks, cardsSnapshot] = await Promise.all([
+      const [nextDecks, nextFolders, cardsSnapshot] = await Promise.all([
         getDecks(user.uid),
+        getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
         getDocs(query(collection(db, "cards"), where("userId", "==", user.uid))),
       ]);
       const nextCounts: DeckCounts = {};
@@ -72,6 +78,7 @@ export default function DecksPage() {
       }
 
       setDecks(nextDecks);
+      setFolders(nextFolders);
       setDeckCounts(nextCounts);
     } catch (error) {
       console.error(error);
@@ -121,6 +128,7 @@ export default function DecksPage() {
     setEditingDeckName("");
     setEditingDeckColor("aurora");
     setEditingDeckIcon("book");
+    setEditingDeckFolderId("");
   };
 
   const handleCreate = async () => {
@@ -134,8 +142,9 @@ export default function DecksPage() {
     setIsCreatingDeck(true);
     setFeedback(null);
     try {
-      await createDeck(user.uid, deckName);
+      await createDeck(user.uid, deckName, { folderIds: createFolderId ? [createFolderId] : [] });
       setName("");
+      setCreateFolderId("");
       await loadAll();
       setFeedback({ type: "success", message: `Created deck ${deckName}.` });
     } catch (error) {
@@ -160,6 +169,7 @@ export default function DecksPage() {
         colorPreset: editingDeckColor,
         iconPreset: editingDeckIcon,
       });
+      await updateDeckFolders(user.uid, deck.id, editingDeckFolderId ? [editingDeckFolderId] : []);
       await loadAll();
       resetDeckEditing();
       setFeedback({ type: "success", message: `Saved changes to ${editingDeckName.trim()}.` });
@@ -231,6 +241,21 @@ export default function DecksPage() {
                 <Button disabled={isDemoUser || isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="sm:min-w-[9rem]">
                   {isCreatingDeck ? "Creating..." : "Create deck"}
                 </Button>
+                <label className="block min-w-[12rem]">
+                  <span className="sr-only">Add to folder</span>
+                  <select
+                    value={createFolderId}
+                    onChange={(event) => setCreateFolderId(event.target.value)}
+                    className="min-h-[3.25rem] w-full rounded-[1.6rem] border-[1.5px] border-white/[0.12] bg-surface-panel-strong px-4 text-sm text-white outline-none"
+                  >
+                    <option value="">No folder</option>
+                    {folders.map((folder) => (
+                      <option key={folder.id} value={folder.id}>
+                        {folder.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
               </div>
             }
           />
@@ -286,6 +311,21 @@ export default function DecksPage() {
                       {editingDeckId === deck.id ? (
                         <div className="space-y-3">
                           <Input value={editingDeckName} onChange={(event) => setEditingDeckName(event.target.value)} placeholder="Deck name" />
+                          <label className="block">
+                            <span className="mb-2 block text-sm font-medium text-text-secondary">Folder</span>
+                            <select
+                              value={editingDeckFolderId}
+                              onChange={(event) => setEditingDeckFolderId(event.target.value)}
+                              className="min-h-[2.75rem] w-full rounded-2xl border border-white/[0.1] bg-surface-panel-strong px-3 text-sm text-white outline-none"
+                            >
+                              <option value="">No folder</option>
+                              {folders.map((folder) => (
+                                <option key={folder.id} value={folder.id}>
+                                  {folder.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
                           <div className="space-y-3 rounded-[1.4rem] border border-white/[0.07] bg-white/[0.04] p-3">
                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Deck cover</div>
                             <div className="flex flex-wrap items-center gap-3 rounded-[1rem] border border-white/[0.08] bg-black/10 p-3 sm:flex-nowrap">
@@ -382,8 +422,8 @@ export default function DecksPage() {
 
                     {editingDeckId === deck.id ? null : (
                       <div className="flex w-full flex-wrap gap-2 sm:w-auto">
-                        <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
-                          Edit name & cover
+                        <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setEditingDeckFolderId(deck.folderIds[0] ?? ""); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
+                          Edit deck
                         </Button>
                         <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => void handleDeckDelete(deck)} variant="danger" className="flex-1 sm:flex-none">
                           {deletingDeckId === deck.id ? "Deleting..." : "Delete"}

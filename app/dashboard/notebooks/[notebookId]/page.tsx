@@ -10,11 +10,19 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import AppPage from "@/components/layout/AppPage";
+import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
+import {
+  normalizeObjectColor,
+  normalizeObjectIcon,
+  type ObjectColorId,
+  type ObjectIconId,
+} from "@/components/workspace/object-card-styles";
 import {
   Button,
   Card,
   EmptyState,
   FeedbackBanner,
+  Input,
   SectionHeader,
   Skeleton,
   Textarea,
@@ -34,6 +42,7 @@ import {
   getNotebookById,
   getNotebookFiles,
   getNotebookPages,
+  updateNotebook,
   updateNotebookPage,
 } from "@/services/study/notebooks";
 
@@ -144,6 +153,11 @@ export default function NotebookEditorPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
   const [phoneFullEditing, setPhoneFullEditing] = useState(false);
+  const [showNotebookSettings, setShowNotebookSettings] = useState(false);
+  const [notebookTitle, setNotebookTitle] = useState("");
+  const [notebookColor, setNotebookColor] = useState<ObjectColorId>("sky");
+  const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("book");
+  const [savingNotebookSettings, setSavingNotebookSettings] = useState(false);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
 
   const selectedPage = useMemo(
@@ -335,6 +349,69 @@ export default function NotebookEditorPage() {
     }
   };
 
+  const openNotebookSettings = () => {
+    if (!notebook) return;
+    setNotebookTitle(notebook.title);
+    setNotebookColor(normalizeObjectColor(notebook.color));
+    setNotebookIcon(normalizeObjectIcon(notebook.icon));
+    setShowNotebookSettings(true);
+  };
+
+  const handleSaveNotebookSettings = async () => {
+    if (!user?.uid || !notebook) return;
+    setSavingNotebookSettings(true);
+    setFeedback(null);
+    try {
+      await updateNotebook(user.uid, notebook.id, {
+        title: notebookTitle,
+        color: notebookColor,
+        icon: notebookIcon,
+      });
+      setNotebook((current) =>
+        current
+          ? {
+              ...current,
+              title: notebookTitle.trim() || current.title,
+              color: notebookColor,
+              icon: notebookIcon,
+              updatedAt: Date.now(),
+            }
+          : current
+      );
+      setShowNotebookSettings(false);
+      setFeedback({ type: "success", message: "Notebook updated." });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not update notebook.",
+      });
+    } finally {
+      setSavingNotebookSettings(false);
+    }
+  };
+
+  const handleArchiveNotebook = async () => {
+    if (!user?.uid || !notebook) return;
+    const confirmed = window.confirm(
+      "Archive this notebook? This hides the notebook from the folder, but does not affect decks or sources."
+    );
+    if (!confirmed) return;
+    setSavingNotebookSettings(true);
+    try {
+      await updateNotebook(user.uid, notebook.id, { archived: true });
+      setNotebook((current) => (current ? { ...current, archived: true, updatedAt: Date.now() } : current));
+      setShowNotebookSettings(false);
+      setFeedback({ type: "success", message: "Notebook archived." });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not archive notebook.",
+      });
+    } finally {
+      setSavingNotebookSettings(false);
+    }
+  };
+
   if (loading) {
     return (
       <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="3xl">
@@ -373,9 +450,14 @@ export default function NotebookEditorPage() {
       backLabel="Folder"
       width="3xl"
       action={
-        <Button type="button" disabled={saving || !selectedPage} onClick={() => void handleSavePage()}>
-          {saving ? "Saving..." : saveStatus === "unsaved" ? "Save changes" : "Saved"}
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={openNotebookSettings}>
+            Edit notebook
+          </Button>
+          <Button type="button" disabled={saving || !selectedPage} onClick={() => void handleSavePage()}>
+            {saving ? "Saving..." : saveStatus === "unsaved" ? "Save changes" : "Saved"}
+          </Button>
+        </div>
       }
     >
       <div className="space-y-5">
@@ -385,6 +467,53 @@ export default function NotebookEditorPage() {
             message={feedback.message}
             onDismiss={() => setFeedback(null)}
           />
+        ) : null}
+
+        {showNotebookSettings ? (
+          <Card padding="md">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <SectionHeader
+                eyebrow="Edit notebook"
+                title="Rename and restyle this notebook."
+                description="Archiving hides this notebook from the folder. It does not delete linked decks or sources."
+              />
+              <Button type="button" variant="secondary" onClick={() => setShowNotebookSettings(false)}>
+                Close
+              </Button>
+            </div>
+            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+              <Input
+                label="Notebook title"
+                value={notebookTitle}
+                onChange={(event) => setNotebookTitle(event.target.value)}
+              />
+              <ObjectStylePicker
+                color={notebookColor}
+                icon={notebookIcon}
+                onColorChange={setNotebookColor}
+                onIconChange={setNotebookIcon}
+                colorLabel="Cover colour"
+                iconLabel="Cover icon"
+              />
+            </div>
+            <div className="mt-5 flex flex-wrap gap-2">
+              <Button
+                type="button"
+                disabled={savingNotebookSettings || !notebookTitle.trim()}
+                onClick={() => void handleSaveNotebookSettings()}
+              >
+                {savingNotebookSettings ? "Saving..." : "Save notebook"}
+              </Button>
+              <Button
+                type="button"
+                variant="danger"
+                disabled={savingNotebookSettings}
+                onClick={() => void handleArchiveNotebook()}
+              >
+                Archive notebook
+              </Button>
+            </div>
+          </Card>
         ) : null}
 
         {isPhoneLayout ? (

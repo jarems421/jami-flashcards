@@ -35,8 +35,10 @@ Suggested click test:
 5. Open /dashboard/notebooks/notebook-photosynthesis?agent=1.
 6. Type on the notebook page, save, add a page, and switch pages.
 7. Resize to phone width and confirm "Notebook editing works best on iPad or desktop" appears where notebook editing is shown.
-8. Open Folders and confirm notebooks, decks, sources, and templates are the only Practice organisation layer.
-9. Open Library and inspect seeded source actions.
+8. Open Folders and confirm the folder detail view uses Notebooks, Decks, and Sources tabs.
+9. In a folder, confirm the Decks tab only shows folder decks and uses add/create local simulations.
+10. In a folder, confirm the Sources tab only shows folder sources and uses add/create local simulations.
+11. Open Library and inspect seeded source actions.
 10. Open Account and confirm no private data was accessed.
 
 Phase 6 notebook-first Practice test:
@@ -45,7 +47,7 @@ Phase 6 notebook-first Practice test:
 3. Open a Continue working notebook.
 4. Type inside the notebook page and save.
 5. Add a page and navigate between pages.
-6. Open /dashboard/folders?agent=1 and inspect notebook templates.
+6. Open /dashboard/folders?agent=1 and inspect notebook templates plus folder Decks/Sources add flows.
 7. Open Library and approve a practice draft into a notebook page.
 8. Confirm uploaded-file copy says file saved only; no OCR, PDF annotation, or automatic reading is claimed.
 

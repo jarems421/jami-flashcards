@@ -1,5 +1,6 @@
 import { db } from "../firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { normalizeFolderIds } from "@/lib/workspace/folder-links";
 import { FirebaseError } from "firebase/app";
 import {
   DEFAULT_DECK_COLOR_PRESET,
@@ -160,7 +161,11 @@ async function deleteUserDeckHistory(userId: string, deckId: string): Promise<vo
   );
 }
 
-export const createDeck = async (userId: string, name: string): Promise<Deck> => {
+export const createDeck = async (
+  userId: string,
+  name: string,
+  options: { folderIds?: string[] } = {}
+): Promise<Deck> => {
   const normalizedUserId = userId.trim();
   const deckName = name.trim();
 
@@ -172,6 +177,7 @@ export const createDeck = async (userId: string, name: string): Promise<Deck> =>
   }
 
   const createdAt = Date.now();
+  const folderIds = normalizeFolderIds(options.folderIds ?? []);
   const docRef = await withTimeout(
     addDoc(collection(db, "decks"), {
       name: deckName,
@@ -179,7 +185,7 @@ export const createDeck = async (userId: string, name: string): Promise<Deck> =>
       createdAt,
       colorPreset: DEFAULT_DECK_COLOR_PRESET,
       iconPreset: DEFAULT_DECK_ICON_PRESET,
-      folderIds: [],
+      folderIds,
     }),
     CREATE_MS,
     "Create deck"
@@ -192,7 +198,7 @@ export const createDeck = async (userId: string, name: string): Promise<Deck> =>
     createdAt,
     colorPreset: DEFAULT_DECK_COLOR_PRESET,
     iconPreset: DEFAULT_DECK_ICON_PRESET,
-    folderIds: [],
+    folderIds,
   };
 };
 

@@ -17,9 +17,12 @@ import {
   type GeneratedContentDraft,
 } from "@/services/study/generated-content";
 import { getDecks } from "@/services/study/decks";
+import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
 import { createSource, getActiveSources, updateSource } from "@/services/study/sources";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
+import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import { askSourceTutor, generateSourceDrafts } from "@/services/ai/source";
 import AppPage from "@/components/layout/AppPage";
 import {
@@ -290,6 +293,7 @@ export default function LibraryPage() {
   const { user } = useUser();
   const [sources, setSources] = useState<Source[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
@@ -301,6 +305,7 @@ export default function LibraryPage() {
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
+  const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
   const [contentText, setContentText] = useState("");
   const [externalUrl, setExternalUrl] = useState("");
   const [fileName, setFileName] = useState("");
@@ -341,15 +346,17 @@ export default function LibraryPage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const [nextSources, nextTopics, nextDecks, nextNotebooks, nextDrafts] = await Promise.all([
+      const [nextSources, nextTopics, nextFolders, nextDecks, nextNotebooks, nextDrafts] = await Promise.all([
         getActiveSources(user.uid),
         getActiveTopics(user.uid),
+        getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
         getDecks(user.uid),
         getActiveNotebooks(user.uid),
         getGeneratedContentDrafts(user.uid),
       ]);
       setSources(nextSources);
       setTopics(nextTopics);
+      setFolders(nextFolders);
       setDecks(nextDecks);
       setNotebooks(nextNotebooks);
       setDrafts(nextDrafts);
@@ -362,6 +369,7 @@ export default function LibraryPage() {
       console.error(error);
       setSources([]);
       setTopics([]);
+      setFolders([]);
       setDecks([]);
       setNotebooks([]);
       setDrafts([]);
@@ -422,6 +430,7 @@ export default function LibraryPage() {
         type: sourceType,
         subject,
         topicIds: selectedTopicIds,
+        folderIds: selectedFolderIds,
         contentText,
         externalUrl,
         fileName,
@@ -430,6 +439,7 @@ export default function LibraryPage() {
       setTitle("");
       setSubject("");
       setSelectedTopicIds([]);
+      setSelectedFolderIds([]);
       setContentText("");
       setExternalUrl("");
       setFileName("");
@@ -489,6 +499,15 @@ export default function LibraryPage() {
       ? selectedSource.topicIds.filter((id) => id !== topicId)
       : [...selectedSource.topicIds, topicId];
     await updateSource(user.uid, selectedSource.id, { topicIds: nextTopicIds });
+    await loadAll();
+  };
+
+  const toggleSourceFolder = async (folderId: string) => {
+    if (!selectedSource) return;
+    const nextFolderIds = selectedSource.folderIds.includes(folderId)
+      ? removeFolderId(selectedSource.folderIds, folderId)
+      : addFolderId(selectedSource.folderIds, folderId);
+    await updateSource(user.uid, selectedSource.id, { folderIds: nextFolderIds });
     await loadAll();
   };
 
@@ -642,6 +661,36 @@ export default function LibraryPage() {
                             }`}
                           >
                             {topic.name}
+                          </button>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+                <div>
+                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Folders</div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {folders.length === 0 ? (
+                      <span className="text-sm text-text-secondary">Create folders from Practice, then place this source inside one.</span>
+                    ) : (
+                      folders.map((folder) => {
+                        const active = selectedFolderIds.includes(folder.id);
+                        return (
+                          <button
+                            key={folder.id}
+                            type="button"
+                            onClick={() =>
+                              setSelectedFolderIds((current) =>
+                                active ? current.filter((id) => id !== folder.id) : [...current, folder.id]
+                              )
+                            }
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                              active
+                                ? "border-warm-border bg-warm-glow text-warm-accent"
+                                : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
+                            }`}
+                          >
+                            {folder.name}
                           </button>
                         );
                       })
@@ -883,6 +932,38 @@ export default function LibraryPage() {
                 ) : (
                   <p className="text-sm leading-6 text-text-secondary">
                     Create topics from your workspace, then link sources here.
+                  </p>
+                )}
+              </div>
+            </Card>
+            <Card padding="lg">
+              <SectionHeader
+                eyebrow="Folder placement"
+                title="Place in folders"
+                description="Sources can live in folders and still remain available here in Library."
+              />
+              <div className="mt-5 flex flex-wrap gap-2">
+                {selectedSource && folders.length > 0 ? (
+                  folders.map((folder) => {
+                    const active = selectedSource.folderIds.includes(folder.id);
+                    return (
+                      <button
+                        key={folder.id}
+                        type="button"
+                        onClick={() => void toggleSourceFolder(folder.id)}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
+                          active
+                            ? "border-warm-border bg-warm-glow text-warm-accent"
+                            : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
+                        }`}
+                      >
+                        {folder.name}
+                      </button>
+                    );
+                  })
+                ) : (
+                  <p className="text-sm leading-6 text-text-secondary">
+                    Create folders from Practice, then choose where this source belongs.
                   </p>
                 )}
               </div>
