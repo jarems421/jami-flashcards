@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FirebaseError } from "firebase/app";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
@@ -13,8 +13,6 @@ import {
   EmptyState,
   FeedbackBanner,
   Input,
-  MetricStrip,
-  PageHero,
   Skeleton,
   Textarea,
 } from "@/components/ui";
@@ -37,12 +35,6 @@ const starterFolders = [
   "Spanish",
   "Computer Science",
 ];
-
-function getTopicNames(folder: StudyFolder, topics: Topic[]) {
-  return folder.topicIds
-    .map((topicId) => topics.find((topic) => topic.id === topicId)?.name)
-    .filter((name): name is string => Boolean(name));
-}
 
 export default function FoldersPage() {
   const { user } = useUser();
@@ -93,25 +85,6 @@ export default function FoldersPage() {
   useEffect(() => {
     void loadFolders();
   }, [loadFolders]);
-
-  const folderStats = useMemo(
-    () => [
-      {
-        label: "Folders",
-        value: folders.length,
-        tone: folders.length > 0 ? ("warm" as const) : ("default" as const),
-      },
-      {
-        label: "Linked topics",
-        value: new Set(folders.flatMap((folder) => folder.topicIds)).size,
-      },
-      {
-        label: "Notebook phase",
-        value: "Next",
-      },
-    ],
-    [folders]
-  );
 
   const toggleTopic = (topicId: string) => {
     setSelectedTopicIds((current) =>
@@ -191,29 +164,25 @@ export default function FoldersPage() {
           />
         ) : null}
 
-        <PageHero
-          eyebrow="Study spaces"
-          title="Open a folder and keep the whole topic together."
-          description="Folders are broad study spaces like Biology, History, Spanish, or Computer Science. They hold notebooks, decks, sources, and recent work without forcing everything through one form-heavy Practice page."
-          action={
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Folders</p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
+              Study spaces
+            </h1>
+          </div>
+          <div className="flex flex-wrap gap-2">
             <Button type="button" onClick={() => setShowCreate(true)}>
               Create folder
             </Button>
-          }
-          secondaryAction={
             <Link
               href="/dashboard/practise"
-              className="inline-flex min-h-[3.25rem] items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-5 text-base font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition hover:-translate-y-[1px]"
+              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition hover:-translate-y-[1px]"
             >
               Open Practice
             </Link>
-          }
-          aside={
-            <div className="w-full min-w-[13rem] max-w-xs">
-              <MetricStrip items={folderStats} />
-            </div>
-          }
-        />
+          </div>
+        </div>
 
         {showCreate ? (
           <Card padding="lg" className="animate-fade-in">
@@ -313,36 +282,22 @@ export default function FoldersPage() {
         ) : null}
 
         {loading ? (
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {Array.from({ length: 3 }).map((_, index) => (
-              <Skeleton key={index} className="h-72 rounded-[1.45rem]" />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+            {Array.from({ length: 5 }).map((_, index) => (
+              <Skeleton key={index} className="h-40 rounded-[1.25rem]" />
             ))}
           </div>
         ) : folders.length > 0 ? (
-          <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {folders.map((folder) => {
-              const names = getTopicNames(folder, topics);
-              return (
-                <FolderObjectCard
-                  key={folder.id}
-                  href={`/dashboard/folders/${folder.id}`}
-                  title={folder.name}
-                  subtitle={folder.subject ?? "General"}
-                  description={
-                    folder.description ??
-                    "A home for notebooks, decks, sources, and recent work."
-                  }
-                  color={folder.color}
-                  icon={folder.icon}
-                  stats={
-                    names.length > 0
-                      ? names.slice(0, 3).map((topicName) => ({ label: "Topic", value: topicName }))
-                      : [{ label: "Topics", value: "Link later" }]
-                  }
-                  updatedLabel="Open folder"
-                />
-              );
-            })}
+          <section className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+            {folders.map((folder) => (
+              <FolderObjectCard
+                key={folder.id}
+                href={`/dashboard/folders/${folder.id}`}
+                title={folder.name}
+                color={folder.color}
+                icon={folder.icon}
+              />
+            ))}
           </section>
         ) : (
           <EmptyState

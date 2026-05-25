@@ -30,9 +30,7 @@ const pageColorLabel: Record<string, string> = {
 
 function NotebookCardInner({
   title,
-  subtitle,
   typeLabel,
-  folderName,
   color,
   icon,
   pageColor,
@@ -52,44 +50,44 @@ function NotebookCardInner({
   return (
     <div
       className={cx(
-        "group/notebook flex h-full flex-col rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-left shadow-[var(--shadow-card)] transition duration-200 hover:-translate-y-1 hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)]",
-        compact ? "min-h-[16rem]" : "min-h-[19rem]",
+        "group/notebook flex h-full flex-col items-center rounded-[1.25rem] border border-transparent bg-transparent px-3 py-3 text-center transition duration-200 hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]",
+        compact ? "min-h-[11.5rem]" : "min-h-[12.75rem]",
       )}
     >
-      <div className="flex flex-1 items-center justify-center py-2">
-        <div className={cx("relative", compact ? "h-32 w-28" : "h-40 w-36")}>
+      <div className="flex items-center justify-center">
+        <div className={cx("relative", compact ? "h-28 w-24" : "h-32 w-28")}>
           <div
-            className="absolute left-4 top-3 h-[92%] w-[88%] rounded-[1.05rem] bg-white/90 shadow-[0_12px_20px_rgba(15,23,42,0.18)]"
+            className="absolute left-3 top-2 h-[92%] w-[88%] rounded-[0.85rem] bg-white/90 shadow-[0_8px_14px_rgba(15,23,42,0.16)]"
             aria-hidden="true"
           />
           <div
-            className="absolute left-3 top-2 h-[92%] w-[88%] rounded-[1.05rem] border border-slate-900/10 bg-slate-100 shadow-[0_8px_0_rgba(15,23,42,0.08)]"
+            className="absolute left-2 top-1.5 h-[92%] w-[88%] rounded-[0.85rem] border border-slate-900/10 bg-slate-100 shadow-[0_5px_0_rgba(15,23,42,0.08)]"
             aria-hidden="true"
           />
           <div
-            className="absolute inset-y-0 left-0 top-0 h-full w-[88%] rounded-[1.05rem] border border-white/45 shadow-[0_16px_26px_rgba(15,23,42,0.22)] transition duration-200 group-hover/notebook:-rotate-1"
+            className="absolute inset-y-0 left-0 top-0 h-full w-[88%] rounded-[0.85rem] border border-white/45 shadow-[0_10px_18px_rgba(15,23,42,0.2)] transition duration-200 group-hover/notebook:-rotate-1"
             style={{
               background: `linear-gradient(145deg, ${preset.light}, ${preset.base} 52%, ${preset.dark})`,
             }}
           >
             <div className="absolute inset-y-3 right-2 w-2 rounded-full bg-white/22" aria-hidden="true" />
-            <div className="absolute inset-y-0 left-0 w-5 rounded-l-[1.05rem] bg-black/12" aria-hidden="true" />
-            <div className="absolute -left-2 top-4 flex h-[74%] flex-col justify-between" aria-hidden="true">
-              {Array.from({ length: compact ? 5 : 7 }).map((_, index) => (
+            <div className="absolute inset-y-0 left-0 w-4 rounded-l-[0.85rem] bg-black/12" aria-hidden="true" />
+            <div className="absolute -left-1.5 top-3 flex h-[74%] flex-col justify-between" aria-hidden="true">
+              {Array.from({ length: compact ? 5 : 6 }).map((_, index) => (
                 <span
                   key={`${safeColor}-ring-${index}`}
-                  className="block h-3 w-5 rounded-full border-[2px] border-slate-900/55 bg-white/65 shadow-[0_1px_0_rgba(255,255,255,0.5)]"
+                  className="block h-2.5 w-4 rounded-full border-[1.5px] border-slate-900/55 bg-white/65 shadow-[0_1px_0_rgba(255,255,255,0.5)]"
                 />
               ))}
             </div>
-            <div className="absolute left-8 top-5 h-7 w-14 rounded-lg border border-slate-900/10 bg-white/88 shadow-inner" aria-hidden="true" />
-            <div className="absolute bottom-5 left-8 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/18 text-white/90 shadow-inner">
-              <ObjectIcon icon={icon} className="h-7 w-7" />
+            <div className="absolute left-6 top-4 h-5 w-11 rounded-md border border-slate-900/10 bg-white/88 shadow-inner" aria-hidden="true" />
+            <div className="absolute bottom-4 left-6 flex h-8 w-8 items-center justify-center rounded-xl bg-white/18 text-white/90 shadow-inner">
+              <ObjectIcon icon={icon} className="h-5 w-5" />
             </div>
           </div>
           <div
             className={cx(
-              "absolute bottom-1 right-1 h-5 w-14 rounded-full border border-slate-900/10 shadow-sm",
+              "absolute bottom-1 right-1 h-3.5 w-10 rounded-full border border-slate-900/10 shadow-sm",
               pageTone,
             )}
             title={pageColor ? pageColorLabel[pageColor] : undefined}
@@ -98,33 +96,16 @@ function NotebookCardInner({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className="mt-3 w-full space-y-1">
         <div>
-          <p className="line-clamp-2 text-base font-semibold text-[var(--color-text-primary)]">{title}</p>
-          {subtitle ? (
-            <p className="mt-1 line-clamp-2 text-sm text-[var(--color-text-muted)]">{subtitle}</p>
-          ) : null}
+          <p className="line-clamp-2 text-sm font-semibold leading-5 text-[var(--color-text-primary)]">{title}</p>
         </div>
-        <div className="flex flex-wrap gap-2 text-[0.72rem] font-semibold text-[var(--color-text-muted)]">
-          {typeLabel ? (
-            <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-2.5 py-1">
-              {typeLabel}
-            </span>
-          ) : null}
-          {folderName ? (
-            <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-2.5 py-1">
-              {folderName}
-            </span>
-          ) : null}
-          {typeof pageCount === "number" ? (
-            <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-2.5 py-1">
-              {pageCount} {pageCount === 1 ? "page" : "pages"}
-            </span>
-          ) : null}
-        </div>
-        {updatedLabel ? (
-          <p className="text-xs font-medium text-[var(--color-text-muted)]">{updatedLabel}</p>
-        ) : null}
+        <p className="truncate text-xs font-medium text-[var(--color-text-muted)]">
+          {updatedLabel ??
+            (typeof pageCount === "number"
+              ? `${pageCount} ${pageCount === 1 ? "page" : "pages"}`
+              : typeLabel)}
+        </p>
       </div>
     </div>
   );

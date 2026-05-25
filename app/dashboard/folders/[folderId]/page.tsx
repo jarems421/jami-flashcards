@@ -15,13 +15,11 @@ import {
   EmptyState,
   FeedbackBanner,
   Input,
-  PageHero,
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useUser } from "@/lib/auth/user-context";
-import type { Topic } from "@/lib/practice/topics";
 import type { Source } from "@/lib/practice/sources";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
@@ -35,10 +33,10 @@ import {
 } from "@/services/study/notebooks";
 import { uploadNotebookFile } from "@/services/study/notebook-files";
 import { getActiveSources, updateSource } from "@/services/study/sources";
-import { getActiveTopics } from "@/services/study/topics";
 
 type Feedback = { type: "success" | "error"; message: string };
 type NotebookTemplate = "blank" | "uploaded_file" | "ai_questions";
+type FolderTab = "notebooks" | "decks" | "sources";
 
 function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
@@ -52,26 +50,11 @@ function resultError(result: PromiseSettledResult<unknown>) {
   return result.status === "rejected" ? result.reason : null;
 }
 
-function getTopicNames(folder: StudyFolder, topics: Topic[]) {
-  return folder.topicIds
-    .map((topicId) => topics.find((topic) => topic.id === topicId)?.name)
-    .filter((name): name is string => Boolean(name));
-}
-
-const placeholderSections = [
-  {
-    title: "Recent work",
-    detail: "Today and Progress will later use this folder activity to guide revision.",
-    href: "/dashboard",
-  },
-];
-
 export default function FolderDetailPage() {
   const { user } = useUser();
   const params = useParams<{ folderId?: string | string[] }>();
   const folderId = Array.isArray(params.folderId) ? params.folderId[0] : params.folderId;
   const [folder, setFolder] = useState<StudyFolder | null>(null);
-  const [topics, setTopics] = useState<Topic[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
@@ -85,6 +68,7 @@ export default function FolderDetailPage() {
   const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("book");
   const [notebookFile, setNotebookFile] = useState<File | null>(null);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
+  const [activeTab, setActiveTab] = useState<FolderTab>("notebooks");
 
   const loadFolder = useCallback(async () => {
     if (!user?.uid || !folderId || !featureFlags.enableFolders) {
@@ -96,13 +80,11 @@ export default function FolderDetailPage() {
     try {
       const [
         folderResult,
-        topicsResult,
         decksResult,
         sourcesResult,
         notebooksResult,
       ] = await Promise.allSettled([
         getStudyFolderById(user.uid, folderId),
-        getActiveTopics(user.uid),
         getDecks(user.uid),
         getActiveSources(user.uid),
         getNotebooksForFolder(user.uid, folderId),
@@ -113,7 +95,6 @@ export default function FolderDetailPage() {
       }
 
       const optionalErrors = [
-        topicsResult,
         decksResult,
         sourcesResult,
         notebooksResult,
@@ -131,13 +112,11 @@ export default function FolderDetailPage() {
       }
 
       const nextFolder = folderResult.value;
-      const nextTopics = resultValue<Topic[]>(topicsResult, []);
       const nextDecks = resultValue<Deck[]>(decksResult, []);
       const nextSources = resultValue<Source[]>(sourcesResult, []);
       const nextNotebooks = resultValue<Notebook[]>(notebooksResult, []);
 
       setFolder(nextFolder);
-      setTopics(nextTopics);
       setDecks(nextDecks);
       setSources(nextSources);
       setNotebooks(nextNotebooks);
@@ -158,22 +137,7 @@ export default function FolderDetailPage() {
     void loadFolder();
   }, [loadFolder]);
 
-  const topicNames = useMemo(() => (folder ? getTopicNames(folder, topics) : []), [folder, topics]);
   const folderTopicIds = useMemo(() => folder?.topicIds ?? [], [folder?.topicIds]);
-  const linkedDecks = useMemo(
-    () => decks.filter((deck) => folder && deck.folderIds.includes(folder.id)),
-    [decks, folder]
-  );
-  const linkedSources = useMemo(
-    () =>
-      sources.filter(
-        (source) =>
-          folder &&
-          (source.folderIds.includes(folder.id) ||
-            source.topicIds.some((topicId) => folderTopicIds.includes(topicId)))
-      ),
-    [folder, folderTopicIds, sources]
-  );
   const mergeFolderId = (folderIds: string[], shouldLink: boolean) => {
     if (!folder) return folderIds;
     if (shouldLink) {
@@ -376,40 +340,35 @@ export default function FolderDetailPage() {
           />
         ) : null}
 
-        <PageHero
-          eyebrow="Study folder"
-          title={folder.name}
-          description={
-            folder.description ??
-            "This folder is the broad home for related notebooks, decks, sources, and recent work."
-          }
-          action={
+        <div className="flex flex-col gap-4 rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-4">
+            <div className="w-32 shrink-0 sm:w-36">
+              <FolderObjectCard title={folder.name} color={folder.color} icon={folder.icon} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                Study folder
+              </p>
+              <h1 className="mt-1 truncate text-2xl font-semibold text-text-primary sm:text-3xl">
+                {folder.name}
+              </h1>
+              {folder.subject ? (
+                <p className="mt-1 text-sm text-text-muted">{folder.subject}</p>
+              ) : null}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2 sm:justify-end">
             <Button type="button" onClick={() => setShowNotebookForm((current) => !current)}>
               Create notebook
             </Button>
-          }
-          secondaryAction={
             <Link
               href="/dashboard/library"
-              className="inline-flex min-h-[3.25rem] items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-5 text-base font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition hover:-translate-y-[1px]"
+              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition hover:-translate-y-[1px]"
             >
-              Open Library
+              Library
             </Link>
-          }
-          aside={
-            <FolderObjectCard
-              title={folder.name}
-              subtitle={folder.subject ?? "Study folder"}
-              color={folder.color}
-              icon={folder.icon}
-              stats={[
-                { label: "Books", value: notebooks.length },
-                { label: "Decks", value: linkedDecks.length },
-                { label: "Sources", value: linkedSources.length },
-              ]}
-            />
-          }
-        />
+          </div>
+        </div>
 
         {showNotebookForm ? (
           <Card padding="md">
@@ -522,114 +481,83 @@ export default function FolderDetailPage() {
           </Card>
         ) : null}
 
-        <Card padding="md">
-          <SectionHeader
-            eyebrow="Folder map"
-            title="Everything for this study area will live here."
-            description="Notebooks are the working surface. Decks and sources still live globally, but this folder keeps the study area together."
-          />
-          <div className="mt-4 flex flex-wrap gap-2">
-            {topicNames.length > 0 ? (
-              topicNames.map((topicName) => (
-                <span
-                  key={topicName}
-                  className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent"
-                >
-                  {topicName}
-                </span>
-              ))
-            ) : (
-              <span className="rounded-full border border-white/[0.1] bg-white/[0.045] px-3 py-1.5 text-xs text-text-muted">
-                No linked topics yet
-              </span>
-            )}
-          </div>
-        </Card>
+        <div className="flex gap-2 overflow-x-auto rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1">
+          {[
+            ["notebooks", "Notebooks"],
+            ["decks", "Decks"],
+            ["sources", "Sources"],
+          ].map(([value, label]) => {
+            const selected = activeTab === value;
+            return (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setActiveTab(value as FolderTab)}
+                className={`min-h-[2.4rem] rounded-full px-4 text-sm font-semibold transition ${
+                  selected
+                    ? "bg-accent text-white shadow-[var(--shadow-accent)]"
+                    : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                }`}
+              >
+                {label}
+              </button>
+            );
+          })}
+        </div>
 
-        <Card padding="md">
-          <SectionHeader
-            eyebrow="Notebooks"
-            title="Work naturally on notebook pages."
-            description="A notebook is where this folder becomes a study workspace: type, draw, add pages, save, and return later."
-          />
-          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {notebooks.length > 0 ? (
-              notebooks.map((notebook) => (
-                <NotebookObjectCard
-                  key={notebook.id}
-                  href={`/dashboard/notebooks/${notebook.id}`}
-                  title={notebook.title}
-                  subtitle="Open the page workspace for typed and drawn working."
-                  typeLabel={notebook.type.replace("_", " ")}
-                  folderName={folder.name}
-                  color={notebook.color}
-                  icon={notebook.icon}
-                  pageColor={notebook.pageColor}
-                  updatedLabel="Open notebook"
-                />
-              ))
-            ) : (
-              <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary md:col-span-2 xl:col-span-3">
-                No notebooks yet. Create one here, then Jami has a real place for
-                your working, notes, and revision plans instead of forcing every
-                attempt through a form.
-              </div>
-            )}
-          </div>
-        </Card>
+        {activeTab === "notebooks" ? (
+          <section className="space-y-4">
+            <SectionHeader eyebrow="Notebooks" title="Workbooks" />
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+              {notebooks.length > 0 ? (
+                notebooks.map((notebook) => (
+                  <NotebookObjectCard
+                    key={notebook.id}
+                    href={`/dashboard/notebooks/${notebook.id}`}
+                    title={notebook.title}
+                    typeLabel={notebook.type.replace("_", " ")}
+                    color={notebook.color}
+                    icon={notebook.icon}
+                    pageColor={notebook.pageColor}
+                    updatedLabel="Open notebook"
+                    compact
+                  />
+                ))
+              ) : (
+                <div className="col-span-full">
+                  <EmptyState
+                    emoji="Notebook"
+                    title="No notebooks yet"
+                    description="Create a notebook to start working in this folder."
+                    action={
+                      <Button type="button" onClick={() => setShowNotebookForm(true)}>
+                        Create notebook
+                      </Button>
+                    }
+                  />
+                </div>
+              )}
+            </div>
+          </section>
+        ) : null}
 
-        <Card padding="md">
-          <SectionHeader
-            eyebrow="Recent activity"
-            title="Notebook work is the main practice record."
-            description="Older records stay compatible in the background, but new work should start from notebook templates."
-          />
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Notebooks</div>
-              <div className="mt-2 text-2xl font-semibold text-white">{notebooks.length}</div>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">
-                Working books, papers, and drills now live here.
-              </p>
-            </div>
-            <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Linked decks</div>
-              <div className="mt-2 text-2xl font-semibold text-white">{linkedDecks.length}</div>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">
-                Decks still appear globally and inside this folder.
-              </p>
-            </div>
-            <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Sources</div>
-              <div className="mt-2 text-2xl font-semibold text-white">{linkedSources.length}</div>
-              <p className="mt-2 text-sm leading-6 text-text-secondary">
-                Sources remain in Library while also sitting beside related notebooks.
-              </p>
-            </div>
-          </div>
-        </Card>
-
-        <section className="grid gap-4 xl:grid-cols-3">
-          <Card padding="md" className="xl:col-span-1">
-            <SectionHeader
-              eyebrow="Decks"
-              title="Flashcard decks in this folder"
-              description="Decks still appear globally. Linking them here makes this folder feel like the home for the study area."
-            />
-            <div className="mt-4 space-y-3">
+        {activeTab === "decks" ? (
+          <section className="space-y-4">
+            <SectionHeader eyebrow="Decks" title="Flashcard decks" />
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {decks.length > 0 ? (
                 decks.map((deck) => {
                   const linked = deck.folderIds.includes(folder.id);
                   return (
                     <div
                       key={deck.id}
-                      className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-3"
+                      className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-white">{deck.name}</div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-text-primary">{deck.name}</div>
                           <div className="mt-1 text-xs text-text-muted">
-                            {linked ? "Inside this folder" : "Global deck"}
+                            {linked ? "In this folder" : "Global deck"}
                           </div>
                         </div>
                         <Button
@@ -646,20 +574,19 @@ export default function FolderDetailPage() {
                   );
                 })
               ) : (
-                <p className="text-sm leading-6 text-text-muted">
-                  No decks yet. Create decks globally, then link useful ones here.
-                </p>
+                <EmptyState
+                  title="No decks yet"
+                  description="Create decks globally, then link useful ones here."
+                />
               )}
             </div>
-          </Card>
+          </section>
+        ) : null}
 
-          <Card padding="md" className="xl:col-span-1">
-            <SectionHeader
-              eyebrow="Sources"
-              title="Library sources in this folder"
-              description="Sources keep their global Library home, but can also sit beside related notebook and deck work."
-            />
-            <div className="mt-4 space-y-3">
+        {activeTab === "sources" ? (
+          <section className="space-y-4">
+            <SectionHeader eyebrow="Sources" title="Library sources" />
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {sources.length > 0 ? (
                 sources.map((source) => {
                   const linked = source.folderIds.includes(folder.id);
@@ -667,13 +594,13 @@ export default function FolderDetailPage() {
                   return (
                     <div
                       key={source.id}
-                      className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-3"
+                      className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3"
                     >
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-white">{source.title}</div>
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="truncate text-sm font-semibold text-text-primary">{source.title}</div>
                           <div className="mt-1 text-xs text-text-muted">
-                            {linked ? "Inside this folder" : suggested ? "Suggested by topic" : "Library source"}
+                            {linked ? "In this folder" : suggested ? "Suggested by topic" : "Library source"}
                           </div>
                         </div>
                         <Button
@@ -690,43 +617,14 @@ export default function FolderDetailPage() {
                   );
                 })
               ) : (
-                <p className="text-sm leading-6 text-text-muted">
-                  No sources yet. Add notes or references in Library, then link them here.
-                </p>
+                <EmptyState
+                  title="No sources yet"
+                  description="Add notes or references in Library, then link them here."
+                />
               )}
             </div>
-          </Card>
-
-        </section>
-
-        <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {placeholderSections.map((section) => {
-            const content = (
-              <Card
-                padding="md"
-                className="h-full min-h-[11rem] transition duration-fast hover:-translate-y-0.5 hover:border-warm-border"
-              >
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  {section.title}
-                </div>
-                <p className="mt-3 text-sm leading-6 text-text-secondary">
-                  {section.detail}
-                </p>
-                <div className="mt-5 text-sm font-semibold text-warm-accent">
-                  {section.href ? "Open related page" : "Coming next"}
-                </div>
-              </Card>
-            );
-
-            return section.href ? (
-              <Link key={section.title} href={section.href} className="block">
-                {content}
-              </Link>
-            ) : (
-              <div key={section.title}>{content}</div>
-            );
-          })}
-        </section>
+          </section>
+        ) : null}
       </div>
     </AppPage>
   );

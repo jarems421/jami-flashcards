@@ -306,12 +306,13 @@ function PracticePanel({
   const recentNotebooks = [...notebooks].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3);
   return (
     <div className="space-y-5">
-      <PageHero
-        eyebrow="Practice"
-        title="Folders first. Notebooks are where work happens."
-        description="Choose a study space, open a notebook, then work on pages. There is no public question bank, standalone Add question form, confidence block, or old Tutor attempt panel here."
-        action={<Link href="/dashboard/folders?agent=1" className={linkClass()}>Open folders</Link>}
-      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Practice</p>
+          <h2 className="mt-2 text-3xl font-semibold text-text-primary">Study workspace</h2>
+        </div>
+        <Link href="/dashboard/folders?agent=1" className={linkClass()}>Open folders</Link>
+      </div>
       <SectionHeader eyebrow="Continue working" title="Pick up a notebook" />
       <NotebookGrid notebooks={recentNotebooks} />
       <SectionHeader eyebrow="Folders" title="Study spaces" />
@@ -349,26 +350,27 @@ function FoldersPanel(props: {
   onSelectFolder: (folderId: string) => void;
   onCreateNotebook: (folderId: string, type?: WalkthroughNotebook["type"]) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<"notebooks" | "decks" | "sources">("notebooks");
   const selectedFolder = props.folders.find((folder) => folder.id === props.selectedFolderId) ?? props.folders[0];
   const folderNotebooks = props.notebooks.filter((notebook) => notebook.folderId === selectedFolder?.id);
   const folderDecks = WALKTHROUGH_DECKS.filter((deck) => deck.folderId === selectedFolder?.id);
   const folderSources = WALKTHROUGH_SOURCES.filter((source) => source.folderId === selectedFolder?.id);
   return (
     <div className="space-y-5">
-      <PageHero
-        eyebrow="Folders"
-        title="Open a study space."
-        description="Folders collect notebooks, decks, and sources for one broad subject area. Topics still exist as smaller concept tags inside those folders."
-        action={<Link href="/dashboard/practise?agent=1" className={linkClass()}>Back to Practice</Link>}
-      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Folders</p>
+          <h2 className="mt-2 text-3xl font-semibold text-text-primary">Study spaces</h2>
+        </div>
+        <Link href="/dashboard/practise?agent=1" className={linkClass()}>Back to Practice</Link>
+      </div>
       <FolderGrid folders={props.folders} notebooks={props.notebooks} pages={props.pages} onSelectFolder={props.onSelectFolder} />
       {selectedFolder ? (
-        <Card>
+        <section className="space-y-4">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="text-xs uppercase tracking-[0.18em] text-text-muted">Opened folder</div>
               <h3 className="mt-2 text-2xl font-semibold text-white">{selectedFolder.name}</h3>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">{selectedFolder.description}</p>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => props.onCreateNotebook(selectedFolder.id, "blank")}>
@@ -379,15 +381,34 @@ function FoldersPanel(props: {
               </Button>
             </div>
           </div>
-          <div className="mt-6 grid gap-4 xl:grid-cols-[1.25fr_0.8fr_0.8fr]">
-            <div>
-              <SectionHeader eyebrow="Notebooks" title="Work books" />
-              <NotebookGrid notebooks={folderNotebooks} compact />
-            </div>
-            <AssetList title="Decks" items={folderDecks.map((deck) => `${deck.name} - ${deck.cardCount} cards`)} empty="No decks linked in this demo folder." />
-            <AssetList title="Sources" items={folderSources.map((source) => source.title)} empty="No sources linked in this demo folder." />
+          <div className="flex gap-2 overflow-x-auto rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1">
+            {[
+              ["notebooks", "Notebooks"],
+              ["decks", "Decks"],
+              ["sources", "Sources"],
+            ].map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setActiveTab(value as "notebooks" | "decks" | "sources")}
+                className={`min-h-[2.35rem] rounded-full px-4 text-sm font-semibold ${
+                  activeTab === value ? "bg-accent text-white" : "text-text-secondary"
+                }`}
+              >
+                {label}
+              </button>
+            ))}
           </div>
-        </Card>
+          {activeTab === "notebooks" ? (
+            <NotebookGrid notebooks={folderNotebooks} compact />
+          ) : null}
+          {activeTab === "decks" ? (
+            <AssetList title="Decks" items={folderDecks.map((deck) => `${deck.name} - ${deck.cardCount} cards`)} empty="No decks linked in this demo folder." />
+          ) : null}
+          {activeTab === "sources" ? (
+            <AssetList title="Sources" items={folderSources.map((source) => source.title)} empty="No sources linked in this demo folder." />
+          ) : null}
+        </section>
       ) : null}
     </div>
   );
@@ -520,7 +541,7 @@ function NotebookGrid({ notebooks, compact = false }: { notebooks: WalkthroughNo
     return <EmptyState title="No notebooks yet" description="Create a notebook inside a folder to start working on pages." />;
   }
   return (
-    <div className={`grid gap-4 ${compact ? "" : "md:grid-cols-3"}`}>
+    <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${compact ? "md:grid-cols-4 xl:grid-cols-5" : "md:grid-cols-4 xl:grid-cols-5"}`}>
       {notebooks.map((notebook) => {
         const topics = getWalkthroughTopicNames(notebook.topicIds);
         const folder = WALKTHROUGH_FOLDERS.find((item) => item.id === notebook.folderId);
@@ -546,8 +567,6 @@ function NotebookGrid({ notebooks, compact = false }: { notebooks: WalkthroughNo
 
 function FolderGrid({
   folders,
-  notebooks,
-  pages,
   onSelectFolder,
 }: {
   folders: WalkthroughStudyFolder[];
@@ -556,24 +575,15 @@ function FolderGrid({
   onSelectFolder: (folderId: string) => void;
 }) {
   return (
-    <div className="grid gap-4 md:grid-cols-3">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
       {folders.map((folder) => {
-        const folderNotebooks = notebooks.filter((notebook) => notebook.folderId === folder.id);
-        const folderPages = pages.filter((page) => page.folderId === folder.id);
         return (
           <FolderObjectCard
             key={folder.id}
             onClick={() => onSelectFolder(folder.id)}
             title={folder.name}
-            subtitle={folder.subject}
-            description={folder.description}
             color={folder.color}
             icon={folder.icon}
-            stats={[
-              { label: "Books", value: folderNotebooks.length },
-              { label: "Pages", value: folderPages.length },
-              { label: "Edited", value: timeLabel(folder.updatedAt) },
-            ]}
           />
         );
       })}

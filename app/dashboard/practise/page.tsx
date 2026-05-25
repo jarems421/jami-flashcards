@@ -3,12 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@/lib/auth/user-context";
-import type { Deck } from "@/services/study/decks";
-import { getDecks } from "@/services/study/decks";
 import { createStudyFolder, getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
-import { getActiveSources } from "@/services/study/sources";
-import type { Source } from "@/lib/practice/sources";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import AppPage from "@/components/layout/AppPage";
@@ -22,8 +18,6 @@ import {
   EmptyState,
   FeedbackBanner,
   Input,
-  MetricStrip,
-  PageHero,
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
@@ -49,8 +43,6 @@ export default function PracticePage() {
   const { user } = useUser();
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [decks, setDecks] = useState<Deck[]>([]);
-  const [sources, setSources] = useState<Source[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showCreateFolder, setShowCreateFolder] = useState(false);
@@ -65,16 +57,12 @@ export default function PracticePage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const [nextFolders, nextNotebooks, nextDecks, nextSources] = await Promise.all([
+      const [nextFolders, nextNotebooks] = await Promise.all([
         getActiveStudyFolders(user.uid),
         getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
-        getDecks(user.uid).catch(() => [] as Deck[]),
-        getActiveSources(user.uid).catch(() => [] as Source[]),
       ]);
       setFolders(nextFolders);
       setNotebooks(nextNotebooks);
-      setDecks(nextDecks);
-      setSources(nextSources);
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "Failed to load Practice workspace." });
@@ -91,21 +79,6 @@ export default function PracticePage() {
     () => [...notebooks].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 3),
     [notebooks]
   );
-  const folderCards = useMemo(
-    () =>
-      folders.map((folder) => {
-        const folderNotebooks = notebooks.filter((notebook) => notebook.folderId === folder.id);
-        const folderDecks = decks.filter((deck) => deck.folderIds.includes(folder.id));
-        const folderSources = sources.filter(
-          (source) =>
-            source.folderIds.includes(folder.id) ||
-            source.topicIds.some((topicId) => folder.topicIds.includes(topicId))
-        );
-        return { folder, notebookCount: folderNotebooks.length, deckCount: folderDecks.length, sourceCount: folderSources.length };
-      }),
-    [decks, folders, notebooks, sources]
-  );
-
   const handleCreateFolder = async () => {
     setCreatingFolder(true);
     setFeedback(null);
@@ -156,44 +129,30 @@ export default function PracticePage() {
         />
       ) : null}
 
-      <PageHero
-        eyebrow="Notebook-first Practice"
-        title="Open a folder, then work inside a notebook."
-        description="Practice no longer starts from a question bank. Your work lives on notebook pages, with decks and sources kept nearby in the same study folder."
-        tone="warm"
-        action={
-          recentNotebooks[0] ? (
-            <Link
-              href={`/dashboard/notebooks/${encodeURIComponent(recentNotebooks[0].id)}`}
-              className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] bg-accent px-5 py-3 text-base font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:-translate-y-[1px] hover:bg-accent-hover"
-            >
-              Continue notebook
-            </Link>
-          ) : (
-            <Button type="button" size="lg" onClick={() => setShowCreateFolder(true)}>
-              Create first folder
-            </Button>
-          )
-        }
-      />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Practice</p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
+            Your study workspace
+          </h1>
+        </div>
+        {recentNotebooks[0] ? (
+          <Link
+            href={`/dashboard/notebooks/${encodeURIComponent(recentNotebooks[0].id)}`}
+            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-[2rem] bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:-translate-y-[1px] hover:bg-accent-hover"
+          >
+            Continue notebook
+          </Link>
+        ) : null}
+      </div>
 
       {loading ? (
         <div className="space-y-4">
-          <Skeleton className="h-32" />
-          <Skeleton className="h-64" />
+          <Skeleton className="h-32 rounded-[1.4rem]" />
+          <Skeleton className="h-44 rounded-[1.4rem]" />
         </div>
       ) : (
         <>
-          <MetricStrip
-            items={[
-              { label: "Folders", value: folders.length },
-              { label: "Notebooks", value: notebooks.length, tone: notebooks.length > 0 ? "good" : "default" },
-              { label: "Decks linked", value: decks.filter((deck) => deck.folderIds.length > 0).length },
-              { label: "Sources", value: sources.length },
-            ]}
-            variant="compact"
-          />
-
           {showCreateFolder ? (
             <Card tone="warm" padding="lg">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -234,13 +193,12 @@ export default function PracticePage() {
             </Card>
           ) : null}
 
-          <Card padding="lg">
+          <section className="space-y-4">
             <SectionHeader
               eyebrow="Continue working"
               title="Recent notebooks"
-              description="Pick up the latest notebook page. This replaces the old question-bank flow."
             />
-            <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
               {recentNotebooks.length > 0 ? (
                 recentNotebooks.map((notebook) => {
                   const folder = folders.find((item) => item.id === notebook.folderId);
@@ -249,13 +207,12 @@ export default function PracticePage() {
                       key={notebook.id}
                       href={`/dashboard/notebooks/${encodeURIComponent(notebook.id)}`}
                       title={notebook.title}
-                      subtitle="Open the notebook page workspace."
                       typeLabel={notebookTypeLabel(notebook.type)}
-                      folderName={folder?.name ?? "Folder"}
                       color={notebook.color}
                       icon={notebook.icon}
                       pageColor={notebook.pageColor}
-                      updatedLabel={`Edited ${formatDate(notebook.updatedAt)}`}
+                      updatedLabel={folder?.name ?? formatDate(notebook.updatedAt)}
+                      compact
                     />
                   );
                 })
@@ -275,35 +232,26 @@ export default function PracticePage() {
                 />
               )}
             </div>
-          </Card>
+          </section>
 
-          <Card padding="lg">
+          <section className="space-y-4">
             <SectionHeader
               eyebrow="Folders"
-              title="Choose a study space"
-              description="Folders hold notebooks, decks, and sources together so Practice starts from real work."
+              title="Study spaces"
             />
-            <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {folderCards.length > 0 ? (
-                folderCards.map(({ folder, notebookCount, deckCount, sourceCount }) => (
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+              {folders.length > 0 ? (
+                folders.map((folder) => (
                   <FolderObjectCard
                     key={folder.id}
                     href={`/dashboard/folders/${encodeURIComponent(folder.id)}`}
                     title={folder.name}
-                    subtitle={folder.subject ?? "Study folder"}
-                    description={folder.description || "Open this folder to create notebooks and organise related study material."}
                     color={folder.color}
                     icon={folder.icon}
-                    stats={[
-                      { label: "Books", value: notebookCount },
-                      { label: "Decks", value: deckCount },
-                      { label: "Sources", value: sourceCount },
-                    ]}
-                    updatedLabel={`Updated ${formatDate(folder.updatedAt)}`}
                   />
                 ))
               ) : (
-                <div className="md:col-span-2 xl:col-span-3">
+                <div className="col-span-full">
                   <EmptyState
                     emoji="Folder"
                     title="Create your first folder"
@@ -317,7 +265,7 @@ export default function PracticePage() {
                 </div>
               )}
             </div>
-          </Card>
+          </section>
         </>
       )}
     </AppPage>
