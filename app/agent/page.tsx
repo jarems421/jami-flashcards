@@ -16,12 +16,7 @@ const dashboardRoutes = [
   {
     href: "/dashboard/practise?agent=1",
     label: "Practice",
-    purpose: "Verify notebook-first Practice, continue working, and open the tucked-away legacy question flow.",
-  },
-  {
-    href: "/dashboard/practise?agent=1&forceTutorFallback=1",
-    label: "Practice fallback QA",
-    purpose: "Test every Tutor mode with deterministic local fallback responses and no AI budget use.",
+    purpose: "Verify notebook-first Practice, continue working, and open folder/notebook entry points.",
   },
   {
     href: "/dashboard/folders?agent=1",
@@ -36,7 +31,7 @@ const dashboardRoutes = [
   {
     href: "/dashboard/progress?agent=1",
     label: "Progress",
-    purpose: "Check weak topics, recent mistakes, drafts, and support level.",
+    purpose: "Check weak cards, notebook activity, drafts, sources, and folder signals.",
   },
   {
     href: "/dashboard/library?agent=1",
@@ -74,9 +69,9 @@ const testFlow = [
   "Open Today and identify the recommended next action.",
   "Go to Learn and flip/review one seeded flashcard.",
   "Go to Practice and confirm Continue working plus Folders are the main entry points.",
-  "Open a notebook, type on a page, draw, change colours, save, add a page, and reload.",
-  "Open a folder and confirm notebooks, decks, sources, templates, and legacy question records are clearly separated.",
-  "Go to Progress and confirm the mistake/draft/weak-topic state changed locally.",
+  "Open a notebook, type on a page, save, add a page, and switch pages.",
+  "Open a folder and confirm notebooks, decks, sources, and templates are the only Practice organisation layer.",
+  "Go to Progress and confirm cards, drafts, sources, folders, and notebook activity are shown without old attempt data.",
   "Go to Library and inspect a source; source actions in public mode remain local-only.",
   "Go to Cards/Decks to confirm card organisation and draft status.",
   "Go to Account and confirm signed-out mode did not access private data.",
@@ -84,16 +79,13 @@ const testFlow = [
 
 const phase6TestFlow = [
   "Open Practice.",
-  "Confirm the old question-bank UI is collapsed under Legacy questions.",
+  "Confirm there is no old question bank, Add question form, confidence block, or Practice Tutor attempt panel.",
   "Click a Continue working notebook.",
   "Type inside the notebook page and save.",
-  "Use Pen, Eraser, Undo, Clear, and the black/white/red/green colour swatches.",
-  "Change the page colour between white, black, and grey.",
   "Add a page and navigate between pages.",
-  "Resize to phone width and confirm the iPad/desktop warning appears.",
-  "Click Continue anyway on phone and confirm full controls unlock deliberately.",
   "Open a folder and inspect Blank, Uploaded file / paper, and AI-created questions templates.",
   "Confirm uploaded-file copy says file saved only; no OCR, PDF annotation, or automatic reading is claimed.",
+  "Open Library and approve a practice draft; it should become a notebook page, not a legacy question.",
 ];
 
 function AgentLink({
@@ -162,7 +154,7 @@ export default function AgentPage() {
         <div className="mt-5 grid gap-3 md:grid-cols-3">
           {[
             ["No login required", "/dashboard shows the public walkthrough when signed out."],
-            ["Local-only actions", "Seeded attempts, drafts, and approvals do not write to Firebase."],
+            ["Local-only actions", "Seeded notebooks, drafts, and approvals do not write to Firebase."],
             ["Real auth preserved", "Private dashboards and persistent writes still require a signed-in account."],
           ].map(([title, detail]) => (
             <div key={title} className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">

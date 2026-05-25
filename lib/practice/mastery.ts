@@ -1,4 +1,4 @@
-export type MasteryEventSourceType = "card" | "question" | "tutor" | "manual";
+export type MasteryEventSourceType = "card" | "notebook" | "source" | "tutor" | "manual";
 export type MasteryEventWeight = "high" | "medium" | "low" | "neutral" | "negative";
 
 export const MASTERY_ALGORITHM_VERSION = "mvp-2026-05-23";
@@ -23,18 +23,6 @@ export function getMasteryScoreDelta(weight: MasteryEventWeight) {
   return 0;
 }
 
-export function getAttemptMasteryWeight(input: {
-  isCorrect: boolean;
-  confidence: number;
-  hintsUsed?: number;
-  tutorUsed?: boolean;
-}): MasteryEventWeight {
-  if (!input.isCorrect) return "negative";
-  if ((input.hintsUsed ?? 0) === 0 && !input.tutorUsed && input.confidence >= 4) return "high";
-  if ((input.hintsUsed ?? 0) <= 1 && input.confidence >= 3) return "medium";
-  return "low";
-}
-
 export function mapMasteryEventData(id: string, data: Record<string, unknown>): MasteryEvent {
   const weight =
     data.weight === "high" ||
@@ -46,7 +34,8 @@ export function mapMasteryEventData(id: string, data: Record<string, unknown>): 
       : "neutral";
   const sourceType =
     data.sourceType === "card" ||
-    data.sourceType === "question" ||
+    data.sourceType === "notebook" ||
+    data.sourceType === "source" ||
     data.sourceType === "tutor" ||
     data.sourceType === "manual"
       ? data.sourceType

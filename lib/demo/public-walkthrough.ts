@@ -2,6 +2,7 @@ export type WalkthroughDeck = {
   id: string;
   name: string;
   subject: string;
+  folderId: string;
   cardCount: number;
   weakCount: number;
 };
@@ -29,43 +30,25 @@ export type WalkthroughStudyFolder = {
   name: string;
   subject: string;
   description: string;
+  color: string;
+  icon: string;
   topicIds: string[];
-};
-
-export type WalkthroughQuestion = {
-  id: string;
-  questionText: string;
-  answerText: string;
-  solutionText: string;
-  topicIds: string[];
-  difficulty: "easy" | "medium" | "hard";
-};
-
-export type WalkthroughAttempt = {
-  id: string;
-  questionId: string;
-  isCorrect: boolean;
-  confidence: 1 | 2 | 3 | 4 | 5;
-  hintsUsed: number;
-  tutorUsed: boolean;
-  mistakeLabels: string[];
-  createdAt: number;
+  updatedAt: number;
 };
 
 export type WalkthroughDraft = {
   id: string;
-  front: string;
-  back: string;
+  kind: "flashcard" | "practice-question";
+  front?: string;
+  back?: string;
+  questionText?: string;
+  answerText?: string;
+  solutionText?: string;
   topicIds: string[];
-  sourceQuestionId: string;
+  sourceId?: string;
   contentStatus: "draft" | "approved";
   addedDeckId?: string;
-};
-
-export type WalkthroughTutorMessage = {
-  role: "user" | "model";
-  text: string;
-  intent?: WalkthroughTutorIntent;
+  addedNotebookId?: string;
 };
 
 export type WalkthroughSource = {
@@ -73,6 +56,7 @@ export type WalkthroughSource = {
   title: string;
   type: "pasted_text" | "manual_note" | "link" | "file";
   subject?: string;
+  folderId: string;
   topicIds: string[];
   contentText?: string;
   externalUrl?: string;
@@ -81,22 +65,26 @@ export type WalkthroughSource = {
   status: "active" | "archived";
 };
 
+export type WalkthroughNotebookType =
+  | "blank"
+  | "uploaded_file"
+  | "ai_questions"
+  | "general_working"
+  | "free_working"
+  | "practice"
+  | "past_paper"
+  | "generated_drill"
+  | "source_notes";
+
 export type WalkthroughNotebook = {
   id: string;
   folderId: string;
   title: string;
-  type:
-    | "blank"
-    | "uploaded_file"
-    | "ai_questions"
-    | "general_working"
-    | "free_working"
-    | "practice"
-    | "past_paper"
-    | "generated_drill"
-    | "source_notes";
+  type: WalkthroughNotebookType;
   topicIds: string[];
   sourceIds: string[];
+  color?: string;
+  icon?: string;
   pageColor?: "white" | "black" | "grey";
   uploadedFileName?: string;
   updatedAt: number;
@@ -111,41 +99,14 @@ export type WalkthroughNotebookPage = {
   pageColor?: "white" | "black" | "grey";
   typedContent?: string;
   questionPrompt?: string;
+  updatedAt: number;
 };
-
-export type WalkthroughPracticeSet = {
-  id: string;
-  folderId: string;
-  title: string;
-  type: "manual" | "ai_generated" | "imported" | "past_paper_section";
-  topicIds: string[];
-  questionIds: string[];
-};
-
-export type WalkthroughPastPaper = {
-  id: string;
-  folderId: string;
-  title: string;
-  year?: string;
-  module?: string;
-  pageCount?: number;
-};
-
-export type WalkthroughTutorIntent =
-  | "hint"
-  | "check-working"
-  | "explain-concept"
-  | "show-method"
-  | "full-solution"
-  | "make-flashcard"
-  | "similar-question"
-  | "stuck-here";
 
 export const WALKTHROUGH_TOPICS: WalkthroughTopic[] = [
   { id: "topic-photosynthesis", name: "Photosynthesis", subject: "Biology" },
-  { id: "topic-enzymes", name: "Enzyme activity", subject: "Biology" },
   { id: "topic-cold-war", name: "Cold War causes", subject: "History" },
   { id: "topic-spanish-preterite", name: "Spanish preterite verbs", subject: "Spanish" },
+  { id: "topic-quadratics", name: "Quadratic graphs", subject: "Maths" },
 ];
 
 export const WALKTHROUGH_FOLDERS: WalkthroughStudyFolder[] = [
@@ -153,32 +114,38 @@ export const WALKTHROUGH_FOLDERS: WalkthroughStudyFolder[] = [
     id: "folder-biology",
     name: "Biology",
     subject: "Science",
-    description:
-      "Flashcards, source notes, practice work, and notebook pages for cells, enzymes, and exam-style biology questions.",
-    topicIds: ["topic-photosynthesis", "topic-enzymes"],
+    description: "Class notes, flashcards, and notebook pages for enzymes and plant biology.",
+    color: "emerald",
+    icon: "leaf",
+    topicIds: ["topic-photosynthesis"],
+    updatedAt: Date.now() - 1000 * 60 * 35,
   },
   {
     id: "folder-history",
     name: "History",
     subject: "Humanities",
-    description:
-      "A study space for timelines, source analysis, essay plans, and retrieval practice.",
+    description: "A study space for timelines, source analysis, essay plans, and retrieval practice.",
+    color: "amber",
+    icon: "book",
     topicIds: ["topic-cold-war"],
+    updatedAt: Date.now() - 1000 * 60 * 60 * 4,
   },
   {
     id: "folder-spanish",
     name: "Spanish",
     subject: "Languages",
-    description:
-      "A home for vocabulary decks, grammar notebooks, speaking prompts, and short practice drills.",
+    description: "Vocabulary decks, grammar notebooks, and speaking prompts.",
+    color: "rose",
+    icon: "message",
     topicIds: ["topic-spanish-preterite"],
+    updatedAt: Date.now() - 1000 * 60 * 60 * 20,
   },
 ];
 
 export const WALKTHROUGH_DECKS: WalkthroughDeck[] = [
-  { id: "deck-biology", name: "Biology key terms", subject: "Science", cardCount: 5, weakCount: 2 },
-  { id: "deck-history", name: "Cold War timeline", subject: "Humanities", cardCount: 4, weakCount: 1 },
-  { id: "deck-spanish", name: "Spanish verbs", subject: "Languages", cardCount: 3, weakCount: 1 },
+  { id: "deck-biology", name: "Biology key terms", subject: "Science", folderId: "folder-biology", cardCount: 5, weakCount: 2 },
+  { id: "deck-history", name: "Cold War timeline", subject: "Humanities", folderId: "folder-history", cardCount: 4, weakCount: 1 },
+  { id: "deck-spanish", name: "Spanish verbs", subject: "Languages", folderId: "folder-spanish", cardCount: 3, weakCount: 1 },
 ];
 
 export const WALKTHROUGH_CARDS: WalkthroughCard[] = [
@@ -192,17 +159,6 @@ export const WALKTHROUGH_CARDS: WalkthroughCard[] = [
     due: true,
     weak: false,
     status: "review",
-  },
-  {
-    id: "card-active-site",
-    deckId: "deck-biology",
-    front: "What is an enzyme active site?",
-    back: "The region of an enzyme where a specific substrate binds and the reaction is catalysed.",
-    topicIds: ["topic-enzymes"],
-    tags: ["weak", "exam"],
-    due: true,
-    weak: true,
-    status: "relearning",
   },
   {
     id: "card-containment",
@@ -221,113 +177,23 @@ export const WALKTHROUGH_CARDS: WalkthroughCard[] = [
     front: "What are the regular -ar preterite endings in Spanish?",
     back: "e, aste, o, amos, asteis, aron.",
     topicIds: ["topic-spanish-preterite"],
-    tags: ["grammar", "definition"],
+    tags: ["grammar"],
     due: true,
     weak: true,
     status: "relearning",
-  },
-  {
-    id: "card-photosynthesis-equation",
-    deckId: "deck-biology",
-    front: "What is the word equation for photosynthesis?",
-    back: "Carbon dioxide + water -> glucose + oxygen.",
-    topicIds: ["topic-photosynthesis"],
-    tags: ["method"],
-    due: false,
-    weak: false,
-    status: "review",
-  },
-];
-
-export const WALKTHROUGH_QUESTIONS: WalkthroughQuestion[] = [
-  {
-    id: "question-enzyme-temperature",
-    questionText:
-      "A student measures enzyme activity at different temperatures. The rate rises up to 37 C, then drops sharply above 45 C. Explain why.",
-    answerText:
-      "The enzyme works faster as temperature rises until its optimum, but high temperatures denature the enzyme and change the active site shape, so fewer substrates fit.",
-    solutionText:
-      "Explain the rise first: particles have more kinetic energy, so enzyme-substrate collisions increase. Then explain the drop: high temperature denatures the enzyme, changing the active site so the substrate no longer fits well.",
-    topicIds: ["topic-enzymes"],
-    difficulty: "medium",
-  },
-  {
-    id: "question-cold-war",
-    questionText:
-      "Give two reasons why tension between the USA and USSR increased after 1945.",
-    answerText:
-      "Ideological differences between capitalism and communism, plus mistrust after World War II, including disagreements over Eastern Europe and nuclear weapons.",
-    solutionText:
-      "A strong answer names two causes and explains each one. For example: ideology made both sides suspicious of each other's aims, while Soviet control in Eastern Europe and the US atomic bomb increased mistrust.",
-    topicIds: ["topic-cold-war"],
-    difficulty: "medium",
-  },
-  {
-    id: "question-spanish-preterite",
-    questionText:
-      "Translate into Spanish: Yesterday I spoke with my friend.",
-    answerText:
-      "Ayer hable con mi amigo/amiga.",
-    solutionText:
-      "Use ayer for yesterday, the preterite yo form hable for I spoke, and con mi amigo/amiga for with my friend.",
-    topicIds: ["topic-spanish-preterite"],
-    difficulty: "easy",
-  },
-];
-
-export const WALKTHROUGH_ATTEMPTS: WalkthroughAttempt[] = [
-  {
-    id: "attempt-1",
-    questionId: "question-enzyme-temperature",
-    isCorrect: false,
-    confidence: 2,
-    hintsUsed: 2,
-    tutorUsed: true,
-    mistakeLabels: ["forgot denaturing", "active site explanation missing"],
-    createdAt: Date.now() - 1000 * 60 * 60 * 8,
-  },
-  {
-    id: "attempt-2",
-    questionId: "question-cold-war",
-    isCorrect: false,
-    confidence: 2,
-    hintsUsed: 1,
-    tutorUsed: true,
-    mistakeLabels: ["too vague", "needs explained cause"],
-    createdAt: Date.now() - 1000 * 60 * 60 * 4,
-  },
-  {
-    id: "attempt-3",
-    questionId: "question-spanish-preterite",
-    isCorrect: true,
-    confidence: 4,
-    hintsUsed: 0,
-    tutorUsed: false,
-    mistakeLabels: [],
-    createdAt: Date.now() - 1000 * 60 * 50,
-  },
-];
-
-export const WALKTHROUGH_INITIAL_DRAFTS: WalkthroughDraft[] = [
-  {
-    id: "draft-enzyme-denaturing",
-    front: "What happens when an enzyme is denatured?",
-    back: "Its active site changes shape, so the substrate no longer fits properly and the reaction rate falls.",
-    topicIds: ["topic-enzymes"],
-    sourceQuestionId: "question-enzyme-temperature",
-    contentStatus: "draft",
   },
 ];
 
 export const WALKTHROUGH_SOURCES: WalkthroughSource[] = [
   {
     id: "source-biology-notes",
-    title: "Enzyme activity class notes",
+    title: "Photosynthesis class notes",
     type: "pasted_text",
     subject: "Biology",
-    topicIds: ["topic-enzymes"],
+    folderId: "folder-biology",
+    topicIds: ["topic-photosynthesis"],
     contentText:
-      "Enzyme activity increases with temperature up to an optimum because particles collide more often. Above the optimum, bonds in the enzyme structure break, the active site changes shape, and the substrate no longer fits well.",
+      "Plants use light energy to convert carbon dioxide and water into glucose and oxygen. Chlorophyll absorbs the light energy.",
     status: "active",
   },
   {
@@ -335,9 +201,10 @@ export const WALKTHROUGH_SOURCES: WalkthroughSource[] = [
     title: "Cold War causes summary",
     type: "manual_note",
     subject: "History",
+    folderId: "folder-history",
     topicIds: ["topic-cold-war"],
     contentText:
-      "After 1945, the USA and USSR disagreed over ideology, security, control of Eastern Europe, and the meaning of free elections. These disagreements created suspicion and competition.",
+      "After 1945, ideological conflict, Eastern Europe, and nuclear weapons increased mistrust between the USA and USSR.",
     status: "active",
   },
   {
@@ -345,6 +212,7 @@ export const WALKTHROUGH_SOURCES: WalkthroughSource[] = [
     title: "Spanish speaking prompt reference",
     type: "file",
     subject: "Spanish",
+    folderId: "folder-spanish",
     topicIds: ["topic-spanish-preterite"],
     fileName: "spanish-speaking-prompts.pdf",
     fileType: "PDF reference",
@@ -356,10 +224,12 @@ export const WALKTHROUGH_NOTEBOOKS: WalkthroughNotebook[] = [
   {
     id: "notebook-photosynthesis",
     folderId: "folder-biology",
-    title: "Enzyme activity practice",
+    title: "Photosynthesis practice book",
     type: "general_working",
-    topicIds: ["topic-enzymes"],
+    topicIds: ["topic-photosynthesis"],
     sourceIds: ["source-biology-notes"],
+    color: "emerald",
+    icon: "leaf",
     pageColor: "white",
     updatedAt: Date.now() - 1000 * 60 * 45,
   },
@@ -368,8 +238,10 @@ export const WALKTHROUGH_NOTEBOOKS: WalkthroughNotebook[] = [
     folderId: "folder-biology",
     title: "Biology mock paper working",
     type: "uploaded_file",
-    topicIds: ["topic-photosynthesis", "topic-enzymes"],
+    topicIds: ["topic-photosynthesis"],
     sourceIds: [],
+    color: "sky",
+    icon: "file",
     pageColor: "white",
     uploadedFileName: "biology-mock-paper.pdf",
     updatedAt: Date.now() - 1000 * 60 * 90,
@@ -381,6 +253,8 @@ export const WALKTHROUGH_NOTEBOOKS: WalkthroughNotebook[] = [
     type: "source_notes",
     topicIds: ["topic-cold-war"],
     sourceIds: ["source-history-note"],
+    color: "amber",
+    icon: "book",
     pageColor: "grey",
     updatedAt: Date.now() - 1000 * 60 * 60 * 5,
   },
@@ -388,16 +262,15 @@ export const WALKTHROUGH_NOTEBOOKS: WalkthroughNotebook[] = [
 
 export const WALKTHROUGH_NOTEBOOK_PAGES: WalkthroughNotebookPage[] = [
   {
-    id: "page-enzymes-1",
+    id: "page-photosynthesis-1",
     notebookId: "notebook-photosynthesis",
     folderId: "folder-biology",
     pageNumber: 1,
     pageType: "question",
     pageColor: "white",
-    questionPrompt:
-      "A student measures enzyme activity at different temperatures. The rate rises up to 37 C, then drops sharply above 45 C. Explain why.",
-    typedContent:
-      "I need to explain both the collision increase before the optimum and denaturing after the optimum.",
+    questionPrompt: "Explain why chlorophyll is important in photosynthesis.",
+    typedContent: "Chlorophyll absorbs light energy. I need to connect that to making glucose.",
+    updatedAt: Date.now() - 1000 * 60 * 45,
   },
   {
     id: "page-biology-paper-1",
@@ -407,9 +280,9 @@ export const WALKTHROUGH_NOTEBOOK_PAGES: WalkthroughNotebookPage[] = [
     pageType: "past_paper_page",
     pageColor: "white",
     questionPrompt:
-      "Uploaded file reference: biology-mock-paper.pdf. Full PDF annotation and OCR come later; use this page for working notes.",
-    typedContent:
-      "Public walkthrough simulation: the file is represented as local notebook metadata only.",
+      "Uploaded file reference: biology-mock-paper.pdf. Full PDF annotation and OCR come later.",
+    typedContent: "Public walkthrough simulation: file metadata is local-only.",
+    updatedAt: Date.now() - 1000 * 60 * 90,
   },
   {
     id: "page-history-1",
@@ -418,55 +291,32 @@ export const WALKTHROUGH_NOTEBOOK_PAGES: WalkthroughNotebookPage[] = [
     pageNumber: 1,
     pageType: "source_note",
     pageColor: "grey",
-    typedContent:
-      "Useful causes to compare: ideological conflict, Eastern Europe, nuclear tension, and post-war mistrust.",
+    typedContent: "Compare ideology, Eastern Europe, nuclear tension, and post-war mistrust.",
+    updatedAt: Date.now() - 1000 * 60 * 60 * 5,
   },
 ];
 
-export const WALKTHROUGH_PRACTICE_SETS: WalkthroughPracticeSet[] = [
+export const WALKTHROUGH_INITIAL_DRAFTS: WalkthroughDraft[] = [
   {
-    id: "practice-set-enzymes",
-    folderId: "folder-biology",
-    title: "Enzyme activity drill",
-    type: "manual",
-    topicIds: ["topic-enzymes"],
-    questionIds: ["question-enzyme-temperature"],
+    id: "draft-photosynthesis-card",
+    kind: "flashcard",
+    front: "What does chlorophyll do?",
+    back: "It absorbs light energy for photosynthesis.",
+    topicIds: ["topic-photosynthesis"],
+    sourceId: "source-biology-notes",
+    contentStatus: "draft",
   },
   {
-    id: "practice-set-history",
-    folderId: "folder-history",
-    title: "Cold War causes checks",
-    type: "manual",
+    id: "draft-history-page",
+    kind: "practice-question",
+    questionText: "Explain one reason the Cold War became tense after 1945.",
+    answerText: "Ideological conflict made both sides suspicious of each other's aims.",
+    solutionText: "Name the cause, then explain how it increased mistrust.",
     topicIds: ["topic-cold-war"],
-    questionIds: ["question-cold-war"],
+    sourceId: "source-history-note",
+    contentStatus: "draft",
   },
 ];
-
-export const WALKTHROUGH_PAST_PAPERS: WalkthroughPastPaper[] = [
-  {
-    id: "past-paper-biology-2024",
-    folderId: "folder-biology",
-    title: "2024 Biology practice paper",
-    year: "2024",
-    module: "Biology",
-    pageCount: 0,
-  },
-];
-
-export const WALKTHROUGH_INITIAL_TUTOR_MESSAGES: WalkthroughTutorMessage[] = [
-  {
-    role: "user",
-    text: "Give me one hint without revealing the answer.",
-  },
-  {
-    role: "model",
-    text: "Start by naming what happens to the enzyme above its optimum temperature. Then connect that change to the active site and substrate fit.",
-  },
-];
-
-export function getWalkthroughQuestion(questionId: string) {
-  return WALKTHROUGH_QUESTIONS.find((question) => question.id === questionId) ?? null;
-}
 
 export function getWalkthroughTopicNames(topicIds: string[]) {
   return topicIds

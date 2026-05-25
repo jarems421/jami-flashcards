@@ -24,22 +24,13 @@ type FlashcardDraftInput = {
   updatedAt?: number;
 };
 
-export type PracticeQuestionDraftQuestionData = {
-  questionText: string;
-  answerText?: string | null;
-  solutionText?: string | null;
-  markScheme: null;
-  folderIds: string[];
-  topicIds: string[];
-  difficulty: null;
-  sourceType: "ai-generated";
-  origin: "source-derived";
-  contentStatus: "approved";
-  reviewedAt: number;
-  reviewedBy: string;
-  sourceIds: string[];
-  createdAt: number;
-  updatedAt: number;
+export type PracticeQuestionDraftNotebookPageData = {
+  title: string;
+  pageType: "question";
+  questionPrompt: string;
+  typedContent: string | null;
+  linkedSourceId: string | null;
+  status: "blank";
 };
 
 export function buildFlashcardDraftCardData(
@@ -83,28 +74,19 @@ export function buildFlashcardDraftCardData(
   };
 }
 
-export function buildPracticeQuestionDraftData(
+export function buildPracticeQuestionDraftNotebookPageData(
   draft: FlashcardDraftInput & {
     questionText?: string;
     answerText?: string;
     solutionText?: string;
-  },
-  input: {
-    userId: string;
-    now?: number;
   }
-): PracticeQuestionDraftQuestionData {
-  const userId = input.userId.trim();
+): PracticeQuestionDraftNotebookPageData {
   const questionText = draft.questionText?.trim() ?? "";
   const answerText = draft.answerText?.trim() ?? "";
   const solutionText = draft.solutionText?.trim() ?? "";
-  const now = input.now ?? Date.now();
 
-  if (!userId) {
-    throw new Error("Missing userId.");
-  }
   if (draft.kind !== "practice-question") {
-    throw new Error("Only practice question drafts can become questions.");
+    throw new Error("Only practice question drafts can become notebook pages.");
   }
   if (draft.contentStatus !== "draft") {
     throw new Error("Practice question draft must still be a draft before approval.");
@@ -114,20 +96,17 @@ export function buildPracticeQuestionDraftData(
   }
 
   return {
-    questionText: questionText.slice(0, 4_000),
-    answerText: answerText ? answerText.slice(0, 4_000) : null,
-    solutionText: solutionText ? solutionText.slice(0, 8_000) : null,
-    markScheme: null,
-    folderIds: [],
-    topicIds: draft.topicIds,
-    difficulty: null,
-    sourceType: "ai-generated",
-    origin: "source-derived",
-    contentStatus: "approved",
-    reviewedAt: now,
-    reviewedBy: userId,
-    sourceIds: draft.sourceId ? [draft.sourceId] : [],
-    createdAt: now,
-    updatedAt: now,
+    title: draft.title?.trim().slice(0, 120) || "Question page",
+    pageType: "question",
+    questionPrompt: questionText.slice(0, 4_000),
+    typedContent:
+      answerText || solutionText
+        ? [
+            answerText ? `Expected answer:\n${answerText.slice(0, 4_000)}` : "",
+            solutionText ? `Solution notes:\n${solutionText.slice(0, 8_000)}` : "",
+          ].filter(Boolean).join("\n\n")
+        : null,
+    linkedSourceId: draft.sourceId?.trim() || null,
+    status: "blank",
   };
 }

@@ -83,7 +83,7 @@ Ground your answer in the supplied source text and start with "Based on this sou
 If the source does not contain enough information, say that clearly before offering a next step.
 If you use outside knowledge, label it under "Outside context".
 Be concise, student-friendly, and revision-focused.
-Do not create final flashcards or questions unless asked by a separate draft action.`,
+Do not create final flashcards or notebook question drafts unless asked by a separate draft action.`,
         contents: [
           {
             role: "user",

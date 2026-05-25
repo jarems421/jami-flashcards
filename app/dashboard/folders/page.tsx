@@ -4,6 +4,9 @@ import Link from "next/link";
 import { FirebaseError } from "firebase/app";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
+import FolderObjectCard from "@/components/workspace/FolderObjectCard";
+import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
+import type { ObjectColorId, ObjectIconId } from "@/components/workspace/object-card-styles";
 import {
   Button,
   Card,
@@ -52,6 +55,8 @@ export default function FoldersPage() {
   const [subject, setSubject] = useState("");
   const [description, setDescription] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
+  const [folderColor, setFolderColor] = useState<ObjectColorId>("sky");
+  const [folderIcon, setFolderIcon] = useState<ObjectIconId>("book");
   const [saving, setSaving] = useState(false);
 
   const loadFolders = useCallback(async () => {
@@ -121,6 +126,8 @@ export default function FoldersPage() {
     setSubject("");
     setDescription("");
     setSelectedTopicIds([]);
+    setFolderColor("sky");
+    setFolderIcon("book");
   };
 
   const handleCreateFolder = async () => {
@@ -133,6 +140,8 @@ export default function FoldersPage() {
         subject,
         description,
         topicIds: selectedTopicIds,
+        color: folderColor,
+        icon: folderIcon,
       });
       setFolders((current) => [folder, ...current]);
       setShowCreate(false);
@@ -246,6 +255,14 @@ export default function FoldersPage() {
                   placeholder="Flashcards, notebooks, lecture sources, and practice work for this study area."
                   onChange={(event) => setDescription(event.target.value)}
                 />
+                <ObjectStylePicker
+                  color={folderColor}
+                  icon={folderIcon}
+                  onColorChange={setFolderColor}
+                  onIconChange={setFolderIcon}
+                  colorLabel="Folder colour"
+                  iconLabel="Folder icon"
+                />
               </div>
               <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-4">
                 <div className="text-sm font-semibold text-white">Linked topics</div>
@@ -298,7 +315,7 @@ export default function FoldersPage() {
         {loading ? (
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 3 }).map((_, index) => (
-              <Skeleton key={index} className="h-48 rounded-[1.45rem]" />
+              <Skeleton key={index} className="h-72 rounded-[1.45rem]" />
             ))}
           </div>
         ) : folders.length > 0 ? (
@@ -306,48 +323,24 @@ export default function FoldersPage() {
             {folders.map((folder) => {
               const names = getTopicNames(folder, topics);
               return (
-                <Link
+                <FolderObjectCard
                   key={folder.id}
                   href={`/dashboard/folders/${folder.id}`}
-                  className="group block min-h-[13rem] rounded-[1.55rem] border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-5 shadow-[var(--shadow-card)] transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-[var(--color-surface-panel)]"
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                        Study folder
-                      </div>
-                      <h2 className="mt-2 text-xl font-semibold text-white">
-                        {folder.name}
-                      </h2>
-                    </div>
-                    <span className="rounded-full border border-white/[0.1] bg-white/[0.05] px-3 py-1 text-xs text-text-secondary">
-                      {folder.subject ?? "General"}
-                    </span>
-                  </div>
-                  <p className="mt-4 line-clamp-3 text-sm leading-6 text-text-secondary">
-                    {folder.description ??
-                      "A home for notebooks, decks, sources, and recent work."}
-                  </p>
-                  <div className="mt-5 flex flex-wrap gap-2">
-                    {names.length > 0 ? (
-                      names.slice(0, 4).map((topicName) => (
-                        <span
-                          key={topicName}
-                          className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent"
-                        >
-                          {topicName}
-                        </span>
-                      ))
-                    ) : (
-                      <span className="rounded-full border border-white/[0.1] bg-white/[0.045] px-3 py-1 text-xs text-text-muted">
-                        Link topics later
-                      </span>
-                    )}
-                  </div>
-                  <div className="mt-5 text-sm font-semibold text-warm-accent">
-                    Open folder
-                  </div>
-                </Link>
+                  title={folder.name}
+                  subtitle={folder.subject ?? "General"}
+                  description={
+                    folder.description ??
+                    "A home for notebooks, decks, sources, and recent work."
+                  }
+                  color={folder.color}
+                  icon={folder.icon}
+                  stats={
+                    names.length > 0
+                      ? names.slice(0, 3).map((topicName) => ({ label: "Topic", value: topicName }))
+                      : [{ label: "Topics", value: "Link later" }]
+                  }
+                  updatedLabel="Open folder"
+                />
               );
             })}
           </section>

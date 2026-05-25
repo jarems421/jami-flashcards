@@ -6,16 +6,18 @@ import Link from "next/link";
 import { useUser } from "@/lib/auth/user-context";
 import type { Source, SourceType } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
+import type { Notebook } from "@/lib/workspace/notebooks";
 import type { Deck } from "@/services/study/decks";
 import {
   convertFlashcardDraftToCard,
-  convertPracticeQuestionDraftToQuestion,
+  convertPracticeQuestionDraftToNotebookPage,
   getGeneratedContentDrafts,
   updateGeneratedContentDraftContent,
   updateGeneratedContentDraftStatus,
   type GeneratedContentDraft,
 } from "@/services/study/generated-content";
 import { getDecks } from "@/services/study/decks";
+import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
 import { createSource, getActiveSources, updateSource } from "@/services/study/sources";
 import { askSourceTutor, generateSourceDrafts } from "@/services/ai/source";
@@ -68,8 +70,11 @@ function DraftEditor({
   draft,
   topics,
   decks,
+  notebooks,
   selectedDeckId,
+  selectedNotebookId,
   onDeckChange,
+  onNotebookChange,
   onSaved,
   userId,
   sourceTitle,
@@ -77,8 +82,11 @@ function DraftEditor({
   draft: GeneratedContentDraft;
   topics: Topic[];
   decks: Deck[];
+  notebooks: Notebook[];
   selectedDeckId: string;
+  selectedNotebookId: string;
   onDeckChange: (value: string) => void;
+  onNotebookChange: (value: string) => void;
   onSaved: (message: string) => void;
   userId: string;
   sourceTitle?: string;
@@ -104,10 +112,10 @@ function DraftEditor({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-white">
-            {isFlashcard ? "Flashcard draft" : "Practice question draft"}
+            {isFlashcard ? "Flashcard draft" : "Notebook question draft"}
           </div>
           <div className="mt-1 text-xs text-text-muted">
-            Draft - based on a saved source. Review before it enters Learn or Practice.
+            Draft - based on a saved source. Review before it enters Learn or a notebook.
           </div>
         </div>
         <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
@@ -183,7 +191,41 @@ function DraftEditor({
               </Link>
             </div>
           )
-        ) : null}
+        ) : (
+          notebooks.length > 0 ? (
+            <label className="block">
+              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                Destination notebook
+              </span>
+              <select
+                value={selectedNotebookId}
+                onChange={(event) => onNotebookChange(event.target.value)}
+                className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-white/[0.1] bg-surface-panel-strong px-3 text-sm text-white outline-none focus:border-warm-accent"
+              >
+                {notebooks.map((notebook) => (
+                  <option key={notebook.id} value={notebook.id}>
+                    {notebook.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : (
+            <div className="rounded-[1.15rem] border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
+              <div className="font-semibold text-white">
+                Create a notebook before approving this question draft.
+              </div>
+              <p className="mt-1">
+                Question drafts become notebook pages so students can work naturally.
+              </p>
+              <Link
+                href="/dashboard/folders"
+                className="mt-3 inline-flex min-h-[2.4rem] items-center justify-center rounded-full border border-warm-border bg-white/[0.06] px-3 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.1]"
+              >
+                Open folders
+              </Link>
+            </div>
+          )
+        )}
         <div className="flex flex-wrap gap-2">
           <Button
             type="button"
@@ -203,7 +245,7 @@ function DraftEditor({
           </Button>
           <Button
             type="button"
-            disabled={busy || (isFlashcard && !selectedDeckId)}
+            disabled={busy || (isFlashcard ? !selectedDeckId : !selectedNotebookId)}
             onClick={async () => {
               setBusy(true);
               try {
@@ -212,15 +254,15 @@ function DraftEditor({
                   await convertFlashcardDraftToCard(userId, { draftId: draft.id, deckId: selectedDeckId });
                   onSaved("Card added to your deck. You can review it in Learn.");
                 } else {
-                  await convertPracticeQuestionDraftToQuestion(userId, { draftId: draft.id });
-                  onSaved("Practice question approved. You can attempt it in Practice.");
+                  await convertPracticeQuestionDraftToNotebookPage(userId, { draftId: draft.id, notebookId: selectedNotebookId });
+                  onSaved("Question page added to your notebook. Open it from Practice when you are ready.");
                 }
               } finally {
                 setBusy(false);
               }
             }}
           >
-            {isFlashcard ? "Add to deck" : "Approve question"}
+            {isFlashcard ? "Add to deck" : "Add to notebook"}
           </Button>
           <Button
             type="button"
@@ -249,6 +291,7 @@ export default function LibraryPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
+  const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -266,6 +309,7 @@ export default function LibraryPage() {
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [deckIdByDraft, setDeckIdByDraft] = useState<Record<string, string>>({});
+  const [notebookIdByDraft, setNotebookIdByDraft] = useState<Record<string, string>>({});
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [showTutorTranscript, setShowTutorTranscript] = useState(true);
   const [mobileTab, setMobileTab] = useState<LibraryMobileTab>("source");
@@ -297,15 +341,17 @@ export default function LibraryPage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const [nextSources, nextTopics, nextDecks, nextDrafts] = await Promise.all([
+      const [nextSources, nextTopics, nextDecks, nextNotebooks, nextDrafts] = await Promise.all([
         getActiveSources(user.uid),
         getActiveTopics(user.uid),
         getDecks(user.uid),
+        getActiveNotebooks(user.uid),
         getGeneratedContentDrafts(user.uid),
       ]);
       setSources(nextSources);
       setTopics(nextTopics);
       setDecks(nextDecks);
+      setNotebooks(nextNotebooks);
       setDrafts(nextDrafts);
       setSelectedSourceId((current) =>
         current && nextSources.some((source) => source.id === current)
@@ -317,6 +363,7 @@ export default function LibraryPage() {
       setSources([]);
       setTopics([]);
       setDecks([]);
+      setNotebooks([]);
       setDrafts([]);
       if (!isPermissionDenied(error)) {
         setFeedback({ type: "error", message: "Failed to load Library." });
@@ -343,6 +390,20 @@ export default function LibraryPage() {
       });
     }
   }, [decks, drafts]);
+
+  useEffect(() => {
+    if (notebooks[0]?.id) {
+      setNotebookIdByDraft((current) => {
+        const next = { ...current };
+        for (const draft of drafts) {
+          if (draft.kind === "practice-question" && !next[draft.id]) {
+            next[draft.id] = notebooks[0].id;
+          }
+        }
+        return next;
+      });
+    }
+  }, [drafts, notebooks]);
 
   useEffect(() => {
     setSelectedDraftId((current) =>
@@ -734,7 +795,7 @@ export default function LibraryPage() {
                                       : draft.questionText ?? "Practice question draft"}
                                   </div>
                                   <div className="mt-2 text-xs text-text-muted">
-                                    {draft.kind === "flashcard" ? "Flashcard" : "Practice question"}
+                                    {draft.kind === "flashcard" ? "Flashcard" : "Notebook page"}
                                   </div>
                                 </button>
                               );
@@ -747,8 +808,11 @@ export default function LibraryPage() {
                             draft={selectedDraft}
                             topics={topics}
                             decks={decks}
+                            notebooks={notebooks}
                             selectedDeckId={deckIdByDraft[selectedDraft.id] ?? decks[0]?.id ?? ""}
+                            selectedNotebookId={notebookIdByDraft[selectedDraft.id] ?? notebooks[0]?.id ?? ""}
                             onDeckChange={(value) => setDeckIdByDraft((current) => ({ ...current, [selectedDraft.id]: value }))}
+                            onNotebookChange={(value) => setNotebookIdByDraft((current) => ({ ...current, [selectedDraft.id]: value }))}
                             onSaved={handleDraftSaved}
                             userId={user.uid}
                             sourceTitle={selectedSource.title}
@@ -767,7 +831,7 @@ export default function LibraryPage() {
               <SectionHeader
                 eyebrow="Actions"
                 title="Use this source"
-                description="Keep generation small: up to 8 flashcards or 5 practice questions. Everything stays draft-only until you approve it."
+                description="Keep generation small: up to 8 flashcards or 5 notebook question drafts. Everything stays draft-only until you approve it."
               />
               {selectedSource ? (
                 <div className="mt-5 space-y-3">
@@ -785,7 +849,7 @@ export default function LibraryPage() {
                       {busyAction === "flashcard" ? "Generating..." : "Make up to 8 flashcards"}
                     </Button>
                     <Button type="button" variant="secondary" disabled={busyAction === "practice-question"} onClick={() => generateDrafts("practice-question")}>
-                      {busyAction === "practice-question" ? "Generating..." : "Make up to 5 questions"}
+                      {busyAction === "practice-question" ? "Generating..." : "Make up to 5 notebook questions"}
                     </Button>
                   </div>
                 </div>

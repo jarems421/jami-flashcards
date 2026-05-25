@@ -3,10 +3,6 @@ import "server-only";
 import { getAdminDb } from "@/services/firebase/admin";
 
 export type AiBudgetAction =
-  | "practiceHint"
-  | "practiceFullSolution"
-  | "flashcardDraft"
-  | "similarQuestion"
   | "chat"
   | "sourceTutorExplain"
   | "sourceFlashcardDrafts"
@@ -21,10 +17,6 @@ type AiBudgetConfig = {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
-  practiceHint: { dailyRequestLimit: 40, tokenCap: 6_000, demoDailyRequestLimit: 4 },
-  practiceFullSolution: { dailyRequestLimit: 10, tokenCap: 9_000, demoDailyRequestLimit: 1 },
-  flashcardDraft: { dailyRequestLimit: 20, tokenCap: 5_000, demoDailyRequestLimit: 2 },
-  similarQuestion: { dailyRequestLimit: 12, tokenCap: 7_000, demoDailyRequestLimit: 1 },
   chat: { dailyRequestLimit: 50, tokenCap: 8_000, demoDailyRequestLimit: 4 },
   sourceTutorExplain: { dailyRequestLimit: 20, tokenCap: 10_000, demoDailyRequestLimit: 2 },
   sourceFlashcardDrafts: { dailyRequestLimit: 10, tokenCap: 12_000, demoDailyRequestLimit: 1 },

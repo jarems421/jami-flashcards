@@ -131,13 +131,11 @@ service cloud.firestore {
       }
 
       match /questions/{questionId} {
-        allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow read, write: if false;
       }
 
       match /attempts/{attemptId} {
-        allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow read, write: if false;
       }
 
       match /tutorThreads/{threadId} {

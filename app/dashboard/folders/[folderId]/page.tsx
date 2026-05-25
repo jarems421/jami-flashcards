@@ -5,13 +5,16 @@ import { FirebaseError } from "firebase/app";
 import { useParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
+import FolderObjectCard from "@/components/workspace/FolderObjectCard";
+import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
+import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
+import type { ObjectColorId, ObjectIconId } from "@/components/workspace/object-card-styles";
 import {
   Button,
   Card,
   EmptyState,
   FeedbackBanner,
   Input,
-  MetricStrip,
   PageHero,
   SectionHeader,
   Skeleton,
@@ -19,10 +22,8 @@ import {
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useUser } from "@/lib/auth/user-context";
 import type { Topic } from "@/lib/practice/topics";
-import type { Question } from "@/lib/practice/questions";
 import type { Source } from "@/lib/practice/sources";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import type { PastPaper, PracticeSet } from "@/lib/workspace/practice-sets";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
 import { getStudyFolderById } from "@/services/study/folders";
@@ -32,12 +33,7 @@ import {
   getNotebooksForFolder,
   updateNotebook,
 } from "@/services/study/notebooks";
-import {
-  getPastPapersForFolder,
-  getPracticeSetsForFolder,
-} from "@/services/study/practice-work";
 import { uploadNotebookFile } from "@/services/study/notebook-files";
-import { getActiveQuestions, updateQuestionFolders } from "@/services/study/practice";
 import { getActiveSources, updateSource } from "@/services/study/sources";
 import { getActiveTopics } from "@/services/study/topics";
 
@@ -78,16 +74,15 @@ export default function FolderDetailPage() {
   const [topics, setTopics] = useState<Topic[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
-  const [questions, setQuestions] = useState<Question[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [practiceSets, setPracticeSets] = useState<PracticeSet[]>([]);
-  const [pastPapers, setPastPapers] = useState<PastPaper[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [showNotebookForm, setShowNotebookForm] = useState(false);
   const [notebookTitle, setNotebookTitle] = useState("");
   const [notebookTemplate, setNotebookTemplate] = useState<NotebookTemplate>("blank");
+  const [notebookColor, setNotebookColor] = useState<ObjectColorId>("violet");
+  const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("book");
   const [notebookFile, setNotebookFile] = useState<File | null>(null);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
 
@@ -104,19 +99,13 @@ export default function FolderDetailPage() {
         topicsResult,
         decksResult,
         sourcesResult,
-        questionsResult,
         notebooksResult,
-        practiceSetsResult,
-        pastPapersResult,
       ] = await Promise.allSettled([
         getStudyFolderById(user.uid, folderId),
         getActiveTopics(user.uid),
         getDecks(user.uid),
         getActiveSources(user.uid),
-        getActiveQuestions(user.uid),
         getNotebooksForFolder(user.uid, folderId),
-        getPracticeSetsForFolder(user.uid, folderId),
-        getPastPapersForFolder(user.uid, folderId),
       ]);
 
       if (folderResult.status === "rejected") {
@@ -127,10 +116,7 @@ export default function FolderDetailPage() {
         topicsResult,
         decksResult,
         sourcesResult,
-        questionsResult,
         notebooksResult,
-        practiceSetsResult,
-        pastPapersResult,
       ]
         .map(resultError)
         .filter(Boolean);
@@ -148,19 +134,13 @@ export default function FolderDetailPage() {
       const nextTopics = resultValue<Topic[]>(topicsResult, []);
       const nextDecks = resultValue<Deck[]>(decksResult, []);
       const nextSources = resultValue<Source[]>(sourcesResult, []);
-      const nextQuestions = resultValue<Question[]>(questionsResult, []);
       const nextNotebooks = resultValue<Notebook[]>(notebooksResult, []);
-      const nextPracticeSets = resultValue<PracticeSet[]>(practiceSetsResult, []);
-      const nextPastPapers = resultValue<PastPaper[]>(pastPapersResult, []);
 
       setFolder(nextFolder);
       setTopics(nextTopics);
       setDecks(nextDecks);
       setSources(nextSources);
-      setQuestions(nextQuestions);
       setNotebooks(nextNotebooks);
-      setPracticeSets(nextPracticeSets);
-      setPastPapers(nextPastPapers);
     } catch (error) {
       console.error(error);
       setFeedback({
@@ -194,17 +174,6 @@ export default function FolderDetailPage() {
       ),
     [folder, folderTopicIds, sources]
   );
-  const linkedQuestions = useMemo(
-    () =>
-      questions.filter(
-        (question) =>
-          folder &&
-          (question.folderIds.includes(folder.id) ||
-            question.topicIds.some((topicId) => folderTopicIds.includes(topicId)))
-      ),
-    [folder, folderTopicIds, questions]
-  );
-
   const mergeFolderId = (folderIds: string[], shouldLink: boolean) => {
     if (!folder) return folderIds;
     if (shouldLink) {
@@ -265,32 +234,6 @@ export default function FolderDetailPage() {
     }
   };
 
-  const toggleQuestionFolder = async (question: Question) => {
-    if (!user?.uid || !folder) return;
-    const shouldLink = !question.folderIds.includes(folder.id);
-    setBusyAssetId(question.id);
-    try {
-      const folderIds = mergeFolderId(question.folderIds, shouldLink);
-      await updateQuestionFolders(user.uid, question.id, folderIds);
-      setQuestions((current) =>
-        current.map((item) => (item.id === question.id ? { ...item, folderIds } : item))
-      );
-      setFeedback({
-        type: "success",
-        message: shouldLink
-          ? "Question linked to this folder."
-          : "Question removed from this folder.",
-      });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update question folder link.",
-      });
-    } finally {
-      setBusyAssetId(null);
-    }
-  };
-
   const handleCreateNotebook = async () => {
     if (!user?.uid || !folder) return;
     const title = notebookTitle.trim();
@@ -318,7 +261,8 @@ export default function FolderDetailPage() {
         title,
         type: notebookTemplate === "uploaded_file" ? "uploaded_file" : "blank",
         topicIds: folder.topicIds,
-        icon: notebookTemplate === "uploaded_file" ? "file" : "book",
+        color: notebookColor,
+        icon: notebookIcon,
         pageColor: "white",
       });
       await createNotebookPage(user.uid, {
@@ -348,6 +292,8 @@ export default function FolderDetailPage() {
       ]);
       setNotebookTitle("");
       setNotebookTemplate("blank");
+      setNotebookColor("violet");
+      setNotebookIcon("book");
       setNotebookFile(null);
       setShowNotebookForm(false);
       setFeedback({
@@ -451,13 +397,15 @@ export default function FolderDetailPage() {
             </Link>
           }
           aside={
-            <MetricStrip
-              items={[
-                { label: "Notebooks", value: notebooks.length },
-                { label: "Topics", value: topicNames.length },
+            <FolderObjectCard
+              title={folder.name}
+              subtitle={folder.subject ?? "Study folder"}
+              color={folder.color}
+              icon={folder.icon}
+              stats={[
+                { label: "Books", value: notebooks.length },
                 { label: "Decks", value: linkedDecks.length },
                 { label: "Sources", value: linkedSources.length },
-                { label: "Legacy questions", value: linkedQuestions.length },
               ]}
             />
           }
@@ -479,7 +427,17 @@ export default function FolderDetailPage() {
                 <button
                   key={value}
                   type="button"
-                  onClick={() => setNotebookTemplate(value as NotebookTemplate)}
+                  onClick={() => {
+                    const template = value as NotebookTemplate;
+                    setNotebookTemplate(template);
+                    if (template === "uploaded_file") {
+                      setNotebookColor("sky");
+                      setNotebookIcon("file");
+                    } else if (template === "ai_questions") {
+                      setNotebookColor("indigo");
+                      setNotebookIcon("star");
+                    }
+                  }}
                   className={`rounded-[1.25rem] border p-4 text-left transition ${
                     notebookTemplate === value
                       ? "border-warm-border bg-warm-glow"
@@ -490,6 +448,16 @@ export default function FolderDetailPage() {
                   <p className="mt-2 text-sm leading-6 text-text-secondary">{detail}</p>
                 </button>
               ))}
+            </div>
+            <div className="mt-5">
+              <ObjectStylePicker
+                color={notebookColor}
+                icon={notebookIcon}
+                onColorChange={setNotebookColor}
+                onIconChange={setNotebookIcon}
+                colorLabel="Cover colour"
+                iconLabel="Cover icon"
+              />
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto] lg:items-end">
               <Input
@@ -525,6 +493,8 @@ export default function FolderDetailPage() {
                     setShowNotebookForm(false);
                     setNotebookTitle("");
                     setNotebookTemplate("blank");
+                    setNotebookColor("violet");
+                    setNotebookIcon("book");
                     setNotebookFile(null);
                   }}
                 >
@@ -582,22 +552,21 @@ export default function FolderDetailPage() {
             title="Work naturally on notebook pages."
             description="A notebook is where this folder becomes a study workspace: type, draw, add pages, save, and return later."
           />
-          <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+          <div className="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {notebooks.length > 0 ? (
               notebooks.map((notebook) => (
-                <Link
+                <NotebookObjectCard
                   key={notebook.id}
                   href={`/dashboard/notebooks/${notebook.id}`}
-                  className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.04] p-4 transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-white/[0.065]"
-                >
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                    {notebook.type.replace("_", " ")}
-                  </div>
-                  <div className="mt-2 text-base font-semibold text-white">{notebook.title}</div>
-                  <p className="mt-2 text-sm leading-6 text-text-secondary">
-                    Open the page workspace for typed and drawn working.
-                  </p>
-                </Link>
+                  title={notebook.title}
+                  subtitle="Open the page workspace for typed and drawn working."
+                  typeLabel={notebook.type.replace("_", " ")}
+                  folderName={folder.name}
+                  color={notebook.color}
+                  icon={notebook.icon}
+                  pageColor={notebook.pageColor}
+                  updatedLabel="Open notebook"
+                />
               ))
             ) : (
               <div className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary md:col-span-2 xl:col-span-3">
@@ -631,12 +600,10 @@ export default function FolderDetailPage() {
               </p>
             </div>
             <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
-              <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Older records</div>
-              <div className="mt-2 text-2xl font-semibold text-white">
-                {practiceSets.length + pastPapers.length}
-              </div>
+              <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Sources</div>
+              <div className="mt-2 text-2xl font-semibold text-white">{linkedSources.length}</div>
               <p className="mt-2 text-sm leading-6 text-text-secondary">
-                Existing sets and paper shells remain readable, but new grouped work should be notebooks.
+                Sources remain in Library while also sitting beside related notebooks.
               </p>
             </div>
           </div>
@@ -730,49 +697,6 @@ export default function FolderDetailPage() {
             </div>
           </Card>
 
-          <Card padding="md" className="xl:col-span-1">
-            <SectionHeader
-              eyebrow="Questions"
-              title="Practice questions in this folder"
-              description="Question records stay available to Practice, but notebook pages are the new working surface."
-            />
-            <div className="mt-4 space-y-3">
-              {questions.length > 0 ? (
-                questions.map((question) => {
-                  const linked = question.folderIds.includes(folder.id);
-                  const suggested = !linked && question.topicIds.some((topicId) => folderTopicIds.includes(topicId));
-                  return (
-                    <div
-                      key={question.id}
-                      className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-3"
-                    >
-                      <div className="text-sm font-semibold leading-5 text-white">
-                        {question.questionText}
-                      </div>
-                      <div className="mt-2 flex flex-wrap items-center gap-2">
-                        <span className="rounded-full border border-white/[0.1] bg-white/[0.045] px-2.5 py-1 text-[0.68rem] text-text-muted">
-                          {linked ? "Inside this folder" : suggested ? "Suggested by topic" : "Practice question"}
-                        </span>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant={linked ? "secondary" : "warm"}
-                          disabled={busyAssetId === question.id}
-                          onClick={() => void toggleQuestionFolder(question)}
-                        >
-                          {linked ? "Unlink" : "Link"}
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })
-              ) : (
-                <p className="text-sm leading-6 text-text-muted">
-                  No questions yet. New practice work should start from notebooks inside this folder.
-                </p>
-              )}
-            </div>
-          </Card>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">

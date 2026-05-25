@@ -20,7 +20,6 @@ import {
 } from "@/lib/study/activity";
 import { predictStudyStreak } from "@/lib/study/streak-prediction";
 import { loadStudyActivity } from "@/services/study/activity";
-import { getAttempts, getActiveQuestions } from "@/services/study/practice";
 import { getActiveTopics } from "@/services/study/topics";
 import { getMasteryEvents } from "@/services/study/mastery";
 import { getGeneratedContentDrafts } from "@/services/study/generated-content";
@@ -36,16 +35,13 @@ import { loadInAppUsername } from "@/services/profile";
 import { getStudyDayKey } from "@/lib/study/day";
 import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
 import type { Topic } from "@/lib/practice/topics";
-import type { Question, Attempt } from "@/lib/practice/questions";
 import type { MasteryEvent } from "@/lib/practice/mastery";
 import type { Source } from "@/lib/practice/sources";
 import { buildTodayPlan, type TodayPlan } from "@/lib/dashboard/today-plan";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import type { PracticeSet, PastPaper } from "@/lib/workspace/practice-sets";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
-import { getActivePastPapers, getActivePracticeSets } from "@/services/study/practice-work";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
@@ -217,7 +213,7 @@ function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
 function TodayStatusRow({ plan }: { plan: TodayPlan }) {
   const items = [
     ["Due", plan.dueCards.count],
-    ["Mistakes", plan.recentMistakes.length],
+    ["Folders", plan.workspace.folderCount],
     ["Drafts", plan.drafts.length],
     ["Weak topics", plan.weakTopics.length],
   ];
@@ -246,19 +242,11 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
           href: plan.workspace.recentNotebook.href,
         }
       : null,
-    plan.recentMistakes[0]
-      ? {
-          label: "Retry mistake",
-          title: plan.recentMistakes[0].questionText,
-          detail: plan.recentMistakes[0].tutorUsed ? "Tutor already helped once." : "No Tutor help yet.",
-          href: plan.recentMistakes[0].href,
-        }
-      : null,
     plan.drafts[0]
       ? {
           label: "Review draft",
           title: "Flashcard draft waiting",
-          detail: "Tutor made this from a mistake. Approve it before it joins your deck.",
+          detail: "Review it before it joins your deck.",
           href: plan.drafts[0].href,
         }
       : null,
@@ -310,8 +298,7 @@ function WorkspaceSnapshotCard({ plan }: { plan: TodayPlan }) {
   const hasWorkspace =
     plan.workspace.folderCount > 0 ||
     plan.workspace.notebookCount > 0 ||
-    plan.workspace.practiceSetCount > 0 ||
-    plan.workspace.pastPaperCount > 0;
+    plan.workspace.sourceCount > 0;
 
   if (!hasWorkspace) return null;
 
@@ -329,8 +316,7 @@ function WorkspaceSnapshotCard({ plan }: { plan: TodayPlan }) {
       <div className="mt-5 grid gap-3 sm:grid-cols-4">
         <MiniMetric label="Folders" value={plan.workspace.folderCount} />
         <MiniMetric label="Notebooks" value={plan.workspace.notebookCount} />
-        <MiniMetric label="Sets" value={plan.workspace.practiceSetCount} />
-        <MiniMetric label="Papers" value={plan.workspace.pastPaperCount} />
+        <MiniMetric label="Sources" value={plan.workspace.sourceCount} />
       </div>
       <div className="mt-5 flex flex-wrap gap-2">
         {plan.workspace.recentNotebook ? (
@@ -370,42 +356,6 @@ function TodayReviewCard({ plan }: { plan: TodayPlan }) {
   );
 }
 
-function RepairQueueCard({ plan }: { plan: TodayPlan }) {
-  return (
-    <Card padding="lg">
-      <SectionHeader
-        eyebrow="Repair queue"
-        title="Recent mistakes"
-        description="Mistakes are useful when they point to the next repair action."
-      />
-      <div className="mt-5 space-y-3">
-        {plan.recentMistakes.length > 0 ? (
-          plan.recentMistakes.slice(0, 3).map((mistake) => (
-            <div key={mistake.attemptId} className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
-              <div className="line-clamp-2 text-sm font-semibold text-white">
-                {mistake.questionText}
-              </div>
-              <div className="mt-2 text-xs text-text-muted">
-                Confidence {mistake.confidence} - {mistake.tutorUsed ? "Tutor used" : "No tutor yet"}
-              </div>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <ActionPill href={mistake.href} variant="secondary">Retry</ActionPill>
-                <ActionPill href={mistake.href} variant="secondary">Ask Tutor</ActionPill>
-                <ActionPill href={mistake.href} variant="secondary">Make card</ActionPill>
-              </div>
-            </div>
-          ))
-        ) : (
-          <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-            No recent mistakes to repair yet. Attempt a practice question and self-mark it to build
-            this queue.
-          </p>
-        )}
-      </div>
-    </Card>
-  );
-}
-
 function DraftQueueCard({ plan }: { plan: TodayPlan }) {
   return (
     <Card padding="lg">
@@ -437,7 +387,7 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
           ))
         ) : (
           <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-            Ask Tutor to make a flashcard from a useful mistake and it will appear here.
+            Source-generated and notebook-linked flashcard drafts will appear here for review.
           </p>
         )}
       </div>
@@ -478,7 +428,7 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
           ))
         ) : (
           <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-            Weak topics appear after you link cards or questions to topics.
+            Weak topics appear after you link cards, notebooks, or sources to topics.
           </p>
         )}
       </div>
@@ -522,9 +472,9 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
   const [open, setOpen] = useState(!compact);
   const steps = [
     ["1", "Learn", "Review flashcards so facts and definitions stay available."],
-    ["2", "Practice", "Try questions to test whether the idea transfers."],
+    ["2", "Practice", "Open notebooks and work naturally on pages."],
     ["3", "Tutor", "Ask for hint-first help when you get stuck."],
-    ["4", "Draft", "Save useful mistakes as flashcards before they fade."],
+    ["4", "Draft", "Review generated drafts before they enter Learn or notebooks."],
     ["5", "Progress", "Check weak topics and choose the next repair action."],
   ];
 
@@ -594,15 +544,11 @@ export default function DashboardHome() {
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [questions, setQuestions] = useState<Question[]>([]);
-  const [attempts, setAttempts] = useState<Attempt[]>([]);
   const [masteryEvents, setMasteryEvents] = useState<MasteryEvent[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
-  const [practiceSets, setPracticeSets] = useState<PracticeSet[]>([]);
-  const [pastPapers, setPastPapers] = useState<PastPaper[]>([]);
   const [progressVisited, setProgressVisited] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -676,41 +622,29 @@ export default function DashboardHome() {
         goalsSnapshot,
         activity,
         nextTopics,
-        nextQuestions,
-        nextAttempts,
         nextMasteryEvents,
         nextDrafts,
         nextSources,
         nextStudyFolders,
         nextNotebooks,
-        nextPracticeSets,
-        nextPastPapers,
       ] = await Promise.all([
         getDocs(collection(db, "users", uid, "goals")).catch(() => null),
         loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
         getActiveTopics(uid).catch(() => [] as Topic[]),
-        getActiveQuestions(uid).catch(() => []),
-        getAttempts(uid).catch(() => []),
         getMasteryEvents(uid).catch(() => [] as MasteryEvent[]),
         getGeneratedContentDrafts(uid).catch(() => [] as GeneratedContentDraft[]),
         getActiveSources(uid).catch(() => [] as Source[]),
         getActiveStudyFolders(uid).catch(() => [] as StudyFolder[]),
         getActiveNotebooks(uid).catch(() => [] as Notebook[]),
-        getActivePracticeSets(uid).catch(() => [] as PracticeSet[]),
-        getActivePastPapers(uid).catch(() => [] as PastPaper[]),
       ]);
 
       setStudyActivity(activity);
       setTopics(nextTopics);
-      setQuestions(nextQuestions);
-      setAttempts(nextAttempts);
       setMasteryEvents(nextMasteryEvents);
       setDrafts(nextDrafts);
       setSources(nextSources);
       setStudyFolders(nextStudyFolders);
       setNotebooks(nextNotebooks);
-      setPracticeSets(nextPracticeSets);
-      setPastPapers(nextPastPapers);
 
       if (goalsSnapshot) {
         const now2 = Date.now();
@@ -783,32 +717,24 @@ export default function DashboardHome() {
         cards,
         dueCards,
         topics,
-        questions,
-        attempts,
         masteryEvents,
         drafts,
         sources,
         studyFolders,
         notebooks,
-        practiceSets,
-        pastPapers,
         activeGoals,
         reviewedToday: todayReviews,
         progressVisited,
       }),
     [
       activeGoals,
-      attempts,
       cards,
       decks,
       drafts,
       notebooks,
-      pastPapers,
-      practiceSets,
       dueCards,
       masteryEvents,
       progressVisited,
-      questions,
       sources,
       studyFolders,
       todayReviews,
@@ -839,13 +765,13 @@ export default function DashboardHome() {
         label: "Create or open a notebook",
         detail: "Practice now starts from folders and notebook pages.",
         href: "/dashboard/practise",
-        done: todayPlan.checklist.createQuestion,
+        done: todayPlan.checklist.createNotebook,
       },
       {
-        label: "Ask Tutor for a hint or make a draft",
-        detail: "Use Tutor when stuck, then save useful mistakes.",
-        href: "/dashboard/practise",
-        done: todayPlan.checklist.askTutor,
+        label: "Review generated drafts",
+        detail: "Approve useful source drafts into Learn or notebooks.",
+        href: "/dashboard/library",
+        done: todayPlan.checklist.reviewDrafts,
       },
       {
         label: "Check Progress",
@@ -857,7 +783,7 @@ export default function DashboardHome() {
     [todayPlan.checklist]
   );
   const dueCount = todayPlan.dueCards.count;
-  const hasStartedLoop = decks.length > 0 || cards.length > 0 || questions.length > 0 || attempts.length > 0;
+  const hasStartedLoop = decks.length > 0 || cards.length > 0 || notebooks.length > 0 || studyFolders.length > 0;
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -883,7 +809,7 @@ export default function DashboardHome() {
                   : "Welcome back. Here is today at a glance."}
               </span>
               {isLoading
-                ? "Jami is loading reviews, practice, mistakes, drafts, and goals."
+                ? "Jami is loading reviews, notebooks, drafts, and goals."
                 : "Today pulls the learning loop into one action-first study plan."}
             </>
           }
@@ -918,7 +844,6 @@ export default function DashboardHome() {
 
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
               <TodayReviewCard plan={todayPlan} />
-              <RepairQueueCard plan={todayPlan} />
               <DraftQueueCard plan={todayPlan} />
               <WorkspaceSnapshotCard plan={todayPlan} />
               <WeakTopicsCard plan={todayPlan} />

@@ -69,18 +69,18 @@ Use user-facing spelling **Practice**. Keep old route names only for compatibili
 Practice should become folder-first and notebook-led rather than question-bank-first.
 
 - Avoid making it feel like an admin form.
-- Make the current working surface feel like the center of the session.
+- Make notebook pages the current working surface and the center of the session.
 - Do not force students to enter an expected answer or solution notes before they can work.
 - Let expected answers, solution notes, and mark schemes stay optional metadata for imported, AI-generated, or reviewed questions.
-- Keep topic chips, attempt state, confidence, mistake labels, and attempt history visually organized.
-- Make "start", "continue", "self-mark", and "review" states clear.
+- Do not show the old question bank, standalone Add question form, confidence block, old attempt form, or old Practice Tutor panel in the main Practice UI.
+- Make "start", "continue", and "review" states clear through folders, notebooks, pages, drafts, and card review.
 - Practice sets, paper-style work, AI-created drills, and blank working books should be presented as notebook templates rather than separate main products.
 
 ### Folders
 
 Folders are broad study spaces.
 
-- A folder can contain notebooks, decks, sources, recent work, and legacy question records.
+- A folder can contain notebooks, decks, sources, and recent work.
 - A deck can appear inside a folder and still appear globally in Decks.
 - A source can appear inside a folder and still appear globally in Library.
 - Cards should inherit folder context through decks rather than carrying folder links directly in V1.
@@ -122,13 +122,14 @@ Tutor is contextual, not a generic chatbot.
 Progress should feel constructive, not judgemental.
 
 Use language like:
-- Support level
-- Independent accuracy
-- Hint-to-correct rate
-- Recent mistakes
 - Weak topics
+- Weak cards
+- Drafts waiting
+- Continue notebook work
+- Linked source
+- Open folder
 
-Progress MVP should stay focused on weak topics, weak/due cards by topic, practice accuracy, recent mistakes, and support level. Do not turn it into an advanced analytics dashboard yet.
+Progress MVP should stay focused on weak topics, weak/due cards by topic, notebook/folder activity, source links, and generated drafts. Do not turn it into an advanced analytics dashboard yet, and do not reintroduce legacy attempt analytics.
 
 ### Library
 
@@ -149,7 +150,7 @@ Useful component patterns:
 - `PageHeader`
 - `SectionCard`
 - `MetricCard`
-- `QuestionCard`
+- `NotebookCard`
 - `TutorPanel`
 - `TutorMessage`
 - `EmptyState`

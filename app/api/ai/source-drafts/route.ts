@@ -39,7 +39,7 @@ Do not invent facts that are not grounded in the source.`;
 Return JSON only as an array of objects with "questionText", "answerText", and "solutionText".
 Questions should be short, useful for revision, and answerable from the source.
 Every question must include an expected answer.
-If the source does not support ${count} useful questions, return fewer.
+If the source does not support ${count} useful notebook questions, return fewer.
 Do not invent facts that are not grounded in the source.`;
 }
 

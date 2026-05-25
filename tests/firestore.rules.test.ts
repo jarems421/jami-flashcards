@@ -358,7 +358,7 @@ describe("Firestore security rules", () => {
     await assertSucceeds(getDoc(topicRef));
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "topics", "topic-1")));
 
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(aliceDb, "users", ALICE, "questions", "question-1"), {
         questionText: "Find the eigenvalues.",
         topicIds: ["topic-1"],
@@ -370,7 +370,7 @@ describe("Firestore security rules", () => {
       })
     );
 
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(aliceDb, "users", ALICE, "attempts", "attempt-1"), {
         questionId: "question-1",
         userAnswer: "lambda = 2",
@@ -385,11 +385,11 @@ describe("Firestore security rules", () => {
     await assertSucceeds(
       setDoc(doc(aliceDb, "users", ALICE, "masteryEvents", "event-1"), {
         topicId: "topic-1",
-        sourceType: "question",
-        sourceId: "attempt-1",
+        sourceType: "manual",
+        sourceId: "page-1",
         weight: "high",
         scoreDelta: 4,
-        reason: "Correct practice attempt",
+        reason: "Notebook page reviewed",
         algorithmVersion: "mvp-test",
         createdAt: 1,
       })
@@ -495,7 +495,7 @@ describe("Firestore security rules", () => {
         title: "Eigenvalues drill",
         type: "manual",
         topicIds: ["topic-1"],
-        questionIds: ["question-1"],
+        questionIds: [],
         archived: false,
         createdAt: 1,
         updatedAt: 1,
@@ -519,9 +519,9 @@ describe("Firestore security rules", () => {
 
     await assertSucceeds(
       setDoc(doc(aliceDb, "users", ALICE, "tutorThreads", "thread-1"), {
-        contextType: "question",
-        contextId: "question-1",
-        title: "Find eigenvalues",
+        contextType: "notebook",
+        contextId: "notebook-1",
+        title: "Notebook support",
         createdAt: 1,
         updatedAt: 1,
       })
@@ -531,7 +531,7 @@ describe("Firestore security rules", () => {
       setDoc(doc(aliceDb, "users", ALICE, "tutorMessages", "message-1"), {
         threadId: "thread-1",
         role: "model",
-        text: "Try identifying the characteristic polynomial first.",
+        text: "Use this thread for source or future notebook Tutor context.",
         createdAt: 1,
       })
     );

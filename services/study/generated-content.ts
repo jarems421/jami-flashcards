@@ -3,8 +3,9 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import {
   buildFlashcardDraftCardData,
-  buildPracticeQuestionDraftData,
+  buildPracticeQuestionDraftNotebookPageData,
 } from "@/lib/practice/generated-content";
+import { createNotebookPage, getNotebookById, getNotebookPages, updateNotebook } from "@/services/study/notebooks";
 import {
   isContentOrigin,
   isContentStatus,
@@ -295,14 +296,16 @@ export async function convertFlashcardDraftToCard(
   return cardRef.id;
 }
 
-export async function convertPracticeQuestionDraftToQuestion(
+export async function convertPracticeQuestionDraftToNotebookPage(
   userId: string,
   input: {
     draftId: string;
+    notebookId: string;
   }
 ) {
   const normalizedUserId = userId.trim();
   const draftId = input.draftId.trim();
+  const notebookId = input.notebookId.trim();
 
   if (!normalizedUserId) {
     throw new Error("Missing userId.");
@@ -310,30 +313,50 @@ export async function convertPracticeQuestionDraftToQuestion(
   if (!draftId) {
     throw new Error("Missing draftId.");
   }
+  if (!notebookId) {
+    throw new Error("Choose a destination notebook first.");
+  }
 
-  const draftSnapshot = await withTimeout(
-    getDoc(doc(db, "users", normalizedUserId, "generatedContentDrafts", draftId)),
-    LOAD_MS,
-    "Load practice question draft"
-  );
+  const [draftSnapshot, notebook] = await Promise.all([
+    withTimeout(
+      getDoc(doc(db, "users", normalizedUserId, "generatedContentDrafts", draftId)),
+      LOAD_MS,
+      "Load practice question draft"
+    ),
+    getNotebookById(normalizedUserId, notebookId),
+  ]);
 
   if (!draftSnapshot.exists()) {
     throw new Error("Practice question draft not found.");
+  }
+  if (!notebook) {
+    throw new Error("Destination notebook not found.");
   }
 
   const draft = mapGeneratedContentDraftData(
     draftSnapshot.id,
     draftSnapshot.data() as Record<string, unknown>
   );
-  const questionData = buildPracticeQuestionDraftData(draft, {
-    userId: normalizedUserId,
+  const pageData = buildPracticeQuestionDraftNotebookPageData(draft);
+  const existingPages = await getNotebookPages(normalizedUserId, notebookId);
+
+  const page = await createNotebookPage(normalizedUserId, {
+    notebookId,
+    folderId: notebook.folderId,
+    pageNumber: existingPages.length + 1,
+    title: pageData.title,
+    pageType: pageData.pageType,
+    questionPrompt: pageData.questionPrompt,
+    typedContent: pageData.typedContent ?? undefined,
+    linkedSourceId: pageData.linkedSourceId ?? undefined,
+    pageColor: notebook.pageColor,
+    status: pageData.status,
   });
 
-  const questionRef = await withTimeout(
-    addDoc(collection(db, "users", normalizedUserId, "questions"), questionData),
-    WRITE_MS,
-    "Create question from practice draft"
-  );
+  await updateNotebook(normalizedUserId, notebookId, {
+    topicIds: Array.from(new Set([...notebook.topicIds, ...draft.topicIds])),
+    sourceIds: draft.sourceId ? Array.from(new Set([...notebook.sourceIds, draft.sourceId])) : notebook.sourceIds,
+  });
 
   await withTimeout(
     updateDoc(doc(db, "users", normalizedUserId, "generatedContentDrafts", draftId), {
@@ -346,5 +369,5 @@ export async function convertPracticeQuestionDraftToQuestion(
     "Approve practice question draft"
   );
 
-  return questionRef.id;
+  return page.id;
 }
