@@ -561,7 +561,7 @@ export default function LibraryPage() {
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Topics</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {topics.length === 0 ? (
-                      <span className="text-sm text-text-secondary">Create topics in Practice, then link them here.</span>
+                      <span className="text-sm text-text-secondary">Create topics from your workspace, then link them here.</span>
                     ) : (
                       topics.map((topic) => {
                         const active = selectedTopicIds.includes(topic.id);
@@ -818,7 +818,7 @@ export default function LibraryPage() {
                   })
                 ) : (
                   <p className="text-sm leading-6 text-text-secondary">
-                    Create topics in Practice, then link sources here.
+                    Create topics from your workspace, then link sources here.
                   </p>
                 )}
               </div>

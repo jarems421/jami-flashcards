@@ -264,7 +264,7 @@ export default function ProgressPage() {
             <div className="mt-2 text-lg font-semibold text-white">
               {recommendedTopic
                 ? `Review linked cards, then retry 1 question on ${recommendedTopic.topic.name}.`
-                : "Review due flashcards, then add one practice question when you are ready."}
+                : "Review due flashcards, then open a notebook when you are ready."}
             </div>
             <p className="mt-2 text-sm leading-6 text-text-secondary">
               Support level shows how much Tutor help you used recently. It is not a judgement - it helps Jami choose the right next task.
@@ -275,7 +275,7 @@ export default function ProgressPage() {
             <EmptyState
               emoji="Topics"
               title="Progress needs topics"
-              description="Create topics in Practice, then link questions and cards to start building mastery evidence."
+              description="Use folders and notebook pages for working, then link topics to cards, sources, or questions as you build mastery evidence."
               action={
                 <Link
                   href="/dashboard/practise"

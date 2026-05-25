@@ -836,8 +836,8 @@ export default function DashboardHome() {
         done: todayPlan.checklist.reviewCards,
       },
       {
-        label: "Create a practice question",
-        detail: "Practice turns memory into application.",
+        label: "Create or open a notebook",
+        detail: "Practice now starts from folders and notebook pages.",
         href: "/dashboard/practise",
         done: todayPlan.checklist.createQuestion,
       },

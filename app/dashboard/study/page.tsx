@@ -2067,10 +2067,8 @@ export default function StudyPage() {
               {flipped ? (
                 <div className="sticky bottom-3 z-30 animate-fade-in space-y-3 rounded-[1.5rem] border border-white/[0.08] bg-surface-panel/95 p-2 shadow-[0_18px_36px_rgba(8,2,26,0.28)] backdrop-blur-md sm:static sm:z-auto sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
                   {savingRating ? <div className="text-center text-sm text-text-muted">Saving...</div> : null}
-                  {showExplanation ? (
-                    flashcardAiEnabled ? (
-                      <StudyAssistant card={current} autoExplain mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
-                    ) : null
+                  {showExplanation && flashcardAiEnabled ? (
+                    <StudyAssistant card={current} autoExplain mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
                   ) : (
                     <div className="space-y-3">
                       {sessionKind === "simple" ? (

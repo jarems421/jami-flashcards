@@ -58,8 +58,7 @@ export async function getPracticeSetsForFolder(userId: string, folderId: string)
     getDocs(
       query(
         practiceSetsCollection(normalizedUserId),
-        where("folderId", "==", normalizedFolderId),
-        orderBy("updatedAt", "desc")
+        where("folderId", "==", normalizedFolderId)
       )
     ),
     LOAD_MS,
@@ -70,7 +69,8 @@ export async function getPracticeSetsForFolder(userId: string, folderId: string)
     .map((practiceSetDoc) =>
       mapPracticeSetData(practiceSetDoc.id, practiceSetDoc.data() as Record<string, unknown>)
     )
-    .filter((practiceSet) => !practiceSet.archived);
+    .filter((practiceSet) => !practiceSet.archived)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function createPracticeSet(
@@ -153,8 +153,7 @@ export async function getPastPapersForFolder(userId: string, folderId: string) {
     getDocs(
       query(
         pastPapersCollection(normalizedUserId),
-        where("folderId", "==", normalizedFolderId),
-        orderBy("updatedAt", "desc")
+        where("folderId", "==", normalizedFolderId)
       )
     ),
     LOAD_MS,
@@ -165,7 +164,8 @@ export async function getPastPapersForFolder(userId: string, folderId: string) {
     .map((pastPaperDoc) =>
       mapPastPaperData(pastPaperDoc.id, pastPaperDoc.data() as Record<string, unknown>)
     )
-    .filter((pastPaper) => !pastPaper.archived);
+    .filter((pastPaper) => !pastPaper.archived)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function createPastPaper(

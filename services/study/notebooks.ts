@@ -106,8 +106,7 @@ export async function getNotebooksForFolder(userId: string, folderId: string) {
     getDocs(
       query(
         notebooksCollection(normalizedUserId),
-        where("folderId", "==", normalizedFolderId),
-        orderBy("updatedAt", "desc")
+        where("folderId", "==", normalizedFolderId)
       )
     ),
     LOAD_MS,
@@ -118,7 +117,8 @@ export async function getNotebooksForFolder(userId: string, folderId: string) {
     .map((notebookDoc) =>
       mapNotebookData(notebookDoc.id, notebookDoc.data() as Record<string, unknown>)
     )
-    .filter((notebook) => !notebook.archived);
+    .filter((notebook) => !notebook.archived)
+    .sort((a, b) => b.updatedAt - a.updatedAt);
 }
 
 export async function createNotebook(
@@ -222,17 +222,18 @@ export async function getNotebookPages(
     getDocs(
       query(
         notebookPagesCollection(normalizedUserId),
-        where("notebookId", "==", normalizedNotebookId),
-        orderBy("pageNumber", "asc")
+        where("notebookId", "==", normalizedNotebookId)
       )
     ),
     LOAD_MS,
     "Load notebook pages"
   );
 
-  return snapshot.docs.map((pageDoc) =>
-    mapNotebookPageData(pageDoc.id, pageDoc.data() as Record<string, unknown>)
-  );
+  return snapshot.docs
+    .map((pageDoc) =>
+      mapNotebookPageData(pageDoc.id, pageDoc.data() as Record<string, unknown>)
+    )
+    .sort((a, b) => a.pageNumber - b.pageNumber);
 }
 
 export async function createNotebookPage(
@@ -328,17 +329,18 @@ export async function getNotebookFiles(
     getDocs(
       query(
         notebookFilesCollection(normalizedUserId),
-        where("notebookId", "==", normalizedNotebookId),
-        orderBy("uploadedAt", "desc")
+        where("notebookId", "==", normalizedNotebookId)
       )
     ),
     LOAD_MS,
     "Load notebook files"
   );
 
-  return snapshot.docs.map((fileDoc) =>
-    mapNotebookFileData(fileDoc.id, fileDoc.data() as Record<string, unknown>)
-  );
+  return snapshot.docs
+    .map((fileDoc) =>
+      mapNotebookFileData(fileDoc.id, fileDoc.data() as Record<string, unknown>)
+    )
+    .sort((a, b) => b.uploadedAt - a.uploadedAt);
 }
 
 export async function createNotebookFileMetadata(

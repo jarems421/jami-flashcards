@@ -21,6 +21,7 @@ import {
 import type { Source } from "@/lib/practice/sources";
 import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { getDeckHref } from "@/lib/app/routes";
+import { featureFlags } from "@/lib/app/feature-flags";
 import { removeUserTag, renameUserTag } from "@/services/study/tags";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
@@ -871,15 +872,17 @@ export default function CardsSearchPage() {
                       rows={6}
                       disabled={savingCardId === card.id}
                     />
-                    <CardBackAutocomplete
-                      front={editingFront}
-                      currentBack={editingBack}
-                      deckId={card.deckId}
-                      deckName={deckNamesById[card.deckId]}
-                      tags={editingTags}
-                      disabled={savingCardId === card.id}
-                      onApply={setEditingBack}
-                    />
+                    {featureFlags.enableFlashcardAi ? (
+                      <CardBackAutocomplete
+                        front={editingFront}
+                        currentBack={editingBack}
+                        deckId={card.deckId}
+                        deckName={deckNamesById[card.deckId]}
+                        tags={editingTags}
+                        disabled={savingCardId === card.id}
+                        onApply={setEditingBack}
+                      />
+                    ) : null}
                     <TagInput
                       tags={editingTags}
                       pendingTag={editingPendingTag}

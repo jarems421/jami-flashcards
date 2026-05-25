@@ -935,8 +935,16 @@ export default function PractisePage() {
                     ))
                   ) : (
                     <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary md:col-span-2">
-                      No folders yet. Create a study folder such as Biology or History, then keep
-                      notebooks, decks, sources and practice work together there.
+                      <p>
+                        No folders yet. Create a study folder, then keep notebooks, decks, sources
+                        and practice work together there.
+                      </p>
+                      <Link
+                        href="/dashboard/folders"
+                        className="mt-3 inline-flex min-h-[2.5rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 text-xs font-semibold text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)] transition hover:-translate-y-[1px]"
+                      >
+                        Create folder
+                      </Link>
                     </div>
                   )}
                 </div>

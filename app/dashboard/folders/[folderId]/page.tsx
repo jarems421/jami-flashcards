@@ -48,6 +48,14 @@ function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
 }
 
+function resultValue<T>(result: PromiseSettledResult<T>, fallback: T) {
+  return result.status === "fulfilled" ? result.value : fallback;
+}
+
+function resultError(result: PromiseSettledResult<unknown>) {
+  return result.status === "rejected" ? result.reason : null;
+}
+
 function getTopicNames(folder: StudyFolder, topics: Topic[]) {
   return folder.topicIds
     .map((topicId) => topics.find((topic) => topic.id === topicId)?.name)
@@ -92,15 +100,15 @@ export default function FolderDetailPage() {
     setLoading(true);
     try {
       const [
-        nextFolder,
-        nextTopics,
-        nextDecks,
-        nextSources,
-        nextQuestions,
-        nextNotebooks,
-        nextPracticeSets,
-        nextPastPapers,
-      ] = await Promise.all([
+        folderResult,
+        topicsResult,
+        decksResult,
+        sourcesResult,
+        questionsResult,
+        notebooksResult,
+        practiceSetsResult,
+        pastPapersResult,
+      ] = await Promise.allSettled([
         getStudyFolderById(user.uid, folderId),
         getActiveTopics(user.uid),
         getDecks(user.uid),
@@ -110,6 +118,41 @@ export default function FolderDetailPage() {
         getPracticeSetsForFolder(user.uid, folderId),
         getPastPapersForFolder(user.uid, folderId),
       ]);
+
+      if (folderResult.status === "rejected") {
+        throw folderResult.reason;
+      }
+
+      const optionalErrors = [
+        topicsResult,
+        decksResult,
+        sourcesResult,
+        questionsResult,
+        notebooksResult,
+        practiceSetsResult,
+        pastPapersResult,
+      ]
+        .map(resultError)
+        .filter(Boolean);
+
+      if (optionalErrors.length > 0) {
+        console.warn("Some folder sections could not load.", optionalErrors);
+        setFeedback({
+          type: "error",
+          message:
+            "This folder opened, but one section is still syncing. Refresh in a moment if something looks missing.",
+        });
+      }
+
+      const nextFolder = folderResult.value;
+      const nextTopics = resultValue<Topic[]>(topicsResult, []);
+      const nextDecks = resultValue<Deck[]>(decksResult, []);
+      const nextSources = resultValue<Source[]>(sourcesResult, []);
+      const nextQuestions = resultValue<Question[]>(questionsResult, []);
+      const nextNotebooks = resultValue<Notebook[]>(notebooksResult, []);
+      const nextPracticeSets = resultValue<PracticeSet[]>(practiceSetsResult, []);
+      const nextPastPapers = resultValue<PastPaper[]>(pastPapersResult, []);
+
       setFolder(nextFolder);
       setTopics(nextTopics);
       setDecks(nextDecks);

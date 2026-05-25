@@ -41,6 +41,7 @@ import { getActiveTopics } from "@/services/study/topics";
 import type { Topic } from "@/lib/practice/topics";
 import { db } from "@/services/firebase/client";
 import { getDeckStudyHref } from "@/lib/app/routes";
+import { featureFlags } from "@/lib/app/feature-flags";
 
 function sanitizeFileName(value: string) {
   const normalized = value.trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "");
@@ -791,15 +792,17 @@ export default function DeckDetailPageClient() {
                         rows={6}
                         disabled={savingCardId === card.id}
                       />
-                      <CardBackAutocomplete
-                        front={editingFront}
-                        currentBack={editingBack}
-                        deckId={deckId}
-                        deckName={deck.name}
-                        tags={editingTags}
-                        disabled={savingCardId === card.id}
-                        onApply={setEditingBack}
-                      />
+                      {featureFlags.enableFlashcardAi ? (
+                        <CardBackAutocomplete
+                          front={editingFront}
+                          currentBack={editingBack}
+                          deckId={deckId}
+                          deckName={deck.name}
+                          tags={editingTags}
+                          disabled={savingCardId === card.id}
+                          onApply={setEditingBack}
+                        />
+                      ) : null}
                       <TagInput
                         tags={editingTags}
                         pendingTag={editingPendingTag}
@@ -844,7 +847,7 @@ export default function DeckDetailPageClient() {
                               href="/dashboard/practise"
                               className="text-sm font-medium text-warm-accent underline-offset-4 hover:underline"
                             >
-                              Create topics in Practice first
+                              Create topics from your workspace first
                             </Link>
                           )}
                         </div>

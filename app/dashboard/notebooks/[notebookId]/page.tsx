@@ -159,11 +159,35 @@ export default function NotebookEditorPage() {
 
     setLoading(true);
     try {
-      const [nextNotebook, nextPages] = await Promise.all([
-        getNotebookById(user.uid, notebookId),
-        getNotebookPages(user.uid, notebookId),
-      ]);
-      const nextFiles = nextNotebook ? await getNotebookFiles(user.uid, notebookId) : [];
+      const nextNotebook = await getNotebookById(user.uid, notebookId);
+      let nextPages: NotebookPage[] = [];
+      let nextFiles: NotebookFile[] = [];
+
+      if (nextNotebook) {
+        const [pagesResult, filesResult] = await Promise.allSettled([
+          getNotebookPages(user.uid, notebookId),
+          getNotebookFiles(user.uid, notebookId),
+        ]);
+
+        if (pagesResult.status === "fulfilled") {
+          nextPages = pagesResult.value;
+        }
+        if (filesResult.status === "fulfilled") {
+          nextFiles = filesResult.value;
+        }
+        if (pagesResult.status === "rejected" || filesResult.status === "rejected") {
+          console.warn("Some notebook sections could not load.", {
+            pagesError: pagesResult.status === "rejected" ? pagesResult.reason : null,
+            filesError: filesResult.status === "rejected" ? filesResult.reason : null,
+          });
+          setFeedback({
+            type: "error",
+            message:
+              "This notebook opened, but pages or file details are still syncing. Refresh in a moment if something looks missing.",
+          });
+        }
+      }
+
       setNotebook(nextNotebook);
       setPages(nextPages);
       setFiles(nextFiles);

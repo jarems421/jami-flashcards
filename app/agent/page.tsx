@@ -145,12 +145,12 @@ export default function AgentPage() {
           </Link>
         }
         secondaryAction={
-          <Link
+          <a
             href="/llms.txt"
             className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/14 bg-white/[0.05] px-5 py-3 text-base font-medium text-white transition duration-fast hover:border-white/22 hover:bg-white/[0.08]"
           >
             Plain-text route map
-          </Link>
+          </a>
         }
       />
 
