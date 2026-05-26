@@ -564,9 +564,8 @@ export default function LibraryPage() {
       {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
       <Card tone="warm" padding="lg">
         <SectionHeader
-          eyebrow="Basic Library"
-          title="Turn sources into revision."
-          description="Save notes, references, or pasted material, then use Tutor and reviewed drafts to connect it back to Learn, Practice, Today, and Progress."
+          eyebrow="Library"
+          title="Sources"
         />
         <div className="mt-5">
           <MetricStrip items={metrics} variant="compact" />
@@ -591,7 +590,6 @@ export default function LibraryPage() {
               <SectionHeader
                 eyebrow="Add source"
                 title="Save study material"
-                description="Pasted text and manual notes work best right now. Links and files are saved as references; automatic reading comes later."
               />
               <Button type="button" variant="secondary" onClick={() => setShowAddSource(false)}>
                 Close
@@ -611,7 +609,6 @@ export default function LibraryPage() {
                     }`}
                   >
                     <div className="font-semibold">{item.label}</div>
-                    <div className="mt-1 text-xs text-text-muted">{item.helper}</div>
                   </button>
                 ))}
               </div>
@@ -641,7 +638,7 @@ export default function LibraryPage() {
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Topics</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {topics.length === 0 ? (
-                      <span className="text-sm text-text-secondary">Create topics from your workspace, then link them here.</span>
+                      <span className="text-sm text-text-secondary">No topics yet.</span>
                     ) : (
                       topics.map((topic) => {
                         const active = selectedTopicIds.includes(topic.id);
@@ -671,7 +668,7 @@ export default function LibraryPage() {
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Folders</div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     {folders.length === 0 ? (
-                      <span className="text-sm text-text-secondary">Create folders from Practice, then place this source inside one.</span>
+                      <span className="text-sm text-text-secondary">No folders yet.</span>
                     ) : (
                       folders.map((folder) => {
                         const active = selectedFolderIds.includes(folder.id);
@@ -711,7 +708,7 @@ export default function LibraryPage() {
           emoji="Library"
           eyebrow="No sources yet"
           title="Add notes, pasted text, links, or file references."
-          description="Library is where source material starts becoming Tutor context, flashcard drafts, practice drafts, and Progress evidence."
+          description="Save useful material here."
           action={
             <Button type="button" onClick={() => setShowAddSource(true)}>
               Add source
@@ -741,7 +738,7 @@ export default function LibraryPage() {
             padding="lg"
             className={`${mobileTab === "sources" ? "block" : "hidden"} lg:sticky lg:top-4 lg:block lg:self-start`}
           >
-            <SectionHeader eyebrow="Sources" title="Saved material" description="Choose a source to preview, link, or turn into drafts." />
+            <SectionHeader eyebrow="Sources" title="Saved material" />
             <div className="mt-5 space-y-3">
               {sources.map((source) => {
                 const active = source.id === selectedSource?.id;
@@ -798,12 +795,11 @@ export default function LibraryPage() {
                   <SectionHeader
                     eyebrow="Draft review"
                     title="Source-generated drafts"
-                    description="Approve useful drafts into Learn or Practice. Reject anything weak."
                   />
                   <div className="mt-5 space-y-3">
                     {sourceDrafts.length === 0 ? (
                       <p className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-                        No drafts waiting from this source. Generate a small batch, then review before adding.
+                        No drafts waiting.
                       </p>
                     ) : (
                       <>
@@ -880,7 +876,6 @@ export default function LibraryPage() {
               <SectionHeader
                 eyebrow="Actions"
                 title="Use this source"
-                description="Keep generation small: up to 8 flashcards or 5 notebook question drafts. Everything stays draft-only until you approve it."
               />
               {selectedSource ? (
                 <div className="mt-5 space-y-3">
@@ -908,7 +903,6 @@ export default function LibraryPage() {
               <SectionHeader
                 eyebrow="Topic links"
                 title="Connect to Progress"
-                description="Topics help Jami connect this source to flashcards, practice, Tutor, and weak areas."
               />
               <div className="mt-5 flex flex-wrap gap-2">
                 {selectedSource && topics.length > 0 ? (
@@ -931,7 +925,7 @@ export default function LibraryPage() {
                   })
                 ) : (
                   <p className="text-sm leading-6 text-text-secondary">
-                    Create topics from your workspace, then link sources here.
+                    No topics yet.
                   </p>
                 )}
               </div>
@@ -940,7 +934,6 @@ export default function LibraryPage() {
               <SectionHeader
                 eyebrow="Folder placement"
                 title="Place in folders"
-                description="Sources can live in folders and still remain available here in Library."
               />
               <div className="mt-5 flex flex-wrap gap-2">
                 {selectedSource && folders.length > 0 ? (
@@ -963,7 +956,7 @@ export default function LibraryPage() {
                   })
                 ) : (
                   <p className="text-sm leading-6 text-text-secondary">
-                    Create folders from Practice, then choose where this source belongs.
+                    No folders yet.
                   </p>
                 )}
               </div>
@@ -973,7 +966,6 @@ export default function LibraryPage() {
                 <SectionHeader
                   eyebrow="Source Tutor"
                   title="Tutor transcript"
-                  description="Context stays attached to this source."
                 />
                 {tutorMessages.length > 0 ? (
                   <Button
@@ -989,7 +981,7 @@ export default function LibraryPage() {
                 <div className="mt-5 max-h-80 space-y-3 overflow-y-auto pr-1">
                   {tutorMessages.length === 0 ? (
                     <p className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-                      Ask Tutor to explain, summarise, or find revision ideas in the selected source.
+                      No Tutor messages yet.
                     </p>
                   ) : (
                     tutorMessages.map((message, index) => (

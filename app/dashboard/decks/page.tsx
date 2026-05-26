@@ -224,7 +224,7 @@ export default function DecksPage() {
             title="Decks are groups of flashcards."
             description="Create a deck first. Then open it to add cards, edit the set, or jump into a focused study session."
             action={
-              <div className="flex w-full flex-col gap-3 sm:flex-row">
+              <div className="grid w-full gap-3 sm:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.55fr)] lg:grid-cols-[minmax(18rem,1fr)_minmax(12rem,0.55fr)_auto]">
                 <Input
                   ref={nameInputRef}
                   placeholder="New deck name"
@@ -236,12 +236,10 @@ export default function DecksPage() {
                       void handleCreate();
                     }
                   }}
-                  containerClassName="w-full"
+                  containerClassName="min-w-0"
+                  className="min-h-[3.25rem] text-base leading-6"
                 />
-                <Button disabled={isDemoUser || isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="sm:min-w-[9rem]">
-                  {isCreatingDeck ? "Creating..." : "Create deck"}
-                </Button>
-                <label className="block min-w-[12rem]">
+                <label className="block min-w-0">
                   <span className="sr-only">Add to folder</span>
                   <select
                     value={createFolderId}
@@ -256,6 +254,9 @@ export default function DecksPage() {
                     ))}
                   </select>
                 </label>
+                <Button disabled={isDemoUser || isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="min-h-[3.25rem] sm:col-span-2 lg:col-span-1 lg:min-w-[9rem]">
+                  {isCreatingDeck ? "Creating..." : "Create deck"}
+                </Button>
               </div>
             }
           />
@@ -396,8 +397,8 @@ export default function DecksPage() {
                       ) : (
                         <Link href={getDeckHref(deck.id)} aria-label={`Open ${deck.name}`} className="group flex items-center gap-3 transition duration-fast hover:opacity-90">
                           <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} />
-                          <div className="min-w-0">
-                            <div className="truncate font-medium">{deck.name}</div>
+                          <div className="min-w-0 flex-1">
+                            <div className="line-clamp-2 font-medium leading-5 [overflow-wrap:anywhere]">{deck.name}</div>
                             <div className="text-sm text-text-muted">{counts.total} cards | {counts.due} currently due</div>
                             <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-white/90">
                               <span>Open deck</span>

@@ -30,7 +30,7 @@ import type { Source, SourceType } from "@/lib/practice/sources";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
-import { createDeck, getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
+import { getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
 import { archiveStudyFolder, getStudyFolderById, updateStudyFolder } from "@/services/study/folders";
 import {
   createNotebook,
@@ -72,19 +72,18 @@ export default function FolderDetailPage() {
   const [notebookTitle, setNotebookTitle] = useState("");
   const [notebookTemplate, setNotebookTemplate] = useState<NotebookTemplate>("blank");
   const [notebookColor, setNotebookColor] = useState<ObjectColorId>("violet");
-  const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("book");
+  const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
   const [notebookFile, setNotebookFile] = useState<File | null>(null);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
   const [activeTab, setActiveTab] = useState<FolderTab>("notebooks");
   const [showEditFolder, setShowEditFolder] = useState(false);
   const [editFolderName, setEditFolderName] = useState("");
   const [editFolderColor, setEditFolderColor] = useState<ObjectColorId>("sky");
-  const [editFolderIcon, setEditFolderIcon] = useState<ObjectIconId>("book");
+  const [editFolderIcon, setEditFolderIcon] = useState<ObjectIconId>("none");
   const [savingFolder, setSavingFolder] = useState(false);
   const [showDeckPicker, setShowDeckPicker] = useState(false);
   const [deckSearch, setDeckSearch] = useState("");
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
-  const [newDeckName, setNewDeckName] = useState("");
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [sourceSearch, setSourceSearch] = useState("");
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
@@ -328,24 +327,6 @@ export default function FolderDetailPage() {
       setFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "Could not add decks.",
-      });
-    } finally {
-      setBusyAssetId(null);
-    }
-  };
-
-  const handleCreateFolderDeck = async () => {
-    if (!user?.uid || !folder || !newDeckName.trim()) return;
-    setBusyAssetId("new-deck");
-    try {
-      const deck = await createDeck(user.uid, newDeckName, { folderIds: [folder.id] });
-      setDecks((current) => [deck, ...current]);
-      setNewDeckName("");
-      setFeedback({ type: "success", message: `${deck.name} created in this folder.` });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not create deck.",
       });
     } finally {
       setBusyAssetId(null);
@@ -614,13 +595,12 @@ export default function FolderDetailPage() {
             <SectionHeader
               eyebrow="Notebook template"
               title="Add a notebook to this folder."
-              description="Question sets, papers, drills, and blank working books all start as notebooks. AI questions are planned, but the workspace comes first."
             />
             <div className="mt-5 grid gap-3 md:grid-cols-3">
               {[
-                ["blank", "Blank notebook", "For free working, notes, and questions you write yourself."],
-                ["uploaded_file", "Uploaded file / paper", "Upload a PDF or image, then work on notebook pages beside it."],
-                ["ai_questions", "AI-created questions", "Placeholder for future question notebooks."],
+                ["blank", "Blank notebook", "Free working, notes, and questions."],
+                ["uploaded_file", "Uploaded file / paper", "Save a PDF or image reference."],
+                ["ai_questions", "AI-created questions", "Coming later."],
               ].map(([value, title, detail]) => (
                 <button
                   key={value}
@@ -630,10 +610,10 @@ export default function FolderDetailPage() {
                     setNotebookTemplate(template);
                     if (template === "uploaded_file") {
                       setNotebookColor("sky");
-                      setNotebookIcon("file");
+                      setNotebookIcon("none");
                     } else if (template === "ai_questions") {
                       setNotebookColor("indigo");
-                      setNotebookIcon("star");
+                      setNotebookIcon("none");
                     }
                   }}
                   className={`rounded-[1.25rem] border p-4 text-left transition ${
@@ -692,7 +672,7 @@ export default function FolderDetailPage() {
                     setNotebookTitle("");
                     setNotebookTemplate("blank");
                     setNotebookColor("violet");
-                    setNotebookIcon("book");
+                    setNotebookIcon("none");
                     setNotebookFile(null);
                   }}
                 >
@@ -709,12 +689,12 @@ export default function FolderDetailPage() {
             </div>
             {notebookTemplate === "uploaded_file" ? (
               <p className="mt-3 text-sm leading-6 text-text-muted">
-                File saved to your notebook. Full paper annotation, OCR, and automatic reading come later.
+                File saved. Annotation and OCR come later.
               </p>
             ) : null}
             {notebookTemplate === "ai_questions" ? (
               <p className="mt-3 text-sm leading-6 text-text-muted">
-                This template is intentionally a placeholder in Phase 6 so the notebook workflow stays stable before AI generation moves in.
+                AI question notebooks are not active yet.
               </p>
             ) : null}
           </Card>
@@ -725,8 +705,7 @@ export default function FolderDetailPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <SectionHeader
                 eyebrow="Edit folder"
-                title="Rename and restyle this folder."
-                description="Archiving removes the folder view. It does not delete decks or sources inside it."
+                title="Edit folder"
               />
               <Button type="button" variant="secondary" onClick={() => setShowEditFolder(false)}>
                 Close
@@ -835,20 +814,6 @@ export default function FolderDetailPage() {
                 <Button type="button" variant="secondary" onClick={() => setShowDeckPicker((value) => !value)}>
                   Add existing deck
                 </Button>
-                <Input
-                  aria-label="New deck name"
-                  placeholder="New deck name"
-                  value={newDeckName}
-                  onChange={(event) => setNewDeckName(event.target.value)}
-                  containerClassName="min-w-[13rem]"
-                />
-                <Button
-                  type="button"
-                  disabled={!newDeckName.trim() || busyAssetId === "new-deck"}
-                  onClick={() => void handleCreateFolderDeck()}
-                >
-                  {busyAssetId === "new-deck" ? "Creating..." : "Create deck"}
-                </Button>
               </div>
             </div>
             {showDeckPicker ? (
@@ -908,7 +873,7 @@ export default function FolderDetailPage() {
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">
-                          <div className="truncate text-sm font-semibold text-text-primary">{deck.name}</div>
+                          <div className="line-clamp-2 text-sm font-semibold leading-5 text-text-primary [overflow-wrap:anywhere]">{deck.name}</div>
                           <div className="mt-1 text-xs text-text-muted">Flashcard deck</div>
                         </div>
                         <Button
@@ -927,7 +892,7 @@ export default function FolderDetailPage() {
               ) : (
                 <EmptyState
                   title="No decks in this folder yet"
-                  description="Add an existing deck or create a new one."
+                  description="Add an existing deck."
                 />
               )}
             </div>
@@ -1059,7 +1024,7 @@ export default function FolderDetailPage() {
               ) : (
                 <EmptyState
                   title="No sources in this folder yet"
-                  description="Add an existing Library source or create one here."
+                  description="Add or create a source."
                 />
               )}
             </div>

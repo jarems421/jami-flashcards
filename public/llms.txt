@@ -36,7 +36,7 @@ Suggested click test:
 6. Type on the notebook page, save, add a page, and switch pages.
 7. Resize to phone width and confirm "Notebook editing works best on iPad or desktop" appears where notebook editing is shown.
 8. Open Folders and confirm the folder detail view uses Notebooks, Decks, and Sources tabs.
-9. In a folder, confirm the Decks tab only shows folder decks and uses add/create local simulations.
+9. In a folder, confirm the Decks tab only shows folder decks and only adds existing global decks.
 10. In a folder, confirm the Sources tab only shows folder sources and uses add/create local simulations.
 11. Open Library and inspect seeded source actions.
 10. Open Account and confirm no private data was accessed.

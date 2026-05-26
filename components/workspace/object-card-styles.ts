@@ -9,6 +9,7 @@ export type ObjectColorId =
   | "indigo";
 
 export type ObjectIconId =
+  | "none"
   | "book"
   | "leaf"
   | "globe"
@@ -114,15 +115,13 @@ export const OBJECT_COLOR_PRESETS: ObjectColorPreset[] = [
 ];
 
 export const OBJECT_ICON_PRESETS: Array<{ id: ObjectIconId; label: string }> = [
+  { id: "none", label: "None" },
   { id: "book", label: "Book" },
   { id: "leaf", label: "Leaf" },
   { id: "globe", label: "Globe" },
-  { id: "code", label: "Code" },
   { id: "pen", label: "Pen" },
-  { id: "file", label: "File" },
   { id: "lab", label: "Lab" },
   { id: "star", label: "Star" },
-  { id: "message", label: "Speech" },
 ];
 
 export function normalizeObjectColor(value?: string | null): ObjectColorId {
@@ -134,7 +133,7 @@ export function normalizeObjectColor(value?: string | null): ObjectColorId {
 export function normalizeObjectIcon(value?: string | null): ObjectIconId {
   return OBJECT_ICON_PRESETS.some((preset) => preset.id === value)
     ? (value as ObjectIconId)
-    : "book";
+    : "none";
 }
 
 export function getObjectColorPreset(value?: string | null) {

@@ -75,7 +75,6 @@ describe("card autocomplete helpers", () => {
         front: "Solve x^2 - 4 = 0",
         deckName: "Algebra",
         tags: [],
-        style: "auto",
       })
     ).toBe("maths");
 
@@ -84,7 +83,6 @@ describe("card autocomplete helpers", () => {
         front: "What is photosynthesis?",
         deckName: "Biology",
         tags: [],
-        style: "auto",
       })
     ).toBe("science");
   });

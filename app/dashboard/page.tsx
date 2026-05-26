@@ -97,16 +97,12 @@ function GettingStartedChecklist({
       <Card tone="warm" padding="lg" className="animate-reward-pulse">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
               Getting started complete
             </div>
             <div className="mt-2 text-xl font-semibold text-white">
-              The starter loop is ready.
+              You are ready.
             </div>
-            <p className="mt-2 text-sm leading-6 text-text-secondary">
-              Jami will keep the core loop visible above, but this setup checklist can step out of
-              the way now.
-            </p>
           </div>
           <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow">
             <span className="h-8 w-8 rounded-full bg-warm-accent shadow-[0_0_28px_rgba(255,214,246,0.35)]" />
@@ -120,9 +116,7 @@ function GettingStartedChecklist({
     <Card padding="lg">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SectionHeader
-          eyebrow="Getting started"
-          title="Set up the first learning loop."
-          description="Finish these once, then this card disappears and the dashboard stays focused on what to do next."
+          title="Getting started"
         />
         <button
           type="button"
@@ -151,7 +145,6 @@ function GettingStartedChecklist({
               />
               <span className="min-w-0">
                 <span className="block text-sm font-semibold text-white">{item.label}</span>
-                <span className="mt-0.5 block text-xs leading-5 text-text-muted">{item.detail}</span>
               </span>
             </Link>
           ))}
@@ -238,7 +231,7 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
       ? {
           label: "Continue notebook",
           title: plan.workspace.recentNotebook.title,
-          detail: "Pick up your latest working page.",
+          detail: "",
           href: plan.workspace.recentNotebook.href,
         }
       : null,
@@ -246,7 +239,7 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
       ? {
           label: "Review draft",
           title: "Flashcard draft waiting",
-          detail: "Review it before it joins your deck.",
+          detail: "",
           href: plan.drafts[0].href,
         }
       : null,
@@ -254,7 +247,7 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
       ? {
           label: "Practice topic",
           title: plan.weakTopics[0].name,
-          detail: plan.weakTopics[0].reason,
+          detail: "",
           href: plan.weakTopics[0].href,
         }
       : null,
@@ -262,7 +255,7 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
       ? {
           label: "Open goal",
           title: "Study target",
-          detail: plan.goalSummary.detail,
+          detail: "",
           href: plan.goalSummary.href,
         }
       : null,
@@ -286,45 +279,11 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
           >
             <div className="text-sm font-semibold text-white">{action.label}</div>
             <div className="mt-1 line-clamp-1 text-xs font-medium text-text-secondary">{action.title}</div>
-            <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.detail}</p>
+            {action.detail ? (
+              <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.detail}</p>
+            ) : null}
           </Link>
         ))}
-      </div>
-    </Card>
-  );
-}
-
-function WorkspaceSnapshotCard({ plan }: { plan: TodayPlan }) {
-  const hasWorkspace =
-    plan.workspace.folderCount > 0 ||
-    plan.workspace.notebookCount > 0 ||
-    plan.workspace.sourceCount > 0;
-
-  if (!hasWorkspace) return null;
-
-  return (
-    <Card padding="lg">
-      <SectionHeader
-        eyebrow="Workspace"
-        title={
-          plan.workspace.recentNotebook
-            ? `Continue ${plan.workspace.recentNotebook.title}`
-            : "Study folders are ready"
-        }
-        description="Folders keep notebooks, decks, sources, and practice work together without replacing the fast global pages."
-      />
-      <div className="mt-5 grid gap-3 sm:grid-cols-4">
-        <MiniMetric label="Folders" value={plan.workspace.folderCount} />
-        <MiniMetric label="Notebooks" value={plan.workspace.notebookCount} />
-        <MiniMetric label="Sources" value={plan.workspace.sourceCount} />
-      </div>
-      <div className="mt-5 flex flex-wrap gap-2">
-        {plan.workspace.recentNotebook ? (
-          <ActionPill href={plan.workspace.recentNotebook.href}>Continue notebook</ActionPill>
-        ) : null}
-        <ActionPill href="/dashboard/folders" variant="secondary">
-          Open folders
-        </ActionPill>
       </div>
     </Card>
   );
@@ -336,11 +295,6 @@ function TodayReviewCard({ plan }: { plan: TodayPlan }) {
       <SectionHeader
         eyebrow="Today's review"
         title={plan.dueCards.count > 0 ? `${plan.dueCards.count} cards due` : "Daily Review is clear"}
-        description={
-          plan.dueCards.primaryDeckName
-            ? `Most due cards are from ${plan.dueCards.primaryDeckName}.`
-            : "Start here when cards become due."
-        }
       />
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <MiniMetric label="Due cards" value={plan.dueCards.count} />
@@ -362,7 +316,6 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
       <SectionHeader
         eyebrow="Flashcard drafts"
         title={plan.drafts.length > 0 ? `${plan.drafts.length} draft${plan.drafts.length === 1 ? "" : "s"} to review` : "No drafts waiting"}
-        description="Tutor drafts stay separate until you approve or add them to a deck."
       />
       <div className="mt-5 space-y-3">
         {plan.drafts.length > 0 ? (
@@ -387,7 +340,7 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
           ))
         ) : (
           <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-            Source-generated and notebook-linked flashcard drafts will appear here for review.
+            No drafts waiting.
           </p>
         )}
       </div>
@@ -404,7 +357,6 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
       <SectionHeader
         eyebrow="Weak-topic practice"
         title="Topics to repair"
-        description="Progress feeds Today with the weakest concepts."
       />
       <div className="mt-5 space-y-3">
         {plan.weakTopics.length > 0 ? (
@@ -428,7 +380,7 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
           ))
         ) : (
           <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-            Weak topics appear after you link cards, notebooks, or sources to topics.
+            Weak topics appear after a little study history.
           </p>
         )}
       </div>
@@ -442,7 +394,6 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
       <SectionHeader
         eyebrow="Goals"
         title={plan.goalSummary ? "Goal in motion" : "No urgent goal"}
-        description="Goals stay light here so Today remains action-first."
       />
       {plan.goalSummary ? (
         <div className="mt-5">
@@ -461,7 +412,7 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
         </div>
       ) : (
         <p className="mt-5 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-          Add a goal when you want a target, but Today can still guide the next study step without one.
+          Add a goal when you want a target.
         </p>
       )}
     </Card>
@@ -471,24 +422,17 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
 function HowJamiWorksCard({ compact }: { compact: boolean }) {
   const [open, setOpen] = useState(!compact);
   const steps = [
-    ["1", "Learn", "Review flashcards so facts and definitions stay available."],
-    ["2", "Practice", "Open notebooks and work naturally on pages."],
-    ["3", "Tutor", "Ask for hint-first help when you get stuck."],
-    ["4", "Draft", "Review generated drafts before they enter Learn or notebooks."],
-    ["5", "Progress", "Check weak topics and choose the next repair action."],
+    ["1", "Learn"],
+    ["2", "Practice"],
+    ["3", "Drafts"],
+    ["4", "Progress"],
   ];
 
   return (
     <Card padding={compact ? "md" : "lg"}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <SectionHeader
-          eyebrow="How Jami works"
-          title={compact ? "Need a reminder?" : "Learn, practise, repair, then track what is improving."}
-          description={
-            compact
-              ? "The loop is still here, but Today is focused on your next action."
-              : "Jami works best when each study action feeds the next one."
-          }
+          title="How Jami works"
         />
         <button
           type="button"
@@ -500,20 +444,17 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
         </button>
       </div>
       {!open ? null : (
-      <div className="mt-5 space-y-3">
-        {steps.map(([step, title, detail]) => (
+      <div className="mt-5 grid gap-2 sm:grid-cols-4">
+        {steps.map(([step, title]) => (
           <div
             key={step}
-            className="relative rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-4 sm:flex sm:items-center sm:gap-4"
+            className="relative rounded-[1.1rem] border border-white/[0.09] bg-white/[0.035] p-3"
           >
-            <div className="flex items-start gap-3 sm:items-center">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-xs font-semibold text-warm-accent">
                 {step}
               </div>
-              <div>
-                <div className="text-base font-semibold text-white">{title}</div>
-                <p className="mt-1 text-sm leading-6 text-text-secondary">{detail}</p>
-              </div>
+              <div className="text-sm font-semibold text-white">{title}</div>
             </div>
           </div>
         ))}
@@ -799,18 +740,11 @@ export default function DashboardHome() {
 
         <PageHero
           className="animate-slide-up"
-          eyebrow={isLoading ? "Getting ready" : "Daily command centre"}
-          title={isLoading ? "Getting today ready." : "What should I do next today?"}
+          eyebrow={isLoading ? "Loading" : "Today"}
+          title={isLoading ? "Getting today ready." : "Your next study step"}
           description={
             <>
-              <span className="mb-3 block text-sm text-text-secondary">
-                {inAppUsername
-                  ? `Welcome back, ${inAppUsername}.`
-                  : "Welcome back. Here is today at a glance."}
-              </span>
-              {isLoading
-                ? "Jami is loading reviews, notebooks, drafts, and goals."
-                : "Today pulls the learning loop into one action-first study plan."}
+              {inAppUsername ? `Welcome back, ${inAppUsername}.` : "Welcome back."}
             </>
           }
           aside={
@@ -833,7 +767,6 @@ export default function DashboardHome() {
             <SectionHeader
               eyebrow="Recommended next action"
               title="Building your study plan."
-              description="Today waits for real data before showing counts or priorities."
             />
           </Card>
         ) : (
@@ -845,7 +778,6 @@ export default function DashboardHome() {
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
               <TodayReviewCard plan={todayPlan} />
               <DraftQueueCard plan={todayPlan} />
-              <WorkspaceSnapshotCard plan={todayPlan} />
               <WeakTopicsCard plan={todayPlan} />
               <GoalSnapshotCard plan={todayPlan} />
             </div>

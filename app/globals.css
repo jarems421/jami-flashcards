@@ -36,8 +36,8 @@
 
     /* Text */
     --color-text-primary: #fff8ff;
-    --color-text-secondary: #e7edf8;
-    --color-text-muted: #aeb8cd;
+    --color-text-secondary: #f1f5ff;
+    --color-text-muted: #c8d1e3;
 
     /* Border */
     --color-border: rgba(214, 193, 244, 0.14);
@@ -166,8 +166,8 @@
     --color-warm-border: rgba(199, 168, 255, 0.28);
     --color-warm-accent: #d8c2ff;
     --color-text-primary: #fff9ff;
-    --color-text-secondary: #eee4ff;
-    --color-text-muted: #b9a8cf;
+    --color-text-secondary: #f8f2ff;
+    --color-text-muted: #d4c6e7;
     --color-border: rgba(214, 193, 244, 0.15);
     --color-border-strong: rgba(232, 217, 255, 0.24);
     --app-background: linear-gradient(180deg, #0a0510 0%, #160a23 46%, #0f0718 100%);
@@ -221,8 +221,8 @@
     --color-warm-border: rgba(116, 100, 207, 0.22);
     --color-warm-accent: #5b4ebe;
     --color-text-primary: #101827;
-    --color-text-secondary: #273244;
-    --color-text-muted: #596579;
+    --color-text-secondary: #202a3a;
+    --color-text-muted: #465468;
     --color-border: rgba(20, 28, 42, 0.14);
     --color-border-strong: rgba(20, 28, 42, 0.23);
     --app-background: linear-gradient(180deg, #fffdfd 0%, #f8f7fb 48%, #eef1f7 100%);
@@ -276,8 +276,8 @@
     --color-warm-border: rgba(218, 218, 218, 0.22);
     --color-warm-accent: #dedede;
     --color-text-primary: #fafafa;
-    --color-text-secondary: #e5e5e5;
-    --color-text-muted: #a3a3a3;
+    --color-text-secondary: #eeeeee;
+    --color-text-muted: #c7c7c7;
     --color-border: rgba(255, 255, 255, 0.12);
     --color-border-strong: rgba(255, 255, 255, 0.2);
     --app-background: linear-gradient(180deg, #252525 0%, #171717 48%, #0e0e0e 100%);
@@ -415,12 +415,30 @@
 body.constellation-background-enabled {
   background: #060311;
 
-  /* Re-map surface tokens so every bg-surface-* utility becomes translucent */
-  --color-surface-base: transparent;
-  --color-surface-raised: rgba(18, 10, 38, 0.1);
-  --color-surface-overlay: rgba(18, 10, 38, 0.14);
-  --color-surface-panel: rgba(18, 10, 38, 0.16);
-  --color-surface-panel-strong: rgba(18, 10, 38, 0.22);
+  /* Neutral, high-contrast surfaces over the star field. */
+  --color-surface-base: #060311;
+  --color-surface-raised: rgba(12, 9, 24, 0.86);
+  --color-surface-overlay: rgba(18, 12, 32, 0.9);
+  --color-surface-panel: rgba(12, 9, 24, 0.88);
+  --color-surface-panel-strong: rgba(8, 6, 18, 0.94);
+  --color-glass-subtle: rgba(255, 255, 255, 0.08);
+  --color-glass-medium: rgba(255, 255, 255, 0.12);
+  --color-glass-strong: rgba(255, 255, 255, 0.18);
+  --color-text-primary: #fffaff;
+  --color-text-secondary: #f2edfb;
+  --color-text-muted: #d0c8dd;
+  --color-border: rgba(238, 225, 255, 0.18);
+  --color-border-strong: rgba(238, 225, 255, 0.28);
+  --color-warm-accent: #eadbff;
+  --color-warm-border: rgba(234, 219, 255, 0.32);
+  --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
+  --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.11));
+  --button-secondary-border: rgba(255, 255, 255, 0.2);
+  --button-secondary-border-hover: rgba(255, 255, 255, 0.3);
+  --button-surface-bg: linear-gradient(180deg, rgba(21, 16, 38, 0.94), rgba(9, 7, 20, 0.96));
+  --button-surface-bg-hover: linear-gradient(180deg, rgba(28, 21, 48, 0.96), rgba(13, 10, 25, 0.98));
+  --button-surface-border: rgba(255, 255, 255, 0.18);
+  --button-surface-border-hover: rgba(255, 255, 255, 0.28);
 }
 
 body.constellation-background-enabled [data-app-surface="true"] {
@@ -429,20 +447,22 @@ body.constellation-background-enabled [data-app-surface="true"] {
 }
 
 body.constellation-background-enabled .app-panel {
-  background-color: rgba(18, 10, 38, 0.14);
+  background-color: rgba(12, 9, 24, 0.88);
   background-image: none;
+  border-color: rgba(238, 225, 255, 0.24);
   backdrop-filter: none;
 }
 
 body.constellation-background-enabled .app-panel-warm {
-  background-color: rgba(34, 18, 56, 0.16);
+  background-color: rgba(15, 10, 30, 0.9);
   background-image: none;
+  border-color: rgba(234, 219, 255, 0.28);
   backdrop-filter: none;
 }
 
 body.constellation-background-enabled .bg-surface-panel,
 body.constellation-background-enabled .bg-surface-panel-strong {
-  background-color: rgba(18, 10, 38, 0.16) !important;
+  background-color: rgba(12, 9, 24, 0.9) !important;
   background-image: none !important;
   backdrop-filter: none !important;
 }
@@ -458,9 +478,9 @@ body.constellation-background-enabled .study-flashcard-face-front {
   background:
     linear-gradient(
       180deg,
-      rgba(14, 8, 29, 0.3) 0%,
-      rgba(10, 6, 22, 0.22) 55%,
-      rgba(8, 4, 18, 0.18) 100%
+      rgba(16, 10, 32, 0.92) 0%,
+      rgba(10, 7, 23, 0.94) 55%,
+      rgba(8, 5, 18, 0.96) 100%
     );
 }
 
@@ -468,22 +488,22 @@ body.constellation-background-enabled .study-flashcard-face-back {
   background:
     linear-gradient(
       180deg,
-      rgba(18, 10, 36, 0.34) 0%,
-      rgba(13, 8, 28, 0.24) 55%,
-      rgba(9, 5, 20, 0.2) 100%
+      rgba(20, 12, 38, 0.92) 0%,
+      rgba(13, 8, 28, 0.94) 55%,
+      rgba(9, 5, 20, 0.96) 100%
     );
 }
 
 body.constellation-background-enabled .app-topbar {
-  background: rgba(18, 10, 38, 0.08) !important;
+  background: rgba(10, 8, 22, 0.86) !important;
   background-image: none !important;
   backdrop-filter: blur(12px) !important;
   -webkit-backdrop-filter: blur(12px) !important;
-  border-color: rgba(255, 255, 255, 0.1) !important;
+  border-color: rgba(238, 225, 255, 0.18) !important;
 }
 
 body.constellation-background-enabled .app-nav {
-  background: rgba(18, 10, 38, 0.10) !important;
+  background: rgba(10, 8, 22, 0.88) !important;
   background-image: none !important;
   backdrop-filter: none !important;
 }
@@ -498,7 +518,7 @@ body.constellation-background-enabled .backdrop-blur-2xl {
 }
 
 body.constellation-background-enabled::before {
-  opacity: 0.02;
+  opacity: 0.2;
 }
 
 /* Constellation keyframes */

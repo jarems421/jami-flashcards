@@ -398,8 +398,8 @@ export default function CardCreationPanel({
     <section className="app-panel p-4 sm:p-5">
       <SectionHeader
         eyebrow="Add cards"
-        title="Add one flashcard."
-        description="Default flow: choose deck, write front, write back, optionally add a topic/tag, then add the card."
+        title="Create a flashcard."
+        description="Write the prompt and answer, then add any useful topic labels."
         action={
           <div className="flex flex-wrap gap-2">
             <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
@@ -416,15 +416,17 @@ export default function CardCreationPanel({
 
       {mode === "single" ? (
         <div className="mt-5 space-y-4 animate-fade-in">
-          <div>
-            <div className="mb-2 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-              Step 1: Choose deck
+          {!deckIsFixed ? (
+            <div>
+              <div className="mb-2 text-sm font-medium tracking-[0.01em] text-text-secondary">
+                Deck
+              </div>
+              {renderDeckSelect(singleDeckId, setSingleDeckId, addingSingleCard)}
             </div>
-            {renderDeckSelect(singleDeckId, setSingleDeckId, addingSingleCard)}
-          </div>
+          ) : null}
           <div className="grid gap-4 lg:grid-cols-2">
             <Input
-              label="Step 2: Front"
+              label="Front"
               placeholder="Question, prompt, or cue"
               value={singleFront}
               onChange={(event) => setSingleFront(event.target.value)}
@@ -433,7 +435,7 @@ export default function CardCreationPanel({
             />
             <div className="space-y-3">
               <CardBackEditor
-                label="Step 3: Back"
+                label="Back"
                 placeholder="Answer or explanation"
                 value={singleBack}
                 onChange={setSingleBack}
@@ -471,14 +473,21 @@ export default function CardCreationPanel({
             size="lg"
             className="w-full sm:w-auto"
           >
-            {addingSingleCard ? "Adding..." : "Step 5: Add card"}
+            {addingSingleCard ? "Adding..." : "Add card"}
           </Button>
         </div>
       ) : null}
 
       {mode === "list" ? (
         <div className="mt-5 space-y-4 animate-fade-in">
-          {renderDeckSelect(listDeckId, setListDeckId, addingListCards)}
+          {!deckIsFixed ? (
+            <div>
+              <div className="mb-2 text-sm font-medium tracking-[0.01em] text-text-secondary">
+                Deck
+              </div>
+              {renderDeckSelect(listDeckId, setListDeckId, addingListCards)}
+            </div>
+          ) : null}
           <Textarea
             label="Cards to add"
             placeholder={"Capital of Japan | Tokyo\nPhotosynthesis - Plants turn light into chemical energy\nMitosis: Cell division that creates two identical cells\n\nOsmosis\nWater moving through a membrane"}

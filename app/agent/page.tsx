@@ -71,7 +71,7 @@ const testFlow = [
   "Go to Practice and confirm Continue working plus Folders are the main entry points.",
   "Open a notebook, type on a page, save, add a page, and switch pages.",
   "Open a folder and confirm the detail view is tabbed: Notebooks, Decks, Sources.",
-  "In the folder Decks tab, confirm only folder decks appear, then use Add deck/Create deck local simulations.",
+  "In the folder Decks tab, confirm only folder decks appear and decks can only be added from existing global decks.",
   "In the folder Sources tab, confirm only folder sources appear, then use Add source/Create source local simulations.",
   "Go to Progress and confirm cards, drafts, sources, folders, and notebook activity are shown without old attempt data.",
   "Go to Library and inspect a source; source actions in public mode remain local-only.",

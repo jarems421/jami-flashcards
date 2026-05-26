@@ -48,7 +48,7 @@ export default function FoldersPage() {
   const [description, setDescription] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [folderColor, setFolderColor] = useState<ObjectColorId>("sky");
-  const [folderIcon, setFolderIcon] = useState<ObjectIconId>("book");
+  const [folderIcon, setFolderIcon] = useState<ObjectIconId>("none");
   const [saving, setSaving] = useState(false);
 
   const loadFolders = useCallback(async () => {
@@ -100,7 +100,7 @@ export default function FoldersPage() {
     setDescription("");
     setSelectedTopicIds([]);
     setFolderColor("sky");
-    setFolderIcon("book");
+    setFolderIcon("none");
   };
 
   const handleCreateFolder = async () => {
@@ -194,9 +194,6 @@ export default function FoldersPage() {
                 <h2 className="mt-2 text-xl font-semibold text-white">
                   Create a study space
                 </h2>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-                  Start broad. Use topics for concepts inside the folder, such as enzymes, essay evidence, verb endings, or algorithms.
-                </p>
               </div>
               <Button type="button" variant="ghost" onClick={() => setShowCreate(false)}>
                 Close
@@ -221,7 +218,7 @@ export default function FoldersPage() {
                   label="What belongs here?"
                   rows={4}
                   value={description}
-                  placeholder="Flashcards, notebooks, lecture sources, and practice work for this study area."
+                  placeholder="Optional notes for this folder."
                   onChange={(event) => setDescription(event.target.value)}
                 />
                 <ObjectStylePicker
@@ -235,9 +232,6 @@ export default function FoldersPage() {
               </div>
               <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-4">
                 <div className="text-sm font-semibold text-white">Linked topics</div>
-                <p className="mt-2 text-sm leading-6 text-text-secondary">
-                  Optional. Topics are smaller concepts that can appear inside folders.
-                </p>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {topics.length > 0 ? (
                     topics.map((topic) => {
@@ -259,7 +253,7 @@ export default function FoldersPage() {
                     })
                   ) : (
                     <p className="text-sm leading-6 text-text-muted">
-                      No topics yet. You can add topics later from Practice or Library.
+                      No topics yet.
                     </p>
                   )}
                 </div>
@@ -303,7 +297,7 @@ export default function FoldersPage() {
           <EmptyState
             emoji="Folder"
             title="Create your first study folder"
-            description="Start with a broad area like Biology, History, Spanish, or Computer Science. Decks, sources, notebooks, and recent work will live together there."
+            description="Start with a broad subject, module, exam, or project."
             action={
               <Button type="button" onClick={() => setShowCreate(true)}>
                 Create folder

@@ -156,7 +156,7 @@ export default function NotebookEditorPage() {
   const [showNotebookSettings, setShowNotebookSettings] = useState(false);
   const [notebookTitle, setNotebookTitle] = useState("");
   const [notebookColor, setNotebookColor] = useState<ObjectColorId>("sky");
-  const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("book");
+  const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
   const [savingNotebookSettings, setSavingNotebookSettings] = useState(false);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
 

@@ -6,10 +6,7 @@ import { generateGeminiText, isGeminiTimeoutError } from "@/lib/ai/gemini";
 import {
   cleanGeneratedCardBack,
   detectCardBackSubject,
-  getStylePrompt,
   getSubjectPrompt,
-  isCardBackAutocompleteStyle,
-  type CardBackAutocompleteStyle,
 } from "@/lib/ai/card-autocomplete";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { hasDemoClaim } from "@/lib/demo/token";
@@ -118,7 +115,6 @@ export async function POST(request: NextRequest) {
   let deckId: string | undefined;
   let deckName: string | undefined;
   let tags: string[];
-  let style: CardBackAutocompleteStyle;
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
@@ -132,7 +128,6 @@ export async function POST(request: NextRequest) {
           .map((tag) => tag.trim().slice(0, 60))
           .slice(0, 10)
       : [];
-    style = isCardBackAutocompleteStyle(body.style) ? body.style : "auto";
 
     if (!front) {
       return Response.json({ error: "front is required" }, { status: 400 });
@@ -184,7 +179,7 @@ ${relatedCards
   .join("\n")}`
       : "No nearby cards are available.";
 
-    const subject = detectCardBackSubject({ front, deckName, tags, style });
+    const subject = detectCardBackSubject({ front, deckName, tags });
     const subjectPrompt = getSubjectPrompt(subject);
     const systemPrompt = `You write the BACK side of a flashcard for a student.
 
@@ -198,8 +193,6 @@ Non-negotiable rules:
 - Never output raw HTML entities, literal unicode escape codes, or broken symbol substitutes.
 - Do not invent niche facts that are not implied by the front, deck, tags, or related cards.
 - Match the user's existing card style when nearby cards give a clear pattern.
-
-${getStylePrompt(style)}
 
 ${subjectPrompt}`;
 

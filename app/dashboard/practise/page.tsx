@@ -50,7 +50,7 @@ export default function PracticePage() {
   const [folderSubject, setFolderSubject] = useState("");
   const [folderDescription, setFolderDescription] = useState("");
   const [folderColor, setFolderColor] = useState<ObjectColorId>("sky");
-  const [folderIcon, setFolderIcon] = useState<ObjectIconId>("book");
+  const [folderIcon, setFolderIcon] = useState<ObjectIconId>("none");
   const [creatingFolder, setCreatingFolder] = useState(false);
 
   const loadAll = useCallback(async () => {
@@ -94,7 +94,7 @@ export default function PracticePage() {
       setFolderSubject("");
       setFolderDescription("");
       setFolderColor("sky");
-      setFolderIcon("book");
+      setFolderIcon("none");
       setShowCreateFolder(false);
       await loadAll();
       setFeedback({ type: "success", message: `"${folder.name}" created. Open it to add notebooks.` });
@@ -159,7 +159,6 @@ export default function PracticePage() {
                 <SectionHeader
                   eyebrow="New folder"
                   title="Create a study space"
-                  description="Folders are broad spaces for notebooks, decks, sources, and later AI help."
                 />
                 <Button type="button" variant="secondary" onClick={() => setShowCreateFolder(false)}>
                   Close
@@ -220,7 +219,7 @@ export default function PracticePage() {
                 <EmptyState
                   emoji="Notebook"
                   title="No notebooks yet"
-                  description="Open a folder and create a blank notebook, uploaded-file notebook, or future AI-question notebook."
+                  description="Open a folder and create a notebook."
                   action={
                     <Link
                       href="/dashboard/folders"
@@ -255,7 +254,7 @@ export default function PracticePage() {
                   <EmptyState
                     emoji="Folder"
                     title="Create your first folder"
-                    description="Start with a subject, module, exam, or project. You can add notebooks, decks, and sources inside it."
+                    description="Start with a subject, module, exam, or project."
                     action={
                       <Button type="button" onClick={() => setShowCreateFolder(true)}>
                         Create folder

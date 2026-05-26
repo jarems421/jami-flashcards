@@ -159,8 +159,7 @@ export default function ProgressPage() {
 
       <PageHero
         eyebrow="Progress"
-        title="See what needs review and where your work lives."
-        description="Progress now stays tied to folders, notebooks, sources, drafts, and flashcards rather than the old question-bank attempt form."
+        title="What needs review"
         tone="warm"
         aside={
           <div className="grid min-w-[18rem] grid-cols-3 gap-2 text-center">
@@ -201,16 +200,13 @@ export default function ProgressPage() {
                 ? `Continue "${recentNotebooks[0].title}", then review any linked cards.`
                 : "Open a folder and create a notebook for your next working session."}
             </div>
-            <p className="mt-2 text-sm leading-6 text-text-secondary">
-              Notebook pages are now the main evidence surface. Drafts stay separate until you approve them into Learn or a notebook.
-            </p>
           </Card>
 
           {topics.length === 0 ? (
             <EmptyState
               emoji="Topics"
               title="Progress needs linked study material"
-              description="Create folders and notebooks, then link topics to cards, sources, or notebook work as your study spaces grow."
+              description="Create folders, notebooks, cards, or sources to build progress."
               action={
                 <Link
                   href="/dashboard/folders"
@@ -225,7 +221,6 @@ export default function ProgressPage() {
               <Card padding="lg">
                 <SectionHeader
                   title="Weak topics"
-                  description="Topics connect flashcards, folders, notebooks, and sources."
                 />
                 <div className="mt-5 space-y-3">
                   {weakTopics.map((summary) => (
@@ -268,7 +263,6 @@ export default function ProgressPage() {
                 <Card padding="lg">
                   <SectionHeader
                     title="Recent notebook work"
-                    description="Notebook pages are where Practice evidence starts now."
                   />
                   <div className="mt-5 space-y-3">
                     {recentNotebooks.length > 0 ? (
@@ -286,7 +280,7 @@ export default function ProgressPage() {
                       ))
                     ) : (
                       <p className="text-sm leading-6 text-text-secondary">
-                        No notebook work yet. Create one from Practice or Folders.
+                        No notebook work yet.
                       </p>
                     )}
                   </div>
@@ -295,7 +289,6 @@ export default function ProgressPage() {
                 <Card padding="lg">
                   <SectionHeader
                     title="Drafts waiting"
-                    description="Generated content stays draft-only until reviewed."
                   />
                   <div className="mt-5 space-y-3">
                     {activeDrafts.length > 0 ? (
@@ -314,7 +307,7 @@ export default function ProgressPage() {
                       ))
                     ) : (
                       <p className="text-sm leading-6 text-text-secondary">
-                        No drafts waiting. Source-generated drafts will appear here before they become cards or notebook pages.
+                        No drafts waiting.
                       </p>
                     )}
                   </div>

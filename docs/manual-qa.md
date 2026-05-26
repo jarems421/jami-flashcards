@@ -64,7 +64,7 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 9. Confirm AI-created questions are clearly a placeholder.
 10. Open the Decks tab and confirm it shows only decks already in this folder.
 11. Use `Add existing deck` to choose a global deck and confirm it appears in the folder.
-12. Use `Create deck` inside the folder and confirm the deck also appears globally in Decks.
+12. Confirm there is no deck creation form inside the folder Decks tab; new decks are created from global Decks.
 13. Use `Remove` on a folder deck and confirm it leaves the folder without deleting the global deck.
 14. Open the Sources tab and confirm it shows only sources already in this folder.
 15. Use `Add existing source` to choose a Library source and confirm it appears in the folder.

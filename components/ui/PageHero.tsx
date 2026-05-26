@@ -26,14 +26,14 @@ export default function PageHero({
     <Card tone={tone} padding="lg" className={`overflow-hidden ${className}`}>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
         <div className="max-w-3xl">
-          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-secondary">
             {eyebrow}
           </div>
-          <h2 className="mt-3 text-[1.3rem] font-medium leading-tight tracking-tight text-white sm:text-[1.55rem] xl:text-[1.85rem]">
+          <h2 className="mt-3 text-[1.3rem] font-medium leading-tight tracking-tight text-text-primary sm:text-[1.55rem] xl:text-[1.85rem]">
             {title}
           </h2>
           {description ? (
-            <div className="mt-4 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
+            <div className="mt-4 max-w-2xl text-sm leading-7 text-text-muted sm:text-base">
               {description}
             </div>
           ) : null}

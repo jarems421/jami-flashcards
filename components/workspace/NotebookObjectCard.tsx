@@ -22,30 +22,17 @@ export type NotebookObjectCardProps = {
   compact?: boolean;
 };
 
-const pageColorLabel: Record<string, string> = {
-  white: "White page",
-  black: "Black page",
-  grey: "Grey page",
-};
-
 function NotebookCardInner({
   title,
   typeLabel,
   color,
   icon,
-  pageColor,
   pageCount,
   updatedLabel,
   compact,
 }: NotebookObjectCardProps) {
   const preset = getObjectColorPreset(color);
   const safeColor = normalizeObjectColor(color);
-  const pageTone =
-    pageColor === "black"
-      ? "bg-slate-950"
-      : pageColor === "grey"
-        ? "bg-slate-200"
-        : "bg-white";
 
   return (
     <div
@@ -86,14 +73,6 @@ function NotebookCardInner({
               className="absolute left-7 top-[46%] h-6 w-6 text-white/78 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
             />
           </div>
-          <div
-            className={cx(
-              "absolute bottom-1 right-1 h-3.5 w-10 rounded-full border border-slate-900/10 shadow-sm",
-              pageTone,
-            )}
-            title={pageColor ? pageColorLabel[pageColor] : undefined}
-            aria-hidden="true"
-          />
         </div>
       </div>
 

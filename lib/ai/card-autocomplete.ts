@@ -1,16 +1,3 @@
-export const CARD_BACK_AUTOCOMPLETE_STYLES = [
-  "auto",
-  "definition",
-  "equation",
-  "explanation",
-  "steps",
-  "example",
-  "compare",
-] as const;
-
-export type CardBackAutocompleteStyle =
-  (typeof CARD_BACK_AUTOCOMPLETE_STYLES)[number];
-
 type SubjectHint =
   | "maths"
   | "science"
@@ -22,7 +9,6 @@ type SubjectInput = {
   front: string;
   deckName?: string;
   tags?: string[];
-  style: CardBackAutocompleteStyle;
 };
 
 type CleanGeneratedStudyTextOptions = {
@@ -368,25 +354,14 @@ export function cleanGeneratedCardBack(text: string) {
   return cleanGeneratedStudyText(text, { stripLeadingLabel: true });
 }
 
-export function isCardBackAutocompleteStyle(
-  value: unknown
-): value is CardBackAutocompleteStyle {
-  return (
-    typeof value === "string" &&
-    CARD_BACK_AUTOCOMPLETE_STYLES.includes(value as CardBackAutocompleteStyle)
-  );
-}
-
 export function detectCardBackSubject({
   front,
   deckName,
   tags = [],
-  style,
 }: SubjectInput): SubjectHint {
   const haystack = [front, deckName, ...tags].join(" ").toLowerCase();
 
   if (
-    style === "equation" ||
     /[=+\-*/^\u221a\u03c0\u03b8\u0394\u03a3\u222b\u2264\u2265<>]/.test(front) ||
     /\b(math|maths|algebra|geometry|calculus|trig|trigonometry|equation|formula|solve|differentiate|integrate|gradient|probability|statistics|mechanics)\b/.test(haystack)
   ) {
@@ -412,52 +387,6 @@ export function detectCardBackSubject({
   }
 
   return "general";
-}
-
-export function getStylePrompt(style: CardBackAutocompleteStyle) {
-  switch (style) {
-    case "definition":
-      return `Definition-focused:
-- Start with the clearest definition or identity.
-- Include the minimum context needed to distinguish it from similar terms.
-- Avoid long paragraphs.`;
-    case "equation":
-      return `Maths/formula-focused:
-- Put the key formula, identity, or final result first.
-- Use real symbols where they are clearer: \u00b7, \u00f7, \u00b1, \u221a, \u03c0, \u03b8, \u0394, \u2264, \u2265.
-- Avoid raw LaTeX. Do not write backslashes, dollar signs, or underscores like "\\frac", "$x$", or "x_1".
-- Define every variable briefly.
-- Include units, domains, or conditions if they matter.
-- If a derivation is needed, show only the essential steps.`;
-    case "explanation":
-      return `Explanation-focused:
-- Explain the idea in plain language.
-- Use cause/effect or intuition where helpful.
-- Keep it compact enough to review quickly.`;
-    case "steps":
-      return `Process/steps-focused:
-- Use a short numbered or line-broken sequence.
-- Make each step actionable and memorable.
-- Do not add unnecessary theory.`;
-    case "example":
-      return `Example-focused:
-- Give the answer plus one concise example.
-- Make the example concrete and easy to review.
-- Avoid turning the back into a full lesson.`;
-    case "compare":
-      return `Comparison-focused:
-- State the key distinction from the closest confusing idea.
-- Use "X is..., while Y is..." if useful.
-- Keep the contrast sharp and testable.`;
-    case "auto":
-    default:
-      return `Auto-detect the best flashcard back style:
-- If the front asks "what is/define", write a definition.
-- If it contains symbols, numbers, units, or asks "calculate/solve", write a formula or worked result.
-- If it asks "why/how", write a short explanation.
-- If it asks for a method/process, write concise steps.
-- If it asks for differences, write a compact comparison.`;
-  }
 }
 
 export function getSubjectPrompt(subject: SubjectHint) {

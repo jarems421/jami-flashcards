@@ -293,8 +293,10 @@ describe("Jami notebook-first learning foundations", () => {
   it("keeps folder and notebook object visuals configurable but bounded", () => {
     expect(normalizeObjectColor("emerald")).toBe("emerald");
     expect(normalizeObjectColor("unknown")).toBe("sky");
-    expect(normalizeObjectIcon("file")).toBe("file");
-    expect(normalizeObjectIcon("random-icon")).toBe("book");
+    expect(normalizeObjectIcon("none")).toBe("none");
+    expect(normalizeObjectIcon("file")).toBe("none");
+    expect(normalizeObjectIcon("code")).toBe("none");
+    expect(normalizeObjectIcon("random-icon")).toBe("none");
     expect(getObjectColorPreset("rose")).toMatchObject({
       id: "rose",
       label: "Rose",

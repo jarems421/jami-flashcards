@@ -121,10 +121,10 @@ export default function PublicDashboardShell() {
     const now = Date.now();
     const style =
       type === "uploaded_file"
-        ? { color: "sky", icon: "file" }
+        ? { color: "sky", icon: "none" }
         : type === "ai_questions"
-          ? { color: "indigo", icon: "star" }
-          : { color: "violet", icon: "pen" };
+          ? { color: "indigo", icon: "none" }
+          : { color: "violet", icon: "none" };
     const nextNotebook: WalkthroughNotebook = {
       id: `local-notebook-${now}`,
       folderId,
@@ -355,9 +355,7 @@ function FoldersPanel(props: {
   const [activeTab, setActiveTab] = useState<"notebooks" | "decks" | "sources">("notebooks");
   const [demoDecks, setDemoDecks] = useState<WalkthroughDeck[]>(WALKTHROUGH_DECKS);
   const [demoSources, setDemoSources] = useState<WalkthroughSource[]>(WALKTHROUGH_SOURCES);
-  const [showAddDeck, setShowAddDeck] = useState(false);
   const [showAddSource, setShowAddSource] = useState(false);
-  const [newDeckName, setNewDeckName] = useState("");
   const [newSourceTitle, setNewSourceTitle] = useState("");
   const selectedFolder = props.folders.find((folder) => folder.id === props.selectedFolderId) ?? props.folders[0];
   const folderNotebooks = props.notebooks.filter((notebook) => notebook.folderId === selectedFolder?.id);
@@ -370,22 +368,6 @@ function FoldersPanel(props: {
     setDemoDecks((current) =>
       current.map((deck) => deck.id === availableDeck.id ? { ...deck, folderId: selectedFolder.id } : deck)
     );
-  };
-  const createLocalDeck = () => {
-    if (!selectedFolder || !newDeckName.trim()) return;
-    setDemoDecks((current) => [
-      {
-        id: `local-deck-${Date.now()}`,
-        name: newDeckName.trim(),
-        subject: selectedFolder.subject,
-        folderId: selectedFolder.id,
-        cardCount: 0,
-        weakCount: 0,
-      },
-      ...current,
-    ]);
-    setNewDeckName("");
-    setShowAddDeck(false);
   };
   const addExistingSource = () => {
     if (!selectedFolder || !availableSource) return;
@@ -461,30 +443,12 @@ function FoldersPanel(props: {
           {activeTab === "decks" ? (
             <div className="space-y-3">
               <div className="flex flex-wrap gap-2">
-                <Button variant="secondary" onClick={() => setShowAddDeck((value) => !value)}>
-                  Add deck
-                </Button>
                 {availableDeck ? (
                   <Button variant="secondary" onClick={addExistingDeck}>
                     Add {availableDeck.name}
                   </Button>
                 ) : null}
               </div>
-              {showAddDeck ? (
-                <Card padding="sm">
-                  <div className="flex flex-col gap-2 sm:flex-row">
-                    <input
-                      value={newDeckName}
-                      onChange={(event) => setNewDeckName(event.target.value)}
-                      placeholder="New local deck"
-                      className="min-h-[2.5rem] flex-1 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 text-sm text-[var(--color-text-primary)]"
-                    />
-                    <Button disabled={!newDeckName.trim()} onClick={createLocalDeck}>
-                      Create local deck
-                    </Button>
-                  </div>
-                </Card>
-              ) : null}
               <AssetList title="Decks" items={folderDecks.map((deck) => `${deck.name} - ${deck.cardCount} cards`)} empty="No decks in this demo folder yet." />
             </div>
           ) : null}

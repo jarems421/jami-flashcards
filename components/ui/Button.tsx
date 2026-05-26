@@ -20,7 +20,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   secondary:
     "border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] hover:-translate-y-[1px] hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)] hover:shadow-[var(--button-secondary-shadow-hover)] active:translate-y-0 active:scale-[0.98] disabled:opacity-50",
   ghost:
-    "border border-transparent bg-transparent text-text-muted hover:bg-[var(--button-ghost-bg-hover)] hover:text-text-primary active:scale-[0.98] disabled:opacity-50",
+    "border border-transparent bg-transparent text-text-secondary hover:bg-[var(--button-ghost-bg-hover)] hover:text-text-primary active:scale-[0.98] disabled:opacity-50",
   surface:
     "border border-[var(--button-surface-border)] bg-[var(--button-surface-bg)] text-[var(--button-surface-text)] shadow-[var(--shadow-shell)] hover:-translate-y-[1px] hover:border-[var(--button-surface-border-hover)] hover:bg-[var(--button-surface-bg-hover)] hover:shadow-[var(--button-surface-shadow-hover)] active:translate-y-0 active:scale-[0.98] disabled:opacity-50",
   danger:

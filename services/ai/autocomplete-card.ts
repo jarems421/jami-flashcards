@@ -1,7 +1,4 @@
 import { auth } from "@/services/firebase/client";
-import type { CardBackAutocompleteStyle } from "@/lib/ai/card-autocomplete";
-
-export type { CardBackAutocompleteStyle };
 
 export type CardBackAutocompleteInput = {
   front: string;
@@ -9,7 +6,6 @@ export type CardBackAutocompleteInput = {
   deckId?: string;
   deckName?: string;
   tags?: string[];
-  style?: CardBackAutocompleteStyle;
 };
 
 function getFriendlyAutocompleteError(status: number, message?: string) {

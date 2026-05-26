@@ -5,7 +5,7 @@ type ObjectIconProps = {
   className?: string;
 };
 
-const iconPaths: Record<ObjectIconId, string> = {
+const iconPaths: Partial<Record<ObjectIconId, string>> = {
   book: "M5 5.5A2.5 2.5 0 0 1 7.5 3H19v15.5H7.5A2.5 2.5 0 0 0 5 21V5.5Zm2.5-.75A.75.75 0 0 0 6.75 5.5v12.72c.24-.08.49-.12.75-.12h9.75V4.75H7.5Zm1.75 3h5.5v1.5h-5.5v-1.5Zm0 3.25h5.5v1.5h-5.5V11Z",
   leaf: "M19.5 3.75C11.25 4 5.25 8.6 5.25 14.25c0 2.98 2.02 5.25 5 5.25 5.72 0 9.5-6.1 9.25-15.75Zm-3.3 4.18c-3.6 1.44-6.02 3.62-7.45 6.88l-1.38-.62c1.58-3.58 4.28-6.1 8.26-7.68l.57 1.42Z",
   globe: "M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm5.62 5.25h-3.08a12.5 12.5 0 0 0-1.3-3.24 7.52 7.52 0 0 1 4.38 3.24ZM12 4.65c.45.62.86 1.77 1.12 3.6h-2.24c.26-1.83.67-2.98 1.12-3.6ZM4.5 12c0-.78.12-1.54.35-2.25h3.53A17.9 17.9 0 0 0 8.25 12c0 .78.04 1.53.13 2.25H4.85A7.46 7.46 0 0 1 4.5 12Zm1.88 3.75h2.33c.28 1.42.72 2.53 1.28 3.24a7.53 7.53 0 0 1-3.61-3.24ZM8.71 8.25H6.38A7.53 7.53 0 0 1 9.99 5c-.56.72-1 1.83-1.28 3.25ZM12 19.35c-.45-.62-.86-1.77-1.12-3.6h2.24c-.26 1.83-.67 2.98-1.12 3.6Zm1.37-5.1h-2.74A16.1 16.1 0 0 1 10.5 12c0-.8.05-1.55.13-2.25h2.74c.08.7.13 1.45.13 2.25s-.05 1.55-.13 2.25Zm.64 4.74c.56-.71 1-1.82 1.28-3.24h2.33a7.53 7.53 0 0 1-3.61 3.24Zm1.61-4.74c.09-.72.13-1.47.13-2.25 0-.78-.04-1.53-.13-2.25h3.53c.23.71.35 1.47.35 2.25s-.12 1.54-.35 2.25h-3.53Z",
@@ -19,6 +19,9 @@ const iconPaths: Record<ObjectIconId, string> = {
 
 export default function ObjectIcon({ icon, className = "" }: ObjectIconProps) {
   const normalized = normalizeObjectIcon(icon);
+  const path = iconPaths[normalized];
+  if (!path) return null;
+
   return (
     <svg
       viewBox="0 0 24 24"
@@ -26,7 +29,7 @@ export default function ObjectIcon({ icon, className = "" }: ObjectIconProps) {
       aria-hidden="true"
       className={className}
     >
-      <path d={iconPaths[normalized]} />
+      <path d={path} />
     </svg>
   );
 }

@@ -87,7 +87,11 @@ export function ObjectStylePicker({
                     : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-[var(--color-text-muted)]",
                 )}
               >
-                <ObjectIcon icon={preset.id} className="h-5 w-5" />
+                {preset.id === "none" ? (
+                  <span className="h-4 w-4 rounded-full border border-current opacity-60" />
+                ) : (
+                  <ObjectIcon icon={preset.id} className="h-5 w-5" />
+                )}
               </button>
             );
           })}
