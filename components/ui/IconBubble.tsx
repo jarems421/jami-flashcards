@@ -36,9 +36,11 @@ export default function IconBubble({
     <span
       aria-hidden={ariaHidden}
       style={style}
-      className={`inline-grid shrink-0 place-items-center leading-none tabular-nums [&>svg]:block [&>svg]:shrink-0 ${sizeClasses[size]} ${shapeClasses[shape]} ${className}`}
+      className={`inline-grid box-border shrink-0 place-items-center text-center leading-none tabular-nums [font-variant-numeric:tabular-nums] [&>svg]:block [&>svg]:shrink-0 ${sizeClasses[size]} ${shapeClasses[shape]} ${className}`}
     >
-      {children}
+      <span className="inline-grid h-full w-full place-items-center leading-none tabular-nums [&>svg]:block [&>svg]:shrink-0">
+        {children}
+      </span>
     </span>
   );
 }

@@ -2,6 +2,10 @@ export function getDeckHref(deckId: string) {
   return `/dashboard/decks/${encodeURIComponent(deckId)}`;
 }
 
+export function getDeckStudyRouteHref(deckId: string) {
+  return `${getDeckHref(deckId)}/study`;
+}
+
 export function getCustomStudyHref(options?: {
   mode?: "daily" | "custom";
   deckIds?: string[];

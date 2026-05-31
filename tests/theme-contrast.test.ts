@@ -17,6 +17,10 @@ const themes = {
     selectedText: "#fff8ff",
     buttonPrimaryBg: "#7565d6",
     buttonPrimaryText: "#ffffff",
+    buttonSecondaryBg: "#343a48",
+    buttonSecondaryText: "#fff8ff",
+    buttonSurfaceBg: "#181e2d",
+    buttonSurfaceText: "#fff8ff",
     successBg: "#25453f",
     successText: "#dffcf7",
     warningBg: "#4a3928",
@@ -38,6 +42,10 @@ const themes = {
     selectedText: "#fff9ff",
     buttonPrimaryBg: "#7562d9",
     buttonPrimaryText: "#ffffff",
+    buttonSecondaryBg: "#352743",
+    buttonSecondaryText: "#fff9ff",
+    buttonSurfaceBg: "#1f1130",
+    buttonSurfaceText: "#fff9ff",
     successBg: "#223d39",
     successText: "#dffcf7",
     warningBg: "#443127",
@@ -59,6 +67,10 @@ const themes = {
     selectedText: "#101827",
     buttonPrimaryBg: "#5f51bb",
     buttonPrimaryText: "#ffffff",
+    buttonSecondaryBg: "#e0e3e9",
+    buttonSecondaryText: "#101827",
+    buttonSurfaceBg: "#f0f2f7",
+    buttonSurfaceText: "#101827",
     successBg: "#e0f0ec",
     successText: "#126855",
     warningBg: "#f2eadf",
@@ -80,6 +92,10 @@ const themes = {
     selectedText: "#fafafa",
     buttonPrimaryBg: "#d4d4d4",
     buttonPrimaryText: "#101010",
+    buttonSecondaryBg: "#373737",
+    buttonSecondaryText: "#fafafa",
+    buttonSurfaceBg: "#262626",
+    buttonSurfaceText: "#fafafa",
     successBg: "#2d4a45",
     successText: "#dffcf7",
     warningBg: "#4a3d2f",
@@ -101,6 +117,10 @@ const themes = {
     selectedText: "#fffaff",
     buttonPrimaryBg: "#7565d6",
     buttonPrimaryText: "#ffffff",
+    buttonSecondaryBg: "#302b3d",
+    buttonSecondaryText: "#fffaff",
+    buttonSurfaceBg: "#151026",
+    buttonSurfaceText: "#fffaff",
     successBg: "#223d39",
     successText: "#dffcf7",
     warningBg: "#443127",
@@ -145,6 +165,8 @@ describe("theme contrast pairs", () => {
     expect(contrast(theme.chipText, theme.chipBg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(theme.selectedText, theme.selectedBg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(theme.buttonPrimaryText, theme.buttonPrimaryBg)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.buttonSecondaryText, theme.buttonSecondaryBg)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.buttonSurfaceText, theme.buttonSurfaceBg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(theme.successText, theme.successBg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(theme.warningText, theme.warningBg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(theme.dangerText, theme.dangerBg)).toBeGreaterThanOrEqual(4.5);

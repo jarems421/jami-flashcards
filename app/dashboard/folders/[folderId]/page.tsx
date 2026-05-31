@@ -25,6 +25,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { featureFlags } from "@/lib/app/feature-flags";
+import { getDeckHref, getDeckStudyRouteHref } from "@/lib/app/routes";
 import { useUser } from "@/lib/auth/user-context";
 import type { Source, SourceType } from "@/lib/practice/sources";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
@@ -869,22 +870,34 @@ export default function FolderDetailPage() {
                   return (
                     <div
                       key={deck.id}
-                      className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3"
+                      className="group rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 transition duration-fast hover:-translate-y-[1px] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass)]"
                     >
-                      <div className="flex items-center justify-between gap-3">
-                        <div className="min-w-0">
-                          <div className="line-clamp-2 text-sm font-semibold leading-5 text-text-primary [overflow-wrap:anywhere]">{deck.name}</div>
-                          <div className="mt-1 text-xs text-text-muted">Flashcard deck</div>
-                        </div>
-                        <Button
-                          type="button"
-                          size="sm"
-                          variant="secondary"
-                          disabled={busyAssetId === deck.id}
-                          onClick={() => void toggleDeckFolder(deck)}
+                      <div className="flex items-start justify-between gap-3">
+                        <Link
+                          href={getDeckStudyRouteHref(deck.id)}
+                          className="min-w-0 flex-1 rounded-[0.8rem] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
+                          aria-label={`Practice ${deck.name}`}
                         >
-                          Remove
-                        </Button>
+                          <div className="text-sm font-semibold leading-5 text-text-primary [overflow-wrap:anywhere]">{deck.name}</div>
+                          <div className="mt-1 text-xs text-text-muted">Practice deck</div>
+                        </Link>
+                        <div className="flex shrink-0 flex-col gap-2">
+                          <Link
+                            href={getDeckHref(deck.id)}
+                            className="inline-flex min-h-[2.25rem] items-center justify-center rounded-[2rem] border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:-translate-y-[1px] hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]"
+                          >
+                            View
+                          </Link>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            disabled={busyAssetId === deck.id}
+                            onClick={() => void toggleDeckFolder(deck)}
+                          >
+                            Remove
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   );

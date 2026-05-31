@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { isFeatureEnabled } from "@/lib/app/feature-flags";
+import { getDeckHref, getDeckStudyHref, getDeckStudyRouteHref } from "@/lib/app/routes";
 import { mapCardData } from "@/lib/study/cards";
 import { getMasteryScoreDelta } from "@/lib/practice/mastery";
 import { buildTopicProgress } from "@/lib/practice/progress";
@@ -63,6 +64,12 @@ describe("Jami notebook-first learning foundations", () => {
     expect(isFeatureEnabled("enableFolders")).toBe(true);
     expect(isFeatureEnabled("enableNotebooks")).toBe(true);
     expect(isFeatureEnabled("enableFlashcardAi")).toBe(false);
+  });
+
+  it("routes folder deck objects to study while preserving deck detail access", () => {
+    expect(getDeckStudyRouteHref("deck-history")).toBe("/dashboard/decks/deck-history/study");
+    expect(getDeckStudyHref("deck-history")).toBe("/dashboard/study?mode=custom&decks=deck-history");
+    expect(getDeckHref("deck-history")).toBe("/dashboard/decks/deck-history");
   });
 
   it("normalizes topic data without depending on question-bank models", () => {

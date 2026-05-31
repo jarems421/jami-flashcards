@@ -93,17 +93,17 @@
     --button-primary-text: #ffffff;
     --button-primary-shadow: 0 14px 26px rgba(143, 125, 232, 0.22);
     --button-primary-shadow-hover: 0 18px 32px rgba(143, 125, 232, 0.28);
-    --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.14), rgba(255, 255, 255, 0.07));
-    --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.2), rgba(255, 255, 255, 0.09));
-    --button-secondary-border: rgba(255, 255, 255, 0.14);
-    --button-secondary-border-hover: rgba(255, 255, 255, 0.22);
+    --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.1));
+    --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.25), rgba(255, 255, 255, 0.13));
+    --button-secondary-border: rgba(255, 255, 255, 0.24);
+    --button-secondary-border-hover: rgba(255, 255, 255, 0.36);
     --button-secondary-text: var(--color-text-primary);
     --button-secondary-shadow: 0 10px 20px rgba(11, 4, 32, 0.12);
     --button-secondary-shadow-hover: 0 14px 26px rgba(11, 4, 32, 0.18);
     --button-surface-bg: linear-gradient(180deg, rgba(24, 30, 45, 0.94), rgba(15, 19, 31, 0.94));
     --button-surface-bg-hover: linear-gradient(180deg, rgba(30, 37, 55, 0.96), rgba(18, 23, 36, 0.96));
-    --button-surface-border: rgba(255, 255, 255, 0.14);
-    --button-surface-border-hover: rgba(255, 255, 255, 0.18);
+    --button-surface-border: rgba(255, 255, 255, 0.22);
+    --button-surface-border-hover: rgba(255, 255, 255, 0.32);
     --button-surface-text: var(--color-text-primary);
     --button-surface-shadow-hover: 0 20px 38px rgba(4, 8, 18, 0.34);
     --button-warm-bg: linear-gradient(180deg, #fff8fd 0%, #ffe8f7 42%, #ffdff4 100%);
@@ -219,14 +219,14 @@
     --button-primary-bg-hover: linear-gradient(180deg, #b295ff 0%, #8370e7 100%);
     --button-primary-shadow: 0 14px 26px rgba(117, 98, 217, 0.26);
     --button-primary-shadow-hover: 0 18px 32px rgba(117, 98, 217, 0.34);
-    --button-secondary-bg: linear-gradient(180deg, rgba(221, 201, 255, 0.14), rgba(221, 201, 255, 0.06));
-    --button-secondary-bg-hover: linear-gradient(180deg, rgba(221, 201, 255, 0.2), rgba(221, 201, 255, 0.08));
-    --button-secondary-border: rgba(221, 201, 255, 0.16);
-    --button-secondary-border-hover: rgba(221, 201, 255, 0.24);
+    --button-secondary-bg: linear-gradient(180deg, rgba(238, 225, 255, 0.18), rgba(238, 225, 255, 0.1));
+    --button-secondary-bg-hover: linear-gradient(180deg, rgba(238, 225, 255, 0.26), rgba(238, 225, 255, 0.13));
+    --button-secondary-border: rgba(238, 225, 255, 0.24);
+    --button-secondary-border-hover: rgba(238, 225, 255, 0.36);
     --button-surface-bg: linear-gradient(180deg, rgba(31, 17, 48, 0.94), rgba(17, 9, 28, 0.94));
     --button-surface-bg-hover: linear-gradient(180deg, rgba(39, 21, 59, 0.96), rgba(22, 12, 35, 0.96));
-    --button-surface-border: rgba(221, 201, 255, 0.15);
-    --button-surface-border-hover: rgba(221, 201, 255, 0.22);
+    --button-surface-border: rgba(238, 225, 255, 0.24);
+    --button-surface-border-hover: rgba(238, 225, 255, 0.36);
     --button-warm-bg: linear-gradient(180deg, #fffaff 0%, #efe7ff 48%, #d8c2ff 100%);
     --button-warm-bg-hover: linear-gradient(180deg, #ffffff 0%, #f4edff 48%, #e3d2ff 100%);
     --button-warm-border: rgba(255, 255, 255, 0.24);
@@ -288,16 +288,16 @@
     --nav-active-text: #101827;
     --button-primary-bg: linear-gradient(180deg, #7464cf 0%, #5f51bb 100%);
     --button-primary-bg-hover: linear-gradient(180deg, #8170dc 0%, #695bc8 100%);
-    --button-secondary-bg: linear-gradient(180deg, rgba(20, 28, 42, 0.08), rgba(20, 28, 42, 0.04));
-    --button-secondary-bg-hover: linear-gradient(180deg, rgba(20, 28, 42, 0.12), rgba(20, 28, 42, 0.06));
-    --button-secondary-border: rgba(20, 28, 42, 0.15);
-    --button-secondary-border-hover: rgba(20, 28, 42, 0.24);
+    --button-secondary-bg: linear-gradient(180deg, rgba(20, 28, 42, 0.13), rgba(20, 28, 42, 0.075));
+    --button-secondary-bg-hover: linear-gradient(180deg, rgba(20, 28, 42, 0.18), rgba(20, 28, 42, 0.1));
+    --button-secondary-border: rgba(20, 28, 42, 0.26);
+    --button-secondary-border-hover: rgba(20, 28, 42, 0.36);
     --button-secondary-shadow: 0 10px 20px rgba(43, 55, 83, 0.08);
     --button-secondary-shadow-hover: 0 14px 26px rgba(43, 55, 83, 0.12);
     --button-surface-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(239, 242, 248, 0.92));
     --button-surface-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(234, 238, 247, 0.98));
-    --button-surface-border: rgba(20, 28, 42, 0.16);
-    --button-surface-border-hover: rgba(20, 28, 42, 0.24);
+    --button-surface-border: rgba(20, 28, 42, 0.28);
+    --button-surface-border-hover: rgba(20, 28, 42, 0.38);
     --button-warm-bg: linear-gradient(180deg, #ffffff 0%, #f3f0ff 100%);
     --button-warm-bg-hover: linear-gradient(180deg, #ffffff 0%, #ebe7ff 100%);
     --button-warm-border: rgba(116, 100, 207, 0.18);
@@ -360,16 +360,16 @@
     --button-primary-text: #101010;
     --button-primary-shadow: 0 14px 26px rgba(0, 0, 0, 0.24);
     --button-primary-shadow-hover: 0 18px 32px rgba(0, 0, 0, 0.32);
-    --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.055));
-    --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.075));
-    --button-secondary-border: rgba(255, 255, 255, 0.14);
-    --button-secondary-border-hover: rgba(255, 255, 255, 0.22);
+    --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.17), rgba(255, 255, 255, 0.09));
+    --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.12));
+    --button-secondary-border: rgba(255, 255, 255, 0.24);
+    --button-secondary-border-hover: rgba(255, 255, 255, 0.34);
     --button-secondary-shadow: 0 10px 20px rgba(0, 0, 0, 0.14);
     --button-secondary-shadow-hover: 0 14px 26px rgba(0, 0, 0, 0.2);
     --button-surface-bg: linear-gradient(180deg, rgba(38, 38, 38, 0.94), rgba(20, 20, 20, 0.94));
     --button-surface-bg-hover: linear-gradient(180deg, rgba(46, 46, 46, 0.96), rgba(26, 26, 26, 0.96));
-    --button-surface-border: rgba(255, 255, 255, 0.14);
-    --button-surface-border-hover: rgba(255, 255, 255, 0.2);
+    --button-surface-border: rgba(255, 255, 255, 0.22);
+    --button-surface-border-hover: rgba(255, 255, 255, 0.32);
     --button-warm-bg: linear-gradient(180deg, #f5f5f5 0%, #d4d4d4 100%);
     --button-warm-bg-hover: linear-gradient(180deg, #ffffff 0%, #e5e5e5 100%);
     --button-warm-border: rgba(255, 255, 255, 0.24);
@@ -598,15 +598,22 @@
   }
 
   body.app-theme-paper-white [class*="border-white/"] {
-    border-color: var(--color-border) !important;
+    border-color: var(--color-border-strong) !important;
   }
 
   body.app-theme-paper-white [class*="bg-white/"] {
-    background-color: var(--color-glass-subtle) !important;
+    background-color: var(--color-glass-medium) !important;
   }
 
   body.app-theme-paper-white [class*="hover:bg-white/"]:hover {
-    background-color: var(--color-glass-medium) !important;
+    background-color: var(--color-glass-strong) !important;
+  }
+
+  body.app-theme-paper-white [class*="bg-accent"].text-white,
+  body.app-theme-paper-white [class*="bg-accent"] .text-white,
+  body.app-theme-paper-white [class*="bg-error"].text-white,
+  body.app-theme-paper-white [class*="bg-error"] .text-white {
+    color: #ffffff !important;
   }
 
   body.app-theme-paper-white .bg-error.text-white,
@@ -660,6 +667,11 @@
   body [class*="bg-warning-muted"] [class*="text-amber"] {
     color: var(--color-warning-text) !important;
   }
+
+  body [class*="border-border"][class*="bg-white/"],
+  body [class*="border-white/"][class*="bg-white/"] {
+    color: var(--color-text-primary) !important;
+  }
 }
 
 /* Constellation background overrides */
@@ -697,14 +709,14 @@ body.constellation-background-enabled {
   --color-border-strong: rgba(238, 225, 255, 0.28);
   --color-warm-accent: #eadbff;
   --color-warm-border: rgba(234, 219, 255, 0.32);
-  --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.08));
-  --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.22), rgba(255, 255, 255, 0.11));
-  --button-secondary-border: rgba(255, 255, 255, 0.2);
-  --button-secondary-border-hover: rgba(255, 255, 255, 0.3);
+  --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.1));
+  --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.13));
+  --button-secondary-border: rgba(255, 255, 255, 0.26);
+  --button-secondary-border-hover: rgba(255, 255, 255, 0.38);
   --button-surface-bg: linear-gradient(180deg, rgba(21, 16, 38, 0.94), rgba(9, 7, 20, 0.96));
   --button-surface-bg-hover: linear-gradient(180deg, rgba(28, 21, 48, 0.96), rgba(13, 10, 25, 0.98));
-  --button-surface-border: rgba(255, 255, 255, 0.18);
-  --button-surface-border-hover: rgba(255, 255, 255, 0.28);
+  --button-surface-border: rgba(255, 255, 255, 0.26);
+  --button-surface-border-hover: rgba(255, 255, 255, 0.38);
 }
 
 body.constellation-background-enabled [data-app-surface="true"] {

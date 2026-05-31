@@ -179,7 +179,7 @@ function formatCountdown(ms: number) {
 function StepLabel({ step, children }: { step: number; children: string }) {
   return (
     <div className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
-      <IconBubble size="xs" shape="circle" className="app-chip">
+      <IconBubble size="xs" shape="circle" className="app-chip font-semibold">
         {step}
       </IconBubble>
       <span>{children}</span>
@@ -191,7 +191,7 @@ function CountPill({ value, label }: { value: number; label: string }) {
   return (
     <div className="app-chip flex min-w-[7rem] flex-1 items-center justify-between gap-3 rounded-[1.2rem] px-3 py-2 sm:flex-none">
       <span className="text-xs leading-5 text-text-muted">{label}</span>
-      <IconBubble size="sm" shape="circle" className="min-w-8 bg-[var(--color-glass-medium)] px-2 font-medium text-text-primary">
+      <IconBubble size="sm" shape="circle" className="app-chip font-semibold text-text-primary">
         {value}
       </IconBubble>
     </div>
