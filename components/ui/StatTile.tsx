@@ -26,7 +26,7 @@ export default function StatTile({
       <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
         {label}
       </div>
-      <div className={`${compact ? "mt-1 text-lg" : "mt-3 text-xl sm:text-2xl"} font-semibold tracking-normal text-white`}>
+      <div className={`${compact ? "mt-1 text-lg" : "mt-3 text-xl sm:text-2xl"} font-semibold tracking-normal text-text-primary`}>
         {value}
       </div>
       {detail && !compact ? (
@@ -43,7 +43,7 @@ export default function StatTile({
         className={`${panelClass} group block p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell sm:p-5 ${className}`}
       >
         {content}
-        <div className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-white/90">
+        <div className="mt-4 inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
           <span>Open</span>
           <svg
             viewBox="0 0 16 16"

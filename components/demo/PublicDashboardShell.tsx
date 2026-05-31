@@ -39,6 +39,10 @@ import {
   saveAppThemePreference,
   type AppThemePreference,
 } from "@/lib/app/theme-preference";
+import {
+  readSidebarHiddenPreference,
+  saveSidebarHiddenPreference,
+} from "@/lib/app/sidebar-preference";
 
 type Surface =
   | "home"
@@ -106,6 +110,12 @@ export default function PublicDashboardShell() {
   const [pages, setPages] = useState<WalkthroughNotebookPage[]>(WALKTHROUGH_NOTEBOOK_PAGES);
   const [selectedFolderId, setSelectedFolderId] = useState(WALKTHROUGH_FOLDERS[0]?.id ?? "");
   const [theme, setTheme] = useState<AppThemePreference>(() => readAppThemePreference());
+  const [sidebarHidden, setSidebarHidden] = useState(() => readSidebarHiddenPreference());
+
+  const handleSidebarHiddenChange = (hidden: boolean) => {
+    setSidebarHidden(hidden);
+    saveSidebarHiddenPreference(hidden);
+  };
 
   const recentNotebooks = useMemo(
     () => [...notebooks].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 3),
@@ -213,53 +223,62 @@ export default function PublicDashboardShell() {
 
   return (
     <>
-      <AppPage title={title} width="3xl">
-        <div className="space-y-5">
-          <PublicBadge />
-          {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
-          {surface === "home" ? <HomePanel recentNotebooks={recentNotebooks} activeDrafts={activeDrafts.length} /> : null}
-          {surface === "practice" ? (
-            <PracticePanel
-              folders={WALKTHROUGH_FOLDERS}
-              notebooks={notebooks}
-              pages={pages}
-              selectedFolderId={selectedFolderId}
-              onSelectFolder={setSelectedFolderId}
-              onCreateNotebook={createLocalNotebook}
-            />
-          ) : null}
-          {surface === "folders" ? (
-            <FoldersPanel
-              folders={WALKTHROUGH_FOLDERS}
-              notebooks={notebooks}
-              pages={pages}
-              selectedFolderId={selectedFolderId}
-              onSelectFolder={setSelectedFolderId}
-              onCreateNotebook={createLocalNotebook}
-            />
-          ) : null}
-          {surface === "notebook" ? (
-            <NotebookPanel notebooks={notebooks} pages={pages} onPagesChange={setPages} onNotebooksChange={setNotebooks} />
-          ) : null}
-          {surface === "learn" ? <LearnPanel /> : null}
-          {surface === "decks" ? <DecksPanel /> : null}
-          {surface === "cards" ? <CardsPanel /> : null}
-          {surface === "library" ? <LibraryPanel drafts={drafts} onApprove={approveDraft} /> : null}
-          {surface === "progress" ? <ProgressPanel notebooks={notebooks} drafts={activeDrafts.length} /> : null}
-          {surface === "profile" ? (
-            <ProfilePanel
-              theme={theme}
-              onThemeChange={(nextTheme) => {
-                setTheme(nextTheme);
-                saveAppThemePreference(nextTheme);
-                show("Theme saved locally for this device.");
-              }}
-            />
-          ) : null}
-          {searchParams.get("agent") === "1" ? <AgentNotes /> : null}
-        </div>
-      </AppPage>
-      <TabBar />
+      <div
+        className={`pb-32 transition-[padding] duration-300 md:pb-0 ${
+          sidebarHidden ? "md:pl-0" : "md:pl-24 lg:pl-72"
+        }`}
+      >
+        <AppPage title={title} width="3xl">
+          <div className="space-y-5">
+            <PublicBadge />
+            {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
+            {surface === "home" ? <HomePanel recentNotebooks={recentNotebooks} activeDrafts={activeDrafts.length} /> : null}
+            {surface === "practice" ? (
+              <PracticePanel
+                folders={WALKTHROUGH_FOLDERS}
+                notebooks={notebooks}
+                pages={pages}
+                selectedFolderId={selectedFolderId}
+                onSelectFolder={setSelectedFolderId}
+                onCreateNotebook={createLocalNotebook}
+              />
+            ) : null}
+            {surface === "folders" ? (
+              <FoldersPanel
+                folders={WALKTHROUGH_FOLDERS}
+                notebooks={notebooks}
+                pages={pages}
+                selectedFolderId={selectedFolderId}
+                onSelectFolder={setSelectedFolderId}
+                onCreateNotebook={createLocalNotebook}
+              />
+            ) : null}
+            {surface === "notebook" ? (
+              <NotebookPanel notebooks={notebooks} pages={pages} onPagesChange={setPages} onNotebooksChange={setNotebooks} />
+            ) : null}
+            {surface === "learn" ? <LearnPanel /> : null}
+            {surface === "decks" ? <DecksPanel /> : null}
+            {surface === "cards" ? <CardsPanel /> : null}
+            {surface === "library" ? <LibraryPanel drafts={drafts} onApprove={approveDraft} /> : null}
+            {surface === "progress" ? <ProgressPanel notebooks={notebooks} drafts={activeDrafts.length} /> : null}
+            {surface === "profile" ? (
+              <ProfilePanel
+                theme={theme}
+                onThemeChange={(nextTheme) => {
+                  setTheme(nextTheme);
+                  saveAppThemePreference(nextTheme);
+                  show("Theme saved locally for this device.");
+                }}
+              />
+            ) : null}
+            {searchParams.get("agent") === "1" ? <AgentNotes /> : null}
+          </div>
+        </AppPage>
+      </div>
+      <TabBar
+        desktopHidden={sidebarHidden}
+        onDesktopHiddenChange={handleSidebarHiddenChange}
+      />
     </>
   );
 }

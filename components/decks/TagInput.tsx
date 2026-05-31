@@ -79,7 +79,7 @@ export default function TagInput({
           {tags.map((tag) => (
             <span
               key={tag}
-              className="inline-flex max-w-full items-center gap-2 rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+              className="app-selected inline-flex max-w-full items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium"
             >
               <span className="min-w-0 truncate">{tag}</span>
               <button
@@ -90,7 +90,7 @@ export default function TagInput({
                 }}
                 disabled={disabled}
                 aria-label={`Remove tag ${tag}`}
-                className="shrink-0 rounded-full bg-white/10 px-1.5 py-0.5 text-[10px] text-white transition duration-fast hover:bg-white/20 disabled:opacity-50"
+                className="shrink-0 rounded-full bg-glass-medium px-1.5 py-0.5 text-[10px] text-text-primary transition duration-fast hover:bg-glass-strong disabled:opacity-50"
               >
                 x
               </button>
@@ -123,7 +123,7 @@ export default function TagInput({
               setLocalError(null);
             }
           }}
-          className="w-full rounded-[1.6rem] border-[1.5px] border-white/[0.12] bg-surface-panel-strong px-5 py-[1rem] text-sm text-white placeholder:text-text-muted shadow-[0_10px_22px_rgba(8,2,24,0.18)] outline-none transition duration-fast hover:border-white/[0.18] focus:border-warm-accent/80 focus:ring-4 focus:ring-accent/14"
+          className="app-field w-full rounded-[1.6rem] px-5 py-[1rem] text-sm outline-none transition duration-fast"
         />
         <Button
           type="button"
@@ -151,19 +151,19 @@ export default function TagInput({
               {suggestions.length} of {allSuggestions.length}
             </span>
           </div>
-          <div className="flex max-h-52 flex-wrap gap-2 overflow-y-auto rounded-[1.1rem] border border-white/[0.08] bg-white/[0.025] p-2">
+          <div className="app-subtle-panel flex max-h-52 flex-wrap gap-2 overflow-y-auto rounded-[1.1rem] p-2">
             {suggestions.map((tag) => (
               <button
                 key={tag}
                 type="button"
                 onClick={() => handleSuggestionClick(tag)}
                 disabled={disabled}
-                className="max-w-full rounded-full border border-border bg-white/[0.05] px-3 py-1.5 text-left text-xs text-text-muted transition duration-fast hover:border-border-strong hover:bg-white/[0.08] disabled:opacity-50 sm:max-w-[16rem]"
+                className="app-chip max-w-full rounded-full px-3 py-1.5 text-left text-xs transition duration-fast hover:border-border-strong disabled:opacity-50 sm:max-w-[16rem]"
               >
                 <span className="block truncate">
                   Suggested {suggestionLabel}: {tag}
                 </span>
-                <span className="mt-1 block font-semibold text-white">Use {suggestionLabel}</span>
+                <span className="mt-1 block font-semibold text-text-primary">Use {suggestionLabel}</span>
               </button>
             ))}
           </div>
@@ -173,7 +173,7 @@ export default function TagInput({
               onClick={() => setShowAllSuggestions((value) => !value)}
               disabled={disabled}
               aria-expanded={showAllSuggestions}
-              className="text-xs font-medium text-text-muted transition duration-fast hover:text-white disabled:opacity-50"
+              className="text-xs font-medium text-text-muted transition duration-fast hover:text-text-primary disabled:opacity-50"
             >
               {showAllSuggestions
                 ? "Show fewer tags"
@@ -183,7 +183,7 @@ export default function TagInput({
         </div>
       ) : null}
 
-      {localError ? <p className="text-xs text-rose-200">{localError}</p> : null}
+      {localError ? <p className="text-xs text-[var(--color-error-text)]">{localError}</p> : null}
     </div>
   );
 }

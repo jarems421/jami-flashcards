@@ -67,10 +67,9 @@ function NotebookCardInner({
                 />
               ))}
             </div>
-            <div className="absolute left-6 top-4 h-5 w-11 rounded-md border border-slate-900/10 bg-white/82 shadow-inner" aria-hidden="true" />
             <ObjectIcon
               icon={icon}
-              className="absolute left-7 top-[46%] h-6 w-6 text-white/78 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
+              className="absolute left-[50%] top-[50%] h-7 w-7 -translate-x-[42%] -translate-y-1/2 text-white/78 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]"
             />
           </div>
         </div>

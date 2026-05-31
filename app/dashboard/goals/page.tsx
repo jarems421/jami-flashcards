@@ -290,9 +290,9 @@ export default function GoalsPage() {
               label="Accuracy %"
             />
             <div className="md:col-span-2">
-              <div className="rounded-[1.6rem] border border-white/[0.10] bg-white/[0.04] p-4">
+              <div className="app-subtle-panel rounded-[1.6rem] p-4">
                 <div className="mb-4">
-                  <div className="text-sm font-medium text-white">Deadline</div>
+                  <div className="text-sm font-medium text-text-primary">Deadline</div>
                   <p className="mt-1 text-xs leading-5 text-text-muted">
                     Choose the date and time you want this goal finished by.
                   </p>
@@ -346,8 +346,8 @@ export default function GoalsPage() {
               </div>
             </div>
 
-            <div className="relative h-44 overflow-hidden rounded-xl border border-border bg-surface-base sm:h-56">
-              <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(9,7,20,0.12),rgba(9,7,20,0.34))]" />
+              <div className="relative h-44 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-56">
+                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(143,125,232,0.16),rgba(6,3,17,0.66))]" />
               <div className="absolute inset-0 z-10">
                 <ConstellationStar star={previewStar} variant="preview" />
               </div>

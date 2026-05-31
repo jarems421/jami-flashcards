@@ -24,7 +24,7 @@ const variantClasses: Record<ButtonVariant, string> = {
   surface:
     "border border-[var(--button-surface-border)] bg-[var(--button-surface-bg)] text-[var(--button-surface-text)] shadow-[var(--shadow-shell)] hover:-translate-y-[1px] hover:border-[var(--button-surface-border-hover)] hover:bg-[var(--button-surface-bg-hover)] hover:shadow-[var(--button-surface-shadow-hover)] active:translate-y-0 active:scale-[0.98] disabled:opacity-50",
   danger:
-    "border border-transparent bg-error text-white shadow-[0_16px_30px_rgba(255,120,183,0.24)] hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0 active:scale-[0.98] disabled:opacity-50",
+    "border border-transparent bg-error text-[var(--color-text-inverse)] shadow-[0_16px_30px_rgba(255,120,183,0.24)] hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0 active:scale-[0.98] disabled:opacity-50",
   warm:
     "border border-[var(--button-warm-border)] bg-[var(--button-warm-bg)] text-[var(--button-warm-text)] shadow-[var(--button-warm-shadow)] hover:-translate-y-[1px] hover:border-[var(--button-warm-border-hover)] hover:bg-[var(--button-warm-bg-hover)] hover:shadow-[var(--button-warm-shadow-hover)] active:translate-y-0 active:scale-[0.98] disabled:opacity-50",
 };

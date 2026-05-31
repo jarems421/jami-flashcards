@@ -9,12 +9,11 @@ import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckFolders, update
 import { getActiveStudyFolders } from "@/services/study/folders";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import {
-  DECK_COLOR_PRESETS,
-  DECK_ICON_PRESETS,
   getDeckColorPreset,
   type DeckColorPresetId,
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
+import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import { db } from "@/services/firebase/client";
 import AppPage from "@/components/layout/AppPage";
 import { Button, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
@@ -40,8 +39,8 @@ export default function DecksPage() {
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
   const [editingDeckName, setEditingDeckName] = useState("");
-  const [editingDeckColor, setEditingDeckColor] = useState<DeckColorPresetId>("aurora");
-  const [editingDeckIcon, setEditingDeckIcon] = useState<DeckIconPresetId>("book");
+  const [editingDeckColor, setEditingDeckColor] = useState<DeckColorPresetId>("sky");
+  const [editingDeckIcon, setEditingDeckIcon] = useState<DeckIconPresetId>("none");
   const [editingDeckFolderId, setEditingDeckFolderId] = useState("");
   const [savingDeckId, setSavingDeckId] = useState<string | null>(null);
   const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
@@ -126,8 +125,8 @@ export default function DecksPage() {
   const resetDeckEditing = () => {
     setEditingDeckId(null);
     setEditingDeckName("");
-    setEditingDeckColor("aurora");
-    setEditingDeckIcon("book");
+    setEditingDeckColor("sky");
+    setEditingDeckIcon("none");
     setEditingDeckFolderId("");
   };
 
@@ -224,7 +223,7 @@ export default function DecksPage() {
             title="Decks are groups of flashcards."
             description="Create a deck first. Then open it to add cards, edit the set, or jump into a focused study session."
             action={
-              <div className="grid w-full gap-3 sm:grid-cols-[minmax(16rem,1fr)_minmax(12rem,0.55fr)] lg:grid-cols-[minmax(18rem,1fr)_minmax(12rem,0.55fr)_auto]">
+            <div className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(18rem,1fr)_minmax(14rem,0.75fr)_auto]">
                 <Input
                   ref={nameInputRef}
                   placeholder="New deck name"
@@ -241,11 +240,11 @@ export default function DecksPage() {
                 />
                 <label className="block min-w-0">
                   <span className="sr-only">Add to folder</span>
-                  <select
-                    value={createFolderId}
-                    onChange={(event) => setCreateFolderId(event.target.value)}
-                    className="min-h-[3.25rem] w-full rounded-[1.6rem] border-[1.5px] border-white/[0.12] bg-surface-panel-strong px-4 text-sm text-white outline-none"
-                  >
+                <select
+                  value={createFolderId}
+                  onChange={(event) => setCreateFolderId(event.target.value)}
+                  className="app-field min-h-[3.25rem] w-full appearance-none rounded-[1.6rem] px-4 py-3 text-sm leading-6 outline-none"
+                >
                     <option value="">No folder</option>
                     {folders.map((folder) => (
                       <option key={folder.id} value={folder.id}>
@@ -267,14 +266,14 @@ export default function DecksPage() {
           </div>
         </div>
 
-        <div className="rounded-[1.35rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
-          <span className="font-semibold text-white">Decks vs Cards:</span> Decks are the groups, like
+        <div className="app-subtle-panel rounded-[1.35rem] p-4 text-sm leading-6">
+          <span className="font-semibold text-text-primary">Decks vs Cards:</span> Decks are the groups, like
           Biology key terms, Cold War dates, or Spanish verbs. Cards are the individual prompts inside those groups.
         </div>
 
         {isDemoUser ? (
-          <div className="rounded-[1.6rem] border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-text-secondary">
-            <div className="font-semibold text-white">Deck editing is locked in the shared demo</div>
+          <div className="app-subtle-panel rounded-[1.6rem] p-4 text-sm">
+            <div className="font-semibold text-text-primary">Deck editing is locked in the shared demo</div>
             <p className="mt-1 leading-6">
               You can browse the seeded decks here, but creating, renaming, recoloring, and deleting stay locked to keep the shared workspace stable.
             </p>
@@ -299,12 +298,13 @@ export default function DecksPage() {
           <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
             {decks.map((deck) => {
               const counts = deckCounts[deck.id] ?? { due: 0, total: 0 };
+              const deckColor = getDeckColorPreset(deck.colorPreset);
               return (
                 <div
                   key={deck.id}
                   className="app-panel p-3 sm:p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
                   style={{
-                    backgroundImage: getDeckColorPreset(deck.colorPreset).cardTint,
+                    backgroundImage: `linear-gradient(140deg, ${deckColor.base}22, ${deckColor.light}10, transparent)`,
                   }}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
@@ -317,7 +317,7 @@ export default function DecksPage() {
                             <select
                               value={editingDeckFolderId}
                               onChange={(event) => setEditingDeckFolderId(event.target.value)}
-                              className="min-h-[2.75rem] w-full rounded-2xl border border-white/[0.1] bg-surface-panel-strong px-3 text-sm text-white outline-none"
+                              className="app-field min-h-[2.75rem] w-full rounded-2xl px-3 text-sm outline-none"
                             >
                               <option value="">No folder</option>
                               {folders.map((folder) => (
@@ -327,16 +327,16 @@ export default function DecksPage() {
                               ))}
                             </select>
                           </label>
-                          <div className="space-y-3 rounded-[1.4rem] border border-white/[0.07] bg-white/[0.04] p-3">
+                          <div className="app-subtle-panel space-y-3 rounded-[1.4rem] p-3">
                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Deck cover</div>
-                            <div className="flex flex-wrap items-center gap-3 rounded-[1rem] border border-white/[0.08] bg-black/10 p-3 sm:flex-nowrap">
+                            <div className="app-chip flex flex-wrap items-center gap-3 rounded-[1rem] p-3 sm:flex-nowrap">
                               <DeckCoverIcon
                                 colorPreset={editingDeckColor}
                                 iconPreset={editingDeckIcon}
                                 className="h-12 w-12"
                               />
                               <div className="min-w-0">
-                                <div className="truncate text-sm font-medium text-white">
+                                <div className="truncate text-sm font-medium text-text-primary">
                                   {editingDeckName.trim() || "Deck preview"}
                                 </div>
                                 <div className="text-xs text-text-muted">
@@ -344,35 +344,14 @@ export default function DecksPage() {
                                 </div>
                               </div>
                             </div>
-                            <div className="flex flex-wrap gap-2">
-                              {DECK_COLOR_PRESETS.map((preset) => (
-                                <button
-                                  key={preset.id}
-                                  type="button"
-                                  aria-label={`Use ${preset.label} deck color`}
-                                  onClick={() => setEditingDeckColor(preset.id)}
-                                  className={`h-8 w-8 rounded-full border-2 sm:h-9 sm:w-9 ${editingDeckColor === preset.id ? "border-white" : "border-white/20"}`}
-                                  style={{ backgroundImage: preset.iconGradient }}
-                                />
-                              ))}
-                            </div>
-                            <div className="grid grid-cols-2 gap-2">
-                              {DECK_ICON_PRESETS.map((preset) => (
-                                <button
-                                  key={preset.id}
-                                  type="button"
-                                  onClick={() => setEditingDeckIcon(preset.id)}
-                                  className={`flex min-h-[3rem] w-full items-center gap-2 rounded-[1rem] border px-2.5 py-2 text-left text-white transition sm:min-h-[3.25rem] sm:gap-2.5 sm:px-3 ${editingDeckIcon === preset.id ? "border-accent bg-accent/20 shadow-[0_0_0_3px_rgba(255,214,246,0.08)]" : "border-white/[0.08] bg-white/[0.04] hover:border-border-strong"}`}
-                                >
-                                  <svg viewBox="0 0 24 24" fill="currentColor" className="h-5 w-5 shrink-0">
-                                    <path d={preset.path} />
-                                  </svg>
-                                  <span className="min-w-0 text-wrap break-words text-[0.72rem] font-semibold leading-4 [overflow-wrap:anywhere] sm:text-[0.78rem]">
-                                    {preset.label}
-                                  </span>
-                                </button>
-                              ))}
-                            </div>
+                            <ObjectStylePicker
+                              color={editingDeckColor}
+                              icon={editingDeckIcon}
+                              onColorChange={setEditingDeckColor}
+                              onIconChange={setEditingDeckIcon}
+                              colorLabel="Deck colour"
+                              iconLabel="Deck icon"
+                            />
                           </div>
                           <div className="flex flex-col gap-2 sm:flex-row">
                             <Button
@@ -400,7 +379,7 @@ export default function DecksPage() {
                           <div className="min-w-0 flex-1">
                             <div className="line-clamp-2 font-medium leading-5 [overflow-wrap:anywhere]">{deck.name}</div>
                             <div className="text-sm text-text-muted">{counts.total} cards | {counts.due} currently due</div>
-                            <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-white/90">
+                            <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
                               <span>Open deck</span>
                               <svg
                                 viewBox="0 0 16 16"

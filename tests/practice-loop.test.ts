@@ -20,6 +20,12 @@ import {
   normalizeObjectIcon,
 } from "@/components/workspace/object-card-styles";
 import {
+  DEFAULT_DECK_COLOR_PRESET,
+  DEFAULT_DECK_ICON_PRESET,
+  normalizeDeckColorPreset,
+  normalizeDeckIconPreset,
+} from "@/lib/study/deck-style";
+import {
   buildNotebookFilePayload,
   buildNotebookPagePayload,
   buildNotebookPayload,
@@ -294,13 +300,31 @@ describe("Jami notebook-first learning foundations", () => {
     expect(normalizeObjectColor("emerald")).toBe("emerald");
     expect(normalizeObjectColor("unknown")).toBe("sky");
     expect(normalizeObjectIcon("none")).toBe("none");
+    expect(normalizeObjectIcon("notebook")).toBe("notebook");
     expect(normalizeObjectIcon("file")).toBe("none");
-    expect(normalizeObjectIcon("code")).toBe("none");
+    expect(normalizeObjectIcon("globe")).toBe("none");
+    expect(normalizeObjectIcon("code")).toBe("code");
+    expect(normalizeObjectIcon("calculator")).toBe("calculator");
+    expect(normalizeObjectIcon("brain")).toBe("brain");
+    expect(normalizeObjectIcon("language")).toBe("language");
+    expect(normalizeObjectIcon("history")).toBe("history");
+    expect(normalizeObjectIcon("art")).toBe("art");
+    expect(normalizeObjectIcon("music")).toBe("music");
+    expect(normalizeObjectIcon("heart")).toBe("heart");
     expect(normalizeObjectIcon("random-icon")).toBe("none");
     expect(getObjectColorPreset("rose")).toMatchObject({
       id: "rose",
       label: "Rose",
     });
+  });
+
+  it("uses the shared object defaults for deck customisation", () => {
+    expect(DEFAULT_DECK_COLOR_PRESET).toBe("sky");
+    expect(DEFAULT_DECK_ICON_PRESET).toBe("none");
+    expect(normalizeDeckColorPreset("violet")).toBe("violet");
+    expect(normalizeDeckIconPreset("notebook")).toBe("notebook");
+    expect(normalizeDeckIconPreset("cap")).toBe("none");
+    expect(normalizeDeckIconPreset("flask")).toBe("none");
   });
 
   it("adds and removes folder links without duplicating or deleting assets", () => {

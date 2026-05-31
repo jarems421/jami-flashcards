@@ -1,6 +1,7 @@
 "use client";
 
 import ObjectIcon from "@/components/workspace/ObjectIcon";
+import IconBubble from "@/components/ui/IconBubble";
 import {
   OBJECT_COLOR_PRESETS,
   OBJECT_ICON_PRESETS,
@@ -81,14 +82,14 @@ export function ObjectStylePicker({
                 aria-pressed={selected}
                 onClick={() => onIconChange(preset.id)}
                 className={cx(
-                  "flex h-10 w-10 items-center justify-center rounded-2xl border transition hover:-translate-y-0.5",
+                  "inline-grid h-10 w-10 place-items-center rounded-2xl border transition hover:-translate-y-0.5",
                   selected
                     ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
                     : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-[var(--color-text-muted)]",
                 )}
               >
                 {preset.id === "none" ? (
-                  <span className="h-4 w-4 rounded-full border border-current opacity-60" />
+                  <IconBubble size="xs" shape="circle" className="h-4 w-4 border border-current opacity-60" aria-hidden />
                 ) : (
                   <ObjectIcon icon={preset.id} className="h-5 w-5" />
                 )}

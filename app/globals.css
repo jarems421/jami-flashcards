@@ -26,8 +26,13 @@
     /* Semantic */
     --color-success: #7de0cc;
     --color-success-muted: rgba(125, 224, 204, 0.2);
+    --color-success-text: #dffcf7;
     --color-error: #ff78b7;
     --color-error-muted: rgba(255, 120, 183, 0.18);
+    --color-error-text: #ffe7f2;
+    --color-warning: #ffd6a6;
+    --color-warning-muted: rgba(255, 214, 166, 0.18);
+    --color-warning-text: #fff1dc;
 
     /* Warm accent (blush highlight from the star body) */
     --color-warm-glow: rgba(255, 214, 246, 0.12);
@@ -38,6 +43,19 @@
     --color-text-primary: #fff8ff;
     --color-text-secondary: #f1f5ff;
     --color-text-muted: #c8d1e3;
+    --color-text-inverse: #101827;
+
+    /* Readable foreground/background pairs */
+    --color-field-bg: rgba(10, 14, 24, 0.74);
+    --color-field-text: #fff8ff;
+    --color-field-placeholder: #c8d1e3;
+    --color-field-border: rgba(233, 219, 255, 0.22);
+    --color-chip-bg: rgba(255, 255, 255, 0.08);
+    --color-chip-text: #f1f5ff;
+    --color-chip-border: rgba(233, 219, 255, 0.16);
+    --color-selected-bg: rgba(143, 125, 232, 0.26);
+    --color-selected-text: #fff8ff;
+    --color-selected-border: rgba(233, 219, 255, 0.34);
 
     /* Border */
     --color-border: rgba(214, 193, 244, 0.14);
@@ -162,12 +180,26 @@
     --color-accent: #9f82f2;
     --color-accent-hover: #b295ff;
     --color-accent-muted: rgba(159, 130, 242, 0.22);
+    --color-success-text: #dffcf7;
+    --color-error-text: #ffe7f2;
+    --color-warning-text: #fff1dc;
     --color-warm-glow: rgba(199, 168, 255, 0.12);
     --color-warm-border: rgba(199, 168, 255, 0.28);
     --color-warm-accent: #d8c2ff;
     --color-text-primary: #fff9ff;
     --color-text-secondary: #f8f2ff;
     --color-text-muted: #d4c6e7;
+    --color-text-inverse: #160a23;
+    --color-field-bg: rgba(14, 7, 24, 0.78);
+    --color-field-text: #fff9ff;
+    --color-field-placeholder: #d4c6e7;
+    --color-field-border: rgba(232, 217, 255, 0.24);
+    --color-chip-bg: rgba(255, 255, 255, 0.085);
+    --color-chip-text: #f8f2ff;
+    --color-chip-border: rgba(232, 217, 255, 0.18);
+    --color-selected-bg: rgba(216, 194, 255, 0.24);
+    --color-selected-text: #fff9ff;
+    --color-selected-border: rgba(232, 217, 255, 0.36);
     --color-border: rgba(214, 193, 244, 0.15);
     --color-border-strong: rgba(232, 217, 255, 0.24);
     --app-background: linear-gradient(180deg, #0a0510 0%, #160a23 46%, #0f0718 100%);
@@ -217,12 +249,29 @@
     --color-accent: #7464cf;
     --color-accent-hover: #6556c3;
     --color-accent-muted: rgba(116, 100, 207, 0.14);
+    --color-success-muted: rgba(18, 104, 85, 0.12);
+    --color-success-text: #126855;
+    --color-error-muted: rgba(138, 18, 61, 0.11);
+    --color-error-text: #8a123d;
+    --color-warning-muted: rgba(126, 82, 16, 0.12);
+    --color-warning-text: #70470d;
     --color-warm-glow: rgba(116, 100, 207, 0.1);
     --color-warm-border: rgba(116, 100, 207, 0.22);
     --color-warm-accent: #5b4ebe;
     --color-text-primary: #101827;
     --color-text-secondary: #202a3a;
     --color-text-muted: #465468;
+    --color-text-inverse: #ffffff;
+    --color-field-bg: rgba(255, 255, 255, 0.96);
+    --color-field-text: #101827;
+    --color-field-placeholder: #5b6575;
+    --color-field-border: rgba(20, 28, 42, 0.22);
+    --color-chip-bg: rgba(20, 28, 42, 0.065);
+    --color-chip-text: #202a3a;
+    --color-chip-border: rgba(20, 28, 42, 0.16);
+    --color-selected-bg: rgba(116, 100, 207, 0.16);
+    --color-selected-text: #101827;
+    --color-selected-border: rgba(116, 100, 207, 0.34);
     --color-border: rgba(20, 28, 42, 0.14);
     --color-border-strong: rgba(20, 28, 42, 0.23);
     --app-background: linear-gradient(180deg, #fffdfd 0%, #f8f7fb 48%, #eef1f7 100%);
@@ -272,12 +321,26 @@
     --color-accent: #a8a8a8;
     --color-accent-hover: #c2c2c2;
     --color-accent-muted: rgba(194, 194, 194, 0.16);
+    --color-success-text: #dffcf7;
+    --color-error-text: #ffe7f2;
+    --color-warning-text: #fff1dc;
     --color-warm-glow: rgba(210, 210, 210, 0.09);
     --color-warm-border: rgba(218, 218, 218, 0.22);
     --color-warm-accent: #dedede;
     --color-text-primary: #fafafa;
     --color-text-secondary: #eeeeee;
     --color-text-muted: #c7c7c7;
+    --color-text-inverse: #101010;
+    --color-field-bg: rgba(14, 14, 14, 0.76);
+    --color-field-text: #fafafa;
+    --color-field-placeholder: #c7c7c7;
+    --color-field-border: rgba(255, 255, 255, 0.2);
+    --color-chip-bg: rgba(255, 255, 255, 0.075);
+    --color-chip-text: #eeeeee;
+    --color-chip-border: rgba(255, 255, 255, 0.16);
+    --color-selected-bg: rgba(255, 255, 255, 0.16);
+    --color-selected-text: #fafafa;
+    --color-selected-border: rgba(255, 255, 255, 0.28);
     --color-border: rgba(255, 255, 255, 0.12);
     --color-border-strong: rgba(255, 255, 255, 0.2);
     --app-background: linear-gradient(180deg, #252525 0%, #171717 48%, #0e0e0e 100%);
@@ -325,6 +388,23 @@
     font: inherit;
   }
 
+  input,
+  select,
+  textarea {
+    color: var(--color-field-text);
+  }
+
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-field-placeholder);
+    opacity: 1;
+  }
+
+  option {
+    background-color: var(--color-surface-panel-strong);
+    color: var(--color-field-text);
+  }
+
   ::selection {
     background: rgba(183, 124, 255, 0.28);
     color: #fff7ff;
@@ -360,6 +440,57 @@
     background-image: var(--gradient-card);
     border-radius: 2.15rem;
     box-shadow: var(--shadow-bubble);
+  }
+
+  .app-field {
+    border: 1.5px solid var(--color-field-border);
+    background-color: var(--color-field-bg);
+    color: var(--color-field-text);
+    box-shadow: 0 10px 22px rgba(8, 2, 24, 0.18);
+  }
+
+  .app-field::placeholder {
+    color: var(--color-field-placeholder);
+    opacity: 1;
+  }
+
+  .app-field:hover {
+    border-color: var(--color-border-strong);
+  }
+
+  .app-field:focus,
+  .app-field:focus-within {
+    border-color: color-mix(in srgb, var(--color-warm-accent) 78%, transparent);
+    box-shadow:
+      0 10px 22px rgba(8, 2, 24, 0.18),
+      0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent);
+    outline: none;
+  }
+
+  .app-subtle-panel {
+    border: 1px solid var(--color-border);
+    background-color: var(--color-glass-subtle);
+    color: var(--color-text-secondary);
+  }
+
+  .app-chip {
+    border: 1px solid var(--color-chip-border);
+    background-color: var(--color-chip-bg);
+    color: var(--color-chip-text);
+  }
+
+  .app-selected {
+    border: 1px solid var(--color-selected-border);
+    background-color: var(--color-selected-bg);
+    color: var(--color-selected-text);
+  }
+
+  .app-link {
+    color: var(--color-text-secondary);
+  }
+
+  .app-link:hover {
+    color: var(--color-text-primary);
   }
 
   .study-flashcard-face {
@@ -408,6 +539,34 @@
   body.app-theme-paper-white .bg-error .text-white {
     color: #ffffff !important;
   }
+
+  body.app-theme-paper-white [class*="text-white/"] {
+    color: var(--color-text-secondary) !important;
+  }
+
+  body.app-theme-paper-white [class*="text-rose-100"],
+  body.app-theme-paper-white [class*="text-rose-200"] {
+    color: #8a123d !important;
+  }
+
+  body.app-theme-paper-white [class*="text-emerald-100"],
+  body.app-theme-paper-white [class*="text-emerald-200"] {
+    color: #126855 !important;
+  }
+
+  body.app-theme-paper-white [class*="bg-black/"] {
+    background-color: rgba(20, 28, 42, 0.065) !important;
+  }
+
+  body:not(.app-theme-paper-white) [class*="bg-accent/"][class*="text-accent"],
+  body:not(.app-theme-paper-white) [class*="bg-warm-glow"][class*="text-warm-accent"] {
+    color: var(--color-selected-text) !important;
+  }
+
+  body.app-theme-paper-white [class*="bg-accent/"][class*="text-accent"],
+  body.app-theme-paper-white [class*="bg-warm-glow"][class*="text-warm-accent"] {
+    color: var(--color-selected-text) !important;
+  }
 }
 
 /* Constellation background overrides */
@@ -427,6 +586,20 @@ body.constellation-background-enabled {
   --color-text-primary: #fffaff;
   --color-text-secondary: #f2edfb;
   --color-text-muted: #d0c8dd;
+  --color-text-inverse: #090615;
+  --color-success-text: #dffcf7;
+  --color-error-text: #ffe7f2;
+  --color-warning-text: #fff1dc;
+  --color-field-bg: rgba(7, 5, 17, 0.86);
+  --color-field-text: #fffaff;
+  --color-field-placeholder: #d0c8dd;
+  --color-field-border: rgba(238, 225, 255, 0.28);
+  --color-chip-bg: rgba(255, 255, 255, 0.1);
+  --color-chip-text: #f2edfb;
+  --color-chip-border: rgba(238, 225, 255, 0.2);
+  --color-selected-bg: rgba(234, 219, 255, 0.18);
+  --color-selected-text: #fffaff;
+  --color-selected-border: rgba(238, 225, 255, 0.32);
   --color-border: rgba(238, 225, 255, 0.18);
   --color-border-strong: rgba(238, 225, 255, 0.28);
   --color-warm-accent: #eadbff;

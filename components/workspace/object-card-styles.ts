@@ -11,14 +11,19 @@ export type ObjectColorId =
 export type ObjectIconId =
   | "none"
   | "book"
+  | "notebook"
   | "leaf"
-  | "globe"
   | "code"
   | "pen"
-  | "file"
+  | "calculator"
   | "lab"
+  | "brain"
+  | "language"
+  | "history"
+  | "art"
+  | "music"
   | "star"
-  | "message";
+  | "heart";
 
 export type ObjectColorPreset = {
   id: ObjectColorId;
@@ -117,11 +122,19 @@ export const OBJECT_COLOR_PRESETS: ObjectColorPreset[] = [
 export const OBJECT_ICON_PRESETS: Array<{ id: ObjectIconId; label: string }> = [
   { id: "none", label: "None" },
   { id: "book", label: "Book" },
-  { id: "leaf", label: "Leaf" },
-  { id: "globe", label: "Globe" },
+  { id: "notebook", label: "Notebook" },
   { id: "pen", label: "Pen" },
+  { id: "calculator", label: "Calculator" },
   { id: "lab", label: "Lab" },
+  { id: "brain", label: "Brain" },
+  { id: "language", label: "Language" },
+  { id: "history", label: "History" },
+  { id: "art", label: "Art" },
+  { id: "music", label: "Music" },
+  { id: "code", label: "Code" },
   { id: "star", label: "Star" },
+  { id: "leaf", label: "Leaf" },
+  { id: "heart", label: "Heart" },
 ];
 
 export function normalizeObjectColor(value?: string | null): ObjectColorId {

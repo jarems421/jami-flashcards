@@ -29,7 +29,7 @@ import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
-import { Card, FeedbackBanner, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
+import { Card, FeedbackBanner, IconBubble, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { loadInAppUsername } from "@/services/profile";
 import { getStudyDayKey } from "@/lib/study/day";
@@ -104,9 +104,9 @@ function GettingStartedChecklist({
               You are ready.
             </div>
           </div>
-          <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow">
+          <IconBubble size="lg" shape="circle" className="h-16 w-16 border border-warm-border bg-warm-glow">
             <span className="h-8 w-8 rounded-full bg-warm-accent shadow-[0_0_28px_rgba(255,214,246,0.35)]" />
-          </div>
+          </IconBubble>
         </div>
       </Card>
     );
@@ -451,9 +451,9 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
             className="relative rounded-[1.1rem] border border-white/[0.09] bg-white/[0.035] p-3"
           >
             <div className="flex items-center gap-3">
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-xs font-semibold text-warm-accent">
+              <IconBubble size="sm" shape="circle" className="border border-warm-border bg-warm-glow font-semibold text-warm-accent">
                 {step}
-              </div>
+              </IconBubble>
               <div className="text-sm font-semibold text-white">{title}</div>
             </div>
           </div>

@@ -16,15 +16,15 @@ export default function FeedbackBanner({
       role="status"
       className={`flex items-center justify-between gap-4 rounded-[1.7rem] border px-4 py-3 text-sm ${
         type === "error"
-          ? "border-error-muted bg-error-muted text-rose-100"
-          : "border-success-muted bg-success-muted text-emerald-100"
+          ? "border-error/35 bg-error-muted text-[var(--color-error-text)]"
+          : "border-success/35 bg-success-muted text-[var(--color-success-text)]"
       }`}
     >
       <div>{message}</div>
       <button
         type="button"
         onClick={onDismiss}
-        className="rounded-full bg-white/10 px-3 py-1.5 text-xs font-medium text-white/90 transition duration-fast hover:bg-white/15"
+        className="app-chip rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
       >
         Dismiss
       </button>

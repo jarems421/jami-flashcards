@@ -2,6 +2,7 @@ export { default as Button } from "./Button";
 export { default as Card } from "./Card";
 export { default as EmptyState } from "./EmptyState";
 export { default as FeedbackBanner } from "./FeedbackBanner";
+export { default as IconBubble } from "./IconBubble";
 export { default as Input } from "./Input";
 export { default as MetricStrip, type MetricStripItem } from "./MetricStrip";
 export { default as PageHero } from "./PageHero";

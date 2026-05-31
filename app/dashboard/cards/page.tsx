@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { FirebaseError } from "firebase/app";
 import { collection, deleteDoc, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
@@ -31,6 +31,7 @@ import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
+import { useCardSelection } from "@/components/decks/useCardSelection";
 import { Button, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import Link from "next/link";
 
@@ -45,7 +46,6 @@ function cardMatchesSearch(card: Card, term: string, deckName?: string) {
 }
 
 const CARD_RESULT_PAGE_SIZE = 50;
-type SelectionDragMode = "select" | "deselect";
 
 function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
@@ -70,14 +70,12 @@ export default function CardsSearchPage() {
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
-  const [selectionDragMode, setSelectionDragMode] = useState<SelectionDragMode | null>(null);
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkPendingTag, setBulkPendingTag] = useState("");
   const [applyingBulkTags, setApplyingBulkTags] = useState(false);
   const [tagManagerSource, setTagManagerSource] = useState("");
   const [tagManagerTarget, setTagManagerTarget] = useState("");
   const [tagManagerAction, setTagManagerAction] = useState<"rename" | "remove" | null>(null);
-  const selectionDragModeRef = useRef<SelectionDragMode | null>(null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -165,10 +163,21 @@ export default function CardsSearchPage() {
   }, [cards, debouncedTerm, deckNamesById]);
 
   const visibleCards = filtered.slice(0, visibleResultLimit);
+  const visibleCardIds = useMemo(() => visibleCards.map((card) => card.id), [visibleCards]);
   const remainingHiddenCards = Math.max(filtered.length - visibleCards.length, 0);
   const hasMore = remainingHiddenCards > 0;
-  const selectedCardIdSet = useMemo(() => new Set(selectedCardIds), [selectedCardIds]);
-  const visibleCardIdSet = useMemo(() => new Set(visibleCards.map((card) => card.id)), [visibleCards]);
+  const {
+    selectedCardIdSet,
+    selectVisibleCards,
+    clearSelection,
+    handleCheckboxClick,
+    getCardLongPressHandlers,
+  } = useCardSelection({
+    visibleCardIds,
+    selectedCardIds,
+    setSelectedCardIds,
+    disabled: isDemoUser,
+  });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
   const tagCounts = useMemo(() => {
     const counts = new Map<string, { label: string; count: number }>();
@@ -182,39 +191,6 @@ export default function CardsSearchPage() {
     }
     return counts;
   }, [cards]);
-
-  const setSelectionDrag = useCallback((mode: SelectionDragMode | null) => {
-    selectionDragModeRef.current = mode;
-    setSelectionDragMode(mode);
-  }, []);
-
-  const applyCardSelectionDrag = useCallback(
-    (cardId: string, mode: SelectionDragMode) => {
-      if (!visibleCardIdSet.has(cardId)) {
-        return;
-      }
-
-      setSelectedCardIds((prev) => {
-        const selected = prev.includes(cardId);
-        if (mode === "select") {
-          return selected ? prev : [...prev, cardId];
-        }
-
-        return selected ? prev.filter((selectedId) => selectedId !== cardId) : prev;
-      });
-    },
-    [visibleCardIdSet]
-  );
-
-  useEffect(() => {
-    const stopSelectionDrag = () => setSelectionDrag(null);
-    window.addEventListener("pointerup", stopSelectionDrag);
-    window.addEventListener("pointercancel", stopSelectionDrag);
-    return () => {
-      window.removeEventListener("pointerup", stopSelectionDrag);
-      window.removeEventListener("pointercancel", stopSelectionDrag);
-    };
-  }, [setSelectionDrag]);
 
   const startEditing = (card: Card) => {
     setExpandedCardId(card.id);
@@ -344,52 +320,6 @@ export default function CardsSearchPage() {
       setBulkTags([]);
       setBulkPendingTag("");
     }
-  };
-
-  const toggleCardSelection = (cardId: string) => {
-    setSelectedCardIds((prev) =>
-      prev.includes(cardId)
-        ? prev.filter((selectedId) => selectedId !== cardId)
-        : [...prev, cardId]
-    );
-  };
-
-  const handleCardPointerDown = (cardId: string, selected: boolean) => (event: PointerEvent<HTMLElement>) => {
-    if (isDemoUser || event.pointerType === "mouse" && event.button !== 0) {
-      return;
-    }
-
-    event.preventDefault();
-    const mode: SelectionDragMode = selected ? "deselect" : "select";
-    setSelectionDrag(mode);
-    applyCardSelectionDrag(cardId, mode);
-  };
-
-  const handleCardPointerEnter = (cardId: string) => {
-    const mode = selectionDragModeRef.current;
-    if (mode) {
-      applyCardSelectionDrag(cardId, mode);
-    }
-  };
-
-  const handleCardPointerMove = (event: PointerEvent<HTMLElement>) => {
-    const mode = selectionDragModeRef.current;
-    if (!mode || typeof document === "undefined") {
-      return;
-    }
-
-    const element = document.elementFromPoint(event.clientX, event.clientY);
-    const cardElement = element instanceof HTMLElement ? element.closest<HTMLElement>("[data-card-id]") : null;
-    const cardId = cardElement?.dataset.cardId;
-    if (cardId) {
-      applyCardSelectionDrag(cardId, mode);
-    }
-  };
-
-  const selectVisibleCards = () => {
-    setSelectedCardIds((prev) =>
-      Array.from(new Set([...prev, ...visibleCards.map((card) => card.id)]))
-    );
   };
 
   const handleAddTagsToSelectedCards = async () => {
@@ -768,23 +698,8 @@ export default function CardsSearchPage() {
                   {selectedCardIds.length} selected for bulk edit
                 </span>
               </div>
-              <div
-                className={`rounded-[1.25rem] border px-4 py-3 text-sm leading-6 transition duration-fast ${
-                  selectionDragMode
-                    ? "border-accent/35 bg-accent/10 text-accent"
-                    : "border-white/[0.08] bg-white/[0.025] text-text-muted"
-                }`}
-              >
-                {selectionDragMode
-                  ? selectionDragMode === "select"
-                    ? "Selecting as you slide."
-                    : "Deselecting as you slide."
-                  : (
-                    <>
-                      <span className="sm:hidden">Tap Select on cards, or use the handle for quick multi-select.</span>
-                      <span className="hidden sm:inline">Use the selection handle on a card, then slide across other handles or panels to select or deselect several at once.</span>
-                    </>
-                  )}
+              <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-sm leading-6 text-text-muted">
+                Tip: Shift-click on desktop or long-press and swipe on touch to select several cards.
               </div>
 
               <BulkTagToolbar
@@ -796,7 +711,7 @@ export default function CardsSearchPage() {
                 onTagsChange={setBulkTags}
                 onPendingTagChange={setBulkPendingTag}
                 onApply={() => void handleAddTagsToSelectedCards()}
-                onClearSelection={() => setSelectedCardIds([])}
+                onClearSelection={clearSelection}
               />
             </>
           ) : null}
@@ -806,15 +721,12 @@ export default function CardsSearchPage() {
             Use the deck pill on any card to jump into that deck.
           </p>
 
-          <div
-            className="grid animate-slide-up touch-pan-y select-none gap-3 sm:gap-4 lg:grid-cols-2"
-            onPointerMove={handleCardPointerMove}
-          >
+          <div className="grid animate-slide-up touch-pan-y gap-3 sm:gap-4 lg:grid-cols-2">
             {visibleCards.map((card) => (
               <section
                 key={card.id}
                 data-card-id={card.id}
-                onPointerEnter={() => handleCardPointerEnter(card.id)}
+                {...getCardLongPressHandlers(card.id)}
                 className={`app-panel p-3 sm:p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell ${
                   selectedCardIdSet.has(card.id)
                     ? "border-accent/45 ring-2 ring-accent/20"
@@ -822,25 +734,13 @@ export default function CardsSearchPage() {
                 }`}
               >
                 {!isDemoUser ? (
-                  <div className="mb-3 flex items-center justify-between gap-2 sm:justify-start">
-                    <button
-                      type="button"
-                      onPointerDown={handleCardPointerDown(card.id, selectedCardIdSet.has(card.id))}
-                      className="inline-flex h-9 w-9 touch-none cursor-grab items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.055] text-text-secondary transition duration-fast hover:border-accent/40 hover:bg-accent/10 hover:text-accent active:cursor-grabbing"
-                      aria-label={`${selectedCardIdSet.has(card.id) ? "Deselect" : "Select"} this card and slide across more cards`}
-                      title="Selection handle"
-                    >
-                      <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" aria-hidden="true" className="h-4 w-4">
-                        <path d="M4 3.5h8" />
-                        <path d="M4 8h8" />
-                        <path d="M4 12.5h8" />
-                      </svg>
-                    </button>
-                    <label className="flex min-h-9 flex-1 items-center justify-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary sm:flex-none">
+                  <div className="mb-3 flex items-center justify-end">
+                    <label className="flex min-h-9 items-center justify-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
                       <input
                         type="checkbox"
                         checked={selectedCardIdSet.has(card.id)}
-                        onChange={() => toggleCardSelection(card.id)}
+                        readOnly
+                        onClick={(event) => handleCheckboxClick(card.id, event)}
                         className="h-4 w-4 accent-[var(--color-accent)]"
                       />
                       Select

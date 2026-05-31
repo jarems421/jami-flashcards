@@ -33,7 +33,7 @@ export default function CardBackEditor({
           {label}
         </label>
       ) : null}
-      <div className="rounded-[1.5rem] border-[1.5px] border-white/[0.12] bg-surface-panel-strong shadow-[0_12px_24px_rgba(8,2,24,0.22)] transition duration-fast focus-within:border-warm-accent/75 focus-within:ring-4 focus-within:ring-accent/14 hover:border-white/[0.18]">
+      <div className="app-field rounded-[1.5rem] transition duration-fast">
         <textarea
           id={textareaId}
           rows={rows}
@@ -42,7 +42,7 @@ export default function CardBackEditor({
           maxLength={maxLength}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
-          className="w-full resize-y rounded-[1.5rem] bg-transparent px-5 py-4 text-sm leading-6 text-white placeholder:text-text-muted outline-none disabled:cursor-not-allowed disabled:opacity-60"
+          className="w-full resize-y rounded-[1.5rem] bg-transparent px-5 py-4 text-sm leading-6 text-field-text placeholder:text-field-placeholder outline-none disabled:cursor-not-allowed disabled:opacity-60"
         />
       </div>
     </div>

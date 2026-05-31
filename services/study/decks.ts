@@ -5,6 +5,9 @@ import { FirebaseError } from "firebase/app";
 import {
   DEFAULT_DECK_COLOR_PRESET,
   DEFAULT_DECK_ICON_PRESET,
+  DECK_STYLE_VERSION,
+  normalizeDeckColorPreset,
+  normalizeDeckIconPreset,
   type DeckColorPresetId,
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
@@ -30,6 +33,7 @@ export type Deck = {
   createdAt: number;
   colorPreset: DeckColorPresetId;
   iconPreset: DeckIconPresetId;
+  styleVersion?: string;
   folderIds: string[];
 };
 
@@ -40,6 +44,7 @@ type DeckDoc = {
   createdAt?: number;
   colorPreset?: string;
   iconPreset?: string;
+  styleVersion?: string;
   folderIds?: unknown;
 };
 
@@ -66,14 +71,14 @@ function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
 
   const name = typeof data.name === "string" && data.name.trim() ? data.name.trim() : "Untitled";
   const createdAt = typeof data.createdAt === "number" ? data.createdAt : 0;
-  const colorPreset =
-    typeof data.colorPreset === "string"
-      ? (data.colorPreset as DeckColorPresetId)
-      : DEFAULT_DECK_COLOR_PRESET;
-  const iconPreset =
-    typeof data.iconPreset === "string"
-      ? (data.iconPreset as DeckIconPresetId)
-      : DEFAULT_DECK_ICON_PRESET;
+  const styleVersion = typeof data.styleVersion === "string" ? data.styleVersion : undefined;
+  const usesSharedObjectStyle = styleVersion === DECK_STYLE_VERSION;
+  const colorPreset = usesSharedObjectStyle
+    ? normalizeDeckColorPreset(data.colorPreset)
+    : DEFAULT_DECK_COLOR_PRESET;
+  const iconPreset = usesSharedObjectStyle
+    ? normalizeDeckIconPreset(data.iconPreset)
+    : DEFAULT_DECK_ICON_PRESET;
   const folderIds = Array.isArray(data.folderIds)
     ? data.folderIds
         .filter((folderId): folderId is string => typeof folderId === "string" && Boolean(folderId.trim()))
@@ -88,6 +93,7 @@ function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
     createdAt,
     colorPreset,
     iconPreset,
+    styleVersion,
     folderIds,
   };
 }
@@ -185,6 +191,7 @@ export const createDeck = async (
       createdAt,
       colorPreset: DEFAULT_DECK_COLOR_PRESET,
       iconPreset: DEFAULT_DECK_ICON_PRESET,
+      styleVersion: DECK_STYLE_VERSION,
       folderIds,
     }),
     CREATE_MS,
@@ -198,6 +205,7 @@ export const createDeck = async (
     createdAt,
     colorPreset: DEFAULT_DECK_COLOR_PRESET,
     iconPreset: DEFAULT_DECK_ICON_PRESET,
+    styleVersion: DECK_STYLE_VERSION,
     folderIds,
   };
 };
@@ -284,6 +292,7 @@ export const updateDeckStyle = async (
     updateDoc(doc(db, "decks", normalizedDeckId), {
       colorPreset: style.colorPreset,
       iconPreset: style.iconPreset,
+      styleVersion: DECK_STYLE_VERSION,
     }),
     UPDATE_MS,
     "Update deck style"

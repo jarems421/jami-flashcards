@@ -45,6 +45,28 @@ module.exports = {
           primary: "var(--color-text-primary)",
           secondary: "var(--color-text-secondary)",
           muted: "var(--color-text-muted)",
+          inverse: "var(--color-text-inverse)",
+        },
+        field: {
+          bg: "var(--color-field-bg)",
+          text: "var(--color-field-text)",
+          placeholder: "var(--color-field-placeholder)",
+          border: "var(--color-field-border)",
+        },
+        chip: {
+          bg: "var(--color-chip-bg)",
+          text: "var(--color-chip-text)",
+          border: "var(--color-chip-border)",
+        },
+        selected: {
+          bg: "var(--color-selected-bg)",
+          text: "var(--color-selected-text)",
+          border: "var(--color-selected-border)",
+        },
+        warning: {
+          DEFAULT: "var(--color-warning)",
+          muted: "var(--color-warning-muted)",
+          text: "var(--color-warning-text)",
         },
         border: {
           DEFAULT: "var(--color-border)",

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type TouchEvent, useEffect, useRef, useState } from "react";
+import IconBubble from "@/components/ui/IconBubble";
 
 type TabGroup = "loop" | "support";
 
@@ -142,15 +143,17 @@ function DesktopNavItem({
       {active ? (
         <span className="absolute inset-y-2 left-0 hidden w-1 rounded-r-full bg-warm-accent lg:block" />
       ) : null}
-      <span
-        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-[1.05rem] border transition duration-fast ${
+      <IconBubble
+        size="sm"
+        shape="rounded"
+        className={`h-9 w-9 border transition duration-fast ${
           active
             ? "border-warm-border bg-warm-glow text-warm-accent"
             : "border-white/8 bg-white/[0.035] text-text-muted group-hover:border-white/14 group-hover:text-white"
         }`}
       >
         <NavIcon tab={tab} active={active} />
-      </span>
+      </IconBubble>
       <span className="hidden min-w-0 lg:block">
         <span className="block truncate text-sm font-semibold">{tab.label}</span>
         <span className="mt-0.5 block truncate text-[0.72rem] text-text-muted">
@@ -189,7 +192,36 @@ function MobileNavItem({
   );
 }
 
-export default function TabBar() {
+function SidebarToggleIcon({ direction }: { direction: "hide" | "show" }) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true" className="h-4 w-4">
+      <path
+        d="M4.75 5.75A2 2 0 016.75 3.75h10.5a2 2 0 012 2v12.5a2 2 0 01-2 2H6.75a2 2 0 01-2-2V5.75zM9 4.25v15.5"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d={direction === "hide" ? "M15.5 9l-3 3 3 3" : "M12.5 9l3 3-3 3"}
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+type TabBarProps = {
+  desktopHidden?: boolean;
+  onDesktopHiddenChange?: (hidden: boolean) => void;
+};
+
+export default function TabBar({
+  desktopHidden = false,
+  onDesktopHiddenChange,
+}: TabBarProps) {
   const pathname = usePathname();
   const mobileNavRef = useRef<HTMLElement>(null);
   const touchStartXRef = useRef<number | null>(null);
@@ -290,20 +322,45 @@ export default function TabBar() {
         </button>
       ) : null}
 
+      {desktopHidden ? (
+        <button
+          type="button"
+          aria-label="Show sidebar"
+          title="Show sidebar"
+          onClick={() => onDesktopHiddenChange?.(false)}
+          className="app-nav fixed left-0 top-1/2 z-40 hidden h-14 w-9 -translate-y-1/2 items-center justify-center rounded-r-[1.15rem] border border-l-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-text-secondary shadow-[var(--nav-shell-shadow)] backdrop-blur-xl transition duration-fast hover:w-10 hover:text-text-primary md:flex"
+        >
+          <SidebarToggleIcon direction="show" />
+        </button>
+      ) : null}
+
       <nav
         aria-label="Primary"
-        className="app-nav fixed inset-y-4 left-4 z-30 hidden w-[5.75rem] flex-col rounded-[1.8rem] border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-2.5 shadow-[var(--nav-shell-shadow)] backdrop-blur-xl md:flex lg:w-72"
+        className={`app-nav fixed inset-y-4 left-4 z-30 hidden w-[5rem] flex-col rounded-[1.7rem] border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-2 shadow-[var(--nav-shell-shadow)] backdrop-blur-xl transition duration-300 md:flex lg:w-64 ${
+          desktopHidden ? "pointer-events-none -translate-x-[calc(100%+1.5rem)] opacity-0" : "translate-x-0 opacity-100"
+        }`}
       >
-        <div className="flex items-center justify-center gap-3 border-b border-white/[0.07] px-1 pb-4 pt-2 lg:justify-start lg:px-2">
-          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-[1.1rem] border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent shadow-[0_12px_24px_rgba(7,12,24,0.18)]">
-            J
-          </div>
-          <div className="hidden min-w-0 lg:block">
-            <div className="text-base font-semibold text-white">Jami</div>
-            <div className="mt-0.5 truncate text-xs text-text-muted">
-              Learning loop
+        <div className="flex flex-col items-center gap-2 border-b border-white/[0.07] px-1 pb-3 pt-2 lg:flex-row lg:justify-between lg:px-2">
+          <div className="flex min-w-0 items-center gap-3">
+            <IconBubble size="md" className="border border-warm-border bg-warm-glow font-semibold text-warm-accent shadow-[0_12px_24px_rgba(7,12,24,0.18)]">
+              J
+            </IconBubble>
+            <div className="hidden min-w-0 lg:block">
+              <div className="text-base font-semibold text-text-primary">Jami</div>
+              <div className="mt-0.5 truncate text-xs text-text-muted">
+                Learning loop
+              </div>
             </div>
           </div>
+          <button
+            type="button"
+            aria-label="Hide sidebar"
+            title="Hide sidebar"
+            onClick={() => onDesktopHiddenChange?.(true)}
+            className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-[0.95rem] border border-[var(--color-border)] bg-[var(--nav-hover-bg)] text-text-muted transition duration-fast hover:border-[var(--nav-active-border)] hover:text-text-primary [&>svg]:block"
+          >
+            <SidebarToggleIcon direction="hide" />
+          </button>
         </div>
 
         <div className="flex flex-1 flex-col gap-4 overflow-y-auto scrollbar-hide px-0.5 py-3">

@@ -30,7 +30,7 @@ const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textare
         ref={ref}
         id={textareaId}
         rows={rows}
-        className={`w-full rounded-[1.5rem] border-[1.5px] border-white/[0.12] bg-surface-panel-strong px-5 py-4 text-sm text-white placeholder:text-text-muted shadow-[0_10px_22px_rgba(8,2,24,0.18)] outline-none transition duration-fast hover:border-white/[0.18] focus:border-warm-accent/80 focus:ring-4 focus:ring-accent/14 ${className}`}
+        className={`app-field w-full rounded-[1.5rem] px-5 py-4 text-sm outline-none transition duration-fast ${className}`}
         {...props}
       />
     </div>

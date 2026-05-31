@@ -59,7 +59,7 @@ import { getDecks, type Deck } from "@/services/study/decks";
 import { featureFlags } from "@/lib/app/feature-flags";
 import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, PageHero, ProgressBar, Skeleton, StudyText } from "@/components/ui";
+import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, IconBubble, Input, PageHero, ProgressBar, Skeleton, StudyText } from "@/components/ui";
 
 type SessionKind = StudySessionKind;
 type SessionStats = StudySessionStats;
@@ -179,9 +179,9 @@ function formatCountdown(ms: number) {
 function StepLabel({ step, children }: { step: number; children: string }) {
   return (
     <div className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
-      <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-white/[0.12] bg-white/[0.06] text-[0.68rem] leading-none tabular-nums text-text-secondary">
+      <IconBubble size="xs" shape="circle" className="border border-white/[0.12] bg-white/[0.06] text-text-secondary">
         {step}
-      </span>
+      </IconBubble>
       <span>{children}</span>
     </div>
   );
@@ -191,9 +191,9 @@ function CountPill({ value, label }: { value: number; label: string }) {
   return (
     <div className="flex min-w-[7rem] flex-1 items-center justify-between gap-3 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.045] px-3 py-2 sm:flex-none">
       <span className="text-xs leading-5 text-text-muted">{label}</span>
-      <span className="flex h-8 min-w-8 items-center justify-center rounded-full bg-white/[0.08] px-2 text-sm font-medium leading-none tabular-nums text-white">
+      <IconBubble size="sm" shape="circle" className="min-w-8 bg-white/[0.08] px-2 font-medium text-white">
         {value}
-      </span>
+      </IconBubble>
     </div>
   );
 }

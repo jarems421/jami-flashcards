@@ -92,8 +92,8 @@ function ModeButton({
       onClick={onClick}
       className={`rounded-[1rem] border px-3 py-2 text-sm font-medium transition duration-fast ${
         active
-          ? "border-warm-accent/35 bg-white/[0.08] text-white ring-1 ring-warm-accent/15"
-          : "border-white/[0.08] bg-white/[0.035] text-text-secondary hover:border-white/[0.16] hover:bg-white/[0.06] hover:text-white"
+          ? "app-selected ring-1 ring-warm-accent/15"
+          : "app-chip hover:border-border-strong hover:text-text-primary"
       }`}
     >
       {children}
@@ -228,9 +228,9 @@ export default function CardCreationPanel({
         value={value}
         onChange={(event) => onChange(event.target.value)}
         disabled={disabled}
-        className="w-full appearance-none rounded-[2rem] border-[1.5px] border-white/[0.14] bg-surface-panel-strong px-5 py-[1rem] text-sm text-white outline-none transition duration-fast hover:border-white/[0.20] focus:border-warm-accent focus:ring-4 focus:ring-accent/18 disabled:opacity-60"
+        className="app-field w-full appearance-none rounded-[2rem] px-5 py-[1rem] text-sm outline-none transition duration-fast disabled:opacity-60"
         style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
+          backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%238f7de8' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E")`,
           backgroundRepeat: "no-repeat",
           backgroundPosition: "right 1rem center",
           paddingRight: "2.5rem",
@@ -409,7 +409,7 @@ export default function CardCreationPanel({
       />
 
       {decks.length === 0 ? (
-        <p className="mt-4 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+        <p className="app-subtle-panel mt-4 rounded-[1.25rem] p-4 text-sm leading-6">
           Create a deck first. Then you can add cards here.
         </p>
       ) : null}
@@ -498,13 +498,13 @@ export default function CardCreationPanel({
           />
 
           <div className="grid gap-3 lg:grid-cols-2">
-            <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4">
+            <div className="app-subtle-panel rounded-[1.25rem] p-4">
               <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
                 Accepted formats
               </div>
               <div className="mt-2 space-y-2 text-sm leading-6 text-text-secondary">
                 <p>One card per line:</p>
-                <p className="rounded-[1rem] border border-white/[0.08] bg-black/10 px-3 py-2 font-mono text-xs text-text-secondary">
+                <p className="app-chip rounded-[1rem] px-3 py-2 font-mono text-xs">
                   Question | Answer
                 </p>
                 <p>
@@ -517,7 +517,7 @@ export default function CardCreationPanel({
               <p className="mt-2 text-xs leading-5 text-text-muted">
                 Spreadsheet and flashcard app files work too when the first column is the question and the second is the answer.
               </p>
-              <label className="mt-3 inline-flex min-h-[2.5rem] cursor-pointer items-center justify-center rounded-[1.4rem] border border-white/14 bg-white/[0.05] px-3 py-2 text-sm font-medium text-white transition duration-fast hover:border-white/22 hover:bg-white/[0.08]">
+              <label className="app-chip mt-3 inline-flex min-h-[2.5rem] cursor-pointer items-center justify-center rounded-[1.4rem] px-3 py-2 text-sm font-medium transition duration-fast hover:border-border-strong">
                 Upload a file
                 <input
                   type="file"
@@ -534,7 +534,7 @@ export default function CardCreationPanel({
               ) : null}
             </div>
 
-            <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4">
+            <div className="app-subtle-panel rounded-[1.25rem] p-4">
               <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
                 Preview
               </div>
@@ -543,12 +543,12 @@ export default function CardCreationPanel({
                   {listSummary.cards.slice(0, 3).map((card, index) => (
                     <div
                       key={`${card.front}-${index}`}
-                      className="rounded-[1rem] border border-white/[0.08] bg-surface-panel-strong p-3"
+                      className="app-subtle-panel rounded-[1rem] p-3"
                     >
                       <StudyText
                         as="div"
                         text={card.front}
-                        className="truncate text-sm font-medium text-white"
+                        className="truncate text-sm font-medium text-text-primary"
                       />
                       <StudyText
                         as="div"
@@ -577,7 +577,7 @@ export default function CardCreationPanel({
           </div>
 
           {listSummary.skippedRows > 0 ? (
-            <div className="rounded-[1.25rem] border border-error-muted bg-error-muted p-4 text-sm leading-6 text-rose-100">
+            <div className="rounded-[1.25rem] border border-error/35 bg-error-muted p-4 text-sm leading-6 text-[var(--color-error-text)]">
               <div className="font-semibold">
                 {listSummary.skippedRows} row{listSummary.skippedRows === 1 ? "" : "s"} need attention.
               </div>
