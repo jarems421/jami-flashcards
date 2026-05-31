@@ -44,22 +44,22 @@ function ThemePreferenceCard() {
               key={option.value}
               type="button"
               onClick={() => handleSelectTheme(option.value)}
-              className={`flex min-w-[8rem] items-center gap-3 rounded-[1.15rem] border p-3 text-left transition duration-fast ${
+              className={`flex min-w-[8rem] items-center gap-3 rounded-[1.15rem] p-3 text-left transition duration-fast ${
                 active
-                  ? "border-warm-border bg-warm-glow text-white"
-                  : "border-white/[0.09] bg-white/[0.035] text-text-secondary hover:border-white/[0.18] hover:bg-white/[0.06]"
+                  ? "app-selected"
+                  : "app-chip hover:border-border-strong hover:bg-[var(--color-glass-medium)]"
               }`}
               aria-pressed={active}
             >
               <span
                 className={`h-11 w-11 shrink-0 rounded-full border shadow-[0_10px_24px_rgba(4,8,18,0.18)] ${
-                  active ? "border-warm-accent" : "border-white/[0.18]"
+                  active ? "border-[var(--color-selected-border)]" : "border-[var(--color-chip-border)]"
                 }`}
                 style={{ backgroundImage: option.preview }}
                 aria-hidden="true"
               />
               <span className="min-w-0">
-                <span className="block text-sm font-semibold text-white">{option.label}</span>
+                <span className="block text-sm font-semibold text-text-primary">{option.label}</span>
                 <span className="mt-0.5 block text-xs leading-5 text-text-muted">
                   {option.description}
                 </span>

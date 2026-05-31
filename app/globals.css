@@ -419,6 +419,31 @@
   .scrollbar-hide::-webkit-scrollbar {
     display: none;
   }
+
+  .app-sidebar-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--color-text-muted) 42%, transparent) transparent;
+  }
+
+  .app-sidebar-scroll::-webkit-scrollbar {
+    width: 0.45rem;
+  }
+
+  .app-sidebar-scroll::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .app-sidebar-scroll::-webkit-scrollbar-thumb {
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-text-muted) 34%, transparent);
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  .app-sidebar-scroll:hover::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--color-text-secondary) 52%, transparent);
+    background-clip: content-box;
+  }
 }
 
 @layer components {
@@ -473,16 +498,65 @@
     color: var(--color-text-secondary);
   }
 
+  .app-subtle-panel .text-white,
+  .app-subtle-panel [class*="text-white/"],
+  .app-subtle-panel .text-black {
+    color: var(--color-text-primary) !important;
+  }
+
   .app-chip {
     border: 1px solid var(--color-chip-border);
     background-color: var(--color-chip-bg);
     color: var(--color-chip-text);
   }
 
+  .app-chip .text-white,
+  .app-chip [class*="text-white/"],
+  .app-chip .text-black,
+  .app-chip .text-accent,
+  .app-chip .text-warm-accent {
+    color: var(--color-chip-text) !important;
+  }
+
   .app-selected {
     border: 1px solid var(--color-selected-border);
     background-color: var(--color-selected-bg);
     color: var(--color-selected-text);
+  }
+
+  .app-selected .text-white,
+  .app-selected [class*="text-white/"],
+  .app-selected .text-black,
+  .app-selected .text-accent,
+  .app-selected .text-warm-accent {
+    color: var(--color-selected-text) !important;
+  }
+
+  .app-success {
+    border: 1px solid color-mix(in srgb, var(--color-success-text) 32%, transparent);
+    background-color: var(--color-success-muted);
+    color: var(--color-success-text);
+  }
+
+  .app-warning {
+    border: 1px solid color-mix(in srgb, var(--color-warning-text) 32%, transparent);
+    background-color: var(--color-warning-muted);
+    color: var(--color-warning-text);
+  }
+
+  .app-danger {
+    border: 1px solid color-mix(in srgb, var(--color-error-text) 32%, transparent);
+    background-color: var(--color-error-muted);
+    color: var(--color-error-text);
+  }
+
+  .app-success .text-white,
+  .app-warning .text-white,
+  .app-danger .text-white,
+  .app-success [class*="text-emerald"],
+  .app-warning [class*="text-amber"],
+  .app-danger [class*="text-rose"] {
+    color: currentColor !important;
   }
 
   .app-link {
@@ -527,7 +601,7 @@
     border-color: var(--color-border) !important;
   }
 
-  body.app-theme-paper-white [class*="bg-white/["] {
+  body.app-theme-paper-white [class*="bg-white/"] {
     background-color: var(--color-glass-subtle) !important;
   }
 
@@ -554,18 +628,37 @@
     color: #126855 !important;
   }
 
+  body.app-theme-purple .text-accent,
+  body.app-theme-purple-pink .text-accent,
+  body.app-theme-purple .text-warm-accent,
+  body.app-theme-purple-pink .text-warm-accent {
+    color: var(--color-text-secondary) !important;
+  }
+
   body.app-theme-paper-white [class*="bg-black/"] {
     background-color: rgba(20, 28, 42, 0.065) !important;
   }
 
-  body:not(.app-theme-paper-white) [class*="bg-accent/"][class*="text-accent"],
-  body:not(.app-theme-paper-white) [class*="bg-warm-glow"][class*="text-warm-accent"] {
+  body [class*="bg-accent/"][class*="text-accent"],
+  body [class*="bg-accent/"] .text-accent,
+  body [class*="bg-warm-glow"][class*="text-warm-accent"],
+  body [class*="bg-warm-glow"] .text-warm-accent {
     color: var(--color-selected-text) !important;
   }
 
-  body.app-theme-paper-white [class*="bg-accent/"][class*="text-accent"],
-  body.app-theme-paper-white [class*="bg-warm-glow"][class*="text-warm-accent"] {
-    color: var(--color-selected-text) !important;
+  body [class*="bg-error-muted"][class*="text-rose"],
+  body [class*="bg-error-muted"] [class*="text-rose"] {
+    color: var(--color-error-text) !important;
+  }
+
+  body [class*="bg-success-muted"][class*="text-emerald"],
+  body [class*="bg-success-muted"] [class*="text-emerald"] {
+    color: var(--color-success-text) !important;
+  }
+
+  body [class*="bg-warning-muted"][class*="text-amber"],
+  body [class*="bg-warning-muted"] [class*="text-amber"] {
+    color: var(--color-warning-text) !important;
   }
 }
 

@@ -77,22 +77,22 @@ const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classe
   again: {
     hint: "Missed it",
     shortcut: "1",
-    classes: "border-rose-300/25 bg-rose-400/[0.08] text-rose-100 hover:border-rose-200/45 hover:bg-rose-400/[0.12]",
+    classes: "app-danger hover:border-border-strong",
   },
   hard: {
     hint: "Barely recalled",
     shortcut: "2",
-    classes: "border-amber-300/25 bg-amber-300/[0.08] text-amber-100 hover:border-amber-200/45 hover:bg-amber-300/[0.12]",
+    classes: "app-warning hover:border-border-strong",
   },
   good: {
     hint: "Recalled",
     shortcut: "3",
-    classes: "border-sky-200/20 bg-white/[0.045] text-white hover:border-sky-100/38 hover:bg-white/[0.075]",
+    classes: "app-chip hover:border-border-strong hover:bg-[var(--color-glass-medium)]",
   },
   easy: {
     hint: "Instant",
     shortcut: "4",
-    classes: "border-emerald-300/25 bg-emerald-400/[0.08] text-emerald-100 hover:border-emerald-200/45 hover:bg-emerald-400/[0.12]",
+    classes: "app-success hover:border-border-strong",
   },
 };
 
@@ -144,12 +144,12 @@ function InlineStudyFeedback({ feedback }: { feedback: AnswerFeedback | null }) 
 
   const toneClass =
     feedback.tone === "error"
-      ? "border-rose-300/20 bg-rose-400/[0.10] text-rose-100"
+      ? "app-danger"
       : feedback.tone === "warm"
-        ? "border-amber-300/20 bg-amber-300/[0.10] text-amber-100"
+        ? "app-warning"
         : feedback.tone === "good"
-          ? "border-emerald-300/20 bg-emerald-400/[0.10] text-emerald-100"
-          : "border-white/[0.12] bg-white/[0.06] text-text-secondary";
+          ? "app-success"
+          : "app-chip";
 
   return (
     <div
@@ -179,7 +179,7 @@ function formatCountdown(ms: number) {
 function StepLabel({ step, children }: { step: number; children: string }) {
   return (
     <div className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
-      <IconBubble size="xs" shape="circle" className="border border-white/[0.12] bg-white/[0.06] text-text-secondary">
+      <IconBubble size="xs" shape="circle" className="app-chip">
         {step}
       </IconBubble>
       <span>{children}</span>
@@ -189,9 +189,9 @@ function StepLabel({ step, children }: { step: number; children: string }) {
 
 function CountPill({ value, label }: { value: number; label: string }) {
   return (
-    <div className="flex min-w-[7rem] flex-1 items-center justify-between gap-3 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.045] px-3 py-2 sm:flex-none">
+    <div className="app-chip flex min-w-[7rem] flex-1 items-center justify-between gap-3 rounded-[1.2rem] px-3 py-2 sm:flex-none">
       <span className="text-xs leading-5 text-text-muted">{label}</span>
-      <IconBubble size="sm" shape="circle" className="min-w-8 bg-white/[0.08] px-2 font-medium text-white">
+      <IconBubble size="sm" shape="circle" className="min-w-8 bg-[var(--color-glass-medium)] px-2 font-medium text-text-primary">
         {value}
       </IconBubble>
     </div>
@@ -1519,12 +1519,12 @@ export default function StudyPage() {
                 }
                 description={
                   hasCarryoverRequiredCards
-                    ? "A few priority cards carried over from the last Daily Review. Finish them first, or start today's fresh priority cards."
+                    ? "Finish unfinished priority cards or start today's fresh set."
                     : remainingRequiredCards.length > 0
-                    ? "Daily Review surfaces the cards most likely to slip. Focused Review is still there whenever you want targeted practice."
+                    ? "Daily Review has priority cards ready."
                     : hasCards
-                      ? "Daily Review is clear for now. You can review easy extras or build a focused session."
-                      : "Add a few cards first, then Jami can build both Daily Review and Focused Review."
+                      ? "Daily Review is clear for now."
+                      : "Add cards to start studying."
                 }
                 aside={
                   <div className="rounded-[1.5rem] border border-white/[0.09] bg-white/[0.045] px-4 py-3 text-center text-sm text-text-secondary">
@@ -1540,7 +1540,7 @@ export default function StudyPage() {
                   emoji="Cards"
                   eyebrow="Start here"
                   title="Create a few cards first"
-                  description="There is nothing to review yet, which is completely fine. Add your first flashcards and Jami will build the right study queues from them."
+                  description="Add cards to unlock review."
                   action={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create cards</Link>}
                   secondaryAction={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Open decks</Link>}
                 />
@@ -1572,14 +1572,14 @@ export default function StudyPage() {
                     </div>
                     <p className="max-w-3xl text-sm leading-6 text-text-secondary">
                       {hasCarryoverRequiredCards
-                        ? "You can clear the unfinished priority cards from the last Daily Review first, or move straight into today's fresh priority cards."
+                        ? "Finish unfinished cards or start today's fresh set."
                         : remainingRequiredCards.length > 0 && remainingOptionalCards.length > 0
-                        ? "Start with the cards most likely to slip, then use the easier extras if you want a little more practice."
+                        ? "Start with priority cards first."
                         : remainingRequiredCards.length > 0
-                          ? "Start with the cards that need the most attention today."
+                          ? "Priority cards need attention."
                           : remainingOptionalCards.length > 0
-                            ? "Your main queue is clear. The easier extras are still here if you want a lighter pass."
-                            : "No Daily Review cards are waiting right now. Focused Review is open whenever you want targeted practice."}
+                            ? "Main queue clear. Extras are optional."
+                            : "No Daily Review cards waiting."}
                     </p>
                     <div className={`grid gap-3 ${hasCarryoverRequiredCards ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                       {hasCarryoverRequiredCards ? (
@@ -1613,78 +1613,21 @@ export default function StudyPage() {
                 </div>
               ) : null}
               {hasCards ? (
-                <SurfaceCard padding="md" className="space-y-4">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StepLabel step={2}>Simple Study</StepLabel>
-                        <span className="rounded-full border border-emerald-300/20 bg-emerald-400/[0.08] px-2.5 py-1 text-xs font-medium text-emerald-100">
-                          {simpleStudyStatusText}
-                        </span>
-                      </div>
-                      <h3 className="mt-3 text-lg font-semibold leading-tight text-white">
-                        {simpleStudyQueue.cards.length > 0
-                          ? `${simpleStudyQueue.cards.length} cards to clear`
-                          : "Simple Study complete"}
-                      </h3>
-                      <p className="mt-2 max-w-3xl text-sm leading-6 text-text-secondary">
-                        New cards come first, then the cards you have missed most often.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      onClick={() => startSession("simple")}
-                      disabled={simpleStudyQueue.cards.length === 0}
-                      variant="secondary"
-                      size="md"
-                      className="w-full justify-center lg:w-auto"
-                    >
-                      {simpleStudyQueue.cards.length > 0 ? "Start Simple Study" : "No Simple Study cards"}
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <CountPill value={simpleStudyQueue.newCount} label="New" />
-                    <CountPill value={simpleStudyQueue.wrongCount} label="Missed" />
-                  </div>
-                </SurfaceCard>
-              ) : null}
-              {hasCards ? (
                 <SurfaceCard padding="lg" className="relative space-y-5">
                   <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                     <div className="max-w-2xl">
-                      <StepLabel step={3}>Focused Review</StepLabel>
+                      <StepLabel step={2}>Focused Review</StepLabel>
                       <h3 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">
                         Build a focused session
                       </h3>
                       <p className="mt-2 text-sm leading-7 text-text-secondary sm:text-base">
-                        Pick decks, tags, or both. Tap any selected filter again to remove it.
+                        Choose decks or tags.
                       </p>
                     </div>
                     <Button type="button" onClick={handleCustomReviewClick} disabled={customPreviewCards.length === 0} size="lg" className="w-full sm:w-auto">
                       Start Focused Review
                     </Button>
                   </div>
-                  {hasRecommendedDailyCards ? (
-                    <div className="flex w-full items-center gap-3 rounded-[1.4rem] border border-warm-border bg-warm-glow px-4 py-3 text-left text-sm text-warm-accent">
-                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-[1rem] border border-white/20 bg-[linear-gradient(180deg,#fff8fd,#ffdff4)] text-[#10091d]">
-                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5" aria-hidden="true">
-                          <path d="M12 3v3" />
-                          <path d="M12 18v3" />
-                          <path d="m4.9 4.9 2.1 2.1" />
-                          <path d="m17 17 2.1 2.1" />
-                          <path d="M3 12h3" />
-                          <path d="M18 12h3" />
-                          <path d="m4.9 19.1 2.1-2.1" />
-                          <path d="m17 7 2.1-2.1" />
-                          <circle cx="12" cy="12" r="2.5" />
-                        </svg>
-                      </span>
-                      <span>
-                        <span className="block text-sm font-medium text-white">Daily Review is still the best place to start today.</span>
-                        <span className="mt-0.5 block text-text-secondary">Focused Review is great for weak spots, exam prep, or one-deck sessions after that.</span>
-                      </span>
-                    </div>
-                  ) : null}
                   {hasCustomFilters ? (
                     <div className="grid gap-3 rounded-[1.25rem] border border-accent/20 bg-accent/10 p-3 md:grid-cols-2">
                       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
@@ -1881,6 +1824,39 @@ export default function StudyPage() {
                     {hasRecommendedDailyCards ? (
                       <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Daily Review first</span>
                     ) : null}
+                  </div>
+                </SurfaceCard>
+              ) : null}
+              {hasCards ? (
+                <SurfaceCard padding="md" className="space-y-4">
+                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                    <div className="min-w-0">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <StepLabel step={3}>Simple Study</StepLabel>
+                        <span className="rounded-full border border-emerald-300/20 bg-emerald-400/[0.08] px-2.5 py-1 text-xs font-medium text-emerald-100">
+                          {simpleStudyStatusText}
+                        </span>
+                      </div>
+                      <h3 className="mt-3 text-lg font-semibold leading-tight text-white">
+                        {simpleStudyQueue.cards.length > 0
+                          ? `${simpleStudyQueue.cards.length} cards to clear`
+                          : "Simple Study complete"}
+                      </h3>
+                    </div>
+                    <Button
+                      type="button"
+                      onClick={() => startSession("simple")}
+                      disabled={simpleStudyQueue.cards.length === 0}
+                      variant="secondary"
+                      size="md"
+                      className="w-full justify-center lg:w-auto"
+                    >
+                      {simpleStudyQueue.cards.length > 0 ? "Start Simple Study" : "No Simple Study cards"}
+                    </Button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <CountPill value={simpleStudyQueue.newCount} label="New" />
+                    <CountPill value={simpleStudyQueue.wrongCount} label="Missed" />
                   </div>
                 </SurfaceCard>
               ) : null}

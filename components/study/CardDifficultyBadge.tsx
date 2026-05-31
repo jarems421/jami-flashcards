@@ -17,9 +17,9 @@ type Props = {
 };
 
 const TIER_CLASSES = {
-  easy: "border-emerald-500/30 bg-emerald-500/10 text-emerald-300",
-  medium: "border-amber-500/30 bg-amber-500/10 text-amber-300",
-  hard: "border-rose-500/30 bg-rose-500/10 text-rose-300",
+  easy: "app-success",
+  medium: "app-warning",
+  hard: "app-danger",
 } as const;
 
 function getStatusLabel({

@@ -54,10 +54,10 @@ export default function CardBackAutocomplete({
   };
 
   return (
-    <div className="rounded-[1.4rem] border border-accent/18 bg-accent/[0.055] p-3">
+    <div className="app-subtle-panel rounded-[1.4rem] p-3">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-white">Draft the answer with AI</div>
+          <div className="text-sm font-semibold text-text-primary">Draft the answer with AI</div>
           <div className="mt-0.5 text-xs leading-5 text-text-muted">
             Jami can draft a concise back for this card. You can still edit it before saving.
           </div>
@@ -75,7 +75,7 @@ export default function CardBackAutocomplete({
         </div>
       </div>
       {error ? (
-        <div className="mt-2 text-xs font-medium text-rose-200" role="alert">
+        <div className="app-danger mt-2 rounded-[1rem] px-3 py-2 text-xs font-medium" role="alert">
           {error}
         </div>
       ) : null}

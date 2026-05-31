@@ -220,40 +220,48 @@ export default function DecksPage() {
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <PageHero
             eyebrow="Library"
-            title="Decks are groups of flashcards."
-            description="Create a deck first. Then open it to add cards, edit the set, or jump into a focused study session."
+            title="Decks"
             action={
-            <div className="grid w-full gap-3 sm:grid-cols-2 lg:grid-cols-[minmax(18rem,1fr)_minmax(14rem,0.75fr)_auto]">
-                <Input
-                  ref={nameInputRef}
-                  placeholder="New deck name"
-                  value={name}
-                  onChange={(event) => setName(event.target.value)}
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter" && name.trim()) {
-                      event.preventDefault();
-                      void handleCreate();
-                    }
-                  }}
-                  containerClassName="min-w-0"
-                  className="min-h-[3.25rem] text-base leading-6"
-                />
-                <label className="block min-w-0">
-                  <span className="sr-only">Add to folder</span>
-                <select
-                  value={createFolderId}
-                  onChange={(event) => setCreateFolderId(event.target.value)}
-                  className="app-field min-h-[3.25rem] w-full appearance-none rounded-[1.6rem] px-4 py-3 text-sm leading-6 outline-none"
+              <div className="w-full max-w-[34rem] space-y-3">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(9.5rem,13rem)]">
+                  <Input
+                    ref={nameInputRef}
+                    label="Name"
+                    placeholder="Deck name"
+                    value={name}
+                    onChange={(event) => setName(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && name.trim()) {
+                        event.preventDefault();
+                        void handleCreate();
+                      }
+                    }}
+                    containerClassName="min-w-0"
+                    className="min-h-[2.9rem] px-4 py-3 text-base leading-6"
+                  />
+                  <label className="block min-w-0">
+                    <span className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary">
+                      Folder
+                    </span>
+                    <select
+                      value={createFolderId}
+                      onChange={(event) => setCreateFolderId(event.target.value)}
+                      className="app-field min-h-[2.9rem] w-full appearance-none rounded-[1.6rem] px-4 py-3 text-sm leading-6 outline-none"
+                    >
+                      <option value="">No folder</option>
+                      {folders.map((folder) => (
+                        <option key={folder.id} value={folder.id}>
+                          {folder.name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <Button
+                  disabled={isDemoUser || isCreatingDeck || !name.trim()}
+                  onClick={() => void handleCreate()}
+                  className="min-h-[2.9rem] w-full sm:w-auto sm:min-w-[10rem]"
                 >
-                    <option value="">No folder</option>
-                    {folders.map((folder) => (
-                      <option key={folder.id} value={folder.id}>
-                        {folder.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <Button disabled={isDemoUser || isCreatingDeck || !name.trim()} onClick={() => void handleCreate()} className="min-h-[3.25rem] sm:col-span-2 lg:col-span-1 lg:min-w-[9rem]">
                   {isCreatingDeck ? "Creating..." : "Create deck"}
                 </Button>
               </div>
@@ -266,17 +274,9 @@ export default function DecksPage() {
           </div>
         </div>
 
-        <div className="app-subtle-panel rounded-[1.35rem] p-4 text-sm leading-6">
-          <span className="font-semibold text-text-primary">Decks vs Cards:</span> Decks are the groups, like
-          Biology key terms, Cold War dates, or Spanish verbs. Cards are the individual prompts inside those groups.
-        </div>
-
         {isDemoUser ? (
           <div className="app-subtle-panel rounded-[1.6rem] p-4 text-sm">
             <div className="font-semibold text-text-primary">Deck editing is locked in the shared demo</div>
-            <p className="mt-1 leading-6">
-              You can browse the seeded decks here, but creating, renaming, recoloring, and deleting stay locked to keep the shared workspace stable.
-            </p>
           </div>
         ) : null}
 
@@ -291,7 +291,7 @@ export default function DecksPage() {
             emoji="Deck"
             eyebrow="Start here"
             title="Create your first deck"
-            description="Decks help you group cards by subject, module, or exam. Add one now, then open it to add your first flashcards."
+            description="Create a deck to hold cards."
             action={<Button type="button" onClick={() => nameInputRef.current?.focus()} variant="warm">Name a deck</Button>}
           />
         ) : (

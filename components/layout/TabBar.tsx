@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { type TouchEvent, useEffect, useRef, useState } from "react";
-import IconBubble from "@/components/ui/IconBubble";
+import { BrandMark, IconBubble } from "@/components/ui";
 
 type TabGroup = "loop" | "support";
 
@@ -148,8 +148,8 @@ function DesktopNavItem({
         shape="rounded"
         className={`h-9 w-9 border transition duration-fast ${
           active
-            ? "border-warm-border bg-warm-glow text-warm-accent"
-            : "border-white/8 bg-white/[0.035] text-text-muted group-hover:border-white/14 group-hover:text-white"
+            ? "app-selected"
+            : "app-chip text-text-muted group-hover:border-border-strong group-hover:text-text-primary"
         }`}
       >
         <NavIcon tab={tab} active={active} />
@@ -226,6 +226,9 @@ export default function TabBar({
   const mobileNavRef = useRef<HTMLElement>(null);
   const touchStartXRef = useRef<number | null>(null);
   const touchStartYRef = useRef<number | null>(null);
+  const sidebarTouchStartXRef = useRef<number | null>(null);
+  const sidebarTouchStartYRef = useRef<number | null>(null);
+  const sidebarSwipeHandledRef = useRef(false);
   const swipeHandledRef = useRef(false);
   const [mobileHidden, setMobileHidden] = useState(false);
 
@@ -293,6 +296,70 @@ export default function TabBar({
     }
   };
 
+  const handleSidebarTouchStart = (event: TouchEvent<HTMLElement>) => {
+    sidebarTouchStartXRef.current = event.touches[0]?.clientX ?? null;
+    sidebarTouchStartYRef.current = event.touches[0]?.clientY ?? null;
+    sidebarSwipeHandledRef.current = false;
+  };
+
+  const handleSidebarTouchMove = (
+    event: TouchEvent<HTMLElement>,
+    action: "hide" | "show"
+  ) => {
+    if (sidebarSwipeHandledRef.current) {
+      return;
+    }
+
+    const startX = sidebarTouchStartXRef.current;
+    const startY = sidebarTouchStartYRef.current;
+    const moveX = event.touches[0]?.clientX ?? null;
+    const moveY = event.touches[0]?.clientY ?? null;
+
+    if (startX === null || startY === null || moveX === null || moveY === null) {
+      return;
+    }
+
+    const deltaX = moveX - startX;
+    const deltaY = moveY - startY;
+    const mostlyHorizontal = Math.abs(deltaX) > Math.abs(deltaY) + 16;
+    const passedThreshold = action === "hide" ? deltaX < -42 : deltaX > 42;
+
+    if (mostlyHorizontal && passedThreshold) {
+      sidebarSwipeHandledRef.current = true;
+      onDesktopHiddenChange?.(action === "hide");
+    }
+  };
+
+  const handleSidebarTouchEnd = (
+    event: TouchEvent<HTMLElement>,
+    action: "hide" | "show"
+  ) => {
+    const startX = sidebarTouchStartXRef.current;
+    const startY = sidebarTouchStartYRef.current;
+    sidebarTouchStartXRef.current = null;
+    sidebarTouchStartYRef.current = null;
+
+    if (sidebarSwipeHandledRef.current) {
+      return;
+    }
+
+    const endX = event.changedTouches[0]?.clientX ?? null;
+    const endY = event.changedTouches[0]?.clientY ?? null;
+
+    if (startX === null || startY === null || endX === null || endY === null) {
+      return;
+    }
+
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+    const mostlyHorizontal = Math.abs(deltaX) > Math.abs(deltaY) + 16;
+    const passedThreshold = action === "hide" ? deltaX < -56 : deltaX > 56;
+
+    if (mostlyHorizontal && passedThreshold) {
+      onDesktopHiddenChange?.(action === "hide");
+    }
+  };
+
   return (
     <>
       <nav
@@ -323,28 +390,38 @@ export default function TabBar({
       ) : null}
 
       {desktopHidden ? (
-        <button
-          type="button"
-          aria-label="Show sidebar"
-          title="Show sidebar"
-          onClick={() => onDesktopHiddenChange?.(false)}
-          className="app-nav fixed left-0 top-1/2 z-40 hidden h-14 w-9 -translate-y-1/2 items-center justify-center rounded-r-[1.15rem] border border-l-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-text-secondary shadow-[var(--nav-shell-shadow)] backdrop-blur-xl transition duration-fast hover:w-10 hover:text-text-primary md:flex"
-        >
-          <SidebarToggleIcon direction="show" />
-        </button>
+        <>
+          <div
+            aria-hidden="true"
+            onTouchStart={handleSidebarTouchStart}
+            onTouchMove={(event) => handleSidebarTouchMove(event, "show")}
+            onTouchEnd={(event) => handleSidebarTouchEnd(event, "show")}
+            className="fixed inset-y-0 left-0 z-30 hidden w-8 touch-pan-y md:block"
+          />
+          <button
+            type="button"
+            aria-label="Show sidebar"
+            title="Show sidebar"
+            onClick={() => onDesktopHiddenChange?.(false)}
+            className="app-nav fixed left-0 top-1/2 z-40 hidden h-14 w-9 -translate-y-1/2 items-center justify-center rounded-r-[1.15rem] border border-l-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-text-secondary shadow-[var(--nav-shell-shadow)] backdrop-blur-xl transition duration-fast hover:w-10 hover:text-text-primary md:flex"
+          >
+            <SidebarToggleIcon direction="show" />
+          </button>
+        </>
       ) : null}
 
       <nav
         aria-label="Primary"
+        onTouchStart={handleSidebarTouchStart}
+        onTouchMove={(event) => handleSidebarTouchMove(event, "hide")}
+        onTouchEnd={(event) => handleSidebarTouchEnd(event, "hide")}
         className={`app-nav fixed inset-y-4 left-4 z-30 hidden w-[5rem] flex-col rounded-[1.7rem] border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-2 shadow-[var(--nav-shell-shadow)] backdrop-blur-xl transition duration-300 md:flex lg:w-64 ${
           desktopHidden ? "pointer-events-none -translate-x-[calc(100%+1.5rem)] opacity-0" : "translate-x-0 opacity-100"
         }`}
       >
-        <div className="flex flex-col items-center gap-2 border-b border-white/[0.07] px-1 pb-3 pt-2 lg:flex-row lg:justify-between lg:px-2">
+        <div className="flex flex-col items-center gap-2 border-b border-[var(--color-border)] px-1 pb-3 pt-2 lg:flex-row lg:justify-between lg:px-2">
           <div className="flex min-w-0 items-center gap-3">
-            <IconBubble size="md" className="border border-warm-border bg-warm-glow font-semibold text-warm-accent shadow-[0_12px_24px_rgba(7,12,24,0.18)]">
-              J
-            </IconBubble>
+            <BrandMark size="md" />
             <div className="hidden min-w-0 lg:block">
               <div className="text-base font-semibold text-text-primary">Jami</div>
               <div className="mt-0.5 truncate text-xs text-text-muted">
@@ -363,7 +440,7 @@ export default function TabBar({
           </button>
         </div>
 
-        <div className="flex flex-1 flex-col gap-4 overflow-y-auto scrollbar-hide px-0.5 py-3">
+        <div className="app-sidebar-scroll flex flex-1 flex-col gap-4 overflow-y-auto py-3 pl-0.5 pr-1.5">
           {navGroups.map((group) => (
             <section key={group.id} className="space-y-2">
               <div className="hidden px-3 lg:block">

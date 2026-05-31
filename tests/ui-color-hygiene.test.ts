@@ -12,11 +12,19 @@ const auditedFiles = [
   "components/ui/EmptyState.tsx",
   "components/ui/StatTile.tsx",
   "components/ui/FeedbackBanner.tsx",
+  "components/layout/Refreshable.tsx",
+  "components/layout/TabBar.tsx",
   "components/decks/CardBackEditor.tsx",
+  "components/decks/CardBackAutocomplete.tsx",
+  "components/decks/BulkTagToolbar.tsx",
+  "components/decks/CardQualityWarnings.tsx",
   "components/decks/TagInput.tsx",
   "components/decks/CardCreationPanel.tsx",
+  "components/study/StudyAssistant.tsx",
+  "components/notifications/NotificationSettingsCard.tsx",
   "app/dashboard/goals/page.tsx",
   "app/dashboard/decks/page.tsx",
+  "app/dashboard/profile/page.tsx",
 ];
 
 const unsafePatterns = [
@@ -38,5 +46,14 @@ describe("theme colour hygiene", () => {
     });
 
     expect(offenders).toEqual([]);
+  });
+
+  it("keeps same-family accent pairings guarded by global contrast overrides", () => {
+    const globals = readFileSync(join(root, "app/globals.css"), "utf8");
+
+    expect(globals).toContain('body [class*="bg-accent/"] .text-accent');
+    expect(globals).toContain('body [class*="bg-warm-glow"] .text-warm-accent');
+    expect(globals).toContain('body [class*="bg-error-muted"] [class*="text-rose"]');
+    expect(globals).toContain('body [class*="bg-success-muted"] [class*="text-emerald"]');
   });
 });

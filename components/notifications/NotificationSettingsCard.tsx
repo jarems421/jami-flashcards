@@ -345,16 +345,16 @@ export default function NotificationSettingsCard({
               Install for a more native mobile feel.
             </p>
           </div>
-          <div className="rounded-full border border-border bg-white/[0.04] px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] text-text-muted">
+          <div className="app-chip rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]">
             {installLabel}
           </div>
         </div>
 
-        <div className="mt-4 rounded-[1.15rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
+        <div className="app-subtle-panel mt-4 rounded-[1.15rem] p-4 text-sm">
           <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
             Install status
           </div>
-          <div className="mt-2 text-sm leading-6 text-white">
+          <div className="mt-2 text-sm leading-6 text-text-primary">
             {isStandalone
               ? "Installed on this device."
               : isAppleMobile
@@ -384,8 +384,8 @@ export default function NotificationSettingsCard({
           <div
             className={`mt-4 rounded-[1.15rem] border p-3 text-sm ${
               feedback.type === "error"
-                ? "border-error-muted bg-error-muted text-rose-100"
-                : "border-success-muted bg-success-muted text-emerald-100"
+                ? "app-danger"
+                : "app-success"
             }`}
           >
             {feedback.message}
@@ -402,22 +402,22 @@ export default function NotificationSettingsCard({
         </div>
 
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="rounded-[1.15rem] border border-white/[0.07] bg-white/[0.05] p-4 text-sm">
+          <div className="app-subtle-panel rounded-[1.15rem] p-4 text-sm">
             <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
               Device status
             </div>
             <div className="mt-2 space-y-1 text-sm text-text-secondary">
               <div>
-                Permission: <span className="text-white">{permission}</span>
+                Permission: <span className="text-text-primary">{permission}</span>
               </div>
               <div>
-                Push support: <span className="text-white">{isSupported ? "available" : "not available"}</span>
+                Push support: <span className="text-text-primary">{isSupported ? "available" : "not available"}</span>
               </div>
               <div>
-                Secure page: <span className="text-white">{isSecureContext ? "yes" : "no"}</span>
+                Secure page: <span className="text-text-primary">{isSecureContext ? "yes" : "no"}</span>
               </div>
               <div>
-                This device: <span className="text-white">{hasSubscription ? "subscribed" : "not subscribed"}</span>
+                This device: <span className="text-text-primary">{hasSubscription ? "subscribed" : "not subscribed"}</span>
               </div>
             </div>
 
@@ -453,7 +453,7 @@ export default function NotificationSettingsCard({
             </div>
 
             {permission === "denied" ? (
-              <p className="mt-3 text-xs text-rose-200">
+              <p className="mt-3 text-xs text-[var(--color-error-text)]">
                 Notifications are blocked. Re-enable them from your browser or device settings.
               </p>
             ) : null}
@@ -463,26 +463,26 @@ export default function NotificationSettingsCard({
               </p>
             ) : null}
             {!isSecureContext ? (
-              <p className="mt-3 text-xs text-rose-200">
+              <p className="mt-3 text-xs text-[var(--color-error-text)]">
                 Push needs HTTPS, or localhost during development.
               </p>
             ) : null}
             {clientStateError ? (
-              <p className="mt-3 text-xs text-rose-200">{clientStateError}</p>
+              <p className="mt-3 text-xs text-[var(--color-error-text)]">{clientStateError}</p>
             ) : null}
           </div>
 
-          <div className="rounded-[1.15rem] border border-white/[0.07] bg-white/[0.05] p-4">
+          <div className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-white">
+                <div className="text-sm font-semibold text-text-primary">
                   Daily reminder
                 </div>
                 <p className="mt-1 text-xs text-text-muted">
                   <span className="font-semibold">4pm Europe/London</span>. One notification per study day.
                 </p>
               </div>
-              <label className="inline-flex items-center gap-2 text-sm text-white">
+              <label className="inline-flex items-center gap-2 text-sm text-text-primary">
                 <input
                   type="checkbox"
                   checked={preferences.enabled}
@@ -496,11 +496,11 @@ export default function NotificationSettingsCard({
 
             <div className="mt-4 space-y-3">
               <div
-                className={`rounded-[1.05rem] border border-white/[0.06] p-3 ${
-                  preferences.enabled ? "bg-black/10" : "bg-black/5 opacity-70"
+                className={`rounded-[1.05rem] border border-[var(--color-border)] p-3 ${
+                  preferences.enabled ? "bg-[var(--color-glass-subtle)]" : "bg-[var(--color-glass-subtle)] opacity-70"
                 }`}
               >
-                <div className="text-sm font-medium text-white">Reminder mode</div>
+                <div className="text-sm font-medium text-text-primary">Reminder mode</div>
                 <p className="mt-1 text-xs text-text-muted">
                   Choose when Jami nudges you.
                 </p>
@@ -526,8 +526,8 @@ export default function NotificationSettingsCard({
                         onClick={() => void handleModeChange(option.value)}
                         className={`rounded-[1rem] border px-4 py-3 text-left transition duration-fast ${
                           selected
-                            ? "border-accent bg-accent/20 text-white"
-                            : "border-white/[0.08] bg-white/[0.03] text-text-secondary hover:border-border-strong hover:bg-white/[0.06]"
+                            ? "app-selected"
+                            : "app-chip hover:border-border-strong hover:bg-[var(--color-glass-medium)]"
                         } disabled:cursor-not-allowed disabled:opacity-60`}
                       >
                         <div className="text-sm font-semibold">{option.label}</div>
@@ -548,8 +548,8 @@ export default function NotificationSettingsCard({
           <div
             className={`mt-4 rounded-[1.15rem] border p-3 text-sm ${
               feedback.type === "error"
-                ? "border-error-muted bg-error-muted text-rose-100"
-                : "border-success-muted bg-success-muted text-emerald-100"
+                ? "app-danger"
+                : "app-success"
             }`}
           >
             {feedback.message}

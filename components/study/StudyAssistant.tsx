@@ -171,7 +171,7 @@ export default function StudyAssistant({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="flex w-full min-h-[3rem] items-center justify-center gap-2 rounded-[1.75rem] border border-accent/20 bg-accent/[0.06] px-4 py-2.5 text-sm font-medium text-accent transition duration-fast hover:bg-accent/[0.12] active:scale-[0.98]"
+        className="app-selected flex w-full min-h-[3rem] items-center justify-center gap-2 rounded-[1.75rem] px-4 py-2.5 text-sm font-medium transition duration-fast hover:border-border-strong active:scale-[0.98]"
       >
         <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
           <path d="M7.5 8.25h9m-9 3H12m-9.75 1.51c0 1.6 1.123 2.994 2.707 3.227 1.087.16 2.185.283 3.293.369V21l4.076-4.076a1.526 1.526 0 011.037-.443 48.282 48.282 0 005.68-.494c1.584-.233 2.707-1.626 2.707-3.228V6.741c0-1.602-1.123-2.995-2.707-3.228A48.394 48.394 0 0012 3c-2.392 0-4.744.175-7.043.513C3.373 3.746 2.25 5.14 2.25 6.741v6.018z" />
@@ -183,9 +183,9 @@ export default function StudyAssistant({
 
   return (
     <div className="space-y-3">
-      <div className="rounded-[1.75rem] border border-accent/20 bg-accent/[0.06] p-4">
+      <div className="app-subtle-panel rounded-[1.75rem] p-4">
         <div className="mb-3 flex items-center justify-between">
-          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-text-secondary">
             {isClueMode ? "Jami clue mode" : "Jami AI"}
           </p>
           {!autoExplain ? (
@@ -197,7 +197,7 @@ export default function StudyAssistant({
                 setInput("");
                 chatHistoryRef.current = [];
               }}
-              className="text-xs text-text-muted hover:text-white transition"
+              className="text-xs text-text-muted transition hover:text-text-primary"
             >
               Close
             </button>
@@ -216,8 +216,8 @@ export default function StudyAssistant({
               <div
                 className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                   msg.role === "user"
-                    ? "bg-accent/20 text-white"
-                    : "bg-white/[0.06] text-text-secondary"
+                    ? "app-selected"
+                    : "app-chip"
                 }`}
               >
                 <StudyText text={msg.text} />
@@ -228,7 +228,7 @@ export default function StudyAssistant({
             <ThinkingIndicator />
           ) : loading ? (
             <div className="flex justify-start">
-              <div className="rounded-2xl bg-white/[0.06] px-3.5 py-2.5 text-sm text-text-muted">
+              <div className="app-chip rounded-2xl px-3.5 py-2.5 text-sm">
                 <ThinkingIndicator compact />
               </div>
             </div>
@@ -249,13 +249,13 @@ export default function StudyAssistant({
                 : "Ask for a follow-up or explanation"
             }
             disabled={loading}
-            className="flex-1 rounded-xl border border-white/[0.14] bg-white/[0.04] px-3 py-2 text-sm text-white placeholder-text-muted outline-none transition focus:border-accent/50 disabled:opacity-50"
+            className="app-field flex-1 rounded-xl px-3 py-2 text-sm outline-none transition disabled:opacity-50"
           />
           <button
             type="button"
             disabled={loading || !input.trim()}
             onClick={() => void handleSend()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-white transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] transition hover:brightness-110 active:scale-95 disabled:opacity-50"
           >
             <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
               <path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" />
@@ -270,7 +270,7 @@ export default function StudyAssistant({
               type="button"
               disabled={loading}
               onClick={() => void runPrompt(action.prompt, action.intent)}
-              className="rounded-full border border-white/[0.1] bg-white/[0.05] px-3 py-2 text-xs font-medium text-text-secondary transition duration-fast hover:border-accent/30 hover:bg-accent/[0.08] hover:text-white disabled:opacity-50"
+              className="app-chip rounded-full px-3 py-2 text-xs font-medium transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary disabled:opacity-50"
             >
               {action.label}
             </button>
@@ -282,7 +282,7 @@ export default function StudyAssistant({
         <button
           type="button"
           disabled={loading && messages.length === 0}
-          className="flex w-full min-h-[3.5rem] items-center justify-center rounded-[1.75rem] border border-border bg-white/[0.06] px-4 py-3 text-sm font-medium text-white shadow-card transition duration-fast ease-spring hover:border-border-strong hover:bg-white/[0.10] active:scale-[0.98] disabled:opacity-50"
+          className="app-chip flex w-full min-h-[3.5rem] items-center justify-center rounded-[1.75rem] px-4 py-3 text-sm font-medium shadow-card transition duration-fast ease-spring hover:border-border-strong hover:bg-[var(--color-glass-medium)] active:scale-[0.98] disabled:opacity-50"
           onClick={onContinue}
         >
           Continue

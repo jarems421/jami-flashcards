@@ -290,7 +290,7 @@ function HomePanel({ recentNotebooks, activeDrafts }: { recentNotebooks: Walkthr
       <PageHero
         eyebrow="Today"
         title="Continue your latest notebook work."
-        description="The public walkthrough now mirrors the notebook-first direction: folders, notebooks, pages, decks, and sources. Old question-bank attempts are not part of this demo."
+        description="Public walkthrough mode uses local-only data."
         action={<Link href="/dashboard/practise?agent=1" className={linkClass()}>Open Practice</Link>}
         secondaryAction={<Link href="/dashboard/folders?agent=1" className={linkClass()}>Browse folders</Link>}
         aside={
@@ -343,7 +343,7 @@ function PracticePanel({
           <div>
             <div className="text-sm font-semibold text-white">Create local notebook</div>
             <p className="mt-1 text-sm text-text-secondary">
-              Public mode simulates notebook templates locally. Signed-in users save real folders and notebooks to Firebase.
+              Local-only in public mode.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -567,7 +567,7 @@ function NotebookPanel({
       <PageHero
         eyebrow="Notebook"
         title={notebook.title}
-        description="Public notebook editing is local-only. Type on the page, save, add pages, and navigate without touching Firebase."
+        description="Local-only notebook editing."
         action={<Button onClick={savePage}>Save page</Button>}
         secondaryAction={<Button variant="secondary" onClick={addPage}>+ Page</Button>}
         aside={<MetricStrip items={[{ label: "Pages", value: notebookPages.length }, { label: "Status", value: status }]} />}
@@ -598,10 +598,7 @@ function NotebookPanel({
         </Card>
         <Card className="min-h-[32rem]">
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-            <div>
-              <div className="text-xs uppercase tracking-[0.18em] text-text-muted">Working page</div>
-              <div className="mt-1 text-sm text-text-secondary">Notebook editing works best on iPad or desktop.</div>
-            </div>
+            <div className="text-xs uppercase tracking-[0.18em] text-text-muted">Working page</div>
             {notebook.uploadedFileName ? (
               <span className="rounded-full border border-white/[0.09] bg-white/[0.05] px-3 py-1 text-xs text-text-secondary">
                 File saved: {notebook.uploadedFileName}. Full annotation comes later.
@@ -620,7 +617,7 @@ function NotebookPanel({
               setStatus("Unsaved local changes");
             }}
             rows={16}
-            placeholder="Write your working, notes, or question response here..."
+            placeholder="Write here..."
             className="min-h-[24rem]"
           />
         </Card>
@@ -631,7 +628,7 @@ function NotebookPanel({
 
 function NotebookGrid({ notebooks, compact = false }: { notebooks: WalkthroughNotebook[]; compact?: boolean }) {
   if (notebooks.length === 0) {
-    return <EmptyState title="No notebooks yet" description="Create a notebook inside a folder to start working on pages." />;
+    return <EmptyState title="No notebooks yet" description="Create a notebook to begin." />;
   }
   return (
     <div className={`grid grid-cols-2 gap-3 sm:grid-cols-3 ${compact ? "md:grid-cols-4 xl:grid-cols-5" : "md:grid-cols-4 xl:grid-cols-5"}`}>
@@ -705,7 +702,7 @@ function AssetList({ title, items, empty }: { title: string; items: string[]; em
 
 function LearnPanel() {
   return (
-    <Panel title="Learn" description="Review flashcards from global decks. Folder links help decks appear in study spaces too.">
+    <Panel title="Learn">
       <NotebookStatusCards />
     </Panel>
   );
@@ -713,7 +710,7 @@ function LearnPanel() {
 
 function DecksPanel() {
   return (
-    <Panel title="Decks" description="Decks remain globally accessible while also living inside folders.">
+    <Panel title="Decks">
       <div className="grid gap-3 md:grid-cols-3">
         {WALKTHROUGH_DECKS.map((deck) => (
           <Card key={deck.id} padding="sm">
@@ -728,7 +725,7 @@ function DecksPanel() {
 
 function CardsPanel() {
   return (
-    <Panel title="Cards" description="Search and inspect cards across decks. The public walkthrough is read-only.">
+    <Panel title="Cards">
       <div className="space-y-2">
         {WALKTHROUGH_CARDS.map((card) => (
           <Card key={card.id} padding="sm">
@@ -743,7 +740,7 @@ function CardsPanel() {
 
 function LibraryPanel({ drafts, onApprove }: { drafts: WalkthroughDraft[]; onApprove: (draft: WalkthroughDraft) => void }) {
   return (
-    <Panel title="Library" description="Sources still exist globally and inside folders. Draft approvals are simulated locally here.">
+    <Panel title="Library">
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <div className="space-y-2">
           <SectionHeader eyebrow="Sources" title="Saved study material" />
@@ -764,7 +761,7 @@ function LibraryPanel({ drafts, onApprove }: { drafts: WalkthroughDraft[]; onApp
                 {draft.kind === "flashcard" ? draft.front : draft.questionText}
               </div>
               <p className="mt-1 text-sm text-text-secondary">
-                {draft.kind === "flashcard" ? draft.back : "Approves into a notebook page, not the old questions collection."}
+                {draft.kind === "flashcard" ? draft.back : "Adds to a notebook page."}
               </p>
               <Button className="mt-3" variant="secondary" size="sm" onClick={() => onApprove(draft)}>
                 {draft.kind === "flashcard" ? "Approve card" : "Add to notebook"}
@@ -779,7 +776,7 @@ function LibraryPanel({ drafts, onApprove }: { drafts: WalkthroughDraft[]; onApp
 
 function ProgressPanel({ notebooks, drafts }: { notebooks: WalkthroughNotebook[]; drafts: number }) {
   return (
-    <Panel title="Progress" description="Progress is now based on cards, folders, notebooks, sources, and drafts rather than legacy attempts.">
+    <Panel title="Progress">
       <MetricStrip
         variant="full"
         items={[
@@ -801,7 +798,7 @@ function ProfilePanel({
   onThemeChange: (theme: AppThemePreference) => void;
 }) {
   return (
-    <Panel title="Account" description="Theme changes are stored locally in public walkthrough mode.">
+    <Panel title="Account">
       <div className="flex flex-wrap gap-3">
         {APP_THEME_OPTIONS.map((option) => (
           <button
@@ -822,10 +819,10 @@ function ProfilePanel({
   );
 }
 
-function Panel({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+function Panel({ title, children }: { title: string; children: ReactNode }) {
   return (
     <div className="space-y-5">
-      <PageHero eyebrow="Public walkthrough" title={title} description={description} />
+      <PageHero eyebrow="Public walkthrough" title={title} />
       {children}
     </div>
   );

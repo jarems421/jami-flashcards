@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { type ReactNode } from "react";
-import IconBubble from "@/components/ui/IconBubble";
+import { BrandMark } from "@/components/ui";
 
 type AppTopBarProps = {
   title: string;
@@ -25,9 +25,7 @@ export default function AppTopBar({
       <div className="app-topbar rounded-[1.45rem] border-[1.5px] border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-3 py-3 shadow-[var(--topbar-shadow)] backdrop-blur-xl sm:rounded-[1.8rem] sm:px-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <IconBubble size="lg" className="border border-warm-border bg-warm-glow text-sm font-semibold text-warm-accent shadow-[0_12px_24px_rgba(4,8,18,0.18)]">
-              J
-            </IconBubble>
+            <BrandMark size="lg" />
             <div className="min-w-0">
               <div className="flex min-w-0 items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">
                 <span className="hidden sm:inline">Jami learning loop</span>

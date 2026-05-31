@@ -263,11 +263,10 @@ export default function GoalsPage() {
           <SectionHeader
             eyebrow="New goal"
             title="Set a clear target."
-            description="Choose a card count, accuracy, date, and time. Completing goals earns stars for your constellation."
           />
           {isDemoUser ? (
             <p className="mt-3 text-sm leading-6 text-text-secondary">
-              The shared demo keeps goal creation locked so the seeded reward flow stays readable. Existing goals still update when you study.
+              Goal creation is locked in the shared demo.
             </p>
           ) : null}
           <div className="mt-5 grid gap-3 sm:gap-4 md:grid-cols-2">
@@ -293,9 +292,6 @@ export default function GoalsPage() {
               <div className="app-subtle-panel rounded-[1.6rem] p-4">
                 <div className="mb-4">
                   <div className="text-sm font-medium text-text-primary">Deadline</div>
-                  <p className="mt-1 text-xs leading-5 text-text-muted">
-                    Choose the date and time you want this goal finished by.
-                  </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2 lg:gap-7">
                   <Input
@@ -331,7 +327,6 @@ export default function GoalsPage() {
           <SectionHeader
             eyebrow="Reward preview"
             title="See the star before you commit."
-            description="The preview updates from your goal details above."
           />
 
           <div className="mt-5 grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
@@ -367,8 +362,7 @@ export default function GoalsPage() {
                 emoji="Goal"
                 eyebrow="No active goals"
                 title="No active goals"
-                description="Goals give your study sessions a target and turn completed effort into constellation stars."
-                helperText="Set a card target, accuracy target, date, and time above to create your first one."
+                description="Create a goal to earn stars."
               />
             ) : (
               <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
@@ -435,8 +429,8 @@ export default function GoalsPage() {
                         <span
                           className={`rounded-lg px-2 py-1 text-xs ${
                             goal.status === "completed"
-                              ? "bg-success-muted text-emerald-100"
-                              : "bg-error-muted text-rose-100"
+                              ? "app-success"
+                              : "app-danger"
                           }`}
                         >
                           {goal.status === "completed" ? "Completed" : "Expired"}

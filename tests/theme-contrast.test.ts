@@ -17,6 +17,12 @@ const themes = {
     selectedText: "#fff8ff",
     buttonPrimaryBg: "#7565d6",
     buttonPrimaryText: "#ffffff",
+    successBg: "#25453f",
+    successText: "#dffcf7",
+    warningBg: "#4a3928",
+    warningText: "#fff1dc",
+    dangerBg: "#4a2537",
+    dangerText: "#ffe7f2",
   },
   purple: {
     panel: "#1c0f2a",
@@ -32,6 +38,12 @@ const themes = {
     selectedText: "#fff9ff",
     buttonPrimaryBg: "#7562d9",
     buttonPrimaryText: "#ffffff",
+    successBg: "#223d39",
+    successText: "#dffcf7",
+    warningBg: "#443127",
+    warningText: "#fff1dc",
+    dangerBg: "#432336",
+    dangerText: "#ffe7f2",
   },
   paperWhite: {
     panel: "#ffffff",
@@ -47,6 +59,12 @@ const themes = {
     selectedText: "#101827",
     buttonPrimaryBg: "#5f51bb",
     buttonPrimaryText: "#ffffff",
+    successBg: "#e0f0ec",
+    successText: "#126855",
+    warningBg: "#f2eadf",
+    warningText: "#70470d",
+    dangerBg: "#f3e3e9",
+    dangerText: "#8a123d",
   },
   softGrey: {
     panel: "#232323",
@@ -62,6 +80,12 @@ const themes = {
     selectedText: "#fafafa",
     buttonPrimaryBg: "#d4d4d4",
     buttonPrimaryText: "#101010",
+    successBg: "#2d4a45",
+    successText: "#dffcf7",
+    warningBg: "#4a3d2f",
+    warningText: "#fff1dc",
+    dangerBg: "#4b2d3b",
+    dangerText: "#ffe7f2",
   },
   constellation: {
     panel: "#0c0918",
@@ -77,6 +101,12 @@ const themes = {
     selectedText: "#fffaff",
     buttonPrimaryBg: "#7565d6",
     buttonPrimaryText: "#ffffff",
+    successBg: "#223d39",
+    successText: "#dffcf7",
+    warningBg: "#443127",
+    warningText: "#fff1dc",
+    dangerBg: "#432336",
+    dangerText: "#ffe7f2",
   },
 };
 
@@ -115,5 +145,8 @@ describe("theme contrast pairs", () => {
     expect(contrast(theme.chipText, theme.chipBg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(theme.selectedText, theme.selectedBg)).toBeGreaterThanOrEqual(4.5);
     expect(contrast(theme.buttonPrimaryText, theme.buttonPrimaryBg)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.successText, theme.successBg)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.warningText, theme.warningBg)).toBeGreaterThanOrEqual(4.5);
+    expect(contrast(theme.dangerText, theme.dangerBg)).toBeGreaterThanOrEqual(4.5);
   });
 });

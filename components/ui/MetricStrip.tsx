@@ -16,7 +16,7 @@ type MetricStripProps = {
 const toneClasses: Record<NonNullable<MetricStripItem["tone"]>, string> = {
   default: "app-chip",
   good: "border-success/35 bg-success-muted text-[var(--color-success-text)]",
-  warm: "border-warm-border bg-warm-glow text-warm-accent",
+  warm: "app-selected",
   danger: "border-error/35 bg-error-muted text-[var(--color-error-text)]",
 };
 

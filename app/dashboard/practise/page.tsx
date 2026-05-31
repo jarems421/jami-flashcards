@@ -254,7 +254,7 @@ export default function PracticePage() {
                   <EmptyState
                     emoji="Folder"
                     title="Create your first folder"
-                    description="Start with a subject, module, exam, or project."
+                    description="Create a folder to begin."
                     action={
                       <Button type="button" onClick={() => setShowCreateFolder(true)}>
                         Create folder

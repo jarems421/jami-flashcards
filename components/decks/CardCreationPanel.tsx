@@ -399,7 +399,6 @@ export default function CardCreationPanel({
       <SectionHeader
         eyebrow="Add cards"
         title="Create a flashcard."
-        description="Write the prompt and answer, then add any useful topic labels."
         action={
           <div className="flex flex-wrap gap-2">
             <ModeButton active={mode === "single"} onClick={() => setMode("single")}>Single card</ModeButton>
@@ -427,7 +426,7 @@ export default function CardCreationPanel({
           <div className="grid gap-4 lg:grid-cols-2">
             <Input
               label="Front"
-              placeholder="Question, prompt, or cue"
+              placeholder="Front"
               value={singleFront}
               onChange={(event) => setSingleFront(event.target.value)}
               maxLength={MAX_FRONT_LENGTH}
@@ -436,7 +435,7 @@ export default function CardCreationPanel({
             <div className="space-y-3">
               <CardBackEditor
                 label="Back"
-                placeholder="Answer or explanation"
+                placeholder="Back"
                 value={singleBack}
                 onChange={setSingleBack}
                 maxLength={MAX_BACK_LENGTH}
@@ -462,7 +461,6 @@ export default function CardCreationPanel({
             availableTags={availableTags}
             onTagsChange={setSingleTags}
             onPendingTagChange={setSinglePendingTag}
-            helperText="Optional. Topics are learning concepts; tags are extra organisation labels."
             suggestionLabel="topic"
             disabled={addingSingleCard}
           />
@@ -490,7 +488,7 @@ export default function CardCreationPanel({
           ) : null}
           <Textarea
             label="Cards to add"
-            placeholder={"Capital of Japan | Tokyo\nPhotosynthesis - Plants turn light into chemical energy\nMitosis: Cell division that creates two identical cells\n\nOsmosis\nWater moving through a membrane"}
+            placeholder={"Front | Back\nFront - Back\n\nFront\nBack"}
             value={listText}
             onChange={(event) => setListText(event.target.value)}
             rows={8}
@@ -500,23 +498,14 @@ export default function CardCreationPanel({
           <div className="grid gap-3 lg:grid-cols-2">
             <div className="app-subtle-panel rounded-[1.25rem] p-4">
               <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
-                Accepted formats
+                Formats
               </div>
               <div className="mt-2 space-y-2 text-sm leading-6 text-text-secondary">
-                <p>One card per line:</p>
                 <p className="app-chip rounded-[1rem] px-3 py-2 font-mono text-xs">
-                  Question | Answer
+                  Front | Back
                 </p>
-                <p>
-                  A dash or colon also works: Question - Answer or Question: Answer.
-                </p>
-                <p>
-                  You can also put the question on one line and the answer on the next. Leave a blank line before the next card.
-                </p>
+                <p>Dash, colon, or two-line cards also work.</p>
               </div>
-              <p className="mt-2 text-xs leading-5 text-text-muted">
-                Spreadsheet and flashcard app files work too when the first column is the question and the second is the answer.
-              </p>
               <label className="app-chip mt-3 inline-flex min-h-[2.5rem] cursor-pointer items-center justify-center rounded-[1.4rem] px-3 py-2 text-sm font-medium transition duration-fast hover:border-border-strong">
                 Upload a file
                 <input
@@ -528,7 +517,7 @@ export default function CardCreationPanel({
                 />
               </label>
               {listFileName ? (
-                <p className="mt-3 text-xs font-medium text-warm-accent">
+                <p className="mt-3 text-xs font-medium text-text-secondary">
                   Loaded {listFileName}
                 </p>
               ) : null}
@@ -563,7 +552,7 @@ export default function CardCreationPanel({
                     </div>
                   ) : null}
                   {listDraftSummary.duplicateCount > 0 ? (
-                    <div className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">
+                    <div className="app-selected rounded-full px-3 py-1.5 text-xs font-medium">
                       {listDraftSummary.duplicateCount} duplicate{listDraftSummary.duplicateCount === 1 ? "" : "s"} will be skipped.
                     </div>
                   ) : null}

@@ -668,8 +668,8 @@ export default function CardsSearchPage() {
           emoji="Cards"
           eyebrow="No cards yet"
           title="No cards yet"
-          description="Cards are what power Daily Review and Focused Review. Add a prompt and answer above to create your first one."
-          helperText={decks.length === 0 ? "You will need a deck first, then cards can be added here." : "Once saved, new cards appear in study automatically."}
+          description="Create a card to start review."
+          helperText={decks.length === 0 ? "Create a deck first." : undefined}
           action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
         />
       ) : filtered.length === 0 ? (
@@ -677,7 +677,7 @@ export default function CardsSearchPage() {
           emoji="Search"
           eyebrow="No match"
           title="No cards match"
-          description={`No cards match "${debouncedTerm}". Try a shorter search, another deck name, or a tag you remember.`}
+          description={`No cards match "${debouncedTerm}".`}
           action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
         />
       ) : (

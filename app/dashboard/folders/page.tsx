@@ -29,13 +29,6 @@ function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
 }
 
-const starterFolders = [
-  "Biology",
-  "History",
-  "Spanish",
-  "Computer Science",
-];
-
 export default function FoldersPage() {
   const { user } = useUser();
   const [folders, setFolders] = useState<StudyFolder[]>([]);
@@ -205,20 +198,20 @@ export default function FoldersPage() {
                 <Input
                   label="Folder name"
                   value={name}
-                  placeholder="Biology"
+                  placeholder="Folder name"
                   onChange={(event) => setName(event.target.value)}
                 />
                 <Input
                   label="Subject"
                   value={subject}
-                  placeholder="Science"
+                  placeholder="Optional"
                   onChange={(event) => setSubject(event.target.value)}
                 />
                 <Textarea
-                  label="What belongs here?"
+                  label="Notes"
                   rows={4}
                   value={description}
-                  placeholder="Optional notes for this folder."
+                  placeholder="Optional"
                   onChange={(event) => setDescription(event.target.value)}
                 />
                 <ObjectStylePicker
@@ -278,7 +271,7 @@ export default function FoldersPage() {
         {loading ? (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
             {Array.from({ length: 5 }).map((_, index) => (
-              <Skeleton key={index} className="h-40 rounded-[1.25rem]" />
+              <Skeleton key={index} className="h-32 rounded-[1.15rem]" />
             ))}
           </div>
         ) : folders.length > 0 ? (
@@ -297,28 +290,11 @@ export default function FoldersPage() {
           <EmptyState
             emoji="Folder"
             title="Create your first study folder"
-            description="Start with a broad subject, module, exam, or project."
+            description="Create a folder to begin."
             action={
               <Button type="button" onClick={() => setShowCreate(true)}>
                 Create folder
               </Button>
-            }
-            secondaryAction={
-              <div className="flex flex-wrap justify-center gap-2">
-                {starterFolders.map((folderName) => (
-                  <button
-                    key={folderName}
-                    type="button"
-                    onClick={() => {
-                      setName(folderName);
-                      setShowCreate(true);
-                    }}
-                    className="rounded-full border border-white/[0.1] bg-white/[0.045] px-3 py-1.5 text-xs font-semibold text-text-secondary transition hover:border-warm-border hover:text-warm-accent"
-                  >
-                    {folderName}
-                  </button>
-                ))}
-              </div>
             }
           />
         )}

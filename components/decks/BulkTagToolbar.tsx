@@ -28,17 +28,17 @@ export default function BulkTagToolbar({
 }: BulkTagToolbarProps) {
   if (selectedCount === 0) {
     return (
-      <div className="rounded-[1.35rem] border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-sm leading-6 text-text-secondary">
+      <div className="app-subtle-panel rounded-[1.35rem] px-4 py-3 text-sm leading-6">
         Select a few cards when you want to tag them together.
       </div>
     );
   }
 
   return (
-    <div className="rounded-[1.5rem] border border-warm-border bg-warm-glow p-4">
+    <div className="app-selected rounded-[1.5rem] p-4">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0 flex-1">
-          <div className="text-sm font-semibold text-white">
+          <div className="text-sm font-semibold text-text-primary">
             {selectedCount} card{selectedCount === 1 ? "" : "s"} selected
           </div>
           <p className="mt-1 text-sm leading-6 text-text-secondary">
