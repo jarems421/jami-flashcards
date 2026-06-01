@@ -2,9 +2,13 @@ import { describe, expect, it } from "vitest";
 import {
   appendInkPoints,
   finalizeInkStroke,
+  getNotebookPageIndexAfterSwipe,
+  getNotebookSwipeDirection,
   getPointerClientSamples,
   mapClientPointToNotebookPage,
   shouldAppendInkPoint,
+  shouldPointerDraw,
+  shouldPointerSwipePages,
 } from "@/lib/workspace/notebook-inking";
 
 describe("notebook inking helpers", () => {
@@ -92,5 +96,37 @@ describe("notebook inking helpers", () => {
         width: 5,
       })
     ).toBeNull();
+  });
+
+  it("routes stylus and mouse to drawing while touch is reserved for page swipes", () => {
+    expect(shouldPointerDraw("pen", "pen")).toBe(true);
+    expect(shouldPointerDraw("mouse", "eraser")).toBe(true);
+    expect(shouldPointerDraw("touch", "pen")).toBe(false);
+    expect(shouldPointerDraw("pen", "text")).toBe(false);
+    expect(shouldPointerSwipePages("touch")).toBe(true);
+    expect(shouldPointerSwipePages("pen")).toBe(false);
+    expect(shouldPointerSwipePages("mouse")).toBe(false);
+  });
+
+  it("detects intentional horizontal finger swipes for page navigation", () => {
+    expect(
+      getNotebookSwipeDirection({ startX: 200, startY: 100, currentX: 120, currentY: 108 })
+    ).toBe("next");
+    expect(
+      getNotebookSwipeDirection({ startX: 120, startY: 100, currentX: 200, currentY: 108 })
+    ).toBe("previous");
+    expect(
+      getNotebookSwipeDirection({ startX: 120, startY: 100, currentX: 160, currentY: 102 })
+    ).toBeNull();
+    expect(
+      getNotebookSwipeDirection({ startX: 120, startY: 100, currentX: 200, currentY: 190 })
+    ).toBeNull();
+  });
+
+  it("keeps page swipe navigation inside available page bounds", () => {
+    expect(getNotebookPageIndexAfterSwipe({ currentIndex: 0, pageCount: 3, direction: "previous" })).toBe(0);
+    expect(getNotebookPageIndexAfterSwipe({ currentIndex: 0, pageCount: 3, direction: "next" })).toBe(1);
+    expect(getNotebookPageIndexAfterSwipe({ currentIndex: 2, pageCount: 3, direction: "next" })).toBe(2);
+    expect(getNotebookPageIndexAfterSwipe({ currentIndex: -1, pageCount: 3, direction: "next" })).toBe(-1);
   });
 });

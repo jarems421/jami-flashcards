@@ -42,8 +42,12 @@ import { buildTypedContentFromTextBlocks } from "@/lib/workspace/notebooks";
 import {
   appendInkPoints,
   finalizeInkStroke,
+  getNotebookPageIndexAfterSwipe,
+  getNotebookSwipeDirection,
   getPointerClientSamples,
   mapClientPointToNotebookPage,
+  shouldPointerDraw,
+  shouldPointerSwipePages,
 } from "@/lib/workspace/notebook-inking";
 import {
   createNotebookPage,
@@ -76,6 +80,14 @@ type TextBlockDragState = {
 type ActiveStrokeState = {
   pointerId: number;
   stroke: Stroke;
+};
+type PageSwipeState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+  completed: boolean;
 };
 
 const CANVAS_WIDTH = 900;
@@ -265,11 +277,33 @@ export default function NotebookEditorPage() {
   const animationFrameRef = useRef<number | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
   const pageColorRef = useRef<NotebookPageColor>("white");
+  const pageSwipeRef = useRef<PageSwipeState | null>(null);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
 
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
     [pages, selectedPageId]
+  );
+  const selectedPageIndex = useMemo(
+    () => pages.findIndex((page) => page.id === selectedPage?.id),
+    [pages, selectedPage?.id]
+  );
+
+  const selectPageByOffset = useCallback(
+    (offset: -1 | 1) => {
+      if (selectedPageIndex < 0) return false;
+      const nextIndex = getNotebookPageIndexAfterSwipe({
+        currentIndex: selectedPageIndex,
+        pageCount: pages.length,
+        direction: offset === 1 ? "next" : "previous",
+      });
+      if (nextIndex === selectedPageIndex) return false;
+      const nextPage = pages[nextIndex];
+      if (!nextPage) return false;
+      setSelectedPageId(nextPage.id);
+      return true;
+    },
+    [pages, selectedPageIndex]
   );
 
   const renderCanvasNow = useCallback(() => {
@@ -450,8 +484,22 @@ export default function NotebookEditorPage() {
     );
   };
 
+  const createTextBlockAtPoint = (point: Point) => {
+    const block = clampTextBlock({
+      id: makeTextBlockId(),
+      x: point.x - 120,
+      y: point.y - 36,
+      width: 300,
+      height: 96,
+      text: "",
+    });
+    setTextBlocks((current) => [...current, block]);
+    setSelectedTextBlockId(block.id);
+    setSaveStatus("unsaved");
+  };
+
   const handleStartDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!fullNotebookEditingEnabled || tool === "text") return;
+    if (!fullNotebookEditingEnabled || !shouldPointerDraw(event.pointerType, tool)) return;
     event.preventDefault();
     event.stopPropagation();
     finishActiveStroke();
@@ -461,13 +509,14 @@ export default function NotebookEditorPage() {
     }
 
     const points = getNotebookPointsFromEvent(event);
+    const strokeTool: NotebookStrokeTool = tool === "eraser" ? "eraser" : "pen";
     activeStrokeRef.current = {
       pointerId: event.pointerId,
       stroke: {
         points: appendInkPoints([], points, 1_200),
-        color: tool === "eraser" ? "white" : penColor,
-        tool,
-        width: tool === "eraser" ? 20 : 5,
+        color: strokeTool === "eraser" ? "white" : penColor,
+        tool: strokeTool,
+        width: strokeTool === "eraser" ? 20 : 5,
       },
     };
     document.body.classList.add("jami-inking-active");
@@ -481,7 +530,7 @@ export default function NotebookEditorPage() {
       !activeStroke ||
       activeStroke.pointerId !== event.pointerId ||
       !fullNotebookEditingEnabled ||
-      tool === "text"
+      !shouldPointerDraw(event.pointerType, tool)
     ) {
       return;
     }
@@ -504,9 +553,72 @@ export default function NotebookEditorPage() {
     finishActiveStroke({ pointerId: event.pointerId, canvas: event.currentTarget });
   };
 
+  const handleStartPageSwipe = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!fullNotebookEditingEnabled || !shouldPointerSwipePages(event.pointerType)) return;
+    if (activeStrokeRef.current) return;
+    pageSwipeRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      currentX: event.clientX,
+      currentY: event.clientY,
+      completed: false,
+    };
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+  };
+
+  const handlePageSwipeMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const swipe = pageSwipeRef.current;
+    if (!swipe || swipe.pointerId !== event.pointerId || swipe.completed) return;
+
+    swipe.currentX = event.clientX;
+    swipe.currentY = event.clientY;
+    const direction = getNotebookSwipeDirection({
+      startX: swipe.startX,
+      startY: swipe.startY,
+      currentX: swipe.currentX,
+      currentY: swipe.currentY,
+    });
+    if (!direction) return;
+
+    const moved = selectPageByOffset(direction === "next" ? 1 : -1);
+    swipe.completed = moved;
+    if (moved) {
+      event.preventDefault();
+    }
+  };
+
+  const handleStopPageSwipe = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const swipe = pageSwipeRef.current;
+    if (!swipe || swipe.pointerId !== event.pointerId) return;
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    pageSwipeRef.current = null;
+
+    if (!swipe.completed && tool === "text") {
+      const direction = getNotebookSwipeDirection({
+        startX: swipe.startX,
+        startY: swipe.startY,
+        currentX: event.clientX,
+        currentY: event.clientY,
+      });
+      if (!direction) {
+        const [point] = getNotebookPointsFromEvent(event);
+        if (point) createTextBlockAtPoint(point);
+      }
+    }
+  };
+
   const handlePagePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!fullNotebookEditingEnabled) return;
-    if (tool !== "text") {
+    if (shouldPointerSwipePages(event.pointerType)) {
+      handleStartPageSwipe(event);
+      return;
+    }
+    if (shouldPointerDraw(event.pointerType, tool)) {
       handleStartDrawing(event);
       return;
     }
@@ -514,17 +626,31 @@ export default function NotebookEditorPage() {
     event.preventDefault();
     const [point] = getNotebookPointsFromEvent(event);
     if (!point) return;
-    const block = clampTextBlock({
-      id: makeTextBlockId(),
-      x: point.x - 120,
-      y: point.y - 36,
-      width: 300,
-      height: 96,
-      text: "",
-    });
-    setTextBlocks((current) => [...current, block]);
-    setSelectedTextBlockId(block.id);
-    setSaveStatus("unsaved");
+    createTextBlockAtPoint(point);
+  };
+
+  const handlePagePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (shouldPointerSwipePages(event.pointerType)) {
+      handlePageSwipeMove(event);
+      return;
+    }
+    handleDraw(event);
+  };
+
+  const handlePagePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (shouldPointerSwipePages(event.pointerType)) {
+      handleStopPageSwipe(event);
+      return;
+    }
+    handleStopDrawing(event);
+  };
+
+  const handlePagePointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (shouldPointerSwipePages(event.pointerType)) {
+      handleStopPageSwipe(event);
+      return;
+    }
+    handleStopDrawing(event);
   };
 
   const updateTextBlock = (blockId: string, updates: Partial<NotebookTextBlock>) => {
@@ -1079,11 +1205,11 @@ export default function NotebookEditorPage() {
                     draggable={false}
                     className="notebook-ink-surface relative z-10 block aspect-[1.45/1] w-full touch-none select-none"
                     onPointerDown={handlePagePointerDown}
-                    onPointerMove={handleDraw}
-                    onPointerUp={handleStopDrawing}
-                    onPointerCancel={handleStopDrawing}
-                    onPointerLeave={handleStopDrawing}
-                    onLostPointerCapture={handleStopDrawing}
+                    onPointerMove={handlePagePointerMove}
+                    onPointerUp={handlePagePointerUp}
+                    onPointerCancel={handlePagePointerCancel}
+                    onPointerLeave={handlePagePointerCancel}
+                    onLostPointerCapture={handlePagePointerCancel}
                   />
                   <div className="pointer-events-none absolute inset-0 z-20">
                     {textBlocks.map((block) => {

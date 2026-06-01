@@ -11,6 +11,43 @@ export type PointerClientSample = {
 };
 
 const DEFAULT_MIN_POINT_DISTANCE = 1.35;
+export const NOTEBOOK_PAGE_SWIPE_THRESHOLD = 64;
+
+export function shouldPointerDraw(pointerType: string, tool: "pen" | "eraser" | "text") {
+  if (tool === "text") return false;
+  return pointerType === "pen" || pointerType === "mouse";
+}
+
+export function shouldPointerSwipePages(pointerType: string) {
+  return pointerType === "touch";
+}
+
+export function getNotebookSwipeDirection(input: {
+  startX: number;
+  startY: number;
+  currentX: number;
+  currentY: number;
+  threshold?: number;
+}): "next" | "previous" | null {
+  const threshold = input.threshold ?? NOTEBOOK_PAGE_SWIPE_THRESHOLD;
+  const dx = input.currentX - input.startX;
+  const dy = input.currentY - input.startY;
+  if (Math.abs(dx) < threshold) return null;
+  if (Math.abs(dx) < Math.abs(dy) * 1.15) return null;
+  return dx < 0 ? "next" : "previous";
+}
+
+export function getNotebookPageIndexAfterSwipe(input: {
+  currentIndex: number;
+  pageCount: number;
+  direction: "next" | "previous";
+}) {
+  if (input.pageCount <= 0 || input.currentIndex < 0 || input.currentIndex >= input.pageCount) {
+    return input.currentIndex;
+  }
+  const offset = input.direction === "next" ? 1 : -1;
+  return Math.max(0, Math.min(input.pageCount - 1, input.currentIndex + offset));
+}
 
 export function clampInkPoint(
   point: NotebookInkPoint,
