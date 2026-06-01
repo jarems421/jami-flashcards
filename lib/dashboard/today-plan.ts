@@ -66,6 +66,7 @@ export type TodayGoalSummary = {
 };
 
 export type TodayChecklist = {
+  createFolder: boolean;
   createDeck: boolean;
   addCards: boolean;
   reviewCards: boolean;
@@ -284,6 +285,7 @@ function buildWorkspaceSummary(input: BuildTodayPlanInput): TodayWorkspaceSummar
 
 function buildChecklist(input: BuildTodayPlanInput): TodayChecklist {
   return {
+    createFolder: (input.studyFolders ?? []).some((folder) => !folder.archived),
     createDeck: input.decks.length > 0,
     addCards: input.cards.length >= 5,
     reviewCards: (input.reviewedToday ?? 0) > 0,

@@ -1542,7 +1542,7 @@ export default function StudyPage() {
                   title="Create a few cards first"
                   description="Add cards to unlock review."
                   action={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create cards</Link>}
-                  secondaryAction={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Open decks</Link>}
+                  secondaryAction={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Open decks</Link>}
                 />
               ) : null}
               {hasCards ? (
@@ -1640,7 +1640,7 @@ export default function StudyPage() {
                               key={deckId}
                               type="button"
                               onClick={() => toggleDeckFilter(deckId)}
-                              className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition duration-fast hover:bg-accent/20"
+                              className="app-selected rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
                             >
                               {deckNamesById[deckId] ?? "Deck"} · {deckCardCounts.get(deckId) ?? 0} cards x
                             </button>
@@ -1659,7 +1659,7 @@ export default function StudyPage() {
                               key={tag}
                               type="button"
                               onClick={() => toggleTagFilter(tag)}
-                              className="rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent transition duration-fast hover:bg-accent/20"
+                              className="app-selected rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
                             >
                               {tag} · {tagCardCounts.get(getTagKey(tag)) ?? 0} cards x
                             </button>
@@ -1689,7 +1689,7 @@ export default function StudyPage() {
                                   key={deck.id}
                                   type="button"
                                   onClick={() => toggleDeckFilter(deck.id)}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-[1rem] border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                                  className={`flex w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
                                 >
                                   <span className="min-w-0">
                                     <span className="block truncate">{deck.name}</span>
@@ -1729,7 +1729,7 @@ export default function StudyPage() {
                                   key={tag}
                                   type="button"
                                   onClick={() => toggleTagFilter(tag)}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-[1rem] border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                                  className={`flex w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
                                 >
                                   <span className="min-w-0">
                                     <span className="block truncate">{tag}</span>
@@ -1765,7 +1765,7 @@ export default function StudyPage() {
                                 key={deck.id}
                                 type="button"
                                 onClick={() => toggleDeckFilter(deck.id)}
-                                className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                                className={`rounded-full px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
                               >
                                 {deck.name} · {deckCardCounts.get(deck.id) ?? 0} cards
                               </button>
@@ -1789,7 +1789,7 @@ export default function StudyPage() {
                                 key={tag}
                                 type="button"
                                 onClick={() => toggleTagFilter(tag)}
-                                className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${selected ? "border-accent bg-accent/20 text-accent" : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"}`}
+                                className={`rounded-full px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
                               >
                                 {tag} · {tagCardCounts.get(getTagKey(tag)) ?? 0} cards
                               </button>
@@ -1811,7 +1811,7 @@ export default function StudyPage() {
                       title="No cards match these filters"
                       description={hasCustomFilters ? "Your selected decks and tags do not currently match any cards. Clear them or try a different combination." : "There are no cards available for Focused Review yet."}
                       action={hasCustomFilters ? <Button type="button" variant="secondary" onClick={clearCustomFilters}>Clear filters</Button> : undefined}
-                      secondaryAction={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Edit cards</Link>}
+                      secondaryAction={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link>}
                     />
                   ) : null}
                   <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-sm text-text-secondary">
@@ -1871,7 +1871,7 @@ export default function StudyPage() {
                 description={sessionKind === "daily-required" ? "Your Daily Review is clear right now." : sessionKind === "daily-optional" ? "There are no easy extras left right now." : sessionKind === "simple" ? "Simple Study is clear right now." : "This Focused Review does not match any cards yet."}
                 helperText="That is not a bug, it just means this queue is empty for the current selection."
                 action={<Button type="button" onClick={exitSession}>Back to study home</Button>}
-                secondaryAction={sessionKind === "custom" ? <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Edit cards</Link> : undefined}
+                secondaryAction={sessionKind === "custom" ? <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link> : undefined}
               />
             ) : (
               <SurfaceCard tone="warm" padding="lg" className="animate-warm-glow-pulse">
@@ -2053,7 +2053,7 @@ export default function StudyPage() {
                             type="button"
                             aria-label="Missed this card"
                             disabled={savingRating !== null}
-                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border border-rose-300/25 bg-rose-400/[0.08] px-3 py-4 text-center text-base font-semibold text-rose-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-rose-200/45 hover:bg-rose-400/[0.12] active:scale-[0.985] disabled:opacity-50 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
+                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border border-rose-300/25 bg-rose-400/[0.08] px-3 py-4 text-center text-base font-semibold text-rose-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-rose-200/45 hover:bg-rose-400/[0.12] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
                             onClick={() => void handleSimpleStudyResult("wrong")}
                           >
                             <span>Missed</span>
@@ -2064,7 +2064,7 @@ export default function StudyPage() {
                             type="button"
                             aria-label="Got this card right"
                             disabled={savingRating !== null}
-                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border border-emerald-300/25 bg-emerald-400/[0.08] px-3 py-4 text-center text-base font-semibold text-emerald-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-emerald-200/45 hover:bg-emerald-400/[0.12] active:scale-[0.985] disabled:opacity-50 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
+                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border border-emerald-300/25 bg-emerald-400/[0.08] px-3 py-4 text-center text-base font-semibold text-emerald-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-emerald-200/45 hover:bg-emerald-400/[0.12] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
                             onClick={() => void handleSimpleStudyResult("correct")}
                           >
                             <span>Got it</span>
@@ -2081,7 +2081,7 @@ export default function StudyPage() {
                               key={rating}
                               type="button"
                               disabled={savingRating !== null}
-                              className={`flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border px-3 py-4 text-center text-base font-semibold shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:opacity-50 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm ${meta.classes}`}
+                              className={`flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border px-3 py-4 text-center text-base font-semibold shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm ${meta.classes}`}
                               onClick={() => void handleRating(rating)}
                             >
                               <span>{RATING_LABELS[rating]}</span>
@@ -2101,7 +2101,7 @@ export default function StudyPage() {
               ) : null}
               <div className="flex flex-wrap gap-3">
                 <Button type="button" onClick={exitSession} variant="secondary">End session</Button>
-                <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]">Edit cards</Link>
+                <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link>
               </div>
             </div>
           ) : null}

@@ -222,8 +222,8 @@ export default function DecksPage() {
             eyebrow="Library"
             title="Decks"
             action={
-              <div className="w-full max-w-[34rem] space-y-3">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(9.5rem,13rem)]">
+              <div className="w-full min-w-0 max-w-[32rem] space-y-3">
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(8.5rem,11.5rem)]">
                   <Input
                     ref={nameInputRef}
                     label="Name"
@@ -239,14 +239,14 @@ export default function DecksPage() {
                     containerClassName="min-w-0"
                     className="min-h-[2.9rem] px-4 py-3 text-base leading-6"
                   />
-                  <label className="block min-w-0">
+                  <label className="block min-w-0 overflow-visible">
                     <span className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary">
                       Folder
                     </span>
                     <select
                       value={createFolderId}
                       onChange={(event) => setCreateFolderId(event.target.value)}
-                      className="app-field min-h-[2.9rem] w-full appearance-none rounded-[1.6rem] px-4 py-3 text-sm leading-6 outline-none"
+                      className="app-field min-h-[2.9rem] w-full min-w-0 appearance-none truncate rounded-[1.6rem] px-3 py-3 text-sm leading-6 outline-none"
                     >
                       <option value="">No folder</option>
                       {folders.map((folder) => (

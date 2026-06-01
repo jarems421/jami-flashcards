@@ -90,7 +90,7 @@ export default function TagInput({
                 }}
                 disabled={disabled}
                 aria-label={`Remove tag ${tag}`}
-                className="shrink-0 rounded-full bg-glass-medium px-1.5 py-0.5 text-[10px] text-text-primary transition duration-fast hover:bg-glass-strong disabled:opacity-50"
+                className="shrink-0 rounded-full bg-glass-medium px-1.5 py-0.5 text-[10px] text-text-primary transition duration-fast hover:bg-glass-strong disabled:cursor-not-allowed disabled:saturate-[0.82]"
               >
                 x
               </button>
@@ -158,7 +158,7 @@ export default function TagInput({
                 type="button"
                 onClick={() => handleSuggestionClick(tag)}
                 disabled={disabled}
-                className="app-chip max-w-full rounded-full px-3 py-1.5 text-left text-xs transition duration-fast hover:border-border-strong disabled:opacity-50 sm:max-w-[16rem]"
+                className="app-chip max-w-full rounded-full px-3 py-1.5 text-left text-xs transition duration-fast hover:border-border-strong disabled:cursor-not-allowed disabled:saturate-[0.82] sm:max-w-[16rem]"
               >
                 <span className="block truncate">
                   Suggested {suggestionLabel}: {tag}
@@ -173,7 +173,7 @@ export default function TagInput({
               onClick={() => setShowAllSuggestions((value) => !value)}
               disabled={disabled}
               aria-expanded={showAllSuggestions}
-              className="text-xs font-medium text-text-muted transition duration-fast hover:text-text-primary disabled:opacity-50"
+              className="text-xs font-medium text-text-muted transition duration-fast hover:text-text-primary disabled:cursor-not-allowed disabled:saturate-[0.82]"
             >
               {showAllSuggestions
                 ? "Show fewer tags"

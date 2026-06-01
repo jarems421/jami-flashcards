@@ -249,13 +249,13 @@ export default function StudyAssistant({
                 : "Ask for a follow-up or explanation"
             }
             disabled={loading}
-            className="app-field flex-1 rounded-xl px-3 py-2 text-sm outline-none transition disabled:opacity-50"
+            className="app-field flex-1 rounded-xl px-3 py-2 text-sm outline-none transition disabled:cursor-not-allowed disabled:saturate-[0.82]"
           />
           <button
             type="button"
             disabled={loading || !input.trim()}
             onClick={() => void handleSend()}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] transition hover:brightness-110 active:scale-95 disabled:opacity-50"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] text-[var(--button-primary-text)] transition hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:saturate-[0.82]"
           >
             <svg viewBox="0 0 24 24" fill="currentColor" className="h-4 w-4">
               <path d="M3.478 2.404a.75.75 0 00-.926.941l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.404z" />
@@ -270,7 +270,7 @@ export default function StudyAssistant({
               type="button"
               disabled={loading}
               onClick={() => void runPrompt(action.prompt, action.intent)}
-              className="app-chip rounded-full px-3 py-2 text-xs font-medium transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary disabled:opacity-50"
+              className="app-chip rounded-full px-3 py-2 text-xs font-medium transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary disabled:cursor-not-allowed disabled:saturate-[0.82]"
             >
               {action.label}
             </button>
@@ -282,7 +282,7 @@ export default function StudyAssistant({
         <button
           type="button"
           disabled={loading && messages.length === 0}
-          className="app-chip flex w-full min-h-[3.5rem] items-center justify-center rounded-[1.75rem] px-4 py-3 text-sm font-medium shadow-card transition duration-fast ease-spring hover:border-border-strong hover:bg-[var(--color-glass-medium)] active:scale-[0.98] disabled:opacity-50"
+          className="app-chip flex w-full min-h-[3.5rem] items-center justify-center rounded-[1.75rem] px-4 py-3 text-sm font-medium shadow-card transition duration-fast ease-spring hover:border-border-strong hover:bg-[var(--color-glass-medium)] active:scale-[0.98] disabled:cursor-not-allowed disabled:saturate-[0.82]"
           onClick={onContinue}
         >
           Continue

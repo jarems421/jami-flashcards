@@ -382,13 +382,13 @@ export default function ConstellationDashboardPage() {
                   Constellations are your reward space. Complete goals to earn stars, then arrange the active sky so your progress feels visible.
                 </p>
                 <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="rounded-full border border-white/[0.10] bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-text-secondary">
+                  <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
                     Stars come from completed goals
                   </span>
-                  <span className="rounded-full border border-white/[0.10] bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-text-secondary">
+                  <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
                     Active stars can be dragged
                   </span>
-                  <span className="rounded-full border border-white/[0.10] bg-white/[0.06] px-3 py-1.5 text-xs font-semibold text-text-secondary">
+                  <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
                     Optional app background
                   </span>
                 </div>
@@ -409,15 +409,15 @@ export default function ConstellationDashboardPage() {
               </Button>
             }
             aside={
-              <div className="min-w-[15rem] rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
+              <div className="app-subtle-panel min-w-[15rem] rounded-[1.7rem] p-4">
                 <div className="flex items-baseline justify-between gap-4">
                   <div>
                     <div className="text-xs text-text-muted">Stars earned</div>
-                    <div className="mt-1 text-xl font-medium text-white sm:text-2xl">
+                    <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">
                       {activeConstellation.starCount}
                     </div>
                   </div>
-                  <div className="rounded-full border border-white/[0.10] bg-white/[0.06] px-3 py-1 text-xs font-semibold text-text-secondary">
+                  <div className="app-chip rounded-full px-3 py-1 text-xs font-semibold">
                     Active
                   </div>
                 </div>
@@ -486,7 +486,7 @@ export default function ConstellationDashboardPage() {
                 title="Your sky"
                 description="View your reward stars here. The active constellation can be arranged; finished constellations stay as calm records of past progress."
               />
-              <div className="flex flex-col gap-3 rounded-[1.5rem] border border-white/[0.08] bg-white/[0.035] p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="app-subtle-panel flex flex-col gap-3 rounded-[1.5rem] p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted sm:max-w-xs">
                   Constellation
                   <select
@@ -509,14 +509,14 @@ export default function ConstellationDashboardPage() {
 
                 {selectedConstellation ? (
                   <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full border border-white/[0.10] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold capitalize text-text-secondary">
+                    <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold capitalize">
                       {selectedConstellation.status === "active" ? "Active sky" : "Finished sky"}
                     </span>
-                    <span className="rounded-full border border-white/[0.10] bg-white/[0.05] px-3 py-1.5 text-xs font-semibold text-text-secondary">
+                    <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
                       {selectedConstellation.starCount} / {selectedConstellation.maxStars} stars
                     </span>
                     {!canEditSelectedConstellation ? (
-                      <span className="rounded-full border border-white/[0.10] bg-white/[0.04] px-3 py-1.5 text-xs font-medium text-text-muted">
+                      <span className="app-chip rounded-full px-3 py-1.5 text-xs font-medium">
                         View only
                       </span>
                     ) : null}
@@ -526,7 +526,7 @@ export default function ConstellationDashboardPage() {
 
               <div
                 id="constellation-container"
-                className="relative h-[60vh] w-full select-none overflow-hidden rounded-[2rem] border border-white/[0.07] bg-surface-base sm:h-[560px]"
+                className="relative h-[60vh] w-full select-none overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-surface-base sm:h-[560px]"
                 style={{
                   backgroundColor: "#090413",
                 }}
@@ -556,7 +556,7 @@ export default function ConstellationDashboardPage() {
                         action={
                           <Link
                             href="/dashboard/goals"
-                            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover"
+                            className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
                           >
                             Create a goal
                           </Link>
@@ -622,7 +622,7 @@ export default function ConstellationDashboardPage() {
                               </span>
                             </button>
                           )}
-                          <span className="shrink-0 rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-xs capitalize text-text-secondary">
+                          <span className="app-chip shrink-0 rounded-full px-2.5 py-1 text-xs capitalize">
                             {constellation.status}
                           </span>
                         </div>
@@ -698,7 +698,7 @@ export default function ConstellationDashboardPage() {
                   </select>
                 </label>
 
-                <div className="rounded-full border border-white/10 bg-white/[0.05] px-3 py-2 text-xs font-medium text-text-secondary">
+                <div className="app-chip rounded-full px-3 py-2 text-xs font-medium">
                   {isConstellationBackgroundEnabled
                     ? `Showing ${
                         constellations.find(

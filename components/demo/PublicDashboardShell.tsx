@@ -14,6 +14,7 @@ import {
   FeedbackBanner,
   MetricStrip,
   PageHero,
+  ProgressBar,
   SectionHeader,
   Textarea,
 } from "@/components/ui";
@@ -54,6 +55,8 @@ type Surface =
   | "folders"
   | "notebook"
   | "library"
+  | "goals"
+  | "stars"
   | "profile";
 
 type Feedback = { type: "success" | "error"; message: string };
@@ -67,6 +70,8 @@ function getSurface(pathname: string): Surface {
   if (pathname.startsWith("/dashboard/folders")) return "folders";
   if (pathname.startsWith("/dashboard/notebooks")) return "notebook";
   if (pathname.startsWith("/dashboard/library")) return "library";
+  if (pathname.startsWith("/dashboard/goals")) return "goals";
+  if (pathname.startsWith("/dashboard/constellation") || pathname.startsWith("/dashboard/stars")) return "stars";
   if (pathname.startsWith("/dashboard/profile")) return "profile";
   return "home";
 }
@@ -87,14 +92,14 @@ function timeLabel(updatedAt: number) {
 }
 
 function linkClass(className = "") {
-  return `inline-flex min-h-[2.75rem] items-center justify-center rounded-[2rem] border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:-translate-y-[1px] hover:bg-[var(--button-secondary-bg-hover)] ${className}`;
+  return `app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-[2rem] px-4 py-2 text-sm font-medium ${className}`;
 }
 
 function PublicBadge() {
   return (
     <Card tone="subtle" padding="sm">
       <div className="text-sm text-text-secondary">
-        Public walkthrough mode. Everything here is seeded, local-only, and simulated. Sign in to use Firebase-backed data.
+        Demo data stays on this device. Sign in to save your own workspace.
       </div>
     </Card>
   );
@@ -261,6 +266,8 @@ export default function PublicDashboardShell() {
             {surface === "cards" ? <CardsPanel /> : null}
             {surface === "library" ? <LibraryPanel drafts={drafts} onApprove={approveDraft} /> : null}
             {surface === "progress" ? <ProgressPanel notebooks={notebooks} drafts={activeDrafts.length} /> : null}
+            {surface === "goals" ? <GoalsPanel /> : null}
+            {surface === "stars" ? <StarsPanel /> : null}
             {surface === "profile" ? (
               <ProfilePanel
                 theme={theme}
@@ -341,7 +348,7 @@ function PracticePanel({
       <Card>
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
           <div>
-            <div className="text-sm font-semibold text-white">Create local notebook</div>
+            <div className="text-sm font-semibold text-text-primary">Create local notebook</div>
             <p className="mt-1 text-sm text-text-secondary">
               Local-only in public mode.
             </p>
@@ -427,7 +434,7 @@ function FoldersPanel(props: {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <div className="text-xs uppercase tracking-[0.18em] text-text-muted">Opened folder</div>
-              <h3 className="mt-2 text-2xl font-semibold text-white">{selectedFolder.name}</h3>
+              <h3 className="mt-2 text-2xl font-semibold text-text-primary">{selectedFolder.name}</h3>
             </div>
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => props.onCreateNotebook(selectedFolder.id, "blank")}>
@@ -448,8 +455,8 @@ function FoldersPanel(props: {
                 key={value}
                 type="button"
                 onClick={() => setActiveTab(value as "notebooks" | "decks" | "sources")}
-                className={`min-h-[2.35rem] rounded-full px-4 text-sm font-semibold ${
-                  activeTab === value ? "bg-accent text-white" : "text-text-secondary"
+                className={`min-h-[2.35rem] rounded-full px-4 text-sm font-semibold transition ${
+                  activeTab === value ? "app-selected" : "app-chip"
                 }`}
               >
                 {label}
@@ -584,10 +591,8 @@ function NotebookPanel({
                   setSelectedPageId(page.id);
                   setDraftText(page.typedContent ?? "");
                 }}
-                className={`w-full rounded-[1rem] border px-3 py-3 text-left text-sm transition ${
-                  page.id === selectedPage.id
-                    ? "border-warm-border bg-warm-glow text-white"
-                    : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:bg-white/[0.07]"
+                className={`w-full rounded-[1rem] px-3 py-3 text-left text-sm transition ${
+                  page.id === selectedPage.id ? "app-selected" : "app-chip hover:border-border-strong"
                 }`}
               >
                 Page {page.pageNumber}
@@ -600,13 +605,13 @@ function NotebookPanel({
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div className="text-xs uppercase tracking-[0.18em] text-text-muted">Working page</div>
             {notebook.uploadedFileName ? (
-              <span className="rounded-full border border-white/[0.09] bg-white/[0.05] px-3 py-1 text-xs text-text-secondary">
+              <span className="app-chip rounded-full px-3 py-1 text-xs">
                 File saved: {notebook.uploadedFileName}. Full annotation comes later.
               </span>
             ) : null}
           </div>
           {selectedPage.questionPrompt ? (
-            <div className="mb-4 rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm text-white">
+            <div className="app-subtle-panel mb-4 rounded-[1rem] p-4 text-sm text-text-primary">
               {selectedPage.questionPrompt}
             </div>
           ) : null}
@@ -690,7 +695,7 @@ function AssetList({ title, items, empty }: { title: string; items: string[]; em
           <p className="text-sm text-text-muted">{empty}</p>
         ) : (
           items.map((item) => (
-            <div key={item} className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] px-3 py-3 text-sm text-text-secondary">
+            <div key={item} className="app-chip rounded-[1rem] px-3 py-3 text-sm">
               {item}
             </div>
           ))
@@ -713,10 +718,15 @@ function DecksPanel() {
     <Panel title="Decks">
       <div className="grid gap-3 md:grid-cols-3">
         {WALKTHROUGH_DECKS.map((deck) => (
-          <Card key={deck.id} padding="sm">
-            <div className="font-semibold text-white">{deck.name}</div>
+          <Link
+            key={deck.id}
+            href="/dashboard/study?agent=1"
+            className="app-panel block rounded-[1.25rem] p-4 transition duration-fast hover:-translate-y-[1px]"
+          >
+            <div className="font-semibold text-text-primary">{deck.name}</div>
             <div className="mt-2 text-sm text-text-secondary">{deck.cardCount} cards - {deck.weakCount} weak</div>
-          </Card>
+            <div className="mt-3 inline-flex rounded-full px-3 py-1 text-xs font-semibold app-chip">Study demo deck</div>
+          </Link>
         ))}
       </div>
     </Panel>
@@ -729,7 +739,7 @@ function CardsPanel() {
       <div className="space-y-2">
         {WALKTHROUGH_CARDS.map((card) => (
           <Card key={card.id} padding="sm">
-            <div className="text-sm font-semibold text-white">{card.front}</div>
+            <div className="text-sm font-semibold text-text-primary">{card.front}</div>
             <div className="mt-1 text-sm text-text-secondary">{card.back}</div>
           </Card>
         ))}
@@ -739,25 +749,40 @@ function CardsPanel() {
 }
 
 function LibraryPanel({ drafts, onApprove }: { drafts: WalkthroughDraft[]; onApprove: (draft: WalkthroughDraft) => void }) {
+  const [selectedSourceId, setSelectedSourceId] = useState(WALKTHROUGH_SOURCES[0]?.id ?? "");
+  const selectedSource = WALKTHROUGH_SOURCES.find((source) => source.id === selectedSourceId);
   return (
     <Panel title="Library">
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <div className="space-y-2">
           <SectionHeader eyebrow="Sources" title="Saved study material" />
           {WALKTHROUGH_SOURCES.map((source) => (
-            <Card key={source.id} padding="sm">
-              <div className="font-semibold text-white">{source.title}</div>
+            <button
+              key={source.id}
+              type="button"
+              onClick={() => setSelectedSourceId(source.id)}
+              className={`w-full rounded-[1.15rem] p-4 text-left transition duration-fast ${
+                selectedSourceId === source.id ? "app-selected" : "app-panel hover:-translate-y-[1px]"
+              }`}
+            >
+              <div className="font-semibold text-text-primary">{source.title}</div>
               <div className="mt-1 text-sm text-text-secondary">
                 {source.type.replace(/_/g, " ")} - {source.fileName ?? source.contentText ?? source.externalUrl}
               </div>
-            </Card>
+            </button>
           ))}
+          {selectedSource ? (
+            <div className="app-subtle-panel rounded-[1.2rem] p-4 text-sm leading-6 text-text-secondary">
+              <div className="mb-1 font-semibold text-text-primary">Preview only</div>
+              {selectedSource.contentText ?? selectedSource.fileName ?? selectedSource.externalUrl}
+            </div>
+          ) : null}
         </div>
         <div className="space-y-2">
           <SectionHeader eyebrow="Drafts" title="Review queue" />
           {drafts.filter((draft) => draft.contentStatus === "draft").map((draft) => (
             <Card key={draft.id} padding="sm">
-              <div className="text-sm font-semibold text-white">
+              <div className="text-sm font-semibold text-text-primary">
                 {draft.kind === "flashcard" ? draft.front : draft.questionText}
               </div>
               <p className="mt-1 text-sm text-text-secondary">
@@ -790,6 +815,77 @@ function ProgressPanel({ notebooks, drafts }: { notebooks: WalkthroughNotebook[]
   );
 }
 
+function GoalsPanel() {
+  return (
+    <Panel title="Goals">
+      <div className="grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+        <Card tone="warm" padding="lg">
+          <SectionHeader eyebrow="Sample goal" title="Review 20 cards this week" />
+          <div className="mt-5">
+            <div className="mb-2 flex items-center justify-between text-sm text-text-secondary">
+              <span>Goal progress</span>
+              <span className="font-semibold text-text-primary">12 / 20</span>
+            </div>
+            <ProgressBar progress={60} />
+          </div>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link href="/dashboard/study?agent=1" className={linkClass()}>
+              Study cards
+            </Link>
+            <Link href="/dashboard/constellation?agent=1" className={linkClass()}>
+              View stars
+            </Link>
+          </div>
+        </Card>
+        <Card padding="lg">
+          <SectionHeader eyebrow="Reward preview" title="Stars earned from goals" />
+          <div className="mt-5 rounded-[1.4rem] border border-[rgba(255,255,255,0.16)] bg-[#110b2c] p-5 text-[#fff7d9] shadow-card">
+            <div className="relative h-44 overflow-hidden rounded-[1rem] bg-[radial-gradient(circle_at_25%_25%,rgba(255,226,126,0.26),transparent_22%),radial-gradient(circle_at_72%_52%,rgba(255,226,126,0.18),transparent_18%),linear-gradient(160deg,#181040,#070514)]">
+              <span className="absolute left-[22%] top-[28%] text-3xl">✦</span>
+              <span className="absolute right-[24%] top-[42%] text-xl">✦</span>
+              <span className="absolute bottom-[22%] left-[52%] text-2xl">✦</span>
+            </div>
+          </div>
+        </Card>
+      </div>
+    </Panel>
+  );
+}
+
+function StarsPanel() {
+  return (
+    <Panel title="Stars">
+      <div className="grid gap-4 lg:grid-cols-[1fr_0.85fr]">
+        <Card padding="lg">
+          <SectionHeader eyebrow="Constellation" title="Sample reward sky" />
+          <div className="mt-5 rounded-[1.6rem] border border-[rgba(255,255,255,0.16)] bg-[#0d0824] p-5 text-[#fff7d9]">
+            <div className="relative h-64 overflow-hidden rounded-[1.2rem] bg-[radial-gradient(circle_at_18%_24%,rgba(255,231,136,0.34),transparent_20%),radial-gradient(circle_at_62%_34%,rgba(255,231,136,0.18),transparent_17%),radial-gradient(circle_at_76%_76%,rgba(255,231,136,0.3),transparent_18%),linear-gradient(160deg,#191146,#070512)]">
+              {["left-[18%] top-[22%]", "left-[54%] top-[32%]", "left-[72%] top-[70%]", "left-[35%] top-[62%]"].map((position, index) => (
+                <span key={position} className={`absolute ${position} text-2xl drop-shadow-[0_0_18px_rgba(255,226,126,0.7)]`}>
+                  ✦
+                  <span className="sr-only">Sample star {index + 1}</span>
+                </span>
+              ))}
+            </div>
+          </div>
+        </Card>
+        <Card padding="lg">
+          <SectionHeader eyebrow="Demo" title="Rewards are local here" />
+          <p className="mt-4 text-sm leading-6 text-text-secondary">
+            Signed-in goals can add stars to your constellation. The public walkthrough shows a sample only.
+          </p>
+          <div className="mt-5 flex flex-wrap gap-2">
+            <Link href="/dashboard/goals?agent=1" className={linkClass()}>
+              Open goals
+            </Link>
+            <span className="app-chip rounded-full px-3 py-2 text-xs font-semibold">Preview only</span>
+          </div>
+        </Card>
+      </div>
+    </Panel>
+  );
+}
+
 function ProfilePanel({
   theme,
   onThemeChange,
@@ -805,10 +901,10 @@ function ProfilePanel({
             key={option.value}
             type="button"
             onClick={() => onThemeChange(option.value)}
-            className={`rounded-full border px-4 py-2 text-sm ${
+            className={`min-h-[2.75rem] rounded-full px-4 py-2 text-sm font-semibold ${
               theme === option.value
-                ? "border-warm-border bg-warm-glow text-white"
-                : "border-white/[0.09] bg-white/[0.04] text-text-secondary"
+                ? "app-selected"
+                : "app-chip hover:border-border-strong"
             }`}
           >
             {option.label}
@@ -833,15 +929,15 @@ function NotebookStatusCards() {
     <div className="grid gap-3 md:grid-cols-3">
       <Card padding="sm">
         <div className="text-sm text-text-muted">Due cards</div>
-        <div className="mt-2 text-2xl font-semibold text-white">{WALKTHROUGH_CARDS.filter((card) => card.due).length}</div>
+        <div className="mt-2 text-2xl font-semibold text-text-primary">{WALKTHROUGH_CARDS.filter((card) => card.due).length}</div>
       </Card>
       <Card padding="sm">
         <div className="text-sm text-text-muted">Weak cards</div>
-        <div className="mt-2 text-2xl font-semibold text-white">{WALKTHROUGH_CARDS.filter((card) => card.weak).length}</div>
+        <div className="mt-2 text-2xl font-semibold text-text-primary">{WALKTHROUGH_CARDS.filter((card) => card.weak).length}</div>
       </Card>
       <Card padding="sm">
         <div className="text-sm text-text-muted">Linked folders</div>
-        <div className="mt-2 text-2xl font-semibold text-white">{WALKTHROUGH_FOLDERS.length}</div>
+        <div className="mt-2 text-2xl font-semibold text-text-primary">{WALKTHROUGH_FOLDERS.length}</div>
       </Card>
     </div>
   );
@@ -850,7 +946,7 @@ function NotebookStatusCards() {
 function AgentNotes() {
   return (
     <Card tone="subtle">
-      <div className="text-sm font-semibold text-white">Agent checklist</div>
+      <div className="text-sm font-semibold text-text-primary">Agent checklist</div>
       <ul className="mt-3 space-y-2 text-sm text-text-secondary">
         <li>Open Practice and confirm it only shows Continue working, Folders, and notebook template entry points.</li>
         <li>Open a notebook, type on a page, save, add a page, and switch pages.</li>

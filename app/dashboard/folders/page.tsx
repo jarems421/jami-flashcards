@@ -19,6 +19,7 @@ import {
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useUser } from "@/lib/auth/user-context";
 import type { Topic } from "@/lib/practice/topics";
+import { getFolderNameValidationError } from "@/lib/workspace/folder-form";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { createStudyFolder, getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveTopics } from "@/services/study/topics";
@@ -43,6 +44,10 @@ export default function FoldersPage() {
   const [folderColor, setFolderColor] = useState<ObjectColorId>("sky");
   const [folderIcon, setFolderIcon] = useState<ObjectIconId>("none");
   const [saving, setSaving] = useState(false);
+  const [nameTouched, setNameTouched] = useState(false);
+  const folderNameError = getFolderNameValidationError(name);
+  const folderNameIsValid = folderNameError === null;
+  const showNameError = nameTouched && Boolean(folderNameError);
 
   const loadFolders = useCallback(async () => {
     if (!user?.uid || !featureFlags.enableFolders) {
@@ -94,10 +99,15 @@ export default function FoldersPage() {
     setSelectedTopicIds([]);
     setFolderColor("sky");
     setFolderIcon("none");
+    setNameTouched(false);
   };
 
   const handleCreateFolder = async () => {
     if (!user?.uid) return;
+    if (!folderNameIsValid) {
+      setNameTouched(true);
+      return;
+    }
     setSaving(true);
     setFeedback(null);
     try {
@@ -170,7 +180,7 @@ export default function FoldersPage() {
             </Button>
             <Link
               href="/dashboard/practise"
-              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition hover:-translate-y-[1px]"
+              className="app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-full px-4 text-sm font-medium"
             >
               Open Practice
             </Link>
@@ -184,7 +194,7 @@ export default function FoldersPage() {
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                   New folder
                 </div>
-                <h2 className="mt-2 text-xl font-semibold text-white">
+                <h2 className="mt-2 text-xl font-semibold text-text-primary">
                   Create a study space
                 </h2>
               </div>
@@ -199,8 +209,20 @@ export default function FoldersPage() {
                   label="Folder name"
                   value={name}
                   placeholder="Folder name"
-                  onChange={(event) => setName(event.target.value)}
+                  onBlur={() => setNameTouched(true)}
+                  onChange={(event) => {
+                    setName(event.target.value);
+                    if (event.target.value.trim()) {
+                      setNameTouched(false);
+                    }
+                  }}
+                  aria-invalid={showNameError}
                 />
+                {showNameError ? (
+                  <p className="-mt-2 text-sm font-medium text-danger-text">
+                    {folderNameError}
+                  </p>
+                ) : null}
                 <Input
                   label="Subject"
                   value={subject}
@@ -223,8 +245,8 @@ export default function FoldersPage() {
                   iconLabel="Folder icon"
                 />
               </div>
-              <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.035] p-4">
-                <div className="text-sm font-semibold text-white">Linked topics</div>
+              <div className="app-subtle-panel rounded-[1.25rem] p-4">
+                <div className="text-sm font-semibold text-text-primary">Linked topics</div>
                 <div className="mt-4 flex flex-wrap gap-2">
                   {topics.length > 0 ? (
                     topics.map((topic) => {
@@ -236,8 +258,8 @@ export default function FoldersPage() {
                           onClick={() => toggleTopic(topic.id)}
                           className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
                             selected
-                              ? "border-warm-border bg-warm-glow text-warm-accent"
-                              : "border-white/[0.1] bg-white/[0.045] text-text-secondary hover:border-white/[0.18]"
+                              ? "app-selected"
+                              : "app-chip hover:border-border-strong"
                           }`}
                         >
                           {topic.name}
@@ -256,7 +278,7 @@ export default function FoldersPage() {
             <div className="mt-6 flex flex-wrap gap-3">
               <Button
                 type="button"
-                disabled={saving}
+                disabled={saving || !folderNameIsValid}
                 onClick={handleCreateFolder}
               >
                 {saving ? "Creating..." : "Create folder"}

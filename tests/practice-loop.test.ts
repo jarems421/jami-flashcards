@@ -15,6 +15,7 @@ import {
   mapStudyFolderData,
 } from "@/lib/workspace/study-folders";
 import { addFolderId, normalizeFolderIds, removeFolderId } from "@/lib/workspace/folder-links";
+import { getFolderNameValidationError } from "@/lib/workspace/folder-form";
 import {
   getObjectColorPreset,
   normalizeObjectColor,
@@ -71,6 +72,12 @@ describe("Jami notebook-first learning foundations", () => {
     expect(getDeckStudyRouteHref("deck-history")).toBe("/dashboard/decks/deck-history/study");
     expect(getDeckStudyHref("deck-history")).toBe("/dashboard/study?mode=custom&decks=deck-history");
     expect(getDeckHref("deck-history")).toBe("/dashboard/decks/deck-history");
+  });
+
+  it("validates folder creation from the name field only", () => {
+    expect(getFolderNameValidationError("")).toBe("Folder name is required.");
+    expect(getFolderNameValidationError("   ")).toBe("Folder name is required.");
+    expect(getFolderNameValidationError("Biology")).toBeNull();
   });
 
   it("normalizes topic data without depending on question-bank models", () => {

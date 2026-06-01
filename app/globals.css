@@ -100,6 +100,9 @@
     --button-secondary-text: var(--color-text-primary);
     --button-secondary-shadow: 0 10px 20px rgba(11, 4, 32, 0.12);
     --button-secondary-shadow-hover: 0 14px 26px rgba(11, 4, 32, 0.18);
+    --button-disabled-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.075));
+    --button-disabled-border: rgba(255, 255, 255, 0.22);
+    --button-disabled-text: #e4eaf7;
     --button-surface-bg: linear-gradient(180deg, rgba(24, 30, 45, 0.94), rgba(15, 19, 31, 0.94));
     --button-surface-bg-hover: linear-gradient(180deg, rgba(30, 37, 55, 0.96), rgba(18, 23, 36, 0.96));
     --button-surface-border: rgba(255, 255, 255, 0.22);
@@ -304,6 +307,9 @@
     --button-warm-border-hover: rgba(116, 100, 207, 0.28);
     --button-warm-text: #282046;
     --button-ghost-bg-hover: rgba(20, 28, 42, 0.065);
+    --button-disabled-bg: linear-gradient(180deg, rgba(20, 28, 42, 0.11), rgba(20, 28, 42, 0.07));
+    --button-disabled-border: rgba(20, 28, 42, 0.22);
+    --button-disabled-text: #354155;
     --shadow-card: 0 18px 34px rgba(43, 55, 83, 0.12);
     --shadow-shell: 0 20px 38px rgba(43, 55, 83, 0.12);
     --shadow-bubble: 0 18px 34px rgba(43, 55, 83, 0.11);
@@ -376,6 +382,9 @@
     --button-warm-border-hover: rgba(255, 255, 255, 0.32);
     --button-warm-text: #101010;
     --button-ghost-bg-hover: rgba(255, 255, 255, 0.08);
+    --button-disabled-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.075));
+    --button-disabled-border: rgba(255, 255, 255, 0.22);
+    --button-disabled-text: #e6e6e6;
     --shadow-card: 0 18px 34px rgba(0, 0, 0, 0.24);
     --shadow-shell: 0 20px 38px rgba(0, 0, 0, 0.28);
     --shadow-bubble: 0 18px 34px rgba(0, 0, 0, 0.24);
@@ -588,6 +597,122 @@
     color: var(--color-text-primary);
   }
 
+  .app-focusable,
+  a,
+  button,
+  input,
+  select,
+  textarea,
+  [role="button"],
+  [tabindex]:not([tabindex="-1"]) {
+    outline-color: transparent;
+    outline-offset: 3px;
+  }
+
+  .app-focusable:focus-visible,
+  a:focus-visible,
+  button:focus-visible,
+  input:focus-visible,
+  select:focus-visible,
+  textarea:focus-visible,
+  [role="button"]:focus-visible,
+  [tabindex]:not([tabindex="-1"]):focus-visible {
+    outline: 3px solid color-mix(in srgb, var(--color-warm-accent) 72%, transparent);
+    box-shadow: 0 0 0 5px color-mix(in srgb, var(--color-accent) 18%, transparent);
+  }
+
+  .app-button-primary,
+  .app-button-secondary,
+  .app-button-ghost,
+  .app-button-warm {
+    position: relative;
+    display: inline-flex;
+    min-height: 2.75rem;
+    align-items: center;
+    justify-content: center;
+    border-radius: 2rem;
+    padding: 0.5rem 1rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    line-height: 1.25rem;
+    letter-spacing: 0.01em;
+    transition:
+      transform var(--duration-fast) var(--ease-spring),
+      border-color var(--duration-fast) var(--ease-standard),
+      background-color var(--duration-fast) var(--ease-standard),
+      box-shadow var(--duration-fast) var(--ease-standard),
+      filter var(--duration-fast) var(--ease-standard);
+  }
+
+  .app-button-primary:hover,
+  .app-button-secondary:hover,
+  .app-button-warm:hover {
+    transform: translateY(-1px);
+  }
+
+  .app-button-primary {
+    border: 1px solid var(--button-primary-border);
+    background: var(--button-primary-bg);
+    color: var(--button-primary-text);
+    box-shadow: var(--button-primary-shadow);
+  }
+
+  .app-button-primary:hover {
+    border-color: var(--button-primary-border-hover);
+    background: var(--button-primary-bg-hover);
+    box-shadow: var(--button-primary-shadow-hover);
+  }
+
+  .app-button-secondary {
+    border: 1px solid var(--button-secondary-border);
+    background: var(--button-secondary-bg);
+    color: var(--button-secondary-text);
+    box-shadow: var(--button-secondary-shadow);
+  }
+
+  .app-button-secondary:hover {
+    border-color: var(--button-secondary-border-hover);
+    background: var(--button-secondary-bg-hover);
+    box-shadow: var(--button-secondary-shadow-hover);
+  }
+
+  .app-button-ghost {
+    border: 1px solid var(--color-chip-border);
+    background: var(--color-chip-bg);
+    color: var(--color-chip-text);
+  }
+
+  .app-button-ghost:hover {
+    border-color: var(--color-border-strong);
+    background: var(--button-ghost-bg-hover);
+    color: var(--color-text-primary);
+  }
+
+  .app-button-warm {
+    border: 1px solid var(--button-warm-border);
+    background: var(--button-warm-bg);
+    color: var(--button-warm-text);
+    box-shadow: var(--button-warm-shadow);
+  }
+
+  .app-button-warm:hover {
+    border-color: var(--button-warm-border-hover);
+    background: var(--button-warm-bg-hover);
+    box-shadow: var(--button-warm-shadow-hover);
+  }
+
+  .app-button-primary[aria-disabled="true"],
+  .app-button-secondary[aria-disabled="true"],
+  .app-button-ghost[aria-disabled="true"],
+  .app-button-warm[aria-disabled="true"] {
+    border-color: var(--button-disabled-border);
+    background: var(--button-disabled-bg);
+    color: var(--button-disabled-text);
+    box-shadow: none;
+    cursor: not-allowed;
+    transform: none;
+  }
+
   .study-flashcard-face {
     --color-text-primary: #fff8ff;
     --color-text-secondary: #dce5f7;
@@ -720,6 +845,55 @@
   body [class*="border-white/"][class*="bg-white/"] {
     color: var(--color-text-primary) !important;
   }
+
+  body [class*="bg-white/"] {
+    color: var(--color-text-primary);
+  }
+
+  body [class*="bg-white/"] [class*="text-white"],
+  body [class*="bg-white/"] [class*="text-white/"],
+  body [class*="bg-white/"] .text-black {
+    color: var(--color-text-primary) !important;
+  }
+
+  body [class*="bg-white/"] .text-text-muted,
+  body [class*="bg-white/"] [class*="text-text-muted"] {
+    color: var(--color-text-muted) !important;
+  }
+
+  body [class*="bg-white/"] .text-text-secondary,
+  body [class*="bg-white/"] [class*="text-text-secondary"] {
+    color: var(--color-text-secondary) !important;
+  }
+
+  body button:disabled,
+  body [aria-disabled="true"] {
+    opacity: 1;
+  }
+
+  body .study-flashcard-face,
+  body.app-theme-paper-white .study-flashcard-face,
+  body.constellation-background-enabled .study-flashcard-face {
+    --color-text-primary: #fff8ff;
+    --color-text-secondary: #dce5f7;
+    --color-text-muted: #aeb9d0;
+    color: #fff8ff !important;
+  }
+
+  body .study-flashcard-face .text-white,
+  body .study-flashcard-face [class*="text-white/"],
+  body .study-flashcard-face .text-black,
+  body .study-flashcard-face .text-text-primary,
+  body .study-flashcard-face [class*="text-text-primary"],
+  body .study-flashcard-face .text-text-secondary,
+  body .study-flashcard-face [class*="text-text-secondary"] {
+    color: var(--color-text-primary) !important;
+  }
+
+  body .study-flashcard-face .text-text-muted,
+  body .study-flashcard-face [class*="text-text-muted"] {
+    color: var(--color-text-muted) !important;
+  }
 }
 
 /* Constellation background overrides */
@@ -761,6 +935,9 @@ body.constellation-background-enabled {
   --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.13));
   --button-secondary-border: rgba(255, 255, 255, 0.26);
   --button-secondary-border-hover: rgba(255, 255, 255, 0.38);
+  --button-disabled-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.075));
+  --button-disabled-border: rgba(255, 255, 255, 0.24);
+  --button-disabled-text: #e8e2f4;
   --button-surface-bg: linear-gradient(180deg, rgba(21, 16, 38, 0.94), rgba(9, 7, 20, 0.96));
   --button-surface-bg-hover: linear-gradient(180deg, rgba(28, 21, 48, 0.96), rgba(13, 10, 25, 0.98));
   --button-surface-border: rgba(255, 255, 255, 0.26);

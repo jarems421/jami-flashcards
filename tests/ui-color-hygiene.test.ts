@@ -22,6 +22,8 @@ const auditedFiles = [
   "components/decks/CardCreationPanel.tsx",
   "components/study/StudyAssistant.tsx",
   "components/notifications/NotificationSettingsCard.tsx",
+  "app/page.tsx",
+  "app/auth/page.tsx",
   "app/dashboard/goals/page.tsx",
   "app/dashboard/decks/page.tsx",
   "app/dashboard/profile/page.tsx",
@@ -65,12 +67,17 @@ describe("theme colour hygiene", () => {
     const home = readFileSync(join(root, "app/page.tsx"), "utf8");
     const constellation = readFileSync(join(root, "app/dashboard/constellation/page.tsx"), "utf8");
     const button = readFileSync(join(root, "components/ui/Button.tsx"), "utf8");
+    const publicShell = readFileSync(join(root, "components/demo/PublicDashboardShell.tsx"), "utf8");
 
     expect(home).toContain('variant="primary"');
     expect(home).toContain("Continue with Google");
     expect(constellation).toContain("app-field mt-1 w-full truncate");
     expect(constellation).toContain("Use background");
     expect(button).not.toContain("disabled:opacity-50");
-    expect(button).toContain("disabled:saturate-[0.72]");
+    expect(button).toContain("disabled:!bg-[var(--button-disabled-bg)]");
+    expect(button).toContain("disabled:saturate-[0.82]");
+    expect(publicShell).toContain('Demo data stays on this device');
+    expect(publicShell).toContain('surface === "goals"');
+    expect(publicShell).toContain('surface === "stars"');
   });
 });

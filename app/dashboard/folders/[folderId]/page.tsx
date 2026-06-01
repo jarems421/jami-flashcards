@@ -672,7 +672,7 @@ export default function FolderDetailPage() {
                   accept="application/pdf,image/jpeg,image/png,image/webp"
                   disabled={notebookTemplate !== "uploaded_file" || creatingNotebook}
                   onChange={(event) => setNotebookFile(event.target.files?.[0] ?? null)}
-                  className="block min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:opacity-50"
+                  className="block min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed disabled:saturate-[0.82]"
                 />
               </div>
               <div className="flex gap-2">

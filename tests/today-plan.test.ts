@@ -88,6 +88,30 @@ describe("today plan", () => {
     const plan = buildTodayPlan({ ...basePlanInput(), studyFolders: [], notebooks: [], decks: [], cards: [] });
 
     expect(plan.nextAction.type).toBe("create_first_folder");
+    expect(plan.checklist.createFolder).toBe(false);
+  });
+
+  it("tracks the folder-first onboarding checklist", () => {
+    const plan = buildTodayPlan({
+      ...basePlanInput(),
+      notebooks: [notebook],
+      reviewedToday: 1,
+      cards: [
+        card({ id: "card-1", deckId: "deck-a", front: "A", back: "B" }),
+        card({ id: "card-2", deckId: "deck-a", front: "C", back: "D" }),
+        card({ id: "card-3", deckId: "deck-a", front: "E", back: "F" }),
+        card({ id: "card-4", deckId: "deck-a", front: "G", back: "H" }),
+        card({ id: "card-5", deckId: "deck-a", front: "I", back: "J" }),
+      ],
+    });
+
+    expect(plan.checklist).toMatchObject({
+      createFolder: true,
+      createDeck: true,
+      addCards: true,
+      reviewCards: true,
+      createNotebook: true,
+    });
   });
 
   it("continues the most recent notebook before flashcard setup", () => {

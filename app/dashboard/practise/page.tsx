@@ -6,6 +6,7 @@ import { useUser } from "@/lib/auth/user-context";
 import { createStudyFolder, getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import type { Notebook } from "@/lib/workspace/notebooks";
+import { getFolderNameValidationError } from "@/lib/workspace/folder-form";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import AppPage from "@/components/layout/AppPage";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
@@ -52,6 +53,10 @@ export default function PracticePage() {
   const [folderColor, setFolderColor] = useState<ObjectColorId>("sky");
   const [folderIcon, setFolderIcon] = useState<ObjectIconId>("none");
   const [creatingFolder, setCreatingFolder] = useState(false);
+  const [folderNameTouched, setFolderNameTouched] = useState(false);
+  const folderNameError = getFolderNameValidationError(folderName);
+  const folderNameIsValid = folderNameError === null;
+  const showFolderNameError = folderNameTouched && Boolean(folderNameError);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -80,6 +85,10 @@ export default function PracticePage() {
     [notebooks]
   );
   const handleCreateFolder = async () => {
+    if (!folderNameIsValid) {
+      setFolderNameTouched(true);
+      return;
+    }
     setCreatingFolder(true);
     setFeedback(null);
     try {
@@ -95,6 +104,7 @@ export default function PracticePage() {
       setFolderDescription("");
       setFolderColor("sky");
       setFolderIcon("none");
+      setFolderNameTouched(false);
       setShowCreateFolder(false);
       await loadAll();
       setFeedback({ type: "success", message: `"${folder.name}" created. Open it to add notebooks.` });
@@ -139,7 +149,7 @@ export default function PracticePage() {
         {recentNotebooks[0] ? (
           <Link
             href={`/dashboard/notebooks/${encodeURIComponent(recentNotebooks[0].id)}`}
-            className="inline-flex min-h-[2.75rem] items-center justify-center rounded-[2rem] bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:-translate-y-[1px] hover:bg-accent-hover"
+            className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-[2rem] px-4 py-2 text-sm font-medium"
           >
             Continue notebook
           </Link>
@@ -165,7 +175,25 @@ export default function PracticePage() {
                 </Button>
               </div>
               <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                <Input label="Folder name" value={folderName} onChange={(event) => setFolderName(event.target.value)} />
+                <div>
+                  <Input
+                    label="Folder name"
+                    value={folderName}
+                    onBlur={() => setFolderNameTouched(true)}
+                    onChange={(event) => {
+                      setFolderName(event.target.value);
+                      if (event.target.value.trim()) {
+                        setFolderNameTouched(false);
+                      }
+                    }}
+                    aria-invalid={showFolderNameError}
+                  />
+                  {showFolderNameError ? (
+                    <p className="mt-2 text-sm font-medium text-danger-text">
+                      {folderNameError}
+                    </p>
+                  ) : null}
+                </div>
                 <Input label="Subject" value={folderSubject} onChange={(event) => setFolderSubject(event.target.value)} />
               </div>
               <Input
@@ -185,7 +213,7 @@ export default function PracticePage() {
                 />
               </div>
               <div className="mt-4">
-                <Button type="button" disabled={creatingFolder || !folderName.trim()} onClick={() => void handleCreateFolder()}>
+                <Button type="button" disabled={creatingFolder || !folderNameIsValid} onClick={() => void handleCreateFolder()}>
                   {creatingFolder ? "Creating..." : "Create folder"}
                 </Button>
               </div>
@@ -220,12 +248,12 @@ export default function PracticePage() {
                   emoji="Notebook"
                   title="No notebooks yet"
                   description="Open a folder and create a notebook."
-                  action={
-                    <Link
-                      href="/dashboard/folders"
-                      className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition hover:-translate-y-[1px] hover:bg-accent-hover"
-                    >
-                      Open folders
+                    action={
+                      <Link
+                        href="/dashboard/folders"
+                        className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
+                      >
+                        Open folders
                     </Link>
                   }
                 />

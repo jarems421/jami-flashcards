@@ -270,7 +270,9 @@ type NotebookIconName =
   | "ai"
   | "plus"
   | "save"
-  | "chevron";
+  | "chevron"
+  | "trash"
+  | "dots";
 
 function NotebookIcon({ name }: { name: NotebookIconName }) {
   const common = {
@@ -333,6 +335,19 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
         </>
       ) : null}
       {name === "chevron" ? <path {...common} d="m7 10 5 5 5-5" /> : null}
+      {name === "trash" ? (
+        <>
+          <path {...common} d="M6 7h12M10 7V5h4v2M8 10v8M12 10v8M16 10v8" />
+          <path {...common} d="M7 7l1 14h8l1-14" />
+        </>
+      ) : null}
+      {name === "dots" ? (
+        <>
+          <circle cx="6.5" cy="12" r="1.35" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.35" fill="currentColor" />
+          <circle cx="17.5" cy="12" r="1.35" fill="currentColor" />
+        </>
+      ) : null}
     </svg>
   );
 }
@@ -359,7 +374,7 @@ function ToolbarIconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className={`relative inline-flex h-10 min-w-10 items-center justify-center rounded-full border text-sm font-semibold transition disabled:cursor-not-allowed disabled:opacity-45 ${
+      className={`relative inline-flex h-10 min-w-10 items-center justify-center rounded-full border text-sm font-semibold transition disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
         active
           ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
           : "border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]"
@@ -383,6 +398,7 @@ export default function NotebookEditorPage() {
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [textBlocks, setTextBlocks] = useState<NotebookTextBlock[]>([]);
   const [selectedTextBlockId, setSelectedTextBlockId] = useState<string | null>(null);
+  const [editingTextBlockId, setEditingTextBlockId] = useState<string | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [pageColor, setPageColor] = useState<NotebookPageColor>("white");
   const [penColor, setPenColor] = useState<NotebookPenColor>("black");
@@ -567,6 +583,7 @@ export default function NotebookEditorPage() {
     if (!selectedPage) {
       setTextBlocks([]);
       setSelectedTextBlockId(null);
+      setEditingTextBlockId(null);
       setStrokes([]);
       strokesRef.current = [];
       activeStrokeRef.current = null;
@@ -576,6 +593,7 @@ export default function NotebookEditorPage() {
     const nextStrokes = normalizeStrokes(selectedPage.strokeData?.strokes);
     setTextBlocks(selectedPage.textBlocks);
     setSelectedTextBlockId(null);
+    setEditingTextBlockId(null);
     setStrokes(nextStrokes);
     strokesRef.current = nextStrokes;
     activeStrokeRef.current = null;
@@ -637,6 +655,7 @@ export default function NotebookEditorPage() {
     });
     setTextBlocks((current) => [...current, block]);
     setSelectedTextBlockId(block.id);
+    setEditingTextBlockId(block.id);
     setSaveStatus("unsaved");
   };
 
@@ -810,12 +829,13 @@ export default function NotebookEditorPage() {
   const deleteTextBlock = (blockId: string) => {
     setTextBlocks((current) => current.filter((block) => block.id !== blockId));
     setSelectedTextBlockId((current) => (current === blockId ? null : current));
+    setEditingTextBlockId((current) => (current === blockId ? null : current));
     setSaveStatus("unsaved");
   };
 
   const startTextBlockDrag = (
     block: NotebookTextBlock,
-    event: ReactPointerEvent<HTMLButtonElement>
+    event: ReactPointerEvent<HTMLElement>
   ) => {
     if (!fullNotebookEditingEnabled) return;
     const pageElement = event.currentTarget.closest<HTMLElement>("[data-notebook-page-surface]");
@@ -831,11 +851,13 @@ export default function NotebookEditorPage() {
       pageHeight: rect.height,
     };
     setSelectedTextBlockId(block.id);
+    setEditingTextBlockId((current) => (current === block.id ? null : current));
     event.currentTarget.setPointerCapture(event.pointerId);
     event.preventDefault();
+    event.stopPropagation();
   };
 
-  const dragTextBlock = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const dragTextBlock = (event: ReactPointerEvent<HTMLElement>) => {
     const drag = textBlockDragRef.current;
     if (!drag) return;
     const dx = ((event.clientX - drag.startX) / drag.pageWidth) * CANVAS_WIDTH;
@@ -844,13 +866,16 @@ export default function NotebookEditorPage() {
       x: drag.originX + dx,
       y: drag.originY + dy,
     });
+    event.preventDefault();
+    event.stopPropagation();
   };
 
-  const stopTextBlockDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+  const stopTextBlockDrag = (event: ReactPointerEvent<HTMLElement>) => {
     if (textBlockDragRef.current && event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     textBlockDragRef.current = null;
+    event.stopPropagation();
   };
 
   const handleSavePage = async () => {
@@ -1130,7 +1155,9 @@ export default function NotebookEditorPage() {
                             setTool("pen");
                           }}
                           className={`h-9 rounded-full border transition ${
-                            penColor === color ? "border-warm-accent ring-2 ring-warm-accent/40" : "border-white/[0.2]"
+                            penColor === color
+                              ? "border-[var(--color-selected-border)] ring-2 ring-[var(--color-selected-border)]/40"
+                              : "border-[var(--color-border)]"
                           }`}
                           style={{ backgroundColor: PEN_COLOR_HEX[color] }}
                         />
@@ -1295,7 +1322,7 @@ export default function NotebookEditorPage() {
                 </Button>
                 <Link
                   href="/dashboard/study"
-                  className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+                  className="app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium transition duration-fast"
                 >
                   Go to flashcards
                 </Link>
@@ -1400,7 +1427,7 @@ export default function NotebookEditorPage() {
                   {files.map((file) => (
                     <span
                       key={file.id}
-                      className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-semibold text-warm-accent"
+                      className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold"
                     >
                       {file.fileName} · {Math.round((file.sizeBytes ?? 0) / 1024)} KB
                     </span>
@@ -1412,7 +1439,7 @@ export default function NotebookEditorPage() {
               <div className="mx-auto w-full rounded-[2rem] bg-[var(--color-glass-subtle)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5">
                 <div
                   data-notebook-page-surface
-                  className={`relative mx-auto w-full max-w-[52rem] overflow-hidden rounded-[1.05rem] border border-white/[0.14] shadow-[0_26px_65px_rgba(0,0,0,0.22)] ${PAGE_COLOR_CLASS[pageColor]}`}
+                  className={`relative mx-auto w-full max-w-[52rem] overflow-hidden rounded-[1.05rem] border border-[var(--color-border)] shadow-[0_26px_65px_rgba(0,0,0,0.22)] ${PAGE_COLOR_CLASS[pageColor]}`}
                 >
                   <canvas
                     ref={canvasRef}
@@ -1432,11 +1459,17 @@ export default function NotebookEditorPage() {
                   <div className="pointer-events-none absolute inset-0 z-20">
                     {textBlocks.map((block) => {
                       const selected = selectedTextBlockId === block.id;
+                      const editing = editingTextBlockId === block.id;
+                      const displayText = block.text.trim() ? block.text : selected ? "Tap dots to type" : "";
                       return (
                         <div
                           key={block.id}
-                          className={`pointer-events-auto absolute rounded-xl border bg-transparent transition ${
-                            selected ? "border-warm-accent shadow-[0_0_0_3px_rgba(183,124,255,0.16)]" : "border-transparent"
+                          className={`pointer-events-auto absolute rounded-lg border bg-transparent transition ${
+                            editing
+                              ? "cursor-text border-[var(--color-selected-border)] shadow-[0_0_0_3px_rgba(183,124,255,0.16)]"
+                              : selected
+                                ? "cursor-grab touch-none select-none border-[var(--color-selected-border)] shadow-[0_0_0_3px_rgba(183,124,255,0.14)] active:cursor-grabbing"
+                                : "cursor-grab touch-none select-none border-transparent active:cursor-grabbing"
                           }`}
                           style={{
                             left: `${(block.x / CANVAS_WIDTH) * 100}%`,
@@ -1444,42 +1477,78 @@ export default function NotebookEditorPage() {
                             width: `${(block.width / CANVAS_WIDTH) * 100}%`,
                             height: `${(block.height / CANVAS_HEIGHT) * 100}%`,
                           }}
+                          onPointerDown={(event) => {
+                            if (!editing) startTextBlockDrag(block, event);
+                          }}
+                          onPointerMove={(event) => {
+                            if (!editing) dragTextBlock(event);
+                          }}
+                          onPointerUp={(event) => {
+                            if (!editing) stopTextBlockDrag(event);
+                          }}
+                          onPointerCancel={(event) => {
+                            if (!editing) stopTextBlockDrag(event);
+                          }}
                           onClick={(event) => {
                             event.stopPropagation();
                             setSelectedTextBlockId(block.id);
                           }}
                         >
                           {selected && fullNotebookEditingEnabled ? (
-                            <div className="absolute left-1 top-1 z-20 flex gap-1">
+                            <div className="absolute right-1 top-1 z-20 flex gap-1 rounded-full border border-black/10 bg-black/60 p-1 shadow-sm backdrop-blur">
                               <button
                                 type="button"
-                                aria-label="Move text block"
-                                className="rounded-full border border-white/[0.18] bg-black/60 px-2 py-1 text-[0.65rem] font-semibold text-white shadow-sm"
-                                onPointerDown={(event) => startTextBlockDrag(block, event)}
-                                onPointerMove={dragTextBlock}
-                                onPointerUp={stopTextBlockDrag}
-                                onPointerCancel={stopTextBlockDrag}
+                                aria-label={editing ? "Close text editor" : "Edit text block"}
+                                title={editing ? "Close text editor" : "Edit text block"}
+                                className="inline-grid h-7 w-7 place-items-center rounded-full text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setSelectedTextBlockId(block.id);
+                                  setEditingTextBlockId((current) =>
+                                    current === block.id ? null : block.id
+                                  );
+                                }}
                               >
-                                Move
+                                <NotebookIcon name="dots" />
                               </button>
                               <button
                                 type="button"
                                 aria-label="Delete text block"
-                                className="rounded-full border border-white/[0.18] bg-black/60 px-2 py-1 text-[0.65rem] font-semibold text-white shadow-sm"
-                                onClick={() => deleteTextBlock(block.id)}
+                                title="Delete text block"
+                                className="inline-grid h-7 w-7 place-items-center rounded-full text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
+                                onPointerDown={(event) => event.stopPropagation()}
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  deleteTextBlock(block.id);
+                                }}
                               >
-                                Delete
+                                <NotebookIcon name="trash" />
                               </button>
                             </div>
                           ) : null}
-                          <textarea
-                            value={block.text}
-                            disabled={!fullNotebookEditingEnabled && block.text.length === 0}
-                            onFocus={() => setSelectedTextBlockId(block.id)}
-                            onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
-                            placeholder={selected ? "Type here..." : ""}
-                            className={`h-full w-full resize-none rounded-xl bg-transparent p-2 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
-                          />
+                          {editing && fullNotebookEditingEnabled ? (
+                            <textarea
+                              value={block.text}
+                              autoFocus
+                              onPointerDown={(event) => event.stopPropagation()}
+                              onPointerMove={(event) => event.stopPropagation()}
+                              onPointerUp={(event) => event.stopPropagation()}
+                              onClick={(event) => event.stopPropagation()}
+                              onFocus={() => setSelectedTextBlockId(block.id)}
+                              onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
+                              placeholder="Type here..."
+                              className={`h-full w-full resize-none rounded-lg bg-transparent p-2 pr-20 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+                            />
+                          ) : (
+                            <div
+                              className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-lg p-2 pr-10 text-sm font-medium leading-6 ${
+                                pageColor === "black" ? "text-[#f8fafc]" : "text-slate-950"
+                              } ${block.text.trim() ? "" : "opacity-60"}`}
+                            >
+                              {displayText}
+                            </div>
+                          )}
                         </div>
                       );
                     })}

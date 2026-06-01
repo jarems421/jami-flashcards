@@ -67,7 +67,7 @@ export default function Home() {
             </>
           }
           aside={
-            <div className="grid min-w-[16rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
+            <div className="app-subtle-panel grid min-w-[16rem] gap-3 rounded-[1.7rem] p-4">
               {[
                 {
                   label: "Build",
@@ -87,12 +87,12 @@ export default function Home() {
               ].map((item) => (
                 <div
                   key={item.label}
-                  className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3"
+                  className="app-chip rounded-[1.2rem] px-4 py-3"
                 >
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
                     {item.label}
                   </div>
-                  <div className="mt-2 text-sm font-semibold text-white">{item.value}</div>
+                  <div className="mt-2 text-sm font-semibold text-text-primary">{item.value}</div>
                   <p className="mt-1 text-xs leading-5 text-text-secondary">{item.detail}</p>
                 </div>
               ))}
@@ -101,10 +101,10 @@ export default function Home() {
         />
 
         <Card className="animate-slide-up sm:p-6" padding="lg">
-          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-warm-accent">
+          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-secondary">
             Sign in
           </div>
-          <h2 className="mt-3 text-[1.5rem] font-medium tracking-tight text-white sm:text-[1.75rem]">
+          <h2 className="mt-3 text-[1.5rem] font-medium tracking-tight text-text-primary sm:text-[1.75rem]">
             Continue into your workspace.
           </h2>
           <p className="mt-3 text-sm leading-7 text-text-secondary sm:text-base">
@@ -157,7 +157,7 @@ export default function Home() {
           </div>
 
           {demoEnabled ? (
-            <div className="mt-6 rounded-[1.35rem] border border-white/[0.08] bg-white/[0.04] p-4">
+            <div className="app-subtle-panel mt-6 rounded-[1.35rem] p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
                 Preview first
               </div>

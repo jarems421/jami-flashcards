@@ -100,7 +100,7 @@ function GettingStartedChecklist({
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
               Getting started complete
             </div>
-            <div className="mt-2 text-xl font-semibold text-white">
+            <div className="mt-2 text-xl font-semibold text-text-primary">
               You are ready.
             </div>
           </div>
@@ -121,30 +121,36 @@ function GettingStartedChecklist({
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+          className="app-button-secondary inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
           aria-expanded={open}
         >
           {open ? "Hide" : "Show"}
         </button>
       </div>
       {open ? (
-        <div className="mt-5 grid gap-2 md:grid-cols-2">
-          {items.map((item) => (
+        <div className="mt-5 grid gap-3 md:grid-cols-2">
+          {items.map((item, index) => (
             <Link
               key={item.label}
               href={item.href}
-              className="flex items-start gap-3 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-3 transition duration-fast hover:border-white/[0.16] hover:bg-white/[0.06]"
+              className={`app-subtle-panel flex min-h-[5rem] items-center gap-3 rounded-[1.15rem] p-3 transition duration-fast hover:-translate-y-[1px] ${
+                item.done ? "app-selected" : ""
+              }`}
             >
-              <span
-                aria-label={item.done ? "Complete" : "Incomplete"}
-                className={`mt-0.5 h-5 w-5 shrink-0 rounded-full border transition ${
-                  item.done
-                    ? "border-warm-border bg-warm-accent shadow-[0_0_18px_rgba(255,214,246,0.28)]"
-                    : "border-white/[0.16] bg-white/[0.035]"
-                }`}
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-white">{item.label}</span>
+              <IconBubble
+                size="md"
+                shape="circle"
+                className={`shrink-0 font-semibold ${item.done ? "app-success" : "app-chip"}`}
+                aria-label={item.done ? "Complete" : `Step ${index + 1}`}
+              >
+                {item.done ? "✓" : index + 1}
+              </IconBubble>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold text-text-primary">{item.label}</span>
+                <span className="mt-1 block text-xs leading-5 text-text-secondary">{item.detail}</span>
+              </span>
+              <span className={`shrink-0 rounded-full px-3 py-1 text-xs font-semibold ${item.done ? "app-success" : "app-chip"}`}>
+                {item.done ? "Done" : "Start"}
               </span>
             </Link>
           ))}
@@ -165,8 +171,8 @@ function ActionPill({
 }) {
   const className =
     variant === "primary"
-      ? "inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover"
-      : "inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]";
+      ? "app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
+      : "app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium";
 
   return (
     <Link href={href} className={className}>
@@ -183,7 +189,7 @@ function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
             Recommended next action
           </div>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-white">
+          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-text-primary">
             {plan.nextAction.title}
           </h2>
           <p className="mt-3 max-w-3xl text-sm leading-6 text-text-secondary">
@@ -212,13 +218,13 @@ function TodayStatusRow({ plan }: { plan: TodayPlan }) {
   ];
 
   return (
-    <div className="flex flex-wrap gap-2 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-2">
+    <div className="app-subtle-panel flex flex-wrap gap-2 rounded-[1.25rem] p-2">
       {items.map(([label, value]) => (
         <span
           key={label}
-          className="rounded-full border border-white/[0.09] bg-white/[0.04] px-3 py-1.5 text-xs font-semibold text-text-secondary"
+          className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold"
         >
-          <span className="text-white">{value}</span> {label}
+          <span className="text-text-primary">{value}</span> {label}
         </span>
       ))}
     </div>
@@ -275,9 +281,9 @@ function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
           <Link
             key={`${action.label}-${action.href}`}
             href={action.href}
-            className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.035] p-3 transition duration-fast hover:border-warm-border hover:bg-white/[0.06]"
+            className="app-subtle-panel rounded-[1.1rem] p-3 transition duration-fast hover:-translate-y-[1px]"
           >
-            <div className="text-sm font-semibold text-white">{action.label}</div>
+            <div className="text-sm font-semibold text-text-primary">{action.label}</div>
             <div className="mt-1 line-clamp-1 text-xs font-medium text-text-secondary">{action.title}</div>
             {action.detail ? (
               <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.detail}</p>
@@ -320,11 +326,11 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
       <div className="mt-5 space-y-3">
         {plan.drafts.length > 0 ? (
           plan.drafts.slice(0, 2).map((draft) => (
-            <div key={draft.id} className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
+            <div key={draft.id} className="app-subtle-panel rounded-[1.15rem] p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
                 {draft.sourceTitle ? "Source draft" : "Draft"}
               </div>
-              <div className="mt-2 text-sm font-semibold text-white">{draft.front}</div>
+              <div className="mt-2 text-sm font-semibold text-text-primary">{draft.front}</div>
               <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{draft.back}</p>
               {draft.sourceTitle ? (
                 <p className="mt-2 text-xs text-text-muted">
@@ -332,14 +338,14 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
                 </p>
               ) : null}
               {draft.suggestedTopic ? (
-                <div className="mt-3 rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
+                <div className="app-warning mt-3 rounded-full px-3 py-1 text-xs font-semibold">
                   Suggested topic: {draft.suggestedTopic}
                 </div>
               ) : null}
             </div>
           ))
         ) : (
-          <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+          <p className="app-subtle-panel rounded-[1.15rem] p-4 text-sm leading-6 text-text-secondary">
             No drafts waiting.
           </p>
         )}
@@ -364,14 +370,14 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
             <Link
               key={topic.topicId}
               href={topic.href}
-              className="block rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4 transition duration-fast hover:border-warm-border hover:bg-white/[0.065]"
-            >
+            className="app-subtle-panel block rounded-[1.15rem] p-4 transition duration-fast hover:-translate-y-[1px]"
+          >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-white">{topic.name}</div>
+                  <div className="text-sm font-semibold text-text-primary">{topic.name}</div>
                   <div className="mt-1 text-xs text-text-muted">{topic.subject}</div>
                 </div>
-                <div className="rounded-full border border-white/[0.1] bg-white/[0.05] px-3 py-1 text-xs font-semibold text-text-secondary">
+                <div className="app-chip rounded-full px-3 py-1 text-xs font-semibold">
                   {topic.accuracy}%
                 </div>
               </div>
@@ -379,7 +385,7 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
             </Link>
           ))
         ) : (
-          <p className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+          <p className="app-subtle-panel rounded-[1.15rem] p-4 text-sm leading-6 text-text-secondary">
             Weak topics appear after a little study history.
           </p>
         )}
@@ -397,7 +403,7 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
       />
       {plan.goalSummary ? (
         <div className="mt-5">
-          <div className="text-sm font-semibold text-white">{plan.goalSummary.title}</div>
+          <div className="text-sm font-semibold text-text-primary">{plan.goalSummary.title}</div>
           <p className="mt-2 text-sm leading-6 text-text-secondary">{plan.goalSummary.detail}</p>
           <div className="mt-4">
             <div className="mb-2 flex items-center justify-between text-xs text-text-muted">
@@ -411,7 +417,7 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
           </div>
         </div>
       ) : (
-        <p className="mt-5 rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+        <p className="app-subtle-panel mt-5 rounded-[1.15rem] p-4 text-sm leading-6 text-text-secondary">
           Add a goal when you want a target.
         </p>
       )}
@@ -437,7 +443,7 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-4 py-2 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+          className="app-button-secondary inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
           aria-expanded={open}
         >
           {open ? "Hide" : "Show"}
@@ -448,13 +454,13 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
         {steps.map(([step, title]) => (
           <div
             key={step}
-            className="relative rounded-[1.1rem] border border-white/[0.09] bg-white/[0.035] p-3"
+            className="app-subtle-panel relative rounded-[1.1rem] p-3"
           >
             <div className="flex items-center gap-3">
-              <IconBubble size="sm" shape="circle" className="border border-warm-border bg-warm-glow font-semibold text-warm-accent">
+              <IconBubble size="sm" shape="circle" className="app-chip font-semibold">
                 {step}
               </IconBubble>
-              <div className="text-sm font-semibold text-white">{title}</div>
+              <div className="text-sm font-semibold text-text-primary">{title}</div>
             </div>
           </div>
         ))}
@@ -466,11 +472,11 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3">
+    <div className="app-chip rounded-[1rem] px-3 py-3">
       <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
         {label}
       </div>
-      <div className="mt-1 text-base font-semibold tabular-nums text-white">{value}</div>
+      <div className="mt-1 text-base font-semibold tabular-nums text-text-primary">{value}</div>
     </div>
   );
 }
@@ -685,40 +691,28 @@ export default function DashboardHome() {
   const gettingStartedItems = useMemo<ChecklistItem[]>(
     () => [
       {
-        label: "Create your first deck",
-        detail: "Decks are groups of flashcards.",
+        label: "Create a folder",
+        detail: "Set up a study space.",
+        href: "/dashboard/folders",
+        done: todayPlan.checklist.createFolder,
+      },
+      {
+        label: "Create a deck",
+        detail: "Add a flashcard deck.",
         href: "/dashboard/decks",
         done: todayPlan.checklist.createDeck,
       },
       {
-        label: "Add 5 flashcards",
-        detail: "Give Learn enough material to schedule reviews.",
+        label: "Add cards",
+        detail: "Write front and back prompts.",
         href: "/dashboard/cards",
         done: todayPlan.checklist.addCards,
       },
       {
-        label: "Review your cards",
-        detail: "Complete at least one study action in Learn.",
+        label: "Study a deck",
+        detail: "Complete one review.",
         href: "/dashboard/study",
         done: todayPlan.checklist.reviewCards,
-      },
-      {
-        label: "Create or open a notebook",
-        detail: "Practice now starts from folders and notebook pages.",
-        href: "/dashboard/practise",
-        done: todayPlan.checklist.createNotebook,
-      },
-      {
-        label: "Review generated drafts",
-        detail: "Approve useful source drafts into Learn or notebooks.",
-        href: "/dashboard/library",
-        done: todayPlan.checklist.reviewDrafts,
-      },
-      {
-        label: "Check Progress",
-        detail: "See weak topics and the next repair action.",
-        href: "/dashboard/progress",
-        done: todayPlan.checklist.checkProgress,
       },
     ],
     [todayPlan.checklist]
@@ -748,15 +742,15 @@ export default function DashboardHome() {
             </>
           }
           aside={
-            <div className="grid min-w-[14rem] gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4">
+            <div className="app-subtle-panel grid min-w-[14rem] gap-3 rounded-[1.7rem] p-4">
               <div>
                 <div className="text-xs text-text-muted">Reviewed today</div>
-                <div className="mt-1 text-xl font-medium text-white sm:text-2xl">{isLoading ? "..." : todayReviews}</div>
+                <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">{isLoading ? "..." : todayReviews}</div>
               </div>
-              <div className="h-px bg-white/[0.08]" />
+              <div className="h-px bg-[var(--color-border)]" />
               <div>
                 <div className="text-xs text-text-muted">Due now</div>
-                <div className="mt-1 text-lg font-medium text-white sm:text-xl">{isLoading ? "..." : dueCount}</div>
+                <div className="mt-1 text-lg font-medium text-text-primary sm:text-xl">{isLoading ? "..." : dueCount}</div>
               </div>
             </div>
           }

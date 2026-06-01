@@ -105,7 +105,7 @@ export function RefreshIconButton({
       onClick={onClick}
       disabled={refreshing}
       aria-label="Refresh"
-      className="app-chip inline-flex h-10 w-10 items-center justify-center rounded-xl shadow-card transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary active:scale-95 disabled:opacity-50"
+      className="app-chip inline-flex h-10 w-10 items-center justify-center rounded-xl shadow-card transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary active:scale-95 disabled:cursor-not-allowed disabled:saturate-[0.82]"
     >
       <svg
         viewBox="0 0 24 24"

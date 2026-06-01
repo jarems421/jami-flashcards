@@ -36,11 +36,11 @@ const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
 function MiniMetric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3">
+    <div className="app-chip rounded-[1rem] px-3 py-3">
       <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
         {label}
       </div>
-      <div className="mt-1 text-base font-semibold tabular-nums text-white">{value}</div>
+      <div className="mt-1 text-base font-semibold tabular-nums text-text-primary">{value}</div>
     </div>
   );
 }

@@ -93,7 +93,7 @@ export default function AuthPage() {
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
                 {isSignInMode ? "Email sign-in" : "Create account"}
               </div>
-              <h2 className="mt-3 max-w-[58rem] text-[1.65rem] font-medium leading-tight tracking-tight text-white sm:text-[2rem] xl:text-[2.45rem]">
+              <h2 className="mt-3 max-w-[58rem] text-[1.65rem] font-medium leading-tight tracking-tight text-text-primary sm:text-[2rem] xl:text-[2.45rem]">
                 {isSignInMode
                   ? "Welcome back to your study space."
                   : "Create your account and keep everything in one place."}
@@ -104,17 +104,17 @@ export default function AuthPage() {
                     ? "Sign in with your email and password to open your decks, study history, goals, and stars without losing your review rhythm."
                     : "Use email if you want a straightforward account with a password instead of Google sign-in, with your study space ready wherever you come back."}
                 </p>
-                <p className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3 text-sm leading-6 text-text-muted sm:text-base">
+                <p className="app-subtle-panel rounded-[1.25rem] px-4 py-3 text-sm leading-6 text-text-muted sm:text-base">
                   Your cards, review history, and progress stay tied to this account.
                 </p>
               </div>
             </div>
 
-            <div className="grid w-full min-w-0 gap-3 rounded-[1.7rem] border border-white/[0.10] bg-white/[0.045] p-4 sm:grid-cols-3">
+            <div className="app-subtle-panel grid w-full min-w-0 gap-3 rounded-[1.7rem] p-4 sm:grid-cols-3">
               {AUTH_HIGHLIGHTS.map((item) => (
                 <div
                   key={item.label}
-                  className="min-w-0 rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-4 py-3"
+                  className="app-chip min-w-0 rounded-[1.2rem] px-4 py-3"
                 >
                   <div className="text-[0.68rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
                     {item.label}
@@ -127,10 +127,10 @@ export default function AuthPage() {
         </Card>
 
         <Card className="animate-slide-up self-stretch sm:p-6 xl:sticky xl:top-24" padding="lg">
-          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-warm-accent">
+          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-secondary">
             {isSignInMode ? "Sign in with email" : "Create with email"}
           </div>
-          <h2 className="mt-3 text-[1.45rem] font-medium tracking-tight text-white sm:text-[1.7rem]">
+          <h2 className="mt-3 text-[1.45rem] font-medium tracking-tight text-text-primary sm:text-[1.7rem]">
             {isSignInMode ? "Enter your details." : "Set up your login."}
           </h2>
           <p className="mt-3 text-sm leading-7 text-text-secondary">
@@ -184,14 +184,14 @@ export default function AuthPage() {
           <button
             type="button"
             onClick={toggleMode}
-            className="mt-5 w-full cursor-pointer text-center text-sm text-text-muted transition duration-fast hover:text-white"
+            className="mt-5 w-full cursor-pointer text-center text-sm font-medium text-text-secondary transition duration-fast hover:text-text-primary"
           >
             {isSignInMode
               ? "Don't have an account? Sign up"
               : "Already have an account? Sign in"}
           </button>
 
-          <div className="mt-6 rounded-[1.35rem] border border-white/[0.08] bg-white/[0.04] p-4">
+          <div className="app-subtle-panel mt-6 rounded-[1.35rem] p-4">
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
               Prefer Google?
             </div>

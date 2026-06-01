@@ -745,7 +745,7 @@ export default function DeckDetailPageClient() {
                                     active
                                       ? "border-warm-accent bg-warm-glow text-warm-accent"
                                       : "border-white/[0.10] bg-white/[0.05] text-text-secondary hover:border-white/[0.18]"
-                                  } disabled:opacity-50`}
+                                  } disabled:cursor-not-allowed disabled:saturate-[0.82]`}
                                 >
                                   {topic.name}
                                 </button>
