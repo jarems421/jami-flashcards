@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
   useMemo,
   useRef,
   useState,
+  type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from "react";
@@ -42,13 +43,17 @@ import type {
 import { buildTypedContentFromTextBlocks } from "@/lib/workspace/notebooks";
 import {
   appendInkPoints,
+  clampNotebookPageZoom,
   finalizeInkStroke,
   getNotebookPageIndexAfterSwipe,
   getNotebookSwipeDirection,
+  getNotebookPageZoomAfterPinch,
+  getPinchDistance,
   getPointerClientSamples,
   mapClientPointToNotebookPage,
   shouldPointerDraw,
   shouldPointerSwipePages,
+  type PointerClientSample,
 } from "@/lib/workspace/notebook-inking";
 import {
   createNotebookPage,
@@ -67,9 +72,19 @@ type Stroke = {
   width: number;
   tool: NotebookStrokeTool;
 };
-type SaveStatus = "saved" | "unsaved" | "saving";
+type LiveInkPoint = Point & { pressure: number };
+type LiveStroke = Omit<Stroke, "points"> & {
+  points: LiveInkPoint[];
+};
+type SaveStatus = "saved" | "unsaved" | "saving" | "failed";
 type EditorTool = NotebookStrokeTool | "text";
 type PenWidth = "thin" | "medium" | "thick";
+type EraserWidth = "small" | "medium" | "large";
+type EraserCursorState = {
+  x: number;
+  y: number;
+  visible: boolean;
+};
 type TextBlockDragState = {
   id: string;
   startX: number;
@@ -78,10 +93,22 @@ type TextBlockDragState = {
   originY: number;
   pageWidth: number;
   pageHeight: number;
+  previousTextBlocks: NotebookTextBlock[];
+};
+type TextBlockResizeState = {
+  id: string;
+  startX: number;
+  startY: number;
+  originWidth: number;
+  originHeight: number;
+  pageWidth: number;
+  pageHeight: number;
+  previousTextBlocks: NotebookTextBlock[];
 };
 type ActiveStrokeState = {
   pointerId: number;
   stroke: Stroke;
+  liveStroke: LiveStroke;
 };
 type PageSwipeState = {
   pointerId: number;
@@ -89,11 +116,35 @@ type PageSwipeState = {
   startY: number;
   currentX: number;
   currentY: number;
+  lastX: number;
+  lastY: number;
   completed: boolean;
 };
+type PinchZoomState = {
+  startDistance: number;
+  startZoom: number;
+};
+type EditorViewportState = {
+  height: number;
+  isLandscape: boolean;
+};
+type NotebookUndoAction =
+  | {
+      type: "strokes";
+      previous: Stroke[];
+      next: Stroke[];
+    }
+  | {
+      type: "textBlocks";
+      previous: NotebookTextBlock[];
+      next: NotebookTextBlock[];
+    };
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 1240;
+const NOTEBOOK_PAGE_BASE_WIDTH_REM = 48;
+const NOTEBOOK_PAGE_ASPECT_RATIO = CANVAS_HEIGHT / CANVAS_WIDTH;
+const NOTEBOOK_PAGE_LANDSCAPE_VERTICAL_GUTTER = 88;
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "bg-[#f8fafc] text-slate-950",
   black: "bg-[#080a10] text-[#f8fafc]",
@@ -116,6 +167,11 @@ const PEN_WIDTH_VALUE: Record<PenWidth, number> = {
   thin: 3,
   medium: 5,
   thick: 9,
+};
+const ERASER_WIDTH_VALUE: Record<EraserWidth, number> = {
+  small: 16,
+  medium: 24,
+  large: 36,
 };
 
 function isPoint(value: unknown): value is Point {
@@ -172,7 +228,7 @@ function clampTextBlock(block: NotebookTextBlock): NotebookTextBlock {
   };
 }
 
-function strokePaintColor(stroke: Stroke, pageColor: NotebookPageColor) {
+function strokePaintColor(stroke: Stroke | LiveStroke, pageColor: NotebookPageColor) {
   return stroke.tool === "eraser" ? PAGE_COLOR_HEX[pageColor] : PEN_COLOR_HEX[stroke.color];
 }
 
@@ -220,30 +276,121 @@ function drawStrokePath(
   context.restore();
 }
 
-function drawNotebookCanvas(input: {
-  canvas: HTMLCanvasElement;
-  strokes: Stroke[];
-  activeStroke: Stroke | null;
-  pageColor: NotebookPageColor;
-}) {
+function getLivePointWidth(stroke: LiveStroke, point: LiveInkPoint) {
+  if (stroke.tool === "eraser") return stroke.width;
+  return Math.max(1, stroke.width * (0.72 + point.pressure * 0.42));
+}
+
+function drawLiveStrokePath(
+  context: CanvasRenderingContext2D,
+  stroke: LiveStroke,
+  pageColor: NotebookPageColor
+) {
+  if (stroke.points.length === 0) return;
+
+  context.save();
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.strokeStyle = strokePaintColor(stroke, pageColor);
+  context.fillStyle = strokePaintColor(stroke, pageColor);
+
+  if (stroke.points.length === 1) {
+    const [point] = stroke.points;
+    const width = getLivePointWidth(stroke, point);
+    context.beginPath();
+    context.arc(point.x, point.y, Math.max(1, width / 2), 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+    return;
+  }
+
+  for (let index = 1; index < stroke.points.length; index += 1) {
+    const previousPoint = stroke.points[index - 1];
+    const currentPoint = stroke.points[index];
+    const midpoint = {
+      x: (previousPoint.x + currentPoint.x) / 2,
+      y: (previousPoint.y + currentPoint.y) / 2,
+    };
+
+    context.beginPath();
+    context.lineWidth = getLivePointWidth(stroke, currentPoint);
+    context.moveTo(previousPoint.x, previousPoint.y);
+    context.quadraticCurveTo(previousPoint.x, previousPoint.y, midpoint.x, midpoint.y);
+    context.stroke();
+  }
+
+  context.restore();
+}
+
+function prepareNotebookCanvas(canvas: HTMLCanvasElement) {
   const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
   const width = Math.round(CANVAS_WIDTH * pixelRatio);
   const height = Math.round(CANVAS_HEIGHT * pixelRatio);
 
-  if (input.canvas.width !== width) input.canvas.width = width;
-  if (input.canvas.height !== height) input.canvas.height = height;
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
 
-  const context = input.canvas.getContext("2d");
-  if (!context) return;
+  const context = canvas.getContext("2d");
+  if (!context) return null;
 
   context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
   context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  return context;
+}
+
+function clearNotebookCanvas(canvas: HTMLCanvasElement | null) {
+  if (!canvas) return;
+  prepareNotebookCanvas(canvas);
+}
+
+function drawSavedNotebookCanvas(input: {
+  canvas: HTMLCanvasElement;
+  strokes: Stroke[];
+  pageColor: NotebookPageColor;
+}) {
+  const context = prepareNotebookCanvas(input.canvas);
+  if (!context) return;
+
   for (const stroke of input.strokes) {
     drawStrokePath(context, stroke, input.pageColor);
   }
-  if (input.activeStroke) {
-    drawStrokePath(context, input.activeStroke, input.pageColor);
+}
+
+function drawLiveInkCanvas(input: {
+  canvas: HTMLCanvasElement;
+  activeStroke: LiveStroke | null;
+  pageColor: NotebookPageColor;
+}) {
+  const context = prepareNotebookCanvas(input.canvas);
+  if (!context || !input.activeStroke) return;
+  drawLiveStrokePath(context, input.activeStroke, input.pageColor);
+}
+
+function shouldAppendLiveInkPoint(
+  points: LiveInkPoint[],
+  point: LiveInkPoint,
+  minDistance = 1.35
+) {
+  if (points.length < 3) return true;
+  const previousPoint = points[points.length - 1];
+  const dx = point.x - previousPoint.x;
+  const dy = point.y - previousPoint.y;
+  return dx * dx + dy * dy >= minDistance * minDistance;
+}
+
+function appendLiveInkPoints(
+  currentPoints: LiveInkPoint[],
+  incomingPoints: LiveInkPoint[],
+  maxPoints: number
+) {
+  const nextPoints = [...currentPoints];
+  for (const point of incomingPoints) {
+    if (nextPoints.length >= maxPoints) break;
+    if (shouldAppendLiveInkPoint(nextPoints, point)) {
+      nextPoints.push(point);
+    }
   }
+  return nextPoints;
 }
 
 function strokeTouchesEraser(stroke: Stroke, eraser: Stroke) {
@@ -388,6 +535,7 @@ function ToolbarIconButton({
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
+  const router = useRouter();
   const params = useParams<{ notebookId?: string | string[] }>();
   const notebookId = Array.isArray(params.notebookId)
     ? params.notebookId[0]
@@ -403,10 +551,22 @@ export default function NotebookEditorPage() {
   const [pageColor, setPageColor] = useState<NotebookPageColor>("white");
   const [penColor, setPenColor] = useState<NotebookPenColor>("black");
   const [penWidth, setPenWidth] = useState<PenWidth>("medium");
+  const [eraserWidth, setEraserWidth] = useState<EraserWidth>("medium");
+  const [eraserCursor, setEraserCursor] = useState<EraserCursorState>({
+    x: 0,
+    y: 0,
+    visible: false,
+  });
+  const [undoDepth, setUndoDepth] = useState(0);
+  const [pageZoom, setPageZoom] = useState(1);
+  const [userAdjustedZoom, setUserAdjustedZoom] = useState(false);
+  const [editorViewport, setEditorViewport] = useState<EditorViewportState>({
+    height: 0,
+    isLandscape: false,
+  });
   const [tool, setTool] = useState<EditorTool>("pen");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [addingPage, setAddingPage] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
@@ -421,13 +581,26 @@ export default function NotebookEditorPage() {
   const [aiPlaceholderOpen, setAiPlaceholderOpen] = useState(false);
   const [pagesDrawerOpen, setPagesDrawerOpen] = useState(false);
   const [penMenuOpen, setPenMenuOpen] = useState(false);
+  const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
+  const [activeTextGestureId, setActiveTextGestureId] = useState<string | null>(null);
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const textBlockResizeRef = useRef<TextBlockResizeState | null>(null);
+  const pageScrollRef = useRef<HTMLDivElement | null>(null);
+  const savedCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const activeStrokeRef = useRef<ActiveStrokeState | null>(null);
-  const animationFrameRef = useRef<number | null>(null);
+  const autosaveTimerRef = useRef<number | null>(null);
+  const savedCanvasFrameRef = useRef<number | null>(null);
+  const liveCanvasFrameRef = useRef<number | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
+  const selectedPageRef = useRef<NotebookPage | null>(null);
+  const textBlocksRef = useRef<NotebookTextBlock[]>([]);
+  const saveStatusRef = useRef<SaveStatus>("saved");
   const pageColorRef = useRef<NotebookPageColor>("white");
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
+  const touchPointersRef = useRef<Map<number, PointerClientSample>>(new Map());
+  const pinchZoomRef = useRef<PinchZoomState | null>(null);
+  const undoStackRef = useRef<NotebookUndoAction[]>([]);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
 
   const selectedPage = useMemo(
@@ -438,42 +611,109 @@ export default function NotebookEditorPage() {
     () => pages.findIndex((page) => page.id === selectedPage?.id),
     [pages, selectedPage?.id]
   );
+  const landscapeFitZoom = useMemo(() => {
+    if (!editorViewport.isLandscape || editorViewport.height <= 0) return 1;
+    const rootFontSize =
+      typeof window === "undefined"
+        ? 16
+        : Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+    const basePageHeight = NOTEBOOK_PAGE_BASE_WIDTH_REM * rootFontSize * NOTEBOOK_PAGE_ASPECT_RATIO;
+    const availableHeight = Math.max(320, editorViewport.height - NOTEBOOK_PAGE_LANDSCAPE_VERTICAL_GUTTER);
+    return clampNotebookPageZoom(Math.min(1, availableHeight / basePageHeight));
+  }, [editorViewport.height, editorViewport.isLandscape]);
 
-  const selectPageByOffset = useCallback(
-    (offset: -1 | 1) => {
-      if (selectedPageIndex < 0) return false;
-      const nextIndex = getNotebookPageIndexAfterSwipe({
-        currentIndex: selectedPageIndex,
-        pageCount: pages.length,
-        direction: offset === 1 ? "next" : "previous",
+  useEffect(() => {
+    selectedPageRef.current = selectedPage;
+  }, [selectedPage]);
+
+  useEffect(() => {
+    textBlocksRef.current = textBlocks;
+  }, [textBlocks]);
+
+  useEffect(() => {
+    saveStatusRef.current = saveStatus;
+  }, [saveStatus]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const landscapeQuery = window.matchMedia("(orientation: landscape) and (min-width: 768px)");
+    const updateViewport = () => {
+      setEditorViewport({
+        height: window.innerHeight,
+        isLandscape: landscapeQuery.matches,
       });
-      if (nextIndex === selectedPageIndex) return false;
-      const nextPage = pages[nextIndex];
-      if (!nextPage) return false;
-      setSelectedPageId(nextPage.id);
-      return true;
-    },
-    [pages, selectedPageIndex]
-  );
+    };
 
-  const renderCanvasNow = useCallback(() => {
-    const canvas = canvasRef.current;
+    updateViewport();
+    window.addEventListener("resize", updateViewport);
+    window.addEventListener("orientationchange", updateViewport);
+    landscapeQuery.addEventListener("change", updateViewport);
+    return () => {
+      window.removeEventListener("resize", updateViewport);
+      window.removeEventListener("orientationchange", updateViewport);
+      landscapeQuery.removeEventListener("change", updateViewport);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (editorViewport.isLandscape) {
+      setUserAdjustedZoom(false);
+    }
+  }, [editorViewport.isLandscape]);
+
+  useEffect(() => {
+    if (!editorViewport.isLandscape || userAdjustedZoom) return;
+    setPageZoom(landscapeFitZoom);
+  }, [editorViewport.isLandscape, landscapeFitZoom, userAdjustedZoom]);
+
+  const pushUndoAction = useCallback((action: NotebookUndoAction) => {
+    undoStackRef.current = [...undoStackRef.current.slice(-39), action];
+    setUndoDepth(undoStackRef.current.length);
+  }, []);
+
+  const markPageUnsaved = useCallback(() => {
+    setSaveStatus("unsaved");
+    setFeedback((current) =>
+      current?.message === "Could not autosave this page." ? null : current
+    );
+  }, []);
+
+  const renderSavedCanvasNow = useCallback(() => {
+    const canvas = savedCanvasRef.current;
     if (!canvas) return;
-    drawNotebookCanvas({
+    drawSavedNotebookCanvas({
       canvas,
       strokes: strokesRef.current,
-      activeStroke: activeStrokeRef.current?.stroke ?? null,
       pageColor: pageColorRef.current,
     });
   }, []);
 
-  const scheduleCanvasRender = useCallback(() => {
-    if (animationFrameRef.current !== null) return;
-    animationFrameRef.current = window.requestAnimationFrame(() => {
-      animationFrameRef.current = null;
-      renderCanvasNow();
+  const renderLiveCanvasNow = useCallback(() => {
+    const canvas = liveCanvasRef.current;
+    if (!canvas) return;
+    drawLiveInkCanvas({
+      canvas,
+      activeStroke: activeStrokeRef.current?.liveStroke ?? null,
+      pageColor: pageColorRef.current,
     });
-  }, [renderCanvasNow]);
+  }, []);
+
+  const scheduleSavedCanvasRender = useCallback(() => {
+    if (savedCanvasFrameRef.current !== null) return;
+    savedCanvasFrameRef.current = window.requestAnimationFrame(() => {
+      savedCanvasFrameRef.current = null;
+      renderSavedCanvasNow();
+    });
+  }, [renderSavedCanvasNow]);
+
+  const scheduleLiveCanvasRender = useCallback(() => {
+    if (liveCanvasFrameRef.current !== null) return;
+    liveCanvasFrameRef.current = window.requestAnimationFrame(() => {
+      liveCanvasFrameRef.current = null;
+      renderLiveCanvasNow();
+    });
+  }, [renderLiveCanvasNow]);
 
   const finishActiveStroke = useCallback(
     (options?: { pointerId?: number; canvas?: HTMLCanvasElement | null }) => {
@@ -497,6 +737,7 @@ export default function NotebookEditorPage() {
       const finalizedStroke = finalizeInkStroke(activeStroke.stroke);
       activeStrokeRef.current = null;
       document.body.classList.remove("jami-inking-active");
+      clearNotebookCanvas(liveCanvasRef.current);
 
       if (finalizedStroke) {
         setStrokes((current) => {
@@ -504,13 +745,18 @@ export default function NotebookEditorPage() {
             finalizedStroke.tool === "eraser"
               ? current.filter((stroke) => !strokeTouchesEraser(stroke, finalizedStroke))
               : [...current, finalizedStroke];
+          const changed =
+            finalizedStroke.tool === "pen" || next.length !== current.length;
+          if (changed) {
+            pushUndoAction({ type: "strokes", previous: current, next });
+          }
           strokesRef.current = next;
           return next;
         });
       }
-      scheduleCanvasRender();
+      scheduleSavedCanvasRender();
     },
-    [scheduleCanvasRender]
+    [pushUndoAction, scheduleSavedCanvasRender]
   );
 
   const loadNotebook = useCallback(async () => {
@@ -587,6 +833,11 @@ export default function NotebookEditorPage() {
       setStrokes([]);
       strokesRef.current = [];
       activeStrokeRef.current = null;
+      undoStackRef.current = [];
+      setUndoDepth(0);
+      setActiveTextGestureId(null);
+      clearNotebookCanvas(savedCanvasRef.current);
+      clearNotebookCanvas(liveCanvasRef.current);
       return;
     }
 
@@ -597,14 +848,18 @@ export default function NotebookEditorPage() {
     setStrokes(nextStrokes);
     strokesRef.current = nextStrokes;
     activeStrokeRef.current = null;
+    undoStackRef.current = [];
+    setUndoDepth(0);
+    setActiveTextGestureId(null);
+    clearNotebookCanvas(liveCanvasRef.current);
     setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
     setSaveStatus("saved");
   }, [notebook?.pageColor, selectedPage]);
 
   useEffect(() => {
     strokesRef.current = strokes;
-    scheduleCanvasRender();
-  }, [scheduleCanvasRender, strokes]);
+    scheduleSavedCanvasRender();
+  }, [scheduleSavedCanvasRender, strokes]);
 
   useEffect(() => {
     pageColorRef.current = pageColor;
@@ -613,36 +868,131 @@ export default function NotebookEditorPage() {
       if (pageColor === "white" && current === "white") return "black";
       return current;
     });
-    scheduleCanvasRender();
-  }, [pageColor, scheduleCanvasRender]);
+    scheduleSavedCanvasRender();
+    scheduleLiveCanvasRender();
+  }, [pageColor, scheduleLiveCanvasRender, scheduleSavedCanvasRender]);
 
   useEffect(() => {
-    const handleBlur = () => finishActiveStroke();
+    const handleBlur = () => {
+      finishActiveStroke();
+      touchPointersRef.current.clear();
+      pinchZoomRef.current = null;
+      pageSwipeRef.current = null;
+    };
     window.addEventListener("blur", handleBlur);
     return () => {
       window.removeEventListener("blur", handleBlur);
-      if (animationFrameRef.current !== null) {
-        window.cancelAnimationFrame(animationFrameRef.current);
-        animationFrameRef.current = null;
+      if (savedCanvasFrameRef.current !== null) {
+        window.cancelAnimationFrame(savedCanvasFrameRef.current);
+        savedCanvasFrameRef.current = null;
+      }
+      if (liveCanvasFrameRef.current !== null) {
+        window.cancelAnimationFrame(liveCanvasFrameRef.current);
+        liveCanvasFrameRef.current = null;
       }
       document.body.classList.remove("jami-inking-active");
     };
   }, [finishActiveStroke]);
 
-  const getNotebookPointsFromEvent = (
+  const updateTouchPointer = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    touchPointersRef.current.set(event.pointerId, {
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pressure: 0.5,
+    });
+  };
+
+  const startPinchZoom = () => {
+    const [first, second] = Array.from(touchPointersRef.current.values());
+    if (!first || !second) return;
+    setUserAdjustedZoom(true);
+    pinchZoomRef.current = {
+      startDistance: getPinchDistance(first, second),
+      startZoom: pageZoom,
+    };
+    pageSwipeRef.current = null;
+  };
+
+  const handleTouchPointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType !== "touch") return false;
+    updateTouchPointer(event);
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    if (touchPointersRef.current.size >= 2) {
+      startPinchZoom();
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
+    return false;
+  };
+
+  const handleTouchPointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType !== "touch" || !touchPointersRef.current.has(event.pointerId)) {
+      return false;
+    }
+    updateTouchPointer(event);
+    const pinch = pinchZoomRef.current;
+    if (!pinch || touchPointersRef.current.size < 2) return false;
+
+    const [first, second] = Array.from(touchPointersRef.current.values());
+    if (first && second) {
+      setPageZoom(
+        getNotebookPageZoomAfterPinch({
+          startDistance: pinch.startDistance,
+          currentDistance: getPinchDistance(first, second),
+          startZoom: pinch.startZoom,
+        })
+      );
+    }
+    pageSwipeRef.current = null;
+    event.preventDefault();
+    event.stopPropagation();
+    return true;
+  };
+
+  const handleTouchPointerEnd = (
+    event: ReactPointerEvent<HTMLCanvasElement>,
+    options: { allowTextTap?: boolean } = {}
+  ) => {
+    if (event.pointerType !== "touch") return false;
+    const wasPinching = Boolean(pinchZoomRef.current) || touchPointersRef.current.size >= 2;
+    touchPointersRef.current.delete(event.pointerId);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (wasPinching) {
+      pinchZoomRef.current = null;
+      pageSwipeRef.current = null;
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
+    handleStopPageSwipe(event, options);
+    return true;
+  };
+
+  const getNotebookSamplesFromEvent = (
     event: ReactPointerEvent<HTMLCanvasElement>
-  ): Point[] => {
+  ): LiveInkPoint[] => {
     const rect = event.currentTarget.getBoundingClientRect();
     return getPointerClientSamples(event.nativeEvent).map((sample) =>
-      mapClientPointToNotebookPage({
+      ({
+        ...mapClientPointToNotebookPage({
         clientX: sample.clientX,
         clientY: sample.clientY,
         rect,
         width: CANVAS_WIDTH,
         height: CANVAS_HEIGHT,
+        }),
+        pressure: sample.pressure,
       })
     );
   };
+
+  const getNotebookPointsFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>): Point[] =>
+    getNotebookSamplesFromEvent(event).map(({ x, y }) => ({ x, y }));
 
   const createTextBlockAtPoint = (point: Point) => {
     const block = clampTextBlock({
@@ -653,36 +1003,62 @@ export default function NotebookEditorPage() {
       height: 96,
       text: "",
     });
-    setTextBlocks((current) => [...current, block]);
+    setTextBlocks((current) => {
+      const next = [...current, block];
+      pushUndoAction({ type: "textBlocks", previous: current, next });
+      return next;
+    });
     setSelectedTextBlockId(block.id);
     setEditingTextBlockId(block.id);
-    setSaveStatus("unsaved");
+    markPageUnsaved();
+  };
+
+  const updateEraserCursorFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (tool !== "eraser" || !shouldPointerDraw(event.pointerType, tool)) {
+      setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
+      return;
+    }
+    const [point] = getNotebookPointsFromEvent(event);
+    if (!point) return;
+    setEraserCursor({ ...point, visible: true });
   };
 
   const handleStartDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!fullNotebookEditingEnabled || !shouldPointerDraw(event.pointerType, tool)) return;
     event.preventDefault();
     event.stopPropagation();
+    setPenMenuOpen(false);
+    setEraserMenuOpen(false);
+    updateEraserCursorFromEvent(event);
     finishActiveStroke();
 
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.setPointerCapture(event.pointerId);
     }
 
-    const points = getNotebookPointsFromEvent(event);
+    const livePoints = getNotebookSamplesFromEvent(event);
+    const points = livePoints.map(({ x, y }) => ({ x, y }));
     const strokeTool: NotebookStrokeTool = tool === "eraser" ? "eraser" : "pen";
+    const strokeColor = strokeTool === "eraser" ? "white" : penColor;
+    const strokeWidth = strokeTool === "eraser" ? ERASER_WIDTH_VALUE[eraserWidth] : PEN_WIDTH_VALUE[penWidth];
     activeStrokeRef.current = {
       pointerId: event.pointerId,
       stroke: {
         points: appendInkPoints([], points, 1_200),
-        color: strokeTool === "eraser" ? "white" : penColor,
+        color: strokeColor,
         tool: strokeTool,
-        width: strokeTool === "eraser" ? 24 : PEN_WIDTH_VALUE[penWidth],
+        width: strokeWidth,
+      },
+      liveStroke: {
+        points: appendLiveInkPoints([], livePoints, 1_200),
+        color: strokeColor,
+        tool: strokeTool,
+        width: strokeWidth,
       },
     };
     document.body.classList.add("jami-inking-active");
-    setSaveStatus("unsaved");
-    scheduleCanvasRender();
+    markPageUnsaved();
+    renderLiveCanvasNow();
   };
 
   const handleDraw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -698,31 +1074,241 @@ export default function NotebookEditorPage() {
 
     event.preventDefault();
     event.stopPropagation();
+    updateEraserCursorFromEvent(event);
+    const livePoints = getNotebookSamplesFromEvent(event);
     activeStroke.stroke = {
       ...activeStroke.stroke,
       points: appendInkPoints(
         activeStroke.stroke.points,
-        getNotebookPointsFromEvent(event),
+        livePoints.map(({ x, y }) => ({ x, y })),
         1_200
       ),
     };
-    scheduleCanvasRender();
+    activeStroke.liveStroke = {
+      ...activeStroke.liveStroke,
+      points: appendLiveInkPoints(activeStroke.liveStroke.points, livePoints, 1_200),
+    };
+    scheduleLiveCanvasRender();
   };
 
   const handleStopDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     event.preventDefault();
+    setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
     finishActiveStroke({ pointerId: event.pointerId, canvas: event.currentTarget });
+  };
+
+  const collectCurrentStrokes = useCallback(
+    (options: { includeActiveStroke?: boolean } = {}) => {
+      let currentStrokes = strokesRef.current;
+      const activeStroke = activeStrokeRef.current;
+      if (activeStroke && options.includeActiveStroke) {
+        const finalizedStroke = finalizeInkStroke(activeStroke.stroke);
+        activeStrokeRef.current = null;
+        document.body.classList.remove("jami-inking-active");
+        clearNotebookCanvas(liveCanvasRef.current);
+        const canvas = liveCanvasRef.current;
+        if (canvas?.hasPointerCapture(activeStroke.pointerId)) {
+          canvas.releasePointerCapture(activeStroke.pointerId);
+        }
+        if (finalizedStroke) {
+          currentStrokes =
+            finalizedStroke.tool === "eraser"
+              ? currentStrokes.filter((stroke) => !strokeTouchesEraser(stroke, finalizedStroke))
+              : [...currentStrokes, finalizedStroke];
+          const changed =
+            finalizedStroke.tool === "pen" || currentStrokes.length !== strokesRef.current.length;
+          if (changed) {
+            pushUndoAction({
+              type: "strokes",
+              previous: strokesRef.current,
+              next: currentStrokes,
+            });
+          }
+          strokesRef.current = currentStrokes;
+          setStrokes(currentStrokes);
+        }
+        scheduleSavedCanvasRender();
+      }
+      return currentStrokes;
+    },
+    [pushUndoAction, scheduleSavedCanvasRender]
+  );
+
+  const savePageSnapshot = useCallback(
+    async (input: {
+      page: NotebookPage;
+      textBlocks: NotebookTextBlock[];
+      strokes: Stroke[];
+      pageColor: NotebookPageColor;
+    }) => {
+      if (!user?.uid) return false;
+      setSaveStatus("saving");
+      try {
+        const cleanedTextBlocks = input.textBlocks.filter((block) => block.text.trim());
+        const typedContent = buildTypedContentFromTextBlocks(cleanedTextBlocks) ?? "";
+        const status: NotebookPageStatus =
+          typedContent.trim() || input.strokes.length > 0 ? "working" : "blank";
+        await updateNotebookPage(user.uid, input.page.id, {
+          typedContent,
+          textBlocks: cleanedTextBlocks,
+          strokeData: { version: 1, strokes: input.strokes },
+          pageColor: input.pageColor,
+          status,
+        });
+        setPages((current) =>
+          current.map((page) =>
+            page.id === input.page.id
+              ? {
+                  ...page,
+                  typedContent: typedContent.trim() || undefined,
+                  textBlocks: cleanedTextBlocks,
+                  strokeData: { version: 1, strokes: input.strokes },
+                  pageColor: input.pageColor,
+                  status,
+                  updatedAt: Date.now(),
+                }
+              : page
+          )
+        );
+        if (selectedPageRef.current?.id === input.page.id) {
+          setTextBlocks(cleanedTextBlocks);
+          textBlocksRef.current = cleanedTextBlocks;
+        }
+        setSaveStatus("saved");
+        setFeedback((current) =>
+          current?.message === "Could not autosave this page." ? null : current
+        );
+        return true;
+      } catch (error) {
+        setSaveStatus("failed");
+        setFeedback({
+          type: "error",
+          message: error instanceof Error ? error.message : "Could not autosave this page.",
+        });
+        return false;
+      }
+    },
+    [user?.uid]
+  );
+
+  const saveCurrentPage = useCallback(
+    async (options: { includeActiveStroke?: boolean } = {}) => {
+      const page = selectedPageRef.current;
+      if (!page || !user?.uid) return false;
+      if (activeStrokeRef.current && !options.includeActiveStroke) return false;
+      return savePageSnapshot({
+        page,
+        textBlocks: textBlocksRef.current,
+        strokes: collectCurrentStrokes({ includeActiveStroke: options.includeActiveStroke }),
+        pageColor: pageColorRef.current,
+      });
+    },
+    [collectCurrentStrokes, savePageSnapshot, user?.uid]
+  );
+
+  const selectPageById = useCallback(
+    async (pageId: string) => {
+      if (pageId === selectedPageRef.current?.id) return true;
+      if (
+        saveStatusRef.current === "unsaved" ||
+        saveStatusRef.current === "failed" ||
+        activeStrokeRef.current
+      ) {
+        await saveCurrentPage({ includeActiveStroke: true });
+      }
+      setSelectedPageId(pageId);
+      return true;
+    },
+    [saveCurrentPage]
+  );
+
+  const selectPageByOffset = useCallback(
+    async (offset: -1 | 1) => {
+      if (selectedPageIndex < 0) return false;
+      const nextIndex = getNotebookPageIndexAfterSwipe({
+        currentIndex: selectedPageIndex,
+        pageCount: pages.length,
+        direction: offset === 1 ? "next" : "previous",
+      });
+      if (nextIndex === selectedPageIndex) return false;
+      const nextPage = pages[nextIndex];
+      if (!nextPage) return false;
+      await selectPageById(nextPage.id);
+      return true;
+    },
+    [pages, selectPageById, selectedPageIndex]
+  );
+
+  useEffect(() => {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    if (loading || saveStatus !== "unsaved" || !selectedPage) return;
+
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      void saveCurrentPage();
+    }, 1200);
+
+    return () => {
+      if (autosaveTimerRef.current !== null) {
+        window.clearTimeout(autosaveTimerRef.current);
+        autosaveTimerRef.current = null;
+      }
+    };
+  }, [loading, pageColor, saveCurrentPage, saveStatus, selectedPage, strokes, textBlocks]);
+
+  useEffect(() => {
+    const saveBeforeExit = () => {
+      if (
+        saveStatusRef.current === "unsaved" ||
+        saveStatusRef.current === "failed" ||
+        activeStrokeRef.current
+      ) {
+        void saveCurrentPage({ includeActiveStroke: true });
+      }
+    };
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        saveBeforeExit();
+      }
+    };
+
+    window.addEventListener("pagehide", saveBeforeExit);
+    window.addEventListener("beforeunload", saveBeforeExit);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    return () => {
+      window.removeEventListener("pagehide", saveBeforeExit);
+      window.removeEventListener("beforeunload", saveBeforeExit);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, [saveCurrentPage]);
+
+  const handleExitNotebook = async (event: ReactMouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    if (
+      saveStatusRef.current === "unsaved" ||
+      saveStatusRef.current === "failed" ||
+      activeStrokeRef.current
+    ) {
+      await saveCurrentPage({ includeActiveStroke: true });
+    }
+    router.push(`/dashboard/folders/${notebook?.folderId ?? ""}`);
   };
 
   const handleStartPageSwipe = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!fullNotebookEditingEnabled || !shouldPointerSwipePages(event.pointerType)) return;
     if (activeStrokeRef.current) return;
+    if (activeTextGestureId) return;
     pageSwipeRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
       startY: event.clientY,
       currentX: event.clientX,
       currentY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
       completed: false,
     };
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
@@ -734,21 +1320,40 @@ export default function NotebookEditorPage() {
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId || swipe.completed) return;
 
+    const deltaX = event.clientX - swipe.lastX;
+    const deltaY = event.clientY - swipe.lastY;
     swipe.currentX = event.clientX;
     swipe.currentY = event.clientY;
+    swipe.lastX = event.clientX;
+    swipe.lastY = event.clientY;
     const direction = getNotebookSwipeDirection({
       startX: swipe.startX,
       startY: swipe.startY,
       currentX: swipe.currentX,
       currentY: swipe.currentY,
     });
+
+    const totalDx = swipe.currentX - swipe.startX;
+    const totalDy = swipe.currentY - swipe.startY;
+    if (
+      Math.abs(totalDy) > 10 &&
+      Math.abs(totalDy) > Math.abs(totalDx) * 1.15 &&
+      pageScrollRef.current
+    ) {
+      pageScrollRef.current.scrollBy({
+        top: -deltaY,
+        left: pageZoom > 1 ? -deltaX : 0,
+        behavior: "auto",
+      });
+      event.preventDefault();
+      return;
+    }
+
     if (!direction) return;
 
-    const moved = selectPageByOffset(direction === "next" ? 1 : -1);
-    swipe.completed = moved;
-    if (moved) {
-      event.preventDefault();
-    }
+    swipe.completed = true;
+    event.preventDefault();
+    void selectPageByOffset(direction === "next" ? 1 : -1);
   };
 
   const handleStopPageSwipe = (
@@ -778,6 +1383,9 @@ export default function NotebookEditorPage() {
 
   const handlePagePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!fullNotebookEditingEnabled) return;
+    setPenMenuOpen(false);
+    setEraserMenuOpen(false);
+    if (handleTouchPointerDown(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStartPageSwipe(event);
       return;
@@ -794,14 +1402,17 @@ export default function NotebookEditorPage() {
   };
 
   const handlePagePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (handleTouchPointerMove(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handlePageSwipeMove(event);
       return;
     }
+    updateEraserCursorFromEvent(event);
     handleDraw(event);
   };
 
   const handlePagePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (handleTouchPointerEnd(event, { allowTextTap: true })) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStopPageSwipe(event, { allowTextTap: true });
       return;
@@ -810,6 +1421,8 @@ export default function NotebookEditorPage() {
   };
 
   const handlePagePointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
+    if (handleTouchPointerEnd(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStopPageSwipe(event);
       return;
@@ -823,14 +1436,20 @@ export default function NotebookEditorPage() {
         block.id === blockId ? clampTextBlock({ ...block, ...updates }) : block
       )
     );
-    setSaveStatus("unsaved");
+    markPageUnsaved();
   };
 
   const deleteTextBlock = (blockId: string) => {
-    setTextBlocks((current) => current.filter((block) => block.id !== blockId));
+    setTextBlocks((current) => {
+      const next = current.filter((block) => block.id !== blockId);
+      if (next.length !== current.length) {
+        pushUndoAction({ type: "textBlocks", previous: current, next });
+      }
+      return next;
+    });
     setSelectedTextBlockId((current) => (current === blockId ? null : current));
     setEditingTextBlockId((current) => (current === blockId ? null : current));
-    setSaveStatus("unsaved");
+    markPageUnsaved();
   };
 
   const startTextBlockDrag = (
@@ -849,7 +1468,11 @@ export default function NotebookEditorPage() {
       originY: block.y,
       pageWidth: rect.width,
       pageHeight: rect.height,
+      previousTextBlocks: textBlocksRef.current,
     };
+    pageSwipeRef.current = null;
+    pinchZoomRef.current = null;
+    setActiveTextGestureId(block.id);
     setSelectedTextBlockId(block.id);
     setEditingTextBlockId((current) => (current === block.id ? null : current));
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -871,75 +1494,100 @@ export default function NotebookEditorPage() {
   };
 
   const stopTextBlockDrag = (event: ReactPointerEvent<HTMLElement>) => {
-    if (textBlockDragRef.current && event.currentTarget.hasPointerCapture(event.pointerId)) {
+    const drag = textBlockDragRef.current;
+    if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
+    if (drag) {
+      const next = textBlocksRef.current;
+      const previousBlock = drag.previousTextBlocks.find((block) => block.id === drag.id);
+      const nextBlock = next.find((block) => block.id === drag.id);
+      if (
+        previousBlock &&
+        nextBlock &&
+        (previousBlock.x !== nextBlock.x || previousBlock.y !== nextBlock.y)
+      ) {
+        pushUndoAction({ type: "textBlocks", previous: drag.previousTextBlocks, next });
+      }
+    }
     textBlockDragRef.current = null;
+    setActiveTextGestureId(null);
     event.stopPropagation();
   };
 
-  const handleSavePage = async () => {
-    if (!user?.uid || !selectedPage) return;
-    let currentStrokes = strokesRef.current;
-    const activeStroke = activeStrokeRef.current;
-    if (activeStroke) {
-      const finalizedStroke = finalizeInkStroke(activeStroke.stroke);
-      activeStrokeRef.current = null;
-      document.body.classList.remove("jami-inking-active");
-      if (finalizedStroke) {
-        currentStrokes =
-          finalizedStroke.tool === "eraser"
-            ? currentStrokes.filter((stroke) => !strokeTouchesEraser(stroke, finalizedStroke))
-            : [...currentStrokes, finalizedStroke];
-        strokesRef.current = currentStrokes;
-        setStrokes(currentStrokes);
+  const startTextBlockResize = (
+    block: NotebookTextBlock,
+    event: ReactPointerEvent<HTMLElement>
+  ) => {
+    if (!fullNotebookEditingEnabled) return;
+    const pageElement = event.currentTarget.closest<HTMLElement>("[data-notebook-page-surface]");
+    if (!pageElement) return;
+    const rect = pageElement.getBoundingClientRect();
+    textBlockResizeRef.current = {
+      id: block.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      originWidth: block.width,
+      originHeight: block.height,
+      pageWidth: rect.width,
+      pageHeight: rect.height,
+      previousTextBlocks: textBlocksRef.current,
+    };
+    pageSwipeRef.current = null;
+    pinchZoomRef.current = null;
+    setActiveTextGestureId(block.id);
+    setSelectedTextBlockId(block.id);
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const resizeTextBlock = (event: ReactPointerEvent<HTMLElement>) => {
+    const resize = textBlockResizeRef.current;
+    if (!resize) return;
+    const dx = ((event.clientX - resize.startX) / resize.pageWidth) * CANVAS_WIDTH;
+    const dy = ((event.clientY - resize.startY) / resize.pageHeight) * CANVAS_HEIGHT;
+    updateTextBlock(resize.id, {
+      width: resize.originWidth + dx,
+      height: resize.originHeight + dy,
+    });
+    event.preventDefault();
+    event.stopPropagation();
+  };
+
+  const stopTextBlockResize = (event: ReactPointerEvent<HTMLElement>) => {
+    const resize = textBlockResizeRef.current;
+    if (resize && event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (resize) {
+      const next = textBlocksRef.current;
+      const previousBlock = resize.previousTextBlocks.find((block) => block.id === resize.id);
+      const nextBlock = next.find((block) => block.id === resize.id);
+      if (
+        previousBlock &&
+        nextBlock &&
+        (previousBlock.width !== nextBlock.width || previousBlock.height !== nextBlock.height)
+      ) {
+        pushUndoAction({ type: "textBlocks", previous: resize.previousTextBlocks, next });
       }
-      scheduleCanvasRender();
     }
-    setSaveStatus("saving");
-    setSaving(true);
-    try {
-      const cleanedTextBlocks = textBlocks.filter((block) => block.text.trim());
-      const typedContent = buildTypedContentFromTextBlocks(cleanedTextBlocks) ?? "";
-      const status: NotebookPageStatus =
-        typedContent.trim() || currentStrokes.length > 0 ? "working" : "blank";
-      await updateNotebookPage(user.uid, selectedPage.id, {
-        typedContent,
-        textBlocks: cleanedTextBlocks,
-        strokeData: { version: 1, strokes: currentStrokes },
-        pageColor,
-        status,
-      });
-      setPages((current) =>
-        current.map((page) =>
-          page.id === selectedPage.id
-            ? {
-                ...page,
-                typedContent: typedContent.trim() || undefined,
-                textBlocks: cleanedTextBlocks,
-                strokeData: { version: 1, strokes: currentStrokes },
-                pageColor,
-                status,
-                updatedAt: Date.now(),
-              }
-            : page
-        )
-      );
-      setTextBlocks(cleanedTextBlocks);
-      setSaveStatus("saved");
-      setFeedback({ type: "success", message: "Notebook page saved." });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not save this page.",
-      });
-    } finally {
-      setSaving(false);
-    }
+    textBlockResizeRef.current = null;
+    setActiveTextGestureId(null);
+    event.stopPropagation();
   };
 
   const handleAddPage = async () => {
     if (!user?.uid || !notebook || !fullNotebookEditingEnabled) return;
+    if (
+      saveStatusRef.current === "unsaved" ||
+      saveStatusRef.current === "failed" ||
+      activeStrokeRef.current
+    ) {
+      await saveCurrentPage({ includeActiveStroke: true });
+    }
     setAddingPage(true);
     try {
       const nextPageNumber =
@@ -1031,23 +1679,38 @@ export default function NotebookEditorPage() {
     }
   };
 
-  const handleUndoStroke = () => {
-    setStrokes((current) => {
-      const next = current.slice(0, -1);
-      strokesRef.current = next;
-      return next;
-    });
-    setSaveStatus("unsaved");
+  const handleUndo = () => {
+    const action = undoStackRef.current.at(-1);
+    if (!action) return;
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    setUndoDepth(undoStackRef.current.length);
+
+    if (action.type === "strokes") {
+      strokesRef.current = action.previous;
+      setStrokes(action.previous);
+      scheduleSavedCanvasRender();
+    } else {
+      textBlocksRef.current = action.previous;
+      setTextBlocks(action.previous);
+      setSelectedTextBlockId(null);
+      setEditingTextBlockId(null);
+      setActiveTextGestureId(null);
+    }
+    markPageUnsaved();
   };
 
   const handleClearCurrentPage = () => {
     const confirmed = window.confirm("Clear drawing from this page?");
     if (!confirmed) return;
     activeStrokeRef.current = null;
+    if (strokesRef.current.length > 0) {
+      pushUndoAction({ type: "strokes", previous: strokesRef.current, next: [] });
+    }
     strokesRef.current = [];
     setStrokes([]);
-    setSaveStatus("unsaved");
-    scheduleCanvasRender();
+    markPageUnsaved();
+    clearNotebookCanvas(liveCanvasRef.current);
+    scheduleSavedCanvasRender();
   };
 
   if (loading) {
@@ -1087,10 +1750,11 @@ export default function NotebookEditorPage() {
       className="fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
-        <header className="z-40 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 py-2 shadow-[0_12px_26px_rgba(0,0,0,0.18)] backdrop-blur-xl">
+        <header className="z-40 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] backdrop-blur-xl">
           <div className="flex min-w-0 items-center gap-2">
             <Link
               href={`/dashboard/folders/${notebook.folderId}`}
+              onClick={(event) => void handleExitNotebook(event)}
               aria-label="Back to folder"
               title="Back to folder"
               className="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)]"
@@ -1100,7 +1764,13 @@ export default function NotebookEditorPage() {
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-text-primary">{notebook.title}</div>
               <div className="text-xs text-text-muted">
-                {saveStatus === "saving" ? "Saving..." : saveStatus === "unsaved" ? "Unsaved changes" : "Saved"}
+                {saveStatus === "saving"
+                  ? "Saving..."
+                  : saveStatus === "unsaved"
+                    ? "Unsaved changes"
+                    : saveStatus === "failed"
+                      ? "Save failed"
+                      : "Autosaved just now"}
               </div>
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
@@ -1108,13 +1778,21 @@ export default function NotebookEditorPage() {
                 label="Pages"
                 icon="pages"
                 active={pagesDrawerOpen}
-                onClick={() => setPagesDrawerOpen((value) => !value)}
+                onClick={() => {
+                  setPenMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  setPagesDrawerOpen((value) => !value);
+                }}
               />
               <ToolbarIconButton
                 label="Add page"
                 icon="plus"
                 disabled={addingPage || !fullNotebookEditingEnabled}
-                onClick={() => void handleAddPage()}
+                onClick={() => {
+                  setPenMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  void handleAddPage();
+                }}
               />
               <ToolbarIconButton
                 label="Text box"
@@ -1124,6 +1802,7 @@ export default function NotebookEditorPage() {
                 onClick={() => {
                   setTool("text");
                   setPenMenuOpen(false);
+                  setEraserMenuOpen(false);
                 }}
               />
               <div className="relative">
@@ -1134,6 +1813,7 @@ export default function NotebookEditorPage() {
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
                     setTool("pen");
+                    setEraserMenuOpen(false);
                     setPenMenuOpen((value) => !value);
                   }}
                 >
@@ -1153,6 +1833,7 @@ export default function NotebookEditorPage() {
                           onClick={() => {
                             setPenColor(color);
                             setTool("pen");
+                            setPenMenuOpen(false);
                           }}
                           className={`h-9 rounded-full border transition ${
                             penColor === color
@@ -1172,12 +1853,89 @@ export default function NotebookEditorPage() {
                           onClick={() => {
                             setPenWidth(width);
                             setTool("pen");
+                            setPenMenuOpen(false);
                           }}
                           className={`rounded-full border px-2 py-1.5 text-xs font-semibold capitalize transition ${
                             penWidth === width ? "app-selected" : "app-chip"
                           }`}
                         >
-                          {width}
+                          <span
+                            aria-hidden="true"
+                            className="mx-auto block w-8 rounded-full bg-current"
+                            style={{ height: `${Math.max(2, PEN_WIDTH_VALUE[width] / 2)}px` }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="relative">
+                <ToolbarIconButton
+                  label="Eraser"
+                  icon="eraser"
+                  active={tool === "eraser" || eraserMenuOpen}
+                  disabled={!fullNotebookEditingEnabled}
+                  onClick={() => {
+                    setTool("eraser");
+                    setPenMenuOpen(false);
+                    setEraserMenuOpen((value) => !value);
+                  }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="absolute bottom-1 right-1 rounded-full border border-current bg-transparent opacity-80"
+                    style={{
+                      width:
+                        eraserWidth === "small"
+                          ? "0.45rem"
+                          : eraserWidth === "medium"
+                            ? "0.6rem"
+                            : "0.78rem",
+                      height:
+                        eraserWidth === "small"
+                          ? "0.45rem"
+                          : eraserWidth === "medium"
+                            ? "0.6rem"
+                            : "0.78rem",
+                    }}
+                  />
+                </ToolbarIconButton>
+                {eraserMenuOpen ? (
+                  <div className="absolute right-0 top-12 z-50 w-48 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
+                    <div className="grid grid-cols-3 gap-2">
+                      {(["small", "medium", "large"] as EraserWidth[]).map((width) => (
+                        <button
+                          key={width}
+                          type="button"
+                          aria-label={`${width} eraser`}
+                          onClick={() => {
+                            setEraserWidth(width);
+                            setTool("eraser");
+                            setEraserMenuOpen(false);
+                          }}
+                          className={`grid h-11 place-items-center rounded-full border transition ${
+                            eraserWidth === width ? "app-selected" : "app-chip"
+                          }`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="rounded-full border-2 border-current"
+                            style={{
+                              width:
+                                width === "small"
+                                  ? "0.7rem"
+                                  : width === "medium"
+                                    ? "1rem"
+                                    : "1.35rem",
+                              height:
+                                width === "small"
+                                  ? "0.7rem"
+                                  : width === "medium"
+                                    ? "1rem"
+                                    : "1.35rem",
+                            }}
+                          />
                         </button>
                       ))}
                     </div>
@@ -1185,39 +1943,43 @@ export default function NotebookEditorPage() {
                 ) : null}
               </div>
               <ToolbarIconButton
-                label="Eraser"
-                icon="eraser"
-                active={tool === "eraser"}
-                disabled={!fullNotebookEditingEnabled}
-                onClick={() => {
-                  setTool("eraser");
-                  setPenMenuOpen(false);
-                }}
-              />
-              <ToolbarIconButton
-                label="Undo stroke"
+                label="Undo"
                 icon="undo"
-                disabled={!fullNotebookEditingEnabled || strokes.length === 0}
-                onClick={handleUndoStroke}
+                disabled={!fullNotebookEditingEnabled || undoDepth === 0}
+                onClick={() => {
+                  setPenMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  handleUndo();
+                }}
               />
               <ToolbarIconButton
                 label="Clear drawing"
                 icon="clear"
                 disabled={!fullNotebookEditingEnabled || strokes.length === 0}
-                onClick={handleClearCurrentPage}
+                onClick={() => {
+                  setPenMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  handleClearCurrentPage();
+                }}
               />
               <ToolbarIconButton
                 label="Jami Tutor"
                 icon="ai"
                 active={aiPlaceholderOpen}
-                onClick={() => setAiPlaceholderOpen((value) => !value)}
+                onClick={() => {
+                  setPenMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  setAiPlaceholderOpen((value) => !value);
+                }}
               />
-              <ToolbarIconButton label="Notebook settings" icon="settings" onClick={openNotebookSettings} />
               <ToolbarIconButton
-                label="Save page"
-                icon="save"
-                disabled={saving || !selectedPage}
-                onClick={() => void handleSavePage()}
+                label="Notebook settings"
+                icon="settings"
+                onClick={() => {
+                  setPenMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  openNotebookSettings();
+                }}
               />
             </div>
           </div>
@@ -1382,7 +2144,10 @@ export default function NotebookEditorPage() {
                     <button
                       key={page.id}
                       type="button"
-                      onClick={() => setSelectedPageId(page.id)}
+                      onClick={() => {
+                        setPagesDrawerOpen(false);
+                        void selectPageById(page.id);
+                      }}
                       className={`w-full rounded-[0.95rem] border p-2 text-left transition ${
                         selected
                           ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
@@ -1413,7 +2178,7 @@ export default function NotebookEditorPage() {
           </aside>
         ) : null}
 
-          <div className="h-full min-w-0 overflow-y-auto px-4 py-6 sm:px-6">
+          <div ref={pageScrollRef} className="h-full min-w-0 overflow-auto px-4 py-6 sm:px-6">
             <div className="mx-auto flex w-full max-w-[58rem] flex-col gap-3">
             {selectedPage?.questionPrompt ? (
               <Card tone="warm" padding="sm">
@@ -1436,19 +2201,31 @@ export default function NotebookEditorPage() {
               </Card>
             ) : null}
 
-              <div className="mx-auto w-full rounded-[2rem] bg-[var(--color-glass-subtle)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5">
+              <div className="mx-auto w-full rounded-[1.35rem] bg-[var(--color-glass-subtle)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-3">
                 <div
                   data-notebook-page-surface
-                  className={`relative mx-auto w-full max-w-[52rem] overflow-hidden rounded-[1.05rem] border border-[var(--color-border)] shadow-[0_26px_65px_rgba(0,0,0,0.22)] ${PAGE_COLOR_CLASS[pageColor]}`}
+                  className={`relative mx-auto w-full overflow-hidden rounded-[0.95rem] border border-[var(--color-border)] shadow-[0_18px_48px_rgba(0,0,0,0.2)] ${PAGE_COLOR_CLASS[pageColor]}`}
+                  style={{
+                    width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
+                    maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
+                  }}
                 >
                   <canvas
-                    ref={canvasRef}
+                    ref={savedCanvasRef}
+                    aria-hidden="true"
+                    width={CANVAS_WIDTH}
+                    height={CANVAS_HEIGHT}
+                    draggable={false}
+                    className="pointer-events-none relative z-10 block aspect-[900/1240] w-full select-none"
+                  />
+                  <canvas
+                    ref={liveCanvasRef}
                     role="img"
                     aria-label="Notebook drawing page"
                     width={CANVAS_WIDTH}
                     height={CANVAS_HEIGHT}
                     draggable={false}
-                    className="notebook-ink-surface relative z-10 block aspect-[900/1240] w-full touch-none select-none"
+                    className="notebook-ink-surface absolute inset-0 z-20 block h-full w-full touch-none select-none"
                     onPointerDown={handlePagePointerDown}
                     onPointerMove={handlePagePointerMove}
                     onPointerUp={handlePagePointerUp}
@@ -1456,10 +2233,27 @@ export default function NotebookEditorPage() {
                     onPointerLeave={handlePagePointerCancel}
                     onLostPointerCapture={handlePagePointerCancel}
                   />
-                  <div className="pointer-events-none absolute inset-0 z-20">
+                  {tool === "eraser" && eraserCursor.visible ? (
+                    <div
+                      aria-hidden="true"
+                      className={`pointer-events-none absolute z-[25] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-sm ${
+                        pageColor === "black"
+                          ? "border-[#f8fafc]/80 bg-[#f8fafc]/10"
+                          : "border-slate-950/55 bg-slate-950/5"
+                      }`}
+                      style={{
+                        left: `${(eraserCursor.x / CANVAS_WIDTH) * 100}%`,
+                        top: `${(eraserCursor.y / CANVAS_HEIGHT) * 100}%`,
+                        width: `${(ERASER_WIDTH_VALUE[eraserWidth] / CANVAS_WIDTH) * 100}%`,
+                        height: `${(ERASER_WIDTH_VALUE[eraserWidth] / CANVAS_HEIGHT) * 100}%`,
+                      }}
+                    />
+                  ) : null}
+                  <div className="pointer-events-none absolute inset-0 z-30">
                     {textBlocks.map((block) => {
                       const selected = selectedTextBlockId === block.id;
                       const editing = editingTextBlockId === block.id;
+                      const gesturing = activeTextGestureId === block.id;
                       const displayText = block.text.trim() ? block.text : selected ? "Tap dots to type" : "";
                       return (
                         <div
@@ -1494,38 +2288,55 @@ export default function NotebookEditorPage() {
                             setSelectedTextBlockId(block.id);
                           }}
                         >
-                          {selected && fullNotebookEditingEnabled ? (
-                            <div className="absolute right-1 top-1 z-20 flex gap-1 rounded-full border border-black/10 bg-black/60 p-1 shadow-sm backdrop-blur">
+                          {selected && fullNotebookEditingEnabled && !gesturing ? (
+                            <>
+                              <div className="absolute right-1 top-1 z-20 flex gap-1 rounded-full border border-black/10 bg-black/60 p-1 shadow-sm backdrop-blur">
+                                <button
+                                  type="button"
+                                  aria-label={editing ? "Close text editor" : "Edit text block"}
+                                  title={editing ? "Close text editor" : "Edit text block"}
+                                  className="inline-grid h-7 w-7 place-items-center rounded-full text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    setSelectedTextBlockId(block.id);
+                                    setEditingTextBlockId((current) =>
+                                      current === block.id ? null : block.id
+                                    );
+                                  }}
+                                >
+                                  <NotebookIcon name="dots" />
+                                </button>
+                                <button
+                                  type="button"
+                                  aria-label="Delete text block"
+                                  title="Delete text block"
+                                  className="inline-grid h-7 w-7 place-items-center rounded-full text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
+                                  onPointerDown={(event) => event.stopPropagation()}
+                                  onClick={(event) => {
+                                    event.stopPropagation();
+                                    deleteTextBlock(block.id);
+                                  }}
+                                >
+                                  <NotebookIcon name="trash" />
+                                </button>
+                              </div>
                               <button
                                 type="button"
-                                aria-label={editing ? "Close text editor" : "Edit text block"}
-                                title={editing ? "Close text editor" : "Edit text block"}
-                                className="inline-grid h-7 w-7 place-items-center rounded-full text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
-                                onPointerDown={(event) => event.stopPropagation()}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setSelectedTextBlockId(block.id);
-                                  setEditingTextBlockId((current) =>
-                                    current === block.id ? null : block.id
-                                  );
-                                }}
+                                aria-label="Resize text box"
+                                title="Resize text box"
+                                className="absolute bottom-1 right-1 z-20 h-6 w-6 touch-none rounded-full border border-black/10 bg-black/55 text-[#f8fafc] shadow-sm backdrop-blur transition hover:bg-black/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
+                                onPointerDown={(event) => startTextBlockResize(block, event)}
+                                onPointerMove={resizeTextBlock}
+                                onPointerUp={stopTextBlockResize}
+                                onPointerCancel={stopTextBlockResize}
                               >
-                                <NotebookIcon name="dots" />
+                                <span
+                                  aria-hidden="true"
+                                  className="absolute bottom-1.5 right-1.5 h-2.5 w-2.5 border-b-2 border-r-2 border-current"
+                                />
                               </button>
-                              <button
-                                type="button"
-                                aria-label="Delete text block"
-                                title="Delete text block"
-                                className="inline-grid h-7 w-7 place-items-center rounded-full text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
-                                onPointerDown={(event) => event.stopPropagation()}
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  deleteTextBlock(block.id);
-                                }}
-                              >
-                                <NotebookIcon name="trash" />
-                              </button>
-                            </div>
+                            </>
                           ) : null}
                           {editing && fullNotebookEditingEnabled ? (
                             <textarea
@@ -1538,11 +2349,11 @@ export default function NotebookEditorPage() {
                               onFocus={() => setSelectedTextBlockId(block.id)}
                               onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
                               placeholder="Type here..."
-                              className={`h-full w-full resize-none rounded-lg bg-transparent p-2 pr-20 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+                              className={`h-full w-full resize-none rounded-lg bg-transparent p-2 pb-8 pr-20 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
                             />
                           ) : (
                             <div
-                              className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-lg p-2 pr-10 text-sm font-medium leading-6 ${
+                              className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-lg p-2 pb-8 pr-10 text-sm font-medium leading-6 ${
                                 pageColor === "black" ? "text-[#f8fafc]" : "text-slate-950"
                               } ${block.text.trim() ? "" : "opacity-60"}`}
                             >
@@ -1557,6 +2368,30 @@ export default function NotebookEditorPage() {
               </div>
             </div>
             </div>
+            <button
+              type="button"
+              aria-label="Previous page"
+              title="Previous page"
+              disabled={selectedPageIndex <= 0}
+              onClick={() => void selectPageByOffset(-1)}
+              className="hidden md:inline-flex pointer-events-auto absolute left-4 top-1/2 z-20 h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] transition hover:bg-[var(--button-secondary-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <span className="rotate-90">
+                <NotebookIcon name="chevron" />
+              </span>
+            </button>
+            <button
+              type="button"
+              aria-label="Next page"
+              title="Next page"
+              disabled={selectedPageIndex < 0 || selectedPageIndex >= pages.length - 1}
+              onClick={() => void selectPageByOffset(1)}
+              className="hidden md:inline-flex pointer-events-auto absolute right-4 top-1/2 z-20 h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] transition hover:bg-[var(--button-secondary-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
+            >
+              <span className="-rotate-90">
+                <NotebookIcon name="chevron" />
+              </span>
+            </button>
             <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
               {selectedPageIndex >= 0 ? selectedPageIndex + 1 : 0} of {pages.length || 0}
             </div>

@@ -8,10 +8,14 @@ export type NotebookInkPoint = {
 export type PointerClientSample = {
   clientX: number;
   clientY: number;
+  pressure: number;
 };
 
 const DEFAULT_MIN_POINT_DISTANCE = 1.35;
+export const NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER = 3;
 export const NOTEBOOK_PAGE_SWIPE_THRESHOLD = 64;
+export const NOTEBOOK_PAGE_MIN_ZOOM = 0.85;
+export const NOTEBOOK_PAGE_MAX_ZOOM = 2.4;
 
 export function shouldPointerDraw(pointerType: string, tool: "pen" | "eraser" | "text") {
   if (tool === "text") return false;
@@ -49,6 +53,29 @@ export function getNotebookPageIndexAfterSwipe(input: {
   return Math.max(0, Math.min(input.pageCount - 1, input.currentIndex + offset));
 }
 
+export function clampNotebookPageZoom(value: number) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.max(NOTEBOOK_PAGE_MIN_ZOOM, Math.min(NOTEBOOK_PAGE_MAX_ZOOM, value));
+}
+
+export function getPinchDistance(
+  first: PointerClientSample,
+  second: PointerClientSample
+) {
+  const dx = first.clientX - second.clientX;
+  const dy = first.clientY - second.clientY;
+  return Math.hypot(dx, dy);
+}
+
+export function getNotebookPageZoomAfterPinch(input: {
+  startDistance: number;
+  currentDistance: number;
+  startZoom: number;
+}) {
+  if (input.startDistance <= 0) return clampNotebookPageZoom(input.startZoom);
+  return clampNotebookPageZoom((input.currentDistance / input.startDistance) * input.startZoom);
+}
+
 export function clampInkPoint(
   point: NotebookInkPoint,
   width: number,
@@ -72,6 +99,11 @@ export function mapClientPointToNotebookPage(input: {
   return clampInkPoint({ x, y }, input.width, input.height);
 }
 
+export function normalizePointerPressure(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0.5;
+  return Math.max(0, Math.min(1, value));
+}
+
 export function getPointerClientSamples(event: PointerEvent): PointerClientSample[] {
   const coalescedEvents =
     typeof event.getCoalescedEvents === "function" ? event.getCoalescedEvents() : [];
@@ -79,6 +111,7 @@ export function getPointerClientSamples(event: PointerEvent): PointerClientSampl
   return samples.map((sample) => ({
     clientX: sample.clientX,
     clientY: sample.clientY,
+    pressure: normalizePointerPressure(sample.pressure),
   }));
 }
 
@@ -87,6 +120,7 @@ export function shouldAppendInkPoint(
   point: NotebookInkPoint,
   minDistance = DEFAULT_MIN_POINT_DISTANCE
 ) {
+  if (points.length < NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER) return true;
   const previousPoint = points[points.length - 1];
   if (!previousPoint) return true;
   const dx = point.x - previousPoint.x;

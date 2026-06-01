@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { useMemo, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import AppPage from "@/components/layout/AppPage";
 import TabBar from "@/components/layout/TabBar";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
@@ -532,13 +532,14 @@ function NotebookPanel({
   const [selectedPageId, setSelectedPageId] = useState(notebookPages[0]?.id ?? "");
   const selectedPage = notebookPages.find((page) => page.id === selectedPageId) ?? notebookPages[0];
   const [draftText, setDraftText] = useState(selectedPage?.typedContent ?? "");
-  const [status, setStatus] = useState("Saved locally");
+  const [status, setStatus] = useState("Autosaved locally");
 
-  if (!notebook || !selectedPage) {
-    return <EmptyState title="No notebook found" description="Open Practice to create a local walkthrough notebook." />;
-  }
-
-  function savePage() {
+  const savePage = useCallback(() => {
+    if (!notebook || !selectedPage) return;
+    if ((selectedPage.typedContent ?? "") === draftText) {
+      setStatus("Autosaved locally");
+      return;
+    }
     const now = Date.now();
     onPagesChange(
       pages.map((page) =>
@@ -548,10 +549,23 @@ function NotebookPanel({
     onNotebooksChange(
       notebooks.map((item) => (item.id === notebook.id ? { ...item, updatedAt: now } : item))
     );
-    setStatus("Saved locally just now");
+    setStatus("Autosaved locally");
+  }, [draftText, notebook, notebooks, onNotebooksChange, onPagesChange, pages, selectedPage]);
+
+  useEffect(() => {
+    if (!notebook || !selectedPage) return;
+    const timeoutId = window.setTimeout(() => {
+      savePage();
+    }, 700);
+    return () => window.clearTimeout(timeoutId);
+  }, [notebook, savePage, selectedPage]);
+
+  if (!notebook || !selectedPage) {
+    return <EmptyState title="No notebook found" description="Open Practice to create a local walkthrough notebook." />;
   }
 
   function addPage() {
+    savePage();
     const now = Date.now();
     const nextPage: WalkthroughNotebookPage = {
       id: `local-page-${now}`,
@@ -575,8 +589,7 @@ function NotebookPanel({
         eyebrow="Notebook"
         title={notebook.title}
         description="Local-only notebook editing."
-        action={<Button onClick={savePage}>Save page</Button>}
-        secondaryAction={<Button variant="secondary" onClick={addPage}>+ Page</Button>}
+        action={<Button onClick={addPage}>+ Page</Button>}
         aside={<MetricStrip items={[{ label: "Pages", value: notebookPages.length }, { label: "Status", value: status }]} />}
       />
       <div className="grid gap-4 lg:grid-cols-[16rem_minmax(0,1fr)]">
@@ -588,6 +601,7 @@ function NotebookPanel({
                 key={page.id}
                 type="button"
                 onClick={() => {
+                  savePage();
                   setSelectedPageId(page.id);
                   setDraftText(page.typedContent ?? "");
                 }}

@@ -1,11 +1,15 @@
 import { describe, expect, it } from "vitest";
 import {
   appendInkPoints,
+  clampNotebookPageZoom,
   finalizeInkStroke,
   getNotebookPageIndexAfterSwipe,
   getNotebookSwipeDirection,
+  getNotebookPageZoomAfterPinch,
+  getPinchDistance,
   getPointerClientSamples,
   mapClientPointToNotebookPage,
+  normalizePointerPressure,
   shouldAppendInkPoint,
   shouldPointerDraw,
   shouldPointerSwipePages,
@@ -29,14 +33,14 @@ describe("notebook inking helpers", () => {
       clientX: 10,
       clientY: 20,
       getCoalescedEvents: () => [
-        { clientX: 11, clientY: 21 },
-        { clientX: 12, clientY: 22 },
+        { clientX: 11, clientY: 21, pressure: 0.25 },
+        { clientX: 12, clientY: 22, pressure: 0 },
       ],
     } as unknown as PointerEvent;
 
     expect(getPointerClientSamples(event)).toEqual([
-      { clientX: 11, clientY: 21 },
-      { clientX: 12, clientY: 22 },
+      { clientX: 11, clientY: 21, pressure: 0.25 },
+      { clientX: 12, clientY: 22, pressure: 0.5 },
     ]);
   });
 
@@ -44,17 +48,46 @@ describe("notebook inking helpers", () => {
     const event = {
       clientX: 10,
       clientY: 20,
+      pressure: 0,
       getCoalescedEvents: () => [],
     } as unknown as PointerEvent;
 
-    expect(getPointerClientSamples(event)).toEqual([{ clientX: 10, clientY: 20 }]);
+    expect(getPointerClientSamples(event)).toEqual([{ clientX: 10, clientY: 20, pressure: 0.5 }]);
   });
 
-  it("filters tiny duplicate movements before they bloat stroke data", () => {
+  it("normalizes missing or zero pressure to a useful live-ink fallback", () => {
+    expect(normalizePointerPressure(undefined)).toBe(0.5);
+    expect(normalizePointerPressure(0)).toBe(0.5);
+    expect(normalizePointerPressure(0.35)).toBe(0.35);
+    expect(normalizePointerPressure(2)).toBe(1);
+  });
+
+  it("keeps the first few points before filtering tiny duplicate movements", () => {
     expect(shouldAppendInkPoint([{ x: 10, y: 10 }], { x: 10.2, y: 10.2 }, 1.35)).toBe(
-      false
+      true
     );
-    expect(shouldAppendInkPoint([{ x: 10, y: 10 }], { x: 13, y: 10 }, 1.35)).toBe(true);
+    expect(
+      shouldAppendInkPoint(
+        [
+          { x: 10, y: 10 },
+          { x: 10.2, y: 10.2 },
+          { x: 10.4, y: 10.4 },
+        ],
+        { x: 10.5, y: 10.5 },
+        1.35
+      )
+    ).toBe(false);
+    expect(
+      shouldAppendInkPoint(
+        [
+          { x: 10, y: 10 },
+          { x: 10.2, y: 10.2 },
+          { x: 10.4, y: 10.4 },
+        ],
+        { x: 13, y: 10 },
+        1.35
+      )
+    ).toBe(true);
 
     expect(
       appendInkPoints(
@@ -67,6 +100,7 @@ describe("notebook inking helpers", () => {
       )
     ).toEqual([
       { x: 10, y: 10 },
+      { x: 10.1, y: 10.1 },
       { x: 15, y: 15 },
     ]);
   });
@@ -85,6 +119,8 @@ describe("notebook inking helpers", () => {
       tool: "pen",
       width: 5,
     });
+    expect(stroke).not.toHaveProperty("pressure");
+    expect(stroke?.points[0]).not.toHaveProperty("pressure");
   });
 
   it("drops empty active strokes", () => {
@@ -128,5 +164,13 @@ describe("notebook inking helpers", () => {
     expect(getNotebookPageIndexAfterSwipe({ currentIndex: 0, pageCount: 3, direction: "next" })).toBe(1);
     expect(getNotebookPageIndexAfterSwipe({ currentIndex: 2, pageCount: 3, direction: "next" })).toBe(2);
     expect(getNotebookPageIndexAfterSwipe({ currentIndex: -1, pageCount: 3, direction: "next" })).toBe(-1);
+  });
+
+  it("calculates bounded notebook page pinch zoom", () => {
+    expect(getPinchDistance({ clientX: 0, clientY: 0, pressure: 0.5 }, { clientX: 3, clientY: 4, pressure: 0.5 })).toBe(5);
+    expect(getNotebookPageZoomAfterPinch({ startDistance: 100, currentDistance: 150, startZoom: 1 })).toBe(1.5);
+    expect(getNotebookPageZoomAfterPinch({ startDistance: 100, currentDistance: 500, startZoom: 1 })).toBe(2.4);
+    expect(getNotebookPageZoomAfterPinch({ startDistance: 100, currentDistance: 20, startZoom: 1 })).toBe(0.85);
+    expect(clampNotebookPageZoom(Number.NaN)).toBe(1);
   });
 });

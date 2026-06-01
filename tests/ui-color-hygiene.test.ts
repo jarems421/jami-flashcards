@@ -59,6 +59,8 @@ describe("theme colour hygiene", () => {
     expect(globals).toContain('body [class*="bg-success-muted"] [class*="text-emerald"]');
     expect(globals).toContain('body.app-theme-paper-white [class*="bg-white/"][class*="text-white"]');
     expect(globals).toContain('body.app-theme-paper-white [class*="bg-accent"].text-white');
+    expect(globals).toContain("--button-secondary-text: #101827;");
+    expect(globals).toContain("--button-surface-text: #101827;");
     expect(globals).toContain(".study-flashcard-face {");
     expect(globals).toContain("--color-text-primary: #fff8ff;");
   });
