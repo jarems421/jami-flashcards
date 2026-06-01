@@ -141,7 +141,7 @@ export default function Home() {
                   setIsSigningIn(false);
                 }
               }}
-              variant="warm"
+              variant="primary"
               size="lg"
               className="w-full justify-center"
             >

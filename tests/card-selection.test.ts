@@ -37,4 +37,10 @@ describe("card selection helpers", () => {
       "card-c",
     ]);
   });
+
+  it("keeps swipe selection add-only for already-selected cards", () => {
+    const selected = addCardIdsToSelection(["card-a", "card-c"], ["card-b", "card-c"]);
+
+    expect(selected).toEqual(["card-a", "card-c", "card-b"]);
+  });
 });

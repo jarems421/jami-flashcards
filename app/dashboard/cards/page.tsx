@@ -739,8 +739,8 @@ export default function CardsSearchPage() {
                       <input
                         type="checkbox"
                         checked={selectedCardIdSet.has(card.id)}
-                        readOnly
                         onClick={(event) => handleCheckboxClick(card.id, event)}
+                        onChange={() => undefined}
                         className="h-4 w-4 accent-[var(--color-accent)]"
                       />
                       Select

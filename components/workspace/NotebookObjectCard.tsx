@@ -37,22 +37,22 @@ function NotebookCardInner({
   return (
     <div
       className={cx(
-        "group/notebook mx-auto flex h-full w-full max-w-[7.65rem] flex-col items-center rounded-[1.05rem] border border-transparent bg-transparent px-2 py-2.5 text-center transition duration-200 hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]",
-        compact ? "min-h-[10.75rem]" : "min-h-[12rem]",
+        "group/notebook mx-auto flex h-full w-full max-w-[8.35rem] flex-col items-center rounded-[1.05rem] border border-transparent bg-transparent px-2 py-2.5 text-center transition duration-200 hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]",
+        compact ? "min-h-[9.6rem]" : "min-h-[10.9rem]",
       )}
     >
       <div className="flex items-center justify-center">
-        <div className={cx("relative", compact ? "h-28 w-20" : "h-32 w-[5.75rem]")}>
+        <div className={cx("relative", compact ? "h-24 w-[5.45rem]" : "h-28 w-[6.1rem]")}>
           <div
-            className="absolute left-3 top-2 h-[92%] w-[82%] rounded-[0.85rem] bg-white/90 shadow-[0_8px_14px_rgba(15,23,42,0.16)]"
+            className="absolute left-3 top-2 h-[92%] w-[84%] rounded-[0.85rem] bg-white/90 shadow-[0_8px_14px_rgba(15,23,42,0.16)]"
             aria-hidden="true"
           />
           <div
-            className="absolute left-2 top-1.5 h-[92%] w-[82%] rounded-[0.85rem] border border-slate-900/10 bg-slate-100 shadow-[0_5px_0_rgba(15,23,42,0.08)]"
+            className="absolute left-2 top-1.5 h-[92%] w-[84%] rounded-[0.85rem] border border-slate-900/10 bg-slate-100 shadow-[0_5px_0_rgba(15,23,42,0.08)]"
             aria-hidden="true"
           />
           <div
-            className="absolute inset-y-0 left-0 top-0 h-full w-[82%] rounded-[0.85rem] border border-white/45 shadow-[0_10px_18px_rgba(15,23,42,0.2)] transition duration-200 group-hover/notebook:-rotate-1"
+            className="absolute inset-y-0 left-0 top-0 h-full w-[84%] rounded-[0.85rem] border border-white/45 shadow-[0_10px_18px_rgba(15,23,42,0.2)] transition duration-200 group-hover/notebook:-rotate-1"
             style={{
               background: `linear-gradient(145deg, ${preset.light}, ${preset.base} 52%, ${preset.dark})`,
             }}
@@ -63,7 +63,7 @@ function NotebookCardInner({
               {Array.from({ length: compact ? 5 : 6 }).map((_, index) => (
                 <span
                   key={`${safeColor}-ring-${index}`}
-                  className="block h-2.5 w-3.5 rounded-full border-[1.5px] border-slate-900/55 bg-white/65 shadow-[0_1px_0_rgba(255,255,255,0.5)]"
+                  className="block h-2 w-3.5 rounded-full border-[1.5px] border-slate-900/55 bg-white/65 shadow-[0_1px_0_rgba(255,255,255,0.5)]"
                 />
               ))}
             </div>

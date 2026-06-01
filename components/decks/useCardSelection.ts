@@ -19,7 +19,8 @@ import {
 const LONG_PRESS_MS = 450;
 const MOVE_CANCEL_DISTANCE_PX = 10;
 const INTERACTIVE_SELECTOR =
-  "button,input,textarea,select,a,[contenteditable='true'],[data-card-selection-ignore='true']";
+  "button,input,textarea,select,a,label,[contenteditable='true'],[data-card-selection-ignore='true']";
+const SWIPE_SELECTING_BODY_CLASS = "jami-card-swipe-selecting";
 
 type LongPressState = {
   timerId: number | null;
@@ -47,6 +48,14 @@ function getCardIdFromPoint(clientX: number, clientY: number) {
     ? element.closest<HTMLElement>("[data-card-id]")
     : null;
   return cardElement?.dataset.cardId ?? null;
+}
+
+function setSwipeSelectionLock(enabled: boolean) {
+  if (typeof document === "undefined") return;
+  document.body.classList.toggle(SWIPE_SELECTING_BODY_CLASS, enabled);
+  if (enabled) {
+    window.getSelection?.()?.removeAllRanges();
+  }
 }
 
 export function useCardSelection({
@@ -77,6 +86,7 @@ export function useCardSelection({
 
   const stopLongPressSelection = useCallback(() => {
     clearLongPressTimer();
+    setSwipeSelectionLock(false);
     longPressRef.current.pointerId = null;
     longPressRef.current.active = false;
     touchedDuringLongPressRef.current.clear();
@@ -89,6 +99,7 @@ export function useCardSelection({
       window.removeEventListener("pointerup", stopLongPressSelection);
       window.removeEventListener("pointercancel", stopLongPressSelection);
       clearLongPressTimer();
+      setSwipeSelectionLock(false);
     };
   }, [clearLongPressTimer, stopLongPressSelection]);
 
@@ -114,7 +125,6 @@ export function useCardSelection({
   const handleCheckboxClick = useCallback(
     (cardId: string, event: MouseEvent<HTMLInputElement>) => {
       if (disabled) return;
-      event.preventDefault();
 
       if (event.shiftKey) {
         setSelectedCardIds((prev) =>
@@ -125,8 +135,9 @@ export function useCardSelection({
       }
 
       rangeAnchorIdRef.current = cardId;
+      stopLongPressSelection();
     },
-    [disabled, setSelectedCardIds, visibleCardIds]
+    [disabled, setSelectedCardIds, stopLongPressSelection, visibleCardIds]
   );
 
   const handleLongPressPointerMove = useCallback(
@@ -141,6 +152,9 @@ export function useCardSelection({
         }
         return;
       }
+
+      event.preventDefault();
+      window.getSelection?.()?.removeAllRanges();
 
       const cardId = getCardIdFromPoint(event.clientX, event.clientY);
       if (cardId && !touchedDuringLongPressRef.current.has(cardId)) {
@@ -165,6 +179,7 @@ export function useCardSelection({
         touchedDuringLongPressRef.current.clear();
         longPressRef.current = {
           timerId: window.setTimeout(() => {
+            setSwipeSelectionLock(true);
             longPressRef.current.active = true;
             selectCardOnly(cardId);
           }, LONG_PRESS_MS),
@@ -174,6 +189,7 @@ export function useCardSelection({
           active: false,
         };
         event.currentTarget.setPointerCapture?.(event.pointerId);
+        window.getSelection?.()?.removeAllRanges();
       },
       onPointerMove: handleLongPressPointerMove,
       onPointerUp: stopLongPressSelection,

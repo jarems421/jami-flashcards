@@ -409,6 +409,12 @@
     background: rgba(183, 124, 255, 0.28);
     color: #fff7ff;
   }
+
+  body.jami-card-swipe-selecting,
+  body.jami-card-swipe-selecting * {
+    -webkit-user-select: none !important;
+    user-select: none !important;
+  }
 }
 
 @layer utilities {
@@ -568,8 +574,18 @@
   }
 
   .study-flashcard-face {
+    --color-text-primary: #fff8ff;
+    --color-text-secondary: #dce5f7;
+    --color-text-muted: #aeb9d0;
     border: 1.5px solid rgba(255, 255, 255, 0.1);
+    color: var(--color-text-primary);
     box-shadow: 0 18px 44px rgba(8, 2, 26, 0.24);
+  }
+
+  .study-flashcard-face .text-white,
+  .study-flashcard-face [class*="text-white/"],
+  .study-flashcard-face .text-black {
+    color: var(--color-text-primary) !important;
   }
 
   .study-flashcard-face-front {
@@ -603,6 +619,12 @@
 
   body.app-theme-paper-white [class*="bg-white/"] {
     background-color: var(--color-glass-medium) !important;
+  }
+
+  body.app-theme-paper-white [class*="bg-white/"][class*="text-white"],
+  body.app-theme-paper-white [class*="bg-white/"] .text-white,
+  body.app-theme-paper-white [class*="bg-white/"] [class*="text-white/"] {
+    color: var(--color-text-primary) !important;
   }
 
   body.app-theme-paper-white [class*="hover:bg-white/"]:hover {
@@ -640,6 +662,17 @@
   body.app-theme-purple .text-warm-accent,
   body.app-theme-purple-pink .text-warm-accent {
     color: var(--color-text-secondary) !important;
+  }
+
+  body.app-theme-purple [class*="bg-accent/"][class*="text-accent"],
+  body.app-theme-purple [class*="bg-accent/"] .text-accent,
+  body.app-theme-purple-pink [class*="bg-accent/"][class*="text-accent"],
+  body.app-theme-purple-pink [class*="bg-accent/"] .text-accent,
+  body.app-theme-purple [class*="bg-warm-glow"][class*="text-warm-accent"],
+  body.app-theme-purple [class*="bg-warm-glow"] .text-warm-accent,
+  body.app-theme-purple-pink [class*="bg-warm-glow"][class*="text-warm-accent"],
+  body.app-theme-purple-pink [class*="bg-warm-glow"] .text-warm-accent {
+    color: var(--color-selected-text) !important;
   }
 
   body.app-theme-paper-white [class*="bg-black/"] {

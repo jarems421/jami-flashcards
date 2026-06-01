@@ -55,5 +55,22 @@ describe("theme colour hygiene", () => {
     expect(globals).toContain('body [class*="bg-warm-glow"] .text-warm-accent');
     expect(globals).toContain('body [class*="bg-error-muted"] [class*="text-rose"]');
     expect(globals).toContain('body [class*="bg-success-muted"] [class*="text-emerald"]');
+    expect(globals).toContain('body.app-theme-paper-white [class*="bg-white/"][class*="text-white"]');
+    expect(globals).toContain('body.app-theme-paper-white [class*="bg-accent"].text-white');
+    expect(globals).toContain(".study-flashcard-face {");
+    expect(globals).toContain("--color-text-primary: #fff8ff;");
+  });
+
+  it("keeps named contrast regressions on semantic controls", () => {
+    const home = readFileSync(join(root, "app/page.tsx"), "utf8");
+    const constellation = readFileSync(join(root, "app/dashboard/constellation/page.tsx"), "utf8");
+    const button = readFileSync(join(root, "components/ui/Button.tsx"), "utf8");
+
+    expect(home).toContain('variant="primary"');
+    expect(home).toContain("Continue with Google");
+    expect(constellation).toContain("app-field mt-1 w-full truncate");
+    expect(constellation).toContain("Use background");
+    expect(button).not.toContain("disabled:opacity-50");
+    expect(button).toContain("disabled:saturate-[0.72]");
   });
 });

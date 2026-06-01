@@ -494,14 +494,12 @@ export default function ConstellationDashboardPage() {
                     onChange={(event) =>
                       setSelectedConstellationId(event.target.value)
                     }
-                    className="mt-1 w-full appearance-none truncate rounded-2xl border border-border bg-surface-panel py-3 pl-4 pr-8 text-sm font-medium normal-case tracking-normal text-white bg-[length:1rem] bg-[position:right_0.6rem_center] bg-no-repeat"
-                    style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}
+                    className="app-field mt-1 w-full truncate rounded-2xl py-3 pl-4 pr-8 text-sm font-medium normal-case tracking-normal"
                   >
                     {constellations.map((constellation) => (
                       <option
                         key={constellation.id}
                         value={constellation.id}
-                        className="text-black"
                       >
                         {constellation.name}
                       </option>
@@ -684,17 +682,15 @@ export default function ConstellationDashboardPage() {
                       setBackgroundConstellationId(nextId);
                       setConstellationBackgroundConstellationId(nextId);
                     }}
-                    className="mt-1 w-full appearance-none truncate rounded-[1.7rem] border border-border bg-surface-panel py-3 pl-4 pr-8 text-sm font-medium normal-case tracking-normal text-white bg-[length:1rem] bg-[position:right_0.6rem_center] bg-no-repeat"
-                    style={{ backgroundImage: "url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E\")" }}
+                    className="app-field mt-1 w-full truncate rounded-[1.7rem] py-3 pl-4 pr-8 text-sm font-medium normal-case tracking-normal"
                   >
-                    <option value="" className="text-black">
+                    <option value="">
                       Active or latest
                     </option>
                     {constellations.map((constellation) => (
                       <option
                         key={constellation.id}
                         value={constellation.id}
-                        className="text-black"
                       >
                         {constellation.name}
                       </option>
