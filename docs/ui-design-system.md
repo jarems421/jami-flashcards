@@ -106,7 +106,10 @@ Notebooks are the main working surface for serious problem solving.
 Notebooks are the future main answer surface.
 
 - Use Notebook or Working Page, not Scratchpad, for persistent work.
-- V1 should be humble: pages, typed content, a simple drawing canvas, save/reload, and page navigation.
+- The editor should feel immersive: one active page, a compact icon-first toolbar, optional page/AI drawers, and minimal explanatory copy.
+- Page colours are notebook defaults and should be white or black only. New pages inherit the notebook default.
+- Text, pen, eraser, undo, clear, pages, settings, save, and AI controls should be icon buttons with accessible labels/tooltips, not word-heavy toolbar buttons.
+- The page should be long and paper-like. Finger swipes navigate pages on touch devices while stylus/mouse input writes.
 - Notebook object cards should show the notebook object, title, and at most one tiny metadata line. Keep custom cover colours/icons, but avoid bulky dashboard metadata.
 - Do not imply OCR, handwriting recognition, PDF annotation, or AI screen watching.
 - AI will later live as an on-demand drawer/dropdown inside notebooks, papers, and notebook-based question sets.

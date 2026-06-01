@@ -29,7 +29,7 @@ import { getDeckHref, getDeckStudyRouteHref } from "@/lib/app/routes";
 import { useUser } from "@/lib/auth/user-context";
 import type { Source, SourceType } from "@/lib/practice/sources";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
-import type { Notebook } from "@/lib/workspace/notebooks";
+import type { Notebook, NotebookPageColor } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
 import { archiveStudyFolder, getStudyFolderById, updateStudyFolder } from "@/services/study/folders";
@@ -74,6 +74,7 @@ export default function FolderDetailPage() {
   const [notebookTemplate, setNotebookTemplate] = useState<NotebookTemplate>("blank");
   const [notebookColor, setNotebookColor] = useState<ObjectColorId>("violet");
   const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
+  const [notebookPageColor, setNotebookPageColor] = useState<NotebookPageColor>("white");
   const [notebookFile, setNotebookFile] = useState<File | null>(null);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
   const [activeTab, setActiveTab] = useState<FolderTab>("notebooks");
@@ -445,7 +446,7 @@ export default function FolderDetailPage() {
         topicIds: folder.topicIds,
         color: notebookColor,
         icon: notebookIcon,
-        pageColor: "white",
+        pageColor: notebookPageColor,
       });
       await createNotebookPage(user.uid, {
         notebookId: notebook.id,
@@ -453,7 +454,7 @@ export default function FolderDetailPage() {
         pageNumber: 1,
         pageType: notebookTemplate === "uploaded_file" ? "past_paper_page" : "free_working",
         title: "Page 1",
-        pageColor: "white",
+        pageColor: notebookPageColor,
       });
 
       let uploadedFileId: string | undefined;
@@ -475,7 +476,8 @@ export default function FolderDetailPage() {
       setNotebookTitle("");
       setNotebookTemplate("blank");
       setNotebookColor("violet");
-      setNotebookIcon("book");
+      setNotebookIcon("none");
+      setNotebookPageColor("white");
       setNotebookFile(null);
       setShowNotebookForm(false);
       setFeedback({
@@ -638,18 +640,28 @@ export default function FolderDetailPage() {
                 iconLabel="Cover icon"
               />
             </div>
+            <div className="mt-5">
+              <div className="text-sm font-medium text-text-secondary">Page colour</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(["white", "black"] as NotebookPageColor[]).map((color) => (
+                  <button
+                    key={color}
+                    type="button"
+                    onClick={() => setNotebookPageColor(color)}
+                    className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
+                      notebookPageColor === color ? "app-selected" : "app-chip"
+                    }`}
+                  >
+                    {color}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto] lg:items-end">
               <Input
                 label="Notebook title"
                 value={notebookTitle}
                 onChange={(event) => setNotebookTitle(event.target.value)}
-                placeholder={
-                  notebookTemplate === "uploaded_file"
-                    ? "2024 Biology paper"
-                    : notebookTemplate === "ai_questions"
-                      ? "Biology exam questions"
-                      : "Biology revision notes"
-                }
               />
               <div>
                 <label className="mb-1.5 block text-sm font-medium text-text-secondary">
@@ -674,6 +686,7 @@ export default function FolderDetailPage() {
                     setNotebookTemplate("blank");
                     setNotebookColor("violet");
                     setNotebookIcon("none");
+                    setNotebookPageColor("white");
                     setNotebookFile(null);
                   }}
                 >

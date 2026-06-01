@@ -27,16 +27,28 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 4. Confirm there is no old question bank, topic drill, standalone Add question form, answer field, working field, confidence block, old Tutor attempt panel, or tiny scratchpad side feature.
 5. Confirm no user is forced into an unclosable create-question screen.
 6. Open a Continue working notebook.
-7. Type content into the notebook page and save.
+7. Use the icon toolbar to add a text box on the page and save.
 8. Draw on the page where the full editor is available.
-9. Switch pen colours: black, white, red, green.
+9. Open the pen dropdown and switch ink colours: black, white, red, green.
 10. Switch between Pen and Eraser.
-11. Test Undo and Clear.
-12. Change page colour: white, black, grey.
-13. Add a new page.
-14. Navigate between pages.
+11. Test Undo and Clear; Clear should affect only the current page drawing.
+12. Confirm notebook creation offers only white or black default page colour.
+13. Add a new page and confirm it inherits the notebook default page colour.
+14. Navigate between pages and confirm the bottom-left counter updates.
 15. Save, reload, and confirm typed/stroke/page state survives where persistence is supported.
 16. Confirm the notebook page is the main working surface.
+
+## Phase 7 Notebook Editor V2
+
+1. Open `/dashboard/notebooks/notebook-photosynthesis?agent=1` or any signed-in notebook.
+2. Confirm the editor opens as an immersive notebook workspace rather than a dashboard card stack.
+3. Confirm the toolbar is icon-first with accessible labels/tooltips for Pages, Text, Pen, Eraser, Undo, Clear, Settings, AI, Add Page, and Save.
+4. Confirm the page is long and paper-like, not a short landscape card.
+5. Create and move a text box directly on the page.
+6. Draw with mouse/stylus and confirm strokes save/reload.
+7. On iPad/tablet, draw with stylus and swipe pages with a finger while Pen is active.
+8. Confirm finger swipes do not create ink and stylus strokes do not navigate pages.
+9. Open the AI icon and confirm it is only a placeholder drawer with no AI call.
 
 ## Device Strategy
 

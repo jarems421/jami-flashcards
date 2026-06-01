@@ -28,7 +28,7 @@ export type NotebookStrokeData = {
 
 export type NotebookPenColor = "black" | "white" | "red" | "green";
 export type NotebookStrokeTool = "pen" | "eraser";
-export type NotebookPageColor = "white" | "black" | "grey";
+export type NotebookPageColor = "white" | "black";
 export type NotebookPageStatus = "blank" | "working" | "needs_review" | "marked";
 
 export type NotebookStrokePoint = {
@@ -119,7 +119,7 @@ export const MAX_NOTEBOOK_PAGE_TYPED_CONTENT = 30_000;
 export const MAX_NOTEBOOK_TEXT_BLOCKS = 80;
 export const MAX_NOTEBOOK_TEXT_BLOCK_TEXT = 4_000;
 export const NOTEBOOK_PAGE_COORDINATE_WIDTH = 900;
-export const NOTEBOOK_PAGE_COORDINATE_HEIGHT = 620;
+export const NOTEBOOK_PAGE_COORDINATE_HEIGHT = 1240;
 export const MAX_NOTEBOOK_IMAGE_REFS = 12;
 export const MAX_NOTEBOOK_STROKES = 3_000;
 export const MAX_NOTEBOOK_STROKE_POINTS = 1_200;
@@ -152,7 +152,7 @@ export function isNotebookPageType(value: unknown): value is NotebookPageType {
 }
 
 export function isNotebookPageColor(value: unknown): value is NotebookPageColor {
-  return value === "white" || value === "black" || value === "grey";
+  return value === "white" || value === "black";
 }
 
 export function isNotebookPenColor(value: unknown): value is NotebookPenColor {

@@ -456,9 +456,20 @@ describe("Jami notebook-first learning foundations", () => {
       x: 0,
       y: 0,
       width: 120,
-      height: 620,
+      height: 1240,
       text: "Clamped",
     });
+  });
+
+  it("falls legacy grey notebook page colour back to white", () => {
+    const page = mapNotebookPageData("page-grey", {
+      notebookId: "notebook-1",
+      folderId: "folder-1",
+      pageNumber: 1,
+      pageColor: "grey",
+    });
+
+    expect(page.pageColor).toBe("white");
   });
 
   it("validates notebook file metadata for uploaded-file notebooks without parsing the file", () => {

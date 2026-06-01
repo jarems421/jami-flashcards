@@ -26,7 +26,7 @@ const dashboardRoutes = [
   {
     href: "/dashboard/notebooks/notebook-photosynthesis?agent=1",
     label: "Notebook",
-    purpose: "Open the public notebook editor: typed page, pen tools, page colours, save/reload, and phone warning.",
+    purpose: "Open the notebook editor: icon toolbar, long page, text boxes, pen tools, page swipe, save/reload, and phone warning.",
   },
   {
     href: "/dashboard/progress?agent=1",
@@ -69,7 +69,7 @@ const testFlow = [
   "Open Today and identify the recommended next action.",
   "Go to Learn and flip/review one seeded flashcard.",
   "Go to Practice and confirm Continue working plus Folders are the main entry points.",
-  "Open a notebook, type on a page, save, add a page, and switch pages.",
+  "Open a notebook, create a text box, draw on the long page, save, add a page, and switch pages.",
   "Open a folder and confirm the detail view is tabbed: Notebooks, Decks, Sources.",
   "In the folder Decks tab, confirm only folder decks appear and decks can only be added from existing global decks.",
   "In the folder Sources tab, confirm only folder sources appear, then use Add source/Create source local simulations.",
@@ -83,7 +83,7 @@ const phase6TestFlow = [
   "Open Practice.",
   "Confirm there is no old question bank, Add question form, confidence block, or Practice Tutor attempt panel.",
   "Click a Continue working notebook.",
-  "Type inside the notebook page and save.",
+  "Use the notebook toolbar to create a text box, draw, save, and check the page counter.",
   "Add a page and navigate between pages.",
   "Open a folder and inspect Blank, Uploaded file / paper, and AI-created questions templates.",
   "Confirm uploaded-file copy says file saved only; no OCR, PDF annotation, or automatic reading is claimed.",
