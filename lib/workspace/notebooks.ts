@@ -51,6 +51,15 @@ export type NotebookImageRef = {
   height?: number;
 };
 
+export type NotebookTextBlock = {
+  id: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  text: string;
+};
+
 export type Notebook = {
   id: string;
   folderId: string;
@@ -77,6 +86,7 @@ export type NotebookPage = {
   title?: string;
   pageType: NotebookPageType;
   typedContent?: string;
+  textBlocks: NotebookTextBlock[];
   strokeData?: NotebookStrokeData;
   imageRefs: NotebookImageRef[];
   pageColor: NotebookPageColor;
@@ -106,6 +116,10 @@ export const MAX_NOTEBOOK_TITLE_LENGTH = 140;
 export const MAX_NOTEBOOK_TOPIC_IDS = 30;
 export const MAX_NOTEBOOK_SOURCE_IDS = 30;
 export const MAX_NOTEBOOK_PAGE_TYPED_CONTENT = 30_000;
+export const MAX_NOTEBOOK_TEXT_BLOCKS = 80;
+export const MAX_NOTEBOOK_TEXT_BLOCK_TEXT = 4_000;
+export const NOTEBOOK_PAGE_COORDINATE_WIDTH = 900;
+export const NOTEBOOK_PAGE_COORDINATE_HEIGHT = 620;
 export const MAX_NOTEBOOK_IMAGE_REFS = 12;
 export const MAX_NOTEBOOK_STROKES = 3_000;
 export const MAX_NOTEBOOK_STROKE_POINTS = 1_200;
@@ -234,6 +248,68 @@ function normalizeImageRefs(value: unknown): NotebookImageRef[] {
   return images;
 }
 
+function clampTextBlockNumber(value: unknown, min: number, max: number, fallback: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+function normalizeTextBlock(value: unknown): NotebookTextBlock | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const block = value as Record<string, unknown>;
+  const id = normalizeOptionalString(block.id, 160);
+  const text = normalizeOptionalString(block.text, MAX_NOTEBOOK_TEXT_BLOCK_TEXT);
+  if (!id || !text) return null;
+
+  const width = clampTextBlockNumber(block.width, 120, NOTEBOOK_PAGE_COORDINATE_WIDTH, 320);
+  const height = clampTextBlockNumber(block.height, 48, NOTEBOOK_PAGE_COORDINATE_HEIGHT, 120);
+
+  return {
+    id,
+    x: clampTextBlockNumber(block.x, 0, NOTEBOOK_PAGE_COORDINATE_WIDTH - width, 80),
+    y: clampTextBlockNumber(block.y, 0, NOTEBOOK_PAGE_COORDINATE_HEIGHT - height, 80),
+    width,
+    height,
+    text,
+  };
+}
+
+export function normalizeNotebookTextBlocks(value: unknown): NotebookTextBlock[] {
+  if (!Array.isArray(value)) return [];
+
+  return value
+    .map(normalizeTextBlock)
+    .filter((block): block is NotebookTextBlock => Boolean(block))
+    .slice(0, MAX_NOTEBOOK_TEXT_BLOCKS);
+}
+
+export function createNotebookTextBlocksFromTypedContent(
+  typedContent: string | undefined
+): NotebookTextBlock[] {
+  const text = normalizeOptionalString(typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT);
+  if (!text) return [];
+
+  return [
+    {
+      id: "legacy-typed-content",
+      x: 80,
+      y: 92,
+      width: 520,
+      height: 180,
+      text,
+    },
+  ];
+}
+
+export function buildTypedContentFromTextBlocks(textBlocks: NotebookTextBlock[]) {
+  return normalizeOptionalString(
+    textBlocks
+      .map((block) => block.text.trim())
+      .filter(Boolean)
+      .join("\n\n"),
+    MAX_NOTEBOOK_PAGE_TYPED_CONTENT
+  );
+}
+
 export function mapNotebookData(id: string, data: Record<string, unknown>): Notebook {
   const title = normalizeNotebookTitle(typeof data.title === "string" ? data.title : "");
 
@@ -264,6 +340,8 @@ export function mapNotebookPageData(
     typeof data.pageNumber === "number" && Number.isFinite(data.pageNumber)
       ? Math.max(1, Math.round(data.pageNumber))
       : 1;
+  const typedContent = normalizeOptionalString(data.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT);
+  const textBlocks = normalizeNotebookTextBlocks(data.textBlocks);
 
   return {
     id,
@@ -272,7 +350,8 @@ export function mapNotebookPageData(
     pageNumber,
     title: normalizeOptionalString(data.title, 120),
     pageType: isNotebookPageType(data.pageType) ? data.pageType : "blank",
-    typedContent: normalizeOptionalString(data.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT),
+    typedContent,
+    textBlocks: textBlocks.length > 0 ? textBlocks : createNotebookTextBlocksFromTypedContent(typedContent),
     strokeData: normalizeStrokeData(data.strokeData),
     imageRefs: normalizeImageRefs(data.imageRefs),
     pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
@@ -336,6 +415,7 @@ export function buildNotebookPagePayload(input: {
   title?: string;
   pageType?: NotebookPageType;
   typedContent?: string;
+  textBlocks?: NotebookTextBlock[];
   strokeData?: NotebookStrokeData;
   imageRefs?: NotebookImageRef[];
   pageColor?: NotebookPageColor;
@@ -360,14 +440,19 @@ export function buildNotebookPagePayload(input: {
 
   const now = input.now ?? Date.now();
 
+  const textBlocks = normalizeNotebookTextBlocks(input.textBlocks);
+  const typedContent =
+    buildTypedContentFromTextBlocks(textBlocks) ??
+    normalizeOptionalString(input.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT);
+
   return {
     notebookId,
     folderId,
     pageNumber: Math.round(input.pageNumber),
     title: normalizeOptionalString(input.title, 120) ?? null,
     pageType: input.pageType ?? "blank",
-    typedContent:
-      normalizeOptionalString(input.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT) ?? null,
+    typedContent: typedContent ?? null,
+    textBlocks,
     strokeData: input.strokeData
       ? {
           version: input.strokeData.version,

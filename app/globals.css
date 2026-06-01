@@ -415,9 +415,24 @@
     -webkit-user-select: none !important;
     user-select: none !important;
   }
+
+  body.jami-inking-active,
+  body.jami-inking-active * {
+    -webkit-touch-callout: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+  }
 }
 
 @layer utilities {
+  .notebook-ink-surface {
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    overscroll-behavior: contain;
+    touch-action: none;
+    user-select: none;
+  }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;

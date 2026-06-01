@@ -6,6 +6,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -25,7 +26,6 @@ import {
   Input,
   SectionHeader,
   Skeleton,
-  Textarea,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
 import type {
@@ -36,7 +36,15 @@ import type {
   NotebookPageStatus,
   NotebookPenColor,
   NotebookStrokeTool,
+  NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
+import { buildTypedContentFromTextBlocks } from "@/lib/workspace/notebooks";
+import {
+  appendInkPoints,
+  finalizeInkStroke,
+  getPointerClientSamples,
+  mapClientPointToNotebookPage,
+} from "@/lib/workspace/notebook-inking";
 import {
   createNotebookPage,
   getNotebookById,
@@ -55,12 +63,26 @@ type Stroke = {
   tool: NotebookStrokeTool;
 };
 type SaveStatus = "saved" | "unsaved" | "saving";
+type EditorTool = NotebookStrokeTool | "text";
+type TextBlockDragState = {
+  id: string;
+  startX: number;
+  startY: number;
+  originX: number;
+  originY: number;
+  pageWidth: number;
+  pageHeight: number;
+};
+type ActiveStrokeState = {
+  pointerId: number;
+  stroke: Stroke;
+};
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 620;
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "bg-[#f8fafc] text-slate-950",
-  black: "bg-[#080a10] text-white",
+  black: "bg-[#080a10] text-[#f8fafc]",
   grey: "bg-[#d8dde6] text-slate-950",
 };
 const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
@@ -73,6 +95,11 @@ const PEN_COLOR_HEX: Record<NotebookPenColor, string> = {
   white: "#f8fafc",
   red: "#ef4444",
   green: "#22c55e",
+};
+const TEXT_COLOR_CLASS: Record<NotebookPageColor, string> = {
+  white: "text-slate-950 placeholder:text-slate-400",
+  black: "text-[#f8fafc] placeholder:text-slate-500",
+  grey: "text-slate-950 placeholder:text-slate-500",
 };
 
 function isPoint(value: unknown): value is Point {
@@ -113,21 +140,94 @@ function normalizeStrokes(value: unknown): Stroke[] {
   return strokes;
 }
 
-function makePath(points: Point[]) {
-  if (points.length === 0) return "";
-  const [firstPoint, ...remainingPoints] = points;
-  return [
-    `M ${firstPoint.x.toFixed(1)} ${firstPoint.y.toFixed(1)}`,
-    ...remainingPoints.map((point) => `L ${point.x.toFixed(1)} ${point.y.toFixed(1)}`),
-  ].join(" ");
+function makeTextBlockId() {
+  return `text-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
 
-function getPointFromPointer(event: ReactPointerEvent<SVGSVGElement>): Point {
-  const rect = event.currentTarget.getBoundingClientRect();
+function clampTextBlock(block: NotebookTextBlock): NotebookTextBlock {
+  const width = Math.max(120, Math.min(CANVAS_WIDTH, Math.round(block.width)));
+  const height = Math.max(48, Math.min(CANVAS_HEIGHT, Math.round(block.height)));
   return {
-    x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
-    y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
+    ...block,
+    width,
+    height,
+    x: Math.max(0, Math.min(CANVAS_WIDTH - width, Math.round(block.x))),
+    y: Math.max(0, Math.min(CANVAS_HEIGHT - height, Math.round(block.y))),
   };
+}
+
+function strokePaintColor(stroke: Stroke, pageColor: NotebookPageColor) {
+  return stroke.tool === "eraser" ? PAGE_COLOR_HEX[pageColor] : PEN_COLOR_HEX[stroke.color];
+}
+
+function drawStrokePath(
+  context: CanvasRenderingContext2D,
+  stroke: Stroke,
+  pageColor: NotebookPageColor
+) {
+  if (stroke.points.length === 0) return;
+
+  context.save();
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.strokeStyle = strokePaintColor(stroke, pageColor);
+  context.fillStyle = strokePaintColor(stroke, pageColor);
+  context.lineWidth = stroke.width;
+
+  if (stroke.points.length === 1) {
+    const [point] = stroke.points;
+    context.beginPath();
+    context.arc(point.x, point.y, Math.max(1, stroke.width / 2), 0, Math.PI * 2);
+    context.fill();
+    context.restore();
+    return;
+  }
+
+  const [firstPoint] = stroke.points;
+  context.beginPath();
+  context.moveTo(firstPoint.x, firstPoint.y);
+
+  for (let index = 1; index < stroke.points.length - 1; index += 1) {
+    const currentPoint = stroke.points[index];
+    const nextPoint = stroke.points[index + 1];
+    context.quadraticCurveTo(
+      currentPoint.x,
+      currentPoint.y,
+      (currentPoint.x + nextPoint.x) / 2,
+      (currentPoint.y + nextPoint.y) / 2
+    );
+  }
+
+  const lastPoint = stroke.points[stroke.points.length - 1];
+  context.lineTo(lastPoint.x, lastPoint.y);
+  context.stroke();
+  context.restore();
+}
+
+function drawNotebookCanvas(input: {
+  canvas: HTMLCanvasElement;
+  strokes: Stroke[];
+  activeStroke: Stroke | null;
+  pageColor: NotebookPageColor;
+}) {
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  const width = Math.round(CANVAS_WIDTH * pixelRatio);
+  const height = Math.round(CANVAS_HEIGHT * pixelRatio);
+
+  if (input.canvas.width !== width) input.canvas.width = width;
+  if (input.canvas.height !== height) input.canvas.height = height;
+
+  const context = input.canvas.getContext("2d");
+  if (!context) return;
+
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  context.clearRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+  for (const stroke of input.strokes) {
+    drawStrokePath(context, stroke, input.pageColor);
+  }
+  if (input.activeStroke) {
+    drawStrokePath(context, input.activeStroke, input.pageColor);
+  }
 }
 
 export default function NotebookEditorPage() {
@@ -140,13 +240,13 @@ export default function NotebookEditorPage() {
   const [pages, setPages] = useState<NotebookPage[]>([]);
   const [files, setFiles] = useState<NotebookFile[]>([]);
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
-  const [typedContent, setTypedContent] = useState("");
+  const [textBlocks, setTextBlocks] = useState<NotebookTextBlock[]>([]);
+  const [selectedTextBlockId, setSelectedTextBlockId] = useState<string | null>(null);
   const [strokes, setStrokes] = useState<Stroke[]>([]);
   const [pageColor, setPageColor] = useState<NotebookPageColor>("white");
   const [penColor, setPenColor] = useState<NotebookPenColor>("black");
-  const [tool, setTool] = useState<NotebookStrokeTool>("pen");
+  const [tool, setTool] = useState<EditorTool>("pen");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
-  const [drawing, setDrawing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [addingPage, setAddingPage] = useState(false);
@@ -158,11 +258,72 @@ export default function NotebookEditorPage() {
   const [notebookColor, setNotebookColor] = useState<ObjectColorId>("sky");
   const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
   const [savingNotebookSettings, setSavingNotebookSettings] = useState(false);
+  const [aiPlaceholderOpen, setAiPlaceholderOpen] = useState(false);
+  const textBlockDragRef = useRef<TextBlockDragState | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const activeStrokeRef = useRef<ActiveStrokeState | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const strokesRef = useRef<Stroke[]>([]);
+  const pageColorRef = useRef<NotebookPageColor>("white");
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
 
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
     [pages, selectedPageId]
+  );
+
+  const renderCanvasNow = useCallback(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    drawNotebookCanvas({
+      canvas,
+      strokes: strokesRef.current,
+      activeStroke: activeStrokeRef.current?.stroke ?? null,
+      pageColor: pageColorRef.current,
+    });
+  }, []);
+
+  const scheduleCanvasRender = useCallback(() => {
+    if (animationFrameRef.current !== null) return;
+    animationFrameRef.current = window.requestAnimationFrame(() => {
+      animationFrameRef.current = null;
+      renderCanvasNow();
+    });
+  }, [renderCanvasNow]);
+
+  const finishActiveStroke = useCallback(
+    (options?: { pointerId?: number; canvas?: HTMLCanvasElement | null }) => {
+      const activeStroke = activeStrokeRef.current;
+      if (!activeStroke) {
+        document.body.classList.remove("jami-inking-active");
+        return;
+      }
+      if (options?.pointerId !== undefined && options.pointerId !== activeStroke.pointerId) {
+        return;
+      }
+
+      if (
+        options?.canvas &&
+        options.pointerId !== undefined &&
+        options.canvas.hasPointerCapture(options.pointerId)
+      ) {
+        options.canvas.releasePointerCapture(options.pointerId);
+      }
+
+      const finalizedStroke = finalizeInkStroke(activeStroke.stroke);
+      activeStrokeRef.current = null;
+      document.body.classList.remove("jami-inking-active");
+
+      if (finalizedStroke) {
+        setStrokes((current) => {
+          const next = [...current, finalizedStroke];
+          strokesRef.current = next;
+          return next;
+        });
+      }
+      scheduleCanvasRender();
+    },
+    [scheduleCanvasRender]
   );
 
   const loadNotebook = useCallback(async () => {
@@ -233,66 +394,220 @@ export default function NotebookEditorPage() {
 
   useEffect(() => {
     if (!selectedPage) {
-      setTypedContent("");
+      setTextBlocks([]);
+      setSelectedTextBlockId(null);
       setStrokes([]);
+      strokesRef.current = [];
+      activeStrokeRef.current = null;
       return;
     }
 
-    setTypedContent(selectedPage.typedContent ?? "");
-    setStrokes(normalizeStrokes(selectedPage.strokeData?.strokes));
+    const nextStrokes = normalizeStrokes(selectedPage.strokeData?.strokes);
+    setTextBlocks(selectedPage.textBlocks);
+    setSelectedTextBlockId(null);
+    setStrokes(nextStrokes);
+    strokesRef.current = nextStrokes;
+    activeStrokeRef.current = null;
     setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
     setSaveStatus("saved");
   }, [notebook?.pageColor, selectedPage]);
 
-  const handleStartDrawing = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!fullNotebookEditingEnabled) return;
-    event.currentTarget.setPointerCapture(event.pointerId);
-    const point = getPointFromPointer(event);
-    setDrawing(true);
-    setSaveStatus("unsaved");
-    setStrokes((current) => [
-      ...current,
-      {
-        points: [point],
+  useEffect(() => {
+    strokesRef.current = strokes;
+    scheduleCanvasRender();
+  }, [scheduleCanvasRender, strokes]);
+
+  useEffect(() => {
+    pageColorRef.current = pageColor;
+    scheduleCanvasRender();
+  }, [pageColor, scheduleCanvasRender]);
+
+  useEffect(() => {
+    const handleBlur = () => finishActiveStroke();
+    window.addEventListener("blur", handleBlur);
+    return () => {
+      window.removeEventListener("blur", handleBlur);
+      if (animationFrameRef.current !== null) {
+        window.cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      document.body.classList.remove("jami-inking-active");
+    };
+  }, [finishActiveStroke]);
+
+  const getNotebookPointsFromEvent = (
+    event: ReactPointerEvent<HTMLCanvasElement>
+  ): Point[] => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    return getPointerClientSamples(event.nativeEvent).map((sample) =>
+      mapClientPointToNotebookPage({
+        clientX: sample.clientX,
+        clientY: sample.clientY,
+        rect,
+        width: CANVAS_WIDTH,
+        height: CANVAS_HEIGHT,
+      })
+    );
+  };
+
+  const handleStartDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!fullNotebookEditingEnabled || tool === "text") return;
+    event.preventDefault();
+    event.stopPropagation();
+    finishActiveStroke();
+
+    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+
+    const points = getNotebookPointsFromEvent(event);
+    activeStrokeRef.current = {
+      pointerId: event.pointerId,
+      stroke: {
+        points: appendInkPoints([], points, 1_200),
         color: tool === "eraser" ? "white" : penColor,
         tool,
         width: tool === "eraser" ? 20 : 5,
       },
-    ]);
+    };
+    document.body.classList.add("jami-inking-active");
+    setSaveStatus("unsaved");
+    scheduleCanvasRender();
   };
 
-  const handleDraw = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (!drawing || !fullNotebookEditingEnabled) return;
-    const point = getPointFromPointer(event);
-    setStrokes((current) => {
-      if (current.length === 0) return current;
-      const next = [...current];
-      const lastStroke = next[next.length - 1];
-      next[next.length - 1] = {
-        ...lastStroke,
-        points: [...lastStroke.points, point].slice(0, 1_200),
-      };
-      return next;
+  const handleDraw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    const activeStroke = activeStrokeRef.current;
+    if (
+      !activeStroke ||
+      activeStroke.pointerId !== event.pointerId ||
+      !fullNotebookEditingEnabled ||
+      tool === "text"
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    activeStroke.stroke = {
+      ...activeStroke.stroke,
+      points: appendInkPoints(
+        activeStroke.stroke.points,
+        getNotebookPointsFromEvent(event),
+        1_200
+      ),
+    };
+    scheduleCanvasRender();
+  };
+
+  const handleStopDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    event.preventDefault();
+    finishActiveStroke({ pointerId: event.pointerId, canvas: event.currentTarget });
+  };
+
+  const handlePagePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (!fullNotebookEditingEnabled) return;
+    if (tool !== "text") {
+      handleStartDrawing(event);
+      return;
+    }
+
+    event.preventDefault();
+    const [point] = getNotebookPointsFromEvent(event);
+    if (!point) return;
+    const block = clampTextBlock({
+      id: makeTextBlockId(),
+      x: point.x - 120,
+      y: point.y - 36,
+      width: 300,
+      height: 96,
+      text: "",
+    });
+    setTextBlocks((current) => [...current, block]);
+    setSelectedTextBlockId(block.id);
+    setSaveStatus("unsaved");
+  };
+
+  const updateTextBlock = (blockId: string, updates: Partial<NotebookTextBlock>) => {
+    setTextBlocks((current) =>
+      current.map((block) =>
+        block.id === blockId ? clampTextBlock({ ...block, ...updates }) : block
+      )
+    );
+    setSaveStatus("unsaved");
+  };
+
+  const deleteTextBlock = (blockId: string) => {
+    setTextBlocks((current) => current.filter((block) => block.id !== blockId));
+    setSelectedTextBlockId((current) => (current === blockId ? null : current));
+    setSaveStatus("unsaved");
+  };
+
+  const startTextBlockDrag = (
+    block: NotebookTextBlock,
+    event: ReactPointerEvent<HTMLButtonElement>
+  ) => {
+    if (!fullNotebookEditingEnabled) return;
+    const pageElement = event.currentTarget.closest<HTMLElement>("[data-notebook-page-surface]");
+    if (!pageElement) return;
+    const rect = pageElement.getBoundingClientRect();
+    textBlockDragRef.current = {
+      id: block.id,
+      startX: event.clientX,
+      startY: event.clientY,
+      originX: block.x,
+      originY: block.y,
+      pageWidth: rect.width,
+      pageHeight: rect.height,
+    };
+    setSelectedTextBlockId(block.id);
+    event.currentTarget.setPointerCapture(event.pointerId);
+    event.preventDefault();
+  };
+
+  const dragTextBlock = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    const drag = textBlockDragRef.current;
+    if (!drag) return;
+    const dx = ((event.clientX - drag.startX) / drag.pageWidth) * CANVAS_WIDTH;
+    const dy = ((event.clientY - drag.startY) / drag.pageHeight) * CANVAS_HEIGHT;
+    updateTextBlock(drag.id, {
+      x: drag.originX + dx,
+      y: drag.originY + dy,
     });
   };
 
-  const handleStopDrawing = (event: ReactPointerEvent<SVGSVGElement>) => {
-    if (drawing && event.currentTarget.hasPointerCapture(event.pointerId)) {
+  const stopTextBlockDrag = (event: ReactPointerEvent<HTMLButtonElement>) => {
+    if (textBlockDragRef.current && event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
-    setDrawing(false);
+    textBlockDragRef.current = null;
   };
 
   const handleSavePage = async () => {
     if (!user?.uid || !selectedPage) return;
+    let currentStrokes = strokesRef.current;
+    const activeStroke = activeStrokeRef.current;
+    if (activeStroke) {
+      const finalizedStroke = finalizeInkStroke(activeStroke.stroke);
+      activeStrokeRef.current = null;
+      document.body.classList.remove("jami-inking-active");
+      if (finalizedStroke) {
+        currentStrokes = [...currentStrokes, finalizedStroke];
+        strokesRef.current = currentStrokes;
+        setStrokes(currentStrokes);
+      }
+      scheduleCanvasRender();
+    }
     setSaveStatus("saving");
     setSaving(true);
     try {
+      const cleanedTextBlocks = textBlocks.filter((block) => block.text.trim());
+      const typedContent = buildTypedContentFromTextBlocks(cleanedTextBlocks) ?? "";
       const status: NotebookPageStatus =
-        typedContent.trim() || strokes.length > 0 ? "working" : "blank";
+        typedContent.trim() || currentStrokes.length > 0 ? "working" : "blank";
       await updateNotebookPage(user.uid, selectedPage.id, {
         typedContent,
-        strokeData: { version: 1, strokes },
+        textBlocks: cleanedTextBlocks,
+        strokeData: { version: 1, strokes: currentStrokes },
         pageColor,
         status,
       });
@@ -302,7 +617,8 @@ export default function NotebookEditorPage() {
             ? {
                 ...page,
                 typedContent: typedContent.trim() || undefined,
-                strokeData: { version: 1, strokes },
+                textBlocks: cleanedTextBlocks,
+                strokeData: { version: 1, strokes: currentStrokes },
                 pageColor,
                 status,
                 updatedAt: Date.now(),
@@ -310,6 +626,7 @@ export default function NotebookEditorPage() {
             : page
         )
       );
+      setTextBlocks(cleanedTextBlocks);
       setSaveStatus("saved");
       setFeedback({ type: "success", message: "Notebook page saved." });
     } catch (error) {
@@ -448,13 +765,82 @@ export default function NotebookEditorPage() {
       title={notebook.title}
       backHref={`/dashboard/folders/${notebook.folderId}`}
       backLabel="Folder"
-      width="3xl"
+      width="study"
       action={
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={openNotebookSettings}>
-            Edit notebook
+        <div className="flex max-w-full flex-wrap items-center justify-end gap-1.5">
+          <span className="app-chip inline-flex min-h-[2.25rem] items-center rounded-full px-3 text-xs font-semibold">
+            {saveStatus === "saving" ? "Saving..." : saveStatus === "unsaved" ? "Unsaved" : "Saved"}
+          </span>
+          <Button type="button" size="sm" variant="secondary" onClick={openNotebookSettings}>
+            Settings
           </Button>
-          <Button type="button" disabled={saving || !selectedPage} onClick={() => void handleSavePage()}>
+          <Button
+            type="button"
+            size="sm"
+            variant={tool === "text" ? "primary" : "secondary"}
+            disabled={!fullNotebookEditingEnabled}
+            onClick={() => setTool("text")}
+          >
+            Text
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={tool === "pen" ? "primary" : "secondary"}
+            disabled={!fullNotebookEditingEnabled}
+            onClick={() => setTool("pen")}
+          >
+            Pen
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={tool === "eraser" ? "primary" : "secondary"}
+            disabled={!fullNotebookEditingEnabled}
+            onClick={() => setTool("eraser")}
+          >
+            Eraser
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={!fullNotebookEditingEnabled || strokes.length === 0}
+            onClick={() => {
+              setStrokes((current) => {
+                const next = current.slice(0, -1);
+                strokesRef.current = next;
+                return next;
+              });
+              setSaveStatus("unsaved");
+            }}
+          >
+            Undo
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            disabled={!fullNotebookEditingEnabled || strokes.length === 0}
+            onClick={() => {
+              activeStrokeRef.current = null;
+              strokesRef.current = [];
+              setStrokes([]);
+              setSaveStatus("unsaved");
+              scheduleCanvasRender();
+            }}
+          >
+            Clear
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant={aiPlaceholderOpen ? "primary" : "secondary"}
+            onClick={() => setAiPlaceholderOpen((value) => !value)}
+          >
+            AI
+          </Button>
+          <Button type="button" size="sm" disabled={saving || !selectedPage} onClick={() => void handleSavePage()}>
             {saving ? "Saving..." : saveStatus === "unsaved" ? "Save changes" : "Saved"}
           </Button>
         </div>
@@ -517,16 +903,20 @@ export default function NotebookEditorPage() {
         ) : null}
 
         {isPhoneLayout ? (
-          <Card tone="warm" padding="md">
-            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <SectionHeader
-                eyebrow="Notebook device mode"
-                title="Notebook editing works best on iPad or desktop."
-                description="You can view pages and add light typed notes here. Pen drawing, page creation, and longer workings are designed for a larger screen."
-              />
+          <Card tone="warm" padding="sm">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-text-primary">
+                  Notebook editing works best on iPad or desktop.
+                </div>
+                <p className="mt-1 text-sm text-text-secondary">
+                  View pages and edit text here, or continue anyway for full controls.
+                </p>
+              </div>
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
+                  size="sm"
                   variant={phoneFullEditing ? "secondary" : "primary"}
                   onClick={() => setPhoneFullEditing((value) => !value)}
                 >
@@ -543,66 +933,32 @@ export default function NotebookEditorPage() {
           </Card>
         ) : null}
 
-        <Card padding="md">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <SectionHeader
-              eyebrow="Notebook workspace"
-              title={notebook.title}
-              description="This is the answer surface: type, write, add pages, and save your working here."
-            />
-            {fullNotebookEditingEnabled ? (
-              <div className="flex flex-wrap gap-2">
-                <span className="inline-flex min-h-[2.5rem] items-center rounded-full border border-white/[0.1] bg-white/[0.045] px-3 text-xs font-semibold text-text-secondary">
-                  {saveStatus === "saving" ? "Saving..." : saveStatus === "unsaved" ? "Unsaved changes" : "Saved just now"}
-                </span>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={addingPage}
-                  onClick={() => void handleAddPage()}
-                >
-                  {addingPage ? "Adding..." : "New page"}
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={strokes.length === 0}
-                  onClick={() => {
-                    setStrokes((current) => current.slice(0, -1));
-                    setSaveStatus("unsaved");
-                  }}
-                >
-                  Undo stroke
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={strokes.length === 0}
-                  onClick={() => {
-                    setStrokes([]);
-                    setSaveStatus("unsaved");
-                  }}
-                >
-                  Clear drawing
-                </Button>
-              </div>
-            ) : (
-              <div className="rounded-2xl border border-white/[0.09] bg-white/[0.035] px-4 py-3 text-sm leading-6 text-text-secondary">
-                Phone light mode keeps page viewing and typed notes visible. Use Continue anyway for page
-                creation and pen controls.
-              </div>
-            )}
-          </div>
-        </Card>
+        {aiPlaceholderOpen ? (
+          <Card padding="sm" className="ml-auto max-w-md">
+            <div className="text-sm font-semibold text-text-primary">Jami Tutor will live here later.</div>
+            <p className="mt-1 text-sm text-text-secondary">
+              This placeholder marks the notebook AI drawer placement. It does not read or send page content yet.
+            </p>
+          </Card>
+        ) : null}
 
-        <div className="grid gap-4 xl:grid-cols-[18rem_minmax(0,1fr)]">
-          <Card padding="md" className="xl:sticky xl:top-24 xl:self-start">
-            <SectionHeader
-              eyebrow="Pages"
-              title={`${pages.length} page${pages.length === 1 ? "" : "s"}`}
-              description="Add pages as your working grows. This stays tied to the folder."
-            />
-            <div className="mt-4 space-y-2">
+        <div className="grid gap-4 xl:grid-cols-[12.5rem_minmax(0,1fr)]">
+          <aside className="app-subtle-panel rounded-[1.35rem] p-2 xl:sticky xl:top-24 xl:self-start">
+            <div className="flex items-center justify-between gap-2 px-1 pb-2">
+              <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                Pages
+              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                disabled={addingPage || !fullNotebookEditingEnabled}
+                onClick={() => void handleAddPage()}
+              >
+                {addingPage ? "..." : "+ Page"}
+              </Button>
+            </div>
+            <div className="max-h-[calc(100vh-14rem)] space-y-2 overflow-y-auto pr-1">
               {pages.length > 0 ? (
                 pages.map((page) => {
                   const selected = page.id === selectedPage?.id;
@@ -611,45 +967,45 @@ export default function NotebookEditorPage() {
                       key={page.id}
                       type="button"
                       onClick={() => setSelectedPageId(page.id)}
-                      className={`w-full rounded-[1rem] border p-3 text-left transition ${
+                      className={`w-full rounded-[0.95rem] border p-2 text-left transition ${
                         selected
-                          ? "border-warm-border bg-warm-glow text-white"
-                          : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
+                          : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary hover:border-border-strong"
                       }`}
                     >
-                      <div className="text-sm font-semibold">Page {page.pageNumber}</div>
-                      <div className="mt-1 text-xs text-text-muted">
-                        {page.typedContent ? "Typed working" : "Blank page"}
+                      <div className={`mb-2 aspect-[4/3] rounded-[0.65rem] border shadow-sm ${
+                        PAGE_COLOR_CLASS[page.pageColor ?? notebook.pageColor]
+                      }`}>
+                        <div className="h-full w-full p-2">
+                          <div className="h-1.5 w-2/3 rounded-full bg-current opacity-20" />
+                          <div className="mt-1.5 h-1.5 w-1/2 rounded-full bg-current opacity-15" />
+                        </div>
+                      </div>
+                      <div className="text-xs font-semibold">Page {page.pageNumber}</div>
+                      <div className="mt-0.5 truncate text-[0.68rem] text-text-muted">
+                        {page.textBlocks.length > 0 ? "Text" : page.strokeData?.strokes?.length ? "Ink" : "Blank"}
                       </div>
                     </button>
                   );
                 })
               ) : (
-                <div className="rounded-[1rem] border border-white/[0.09] bg-white/[0.04] p-3 text-sm leading-6 text-text-muted">
-                  No pages yet. Add a page to start working naturally.
+                <div className="rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 text-sm leading-6 text-text-muted">
+                  Add a page to start.
                 </div>
               )}
             </div>
-          </Card>
+          </aside>
 
           <div className="min-w-0 space-y-4">
             {selectedPage?.questionPrompt ? (
-              <Card tone="warm" padding="md">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  Question prompt
-                </div>
-                <p className="mt-2 text-base leading-7 text-white">{selectedPage.questionPrompt}</p>
+              <Card tone="warm" padding="sm">
+                <p className="text-sm leading-6 text-text-primary">{selectedPage.questionPrompt}</p>
               </Card>
             ) : null}
 
             {files.length > 0 ? (
-              <Card padding="md">
-                <SectionHeader
-                  eyebrow="Attached file"
-                  title="File saved with this notebook."
-                  description="Full PDF annotation, OCR, and automatic file reading come later. For now, this keeps the paper/reference linked to your working pages."
-                />
-                <div className="mt-4 flex flex-wrap gap-2">
+              <Card padding="sm">
+                <div className="flex flex-wrap gap-2">
                   {files.map((file) => (
                     <span
                       key={file.id}
@@ -662,76 +1018,44 @@ export default function NotebookEditorPage() {
               </Card>
             ) : null}
 
-            <Card padding="md">
-              <SectionHeader
-                eyebrow={`Page ${selectedPage?.pageNumber ?? 1}`}
-                title="Typed working"
-                description="Use this when typing is faster than handwriting. It saves with this page."
-              />
-              <Textarea
-                rows={10}
-                value={typedContent}
-                onChange={(event) => {
-                  setTypedContent(event.target.value);
-                  setSaveStatus("unsaved");
-                }}
-                placeholder="Work through the question here..."
-                containerClassName="mt-4"
-              />
-            </Card>
-
-            {fullNotebookEditingEnabled ? (
-              <Card padding="md">
-                <SectionHeader
-                  eyebrow="Page tools"
-                  title="Write on a solid notebook page."
-                  description="Use pen, eraser, colours, and page colour. No handwriting recognition or AI image reading yet."
-                />
-                <div className="mt-4 flex flex-wrap items-center gap-3">
-                  <div className="flex rounded-full border border-white/[0.1] bg-white/[0.045] p-1">
-                    {(["pen", "eraser"] as NotebookStrokeTool[]).map((nextTool) => (
-                      <button
-                        key={nextTool}
-                        type="button"
-                        onClick={() => setTool(nextTool)}
-                        className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
-                          tool === nextTool ? "bg-warm-glow text-warm-accent" : "text-text-secondary"
-                        }`}
-                      >
-                        {nextTool === "pen" ? "Pen" : "Eraser"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="flex gap-2">
+            <div className="space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  Page {selectedPage?.pageNumber ?? 1}
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <div className="flex gap-1.5">
                     {(["black", "white", "red", "green"] as NotebookPenColor[]).map((color) => (
-                      <button
-                        key={color}
-                        type="button"
-                        aria-label={`${color} pen`}
-                        onClick={() => {
-                          setPenColor(color);
-                          setTool("pen");
-                        }}
-                        className={`h-8 w-8 rounded-full border ${
-                          penColor === color && tool === "pen" ? "border-warm-accent ring-2 ring-warm-accent/40" : "border-white/[0.2]"
-                        }`}
-                        style={{ background: PEN_COLOR_HEX[color] }}
-                      />
-                    ))}
+                    <button
+                      key={color}
+                      type="button"
+                      aria-label={`${color} pen`}
+                      disabled={!fullNotebookEditingEnabled}
+                      onClick={() => {
+                        setPenColor(color);
+                        setTool("pen");
+                      }}
+                      className={`h-7 w-7 rounded-full border transition ${
+                        penColor === color && tool === "pen" ? "border-warm-accent ring-2 ring-warm-accent/40" : "border-white/[0.2]"
+                      }`}
+                      style={{ background: PEN_COLOR_HEX[color] }}
+                    />
+                  ))}
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-1.5">
                     {(["white", "black", "grey"] as NotebookPageColor[]).map((color) => (
                       <button
                         key={color}
                         type="button"
+                        disabled={!fullNotebookEditingEnabled}
                         onClick={() => {
                           setPageColor(color);
                           setSaveStatus("unsaved");
                         }}
-                        className={`min-h-[2rem] rounded-full border px-3 text-xs font-semibold transition ${
+                        className={`min-h-[1.9rem] rounded-full border px-2.5 text-xs font-semibold transition ${
                           pageColor === color
-                            ? "border-warm-accent bg-warm-glow text-warm-accent"
-                            : "border-white/[0.1] bg-white/[0.045] text-text-secondary"
+                            ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
+                            : "app-chip"
                         }`}
                       >
                         {color}
@@ -739,40 +1063,86 @@ export default function NotebookEditorPage() {
                     ))}
                   </div>
                 </div>
-                <div className={`mt-4 overflow-hidden rounded-[1.45rem] border border-white/[0.11] shadow-[0_18px_40px_rgba(0,0,0,0.14)] ${PAGE_COLOR_CLASS[pageColor]}`}>
-                  <svg
+              </div>
+
+              <div className="mx-auto max-w-[72rem] rounded-[2rem] bg-[var(--color-glass-subtle)] p-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-5">
+                <div
+                  data-notebook-page-surface
+                  className={`relative mx-auto overflow-hidden rounded-[1.2rem] border border-white/[0.14] shadow-[0_26px_65px_rgba(0,0,0,0.22)] ${PAGE_COLOR_CLASS[pageColor]}`}
+                >
+                  <canvas
+                    ref={canvasRef}
                     role="img"
                     aria-label="Notebook drawing page"
-                    viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
-                    className="block aspect-[1.45/1] w-full touch-none"
-                    onPointerDown={handleStartDrawing}
+                    width={CANVAS_WIDTH}
+                    height={CANVAS_HEIGHT}
+                    draggable={false}
+                    className="notebook-ink-surface relative z-10 block aspect-[1.45/1] w-full touch-none select-none"
+                    onPointerDown={handlePagePointerDown}
                     onPointerMove={handleDraw}
                     onPointerUp={handleStopDrawing}
                     onPointerCancel={handleStopDrawing}
-                  >
-                    {strokes.map((stroke, index) => (
-                      <path
-                        key={index}
-                        d={makePath(stroke.points)}
-                        fill="none"
-                        stroke={stroke.tool === "eraser" ? PAGE_COLOR_HEX[pageColor] : PEN_COLOR_HEX[stroke.color]}
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={stroke.width}
-                      />
-                    ))}
-                  </svg>
+                    onPointerLeave={handleStopDrawing}
+                    onLostPointerCapture={handleStopDrawing}
+                  />
+                  <div className="pointer-events-none absolute inset-0 z-20">
+                    {textBlocks.map((block) => {
+                      const selected = selectedTextBlockId === block.id;
+                      return (
+                        <div
+                          key={block.id}
+                          className={`pointer-events-auto absolute rounded-xl border bg-transparent transition ${
+                            selected ? "border-warm-accent shadow-[0_0_0_3px_rgba(183,124,255,0.16)]" : "border-transparent"
+                          }`}
+                          style={{
+                            left: `${(block.x / CANVAS_WIDTH) * 100}%`,
+                            top: `${(block.y / CANVAS_HEIGHT) * 100}%`,
+                            width: `${(block.width / CANVAS_WIDTH) * 100}%`,
+                            height: `${(block.height / CANVAS_HEIGHT) * 100}%`,
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedTextBlockId(block.id);
+                          }}
+                        >
+                          {selected && fullNotebookEditingEnabled ? (
+                            <div className="absolute left-1 top-1 z-20 flex gap-1">
+                              <button
+                                type="button"
+                                aria-label="Move text block"
+                                className="rounded-full border border-white/[0.18] bg-black/60 px-2 py-1 text-[0.65rem] font-semibold text-white shadow-sm"
+                                onPointerDown={(event) => startTextBlockDrag(block, event)}
+                                onPointerMove={dragTextBlock}
+                                onPointerUp={stopTextBlockDrag}
+                                onPointerCancel={stopTextBlockDrag}
+                              >
+                                Move
+                              </button>
+                              <button
+                                type="button"
+                                aria-label="Delete text block"
+                                className="rounded-full border border-white/[0.18] bg-black/60 px-2 py-1 text-[0.65rem] font-semibold text-white shadow-sm"
+                                onClick={() => deleteTextBlock(block.id)}
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ) : null}
+                          <textarea
+                            value={block.text}
+                            disabled={!fullNotebookEditingEnabled && block.text.length === 0}
+                            onFocus={() => setSelectedTextBlockId(block.id)}
+                            onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
+                            placeholder={selected ? "Type here..." : ""}
+                            className={`h-full w-full resize-none rounded-xl bg-transparent p-2 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </Card>
-            ) : (
-              <Card padding="md">
-                <SectionHeader
-                  eyebrow="Pen mode"
-                  title="Drawing is paused on phone."
-                  description="View this notebook and add typed notes here. Use an iPad, tablet, or desktop for pen working and page editing, or choose Continue anyway above."
-                />
-              </Card>
-            )}
+              </div>
+            </div>
           </div>
         </div>
       </div>

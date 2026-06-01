@@ -26,6 +26,7 @@ import {
   type NotebookPage,
   type NotebookPageType,
   type NotebookStrokeData,
+  type NotebookTextBlock,
   type NotebookType,
 } from "@/lib/workspace/notebooks";
 
@@ -245,6 +246,7 @@ export async function createNotebookPage(
     title?: string;
     pageType?: NotebookPageType;
     typedContent?: string;
+    textBlocks?: NotebookTextBlock[];
     strokeData?: NotebookStrokeData;
     pageColor?: NotebookPageColor;
     status?: NotebookPageStatus;
@@ -276,6 +278,7 @@ export async function updateNotebookPage(
     title: string;
     pageType: NotebookPageType;
     typedContent: string;
+    textBlocks: NotebookTextBlock[];
     strokeData: NotebookStrokeData | null;
     pageColor: NotebookPageColor;
     status: NotebookPageStatus;
@@ -301,6 +304,7 @@ export async function updateNotebookPage(
   if (input.title !== undefined) updates.title = input.title.trim().slice(0, 120) || null;
   if (input.pageType !== undefined) updates.pageType = input.pageType;
   if (input.typedContent !== undefined) updates.typedContent = input.typedContent.trim().slice(0, 30_000) || null;
+  if (input.textBlocks !== undefined) updates.textBlocks = input.textBlocks;
   if (input.strokeData !== undefined) updates.strokeData = input.strokeData;
   if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
   if (input.status !== undefined) updates.status = input.status;

@@ -27,6 +27,7 @@ import {
   normalizeDeckIconPreset,
 } from "@/lib/study/deck-style";
 import {
+  buildTypedContentFromTextBlocks,
   buildNotebookFilePayload,
   buildNotebookPagePayload,
   buildNotebookPayload,
@@ -398,6 +399,65 @@ describe("Jami notebook-first learning foundations", () => {
       color: "white",
       width: 5,
       tool: "pen",
+    });
+  });
+
+  it("maps legacy typed content into a default notebook text block", () => {
+    const page = mapNotebookPageData("page-legacy", {
+      notebookId: "notebook-1",
+      folderId: "folder-1",
+      pageNumber: 1,
+      pageType: "free_working",
+      typedContent: "Legacy typed notes",
+      pageColor: "white",
+      status: "working",
+      createdAt: 1,
+      updatedAt: 1,
+    });
+
+    expect(page.textBlocks).toEqual([
+      expect.objectContaining({
+        id: "legacy-typed-content",
+        text: "Legacy typed notes",
+        x: 80,
+        y: 92,
+      }),
+    ]);
+  });
+
+  it("saves floating text blocks with a plain typed-content fallback", () => {
+    const payload = buildNotebookPagePayload({
+      notebookId: "notebook-1",
+      folderId: "folder-1",
+      pageNumber: 1,
+      textBlocks: [
+        { id: "block-1", x: 10, y: 20, width: 240, height: 80, text: "First idea" },
+        { id: "block-2", x: 80, y: 140, width: 300, height: 90, text: "Second idea" },
+      ],
+    });
+    const page = mapNotebookPageData("page-1", payload);
+
+    expect(payload.typedContent).toBe("First idea\n\nSecond idea");
+    expect(page.textBlocks).toHaveLength(2);
+    expect(buildTypedContentFromTextBlocks(page.textBlocks)).toBe("First idea\n\nSecond idea");
+  });
+
+  it("clamps invalid floating text block dimensions into the notebook page", () => {
+    const page = mapNotebookPageData("page-1", {
+      notebookId: "notebook-1",
+      folderId: "folder-1",
+      pageNumber: 1,
+      textBlocks: [
+        { id: "block-1", x: -100, y: 9999, width: 20, height: 9999, text: "Clamped" },
+      ],
+    });
+
+    expect(page.textBlocks[0]).toMatchObject({
+      x: 0,
+      y: 0,
+      width: 120,
+      height: 620,
+      text: "Clamped",
     });
   });
 
