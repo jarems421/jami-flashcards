@@ -444,6 +444,38 @@
     user-select: none;
   }
 
+  @media (prefers-reduced-motion: no-preference) {
+    .notebook-page-transition-next {
+      animation: notebook-page-slide-next 170ms ease-out;
+    }
+
+    .notebook-page-transition-previous {
+      animation: notebook-page-slide-previous 170ms ease-out;
+    }
+  }
+
+  @keyframes notebook-page-slide-next {
+    from {
+      opacity: 0.72;
+      transform: translateX(1.2rem) scale(0.992);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+
+  @keyframes notebook-page-slide-previous {
+    from {
+      opacity: 0.72;
+      transform: translateX(-1.2rem) scale(0.992);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0) scale(1);
+    }
+  }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;

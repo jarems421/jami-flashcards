@@ -1,14 +1,18 @@
 import type { NotebookStroke } from "@/lib/workspace/notebooks";
+import { normalizeInkPressure, normalizeInkTime } from "@/lib/workspace/notebook-ink-engine";
 
 export type NotebookInkPoint = {
   x: number;
   y: number;
+  pressure?: number;
+  time?: number;
 };
 
 export type PointerClientSample = {
   clientX: number;
   clientY: number;
   pressure: number;
+  time: number;
 };
 
 const DEFAULT_MIN_POINT_DISTANCE = 1.35;
@@ -17,7 +21,10 @@ export const NOTEBOOK_PAGE_SWIPE_THRESHOLD = 64;
 export const NOTEBOOK_PAGE_MIN_ZOOM = 0.85;
 export const NOTEBOOK_PAGE_MAX_ZOOM = 2.4;
 
-export function shouldPointerDraw(pointerType: string, tool: "pen" | "eraser" | "text") {
+export function shouldPointerDraw(
+  pointerType: string,
+  tool: "pen" | "eraser" | "highlighter" | "text"
+) {
   if (tool === "text") return false;
   return pointerType === "pen" || pointerType === "mouse";
 }
@@ -81,10 +88,13 @@ export function clampInkPoint(
   width: number,
   height: number
 ): NotebookInkPoint {
-  return {
+  const clampedPoint: NotebookInkPoint = {
     x: Math.max(0, Math.min(width, point.x)),
     y: Math.max(0, Math.min(height, point.y)),
   };
+  if (point.pressure !== undefined) clampedPoint.pressure = point.pressure;
+  if (point.time !== undefined) clampedPoint.time = point.time;
+  return clampedPoint;
 }
 
 export function mapClientPointToNotebookPage(input: {
@@ -100,18 +110,19 @@ export function mapClientPointToNotebookPage(input: {
 }
 
 export function normalizePointerPressure(value: unknown) {
-  if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) return 0.5;
-  return Math.max(0, Math.min(1, value));
+  return normalizeInkPressure(value);
 }
 
 export function getPointerClientSamples(event: PointerEvent): PointerClientSample[] {
   const coalescedEvents =
     typeof event.getCoalescedEvents === "function" ? event.getCoalescedEvents() : [];
   const samples = coalescedEvents.length > 0 ? coalescedEvents : [event];
+  const fallbackTime = normalizeInkTime(event.timeStamp, 0);
   return samples.map((sample) => ({
     clientX: sample.clientX,
     clientY: sample.clientY,
     pressure: normalizePointerPressure(sample.pressure),
+    time: normalizeInkTime(sample.timeStamp, fallbackTime),
   }));
 }
 

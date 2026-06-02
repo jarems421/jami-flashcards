@@ -22,6 +22,7 @@ import {
   type Notebook,
   type NotebookFile,
   type NotebookPageColor,
+  type NotebookPageStyle,
   type NotebookPageStatus,
   type NotebookPage,
   type NotebookPageType,
@@ -135,6 +136,7 @@ export async function createNotebook(
     color?: string;
     icon?: string;
     pageColor?: NotebookPageColor;
+    pageStyle?: NotebookPageStyle;
     uploadedFileId?: string;
   }
 ) {
@@ -164,6 +166,7 @@ export async function updateNotebook(
     color: string;
     icon: string;
     pageColor: NotebookPageColor;
+    pageStyle: NotebookPageStyle;
     uploadedFileId: string;
     archived: boolean;
   }>
@@ -194,6 +197,7 @@ export async function updateNotebook(
   if (input.color !== undefined) updates.color = input.color.trim().slice(0, 80) || null;
   if (input.icon !== undefined) updates.icon = input.icon.trim().slice(0, 40) || null;
   if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
+  if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
   if (input.uploadedFileId !== undefined) {
     updates.uploadedFileId = input.uploadedFileId.trim().slice(0, 160) || null;
   }
@@ -249,6 +253,7 @@ export async function createNotebookPage(
     textBlocks?: NotebookTextBlock[];
     strokeData?: NotebookStrokeData;
     pageColor?: NotebookPageColor;
+    pageStyle?: NotebookPageStyle;
     status?: NotebookPageStatus;
     questionPrompt?: string;
     linkedQuestionId?: string;
@@ -281,6 +286,7 @@ export async function updateNotebookPage(
     textBlocks: NotebookTextBlock[];
     strokeData: NotebookStrokeData | null;
     pageColor: NotebookPageColor;
+    pageStyle: NotebookPageStyle;
     status: NotebookPageStatus;
     questionPrompt: string;
     linkedQuestionId: string;
@@ -307,6 +313,7 @@ export async function updateNotebookPage(
   if (input.textBlocks !== undefined) updates.textBlocks = input.textBlocks;
   if (input.strokeData !== undefined) updates.strokeData = input.strokeData;
   if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
+  if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
   if (input.status !== undefined) updates.status = input.status;
   if (input.questionPrompt !== undefined) updates.questionPrompt = input.questionPrompt.trim().slice(0, 4_000) || null;
   if (input.linkedQuestionId !== undefined) updates.linkedQuestionId = input.linkedQuestionId.trim().slice(0, 160) || null;

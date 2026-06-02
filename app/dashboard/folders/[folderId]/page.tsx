@@ -29,7 +29,7 @@ import { getDeckHref, getDeckStudyRouteHref } from "@/lib/app/routes";
 import { useUser } from "@/lib/auth/user-context";
 import type { Source, SourceType } from "@/lib/practice/sources";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
-import type { Notebook, NotebookPageColor } from "@/lib/workspace/notebooks";
+import type { Notebook, NotebookPageColor, NotebookPageStyle } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
 import { archiveStudyFolder, getStudyFolderById, updateStudyFolder } from "@/services/study/folders";
@@ -75,6 +75,7 @@ export default function FolderDetailPage() {
   const [notebookColor, setNotebookColor] = useState<ObjectColorId>("violet");
   const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
   const [notebookPageColor, setNotebookPageColor] = useState<NotebookPageColor>("white");
+  const [notebookPageStyle, setNotebookPageStyle] = useState<NotebookPageStyle>("plain");
   const [notebookFile, setNotebookFile] = useState<File | null>(null);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
   const [activeTab, setActiveTab] = useState<FolderTab>("notebooks");
@@ -447,6 +448,7 @@ export default function FolderDetailPage() {
         color: notebookColor,
         icon: notebookIcon,
         pageColor: notebookPageColor,
+        pageStyle: notebookPageStyle,
       });
       await createNotebookPage(user.uid, {
         notebookId: notebook.id,
@@ -455,6 +457,7 @@ export default function FolderDetailPage() {
         pageType: notebookTemplate === "uploaded_file" ? "past_paper_page" : "free_working",
         title: "Page 1",
         pageColor: notebookPageColor,
+        pageStyle: notebookPageStyle,
       });
 
       let uploadedFileId: string | undefined;
@@ -478,6 +481,7 @@ export default function FolderDetailPage() {
       setNotebookColor("violet");
       setNotebookIcon("none");
       setNotebookPageColor("white");
+      setNotebookPageStyle("plain");
       setNotebookFile(null);
       setShowNotebookForm(false);
       setFeedback({
@@ -657,6 +661,23 @@ export default function FolderDetailPage() {
                 ))}
               </div>
             </div>
+            <div className="mt-5">
+              <div className="text-sm font-medium text-text-secondary">Page style</div>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {(["plain", "lined", "grid", "dot"] as NotebookPageStyle[]).map((style) => (
+                  <button
+                    key={style}
+                    type="button"
+                    onClick={() => setNotebookPageStyle(style)}
+                    className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
+                      notebookPageStyle === style ? "app-selected" : "app-chip"
+                    }`}
+                  >
+                    {style}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto] lg:items-end">
               <Input
                 label="Notebook title"
@@ -687,6 +708,7 @@ export default function FolderDetailPage() {
                     setNotebookColor("violet");
                     setNotebookIcon("none");
                     setNotebookPageColor("white");
+                    setNotebookPageStyle("plain");
                     setNotebookFile(null);
                   }}
                 >
@@ -731,14 +753,27 @@ export default function FolderDetailPage() {
                 value={editFolderName}
                 onChange={(event) => setEditFolderName(event.target.value)}
               />
-              <ObjectStylePicker
-                color={editFolderColor}
-                icon={editFolderIcon}
-                onColorChange={setEditFolderColor}
-                onIconChange={setEditFolderIcon}
-                colorLabel="Folder colour"
-                iconLabel="Folder icon"
-              />
+              <div className="app-subtle-panel rounded-[1.4rem] p-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  Preview
+                </div>
+                <FolderObjectCard
+                  title={editFolderName.trim() || "Folder preview"}
+                  color={editFolderColor}
+                  icon={editFolderIcon}
+                  className="mt-2"
+                />
+              </div>
+              <div className="lg:col-span-2">
+                <ObjectStylePicker
+                  color={editFolderColor}
+                  icon={editFolderIcon}
+                  onColorChange={setEditFolderColor}
+                  onIconChange={setEditFolderIcon}
+                  colorLabel="Folder colour"
+                  iconLabel="Folder icon"
+                />
+              </div>
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <Button

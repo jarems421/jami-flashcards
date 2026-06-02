@@ -14,6 +14,7 @@ export type NotebookObjectCardProps = {
   color?: string;
   icon?: string;
   pageColor?: string;
+  pageStyle?: string;
   pageCount?: number;
   updatedLabel?: string;
   href?: string;
@@ -27,12 +28,35 @@ function NotebookCardInner({
   typeLabel,
   color,
   icon,
+  pageColor,
+  pageStyle,
   pageCount,
   updatedLabel,
   compact,
 }: NotebookObjectCardProps) {
   const preset = getObjectColorPreset(color);
   const safeColor = normalizeObjectColor(color);
+  const paperFill = pageColor === "black" ? "#0b1020" : "#f8fafc";
+  const paperLine =
+    pageColor === "black" ? "rgba(248,250,252,0.18)" : "rgba(15,23,42,0.13)";
+  const paperStyle =
+    pageStyle === "lined"
+      ? {
+          backgroundColor: paperFill,
+          backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent 10px, ${paperLine} 11px)`,
+        }
+      : pageStyle === "grid"
+        ? {
+            backgroundColor: paperFill,
+            backgroundImage: `repeating-linear-gradient(to right, ${paperLine} 0 1px, transparent 1px 11px), repeating-linear-gradient(to bottom, ${paperLine} 0 1px, transparent 1px 11px)`,
+          }
+        : pageStyle === "dot"
+          ? {
+              backgroundColor: paperFill,
+              backgroundImage: `radial-gradient(circle, ${paperLine} 1px, transparent 1px)`,
+              backgroundSize: "9px 9px",
+            }
+          : { backgroundColor: paperFill };
 
   return (
     <div
@@ -44,11 +68,13 @@ function NotebookCardInner({
       <div className="flex items-center justify-center">
         <div className={cx("relative", compact ? "h-24 w-[5.45rem]" : "h-28 w-[6.1rem]")}>
           <div
-            className="absolute left-3 top-2 h-[92%] w-[84%] rounded-[0.85rem] bg-white/90 shadow-[0_8px_14px_rgba(15,23,42,0.16)]"
+            className="absolute left-3 top-2 h-[92%] w-[84%] rounded-[0.85rem] shadow-[0_8px_14px_rgba(15,23,42,0.16)]"
+            style={paperStyle}
             aria-hidden="true"
           />
           <div
-            className="absolute left-2 top-1.5 h-[92%] w-[84%] rounded-[0.85rem] border border-slate-900/10 bg-slate-100 shadow-[0_5px_0_rgba(15,23,42,0.08)]"
+            className="absolute left-2 top-1.5 h-[92%] w-[84%] rounded-[0.85rem] border border-slate-900/10 shadow-[0_5px_0_rgba(15,23,42,0.08)]"
+            style={paperStyle}
             aria-hidden="true"
           />
           <div

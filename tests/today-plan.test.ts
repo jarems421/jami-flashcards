@@ -52,6 +52,7 @@ const notebook: Notebook = {
   topicIds: [topic.id],
   sourceIds: [],
   pageColor: "white",
+  pageStyle: "plain",
   archived: false,
   createdAt: 1,
   updatedAt: 3,

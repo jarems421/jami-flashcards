@@ -360,6 +360,7 @@ describe("Jami notebook-first learning foundations", () => {
       topicIds: ["topic-photosynthesis"],
       sourceIds: ["source-class-notes"],
       pageColor: "black",
+      pageStyle: "grid",
       now: 50,
     });
     const notebook = mapNotebookData("notebook-1", notebookPayload);
@@ -375,6 +376,7 @@ describe("Jami notebook-first learning foundations", () => {
         strokes: [{ points: [{ x: 1, y: 2 }], color: "white", width: 5, tool: "pen" }],
       },
       pageColor: "black",
+      pageStyle: "grid",
       status: "working",
       linkedSourceId: "source-class-notes",
       now: 60,
@@ -389,6 +391,7 @@ describe("Jami notebook-first learning foundations", () => {
       topicIds: ["topic-photosynthesis"],
       sourceIds: ["source-class-notes"],
       pageColor: "black",
+      pageStyle: "grid",
     });
     expect(page).toMatchObject({
       id: "page-1",
@@ -397,6 +400,7 @@ describe("Jami notebook-first learning foundations", () => {
       pageNumber: 1,
       pageType: "question",
       pageColor: "black",
+      pageStyle: "grid",
       status: "working",
       questionPrompt: "Explain why chlorophyll matters.",
       typedContent: "It absorbs light energy.",
@@ -407,6 +411,61 @@ describe("Jami notebook-first learning foundations", () => {
       width: 5,
       tool: "pen",
     });
+  });
+
+  it("validates notebook page styles and highlighter strokes", () => {
+    const payload = buildNotebookPagePayload({
+      notebookId: "notebook-1",
+      folderId: "folder-1",
+      pageNumber: 1,
+      pageStyle: "dot",
+      strokeData: {
+        version: 1,
+        strokes: [
+          {
+            points: [{ x: 12, y: 20, pressure: 0.72, time: 42 }],
+            color: "yellow",
+            width: 18,
+            tool: "highlighter",
+          },
+          {
+            points: [{ x: 22, y: 28, pressure: 4 }],
+            color: "black",
+            width: 120,
+            tool: "pen",
+          },
+          {
+            points: [{ x: 32, y: 38 }],
+            color: "black",
+            width: 5,
+            tool: "pen",
+          },
+        ],
+      },
+    });
+    const page = mapNotebookPageData("page-style", payload);
+
+    expect(page.pageStyle).toBe("dot");
+    expect(page.strokeData?.strokes[0]).toMatchObject({
+      color: "yellow",
+      width: 18,
+      tool: "highlighter",
+    });
+    expect(page.strokeData?.strokes[0].points[0].pressure).toBe(0.72);
+    expect(page.strokeData?.strokes[0].points[0].time).toBe(42);
+    expect(page.strokeData?.strokes[1].points[0].pressure).toBe(1);
+    expect(page.strokeData?.strokes[1].width).toBe(96);
+    expect(page.strokeData?.strokes[2].points[0].pressure).toBe(0.5);
+    expect(page.strokeData?.strokes[2].points[0].time).toBe(0);
+
+    expect(
+      mapNotebookPageData("page-legacy-style", {
+        notebookId: "notebook-1",
+        folderId: "folder-1",
+        pageNumber: 1,
+        pageStyle: "fancy",
+      }).pageStyle
+    ).toBe("plain");
   });
 
   it("maps legacy typed content into a default notebook text block", () => {

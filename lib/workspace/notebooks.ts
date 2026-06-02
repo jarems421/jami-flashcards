@@ -2,6 +2,7 @@ import {
   normalizeOptionalString,
   normalizeStringArray,
 } from "@/lib/practice/content";
+import { normalizeInkPressure, normalizeInkTime } from "@/lib/workspace/notebook-ink-engine";
 
 export type NotebookType =
   | "blank"
@@ -27,18 +28,22 @@ export type NotebookStrokeData = {
 };
 
 export type NotebookPenColor = "black" | "white" | "red" | "green";
-export type NotebookStrokeTool = "pen" | "eraser";
+export type NotebookHighlighterColor = "yellow" | "green" | "pink";
+export type NotebookStrokeTool = "pen" | "eraser" | "highlighter";
 export type NotebookPageColor = "white" | "black";
+export type NotebookPageStyle = "plain" | "lined" | "grid" | "dot";
 export type NotebookPageStatus = "blank" | "working" | "needs_review" | "marked";
 
 export type NotebookStrokePoint = {
   x: number;
   y: number;
+  pressure?: number;
+  time?: number;
 };
 
 export type NotebookStroke = {
   points: NotebookStrokePoint[];
-  color: NotebookPenColor;
+  color: NotebookPenColor | NotebookHighlighterColor;
   width: number;
   tool: NotebookStrokeTool;
 };
@@ -72,6 +77,7 @@ export type Notebook = {
   color?: string;
   icon?: string;
   pageColor: NotebookPageColor;
+  pageStyle: NotebookPageStyle;
   uploadedFileId?: string;
   createdAt: number;
   updatedAt: number;
@@ -90,6 +96,7 @@ export type NotebookPage = {
   strokeData?: NotebookStrokeData;
   imageRefs: NotebookImageRef[];
   pageColor: NotebookPageColor;
+  pageStyle: NotebookPageStyle;
   status: NotebookPageStatus;
   questionPrompt?: string;
   linkedQuestionId?: string;
@@ -159,8 +166,16 @@ export function isNotebookPenColor(value: unknown): value is NotebookPenColor {
   return value === "black" || value === "white" || value === "red" || value === "green";
 }
 
+export function isNotebookHighlighterColor(value: unknown): value is NotebookHighlighterColor {
+  return value === "yellow" || value === "green" || value === "pink";
+}
+
 export function isNotebookStrokeTool(value: unknown): value is NotebookStrokeTool {
-  return value === "pen" || value === "eraser";
+  return value === "pen" || value === "eraser" || value === "highlighter";
+}
+
+export function isNotebookPageStyle(value: unknown): value is NotebookPageStyle {
+  return value === "plain" || value === "lined" || value === "grid" || value === "dot";
 }
 
 export function isNotebookPageStatus(value: unknown): value is NotebookPageStatus {
@@ -171,7 +186,7 @@ export function normalizeNotebookTitle(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, MAX_NOTEBOOK_TITLE_LENGTH);
 }
 
-function normalizeNotebookStrokePoint(value: unknown): NotebookStrokePoint | null {
+function normalizeNotebookStrokePoint(value: unknown, index = 0): NotebookStrokePoint | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const point = value as Record<string, unknown>;
   if (typeof point.x !== "number" || typeof point.y !== "number") return null;
@@ -179,6 +194,8 @@ function normalizeNotebookStrokePoint(value: unknown): NotebookStrokePoint | nul
   return {
     x: Math.max(0, Math.min(10_000, point.x)),
     y: Math.max(0, Math.min(10_000, point.y)),
+    pressure: normalizeInkPressure(point.pressure),
+    time: normalizeInkTime(point.time, index * 16),
   };
 }
 
@@ -187,19 +204,22 @@ function normalizeNotebookStroke(value: unknown): NotebookStroke | null {
   const stroke = value as Record<string, unknown>;
   const rawPoints = Array.isArray(stroke.points) ? stroke.points : [];
   const points = rawPoints
-    .map(normalizeNotebookStrokePoint)
+    .map((point, index) => normalizeNotebookStrokePoint(point, index))
     .filter((point): point is NotebookStrokePoint => Boolean(point))
     .slice(0, MAX_NOTEBOOK_STROKE_POINTS);
   if (points.length === 0) return null;
 
   const width =
     typeof stroke.width === "number" && Number.isFinite(stroke.width)
-      ? Math.max(1, Math.min(48, Math.round(stroke.width)))
+      ? Math.max(1, Math.min(96, Math.round(stroke.width)))
       : 5;
 
   return {
     points,
-    color: isNotebookPenColor(stroke.color) ? stroke.color : "black",
+    color:
+      isNotebookPenColor(stroke.color) || isNotebookHighlighterColor(stroke.color)
+        ? stroke.color
+        : "black",
     width,
     tool: isNotebookStrokeTool(stroke.tool) ? stroke.tool : "pen",
   };
@@ -325,6 +345,7 @@ export function mapNotebookData(id: string, data: Record<string, unknown>): Note
     color: normalizeOptionalString(data.color, 80),
     icon: normalizeOptionalString(data.icon, 40),
     pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
+    pageStyle: isNotebookPageStyle(data.pageStyle) ? data.pageStyle : "plain",
     uploadedFileId: normalizeOptionalString(data.uploadedFileId, 160),
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
@@ -355,6 +376,7 @@ export function mapNotebookPageData(
     strokeData: normalizeStrokeData(data.strokeData),
     imageRefs: normalizeImageRefs(data.imageRefs),
     pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
+    pageStyle: isNotebookPageStyle(data.pageStyle) ? data.pageStyle : "plain",
     status: isNotebookPageStatus(data.status) ? data.status : "blank",
     questionPrompt: normalizeOptionalString(data.questionPrompt, 4_000),
     linkedQuestionId: normalizeOptionalString(data.linkedQuestionId, 160),
@@ -376,6 +398,7 @@ export function buildNotebookPayload(input: {
   color?: string;
   icon?: string;
   pageColor?: NotebookPageColor;
+  pageStyle?: NotebookPageStyle;
   uploadedFileId?: string;
   now?: number;
 }) {
@@ -401,6 +424,7 @@ export function buildNotebookPayload(input: {
     color: normalizeOptionalString(input.color, 80) ?? null,
     icon: normalizeOptionalString(input.icon, 40) ?? null,
     pageColor: input.pageColor ?? "white",
+    pageStyle: input.pageStyle ?? "plain",
     uploadedFileId: normalizeOptionalString(input.uploadedFileId, 160) ?? null,
     archived: false,
     createdAt: now,
@@ -419,6 +443,7 @@ export function buildNotebookPagePayload(input: {
   strokeData?: NotebookStrokeData;
   imageRefs?: NotebookImageRef[];
   pageColor?: NotebookPageColor;
+  pageStyle?: NotebookPageStyle;
   status?: NotebookPageStatus;
   questionPrompt?: string;
   linkedQuestionId?: string;
@@ -444,6 +469,7 @@ export function buildNotebookPagePayload(input: {
   const typedContent =
     buildTypedContentFromTextBlocks(textBlocks) ??
     normalizeOptionalString(input.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT);
+  const strokeData = input.strokeData ? normalizeStrokeData(input.strokeData) : undefined;
 
   return {
     notebookId,
@@ -453,14 +479,10 @@ export function buildNotebookPagePayload(input: {
     pageType: input.pageType ?? "blank",
     typedContent: typedContent ?? null,
     textBlocks,
-    strokeData: input.strokeData
-      ? {
-          version: input.strokeData.version,
-          strokes: input.strokeData.strokes.slice(0, MAX_NOTEBOOK_STROKES),
-        }
-      : null,
+    strokeData: strokeData ?? null,
     imageRefs: (input.imageRefs ?? []).slice(0, MAX_NOTEBOOK_IMAGE_REFS),
     pageColor: input.pageColor ?? "white",
+    pageStyle: input.pageStyle ?? "plain",
     status: input.status ?? "blank",
     questionPrompt: normalizeOptionalString(input.questionPrompt, 4_000) ?? null,
     linkedQuestionId: normalizeOptionalString(input.linkedQuestionId, 160) ?? null,
