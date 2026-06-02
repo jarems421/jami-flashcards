@@ -465,6 +465,21 @@
     touch-action: none;
   }
 
+  .notebook-page-stage {
+    align-items: center;
+    display: flex;
+    justify-content: center;
+    min-height: calc(100dvh - 8rem);
+    padding-block: 0.75rem 1.25rem;
+  }
+
+  @media (orientation: landscape), (max-height: 820px) {
+    .notebook-page-stage {
+      align-items: flex-start;
+      min-height: 100%;
+    }
+  }
+
   .notebook-ink-surface {
     -webkit-touch-callout: none;
     -webkit-user-drag: none;

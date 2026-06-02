@@ -32,9 +32,11 @@ import {
   buildNotebookFilePayload,
   buildNotebookPagePayload,
   buildNotebookPayload,
+  getNotebookPagesAfterDelete,
   mapNotebookData,
   mapNotebookFileData,
   mapNotebookPageData,
+  resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
 import { buildNotebookStoragePath } from "@/services/study/notebook-files";
 
@@ -430,13 +432,13 @@ describe("Jami notebook-first learning foundations", () => {
           },
           {
             points: [{ x: 22, y: 28, pressure: 4 }],
-            color: "black",
+            color: "#3B82F6",
             width: 120,
             tool: "pen",
           },
           {
             points: [{ x: 32, y: 38 }],
-            color: "black",
+            color: "not-a-colour" as unknown as "black",
             width: 5,
             tool: "pen",
           },
@@ -451,6 +453,8 @@ describe("Jami notebook-first learning foundations", () => {
       width: 18,
       tool: "highlighter",
     });
+    expect(page.strokeData?.strokes[1].color).toBe("#3b82f6");
+    expect(page.strokeData?.strokes[2].color).toBe("black");
     expect(page.strokeData?.strokes[0].points[0].pressure).toBe(0.72);
     expect(page.strokeData?.strokes[0].points[0].time).toBe(42);
     expect(page.strokeData?.strokes[1].points[0].pressure).toBe(1);
@@ -527,6 +531,33 @@ describe("Jami notebook-first learning foundations", () => {
     });
   });
 
+  it("resizes text blocks from each edge while anchoring the opposite side", () => {
+    const block = {
+      id: "block-1",
+      x: 100,
+      y: 120,
+      width: 300,
+      height: 160,
+      text: "Resize me",
+    };
+
+    expect(
+      resizeNotebookTextBlockFromEdge({ block, edge: "left", deltaX: 40, deltaY: 0 })
+    ).toMatchObject({ x: 140, width: 260 });
+    expect(
+      resizeNotebookTextBlockFromEdge({ block, edge: "right", deltaX: 60, deltaY: 0 })
+    ).toMatchObject({ x: 100, width: 360 });
+    expect(
+      resizeNotebookTextBlockFromEdge({ block, edge: "top", deltaX: 0, deltaY: 30 })
+    ).toMatchObject({ y: 150, height: 130 });
+    expect(
+      resizeNotebookTextBlockFromEdge({ block, edge: "bottom", deltaX: 0, deltaY: 50 })
+    ).toMatchObject({ y: 120, height: 210 });
+    expect(
+      resizeNotebookTextBlockFromEdge({ block, edge: "left", deltaX: 999, deltaY: 0 })
+    ).toMatchObject({ x: 280, width: 120 });
+  });
+
   it("falls legacy grey notebook page colour back to white", () => {
     const page = mapNotebookPageData("page-grey", {
       notebookId: "notebook-1",
@@ -536,6 +567,36 @@ describe("Jami notebook-first learning foundations", () => {
     });
 
     expect(page.pageColor).toBe("white");
+  });
+
+  it("renumbers notebook pages after deleting one page", () => {
+    const pages = [
+      mapNotebookPageData("page-1", {
+        notebookId: "notebook-1",
+        folderId: "folder-1",
+        pageNumber: 1,
+        title: "Page 1",
+      }),
+      mapNotebookPageData("page-2", {
+        notebookId: "notebook-1",
+        folderId: "folder-1",
+        pageNumber: 2,
+        title: "Custom proof",
+      }),
+      mapNotebookPageData("page-3", {
+        notebookId: "notebook-1",
+        folderId: "folder-1",
+        pageNumber: 3,
+        title: "Page 3",
+      }),
+    ];
+
+    const nextPages = getNotebookPagesAfterDelete(pages, "page-1");
+
+    expect(nextPages.map((page) => [page.id, page.pageNumber, page.title])).toEqual([
+      ["page-2", 1, "Custom proof"],
+      ["page-3", 2, "Page 2"],
+    ]);
   });
 
   it("validates notebook file metadata for uploaded-file notebooks without parsing the file", () => {

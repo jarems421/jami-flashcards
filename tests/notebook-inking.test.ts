@@ -15,6 +15,7 @@ import {
   normalizePointerPressure,
   shouldAppendInkPoint,
   shouldPointerDraw,
+  shouldPointerDrawEvent,
   shouldPointerSwipePages,
 } from "@/lib/workspace/notebook-inking";
 import {
@@ -25,6 +26,10 @@ import {
   normalizeInkTime,
   normalizeTimedInkPoint,
 } from "@/lib/workspace/notebook-ink-engine";
+import {
+  isNotebookCustomStrokeColor,
+  normalizeNotebookStrokeColor,
+} from "@/lib/workspace/notebooks";
 
 describe("notebook inking helpers", () => {
   it("maps pointer samples into notebook page coordinates", () => {
@@ -106,6 +111,17 @@ describe("notebook inking helpers", () => {
       pressure: 0.5,
       time: 32,
     });
+  });
+
+  it("normalizes preset and custom notebook stroke colors", () => {
+    expect(isNotebookCustomStrokeColor("#3b82f6")).toBe(true);
+    expect(isNotebookCustomStrokeColor("#3B82F6")).toBe(true);
+    expect(isNotebookCustomStrokeColor("#fff")).toBe(false);
+    expect(isNotebookCustomStrokeColor("rgb(0,0,0)")).toBe(false);
+    expect(normalizeNotebookStrokeColor("red")).toBe("red");
+    expect(normalizeNotebookStrokeColor("yellow")).toBe("yellow");
+    expect(normalizeNotebookStrokeColor("#3B82F6")).toBe("#3b82f6");
+    expect(normalizeNotebookStrokeColor("bad", "green")).toBe("green");
   });
 
   it("protects the first five stroke samples before filtering tiny movements", () => {
@@ -258,6 +274,15 @@ describe("notebook inking helpers", () => {
     expect(shouldPointerDraw("mouse", "eraser")).toBe(true);
     expect(shouldPointerDraw("touch", "pen")).toBe(false);
     expect(shouldPointerDraw("pen", "text")).toBe(false);
+    expect(shouldPointerDrawEvent({ pointerType: "pen" }, "pen")).toBe(true);
+    expect(shouldPointerDrawEvent({ pointerType: "touch" }, "pen")).toBe(false);
+    expect(
+      shouldPointerDrawEvent({ pointerType: "touch", altitudeAngle: 0.9 }, "pen")
+    ).toBe(true);
+    expect(shouldPointerDrawEvent({ pointerType: "", pressure: 0.5 }, "highlighter")).toBe(true);
+    expect(shouldPointerDrawEvent({ pointerType: "touch", altitudeAngle: 0.9 }, "text")).toBe(
+      false
+    );
     expect(shouldPointerSwipePages("touch")).toBe(true);
     expect(shouldPointerSwipePages("pen")).toBe(false);
     expect(shouldPointerSwipePages("mouse")).toBe(false);

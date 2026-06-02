@@ -35,8 +35,9 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 12. Confirm notebook creation offers only white or black default page colour.
 13. Add a new page and confirm it inherits the notebook default page colour.
 14. Navigate between pages and confirm the bottom-left counter updates.
-15. Save, reload, and confirm typed/stroke/page state survives where persistence is supported.
-16. Confirm the notebook page is the main working surface.
+15. Delete a non-final page and confirm the remaining pages renumber cleanly.
+16. Save, reload, and confirm typed/stroke/page state survives where persistence is supported.
+17. Confirm the notebook page is the main working surface.
 
 ## Phase 7 Notebook Editor V2
 
@@ -49,6 +50,8 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 7. On iPad/tablet, draw with stylus and swipe pages with a finger while Pen is active.
 8. Confirm finger swipes do not create ink and stylus strokes do not navigate pages.
 9. Open the AI icon and confirm it is only a placeholder drawer with no AI call.
+10. Confirm the page has no extra glassy frame outside the paper surface.
+11. In portrait, confirm the page sits with balanced vertical spacing and does not leave a large dead gap underneath.
 
 ## Device Strategy
 

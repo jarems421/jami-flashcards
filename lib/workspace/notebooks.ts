@@ -29,6 +29,11 @@ export type NotebookStrokeData = {
 
 export type NotebookPenColor = "black" | "white" | "red" | "green";
 export type NotebookHighlighterColor = "yellow" | "green" | "pink";
+export type NotebookCustomStrokeColor = `#${string}`;
+export type NotebookStrokeColor =
+  | NotebookPenColor
+  | NotebookHighlighterColor
+  | NotebookCustomStrokeColor;
 export type NotebookStrokeTool = "pen" | "eraser" | "highlighter";
 export type NotebookPageColor = "white" | "black";
 export type NotebookPageStyle = "plain" | "lined" | "grid" | "dot";
@@ -43,7 +48,7 @@ export type NotebookStrokePoint = {
 
 export type NotebookStroke = {
   points: NotebookStrokePoint[];
-  color: NotebookPenColor | NotebookHighlighterColor;
+  color: NotebookStrokeColor;
   width: number;
   tool: NotebookStrokeTool;
 };
@@ -133,6 +138,10 @@ export const MAX_NOTEBOOK_STROKE_POINTS = 1_200;
 export const MAX_NOTEBOOK_FILE_NAME_LENGTH = 500;
 export const MAX_NOTEBOOK_FILE_TYPE_LENGTH = 120;
 export const MAX_NOTEBOOK_FILE_STORAGE_PATH_LENGTH = 1_000;
+export const MIN_NOTEBOOK_TEXT_BLOCK_WIDTH = 120;
+export const MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT = 48;
+
+export type NotebookTextBlockResizeEdge = "top" | "right" | "bottom" | "left";
 
 export function isNotebookType(value: unknown): value is NotebookType {
   return (
@@ -168,6 +177,19 @@ export function isNotebookPenColor(value: unknown): value is NotebookPenColor {
 
 export function isNotebookHighlighterColor(value: unknown): value is NotebookHighlighterColor {
   return value === "yellow" || value === "green" || value === "pink";
+}
+
+export function isNotebookCustomStrokeColor(value: unknown): value is NotebookCustomStrokeColor {
+  return typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value);
+}
+
+export function normalizeNotebookStrokeColor(
+  value: unknown,
+  fallback: NotebookStrokeColor = "black"
+): NotebookStrokeColor {
+  if (isNotebookPenColor(value) || isNotebookHighlighterColor(value)) return value;
+  if (isNotebookCustomStrokeColor(value)) return value.toLowerCase() as NotebookCustomStrokeColor;
+  return fallback;
 }
 
 export function isNotebookStrokeTool(value: unknown): value is NotebookStrokeTool {
@@ -216,10 +238,7 @@ function normalizeNotebookStroke(value: unknown): NotebookStroke | null {
 
   return {
     points,
-    color:
-      isNotebookPenColor(stroke.color) || isNotebookHighlighterColor(stroke.color)
-        ? stroke.color
-        : "black",
+    color: normalizeNotebookStrokeColor(stroke.color),
     width,
     tool: isNotebookStrokeTool(stroke.tool) ? stroke.tool : "pen",
   };
@@ -273,6 +292,53 @@ function clampTextBlockNumber(value: unknown, min: number, max: number, fallback
   return Math.max(min, Math.min(max, Math.round(value)));
 }
 
+export function resizeNotebookTextBlockFromEdge(input: {
+  block: NotebookTextBlock;
+  edge: NotebookTextBlockResizeEdge;
+  deltaX: number;
+  deltaY: number;
+}): NotebookTextBlock {
+  const roundedDeltaX = Math.round(input.deltaX);
+  const roundedDeltaY = Math.round(input.deltaY);
+  const right = input.block.x + input.block.width;
+  const bottom = input.block.y + input.block.height;
+  const next: NotebookTextBlock = { ...input.block };
+
+  if (input.edge === "left") {
+    const x = Math.max(
+      0,
+      Math.min(right - MIN_NOTEBOOK_TEXT_BLOCK_WIDTH, input.block.x + roundedDeltaX)
+    );
+    next.x = x;
+    next.width = right - x;
+  }
+
+  if (input.edge === "right") {
+    next.width = Math.max(
+      MIN_NOTEBOOK_TEXT_BLOCK_WIDTH,
+      Math.min(NOTEBOOK_PAGE_COORDINATE_WIDTH - input.block.x, input.block.width + roundedDeltaX)
+    );
+  }
+
+  if (input.edge === "top") {
+    const y = Math.max(
+      0,
+      Math.min(bottom - MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT, input.block.y + roundedDeltaY)
+    );
+    next.y = y;
+    next.height = bottom - y;
+  }
+
+  if (input.edge === "bottom") {
+    next.height = Math.max(
+      MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT,
+      Math.min(NOTEBOOK_PAGE_COORDINATE_HEIGHT - input.block.y, input.block.height + roundedDeltaY)
+    );
+  }
+
+  return next;
+}
+
 function normalizeTextBlock(value: unknown): NotebookTextBlock | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const block = value as Record<string, unknown>;
@@ -280,8 +346,18 @@ function normalizeTextBlock(value: unknown): NotebookTextBlock | null {
   const text = normalizeOptionalString(block.text, MAX_NOTEBOOK_TEXT_BLOCK_TEXT);
   if (!id || !text) return null;
 
-  const width = clampTextBlockNumber(block.width, 120, NOTEBOOK_PAGE_COORDINATE_WIDTH, 320);
-  const height = clampTextBlockNumber(block.height, 48, NOTEBOOK_PAGE_COORDINATE_HEIGHT, 120);
+  const width = clampTextBlockNumber(
+    block.width,
+    MIN_NOTEBOOK_TEXT_BLOCK_WIDTH,
+    NOTEBOOK_PAGE_COORDINATE_WIDTH,
+    320
+  );
+  const height = clampTextBlockNumber(
+    block.height,
+    MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT,
+    NOTEBOOK_PAGE_COORDINATE_HEIGHT,
+    120
+  );
 
   return {
     id,
@@ -328,6 +404,28 @@ export function buildTypedContentFromTextBlocks(textBlocks: NotebookTextBlock[])
       .join("\n\n"),
     MAX_NOTEBOOK_PAGE_TYPED_CONTENT
   );
+}
+
+export function getNotebookPagesAfterDelete(
+  pages: readonly NotebookPage[],
+  pageId: string
+): NotebookPage[] {
+  const normalizedPageId = pageId.trim();
+  if (!normalizedPageId) return [...pages].sort((a, b) => a.pageNumber - b.pageNumber);
+
+  return pages
+    .filter((page) => page.id !== normalizedPageId)
+    .sort((a, b) => a.pageNumber - b.pageNumber)
+    .map((page, index) => {
+      const pageNumber = index + 1;
+      const title =
+        !page.title || /^Page \d+$/i.test(page.title) ? `Page ${pageNumber}` : page.title;
+      return {
+        ...page,
+        pageNumber,
+        title,
+      };
+    });
 }
 
 export function mapNotebookData(id: string, data: Record<string, unknown>): Notebook {

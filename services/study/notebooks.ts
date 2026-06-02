@@ -8,6 +8,7 @@ import {
   query,
   updateDoc,
   where,
+  writeBatch,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
@@ -18,6 +19,7 @@ import {
   mapNotebookData,
   mapNotebookFileData,
   mapNotebookPageData,
+  getNotebookPagesAfterDelete,
   normalizeNotebookTitle,
   type Notebook,
   type NotebookFile,
@@ -325,6 +327,55 @@ export async function updateNotebookPage(
     WRITE_MS,
     "Update notebook page"
   );
+}
+
+export async function deleteNotebookPage(
+  userId: string,
+  notebookId: string,
+  pageId: string
+): Promise<NotebookPage[]> {
+  const normalizedUserId = userId.trim();
+  const normalizedNotebookId = notebookId.trim();
+  const normalizedPageId = pageId.trim();
+  if (!normalizedUserId) {
+    throw new Error("Missing userId.");
+  }
+  if (!normalizedNotebookId) {
+    throw new Error("Missing notebookId.");
+  }
+  if (!normalizedPageId) {
+    throw new Error("Missing pageId.");
+  }
+
+  const pages = await getNotebookPages(normalizedUserId, normalizedNotebookId);
+  const pageToDelete = pages.find((page) => page.id === normalizedPageId);
+  if (!pageToDelete) {
+    throw new Error("Page not found.");
+  }
+  if (pages.length <= 1) {
+    throw new Error("A notebook needs at least one page.");
+  }
+
+  const nextPages = getNotebookPagesAfterDelete(pages, normalizedPageId);
+  const now = Date.now();
+  const batch = writeBatch(db);
+
+  batch.delete(doc(db, "users", normalizedUserId, "notebookPages", normalizedPageId));
+  for (const page of nextPages) {
+    const previous = pages.find((candidate) => candidate.id === page.id);
+    if (!previous) continue;
+    const updates: Record<string, unknown> = { updatedAt: now };
+    if (previous.pageNumber !== page.pageNumber) updates.pageNumber = page.pageNumber;
+    if (previous.title !== page.title) updates.title = page.title ?? null;
+    batch.update(doc(db, "users", normalizedUserId, "notebookPages", page.id), updates);
+  }
+  batch.update(doc(db, "users", normalizedUserId, "notebooks", normalizedNotebookId), {
+    updatedAt: now,
+  });
+
+  await withTimeout(batch.commit(), WRITE_MS, "Delete notebook page");
+
+  return nextPages.map((page) => ({ ...page, updatedAt: now }));
 }
 
 export async function getNotebookFiles(

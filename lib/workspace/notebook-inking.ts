@@ -67,6 +67,37 @@ export function shouldPointerDraw(
   return pointerType === "pen" || pointerType === "mouse";
 }
 
+export type NotebookPointerDrawEventLike = {
+  pointerType: string;
+  pressure?: number;
+  tiltX?: number;
+  tiltY?: number;
+  altitudeAngle?: number;
+  azimuthAngle?: number;
+};
+
+export function hasStylusTelemetry(input: NotebookPointerDrawEventLike) {
+  return (
+    (typeof input.tiltX === "number" && input.tiltX !== 0) ||
+    (typeof input.tiltY === "number" && input.tiltY !== 0) ||
+    typeof input.altitudeAngle === "number" ||
+    typeof input.azimuthAngle === "number"
+  );
+}
+
+export function shouldPointerDrawEvent(
+  event: NotebookPointerDrawEventLike,
+  tool: "pen" | "eraser" | "highlighter" | "text"
+) {
+  if (shouldPointerDraw(event.pointerType, tool)) return true;
+  if (tool === "text") return false;
+  if (event.pointerType === "touch") return hasStylusTelemetry(event);
+  if (event.pointerType === "") {
+    return hasStylusTelemetry(event) || normalizePointerPressure(event.pressure) > 0;
+  }
+  return false;
+}
+
 export function shouldPointerSwipePages(pointerType: string) {
   return pointerType === "touch";
 }
