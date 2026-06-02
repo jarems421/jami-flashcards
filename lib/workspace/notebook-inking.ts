@@ -16,10 +16,48 @@ export type PointerClientSample = {
 };
 
 const DEFAULT_MIN_POINT_DISTANCE = 1.35;
-export const NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER = 3;
+export const NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER = 5;
 export const NOTEBOOK_PAGE_SWIPE_THRESHOLD = 64;
 export const NOTEBOOK_PAGE_MIN_ZOOM = 0.85;
 export const NOTEBOOK_PAGE_MAX_ZOOM = 2.4;
+export const NOTEBOOK_DEFAULT_THICKNESS_PERCENT = 50;
+export const NOTEBOOK_PEN_MIN_WIDTH = 2;
+export const NOTEBOOK_PEN_MAX_WIDTH = 10;
+export const NOTEBOOK_HIGHLIGHTER_MIN_WIDTH = 10;
+export const NOTEBOOK_HIGHLIGHTER_MAX_WIDTH = 30;
+
+export function clampNotebookThicknessPercent(value: unknown) {
+  if (typeof value !== "number" || !Number.isFinite(value)) {
+    return NOTEBOOK_DEFAULT_THICKNESS_PERCENT;
+  }
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function getWidthFromThicknessPercent(input: {
+  value: unknown;
+  minWidth: number;
+  maxWidth: number;
+}) {
+  const percent = clampNotebookThicknessPercent(input.value);
+  const width = input.minWidth + (percent / 100) * (input.maxWidth - input.minWidth);
+  return Math.round(width * 100) / 100;
+}
+
+export function getPenWidthFromPercent(value: unknown) {
+  return getWidthFromThicknessPercent({
+    value,
+    minWidth: NOTEBOOK_PEN_MIN_WIDTH,
+    maxWidth: NOTEBOOK_PEN_MAX_WIDTH,
+  });
+}
+
+export function getHighlighterWidthFromPercent(value: unknown) {
+  return getWidthFromThicknessPercent({
+    value,
+    minWidth: NOTEBOOK_HIGHLIGHTER_MIN_WIDTH,
+    maxWidth: NOTEBOOK_HIGHLIGHTER_MAX_WIDTH,
+  });
+}
 
 export function shouldPointerDraw(
   pointerType: string,

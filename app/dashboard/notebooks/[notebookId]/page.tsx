@@ -51,6 +51,12 @@ import {
   type StrokeOutlinePoint,
 } from "@/lib/workspace/notebook-ink-engine";
 import {
+  clearNotebookNativeSelection,
+  isNotebookTextEditingTarget,
+  NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
+  shouldSuppressNotebookNativeEvent,
+} from "@/lib/workspace/notebook-interaction-lock";
+import {
   isNotebookSaveCompletionCurrent,
   shouldNotebookSaveReplaceStoredPageContent,
   shouldNotebookSaveUpdateLivePage,
@@ -58,10 +64,13 @@ import {
 import {
   appendInkPoints,
   clampNotebookPageZoom,
+  clampNotebookThicknessPercent,
   finalizeInkStroke,
+  getHighlighterWidthFromPercent,
   getNotebookPageIndexAfterSwipe,
   getNotebookSwipeDirection,
   getNotebookPageZoomAfterPinch,
+  getPenWidthFromPercent,
   getPinchDistance,
   getPointerClientSamples,
   mapClientPointToNotebookPage,
@@ -94,7 +103,6 @@ type LiveStroke = Omit<Stroke, "points"> & {
 };
 type SaveStatus = "saved" | "unsaved" | "saving" | "failed";
 type EditorTool = NotebookStrokeTool | "text";
-type PenWidth = "thin" | "medium" | "thick";
 type EraserWidth = "small" | "medium" | "large";
 type PageTransitionDirection = "next" | "previous" | null;
 type EraserCursorState = {
@@ -192,21 +200,12 @@ const PAGE_STYLE_LABELS: Record<NotebookPageStyle, string> = {
   grid: "Grid",
   dot: "Dot",
 };
-const PEN_WIDTH_VALUE: Record<PenWidth, number> = {
-  thin: 3,
-  medium: 5,
-  thick: 9,
-};
 const ERASER_WIDTH_VALUE: Record<EraserWidth, number> = {
   small: 36,
   medium: 56,
   large: 76,
 };
-const HIGHLIGHTER_WIDTH_VALUE: Record<PenWidth, number> = {
-  thin: 12,
-  medium: 18,
-  thick: 26,
-};
+const NOTEBOOK_THICKNESS_TICKS = [25, 50, 75] as const;
 
 function isPoint(value: unknown): value is InkPoint {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
@@ -339,6 +338,7 @@ function drawStrokePath(
       points: stroke.points,
       tool: stroke.tool,
       width: stroke.width,
+      mode: "committed",
     });
     if (fillStrokeOutline(context, outline)) {
       context.restore();
@@ -397,6 +397,7 @@ function drawLiveStrokePath(
       points: stroke.points,
       tool: stroke.tool,
       width: stroke.width,
+      mode: "live",
     });
     if (fillStrokeOutline(context, outline)) {
       context.restore();
@@ -591,6 +592,23 @@ function appendLiveInkPoints(
   return nextPoints;
 }
 
+function getLivePointKey(point: LiveInkPoint) {
+  return `${Math.round(point.x * 100)}/${Math.round(point.y * 100)}/${point.time}`;
+}
+
+function dedupeLiveInkPoints(
+  currentPoints: LiveInkPoint[],
+  incomingPoints: LiveInkPoint[]
+) {
+  const recentKeys = new Set(currentPoints.slice(-8).map(getLivePointKey));
+  return incomingPoints.filter((point) => {
+    const key = getLivePointKey(point);
+    if (recentKeys.has(key)) return false;
+    recentKeys.add(key);
+    return true;
+  });
+}
+
 type NotebookIconName =
   | "back"
   | "pages"
@@ -727,6 +745,67 @@ function ToolbarIconButton({
   );
 }
 
+function ThicknessSlider({
+  label,
+  percent,
+  color,
+  previewWidth,
+  onChange,
+}: {
+  label: string;
+  percent: number;
+  color: string;
+  previewWidth: number;
+  onChange: (value: number) => void;
+}) {
+  const clampedPercent = clampNotebookThicknessPercent(percent);
+  const sliderId = `${label.toLowerCase().replace(/\s+/g, "-")}-slider`;
+  return (
+    <div className="mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3">
+      <div className="mb-2 flex items-center justify-between gap-3">
+        <label className="text-xs font-semibold text-text-secondary" htmlFor={sliderId}>
+          {label}
+        </label>
+        <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-2 py-0.5 text-[0.68rem] font-semibold text-text-secondary">
+          {clampedPercent}%
+        </span>
+      </div>
+      <div className="relative px-1 pb-4 pt-2">
+        <div className="pointer-events-none absolute left-1 right-1 top-[1.08rem] h-1 rounded-full bg-[var(--color-border)]" />
+        {NOTEBOOK_THICKNESS_TICKS.map((tick) => (
+          <span
+            key={tick}
+            aria-hidden="true"
+            className="pointer-events-none absolute top-[0.72rem] h-3 w-px rounded-full bg-text-muted"
+            style={{ left: `calc(${tick}% - 0.5px)` }}
+          />
+        ))}
+        <input
+          id={sliderId}
+          type="range"
+          min={0}
+          max={100}
+          step={1}
+          value={clampedPercent}
+          aria-label={label}
+          onChange={(event) => onChange(Number(event.target.value))}
+          className="relative z-10 h-8 w-full cursor-pointer accent-[var(--color-selected-border)]"
+        />
+      </div>
+      <div className="mt-1 flex h-8 items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3">
+        <span
+          aria-hidden="true"
+          className="block w-full rounded-full"
+          style={{
+            backgroundColor: color,
+            height: `${Math.max(2, Math.min(18, previewWidth))}px`,
+          }}
+        />
+      </div>
+    </div>
+  );
+}
+
 export default function NotebookEditorPage() {
   const { user } = useUser();
   const router = useRouter();
@@ -745,9 +824,9 @@ export default function NotebookEditorPage() {
   const [pageColor, setPageColor] = useState<NotebookPageColor>("white");
   const [pageStyle, setPageStyle] = useState<NotebookPageStyle>("plain");
   const [penColor, setPenColor] = useState<NotebookPenColor>("black");
-  const [penWidth, setPenWidth] = useState<PenWidth>("medium");
+  const [penThicknessPercent, setPenThicknessPercent] = useState(50);
   const [highlighterColor, setHighlighterColor] = useState<NotebookHighlighterColor>("yellow");
-  const [highlighterWidth, setHighlighterWidth] = useState<PenWidth>("medium");
+  const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
   const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
   const [eraserWidth, setEraserWidth] = useState<EraserWidth>("medium");
   const [eraserCursor, setEraserCursor] = useState<EraserCursorState>({
@@ -789,6 +868,7 @@ export default function NotebookEditorPage() {
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
   const textBlockResizeRef = useRef<TextBlockResizeState | null>(null);
   const pageScrollRef = useRef<HTMLDivElement | null>(null);
+  const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
   const savedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const liveHighlighterCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -813,9 +893,9 @@ export default function NotebookEditorPage() {
   const fullNotebookEditingEnabledRef = useRef(fullNotebookEditingEnabled);
   const toolRef = useRef<EditorTool>("pen");
   const penColorRef = useRef<NotebookPenColor>("black");
-  const penWidthRef = useRef<PenWidth>("medium");
+  const penThicknessPercentRef = useRef(50);
   const highlighterColorRef = useRef<NotebookHighlighterColor>("yellow");
-  const highlighterWidthRef = useRef<PenWidth>("medium");
+  const highlighterThicknessPercentRef = useRef(50);
   const eraserWidthRef = useRef<EraserWidth>("medium");
 
   const selectedPage = useMemo(
@@ -854,16 +934,17 @@ export default function NotebookEditorPage() {
   }, [penColor]);
 
   useEffect(() => {
-    penWidthRef.current = penWidth;
-  }, [penWidth]);
+    penThicknessPercentRef.current = clampNotebookThicknessPercent(penThicknessPercent);
+  }, [penThicknessPercent]);
 
   useEffect(() => {
     highlighterColorRef.current = highlighterColor;
   }, [highlighterColor]);
 
   useEffect(() => {
-    highlighterWidthRef.current = highlighterWidth;
-  }, [highlighterWidth]);
+    highlighterThicknessPercentRef.current =
+      clampNotebookThicknessPercent(highlighterThicknessPercent);
+  }, [highlighterThicknessPercent]);
 
   useEffect(() => {
     eraserWidthRef.current = eraserWidth;
@@ -1149,15 +1230,64 @@ export default function NotebookEditorPage() {
   }, [pageStyle]);
 
   useEffect(() => {
-    const handleBlur = () => {
+    if (typeof document === "undefined") return;
+
+    document.body.classList.add(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
+
+    const preventIfOutsideTextEditor = (event: Event) => {
+      if (!shouldSuppressNotebookNativeEvent(event.target)) return;
+      event.preventDefault();
+      clearNotebookNativeSelection(document);
+    };
+    const clearSelectionIfOutsideTextEditor = () => {
+      if (isNotebookTextEditingTarget(document.activeElement)) return;
+      clearNotebookNativeSelection(document);
+    };
+
+    document.addEventListener("selectstart", preventIfOutsideTextEditor, true);
+    document.addEventListener("contextmenu", preventIfOutsideTextEditor, true);
+    document.addEventListener("dragstart", preventIfOutsideTextEditor, true);
+    document.addEventListener("copy", preventIfOutsideTextEditor, true);
+    document.addEventListener("cut", preventIfOutsideTextEditor, true);
+    document.addEventListener("paste", preventIfOutsideTextEditor, true);
+    document.addEventListener("selectionchange", clearSelectionIfOutsideTextEditor);
+
+    return () => {
+      document.body.classList.remove(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
+      document.removeEventListener("selectstart", preventIfOutsideTextEditor, true);
+      document.removeEventListener("contextmenu", preventIfOutsideTextEditor, true);
+      document.removeEventListener("dragstart", preventIfOutsideTextEditor, true);
+      document.removeEventListener("copy", preventIfOutsideTextEditor, true);
+      document.removeEventListener("cut", preventIfOutsideTextEditor, true);
+      document.removeEventListener("paste", preventIfOutsideTextEditor, true);
+      document.removeEventListener("selectionchange", clearSelectionIfOutsideTextEditor);
+    };
+  }, []);
+
+  useEffect(() => {
+    const clearActiveInteractions = () => {
       finishActiveStroke();
       touchPointersRef.current.clear();
       pinchZoomRef.current = null;
       pageSwipeRef.current = null;
+      setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
+      if (typeof document !== "undefined") {
+        clearNotebookNativeSelection(document);
+      }
     };
-    window.addEventListener("blur", handleBlur);
+    const handleVisibilityChange = () => {
+      if (document.visibilityState !== "visible") {
+        clearActiveInteractions();
+      }
+    };
+
+    window.addEventListener("blur", clearActiveInteractions);
+    window.addEventListener("pagehide", clearActiveInteractions);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => {
-      window.removeEventListener("blur", handleBlur);
+      window.removeEventListener("blur", clearActiveInteractions);
+      window.removeEventListener("pagehide", clearActiveInteractions);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (savedCanvasFrameRef.current !== null) {
         window.cancelAnimationFrame(savedCanvasFrameRef.current);
         savedCanvasFrameRef.current = null;
@@ -1274,18 +1404,10 @@ export default function NotebookEditorPage() {
     };
   }, []);
 
-  const getNotebookSamplesFromEvent = (
-    event: ReactPointerEvent<HTMLCanvasElement>,
-    strokeStartTime?: number
-  ): LiveInkPoint[] =>
-    getNotebookSampleBatchFromNativeEvent(
-      event.nativeEvent,
-      event.currentTarget,
-      strokeStartTime
-    ).points;
-
   const getNotebookPointsFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>): Point[] =>
-    getNotebookSamplesFromEvent(event).map(({ x, y }) => ({ x, y }));
+    getNotebookSampleBatchFromNativeEvent(event.nativeEvent, event.currentTarget).points.map(
+      ({ x, y }) => ({ x, y })
+    );
 
   const createTextBlockAtPoint = (point: Point) => {
     const block = clampTextBlock({
@@ -1306,16 +1428,6 @@ export default function NotebookEditorPage() {
     markPageUnsaved();
   };
 
-  const updateEraserCursorFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (tool !== "eraser" || !shouldPointerDraw(event.pointerType, tool)) {
-      setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
-      return;
-    }
-    const [point] = getNotebookPointsFromEvent(event);
-    if (!point) return;
-    setEraserCursor({ ...point, visible: true });
-  };
-
   const updateEraserCursorFromPoint = useCallback(
     (point: Point | undefined, activeTool: EditorTool) => {
       if (activeTool !== "eraser" || !point) {
@@ -1333,6 +1445,7 @@ export default function NotebookEditorPage() {
     (event: PointerEvent, canvas: HTMLCanvasElement) => {
       const currentTool = toolRef.current;
       if (
+        isNotebookTextEditingTarget(event.target) ||
         !fullNotebookEditingEnabledRef.current ||
         !shouldPointerDraw(event.pointerType, currentTool)
       ) {
@@ -1340,6 +1453,8 @@ export default function NotebookEditorPage() {
       }
 
       event.preventDefault();
+      event.stopPropagation();
+      clearNotebookNativeSelection(document);
       setPenMenuOpen(false);
       setHighlighterMenuOpen(false);
       setEraserMenuOpen(false);
@@ -1364,8 +1479,8 @@ export default function NotebookEditorPage() {
         strokeTool === "eraser"
           ? ERASER_WIDTH_VALUE[eraserWidthRef.current]
           : strokeTool === "highlighter"
-            ? HIGHLIGHTER_WIDTH_VALUE[highlighterWidthRef.current]
-            : PEN_WIDTH_VALUE[penWidthRef.current];
+            ? getHighlighterWidthFromPercent(highlighterThicknessPercentRef.current)
+            : getPenWidthFromPercent(penThicknessPercentRef.current);
 
       activeStrokeRef.current = {
         pointerId: event.pointerId,
@@ -1404,6 +1519,7 @@ export default function NotebookEditorPage() {
       if (!activeStroke || activeStroke.pointerId !== event.pointerId) return false;
       const currentTool = toolRef.current;
       if (
+        isNotebookTextEditingTarget(event.target) ||
         !fullNotebookEditingEnabledRef.current ||
         !shouldPointerDraw(event.pointerType, currentTool)
       ) {
@@ -1411,12 +1527,14 @@ export default function NotebookEditorPage() {
       }
 
       event.preventDefault();
+      event.stopPropagation();
       const sampleBatch = getNotebookSampleBatchFromNativeEvent(
         event,
         canvas,
         activeStroke.startTime
       );
-      const livePoints = sampleBatch.points;
+      const livePoints = dedupeLiveInkPoints(activeStroke.liveStroke.points, sampleBatch.points);
+      if (livePoints.length === 0) return true;
       activeStroke.stroke = {
         ...activeStroke.stroke,
         points: appendInkPoints(
@@ -1441,6 +1559,7 @@ export default function NotebookEditorPage() {
       const activeStroke = activeStrokeRef.current;
       if (!activeStroke || activeStroke.pointerId !== event.pointerId) return false;
       event.preventDefault();
+      event.stopPropagation();
       setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
       finishActiveStroke({ pointerId: event.pointerId, canvas });
       return true;
@@ -1449,8 +1568,9 @@ export default function NotebookEditorPage() {
   );
 
   useEffect(() => {
+    const surface = pageSurfaceRef.current;
     const canvas = liveCanvasRef.current;
-    if (!canvas || typeof window === "undefined") return;
+    if (!surface || !canvas || typeof window === "undefined") return;
 
     const stopReactIfHandled = (event: PointerEvent, handled: boolean) => {
       if (!handled) return;
@@ -1470,116 +1590,28 @@ export default function NotebookEditorPage() {
       stopReactIfHandled(event, stopDrawingOnCanvas(event, canvas));
     };
 
-    const listenerOptions = { passive: false };
+    const listenerOptions = { passive: false, capture: true };
     const supportsRawUpdate = "onpointerrawupdate" in window;
-    canvas.addEventListener("pointerdown", handleNativePointerDown, listenerOptions);
-    canvas.addEventListener("pointermove", handleNativePointerMove, listenerOptions);
+    surface.addEventListener("pointerdown", handleNativePointerDown, listenerOptions);
+    surface.addEventListener("pointermove", handleNativePointerMove, listenerOptions);
     if (supportsRawUpdate) {
-      canvas.addEventListener("pointerrawupdate", handleNativePointerMove, listenerOptions);
+      surface.addEventListener("pointerrawupdate", handleNativePointerMove, listenerOptions);
     }
-    canvas.addEventListener("pointerup", handleNativePointerStop, listenerOptions);
-    canvas.addEventListener("pointercancel", handleNativePointerStop, listenerOptions);
-    canvas.addEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
+    surface.addEventListener("pointerup", handleNativePointerStop, listenerOptions);
+    surface.addEventListener("pointercancel", handleNativePointerStop, listenerOptions);
+    surface.addEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
 
     return () => {
-      canvas.removeEventListener("pointerdown", handleNativePointerDown);
-      canvas.removeEventListener("pointermove", handleNativePointerMove);
+      surface.removeEventListener("pointerdown", handleNativePointerDown, listenerOptions);
+      surface.removeEventListener("pointermove", handleNativePointerMove, listenerOptions);
       if (supportsRawUpdate) {
-        canvas.removeEventListener("pointerrawupdate", handleNativePointerMove);
+        surface.removeEventListener("pointerrawupdate", handleNativePointerMove, listenerOptions);
       }
-      canvas.removeEventListener("pointerup", handleNativePointerStop);
-      canvas.removeEventListener("pointercancel", handleNativePointerStop);
-      canvas.removeEventListener("lostpointercapture", handleNativePointerStop);
+      surface.removeEventListener("pointerup", handleNativePointerStop, listenerOptions);
+      surface.removeEventListener("pointercancel", handleNativePointerStop, listenerOptions);
+      surface.removeEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
     };
   }, [continueDrawingOnCanvas, startDrawingOnCanvas, stopDrawingOnCanvas]);
-
-  const handleStartDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    if (!fullNotebookEditingEnabled || !shouldPointerDraw(event.pointerType, tool)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    setPenMenuOpen(false);
-    setHighlighterMenuOpen(false);
-    setEraserMenuOpen(false);
-    updateEraserCursorFromEvent(event);
-    finishActiveStroke();
-
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    }
-
-    const sampleBatch = getNotebookSampleBatchFromNativeEvent(event.nativeEvent, event.currentTarget);
-    const livePoints = sampleBatch.points;
-    const points = livePoints.map(({ x, y, pressure, time }) => ({ x, y, pressure, time }));
-    const strokeTool: NotebookStrokeTool =
-      tool === "eraser" || tool === "highlighter" ? tool : "pen";
-    const strokeColor =
-      strokeTool === "eraser"
-        ? "white"
-        : strokeTool === "highlighter"
-          ? highlighterColor
-          : penColor;
-    const strokeWidth =
-      strokeTool === "eraser"
-        ? ERASER_WIDTH_VALUE[eraserWidth]
-        : strokeTool === "highlighter"
-          ? HIGHLIGHTER_WIDTH_VALUE[highlighterWidth]
-          : PEN_WIDTH_VALUE[penWidth];
-    activeStrokeRef.current = {
-      pointerId: event.pointerId,
-      startTime: sampleBatch.startTime,
-      stroke: {
-        points: appendInkPoints([], points, 1_200),
-        color: strokeColor,
-        tool: strokeTool,
-        width: strokeWidth,
-      },
-      liveStroke: {
-        points: appendLiveInkPoints([], livePoints, 1_200),
-        color: strokeColor,
-        tool: strokeTool,
-        width: strokeWidth,
-      },
-    };
-    document.body.classList.add("jami-inking-active");
-    markPageUnsaved();
-    renderLiveCanvasNow();
-  };
-
-  const handleDraw = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    const activeStroke = activeStrokeRef.current;
-    if (
-      !activeStroke ||
-      activeStroke.pointerId !== event.pointerId ||
-      !fullNotebookEditingEnabled ||
-      !shouldPointerDraw(event.pointerType, tool)
-    ) {
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    updateEraserCursorFromEvent(event);
-    const livePoints = getNotebookSamplesFromEvent(event, activeStroke.startTime);
-    activeStroke.stroke = {
-      ...activeStroke.stroke,
-      points: appendInkPoints(
-        activeStroke.stroke.points,
-        livePoints.map(({ x, y, pressure, time }) => ({ x, y, pressure, time })),
-        1_200
-      ),
-    };
-    activeStroke.liveStroke = {
-      ...activeStroke.liveStroke,
-      points: appendLiveInkPoints(activeStroke.liveStroke.points, livePoints, 1_200),
-    };
-    scheduleLiveCanvasRender();
-  };
-
-  const handleStopDrawing = (event: ReactPointerEvent<HTMLCanvasElement>) => {
-    event.preventDefault();
-    setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
-    finishActiveStroke({ pointerId: event.pointerId, canvas: event.currentTarget });
-  };
 
   const collectCurrentStrokes = useCallback(
     (options: { includeActiveStroke?: boolean } = {}) => {
@@ -1943,7 +1975,7 @@ export default function NotebookEditorPage() {
       return;
     }
     if (shouldPointerDraw(event.pointerType, tool)) {
-      handleStartDrawing(event);
+      event.preventDefault();
       return;
     }
 
@@ -1959,8 +1991,9 @@ export default function NotebookEditorPage() {
       handlePageSwipeMove(event);
       return;
     }
-    updateEraserCursorFromEvent(event);
-    handleDraw(event);
+    if (shouldPointerDraw(event.pointerType, tool)) {
+      event.preventDefault();
+    }
   };
 
   const handlePagePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1969,7 +2002,9 @@ export default function NotebookEditorPage() {
       handleStopPageSwipe(event, { allowTextTap: true });
       return;
     }
-    handleStopDrawing(event);
+    if (shouldPointerDraw(event.pointerType, tool)) {
+      event.preventDefault();
+    }
   };
 
   const handlePagePointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
@@ -1979,7 +2014,9 @@ export default function NotebookEditorPage() {
       handleStopPageSwipe(event);
       return;
     }
-    handleStopDrawing(event);
+    if (shouldPointerDraw(event.pointerType, tool)) {
+      event.preventDefault();
+    }
   };
 
   const updateTextBlock = (blockId: string, updates: Partial<NotebookTextBlock>) => {
@@ -2304,7 +2341,7 @@ export default function NotebookEditorPage() {
   return (
     <main
       data-app-surface="true"
-      className="fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
+      className="notebook-editor-shell fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
         <header className="z-40 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] backdrop-blur-xl">
@@ -2405,29 +2442,16 @@ export default function NotebookEditorPage() {
                         />
                       ))}
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {(["thin", "medium", "thick"] as PenWidth[]).map((width) => (
-                        <button
-                          key={width}
-                          type="button"
-                          aria-label={`${width} line`}
-                          onClick={() => {
-                            setPenWidth(width);
-                            setTool("pen");
-                            setPenMenuOpen(false);
-                          }}
-                          className={`rounded-full border px-2 py-1.5 text-xs font-semibold capitalize transition ${
-                            penWidth === width ? "app-selected" : "app-chip"
-                          }`}
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="mx-auto block w-8 rounded-full bg-current"
-                            style={{ height: `${Math.max(2, PEN_WIDTH_VALUE[width] / 2)}px` }}
-                          />
-                        </button>
-                      ))}
-                    </div>
+                    <ThicknessSlider
+                      label="Pen thickness"
+                      percent={penThicknessPercent}
+                      color={PEN_COLOR_HEX[penColor]}
+                      previewWidth={getPenWidthFromPercent(penThicknessPercent)}
+                      onChange={(value) => {
+                        setPenThicknessPercent(clampNotebookThicknessPercent(value));
+                        setTool("pen");
+                      }}
+                    />
                   </div>
                 ) : null}
               </div>
@@ -2471,31 +2495,16 @@ export default function NotebookEditorPage() {
                         />
                       ))}
                     </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {(["thin", "medium", "thick"] as PenWidth[]).map((width) => (
-                        <button
-                          key={width}
-                          type="button"
-                          aria-label={`${width} highlighter`}
-                          onClick={() => {
-                            setHighlighterWidth(width);
-                            setTool("highlighter");
-                            setHighlighterMenuOpen(false);
-                          }}
-                          className={`rounded-full border px-2 py-1.5 text-xs font-semibold capitalize transition ${
-                            highlighterWidth === width ? "app-selected" : "app-chip"
-                          }`}
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="mx-auto block w-8 rounded-full bg-current"
-                            style={{
-                              height: `${Math.max(3, HIGHLIGHTER_WIDTH_VALUE[width] / 4)}px`,
-                            }}
-                          />
-                        </button>
-                      ))}
-                    </div>
+                    <ThicknessSlider
+                      label="Highlighter thickness"
+                      percent={highlighterThicknessPercent}
+                      color={HIGHLIGHTER_COLOR_HEX[highlighterColor]}
+                      previewWidth={getHighlighterWidthFromPercent(highlighterThicknessPercent) / 2}
+                      onChange={(value) => {
+                        setHighlighterThicknessPercent(clampNotebookThicknessPercent(value));
+                        setTool("highlighter");
+                      }}
+                    />
                   </div>
                 ) : null}
               </div>
@@ -2883,8 +2892,9 @@ export default function NotebookEditorPage() {
 
               <div className="mx-auto w-full rounded-[1.35rem] bg-[var(--color-glass-subtle)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.05)] sm:p-3">
                 <div
+                  ref={pageSurfaceRef}
                   data-notebook-page-surface
-                  className={`relative mx-auto w-full overflow-hidden rounded-[0.95rem] border border-[var(--color-border)] shadow-[0_18px_48px_rgba(0,0,0,0.2)] ${PAGE_COLOR_CLASS[pageColor]} ${
+                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden rounded-[0.95rem] border border-[var(--color-border)] shadow-[0_18px_48px_rgba(0,0,0,0.2)] ${PAGE_COLOR_CLASS[pageColor]} ${
                     pageTransitionDirection === "next"
                       ? "notebook-page-transition-next"
                       : pageTransitionDirection === "previous"
@@ -2957,7 +2967,7 @@ export default function NotebookEditorPage() {
                       return (
                         <div
                           key={block.id}
-                          className={`pointer-events-auto absolute rounded-lg border bg-transparent transition ${
+                          className={`notebook-text-object pointer-events-auto absolute rounded-lg border bg-transparent transition ${
                             editing
                               ? "cursor-text border-[var(--color-selected-border)] shadow-[0_0_0_3px_rgba(183,124,255,0.16)]"
                               : selected
@@ -3064,7 +3074,8 @@ export default function NotebookEditorPage() {
                               onFocus={() => setSelectedTextBlockId(block.id)}
                               onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
                               placeholder="Type here..."
-                              className={`h-full w-full resize-none rounded-lg bg-transparent p-2 pb-8 pr-20 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+                              data-notebook-text-editor="true"
+                              className={`notebook-text-editor h-full w-full resize-none rounded-lg bg-transparent p-2 pb-8 pr-20 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
                             />
                           ) : (
                             <div

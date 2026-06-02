@@ -433,15 +433,51 @@
     -webkit-user-select: none !important;
     user-select: none !important;
   }
+
+  body.jami-notebook-editor-active,
+  body.jami-notebook-editor-active .notebook-editor-shell,
+  body.jami-notebook-editor-active .notebook-page-surface,
+  body.jami-notebook-editor-active .notebook-page-surface *:not(.notebook-text-editor) {
+    -webkit-touch-callout: none !important;
+    -webkit-user-drag: none !important;
+    -webkit-user-select: none !important;
+    user-select: none !important;
+  }
+
+  body.jami-notebook-editor-active .notebook-text-editor {
+    -webkit-touch-callout: default !important;
+    -webkit-user-select: text !important;
+    user-select: text !important;
+  }
 }
 
 @layer utilities {
+  .notebook-editor-shell,
+  .notebook-page-surface,
+  .notebook-text-object {
+    -webkit-touch-callout: none;
+    -webkit-user-drag: none;
+    overscroll-behavior: contain;
+    user-select: none;
+  }
+
+  .notebook-page-surface {
+    touch-action: none;
+  }
+
   .notebook-ink-surface {
     -webkit-touch-callout: none;
     -webkit-user-drag: none;
     overscroll-behavior: contain;
     touch-action: none;
     user-select: none;
+  }
+
+  .notebook-text-editor {
+    -webkit-touch-callout: default;
+    -webkit-user-select: text;
+    touch-action: manipulation;
+    user-select: text;
   }
 
   @media (prefers-reduced-motion: no-preference) {

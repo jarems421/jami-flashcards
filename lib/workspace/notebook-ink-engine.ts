@@ -16,6 +16,7 @@ export type FreehandPoint = {
 };
 
 export type StrokeOutlinePoint = [number, number];
+export type FreehandRenderMode = "live" | "committed";
 
 const DEFAULT_INTERPOLATION_DISTANCE = 7.5;
 const MAX_POINT_TIME = 10 * 60 * 1_000;
@@ -79,18 +80,34 @@ export function getFreehandOutline(input: {
   points: TimedInkPoint[];
   tool: Exclude<NotebookStrokeTool, "eraser">;
   width: number;
+  mode?: FreehandRenderMode;
 }): StrokeOutlinePoint[] {
+  const mode = input.mode ?? "committed";
   const points = interpolateInkPoints(
     input.points,
-    input.tool === "highlighter" ? 10 : DEFAULT_INTERPOLATION_DISTANCE
+    mode === "live" ? 10 : input.tool === "highlighter" ? 8.5 : 6.25
   );
   if (points.length === 0) return [];
 
   const outline = getStroke(points, {
     size: Math.max(1, input.width),
-    thinning: input.tool === "highlighter" ? 0.16 : 0.58,
-    smoothing: input.tool === "highlighter" ? 0.58 : 0.72,
-    streamline: input.tool === "highlighter" ? 0.32 : 0.42,
+    thinning: input.tool === "highlighter" ? 0.14 : 0.54,
+    smoothing:
+      mode === "live"
+        ? input.tool === "highlighter"
+          ? 0.42
+          : 0.54
+        : input.tool === "highlighter"
+          ? 0.68
+          : 0.82,
+    streamline:
+      mode === "live"
+        ? input.tool === "highlighter"
+          ? 0.18
+          : 0.22
+        : input.tool === "highlighter"
+          ? 0.42
+          : 0.58,
     simulatePressure: false,
     start: { cap: true, taper: 0 },
     end: { cap: true, taper: 0 },
