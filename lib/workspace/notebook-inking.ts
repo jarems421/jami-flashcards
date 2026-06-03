@@ -16,6 +16,7 @@ export type PointerClientSample = {
 };
 
 const DEFAULT_MIN_POINT_DISTANCE = 1.35;
+const DEFAULT_MAX_INTERPOLATED_POINT_DISTANCE = 4.75;
 export const NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER = 5;
 export const NOTEBOOK_PAGE_SWIPE_THRESHOLD = 64;
 export const NOTEBOOK_PAGE_MIN_ZOOM = 0.85;
@@ -76,26 +77,11 @@ export type NotebookPointerDrawEventLike = {
   azimuthAngle?: number;
 };
 
-export function hasStylusTelemetry(input: NotebookPointerDrawEventLike) {
-  return (
-    (typeof input.tiltX === "number" && input.tiltX !== 0) ||
-    (typeof input.tiltY === "number" && input.tiltY !== 0) ||
-    typeof input.altitudeAngle === "number" ||
-    typeof input.azimuthAngle === "number"
-  );
-}
-
 export function shouldPointerDrawEvent(
   event: NotebookPointerDrawEventLike,
   tool: "pen" | "eraser" | "highlighter" | "text"
 ) {
-  if (shouldPointerDraw(event.pointerType, tool)) return true;
-  if (tool === "text") return false;
-  if (event.pointerType === "touch") return hasStylusTelemetry(event);
-  if (event.pointerType === "") {
-    return hasStylusTelemetry(event) || normalizePointerPressure(event.pressure) > 0;
-  }
-  return false;
+  return shouldPointerDraw(event.pointerType, tool);
 }
 
 export function shouldPointerSwipePages(pointerType: string) {
@@ -224,10 +210,50 @@ export function appendInkPoints(
   return nextPoints;
 }
 
+function interpolateNotebookPoint(
+  previousPoint: NotebookInkPoint,
+  currentPoint: NotebookInkPoint,
+  progress: number
+): NotebookInkPoint {
+  const previousPressure = normalizePointerPressure(previousPoint.pressure);
+  const currentPressure = normalizePointerPressure(currentPoint.pressure);
+  const previousTime = normalizeInkTime(previousPoint.time, 0);
+  const currentTime = normalizeInkTime(currentPoint.time, previousTime);
+  return {
+    x: previousPoint.x + (currentPoint.x - previousPoint.x) * progress,
+    y: previousPoint.y + (currentPoint.y - previousPoint.y) * progress,
+    pressure: previousPressure + (currentPressure - previousPressure) * progress,
+    time: Math.round(previousTime + (currentTime - previousTime) * progress),
+  };
+}
+
+export function interpolateInkSampleGaps(
+  points: NotebookInkPoint[],
+  maxDistance = DEFAULT_MAX_INTERPOLATED_POINT_DISTANCE
+) {
+  if (points.length < 2) return points;
+  const nextPoints: NotebookInkPoint[] = [points[0]];
+
+  for (let index = 1; index < points.length; index += 1) {
+    const previousPoint = nextPoints[nextPoints.length - 1];
+    const currentPoint = points[index];
+    const dx = currentPoint.x - previousPoint.x;
+    const dy = currentPoint.y - previousPoint.y;
+    const distance = Math.hypot(dx, dy);
+    const steps = Math.max(1, Math.ceil(distance / maxDistance));
+
+    for (let step = 1; step <= steps; step += 1) {
+      nextPoints.push(interpolateNotebookPoint(previousPoint, currentPoint, step / steps));
+    }
+  }
+
+  return nextPoints;
+}
+
 export function finalizeInkStroke(stroke: NotebookStroke | null): NotebookStroke | null {
   if (!stroke || stroke.points.length === 0) return null;
   return {
     ...stroke,
-    points: stroke.points.slice(0, 1_200),
+    points: interpolateInkSampleGaps(stroke.points).slice(0, 1_200),
   };
 }

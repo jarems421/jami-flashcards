@@ -227,25 +227,25 @@ const TEXT_BLOCK_RESIZE_HANDLES: Array<{
   {
     edge: "top",
     label: "Resize text box from top edge",
-    positionClass: "left-1/2 top-0 h-6 w-10 -translate-x-1/2 -translate-y-1/2",
+    positionClass: "left-1/2 top-0 h-8 w-8 -translate-x-1/2 -translate-y-1/2",
     arrowClass: "rotate-180",
   },
   {
     edge: "right",
     label: "Resize text box from right edge",
-    positionClass: "right-0 top-1/2 h-10 w-6 -translate-y-1/2 translate-x-1/2",
+    positionClass: "right-0 top-1/2 h-8 w-8 -translate-y-1/2 translate-x-1/2",
     arrowClass: "-rotate-90",
   },
   {
     edge: "bottom",
     label: "Resize text box from bottom edge",
-    positionClass: "bottom-0 left-1/2 h-6 w-10 -translate-x-1/2 translate-y-1/2",
+    positionClass: "bottom-0 left-1/2 h-8 w-8 -translate-x-1/2 translate-y-1/2",
     arrowClass: "rotate-0",
   },
   {
     edge: "left",
     label: "Resize text box from left edge",
-    positionClass: "left-0 top-1/2 h-10 w-6 -translate-x-1/2 -translate-y-1/2",
+    positionClass: "left-0 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2",
     arrowClass: "rotate-90",
   },
 ];
@@ -441,19 +441,6 @@ function drawLiveStrokePath(
     return;
   }
 
-  if (stroke.tool !== "eraser") {
-    const outline = getFreehandOutline({
-      points: stroke.points,
-      tool: stroke.tool,
-      width: stroke.width,
-      mode: "live",
-    });
-    if (fillStrokeOutline(context, outline)) {
-      context.restore();
-      return;
-    }
-  }
-
   for (let index = 1; index < stroke.points.length; index += 1) {
     const previousPoint = stroke.points[index - 1];
     const currentPoint = stroke.points[index];
@@ -617,9 +604,9 @@ function NotebookPageThumbnail({
 function shouldAppendLiveInkPoint(
   points: LiveInkPoint[],
   point: LiveInkPoint,
-  minDistance = 1.35
+  minDistance = 1.05
 ) {
-  if (points.length < 3) return true;
+  if (points.length < 5) return true;
   const previousPoint = points[points.length - 1];
   const dx = point.x - previousPoint.x;
   const dy = point.y - previousPoint.y;
@@ -677,6 +664,10 @@ function safelyReleasePointerCapture(element: HTMLElement, pointerId: number) {
   } catch {
     // Safari can drop capture during rapid stylus re-contact; cleanup should continue.
   }
+}
+
+function isTextResizeHandleTarget(target: EventTarget | null) {
+  return target instanceof Element && Boolean(target.closest("[data-text-resize-handle='true']"));
 }
 
 type NotebookIconName =
@@ -840,13 +831,13 @@ function ThicknessSlider({
           {clampedPercent}%
         </span>
       </div>
-      <div className="relative px-1 pb-4 pt-2">
-        <div className="pointer-events-none absolute left-1 right-1 top-[1.08rem] h-1 rounded-full bg-[var(--color-border)]" />
+      <div className="relative px-1 py-3">
+        <div className="pointer-events-none absolute left-1 right-1 top-1/2 h-px -translate-y-1/2 rounded-full bg-[var(--color-border)]" />
         {NOTEBOOK_THICKNESS_TICKS.map((tick) => (
           <span
             key={tick}
             aria-hidden="true"
-            className="pointer-events-none absolute top-[0.72rem] h-3 w-px rounded-full bg-text-muted"
+            className="pointer-events-none absolute top-1/2 h-3 w-px -translate-y-1/2 rounded-full bg-text-muted"
             style={{ left: `calc(${tick}% - 0.5px)` }}
           />
         ))}
@@ -859,7 +850,7 @@ function ThicknessSlider({
           value={clampedPercent}
           aria-label={label}
           onChange={(event) => onChange(Number(event.target.value))}
-          className="relative z-10 h-8 w-full cursor-pointer accent-[var(--color-selected-border)]"
+          className="notebook-thickness-slider relative z-10 h-7 w-full cursor-pointer bg-transparent"
         />
       </div>
       <div className="mt-1 flex h-8 items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3">
@@ -998,6 +989,7 @@ export default function NotebookEditorPage() {
   const [pageTransitionDirection, setPageTransitionDirection] =
     useState<PageTransitionDirection>(null);
   const [activeTextGestureId, setActiveTextGestureId] = useState<string | null>(null);
+  const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
   const textBlockResizeRef = useRef<TextBlockResizeState | null>(null);
   const pageScrollRef = useRef<HTMLDivElement | null>(null);
@@ -1021,6 +1013,8 @@ export default function NotebookEditorPage() {
   const undoStackRef = useRef<NotebookUndoAction[]>([]);
   const editorRevisionRef = useRef(0);
   const latestSaveIdRef = useRef(0);
+  const ignoredTouchInkCountRef = useRef(0);
+  const touchInkHintTimeoutRef = useRef<number | null>(null);
   const hydratedPageIdRef = useRef<string | null>(null);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
   const fullNotebookEditingEnabledRef = useRef(fullNotebookEditingEnabled);
@@ -1194,8 +1188,9 @@ export default function NotebookEditorPage() {
         return;
       }
 
-      if (options?.canvas && options.pointerId !== undefined) {
-        safelyReleasePointerCapture(options.canvas, options.pointerId);
+      const releaseCanvas = options?.canvas ?? liveCanvasRef.current;
+      if (releaseCanvas) {
+        safelyReleasePointerCapture(releaseCanvas, activeStroke.pointerId);
       }
 
       const finalizedStroke = finalizeInkStroke(activeStroke.stroke);
@@ -1424,6 +1419,10 @@ export default function NotebookEditorPage() {
       if (liveCanvasFrameRef.current !== null) {
         window.cancelAnimationFrame(liveCanvasFrameRef.current);
         liveCanvasFrameRef.current = null;
+      }
+      if (touchInkHintTimeoutRef.current !== null) {
+        window.clearTimeout(touchInkHintTimeoutRef.current);
+        touchInkHintTimeoutRef.current = null;
       }
       document.body.classList.remove("jami-inking-active");
     };
@@ -1714,6 +1713,12 @@ export default function NotebookEditorPage() {
       if (!(event instanceof PointerEvent)) return;
       stopReactIfHandled(event, stopDrawingOnCanvas(event, canvas));
     };
+    const handleWindowPointerStop: EventListener = (event) => {
+      if (!(event instanceof PointerEvent)) return;
+      const activeStroke = activeStrokeRef.current;
+      if (!activeStroke || activeStroke.pointerId !== event.pointerId) return;
+      stopReactIfHandled(event, stopDrawingOnCanvas(event, canvas));
+    };
 
     const listenerOptions = { passive: false, capture: true };
     const supportsRawUpdate = "onpointerrawupdate" in window;
@@ -1725,6 +1730,8 @@ export default function NotebookEditorPage() {
     canvas.addEventListener("pointerup", handleNativePointerStop, listenerOptions);
     canvas.addEventListener("pointercancel", handleNativePointerStop, listenerOptions);
     canvas.addEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
+    window.addEventListener("pointerup", handleWindowPointerStop, listenerOptions);
+    window.addEventListener("pointercancel", handleWindowPointerStop, listenerOptions);
 
     return () => {
       canvas.removeEventListener("pointerdown", handleNativePointerDown, listenerOptions);
@@ -1735,6 +1742,8 @@ export default function NotebookEditorPage() {
       canvas.removeEventListener("pointerup", handleNativePointerStop, listenerOptions);
       canvas.removeEventListener("pointercancel", handleNativePointerStop, listenerOptions);
       canvas.removeEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
+      window.removeEventListener("pointerup", handleWindowPointerStop, listenerOptions);
+      window.removeEventListener("pointercancel", handleWindowPointerStop, listenerOptions);
     };
   }, [continueDrawingOnCanvas, startDrawingOnCanvas, stopDrawingOnCanvas]);
 
@@ -2094,6 +2103,29 @@ export default function NotebookEditorPage() {
     }
   };
 
+  const maybeShowIgnoredTouchInkHint = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (
+      event.pointerType !== "touch" ||
+      tool === "text" ||
+      !fullNotebookEditingEnabled ||
+      pageSwipeRef.current?.completed ||
+      pinchZoomRef.current
+    ) {
+      return;
+    }
+    ignoredTouchInkCountRef.current += 1;
+    if (ignoredTouchInkCountRef.current < 3) return;
+    ignoredTouchInkCountRef.current = 0;
+    setTouchInkHintVisible(true);
+    if (touchInkHintTimeoutRef.current !== null) {
+      window.clearTimeout(touchInkHintTimeoutRef.current);
+    }
+    touchInkHintTimeoutRef.current = window.setTimeout(() => {
+      setTouchInkHintVisible(false);
+      touchInkHintTimeoutRef.current = null;
+    }, 2600);
+  };
+
   const handlePagePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
     if (!fullNotebookEditingEnabled) return;
     setPenMenuOpen(false);
@@ -2127,6 +2159,20 @@ export default function NotebookEditorPage() {
   };
 
   const handlePagePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+    if (event.pointerType === "touch") {
+      const swipe = pageSwipeRef.current;
+      const direction = swipe
+        ? getNotebookSwipeDirection({
+            startX: swipe.startX,
+            startY: swipe.startY,
+            currentX: event.clientX,
+            currentY: event.clientY,
+          })
+        : null;
+      if (!direction) {
+        maybeShowIgnoredTouchInkHint(event);
+      }
+    }
     if (handleTouchPointerEnd(event, { allowTextTap: true })) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStopPageSwipe(event, { allowTextTap: true });
@@ -2176,6 +2222,7 @@ export default function NotebookEditorPage() {
     event: ReactPointerEvent<HTMLElement>
   ) => {
     if (!fullNotebookEditingEnabled) return;
+    if (isTextResizeHandleTarget(event.target)) return;
     const pageElement = event.currentTarget.closest<HTMLElement>("[data-notebook-page-surface]");
     if (!pageElement) return;
     const rect = pageElement.getBoundingClientRect();
@@ -2194,7 +2241,7 @@ export default function NotebookEditorPage() {
     setActiveTextGestureId(block.id);
     setSelectedTextBlockId(block.id);
     setEditingTextBlockId((current) => (current === block.id ? null : current));
-    event.currentTarget.setPointerCapture(event.pointerId);
+    safelySetPointerCapture(event.currentTarget, event.pointerId);
     event.preventDefault();
     event.stopPropagation();
   };
@@ -2216,6 +2263,9 @@ export default function NotebookEditorPage() {
     const drag = textBlockDragRef.current;
     if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (drag && pageSurfaceRef.current) {
+      safelyReleasePointerCapture(pageSurfaceRef.current, event.pointerId);
     }
     if (drag) {
       const next = textBlocksRef.current;
@@ -2259,10 +2309,12 @@ export default function NotebookEditorPage() {
     };
     pageSwipeRef.current = null;
     pinchZoomRef.current = null;
+    textBlockDragRef.current = null;
     setActiveTextGestureId(block.id);
     setSelectedTextBlockId(block.id);
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.setPointerCapture(event.pointerId);
+    safelySetPointerCapture(event.currentTarget, event.pointerId);
+    if (pageElement) {
+      safelySetPointerCapture(pageElement, event.pointerId);
     }
     event.preventDefault();
     event.stopPropagation();
@@ -2292,10 +2344,39 @@ export default function NotebookEditorPage() {
     event.stopPropagation();
   };
 
+  const handleTextBlockPointerMove = (
+    block: NotebookTextBlock,
+    event: ReactPointerEvent<HTMLElement>
+  ) => {
+    if (textBlockResizeRef.current?.id === block.id) {
+      resizeTextBlock(event);
+      return;
+    }
+    if (!editingTextBlockId || editingTextBlockId !== block.id) {
+      dragTextBlock(event);
+    }
+  };
+
+  const handleTextBlockPointerUp = (
+    block: NotebookTextBlock,
+    event: ReactPointerEvent<HTMLElement>
+  ) => {
+    if (textBlockResizeRef.current?.id === block.id) {
+      stopTextBlockResize(event);
+      return;
+    }
+    if (!editingTextBlockId || editingTextBlockId !== block.id) {
+      stopTextBlockDrag(event);
+    }
+  };
+
   const stopTextBlockResize = (event: ReactPointerEvent<HTMLElement>) => {
     const resize = textBlockResizeRef.current;
     if (resize && event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    if (resize && pageSurfaceRef.current) {
+      safelyReleasePointerCapture(pageSurfaceRef.current, event.pointerId);
     }
     if (resize) {
       const next = textBlocksRef.current;
@@ -2315,6 +2396,26 @@ export default function NotebookEditorPage() {
     textBlockResizeRef.current = null;
     setActiveTextGestureId(null);
     event.stopPropagation();
+  };
+
+  const handlePageSurfaceTextGestureMove = (event: ReactPointerEvent<HTMLElement>) => {
+    if (textBlockResizeRef.current) {
+      resizeTextBlock(event);
+      return;
+    }
+    if (textBlockDragRef.current) {
+      dragTextBlock(event);
+    }
+  };
+
+  const handlePageSurfaceTextGestureStop = (event: ReactPointerEvent<HTMLElement>) => {
+    if (textBlockResizeRef.current) {
+      stopTextBlockResize(event);
+      return;
+    }
+    if (textBlockDragRef.current) {
+      stopTextBlockDrag(event);
+    }
   };
 
   const handleAddPage = async () => {
@@ -3123,8 +3224,11 @@ export default function NotebookEditorPage() {
                       ? "notebook-page-transition-next"
                       : pageTransitionDirection === "previous"
                         ? "notebook-page-transition-previous"
-                        : ""
+                      : ""
                   }`}
+                  onPointerMove={handlePageSurfaceTextGestureMove}
+                  onPointerUp={handlePageSurfaceTextGestureStop}
+                  onPointerCancel={handlePageSurfaceTextGestureStop}
                   style={{
                     width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
                     maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
@@ -3221,21 +3325,21 @@ export default function NotebookEditorPage() {
                               handleTouchPointerMove(event);
                               return;
                             }
-                            if (!editing) dragTextBlock(event);
+                            handleTextBlockPointerMove(block, event);
                           }}
                           onPointerUp={(event) => {
                             if (event.pointerType === "touch" && !selected && !editing) {
                               handleTouchPointerEnd(event);
                               return;
                             }
-                            if (!editing) stopTextBlockDrag(event);
+                            handleTextBlockPointerUp(block, event);
                           }}
                           onPointerCancel={(event) => {
                             if (event.pointerType === "touch" && !selected && !editing) {
                               handleTouchPointerEnd(event);
                               return;
                             }
-                            if (!editing) stopTextBlockDrag(event);
+                            handleTextBlockPointerUp(block, event);
                           }}
                           onClick={(event) => {
                             event.stopPropagation();
@@ -3279,9 +3383,10 @@ export default function NotebookEditorPage() {
                                 <button
                                   key={handle.edge}
                                   type="button"
+                                  data-text-resize-handle="true"
                                   aria-label={handle.label}
                                   title={handle.label}
-                                  className={`absolute z-20 inline-grid touch-none place-items-center rounded-full border border-black/10 bg-black/60 text-[#f8fafc] shadow-sm backdrop-blur transition hover:bg-black/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] ${handle.positionClass}`}
+                                  className={`group absolute z-20 inline-grid touch-none place-items-center rounded-full text-[#f8fafc] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] ${handle.positionClass}`}
                                   onPointerDown={(event) =>
                                     startTextBlockResize(block, handle.edge, event)
                                   }
@@ -3289,7 +3394,7 @@ export default function NotebookEditorPage() {
                                   onPointerUp={stopTextBlockResize}
                                   onPointerCancel={stopTextBlockResize}
                                 >
-                                  <span className={handle.arrowClass}>
+                                  <span className={`inline-grid h-5 w-5 place-items-center rounded-full border border-black/10 bg-black/55 shadow-sm backdrop-blur transition group-hover:bg-black/70 [&_svg]:h-3 [&_svg]:w-3 ${handle.arrowClass}`}>
                                     <NotebookIcon name="chevron" />
                                   </span>
                                 </button>
@@ -3354,6 +3459,11 @@ export default function NotebookEditorPage() {
             <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
               {selectedPageIndex >= 0 ? selectedPageIndex + 1 : 0} of {pages.length || 0}
             </div>
+            {touchInkHintVisible ? (
+              <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
+                Use Apple Pencil or stylus to write. Fingers move the page.
+              </div>
+            ) : null}
         </div>
       </div>
     </main>

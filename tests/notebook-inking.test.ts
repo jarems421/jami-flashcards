@@ -5,6 +5,7 @@ import {
   clampNotebookThicknessPercent,
   finalizeInkStroke,
   getHighlighterWidthFromPercent,
+  interpolateInkSampleGaps,
   getNotebookPageIndexAfterSwipe,
   getNotebookPageZoomAfterPinch,
   getNotebookSwipeDirection,
@@ -205,8 +206,8 @@ describe("notebook inking helpers", () => {
       width: 5,
     });
 
-    expect(firstStroke?.points).toHaveLength(2);
-    expect(secondStroke?.points).toHaveLength(2);
+    expect(firstStroke?.points.length).toBeGreaterThanOrEqual(2);
+    expect(secondStroke?.points.length).toBeGreaterThanOrEqual(2);
     expect(secondStroke?.points[0]?.time).toBe(0);
   });
 
@@ -234,6 +235,27 @@ describe("notebook inking helpers", () => {
     expect(points[0]).toEqual({ x: 0, y: 0, pressure: 0.2, time: 0 });
     expect(points[1]).toEqual({ x: 10, y: 0, pressure: 0.4, time: 20 });
     expect(points[3]).toEqual({ x: 30, y: 0, pressure: 0.8, time: 60 });
+  });
+
+  it("densifies fast saved stroke gaps before finalizing", () => {
+    const points = interpolateInkSampleGaps([
+      { x: 0, y: 0, pressure: 0.2, time: 0 },
+      { x: 30, y: 0, pressure: 0.8, time: 60 },
+    ]);
+    const finalized = finalizeInkStroke({
+      points: [
+        { x: 0, y: 0, pressure: 0.2, time: 0 },
+        { x: 30, y: 0, pressure: 0.8, time: 60 },
+      ],
+      color: "black",
+      tool: "pen",
+      width: 6,
+    });
+
+    expect(points.length).toBeGreaterThan(2);
+    expect(points[0]).toEqual({ x: 0, y: 0, pressure: 0.2, time: 0 });
+    expect(points.at(-1)).toEqual({ x: 30, y: 0, pressure: 0.8, time: 60 });
+    expect(finalized?.points.length).toBeGreaterThan(2);
   });
 
   it("creates freehand outlines for live and committed pen/highlighter strokes", () => {
@@ -278,8 +300,14 @@ describe("notebook inking helpers", () => {
     expect(shouldPointerDrawEvent({ pointerType: "touch" }, "pen")).toBe(false);
     expect(
       shouldPointerDrawEvent({ pointerType: "touch", altitudeAngle: 0.9 }, "pen")
-    ).toBe(true);
-    expect(shouldPointerDrawEvent({ pointerType: "", pressure: 0.5 }, "highlighter")).toBe(true);
+    ).toBe(false);
+    expect(
+      shouldPointerDrawEvent({ pointerType: "touch", azimuthAngle: 0.4, pressure: 0.8 }, "pen")
+    ).toBe(false);
+    expect(
+      shouldPointerDrawEvent({ pointerType: "touch", tiltX: 12, tiltY: -4 }, "highlighter")
+    ).toBe(false);
+    expect(shouldPointerDrawEvent({ pointerType: "", pressure: 0.5 }, "highlighter")).toBe(false);
     expect(shouldPointerDrawEvent({ pointerType: "touch", altitudeAngle: 0.9 }, "text")).toBe(
       false
     );

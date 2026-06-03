@@ -488,6 +488,44 @@
     user-select: none;
   }
 
+  .notebook-thickness-slider {
+    appearance: none;
+    -webkit-appearance: none;
+  }
+
+  .notebook-thickness-slider::-webkit-slider-runnable-track {
+    background: transparent;
+    border: 0;
+    height: 1px;
+  }
+
+  .notebook-thickness-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    background: var(--color-selected-border);
+    border: 2px solid var(--color-surface-panel-strong);
+    border-radius: 999px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+    height: 16px;
+    margin-top: -7.5px;
+    width: 16px;
+  }
+
+  .notebook-thickness-slider::-moz-range-track {
+    background: transparent;
+    border: 0;
+    height: 1px;
+  }
+
+  .notebook-thickness-slider::-moz-range-thumb {
+    background: var(--color-selected-border);
+    border: 2px solid var(--color-surface-panel-strong);
+    border-radius: 999px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
+    height: 16px;
+    width: 16px;
+  }
+
   .notebook-text-editor {
     -webkit-touch-callout: default;
     -webkit-user-select: text;
