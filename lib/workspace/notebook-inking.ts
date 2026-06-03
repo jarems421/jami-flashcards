@@ -62,9 +62,9 @@ export function getHighlighterWidthFromPercent(value: unknown) {
 
 export function shouldPointerDraw(
   pointerType: string,
-  tool: "pen" | "eraser" | "highlighter" | "text"
+  tool: "pen" | "eraser" | "highlighter" | "text" | "select"
 ) {
-  if (tool === "text") return false;
+  if (tool === "text" || tool === "select") return false;
   return pointerType === "pen" || pointerType === "mouse";
 }
 
@@ -79,7 +79,7 @@ export type NotebookPointerDrawEventLike = {
 
 export function shouldPointerDrawEvent(
   event: NotebookPointerDrawEventLike,
-  tool: "pen" | "eraser" | "highlighter" | "text"
+  tool: "pen" | "eraser" | "highlighter" | "text" | "select"
 ) {
   return shouldPointerDraw(event.pointerType, tool);
 }

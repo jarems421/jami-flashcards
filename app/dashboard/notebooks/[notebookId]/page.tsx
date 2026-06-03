@@ -95,6 +95,7 @@ import {
   updateNotebook,
   updateNotebookPage,
 } from "@/services/study/notebooks";
+import { getNotebookFileDownloadUrl } from "@/services/study/notebook-files";
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
@@ -110,7 +111,7 @@ type LiveStroke = Omit<Stroke, "points"> & {
   points: LiveInkPoint[];
 };
 type SaveStatus = "saved" | "unsaved" | "saving" | "failed";
-type EditorTool = NotebookStrokeTool | "text";
+type EditorTool = NotebookStrokeTool | "text" | "select";
 type EraserWidth = "small" | "medium" | "large";
 type PageTransitionDirection = "next" | "previous" | null;
 type EraserCursorState = {
@@ -678,6 +679,7 @@ type NotebookIconName =
   | "highlighter"
   | "eraser"
   | "undo"
+  | "redo"
   | "clear"
   | "settings"
   | "ai"
@@ -731,6 +733,9 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
       ) : null}
       {name === "undo" ? (
         <path {...common} d="M9 8H5V4M5 8c2-2.6 5.6-4.1 9-2.7 4.8 2 5.8 8.1 2.1 11.4-2.5 2.2-6.2 2.4-8.8.5" />
+      ) : null}
+      {name === "redo" ? (
+        <path {...common} d="M15 8h4V4M19 8c-2-2.6-5.6-4.1-9-2.7-4.8 2-5.8 8.1-2.1 11.4 2.5 2.2 6.2 2.4 8.8.5" />
       ) : null}
       {name === "clear" ? (
         <>
@@ -939,6 +944,7 @@ export default function NotebookEditorPage() {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [pages, setPages] = useState<NotebookPage[]>([]);
   const [files, setFiles] = useState<NotebookFile[]>([]);
+  const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [textBlocks, setTextBlocks] = useState<NotebookTextBlock[]>([]);
   const [selectedTextBlockId, setSelectedTextBlockId] = useState<string | null>(null);
@@ -958,6 +964,7 @@ export default function NotebookEditorPage() {
     visible: false,
   });
   const [undoDepth, setUndoDepth] = useState(0);
+  const [redoDepth, setRedoDepth] = useState(0);
   const [pageZoom, setPageZoom] = useState(1);
   const [userAdjustedZoom, setUserAdjustedZoom] = useState(false);
   const [editorViewport, setEditorViewport] = useState<EditorViewportState>({
@@ -1011,6 +1018,7 @@ export default function NotebookEditorPage() {
   const touchPointersRef = useRef<Map<number, PointerClientSample>>(new Map());
   const pinchZoomRef = useRef<PinchZoomState | null>(null);
   const undoStackRef = useRef<NotebookUndoAction[]>([]);
+  const redoStackRef = useRef<NotebookUndoAction[]>([]);
   const editorRevisionRef = useRef(0);
   const latestSaveIdRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
@@ -1033,6 +1041,11 @@ export default function NotebookEditorPage() {
     () => pages.findIndex((page) => page.id === selectedPage?.id),
     [pages, selectedPage?.id]
   );
+  const activeNotebookFile = useMemo(() => {
+    if (!notebook?.uploadedFileId) return files[0] ?? null;
+    return files.find((file) => file.id === notebook.uploadedFileId) ?? files[0] ?? null;
+  }, [files, notebook?.uploadedFileId]);
+  const activeNotebookFileUrl = activeNotebookFile ? fileUrls[activeNotebookFile.id] : undefined;
   const landscapeFitZoom = useMemo(() => {
     if (!editorViewport.isLandscape || editorViewport.height <= 0) return 1;
     const rootFontSize =
@@ -1047,6 +1060,36 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     selectedPageRef.current = selectedPage;
   }, [selectedPage]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const loadFileUrls = async () => {
+      const entries = await Promise.all(
+        files.map(async (file) => {
+          if (!file.storagePath) return [file.id, ""] as const;
+          try {
+            return [file.id, await getNotebookFileDownloadUrl(file.storagePath)] as const;
+          } catch {
+            return [file.id, ""] as const;
+          }
+        })
+      );
+      if (!cancelled) {
+        setFileUrls(
+          Object.fromEntries(entries.filter(([, url]) => Boolean(url)))
+        );
+      }
+    };
+
+    if (files.length === 0) {
+      setFileUrls({});
+      return;
+    }
+    void loadFileUrls();
+    return () => {
+      cancelled = true;
+    };
+  }, [files]);
 
   useEffect(() => {
     fullNotebookEditingEnabledRef.current = fullNotebookEditingEnabled;
@@ -1120,7 +1163,9 @@ export default function NotebookEditorPage() {
 
   const pushUndoAction = useCallback((action: NotebookUndoAction) => {
     undoStackRef.current = [...undoStackRef.current.slice(-39), action];
+    redoStackRef.current = [];
     setUndoDepth(undoStackRef.current.length);
+    setRedoDepth(0);
   }, []);
 
   const markPageUnsaved = useCallback(() => {
@@ -1301,7 +1346,9 @@ export default function NotebookEditorPage() {
       strokesRef.current = [];
       activeStrokeRef.current = null;
       undoStackRef.current = [];
+      redoStackRef.current = [];
       setUndoDepth(0);
+      setRedoDepth(0);
       setActiveTextGestureId(null);
       clearNotebookCanvas(savedCanvasRef.current);
       clearNotebookCanvas(liveHighlighterCanvasRef.current);
@@ -1322,7 +1369,9 @@ export default function NotebookEditorPage() {
     strokesRef.current = nextStrokes;
     activeStrokeRef.current = null;
     undoStackRef.current = [];
+    redoStackRef.current = [];
     setUndoDepth(0);
+    setRedoDepth(0);
     setActiveTextGestureId(null);
     clearNotebookCanvas(liveHighlighterCanvasRef.current);
     clearNotebookCanvas(liveCanvasRef.current);
@@ -2141,6 +2190,11 @@ export default function NotebookEditorPage() {
       return;
     }
 
+    if (tool !== "text") {
+      event.preventDefault();
+      return;
+    }
+
     event.preventDefault();
     const [point] = getNotebookPointsFromEvent(event);
     if (!point) return;
@@ -2575,11 +2629,13 @@ export default function NotebookEditorPage() {
     }
   };
 
-  const handleUndo = () => {
+  const handleUndo = useCallback(() => {
     const action = undoStackRef.current.at(-1);
     if (!action) return;
     undoStackRef.current = undoStackRef.current.slice(0, -1);
+    redoStackRef.current = [...redoStackRef.current.slice(-39), action];
     setUndoDepth(undoStackRef.current.length);
+    setRedoDepth(redoStackRef.current.length);
 
     if (action.type === "strokes") {
       strokesRef.current = action.previous;
@@ -2593,7 +2649,29 @@ export default function NotebookEditorPage() {
       setActiveTextGestureId(null);
     }
     markPageUnsaved();
-  };
+  }, [markPageUnsaved, scheduleSavedCanvasRender]);
+
+  const handleRedo = useCallback(() => {
+    const action = redoStackRef.current.at(-1);
+    if (!action) return;
+    redoStackRef.current = redoStackRef.current.slice(0, -1);
+    undoStackRef.current = [...undoStackRef.current.slice(-39), action];
+    setRedoDepth(redoStackRef.current.length);
+    setUndoDepth(undoStackRef.current.length);
+
+    if (action.type === "strokes") {
+      strokesRef.current = action.next;
+      setStrokes(action.next);
+      scheduleSavedCanvasRender();
+    } else {
+      textBlocksRef.current = action.next;
+      setTextBlocks(action.next);
+      setSelectedTextBlockId(null);
+      setEditingTextBlockId(null);
+      setActiveTextGestureId(null);
+    }
+    markPageUnsaved();
+  }, [markPageUnsaved, scheduleSavedCanvasRender]);
 
   const handleClearCurrentPage = () => {
     const confirmed = window.confirm("Clear drawing from this page?");
@@ -2609,6 +2687,50 @@ export default function NotebookEditorPage() {
     clearNotebookCanvas(liveCanvasRef.current);
     scheduleSavedCanvasRender();
   };
+
+  useEffect(() => {
+    if (!fullNotebookEditingEnabled) return;
+
+    const handleShortcut = (event: KeyboardEvent) => {
+      if (isNotebookTextEditingTarget(event.target)) return;
+      const key = event.key.toLowerCase();
+
+      if ((event.ctrlKey || event.metaKey) && key === "z") {
+        event.preventDefault();
+        if (event.shiftKey) {
+          handleRedo();
+        } else {
+          handleUndo();
+        }
+        return;
+      }
+
+      if (event.ctrlKey || event.metaKey || event.altKey) return;
+      if (key === "t") {
+        setTool((current) => (current === "text" ? "select" : "text"));
+      }
+      if (key === "p") {
+        setTool((current) => (current === "pen" ? "select" : "pen"));
+      }
+      if (key === "h") {
+        setTool((current) => (current === "highlighter" ? "select" : "highlighter"));
+      }
+      if (key === "e") {
+        setTool((current) => (current === "eraser" ? "select" : "eraser"));
+      }
+      if (key === "escape") {
+        setTool("select");
+        setPenMenuOpen(false);
+        setHighlighterMenuOpen(false);
+        setEraserMenuOpen(false);
+        setSelectedTextBlockId(null);
+        setEditingTextBlockId(null);
+      }
+    };
+
+    window.addEventListener("keydown", handleShortcut);
+    return () => window.removeEventListener("keydown", handleShortcut);
+  }, [fullNotebookEditingEnabled, handleRedo, handleUndo]);
 
   if (loading) {
     return (
@@ -2694,12 +2816,12 @@ export default function NotebookEditorPage() {
                 }}
               />
               <ToolbarIconButton
-                label="Text box"
+                label="Text box (T)"
                 icon="text"
                 active={tool === "text"}
                 disabled={!fullNotebookEditingEnabled}
                 onClick={() => {
-                  setTool("text");
+                  setTool((current) => (current === "text" ? "select" : "text"));
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
@@ -2707,15 +2829,16 @@ export default function NotebookEditorPage() {
               />
               <div className="relative">
                 <ToolbarIconButton
-                  label="Pen"
+                  label="Pen (P)"
                   icon="pen"
                   active={tool === "pen" || penMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    setTool("pen");
+                    const shouldDeselect = tool === "pen";
+                    setTool(shouldDeselect ? "select" : "pen");
                     setHighlighterMenuOpen(false);
                     setEraserMenuOpen(false);
-                    setPenMenuOpen((value) => !value);
+                    setPenMenuOpen(shouldDeselect ? false : (value) => !value);
                   }}
                 >
                   <span
@@ -2755,15 +2878,16 @@ export default function NotebookEditorPage() {
               </div>
               <div className="relative">
                 <ToolbarIconButton
-                  label="Highlighter"
+                  label="Highlighter (H)"
                   icon="highlighter"
                   active={tool === "highlighter" || highlighterMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    setTool("highlighter");
+                    const shouldDeselect = tool === "highlighter";
+                    setTool(shouldDeselect ? "select" : "highlighter");
                     setPenMenuOpen(false);
                     setEraserMenuOpen(false);
-                    setHighlighterMenuOpen((value) => !value);
+                    setHighlighterMenuOpen(shouldDeselect ? false : (value) => !value);
                   }}
                 >
                   <span
@@ -2807,15 +2931,16 @@ export default function NotebookEditorPage() {
               </div>
               <div className="relative">
                 <ToolbarIconButton
-                  label="Eraser"
+                  label="Eraser (E)"
                   icon="eraser"
                   active={tool === "eraser" || eraserMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    setTool("eraser");
+                    const shouldDeselect = tool === "eraser";
+                    setTool(shouldDeselect ? "select" : "eraser");
                     setPenMenuOpen(false);
                     setHighlighterMenuOpen(false);
-                    setEraserMenuOpen((value) => !value);
+                    setEraserMenuOpen(shouldDeselect ? false : (value) => !value);
                   }}
                 >
                   <span
@@ -2898,7 +3023,7 @@ export default function NotebookEditorPage() {
                 ) : null}
               </div>
               <ToolbarIconButton
-                label="Undo"
+                label="Undo (Ctrl+Z)"
                 icon="undo"
                 disabled={!fullNotebookEditingEnabled || undoDepth === 0}
                 onClick={() => {
@@ -2906,6 +3031,17 @@ export default function NotebookEditorPage() {
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
                   handleUndo();
+                }}
+              />
+              <ToolbarIconButton
+                label="Redo (Ctrl+Shift+Z)"
+                icon="redo"
+                disabled={!fullNotebookEditingEnabled || redoDepth === 0}
+                onClick={() => {
+                  setPenMenuOpen(false);
+                  setHighlighterMenuOpen(false);
+                  setEraserMenuOpen(false);
+                  handleRedo();
                 }}
               />
               <ToolbarIconButton
@@ -3200,7 +3336,7 @@ export default function NotebookEditorPage() {
               </Card>
             ) : null}
 
-            {files.length > 0 ? (
+            {false && files.length > 0 ? (
               <Card padding="sm">
                 <div className="flex flex-wrap gap-2">
                   {files.map((file) => (
@@ -3244,6 +3380,29 @@ export default function NotebookEditorPage() {
                     className="pointer-events-none absolute inset-0 z-0"
                     style={getPageStyleBackground(pageColor, pageStyle)}
                   />
+                  {activeNotebookFile ? (
+                    <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden">
+                      {activeNotebookFileUrl ? (
+                        activeNotebookFile.fileType.startsWith("image/") ? (
+                          <div
+                            aria-hidden="true"
+                            className="h-full w-full bg-contain bg-center bg-no-repeat"
+                            style={{ backgroundImage: `url("${activeNotebookFileUrl}")` }}
+                          />
+                        ) : activeNotebookFile.fileType === "application/pdf" ? (
+                          <iframe
+                            title={`Notebook file: ${activeNotebookFile.fileName}`}
+                            src={`${activeNotebookFileUrl}#toolbar=0&navpanes=0&scrollbar=0`}
+                            className="h-full w-full border-0 bg-white"
+                          />
+                        ) : null
+                      ) : (
+                        <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-1 text-xs font-semibold text-text-secondary">
+                          Loading file...
+                        </div>
+                      )}
+                    </div>
+                  ) : null}
                   <canvas
                     ref={liveHighlighterCanvasRef}
                     aria-hidden="true"

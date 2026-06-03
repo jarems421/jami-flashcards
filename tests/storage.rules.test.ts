@@ -67,4 +67,34 @@ describeStorageRules("Storage security rules", () => {
 
     await assertFails(uploadBytes(fileRef, blob("application/javascript")));
   });
+
+  it("allows users to upload and read their own source files", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const fileRef = ref(
+      aliceStorage,
+      "users/alice/sourceFiles/source-1/file-1-reference-image.png"
+    );
+
+    await assertSucceeds(uploadBytes(fileRef, blob("image/png")));
+    await assertSucceeds(getBytes(fileRef));
+  });
+
+  it("blocks other users and guests from source files", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    const guestStorage = testEnv.unauthenticatedContext().storage();
+    const filePath = "users/alice/sourceFiles/source-1/file-1-reference.pdf";
+
+    await assertSucceeds(uploadBytes(ref(aliceStorage, filePath), blob("application/pdf")));
+    await assertFails(getBytes(ref(bobStorage, filePath)));
+    await assertFails(getBytes(ref(guestStorage, filePath)));
+    await assertFails(uploadBytes(ref(bobStorage, filePath), blob("application/pdf")));
+  });
+
+  it("rejects unsupported source file types", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const fileRef = ref(aliceStorage, "users/alice/sourceFiles/source-1/file-1-script.js");
+
+    await assertFails(uploadBytes(fileRef, blob("application/javascript")));
+  });
 });

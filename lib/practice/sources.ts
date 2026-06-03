@@ -14,6 +14,8 @@ export type Source = {
   externalUrl?: string;
   fileName?: string;
   fileType?: string;
+  storagePath?: string;
+  sizeBytes?: number;
   status: SourceStatus;
   createdBy: string;
   createdAt: number;
@@ -57,6 +59,11 @@ export function mapSourceData(id: string, data: Record<string, unknown>): Source
     externalUrl: normalizeUrl(data.externalUrl),
     fileName: normalizeOptionalString(data.fileName, 240),
     fileType: normalizeOptionalString(data.fileType, 120),
+    storagePath: normalizeOptionalString(data.storagePath, 1_000),
+    sizeBytes:
+      typeof data.sizeBytes === "number" && Number.isFinite(data.sizeBytes)
+        ? Math.max(0, Math.round(data.sizeBytes))
+        : undefined,
     status: isSourceStatus(data.status) ? data.status : "active",
     createdBy: normalizeOptionalString(data.createdBy, 160) ?? "",
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
@@ -76,6 +83,8 @@ export function buildSourcePayload(
     externalUrl?: string;
     fileName?: string;
     fileType?: string;
+    storagePath?: string;
+    sizeBytes?: number;
     now?: number;
   }
 ) {
@@ -110,6 +119,11 @@ export function buildSourcePayload(
     externalUrl: normalizeUrl(input.externalUrl) ?? null,
     fileName: input.fileName?.trim().slice(0, 240) || null,
     fileType: input.fileType?.trim().slice(0, 120) || null,
+    storagePath: input.storagePath?.trim().slice(0, 1_000) || null,
+    sizeBytes:
+      typeof input.sizeBytes === "number" && Number.isFinite(input.sizeBytes)
+        ? Math.max(0, Math.round(input.sizeBytes))
+        : null,
     status: "active" as const,
     createdBy: userId.trim(),
     createdAt: now,

@@ -21,6 +21,7 @@ import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
 import { createSource, getActiveSources, updateSource } from "@/services/study/sources";
+import { getSourceFileDownloadUrl, uploadSourceFile } from "@/services/study/source-files";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import { askSourceTutor, generateSourceDrafts } from "@/services/ai/source";
@@ -49,7 +50,7 @@ const sourceTypes: Array<{ value: SourceType; label: string; helper: string }> =
   { value: "pasted_text", label: "Paste text", helper: "Notes, extracts, worked examples." },
   { value: "manual_note", label: "Manual note", helper: "Your own summary or reminder." },
   { value: "link", label: "Link", helper: "Save the reference; parsing comes later." },
-  { value: "file", label: "File metadata", helper: "Save file details; upload/parsing comes later." },
+  { value: "file", label: "Upload file", helper: "Store a PDF or image for reference." },
 ];
 
 function typeLabel(type: SourceType) {
@@ -310,6 +311,8 @@ export default function LibraryPage() {
   const [externalUrl, setExternalUrl] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileType, setFileType] = useState("");
+  const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const [sourceFileUrls, setSourceFileUrls] = useState<Record<string, string>>({});
   const [tutorMessage, setTutorMessage] = useState("Explain the key ideas in this source.");
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
   const [busyAction, setBusyAction] = useState<string | null>(null);
@@ -323,6 +326,7 @@ export default function LibraryPage() {
     () => sources.find((source) => source.id === selectedSourceId) ?? sources[0] ?? null,
     [selectedSourceId, sources]
   );
+  const selectedSourceFileUrl = selectedSource ? sourceFileUrls[selectedSource.id] : undefined;
   const sourceDrafts = useMemo(
     () =>
       drafts.filter(
@@ -421,21 +425,67 @@ export default function LibraryPage() {
     );
   }, [sourceDrafts]);
 
+  useEffect(() => {
+    let cancelled = false;
+    const fileSources = sources.filter((source) => source.storagePath);
+    if (fileSources.length === 0) {
+      setSourceFileUrls({});
+      return;
+    }
+
+    const loadSourceFileUrls = async () => {
+      const entries = await Promise.all(
+        fileSources.map(async (source) => {
+          try {
+            return [source.id, await getSourceFileDownloadUrl(source.storagePath ?? "")] as const;
+          } catch {
+            return [source.id, ""] as const;
+          }
+        })
+      );
+      if (!cancelled) {
+        setSourceFileUrls(Object.fromEntries(entries.filter(([, url]) => Boolean(url))));
+      }
+    };
+
+    void loadSourceFileUrls();
+    return () => {
+      cancelled = true;
+    };
+  }, [sources]);
+
   const createNextSource = async () => {
     setBusyAction("create-source");
     setFeedback(null);
     try {
+      if (sourceType === "file" && !sourceFile) {
+        setFeedback({ type: "error", message: "Choose a PDF or image to upload." });
+        return;
+      }
       const sourceId = await createSource(user.uid, {
-        title,
+        title: title.trim() || sourceFile?.name || title,
         type: sourceType,
         subject,
         topicIds: selectedTopicIds,
         folderIds: selectedFolderIds,
         contentText,
         externalUrl,
-        fileName,
-        fileType,
+        fileName: sourceType === "file" ? sourceFile?.name ?? fileName : fileName,
+        fileType: sourceType === "file" ? sourceFile?.type ?? fileType : fileType,
       });
+      if (sourceType === "file" && sourceFile) {
+        const upload = await uploadSourceFile({
+          userId: user.uid,
+          sourceId,
+          file: sourceFile,
+        });
+        await updateSource(user.uid, sourceId, {
+          fileName: upload.fileName,
+          fileType: upload.fileType,
+          storagePath: upload.storagePath,
+          sizeBytes: upload.sizeBytes,
+        });
+      }
       setTitle("");
       setSubject("");
       setSelectedTopicIds([]);
@@ -444,10 +494,11 @@ export default function LibraryPage() {
       setExternalUrl("");
       setFileName("");
       setFileType("");
+      setSourceFile(null);
       setShowAddSource(false);
       await loadAll();
       setSelectedSourceId(sourceId);
-      setFeedback({ type: "success", message: "Source saved. Link it to drafts, Tutor, and revision tasks." });
+      setFeedback({ type: "success", message: sourceType === "file" ? "File uploaded to Library." : "Source saved." });
     } catch (error) {
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Could not save source." });
     } finally {
@@ -629,9 +680,33 @@ export default function LibraryPage() {
                   <Input label="Source link" value={externalUrl} onChange={(event) => setExternalUrl(event.target.value)} />
                 ) : null}
                 {sourceType === "file" ? (
-                  <div className="grid gap-3 sm:grid-cols-2">
-                    <Input label="File name" value={fileName} onChange={(event) => setFileName(event.target.value)} />
-                    <Input label="File type" value={fileType} onChange={(event) => setFileType(event.target.value)} />
+                  <div className="app-subtle-panel rounded-[1.25rem] p-4">
+                    <label className="block text-sm font-semibold text-text-primary" htmlFor="library-source-file">
+                      PDF or image
+                    </label>
+                    <input
+                      id="library-source-file"
+                      type="file"
+                      accept="application/pdf,image/jpeg,image/png,image/webp"
+                      onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        setSourceFile(file);
+                        setFileName(file?.name ?? "");
+                        setFileType(file?.type ?? "");
+                        if (file && !title.trim()) {
+                          setTitle(file.name.replace(/\.[^.]+$/, ""));
+                        }
+                      }}
+                      className="mt-3 block w-full cursor-pointer rounded-[1rem] border border-[var(--color-field-border)] bg-[var(--color-field-bg)] p-3 text-sm text-[var(--color-field-text)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--button-secondary-bg)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--button-secondary-text)]"
+                    />
+                    <p className="mt-2 text-xs leading-5 text-text-muted">
+                      PDF, JPEG, PNG, or WebP. Stored for reference; no OCR or automatic reading.
+                    </p>
+                    {sourceFile ? (
+                      <div className="mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-2 text-sm text-text-secondary">
+                        {sourceFile.name} · {Math.round(sourceFile.size / 1024)} KB
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <div>
@@ -790,6 +865,29 @@ export default function LibraryPage() {
                   <div className="mt-5 max-h-[24rem] overflow-y-auto whitespace-pre-wrap rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
                     {sourcePreview(selectedSource)}
                   </div>
+                  {selectedSource.type === "file" ? (
+                    <div className="mt-4 flex flex-wrap items-center gap-2">
+                      {selectedSourceFileUrl ? (
+                        <a
+                          href={selectedSourceFileUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="app-button-secondary inline-flex min-h-[2.5rem] items-center justify-center rounded-[2rem] px-4 py-2 text-sm font-semibold transition"
+                        >
+                          Open uploaded file
+                        </a>
+                      ) : (
+                        <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
+                          File saved
+                        </span>
+                      )}
+                      {typeof selectedSource.sizeBytes === "number" ? (
+                        <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
+                          {Math.round(selectedSource.sizeBytes / 1024)} KB
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </Card>
                 <Card padding="lg">
                   <SectionHeader

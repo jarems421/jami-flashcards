@@ -234,7 +234,7 @@ export default function ProfilePage() {
 
       <Button
         onClick={() => void handleSignOut()}
-        variant="secondary"
+        variant="danger"
         size="lg"
         className="w-full justify-start"
       >

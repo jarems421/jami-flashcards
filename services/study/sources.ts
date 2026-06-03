@@ -52,6 +52,8 @@ export async function createSource(
     externalUrl?: string;
     fileName?: string;
     fileType?: string;
+    storagePath?: string;
+    sizeBytes?: number;
   }
 ) {
   const payload = buildSourcePayload(userId, input);
@@ -76,6 +78,8 @@ export async function updateSource(
     externalUrl: string;
     fileName: string;
     fileType: string;
+    storagePath: string;
+    sizeBytes: number;
     status: "active" | "archived";
   }>
 ) {
@@ -91,6 +95,10 @@ export async function updateSource(
   if (typeof input.externalUrl === "string") payload.externalUrl = input.externalUrl.trim().slice(0, 1_000) || null;
   if (typeof input.fileName === "string") payload.fileName = input.fileName.trim().slice(0, 240) || null;
   if (typeof input.fileType === "string") payload.fileType = input.fileType.trim().slice(0, 120) || null;
+  if (typeof input.storagePath === "string") payload.storagePath = input.storagePath.trim().slice(0, 1_000) || null;
+  if (typeof input.sizeBytes === "number" && Number.isFinite(input.sizeBytes)) {
+    payload.sizeBytes = Math.max(0, Math.round(input.sizeBytes));
+  }
   if (input.status === "active" || input.status === "archived") payload.status = input.status;
 
   await withTimeout(

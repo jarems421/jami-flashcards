@@ -1,16 +1,29 @@
 "use client";
 
+import { useEffect } from "react";
+
 type FeedbackBannerProps = {
   type: "success" | "error";
   message: string;
   onDismiss: () => void;
+  autoDismissMs?: number;
 };
 
 export default function FeedbackBanner({
   type,
   message,
   onDismiss,
+  autoDismissMs = 3000,
 }: FeedbackBannerProps) {
+  useEffect(() => {
+    if (autoDismissMs <= 0) return;
+
+    const dismissTimer = window.setTimeout(onDismiss, autoDismissMs);
+    return () => {
+      window.clearTimeout(dismissTimer);
+    };
+  }, [autoDismissMs, message, onDismiss, type]);
+
   return (
     <div
       role="status"
