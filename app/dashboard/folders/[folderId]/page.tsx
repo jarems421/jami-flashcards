@@ -637,7 +637,7 @@ export default function FolderDetailPage() {
 
         <div className="flex flex-col gap-4 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-24 shrink-0 sm:w-28">
+            <div className="w-[6.5rem] shrink-0">
               <FolderObjectCard title={folder.name} color={folder.color} icon={folder.icon} />
             </div>
             <div className="min-w-0">
@@ -659,12 +659,6 @@ export default function FolderDetailPage() {
             <Button type="button" variant="secondary" onClick={openEditFolder}>
               Edit folder
             </Button>
-            <Link
-              href="/dashboard/library"
-              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition hover:-translate-y-[1px]"
-            >
-              Library
-            </Link>
           </div>
         </div>
 

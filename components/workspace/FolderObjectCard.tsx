@@ -33,27 +33,27 @@ export default function FolderObjectCard({
   const preset = getObjectColorPreset(color);
   const content = (
     <div
-      className={`group mx-auto flex h-full min-h-[8.25rem] w-full max-w-[9.25rem] cursor-pointer flex-col items-center rounded-[1.05rem] border px-2 py-2.5 text-center transition duration-fast active:scale-[0.985] ${
+      className={`group mx-auto flex h-full min-h-[8.75rem] w-full max-w-[6.5rem] cursor-pointer flex-col items-center rounded-[1.05rem] border px-2 py-2.5 text-center transition duration-fast active:scale-[0.985] ${
         selected
           ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-[0_14px_28px_rgba(6,8,18,0.16)]"
           : "border-transparent bg-transparent hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
       } ${className}`}
     >
-      <div className="relative mx-auto h-[5rem] w-full max-w-[8rem]">
+      <div className="relative mx-auto h-[5.5rem] w-full max-w-[6rem]">
         <div
-          className="absolute left-[13%] right-[10%] top-[13%] h-[2.45rem] rounded-t-[0.62rem] border border-black/10"
+          className="absolute left-[13%] right-[10%] top-[13%] h-[2.8rem] rounded-t-[0.62rem] border border-black/10"
           style={{
             backgroundColor: preset.paper,
           }}
         />
         <div
-          className="absolute left-[9%] top-[7%] h-[1.4rem] w-[39%] rounded-t-[0.58rem] border border-black/10"
+          className="absolute left-[9%] top-[7%] h-[1.55rem] w-[39%] rounded-t-[0.58rem] border border-black/10"
           style={{
             backgroundColor: preset.light,
           }}
         />
         <div
-          className="absolute inset-x-[3%] bottom-0 h-[3.55rem] rounded-[0.68rem] border border-black/15 transition-transform duration-fast group-hover:-rotate-[0.35deg]"
+          className="absolute inset-x-[3%] bottom-0 h-[4rem] rounded-[0.68rem] border border-black/15 transition-transform duration-fast group-hover:-rotate-[0.35deg]"
           style={{
             backgroundColor: preset.base,
             boxShadow: "0 8px 16px rgba(5, 8, 18, 0.22)",

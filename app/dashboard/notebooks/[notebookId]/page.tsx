@@ -745,8 +745,7 @@ type NotebookIconName =
   | "save"
   | "chevron"
   | "trash"
-  | "dots"
-  | "fit";
+  | "dots";
 
 function NotebookIcon({ name }: { name: NotebookIconName }) {
   const common = {
@@ -830,12 +829,6 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
           <circle cx="6.5" cy="12" r="1.35" fill="currentColor" />
           <circle cx="12" cy="12" r="1.35" fill="currentColor" />
           <circle cx="17.5" cy="12" r="1.35" fill="currentColor" />
-        </>
-      ) : null}
-      {name === "fit" ? (
-        <>
-          <path {...common} d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4" />
-          <rect {...common} x="8" y="7" width="8" height="10" rx="1" />
         </>
       ) : null}
     </svg>
@@ -1285,22 +1278,6 @@ export default function NotebookEditorPage() {
     if (!editorViewport.isLandscape || userAdjustedZoom) return;
     setPageZoom(landscapeFitZoom);
   }, [editorViewport.isLandscape, landscapeFitZoom, userAdjustedZoom]);
-
-  const fitNotebookPage = useCallback(() => {
-    const container = pageScrollRef.current;
-    if (!container || typeof window === "undefined") return;
-    const rootFontSize =
-      Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
-    const basePageWidth = NOTEBOOK_PAGE_BASE_WIDTH_REM * rootFontSize;
-    const horizontalGutter = window.innerWidth < 640 ? 32 : 48;
-    setUserAdjustedZoom(true);
-    setPageZoom(
-      clampNotebookPageZoom(
-        Math.min(1, (container.clientWidth - horizontalGutter) / basePageWidth)
-      )
-    );
-    container.scrollTo({ top: 0, left: 0, behavior: "smooth" });
-  }, []);
 
   const pushUndoAction = useCallback((action: NotebookUndoAction) => {
     undoStackRef.current = [...undoStackRef.current.slice(-39), action];
@@ -2485,13 +2462,9 @@ export default function NotebookEditorPage() {
       setPageSwipeSettling(true);
       if (shouldChangePage) {
         swipe.completed = true;
-        setPageSwipeOffset(direction === "next" ? -pageWidth * 1.06 : pageWidth * 1.06);
-        window.setTimeout(() => {
-          void selectPageByOffset(direction === "next" ? 1 : -1, false).finally(() => {
-            setPageSwipeOffset(0);
-            setPageSwipeSettling(false);
-          });
-        }, 240);
+        setPageSwipeOffset(0);
+        setPageSwipeSettling(false);
+        void selectPageByOffset(direction === "next" ? 1 : -1);
       } else {
         setPageSwipeOffset(0);
         window.setTimeout(() => setPageSwipeSettling(false), 260);
@@ -3305,11 +3278,6 @@ export default function NotebookEditorPage() {
                 }}
               />
               <ToolbarIconButton
-                label={`Fit page (${Math.round(pageZoom * 100)}%)`}
-                icon="fit"
-                onClick={fitNotebookPage}
-              />
-              <ToolbarIconButton
                 label="Text box (T)"
                 icon="text"
                 active={tool === "text"}
@@ -3636,13 +3604,6 @@ export default function NotebookEditorPage() {
                 />
               </div>
             </div>
-            <div className="mt-5 rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
-              <div className="text-sm font-medium text-text-secondary">Page colour</div>
-              <p className="mt-1 text-sm leading-6 text-text-muted">
-                {notebook.pageColor === "black" ? "Black" : "White"} pages were
-                chosen when this notebook was created. New pages keep this colour.
-              </p>
-            </div>
             <div className="mt-5">
               <div className="text-sm font-medium text-text-secondary">Default page style</div>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -3927,7 +3888,7 @@ export default function NotebookEditorPage() {
                 {swipeAdjacentPage ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-[0.95rem] border border-[var(--color-border)] ${
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-[0.95rem] ${
                       PAGE_COLOR_CLASS[swipeAdjacentPage.pageColor]
                     }`}
                     style={{
@@ -3961,7 +3922,7 @@ export default function NotebookEditorPage() {
                 <div
                   ref={pageSurfaceRef}
                   data-notebook-page-surface
-                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden rounded-[0.95rem] border border-[var(--color-border)] shadow-[0_18px_48px_rgba(0,0,0,0.2)] ${PAGE_COLOR_CLASS[pageColor]} ${
+                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden rounded-[0.95rem] shadow-[0_18px_48px_rgba(0,0,0,0.2)] ${PAGE_COLOR_CLASS[pageColor]} ${
                     pageTransitionDirection === "next"
                       ? "notebook-page-transition-next"
                       : pageTransitionDirection === "previous"

@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import ObjectIcon from "@/components/workspace/ObjectIcon";
 import { getObjectColorPreset } from "@/components/workspace/object-card-styles";
 
@@ -38,7 +37,6 @@ function NotebookCardInner({
   pageStyle,
   pageCount,
   updatedLabel,
-  previewInkSvg,
   compact,
 }: NotebookObjectCardProps) {
   const preset = getObjectColorPreset(color);
@@ -90,24 +88,10 @@ function NotebookCardInner({
           >
             <div className="absolute inset-y-0 left-0 w-3 rounded-l-[0.66rem] border-r border-black/15 bg-black/10" aria-hidden="true" />
             <div className="absolute inset-y-2 right-1.5 w-px bg-white/28" aria-hidden="true" />
-            {previewInkSvg ? (
-              <div className="absolute inset-y-5 left-5 right-4 overflow-hidden rounded-[0.35rem] border border-black/10 bg-white shadow-inner">
-                <Image
-                  alt=""
-                  aria-hidden="true"
-                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(previewInkSvg)}`}
-                  fill
-                  unoptimized
-                  sizes="5rem"
-                  className="object-fill opacity-80"
-                />
-              </div>
-            ) : (
-              <ObjectIcon
-                icon={icon}
-                className="absolute left-[53%] top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-white/88"
-              />
-            )}
+            <ObjectIcon
+              icon={icon}
+              className="absolute left-[53%] top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-white/88"
+            />
           </div>
         </div>
       </div>

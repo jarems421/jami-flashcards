@@ -459,6 +459,15 @@
     -webkit-user-select: text !important;
     user-select: text !important;
   }
+
+  body.jami-notebook-editor-active .app-nav {
+    display: none !important;
+  }
+
+  body.jami-notebook-editor-active [data-dashboard-content] {
+    padding-bottom: 0 !important;
+    padding-left: 0 !important;
+  }
 }
 
 @layer utilities {

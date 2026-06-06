@@ -35,6 +35,7 @@ function AuthenticatedDashboard({ children }: { children: ReactNode }) {
     <UserProvider>
       <DemoAccountNotice />
       <div
+        data-dashboard-content
         className={`pb-32 transition-[padding] duration-300 md:pb-0 ${
           sidebarHidden ? "md:pl-0" : "md:pl-24 lg:pl-72"
         }`}
