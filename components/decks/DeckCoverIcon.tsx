@@ -3,7 +3,6 @@ import {
   type DeckColorPresetId,
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
-import IconBubble from "@/components/ui/IconBubble";
 import ObjectIcon from "@/components/workspace/ObjectIcon";
 
 type Props = {
@@ -20,13 +19,14 @@ export default function DeckCoverIcon({
   const color = getDeckColorPreset(colorPreset);
 
   return (
-    <IconBubble
-      className={`${className} rounded-[1.2rem] border border-white/[0.14] text-white shadow-[0_16px_32px_rgba(7,2,22,0.24)]`}
+    <div
+      className={`relative grid shrink-0 place-items-center overflow-hidden rounded-[0.9rem] border border-black/15 text-white shadow-[0_8px_16px_rgba(5,8,18,0.2)] ${className}`}
       style={{
-        background: `linear-gradient(145deg, ${color.light}, ${color.base} 52%, ${color.dark})`,
+        background: `linear-gradient(145deg, ${color.light} 0%, ${color.base} 58%, ${color.dark} 100%)`,
       }}
     >
-      <ObjectIcon icon={iconPreset} className="h-7 w-7 text-white/78 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]" />
-    </IconBubble>
+      <div className="absolute inset-y-0 left-0 w-[18%] border-r border-black/15 bg-black/10" aria-hidden="true" />
+      <ObjectIcon icon={iconPreset} className="h-[48%] w-[48%] text-white/88" />
+    </div>
   );
 }

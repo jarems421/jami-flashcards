@@ -1,4 +1,9 @@
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
+import {
+  deleteObject,
+  getDownloadURL,
+  ref,
+  uploadBytesResumable,
+} from "firebase/storage";
 import { storage } from "@/services/firebase/client";
 
 const MAX_SOURCE_FILE_SIZE = 20 * 1024 * 1024;
@@ -70,8 +75,9 @@ export async function uploadSourceFile(input: {
   userId: string;
   sourceId: string;
   file: File;
+  onProgress?: (progress: number) => void;
 }) {
-  const { userId, sourceId, file } = input;
+  const { userId, sourceId, file, onProgress } = input;
   validateSourceUploadFile(file);
   const fileId =
     typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -92,7 +98,18 @@ export async function uploadSourceFile(input: {
         cacheControl: "private,max-age=3600",
       });
 
-      uploadTask.on("state_changed", undefined, (error) => reject(error), () => resolve());
+      uploadTask.on(
+        "state_changed",
+        (snapshot) => {
+          const progress =
+            snapshot.totalBytes > 0
+              ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
+              : 0;
+          onProgress?.(progress);
+        },
+        (error) => reject(error),
+        () => resolve()
+      );
     });
 
     return {
@@ -110,4 +127,10 @@ export async function getSourceFileDownloadUrl(storagePath: string) {
   const normalizedPath = storagePath.trim();
   if (!normalizedPath) throw new Error("Missing source file path.");
   return getDownloadURL(ref(storage, normalizedPath));
+}
+
+export async function deleteSourceFile(storagePath: string) {
+  const normalizedPath = storagePath.trim();
+  if (!normalizedPath) return;
+  await deleteObject(ref(storage, normalizedPath));
 }

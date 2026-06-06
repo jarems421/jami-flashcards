@@ -57,6 +57,7 @@ import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { featureFlags } from "@/lib/app/feature-flags";
+import { getDeckColorPreset } from "@/lib/study/deck-style";
 import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, IconBubble, Input, PageHero, ProgressBar, Skeleton, StudyText } from "@/components/ui";
@@ -959,6 +960,17 @@ export default function StudyPage() {
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
+  const currentDeck = current
+    ? decks.find((deck) => deck.id === current.deckId)
+    : undefined;
+  const currentDeckColor = getDeckColorPreset(currentDeck?.colorPreset);
+  const nextDueCard = useMemo(
+    () =>
+      cards
+        .filter((card) => typeof card.dueDate === "number" && card.dueDate > Date.now())
+        .sort((left, right) => (left.dueDate ?? 0) - (right.dueDate ?? 0))[0] ?? null,
+    [cards]
+  );
   const totalCards = sessionCards.length;
   const remainingCards = current ? totalCards - index : 0;
   const accuracyPercentage = sessionStats.reviewedCards > 0 ? Math.round((sessionStats.correctAnswers / sessionStats.reviewedCards) * 100) : 0;
@@ -1942,6 +1954,16 @@ export default function StudyPage() {
                           ? "Goal rewards become stars in your constellation."
                           : "Review is done for now. Add, fix, or tidy cards whenever something feels off."}
                   </p>
+                  {nextDueCard?.dueDate ? (
+                    <p className="mt-3 text-xs font-medium text-text-muted">
+                      Next due card: {new Intl.DateTimeFormat("en", {
+                        day: "numeric",
+                        hour: "numeric",
+                        minute: "2-digit",
+                        month: "short",
+                      }).format(nextDueCard.dueDate)}
+                    </p>
+                  ) : null}
                 </div>
                 <div className="mt-6 flex flex-wrap gap-3">
                   {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0 ? (
@@ -1987,18 +2009,25 @@ export default function StudyPage() {
                   </div>
                   <div className="mx-auto w-full max-w-[62rem] cursor-pointer perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
                     <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
-                      <div className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] sm:p-8 lg:p-10">
+                      <div
+                        className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
+                        style={{
+                          "--study-card-text": currentDeckColor.text,
+                          background: `linear-gradient(145deg, ${currentDeckColor.paper}, ${currentDeckColor.light} 62%, ${currentDeckColor.base})`,
+                          color: currentDeckColor.text,
+                        } as React.CSSProperties}
+                      >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0 text-xs font-medium text-text-muted">
+                          <div className="min-w-0 text-xs font-medium opacity-65">
                             {deckNamesById[current.deckId] ?? "Flashcard"}
                           </div>
                           {current.tags.length > 0 ? (
                             <div className="flex max-w-[60%] flex-wrap justify-end gap-1.5">
                               {current.tags.slice(0, 2).map((tag) => (
-                                <span key={tag} className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] font-medium text-text-secondary">{tag}</span>
+                                <span key={tag} className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-[0.68rem] font-medium opacity-75">{tag}</span>
                               ))}
                               {current.tags.length > 2 ? (
-                                <span className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-[0.68rem] font-medium text-text-muted">+{current.tags.length - 2}</span>
+                                <span className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-[0.68rem] font-medium opacity-65">+{current.tags.length - 2}</span>
                               ) : null}
                             </div>
                           ) : null}
@@ -2007,21 +2036,28 @@ export default function StudyPage() {
                           <StudyText
                             as="p"
                             text={current.front}
-                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] sm:text-2xl xl:text-[2.15rem]"
+                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-[2.15rem]"
                           />
                         </div>
-                        <div className="text-center text-xs font-medium text-text-muted">Tap anywhere on the card or press Space to reveal</div>
+                        <div className="text-center text-xs font-medium opacity-60">Tap anywhere on the card or press Space to reveal</div>
                       </div>
-                      <div className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10">
-                        <div className="text-xs font-normal tracking-[0.06em] text-text-muted">Answer</div>
+                      <div
+                        className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10"
+                        style={{
+                          "--study-card-text": currentDeckColor.text,
+                          background: `linear-gradient(145deg, ${currentDeckColor.light}, ${currentDeckColor.paper} 58%, ${currentDeckColor.base})`,
+                          color: currentDeckColor.text,
+                        } as React.CSSProperties}
+                      >
+                        <div className="text-xs font-normal tracking-[0.06em] opacity-65">Answer</div>
                         <div className="flex flex-1 items-center justify-center py-6">
                           <StudyText
                             as="p"
                             text={current.back}
-                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-white sm:text-2xl xl:text-[2.15rem]"
+                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-[2.15rem]"
                           />
                         </div>
-                        <div className="text-center text-xs font-medium text-text-muted">How well did you recall this?</div>
+                        <div className="text-center text-xs font-medium opacity-60">How well did you recall this?</div>
                       </div>
                     </div>
                   </div>

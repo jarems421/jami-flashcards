@@ -395,7 +395,21 @@ export default function CardCreationPanel({
   };
 
   return (
-    <section className="app-panel p-4 sm:p-5">
+    <section
+      id="add-card"
+      className="app-panel p-4 sm:p-5"
+      onKeyDown={(event) => {
+        if (
+          mode === "single" &&
+          (event.ctrlKey || event.metaKey) &&
+          event.key === "Enter" &&
+          !addingSingleCard
+        ) {
+          event.preventDefault();
+          void handleAddSingleCard();
+        }
+      }}
+    >
       <SectionHeader
         eyebrow="Add cards"
         title="Create a flashcard."
@@ -455,17 +469,25 @@ export default function CardCreationPanel({
               ) : null}
             </div>
           </div>
-          <TagInput
-            tags={singleTags}
-            pendingTag={singlePendingTag}
-            availableTags={availableTags}
-            onTagsChange={setSingleTags}
-            onPendingTagChange={setSinglePendingTag}
-            suggestionLabel="topic"
-            disabled={addingSingleCard}
-          />
+          <details className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium text-text-secondary">
+              Tags <span className="font-normal text-text-muted">(optional)</span>
+            </summary>
+            <div className="mt-4">
+              <TagInput
+                tags={singleTags}
+                pendingTag={singlePendingTag}
+                availableTags={availableTags}
+                onTagsChange={setSingleTags}
+                onPendingTagChange={setSinglePendingTag}
+                suggestionLabel="topic"
+                disabled={addingSingleCard}
+              />
+            </div>
+          </details>
           <Button
             type="button"
+            aria-keyshortcuts="Control+Enter Meta+Enter"
             disabled={addingSingleCard || !singleDeckId || !singleFront.trim() || !singleBack.trim()}
             onClick={() => void handleAddSingleCard()}
             size="lg"
@@ -473,6 +495,7 @@ export default function CardCreationPanel({
           >
             {addingSingleCard ? "Adding..." : "Add card"}
           </Button>
+          <p className="text-xs text-text-muted">Press Ctrl/Cmd + Enter to add the card.</p>
         </div>
       ) : null}
 

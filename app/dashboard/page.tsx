@@ -488,6 +488,7 @@ export default function DashboardHome() {
   const [dueCards, setDueCards] = useState<StudyCard[]>([]);
   const [remainingOptionalCount, setRemainingOptionalCount] = useState(0);
   const [activeGoals, setActiveGoals] = useState<Goal[]>([]);
+  const [hasEarnedStars, setHasEarnedStars] = useState(false);
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -595,12 +596,20 @@ export default function DashboardHome() {
 
       if (goalsSnapshot) {
         const now2 = Date.now();
-        const activeGoals = goalsSnapshot.docs
-          .map((d) => normalizeGoal(d.id, d.data() as Record<string, unknown>))
-          .filter((goal) => goal.status === "active" && goal.deadline > now2);
+        const goals = goalsSnapshot.docs.map((d) =>
+          normalizeGoal(d.id, d.data() as Record<string, unknown>)
+        );
+        const activeGoals = goals
+          .filter(
+            (goal) =>
+              goal.status === "active" &&
+              (goal.deadline <= 0 || goal.deadline > now2)
+          );
         setActiveGoals(activeGoals);
+        setHasEarnedStars(goals.some((goal) => goal.status === "completed"));
       } else {
         setActiveGoals([]);
+        setHasEarnedStars(false);
       }
     } finally {
       setIsLoading(false);
@@ -672,6 +681,7 @@ export default function DashboardHome() {
         activeGoals,
         reviewedToday: todayReviews,
         progressVisited,
+        hasEarnedStars,
       }),
     [
       activeGoals,
@@ -682,6 +692,7 @@ export default function DashboardHome() {
       dueCards,
       masteryEvents,
       progressVisited,
+      hasEarnedStars,
       sources,
       studyFolders,
       todayReviews,
@@ -713,6 +724,18 @@ export default function DashboardHome() {
         detail: "Complete one review.",
         href: "/dashboard/study",
         done: todayPlan.checklist.reviewCards,
+      },
+      {
+        label: "Set a goal",
+        detail: "Choose a clear study target.",
+        href: "/dashboard/goals",
+        done: todayPlan.checklist.setGoal,
+      },
+      {
+        label: "Earn a star",
+        detail: "Complete a goal and see its reward.",
+        href: "/dashboard/constellation",
+        done: todayPlan.checklist.earnStar,
       },
     ],
     [todayPlan.checklist]
@@ -771,9 +794,9 @@ export default function DashboardHome() {
 
             <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
               <TodayReviewCard plan={todayPlan} />
-              <DraftQueueCard plan={todayPlan} />
-              <WeakTopicsCard plan={todayPlan} />
-              <GoalSnapshotCard plan={todayPlan} />
+              {todayPlan.drafts.length > 0 ? <DraftQueueCard plan={todayPlan} /> : null}
+              {todayPlan.weakTopics.length > 0 ? <WeakTopicsCard plan={todayPlan} /> : null}
+              {todayPlan.goalSummary ? <GoalSnapshotCard plan={todayPlan} /> : null}
             </div>
 
             <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />

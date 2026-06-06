@@ -158,6 +158,45 @@ export default function NotificationSettingsCard({
 
   const canSubscribe =
     isSupported && (!isAppleMobile || isStandalone) && permission !== "denied";
+  const reminderStatus = useMemo(() => {
+    if (!isSupported) {
+      return {
+        label: "Reminders unavailable on this device.",
+        detail: "This browser does not support web push notifications.",
+        tone: "app-warning",
+      };
+    }
+
+    if (permission === "denied") {
+      return {
+        label: "Notifications blocked in browser settings.",
+        detail: "Re-enable notification permission before this device can receive reminders.",
+        tone: "app-danger",
+      };
+    }
+
+    if (!preferences.enabled) {
+      return {
+        label: "Reminders off.",
+        detail: "Turn on Daily reminder when you want Jami to nudge you.",
+        tone: "app-chip",
+      };
+    }
+
+    if (!hasSubscription) {
+      return {
+        label: "Reminder preference enabled.",
+        detail: "Enable notifications on this device to receive the reminder here.",
+        tone: "app-warning",
+      };
+    }
+
+    return {
+      label: "Reminders enabled.",
+      detail: "Next reminder: 4:00 PM Europe/London.",
+      tone: "app-success",
+    };
+  }, [hasSubscription, isSupported, permission, preferences.enabled]);
 
   const persistPreferences = async (updates: Partial<NotificationPreferences>, savingKey: string) => {
     setSavingField(savingKey);
@@ -398,6 +437,13 @@ export default function NotificationSettingsCard({
           <h2 className="text-sm font-semibold">Notifications</h2>
           <p className="mt-1 text-xs leading-6 text-text-muted">
             One daily reminder at 4pm London.
+          </p>
+        </div>
+
+        <div className={`${reminderStatus.tone} mt-4 rounded-[1.15rem] px-4 py-3`}>
+          <div className="text-sm font-semibold">{reminderStatus.label}</div>
+          <p className="mt-1 text-xs leading-5 text-inherit/80">
+            {reminderStatus.detail}
           </p>
         </div>
 

@@ -18,6 +18,8 @@ export type TodayNextActionType =
   | "continue_goal"
   | "continue_notebook"
   | "create_first_folder"
+  | "set_goal"
+  | "view_star"
   | "focused_review";
 
 export type TodayNextAction = {
@@ -73,6 +75,8 @@ export type TodayChecklist = {
   createNotebook: boolean;
   reviewDrafts: boolean;
   checkProgress: boolean;
+  setGoal: boolean;
+  earnStar: boolean;
 };
 
 export type TodayWorkspaceSummary = {
@@ -129,6 +133,7 @@ export type BuildTodayPlanInput = {
   activeGoals?: Goal[];
   reviewedToday?: number;
   progressVisited?: boolean;
+  hasEarnedStars?: boolean;
   now?: number;
 };
 
@@ -244,8 +249,16 @@ function buildWeakTopics(input: BuildTodayPlanInput, now: number) {
 
 function buildGoalSummary(input: BuildTodayPlanInput, now: number): TodayGoalSummary | undefined {
   const goal = (input.activeGoals ?? [])
-    .filter((item) => item.status === "active" && item.deadline > now)
-    .sort((left, right) => left.deadline - right.deadline)[0];
+    .filter(
+      (item) =>
+        item.status === "active" &&
+        (item.deadline <= 0 || item.deadline > now)
+    )
+    .sort(
+      (left, right) =>
+        (left.deadline > 0 ? left.deadline : Number.MAX_SAFE_INTEGER) -
+        (right.deadline > 0 ? right.deadline : Number.MAX_SAFE_INTEGER)
+    )[0];
 
   if (!goal) return undefined;
 
@@ -292,6 +305,8 @@ function buildChecklist(input: BuildTodayPlanInput): TodayChecklist {
     createNotebook: (input.notebooks ?? []).some((notebook) => !notebook.archived),
     reviewDrafts: input.drafts.some((draft) => draft.contentStatus === "draft"),
     checkProgress: input.progressVisited === true,
+    setGoal: (input.activeGoals ?? []).some((goal) => goal.status === "active"),
+    earnStar: input.hasEarnedStars === true,
   };
 }
 
@@ -303,6 +318,8 @@ function buildNextAction(input: {
   weakTopics: TodayWeakTopic[];
   goalSummary?: TodayGoalSummary;
   workspace: TodayWorkspaceSummary;
+  reviewedToday: number;
+  hasEarnedStars: boolean;
 }): TodayNextAction {
   if (input.workspace.folderCount === 0) {
     return {
@@ -378,6 +395,30 @@ function buildNextAction(input: {
     };
   }
 
+  if (input.hasEarnedStars) {
+    return {
+      type: "view_star",
+      title: "Your latest goal reward is waiting.",
+      description: "Open Stars to see the reward earned from your completed goal.",
+      href: "/dashboard/constellation",
+      label: "View star",
+      priority: 7,
+      secondaryHref: "/dashboard/goals",
+      secondaryLabel: "Set another goal",
+    };
+  }
+
+  if (input.reviewedToday > 0) {
+    return {
+      type: "set_goal",
+      title: "Turn today’s review into a clear target.",
+      description: "Set a small goal while today’s study rhythm is still fresh.",
+      href: "/dashboard/goals",
+      label: "Set a goal",
+      priority: 8,
+    };
+  }
+
   if (input.decks.length === 0) {
     return {
       type: "create_first_deck",
@@ -385,7 +426,7 @@ function buildNextAction(input: {
       description: "Decks still power quick review, especially on mobile.",
       href: "/dashboard/decks",
       label: "Create deck",
-      priority: 7,
+      priority: 9,
     };
   }
 
@@ -396,7 +437,7 @@ function buildNextAction(input: {
       description: "Your workspace is ready. Add a few cards so Jami can schedule reviews.",
       href: "/dashboard/cards",
       label: "Add cards",
-      priority: 8,
+      priority: 10,
       secondaryHref: "/dashboard/decks",
       secondaryLabel: "Open decks",
     };
@@ -408,7 +449,7 @@ function buildNextAction(input: {
     description: "Open a notebook, review cards, or organise a folder.",
     href: getCustomStudyHref({ mode: "custom" }),
     label: "Focused review",
-    priority: 9,
+    priority: 11,
     secondaryHref: "/dashboard/folders",
     secondaryLabel: "Open folders",
   };
@@ -430,6 +471,8 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     weakTopics,
     goalSummary,
     workspace,
+    reviewedToday: input.reviewedToday ?? 0,
+    hasEarnedStars: input.hasEarnedStars === true,
   });
 
   return {

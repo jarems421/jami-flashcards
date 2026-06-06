@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { FirebaseError } from "firebase/app";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
@@ -29,6 +29,11 @@ import { getDeckHref, getDeckStudyRouteHref } from "@/lib/app/routes";
 import { useUser } from "@/lib/auth/user-context";
 import type { Source, SourceType } from "@/lib/practice/sources";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
+import {
+  buildFolderTabSearch,
+  getFolderTabFromSearch,
+  type FolderWorkspaceTab,
+} from "@/lib/workspace/folder-navigation";
 import type { Notebook, NotebookPageColor, NotebookPageStyle } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
@@ -44,8 +49,6 @@ import { createSource, getActiveSources, updateSource } from "@/services/study/s
 
 type Feedback = { type: "success" | "error"; message: string };
 type NotebookTemplate = "blank" | "uploaded_file" | "ai_questions";
-type FolderTab = "notebooks" | "decks" | "sources";
-
 function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
 }
@@ -58,8 +61,22 @@ function resultError(result: PromiseSettledResult<unknown>) {
   return result.status === "rejected" ? result.reason : null;
 }
 
+function formatEditedLabel(updatedAt: number) {
+  const elapsed = Math.max(0, Date.now() - updatedAt);
+  const hours = Math.floor(elapsed / 3_600_000);
+  if (hours < 1) return "Edited recently";
+  if (hours < 24) return `Edited ${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `Edited ${days}d ago`;
+  return `Edited ${new Intl.DateTimeFormat("en", {
+    day: "numeric",
+    month: "short",
+  }).format(updatedAt)}`;
+}
+
 export default function FolderDetailPage() {
   const { user } = useUser();
+  const router = useRouter();
   const params = useParams<{ folderId?: string | string[] }>();
   const folderId = Array.isArray(params.folderId) ? params.folderId[0] : params.folderId;
   const [folder, setFolder] = useState<StudyFolder | null>(null);
@@ -78,7 +95,14 @@ export default function FolderDetailPage() {
   const [notebookPageStyle, setNotebookPageStyle] = useState<NotebookPageStyle>("plain");
   const [notebookFile, setNotebookFile] = useState<File | null>(null);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
-  const [activeTab, setActiveTab] = useState<FolderTab>("notebooks");
+  const [notebookUploadProgress, setNotebookUploadProgress] = useState<
+    number | null
+  >(null);
+  const [activeTab, setActiveTab] = useState<FolderWorkspaceTab>(() =>
+    typeof window === "undefined"
+      ? "notebooks"
+      : getFolderTabFromSearch(window.location.search)
+  );
   const [showEditFolder, setShowEditFolder] = useState(false);
   const [editFolderName, setEditFolderName] = useState("");
   const [editFolderColor, setEditFolderColor] = useState<ObjectColorId>("sky");
@@ -96,6 +120,27 @@ export default function FolderDetailPage() {
   const [sourceText, setSourceText] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceFileName, setSourceFileName] = useState("");
+  const [renamingNotebookId, setRenamingNotebookId] = useState<string | null>(null);
+  const [renamingNotebookTitle, setRenamingNotebookTitle] = useState("");
+  const [busyNotebookId, setBusyNotebookId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setActiveTab(getFolderTabFromSearch(window.location.search));
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, []);
+
+  const selectFolderTab = (tab: FolderWorkspaceTab) => {
+    setActiveTab(tab);
+    const nextSearch = buildFolderTabSearch(window.location.search, tab);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${nextSearch}${window.location.hash}`
+    );
+  };
 
   const loadFolder = useCallback(async () => {
     if (!user?.uid || !folderId || !featureFlags.enableFolders) {
@@ -295,6 +340,7 @@ export default function FolderDetailPage() {
       await archiveStudyFolder(user.uid, folder.id);
       setFeedback({ type: "success", message: "Folder archived. Decks and sources were not deleted." });
       setShowEditFolder(false);
+      router.push("/dashboard/folders");
     } catch (error) {
       setFeedback({
         type: "error",
@@ -439,6 +485,7 @@ export default function FolderDetailPage() {
     }
 
     setCreatingNotebook(true);
+    setNotebookUploadProgress(null);
     try {
       const notebook = await createNotebook(user.uid, {
         folderId: folder.id,
@@ -467,6 +514,7 @@ export default function FolderDetailPage() {
           notebookId: notebook.id,
           folderId: folder.id,
           file: notebookFile,
+          onProgress: setNotebookUploadProgress,
         });
         uploadedFileId = fileMetadata.id;
         await updateNotebook(user.uid, notebook.id, { uploadedFileId });
@@ -488,7 +536,7 @@ export default function FolderDetailPage() {
         type: "success",
         message:
           notebookTemplate === "uploaded_file"
-            ? `${notebook.title} created and file saved. Full paper annotation comes later.`
+            ? `${notebook.title} created. The file is locked behind your annotations.`
             : `${notebook.title} created. Open it to type or draw on page 1.`,
       });
     } catch (error) {
@@ -498,6 +546,76 @@ export default function FolderDetailPage() {
       });
     } finally {
       setCreatingNotebook(false);
+      setNotebookUploadProgress(null);
+    }
+  };
+
+  const openNotebookForm = (template: NotebookTemplate = "blank") => {
+    setNotebookTemplate(template);
+    setShowNotebookForm(true);
+    if (template === "uploaded_file") {
+      setNotebookColor("sky");
+      setNotebookIcon("none");
+    }
+  };
+
+  const openRenameNotebook = (notebook: Notebook) => {
+    setRenamingNotebookId(notebook.id);
+    setRenamingNotebookTitle(notebook.title);
+  };
+
+  const handleRenameNotebook = async () => {
+    if (!user?.uid || !renamingNotebookId) return;
+    const title = renamingNotebookTitle.trim();
+    if (!title) return;
+    setBusyNotebookId(renamingNotebookId);
+    try {
+      await updateNotebook(user.uid, renamingNotebookId, { title });
+      const updatedAt = Date.now();
+      setNotebooks((current) =>
+        current.map((notebook) =>
+          notebook.id === renamingNotebookId
+            ? { ...notebook, title, updatedAt }
+            : notebook
+        )
+      );
+      setRenamingNotebookId(null);
+      setRenamingNotebookTitle("");
+      setFeedback({ type: "success", message: "Notebook renamed." });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not rename notebook.",
+      });
+    } finally {
+      setBusyNotebookId(null);
+    }
+  };
+
+  const handleArchiveNotebook = async (notebook: Notebook) => {
+    if (!user?.uid) return;
+    const confirmed = window.confirm(
+      `Archive "${notebook.title}"? Its saved pages will remain available if the notebook is restored later.`
+    );
+    if (!confirmed) return;
+    setBusyNotebookId(notebook.id);
+    try {
+      await updateNotebook(user.uid, notebook.id, { archived: true });
+      setNotebooks((current) =>
+        current.filter((item) => item.id !== notebook.id)
+      );
+      if (renamingNotebookId === notebook.id) {
+        setRenamingNotebookId(null);
+        setRenamingNotebookTitle("");
+      }
+      setFeedback({ type: "success", message: `${notebook.title} archived.` });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not archive notebook.",
+      });
+    } finally {
+      setBusyNotebookId(null);
     }
   };
 
@@ -564,9 +682,17 @@ export default function FolderDetailPage() {
           />
         ) : null}
 
-        <div className="flex flex-col gap-4 rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm text-text-muted">
+          <Link href="/dashboard/folders" className="font-medium transition hover:text-text-primary">
+            Folders
+          </Link>
+          <span aria-hidden="true">/</span>
+          <span className="truncate text-text-secondary">{folder.name}</span>
+        </nav>
+
+        <div className="flex flex-col gap-4 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-32 shrink-0 sm:w-36">
+            <div className="w-24 shrink-0 sm:w-28">
               <FolderObjectCard title={folder.name} color={folder.color} icon={folder.icon} />
             </div>
             <div className="min-w-0">
@@ -582,8 +708,11 @@ export default function FolderDetailPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Button type="button" onClick={() => setShowNotebookForm((current) => !current)}>
+            <Button type="button" onClick={() => openNotebookForm("blank")}>
               Create notebook
+            </Button>
+            <Button type="button" variant="secondary" onClick={() => openNotebookForm("uploaded_file")}>
+              Import PDF or image
             </Button>
             <Button type="button" variant="secondary" onClick={openEditFolder}>
               Edit folder
@@ -719,14 +848,37 @@ export default function FolderDetailPage() {
                   disabled={creatingNotebook}
                   onClick={() => void handleCreateNotebook()}
                 >
-                  {creatingNotebook ? "Creating..." : "Create"}
+                  {creatingNotebook
+                    ? notebookUploadProgress !== null
+                      ? `Importing ${notebookUploadProgress}%`
+                      : "Creating..."
+                    : "Create"}
                 </Button>
               </div>
             </div>
             {notebookTemplate === "uploaded_file" ? (
-              <p className="mt-3 text-sm leading-6 text-text-muted">
-                File saved. Annotation and OCR come later.
-              </p>
+              <div className="mt-3 space-y-2">
+                <p className="text-sm leading-6 text-text-muted">
+                  The PDF or image stays locked as the page background. You can
+                  write, highlight, erase annotations, and add text over it;
+                  OCR is not included.
+                </p>
+                {creatingNotebook && notebookUploadProgress !== null ? (
+                  <div
+                    role="progressbar"
+                    aria-label="Notebook file import progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={notebookUploadProgress}
+                    className="h-2 overflow-hidden rounded-full bg-white/[0.08]"
+                  >
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
+                      style={{ width: `${notebookUploadProgress}%` }}
+                    />
+                  </div>
+                ) : null}
+              </div>
             ) : null}
             {notebookTemplate === "ai_questions" ? (
               <p className="mt-3 text-sm leading-6 text-text-muted">
@@ -800,13 +952,14 @@ export default function FolderDetailPage() {
             ["notebooks", "Notebooks"],
             ["decks", "Decks"],
             ["sources", "Sources"],
+            ["progress", "Progress"],
           ].map(([value, label]) => {
             const selected = activeTab === value;
             return (
               <button
                 key={value}
                 type="button"
-                onClick={() => setActiveTab(value as FolderTab)}
+                onClick={() => selectFolderTab(value as FolderWorkspaceTab)}
                 className={`min-h-[2.4rem] rounded-full px-4 text-sm font-semibold transition ${
                   selected
                     ? "bg-accent text-white shadow-[var(--shadow-accent)]"
@@ -821,7 +974,51 @@ export default function FolderDetailPage() {
 
         {activeTab === "notebooks" ? (
           <section className="space-y-4">
-            <SectionHeader eyebrow="Notebooks" title="Workbooks" />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <SectionHeader eyebrow="Notebooks" title="Workbooks" />
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" size="sm" onClick={() => openNotebookForm("blank")}>
+                  Create notebook
+                </Button>
+                <Button type="button" size="sm" variant="secondary" onClick={() => openNotebookForm("uploaded_file")}>
+                  Import file
+                </Button>
+              </div>
+            </div>
+            {renamingNotebookId ? (
+              <Card padding="sm" className="max-w-xl">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  <Input
+                    label="Notebook name"
+                    value={renamingNotebookTitle}
+                    onChange={(event) => setRenamingNotebookTitle(event.target.value)}
+                    containerClassName="min-w-0 flex-1"
+                  />
+                  <div className="flex gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={!renamingNotebookTitle.trim() || busyNotebookId === renamingNotebookId}
+                      onClick={() => void handleRenameNotebook()}
+                    >
+                      {busyNotebookId === renamingNotebookId ? "Saving..." : "Save"}
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      disabled={busyNotebookId === renamingNotebookId}
+                      onClick={() => {
+                        setRenamingNotebookId(null);
+                        setRenamingNotebookTitle("");
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ) : null}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
               {notebooks.length > 0 ? (
                 notebooks.map((notebook) => (
@@ -833,7 +1030,10 @@ export default function FolderDetailPage() {
                     color={notebook.color}
                     icon={notebook.icon}
                     pageColor={notebook.pageColor}
-                    updatedLabel="Open notebook"
+                    pageStyle={notebook.pageStyle}
+                    updatedLabel={formatEditedLabel(notebook.updatedAt)}
+                    onRename={() => openRenameNotebook(notebook)}
+                    onArchive={() => void handleArchiveNotebook(notebook)}
                     compact
                   />
                 ))
@@ -844,8 +1044,13 @@ export default function FolderDetailPage() {
                     title="No notebooks yet"
                     description="Create a notebook to start working in this folder."
                     action={
-                      <Button type="button" onClick={() => setShowNotebookForm(true)}>
+                      <Button type="button" onClick={() => openNotebookForm("blank")}>
                         Create notebook
+                      </Button>
+                    }
+                    secondaryAction={
+                      <Button type="button" variant="secondary" onClick={() => openNotebookForm("uploaded_file")}>
+                        Import PDF or image
                       </Button>
                     }
                   />
@@ -943,7 +1148,7 @@ export default function FolderDetailPage() {
                             disabled={busyAssetId === deck.id}
                             onClick={() => void toggleDeckFolder(deck)}
                           >
-                            Remove
+                            Remove from folder
                           </Button>
                         </div>
                       </div>
@@ -1076,7 +1281,7 @@ export default function FolderDetailPage() {
                           disabled={busyAssetId === source.id}
                           onClick={() => void toggleSourceFolder(source)}
                         >
-                          Remove
+                          Remove from folder
                         </Button>
                       </div>
                     </div>
@@ -1087,6 +1292,75 @@ export default function FolderDetailPage() {
                   title="No sources in this folder yet"
                   description="Add or create a source."
                 />
+              )}
+            </div>
+          </section>
+        ) : null}
+
+        {activeTab === "progress" ? (
+          <section className="space-y-4">
+            <SectionHeader
+              eyebrow="Folder progress"
+              title="Keep this study space moving"
+              description="A simple view of what is ready to continue."
+            />
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                {
+                  label: "Notebooks",
+                  value: notebooks.length,
+                  detail: notebooks.length === 1 ? "workbook" : "workbooks",
+                  tab: "notebooks" as FolderWorkspaceTab,
+                },
+                {
+                  label: "Decks",
+                  value: folderDecks.length,
+                  detail: folderDecks.length === 1 ? "deck" : "decks",
+                  tab: "decks" as FolderWorkspaceTab,
+                },
+                {
+                  label: "Sources",
+                  value: folderSources.length,
+                  detail: folderSources.length === 1 ? "source" : "sources",
+                  tab: "sources" as FolderWorkspaceTab,
+                },
+              ].map((item) => (
+                <button
+                  key={item.label}
+                  type="button"
+                  onClick={() => selectFolderTab(item.tab)}
+                  className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass)]"
+                >
+                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                    {item.label}
+                  </div>
+                  <div className="mt-2 text-3xl font-semibold text-text-primary">
+                    {item.value}
+                  </div>
+                  <div className="mt-1 text-sm text-text-secondary">
+                    {item.detail}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link
+                href="/dashboard/progress"
+                className="app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-full px-4 text-sm font-medium"
+              >
+                Open full Progress
+              </Link>
+              {notebooks[0] ? (
+                <Link
+                  href={`/dashboard/notebooks/${notebooks[0].id}`}
+                  className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)]"
+                >
+                  Continue latest notebook
+                </Link>
+              ) : (
+                <Button type="button" onClick={() => openNotebookForm("blank")}>
+                  Create notebook
+                </Button>
               )}
             </div>
           </section>

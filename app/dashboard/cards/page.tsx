@@ -7,6 +7,13 @@ import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
+import { getActiveStudyFolders } from "@/services/study/folders";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
+import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
+import {
+  buildCardBrowserSearch,
+  getCardBrowserStateFromSearch,
+} from "@/lib/study/card-browser-navigation";
 import {
   addCardTag,
   getCardContentKey,
@@ -32,7 +39,7 @@ import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
-import { Button, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import Link from "next/link";
 
 function cardMatchesSearch(card: Card, term: string, deckName?: string) {
@@ -46,6 +53,8 @@ function cardMatchesSearch(card: Card, term: string, deckName?: string) {
 }
 
 const CARD_RESULT_PAGE_SIZE = 50;
+type CardViewMode = "grid" | "list";
+type CardStatusFilter = "all" | "due" | "weak" | "new";
 
 function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
@@ -57,12 +66,20 @@ export default function CardsSearchPage() {
   const [cards, setCards] = useState<Card[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
   const [visibleResultLimit, setVisibleResultLimit] = useState(CARD_RESULT_PAGE_SIZE);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+  const [previewCardId, setPreviewCardId] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<CardViewMode>("grid");
+  const [deckFilter, setDeckFilter] = useState("");
+  const [folderFilter, setFolderFilter] = useState("");
+  const [tagFilter, setTagFilter] = useState("");
+  const [statusFilter, setStatusFilter] = useState<CardStatusFilter>("all");
+  const [urlStateReady, setUrlStateReady] = useState(false);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
   const [editingTags, setEditingTags] = useState<string[]>([]);
@@ -73,6 +90,12 @@ export default function CardsSearchPage() {
   const [bulkTags, setBulkTags] = useState<string[]>([]);
   const [bulkPendingTag, setBulkPendingTag] = useState("");
   const [applyingBulkTags, setApplyingBulkTags] = useState(false);
+  const [bulkMoveDeckId, setBulkMoveDeckId] = useState("");
+  const [applyingBulkAction, setApplyingBulkAction] = useState<"move" | "delete" | null>(null);
+  const [cardPendingDeleteId, setCardPendingDeleteId] = useState<string | null>(
+    null
+  );
+  const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const [tagManagerSource, setTagManagerSource] = useState("");
   const [tagManagerTarget, setTagManagerTarget] = useState("");
   const [tagManagerAction, setTagManagerAction] = useState<"rename" | "remove" | null>(null);
@@ -88,8 +111,57 @@ export default function CardsSearchPage() {
   }, [searchTerm]);
 
   useEffect(() => {
+    const applyUrlState = () => {
+      const state = getCardBrowserStateFromSearch(window.location.search);
+      setSearchTerm(state.search);
+      setViewMode(state.view);
+      setDeckFilter(state.deckId);
+      setFolderFilter(state.folderId);
+      setTagFilter(state.tag);
+      setStatusFilter(state.status);
+      setUrlStateReady(true);
+    };
+
+    applyUrlState();
+    window.addEventListener("popstate", applyUrlState);
+    return () => window.removeEventListener("popstate", applyUrlState);
+  }, []);
+
+  useEffect(() => {
+    if (!urlStateReady) return;
+
+    const nextSearch = buildCardBrowserSearch(window.location.search, {
+      search: searchTerm,
+      view: viewMode,
+      deckId: deckFilter,
+      folderId: folderFilter,
+      tag: tagFilter,
+      status: statusFilter,
+    });
+    const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, [
+    deckFilter,
+    folderFilter,
+    searchTerm,
+    statusFilter,
+    tagFilter,
+    urlStateReady,
+    viewMode,
+  ]);
+
+  useEffect(() => {
     setVisibleResultLimit(CARD_RESULT_PAGE_SIZE);
   }, [cards.length, debouncedTerm]);
+
+  useEffect(() => {
+    if (!previewCardId) return;
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreviewCardId(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewCardId]);
 
   // Load all user cards + decks
   useEffect(() => {
@@ -98,7 +170,7 @@ export default function CardsSearchPage() {
     void (async () => {
       setLoading(true);
       try {
-        const [userDecks, cardsSnapshot, userSources] = await Promise.all([
+        const [userDecks, cardsSnapshot, userSources, userFolders] = await Promise.all([
           getDecks(user.uid),
           getDocs(
             query(
@@ -107,6 +179,7 @@ export default function CardsSearchPage() {
             )
           ),
           getActiveSources(user.uid),
+          getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
         ]);
 
         if (cancelled) return;
@@ -124,6 +197,7 @@ export default function CardsSearchPage() {
         setDecks(userDecks);
         setCards(allCards);
         setSources(userSources);
+        setFolders(userFolders);
         setAvailableTags(tags);
       } catch (error) {
         console.error(error);
@@ -154,13 +228,50 @@ export default function CardsSearchPage() {
     }
     return map;
   }, [sources]);
+  const folderNamesById = useMemo(
+    () => Object.fromEntries(folders.map((folder) => [folder.id, folder.name])),
+    [folders]
+  );
+  const deckFolderIdsById = useMemo(
+    () => Object.fromEntries(decks.map((deck) => [deck.id, deck.folderIds])),
+    [decks]
+  );
 
   const filtered = useMemo(() => {
-    if (!debouncedTerm) return cards;
-    return cards.filter((card) =>
-      cardMatchesSearch(card, debouncedTerm, deckNamesById[card.deckId])
-    );
-  }, [cards, debouncedTerm, deckNamesById]);
+    const now = Date.now();
+    return cards.filter((card) => {
+      if (!cardMatchesSearch(card, debouncedTerm, deckNamesById[card.deckId])) return false;
+      if (deckFilter && card.deckId !== deckFilter) return false;
+      if (
+        folderFilter &&
+        !(deckFolderIdsById[card.deckId] ?? []).includes(folderFilter)
+      ) {
+        return false;
+      }
+      if (tagFilter && !card.tags.some((tag) => getTagKey(tag) === getTagKey(tagFilter))) {
+        return false;
+      }
+      if (statusFilter === "due" && !(typeof card.dueDate !== "number" || card.dueDate <= now)) {
+        return false;
+      }
+      if (statusFilter === "new" && (card.reps ?? card.repetitions ?? 0) > 0) {
+        return false;
+      }
+      if (statusFilter === "weak" && getMemoryRiskInfo(card, now).tier !== "high") {
+        return false;
+      }
+      return true;
+    });
+  }, [
+    cards,
+    debouncedTerm,
+    deckFilter,
+    deckFolderIdsById,
+    deckNamesById,
+    folderFilter,
+    statusFilter,
+    tagFilter,
+  ]);
 
   const visibleCards = filtered.slice(0, visibleResultLimit);
   const visibleCardIds = useMemo(() => visibleCards.map((card) => card.id), [visibleCards]);
@@ -191,6 +302,21 @@ export default function CardsSearchPage() {
     }
     return counts;
   }, [cards]);
+  const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
+  const activeFilterCount =
+    Number(Boolean(deckFilter)) +
+    Number(Boolean(folderFilter)) +
+    Number(Boolean(tagFilter)) +
+    Number(statusFilter !== "all");
+
+  const clearAllFilters = () => {
+    setSearchTerm("");
+    setDebouncedTerm("");
+    setDeckFilter("");
+    setFolderFilter("");
+    setTagFilter("");
+    setStatusFilter("all");
+  };
 
   const startEditing = (card: Card) => {
     setExpandedCardId(card.id);
@@ -276,9 +402,6 @@ export default function CardsSearchPage() {
       return;
     }
 
-    const shouldDelete = window.confirm("Delete this card?");
-    if (!shouldDelete) return;
-
     setDeletingCardId(cardId);
     setFeedback(null);
 
@@ -287,6 +410,7 @@ export default function CardsSearchPage() {
       setCards((prev) => prev.filter((card) => card.id !== cardId));
       setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
       if (expandedCardId === cardId) cancelEditing();
+      setCardPendingDeleteId(null);
       setFeedback({ type: "success", message: "Card deleted." });
     } catch (error) {
       console.error(error);
@@ -379,6 +503,71 @@ export default function CardsSearchPage() {
       setFeedback({ type: "error", message: "Failed to add tags to the selected cards." });
     } finally {
       setApplyingBulkTags(false);
+    }
+  };
+
+  const handleMoveSelectedCards = async () => {
+    if (!bulkMoveDeckId || selectedCardIds.length === 0) {
+      setFeedback({ type: "error", message: "Select cards and choose a destination deck." });
+      return;
+    }
+    setApplyingBulkAction("move");
+    setFeedback(null);
+    try {
+      for (let start = 0; start < selectedCardIds.length; start += 450) {
+        const batch = writeBatch(db);
+        selectedCardIds.slice(start, start + 450).forEach((cardId) => {
+          batch.update(doc(db, "cards", cardId), { deckId: bulkMoveDeckId });
+        });
+        await batch.commit();
+      }
+      const movedIds = new Set(selectedCardIds);
+      setCards((current) =>
+        current.map((card) =>
+          movedIds.has(card.id) ? { ...card, deckId: bulkMoveDeckId } : card
+        )
+      );
+      const movedCount = selectedCardIds.length;
+      setSelectedCardIds([]);
+      setBulkMoveDeckId("");
+      setFeedback({
+        type: "success",
+        message: `Moved ${movedCount} card${movedCount === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      console.error(error);
+      setFeedback({ type: "error", message: "Failed to move the selected cards." });
+    } finally {
+      setApplyingBulkAction(null);
+    }
+  };
+
+  const handleDeleteSelectedCards = async () => {
+    if (selectedCardIds.length === 0) return;
+    setApplyingBulkAction("delete");
+    setFeedback(null);
+    try {
+      for (let start = 0; start < selectedCardIds.length; start += 450) {
+        const batch = writeBatch(db);
+        selectedCardIds.slice(start, start + 450).forEach((cardId) => {
+          batch.delete(doc(db, "cards", cardId));
+        });
+        await batch.commit();
+      }
+      const deletedIds = new Set(selectedCardIds);
+      const deletedCount = selectedCardIds.length;
+      setCards((current) => current.filter((card) => !deletedIds.has(card.id)));
+      setSelectedCardIds([]);
+      setBulkDeletePending(false);
+      setFeedback({
+        type: "success",
+        message: `Deleted ${deletedCount} card${deletedCount === 1 ? "" : "s"}.`,
+      });
+    } catch (error) {
+      console.error(error);
+      setFeedback({ type: "error", message: "Failed to delete the selected cards." });
+    } finally {
+      setApplyingBulkAction(null);
     }
   };
 
@@ -491,6 +680,31 @@ export default function CardsSearchPage() {
       {feedback ? (
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
+      <ConfirmDialog
+        open={cardPendingDeleteId !== null}
+        title="Delete this card?"
+        description="This permanently removes the card from its deck and review queue. This cannot be undone."
+        confirmLabel="Delete card"
+        busy={
+          cardPendingDeleteId !== null &&
+          deletingCardId === cardPendingDeleteId
+        }
+        onClose={() => setCardPendingDeleteId(null)}
+        onConfirm={() => {
+          if (cardPendingDeleteId) void handleDeleteCard(cardPendingDeleteId);
+        }}
+      />
+      <ConfirmDialog
+        open={bulkDeletePending}
+        title={`Delete ${selectedCardIds.length} selected card${
+          selectedCardIds.length === 1 ? "" : "s"
+        }?`}
+        description="The selected cards will be permanently removed from their decks and review queues. This cannot be undone."
+        confirmLabel="Delete selected"
+        busy={applyingBulkAction === "delete"}
+        onClose={() => setBulkDeletePending(false)}
+        onConfirm={() => void handleDeleteSelectedCards()}
+      />
 
       {!loading && !isDemoUser && (decks.length === 0 || cards.length === 0 || availableTags.length === 0) ? (
         <section className="grid gap-3 rounded-[1.5rem] border border-white/[0.08] bg-white/[0.035] p-4 sm:grid-cols-3">
@@ -648,12 +862,111 @@ export default function CardsSearchPage() {
         </section>
       ) : null}
 
-      <div className="sticky top-0 z-20 -mx-1 px-1 pb-2 pt-1">
-        <Input
-          placeholder="Search cards, decks, or tags"
-          value={searchTerm}
-          onChange={(event) => setSearchTerm(event.target.value)}
-        />
+      <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
+        <div className="flex flex-col gap-2 sm:flex-row">
+          <Input
+            placeholder="Search cards, decks, or tags"
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            containerClassName="min-w-0 flex-1"
+          />
+          <div className="flex gap-2">
+            {searchTerm ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setSearchTerm("")}>
+                Clear search
+              </Button>
+            ) : null}
+            <div className="flex rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1">
+              {(["grid", "list"] as CardViewMode[]).map((mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setViewMode(mode)}
+                  className={`min-h-9 rounded-full px-3 text-xs font-semibold capitalize transition ${
+                    viewMode === mode
+                      ? "bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
+                      : "text-text-muted hover:text-text-primary"
+                  }`}
+                >
+                  {mode}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          <select
+            aria-label="Filter cards by deck"
+            value={deckFilter}
+            onChange={(event) => setDeckFilter(event.target.value)}
+            className="app-field min-h-10 rounded-full px-3 text-sm"
+          >
+            <option value="">All decks</option>
+            {decks.map((deck) => (
+              <option key={deck.id} value={deck.id}>{deck.name}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter cards by folder"
+            value={folderFilter}
+            onChange={(event) => setFolderFilter(event.target.value)}
+            className="app-field min-h-10 rounded-full px-3 text-sm"
+          >
+            <option value="">All folders</option>
+            {folders.map((folder) => (
+              <option key={folder.id} value={folder.id}>{folder.name}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter cards by tag"
+            value={tagFilter}
+            onChange={(event) => setTagFilter(event.target.value)}
+            className="app-field min-h-10 rounded-full px-3 text-sm"
+          >
+            <option value="">All tags</option>
+            {availableTags.map((tag) => (
+              <option key={tag} value={tag}>{tag}</option>
+            ))}
+          </select>
+          <select
+            aria-label="Filter cards by study status"
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value as CardStatusFilter)}
+            className="app-field min-h-10 rounded-full px-3 text-sm"
+          >
+            <option value="all">All statuses</option>
+            <option value="due">Due</option>
+            <option value="weak">Weak</option>
+            <option value="new">New</option>
+          </select>
+        </div>
+        {activeFilterCount > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            {deckFilter ? (
+              <button type="button" onClick={() => setDeckFilter("")} className="app-selected rounded-full px-3 py-1.5 text-xs font-medium">
+                {deckNamesById[deckFilter] ?? "Deck"} ×
+              </button>
+            ) : null}
+            {folderFilter ? (
+              <button type="button" onClick={() => setFolderFilter("")} className="app-selected rounded-full px-3 py-1.5 text-xs font-medium">
+                {folderNamesById[folderFilter] ?? "Folder"} ×
+              </button>
+            ) : null}
+            {tagFilter ? (
+              <button type="button" onClick={() => setTagFilter("")} className="app-selected rounded-full px-3 py-1.5 text-xs font-medium">
+                {tagFilter} ×
+              </button>
+            ) : null}
+            {statusFilter !== "all" ? (
+              <button type="button" onClick={() => setStatusFilter("all")} className="app-selected rounded-full px-3 py-1.5 text-xs font-medium capitalize">
+                {statusFilter} ×
+              </button>
+            ) : null}
+            <Button type="button" size="sm" variant="ghost" onClick={clearAllFilters}>
+              Clear all filters
+            </Button>
+          </div>
+        ) : null}
       </div>
 
       {loading ? (
@@ -677,8 +990,13 @@ export default function CardsSearchPage() {
           emoji="Search"
           eyebrow="No match"
           title="No cards match"
-          description={`No cards match "${debouncedTerm}".`}
-          action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
+          description={
+            debouncedTerm
+              ? `No cards match "${debouncedTerm}".`
+              : "No cards match the selected filters."
+          }
+          action={<Button type="button" variant="secondary" onClick={clearAllFilters}>Clear all filters</Button>}
+          secondaryAction={<a href="#add-card" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)]">Add a card</a>}
         />
       ) : (
         <>
@@ -713,6 +1031,44 @@ export default function CardsSearchPage() {
                 onApply={() => void handleAddTagsToSelectedCards()}
                 onClearSelection={clearSelection}
               />
+              {selectedCardIds.length > 0 ? (
+                <div className="grid gap-3 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+                  <label className="block">
+                    <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+                      Move selected cards
+                    </span>
+                    <select
+                      value={bulkMoveDeckId}
+                      onChange={(event) => setBulkMoveDeckId(event.target.value)}
+                      disabled={applyingBulkAction !== null}
+                      className="app-field min-h-10 w-full rounded-full px-3 text-sm"
+                    >
+                      <option value="">Choose destination deck</option>
+                      {decks.map((deck) => (
+                        <option key={deck.id} value={deck.id}>{deck.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={!bulkMoveDeckId || applyingBulkAction !== null}
+                    onClick={() => void handleMoveSelectedCards()}
+                  >
+                    {applyingBulkAction === "move" ? "Moving..." : "Move"}
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="danger"
+                    disabled={applyingBulkAction !== null}
+                    onClick={() => setBulkDeletePending(true)}
+                  >
+                    {applyingBulkAction === "delete" ? "Deleting..." : "Delete selected"}
+                  </Button>
+                </div>
+              ) : null}
             </>
           ) : null}
 
@@ -721,13 +1077,21 @@ export default function CardsSearchPage() {
             Use the deck pill on any card to jump into that deck.
           </p>
 
-          <div className="grid animate-slide-up touch-pan-y gap-3 sm:gap-4 lg:grid-cols-2">
+          <div
+            className={
+              viewMode === "grid"
+                ? "grid animate-slide-up touch-pan-y gap-3 sm:gap-4 lg:grid-cols-2"
+                : "animate-slide-up touch-pan-y space-y-2"
+            }
+          >
             {visibleCards.map((card) => (
               <section
                 key={card.id}
                 data-card-id={card.id}
                 {...getCardLongPressHandlers(card.id)}
-                className={`app-panel p-3 sm:p-4 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell ${
+                className={`app-panel p-3 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell ${
+                  viewMode === "list" ? "sm:px-4 sm:py-3" : "sm:p-4"
+                } ${
                   selectedCardIdSet.has(card.id)
                     ? "border-accent/45 ring-2 ring-accent/20"
                     : ""
@@ -814,19 +1178,32 @@ export default function CardsSearchPage() {
                 ) : (
                   <div className="space-y-3">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0 flex-1 space-y-1">
+                      <button
+                        type="button"
+                        className="min-w-0 flex-1 space-y-1 text-left"
+                        onClick={() => setPreviewCardId(card.id)}
+                        aria-label={`Preview card: ${card.front}`}
+                      >
                         <StudyText
                           as="div"
                           text={card.front}
-                          className="whitespace-pre-wrap text-[0.9rem] font-normal leading-6 text-white sm:text-[0.95rem] sm:leading-7"
+                          className={`${viewMode === "list" ? "line-clamp-1" : "line-clamp-3"} whitespace-pre-wrap text-[0.9rem] font-medium leading-6 text-white sm:text-[0.95rem] sm:leading-7`}
                         />
                         <StudyText
                           as="div"
                           text={card.back}
-                          className="whitespace-pre-wrap text-sm leading-6 text-text-secondary"
+                          className={`${viewMode === "list" ? "line-clamp-1" : "line-clamp-3"} whitespace-pre-wrap text-sm leading-6 text-text-secondary`}
                         />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+                      </button>
+                      <div className="grid grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap">
+                        <Button
+                          type="button"
+                          onClick={() => setPreviewCardId(card.id)}
+                          variant="ghost"
+                          className="w-full sm:w-auto"
+                        >
+                          Preview
+                        </Button>
                         <Button
                           type="button"
                           disabled={isDemoUser || deletingCardId === card.id}
@@ -839,7 +1216,7 @@ export default function CardsSearchPage() {
                         <Button
                           type="button"
                           disabled={isDemoUser || deletingCardId === card.id}
-                          onClick={() => void handleDeleteCard(card.id)}
+                          onClick={() => setCardPendingDeleteId(card.id)}
                           variant="danger"
                           className="w-full sm:w-auto"
                         >
@@ -908,6 +1285,60 @@ export default function CardsSearchPage() {
           ) : null}
         </>
       )}
+      {previewCard ? (
+        <div
+          role="presentation"
+          className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPreviewCardId(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Card preview"
+            className="w-full max-w-2xl rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.45)] sm:p-7"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  Card preview
+                </div>
+                <div className="mt-2 text-sm text-text-secondary">
+                  {deckNamesById[previewCard.deckId] ?? "Deck"}
+                </div>
+              </div>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setPreviewCardId(null)}>
+                Close
+              </Button>
+            </div>
+            <div className="mt-6 grid gap-4">
+              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Front</div>
+                <StudyText as="div" text={previewCard.front} className="mt-3 whitespace-pre-wrap text-lg font-medium leading-8 text-text-primary" />
+              </div>
+              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Back</div>
+                <StudyText as="div" text={previewCard.back} className="mt-3 whitespace-pre-wrap text-base leading-7 text-text-secondary" />
+              </div>
+            </div>
+            {!isDemoUser ? (
+              <div className="mt-5 flex justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setPreviewCardId(null);
+                    startEditing(previewCard);
+                  }}
+                >
+                  Edit card
+                </Button>
+              </div>
+            ) : null}
+          </section>
+        </div>
+      ) : null}
     </AppPage>
   );
 }

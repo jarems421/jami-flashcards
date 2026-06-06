@@ -28,6 +28,7 @@ import {
   spreadBackfilledStars,
   type NormalizedStar,
 } from "@/lib/constellation/stars";
+import { normalizeGoal, type Goal } from "@/lib/study/goals";
 import { backfillStarPositions, saveStarPosition } from "@/services/constellation/stars";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, EmptyState, FeedbackBanner, Input, PageHero, SectionHeader, Skeleton } from "@/components/ui";
@@ -50,6 +51,7 @@ export default function ConstellationDashboardPage() {
 
   const [constellations, setConstellations] = useState<Constellation[]>([]);
   const [allStars, setAllStars] = useState<NormalizedStar[]>([]);
+  const [goalsById, setGoalsById] = useState<Record<string, Goal>>({});
   const [selectedConstellationId, setSelectedConstellationId] = useState("");
   const [isLoading, setIsLoading] = useState(true);
   const [draggingStarId, setDraggingStarId] = useState<string | null>(null);
@@ -76,7 +78,10 @@ export default function ConstellationDashboardPage() {
     setIsLoading(true);
     try {
       const nextConstellations = await ensureConstellationSetup(uid);
-      const starsSnapshot = await getDocs(collection(db, "users", uid, "stars"));
+      const [starsSnapshot, goalsSnapshot] = await Promise.all([
+        getDocs(collection(db, "users", uid, "stars")),
+        getDocs(collection(db, "users", uid, "goals")),
+      ]);
       const adjustedStars = spreadBackfilledStars(
         starsSnapshot.docs.map((starDoc) =>
           parseStarData(starDoc.id, starDoc.data() as Record<string, unknown>)
@@ -86,6 +91,17 @@ export default function ConstellationDashboardPage() {
 
       setConstellations(nextConstellations);
       setAllStars(adjustedStars);
+      setGoalsById(
+        Object.fromEntries(
+          goalsSnapshot.docs.map((goalDoc) => [
+            goalDoc.id,
+            normalizeGoal(
+              goalDoc.id,
+              goalDoc.data() as Record<string, unknown>
+            ),
+          ])
+        )
+      );
       setSelectedConstellationId((currentId) => {
         if (currentId && nextConstellations.some((constellation) => constellation.id === currentId)) {
           return currentId;
@@ -106,6 +122,7 @@ export default function ConstellationDashboardPage() {
       console.error(error);
       setConstellations([]);
       setAllStars([]);
+      setGoalsById({});
       setSelectedConstellationId("");
       setFeedback({
         type: "error",
@@ -180,6 +197,7 @@ export default function ConstellationDashboardPage() {
   );
   const activeProgressPercent = getConstellationProgressPercent(activeConstellation);
   const selectedProgressPercent = getConstellationProgressPercent(selectedConstellation);
+  const recentStars = allStars.slice(0, 5);
 
   useEffect(() => {
     if (!draggingStarId || !canEditSelectedConstellation) {
@@ -536,6 +554,11 @@ export default function ConstellationDashboardPage() {
                     <ConstellationStar
                       key={star.id}
                       star={star}
+                      label={
+                        goalsById[star.goalId]
+                          ? `Earned for a ${goalsById[star.goalId].targetCards}-card goal`
+                          : "Earned star"
+                      }
                       onDragStart={
                         canEditSelectedConstellation
                           ? () => setDraggingStarId(star.id)
@@ -580,6 +603,62 @@ export default function ConstellationDashboardPage() {
                   </div>
                 </div>
               ) : null}
+            </Card>
+
+            <Card padding="md" className="space-y-4">
+              <SectionHeader
+                title="Recently earned"
+                description="Each star keeps the target that earned it."
+              />
+              {recentStars.length > 0 ? (
+                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                  {recentStars.map((star) => {
+                    const goal = goalsById[star.goalId];
+                    return (
+                      <div
+                        key={star.id}
+                        className="app-subtle-panel flex items-center gap-4 rounded-[1.2rem] p-4"
+                      >
+                        <div className="relative h-12 w-12 shrink-0 rounded-full bg-[#090413]">
+                          <ConstellationStar
+                            star={{
+                              ...star,
+                              position: { x: 50, y: 50 },
+                            }}
+                            variant="preview"
+                            label={
+                              goal
+                                ? `Star from a ${goal.targetCards}-card goal`
+                                : "Earned star"
+                            }
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold text-text-primary">
+                            {goal
+                              ? `${goal.targetCards}-card goal at ${Math.round(
+                                  goal.targetAccuracy * 100
+                                )}%`
+                              : "Goal reward"}
+                          </div>
+                          <div className="mt-1 text-xs text-text-muted">
+                            Earned{" "}
+                            {new Intl.DateTimeFormat("en", {
+                              day: "numeric",
+                              month: "short",
+                              year: "numeric",
+                            }).format(star.createdAt)}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm leading-6 text-text-secondary">
+                  Complete a goal and its star will appear here.
+                </p>
+              )}
             </Card>
 
             {constellations.length > 1 ? (

@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDocs,
   orderBy,
@@ -105,5 +106,13 @@ export async function updateSource(
     updateDoc(doc(db, "users", userId, "sources", sourceId), payload),
     WRITE_MS,
     "Update source"
+  );
+}
+
+export async function deleteSource(userId: string, sourceId: string) {
+  await withTimeout(
+    deleteDoc(doc(db, "users", userId, "sources", sourceId)),
+    WRITE_MS,
+    "Delete source"
   );
 }

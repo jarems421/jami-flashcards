@@ -5,6 +5,12 @@
 /* Design tokens */
 
 @layer base {
+  a[href],
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]) {
+    cursor: pointer;
+  }
+
   :root {
     /* Surface colors - quiet night palette */
     --color-surface-base: #0d1018;
@@ -515,34 +521,38 @@
   .notebook-thickness-slider::-webkit-slider-runnable-track {
     background: transparent;
     border: 0;
-    height: 1px;
+    height: 2px;
   }
 
   .notebook-thickness-slider::-webkit-slider-thumb {
     -webkit-appearance: none;
     appearance: none;
-    background: var(--color-selected-border);
-    border: 2px solid var(--color-surface-panel-strong);
+    background: #ffffff;
+    border: 2px solid var(--color-selected-border);
     border-radius: 999px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
-    height: 16px;
-    margin-top: -7.5px;
-    width: 16px;
+    box-shadow:
+      0 0 0 1px rgba(15, 23, 42, 0.16),
+      0 3px 9px rgba(0, 0, 0, 0.28);
+    height: 18px;
+    margin-top: -8px;
+    width: 18px;
   }
 
   .notebook-thickness-slider::-moz-range-track {
     background: transparent;
     border: 0;
-    height: 1px;
+    height: 2px;
   }
 
   .notebook-thickness-slider::-moz-range-thumb {
-    background: var(--color-selected-border);
-    border: 2px solid var(--color-surface-panel-strong);
+    background: #ffffff;
+    border: 2px solid var(--color-selected-border);
     border-radius: 999px;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.22);
-    height: 16px;
-    width: 16px;
+    box-shadow:
+      0 0 0 1px rgba(15, 23, 42, 0.16),
+      0 3px 9px rgba(0, 0, 0, 0.28);
+    height: 18px;
+    width: 18px;
   }
 
   .notebook-text-editor {
@@ -862,11 +872,12 @@
   }
 
   .study-flashcard-face {
-    --color-text-primary: #fff8ff;
-    --color-text-secondary: #dce5f7;
-    --color-text-muted: #aeb9d0;
+    --study-card-text: #fff8ff;
+    --color-text-primary: var(--study-card-text);
+    --color-text-secondary: color-mix(in srgb, var(--study-card-text) 82%, transparent);
+    --color-text-muted: color-mix(in srgb, var(--study-card-text) 66%, transparent);
     border: 1.5px solid rgba(255, 255, 255, 0.1);
-    color: var(--color-text-primary);
+    color: var(--study-card-text);
     box-shadow: 0 18px 44px rgba(8, 2, 26, 0.24);
   }
 
@@ -1022,10 +1033,10 @@
   body .study-flashcard-face,
   body.app-theme-paper-white .study-flashcard-face,
   body.constellation-background-enabled .study-flashcard-face {
-    --color-text-primary: #fff8ff;
-    --color-text-secondary: #dce5f7;
-    --color-text-muted: #aeb9d0;
-    color: #fff8ff !important;
+    --color-text-primary: var(--study-card-text, #fff8ff);
+    --color-text-secondary: color-mix(in srgb, var(--study-card-text, #fff8ff) 82%, transparent);
+    --color-text-muted: color-mix(in srgb, var(--study-card-text, #fff8ff) 66%, transparent);
+    color: var(--study-card-text, #fff8ff) !important;
   }
 
   body .study-flashcard-face .text-white,
@@ -1186,6 +1197,25 @@ body.constellation-background-enabled::before {
     opacity: 1;
     transform: scale(1.05);
   }
+}
+
+@keyframes constellation-star-enter {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.35);
+  }
+  65% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1.14);
+  }
+  100% {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.constellation-star-enter {
+  animation: constellation-star-enter 620ms cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
 @keyframes ai-thinking-dot {

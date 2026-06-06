@@ -80,6 +80,7 @@ function basePlanInput() {
     activeGoals: [],
     reviewedToday: 0,
     progressVisited: false,
+    hasEarnedStars: false,
     now: NOW,
   };
 }
@@ -112,7 +113,34 @@ describe("today plan", () => {
       addCards: true,
       reviewCards: true,
       createNotebook: true,
+      setGoal: false,
+      earnStar: false,
     });
+  });
+
+  it("recommends a goal after reviewing when no active goal exists", () => {
+    const plan = buildTodayPlan({
+      ...basePlanInput(),
+      notebooks: [],
+      topics: [],
+      reviewedToday: 4,
+    });
+
+    expect(plan.nextAction.type).toBe("set_goal");
+    expect(plan.nextAction.href).toBe("/dashboard/goals");
+  });
+
+  it("surfaces an earned star before suggesting another goal", () => {
+    const plan = buildTodayPlan({
+      ...basePlanInput(),
+      notebooks: [],
+      topics: [],
+      reviewedToday: 4,
+      hasEarnedStars: true,
+    });
+
+    expect(plan.nextAction.type).toBe("view_star");
+    expect(plan.checklist.earnStar).toBe(true);
   });
 
   it("continues the most recent notebook before flashcard setup", () => {

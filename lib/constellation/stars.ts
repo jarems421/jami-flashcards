@@ -91,9 +91,42 @@ export function getStarPresetIconPath(presetId?: StarPresetId): string | null {
   return presetId ? `/images/${STAR_PRESET_ICON_MAP[presetId]}` : null;
 }
 
-export function resolveStarPresetId(goal: Goal): StarPresetId {
-  void goal;
+const STAR_PRESET_RANK: Record<StarPresetId, number> = {
+  classic: 0,
+  "blue-spark": 1,
+  "violet-comet": 2,
+  "gold-burst": 3,
+  "magenta-elite": 4,
+};
+
+function getStreakPresetId(streakDays: number): StarPresetId {
+  if (streakDays >= 30) return "magenta-elite";
+  if (streakDays >= 14) return "gold-burst";
+  if (streakDays >= 7) return "violet-comet";
+  if (streakDays >= 3) return "blue-spark";
   return "classic";
+}
+
+export function resolveStarPresetId(
+  goal: Goal,
+  streakDays = 0
+): StarPresetId {
+  let goalPreset: StarPresetId = "classic";
+
+  if (goal.targetCards >= 100 && goal.targetAccuracy >= 0.9) {
+    goalPreset = "magenta-elite";
+  } else if (goal.targetCards >= 60) {
+    goalPreset = "gold-burst";
+  } else if (goal.targetCards >= 30) {
+    goalPreset = "violet-comet";
+  } else if (goal.targetCards >= 15) {
+    goalPreset = "blue-spark";
+  }
+
+  const streakPreset = getStreakPresetId(Math.max(0, Math.floor(streakDays)));
+  return STAR_PRESET_RANK[streakPreset] > STAR_PRESET_RANK[goalPreset]
+    ? streakPreset
+    : goalPreset;
 }
 
 function getDefaultStarPosition(seed = "default-star"): StarPosition {

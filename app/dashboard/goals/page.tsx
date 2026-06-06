@@ -25,13 +25,27 @@ import {
   buildPreviewStar,
   getEffectiveStarVisualSize,
 } from "@/lib/constellation/stars";
-import { formatTimeRemaining } from "@/lib/study/time";
+import { getDeadlineDisplay } from "@/lib/study/time";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, SectionHeader, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
 type Feedback = { type: "success" | "error"; message: string };
+type GoalPreset = "today-10" | "week-20" | "accuracy-80";
+
+function getDateInputValue(date: Date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function getGoalDeadlineClass(tone: "neutral" | "urgent" | "overdue") {
+  if (tone === "overdue") return "app-danger";
+  if (tone === "urgent") return "app-warning";
+  return "app-chip";
+}
 
 function parseTargetCardsInput(value: string) {
   if (!value.trim()) return null;
@@ -58,6 +72,8 @@ export default function GoalsPage() {
   const [deadlineTime, setDeadlineTime] = useState("");
   const [isLoadingGoals, setIsLoadingGoals] = useState(true);
   const [isCreatingGoal, setIsCreatingGoal] = useState(false);
+  const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
+  const [cancellingGoalId, setCancellingGoalId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [activeConstellation, setActiveConstellation] =
@@ -184,7 +200,87 @@ export default function GoalsPage() {
     )}% | Target: ${Math.round(goal.targetAccuracy * 100)}%`;
   };
 
-  const handleCreateGoal = async () => {
+  const deadlineTimestamp = deadlineDate
+    ? Date.parse(`${deadlineDate}T${deadlineTime || "23:59"}`)
+    : 0;
+  const deadlineIsValid =
+    !deadlineDate ||
+    (Number.isFinite(deadlineTimestamp) && deadlineTimestamp > Date.now());
+  const canSaveGoal =
+    parsedGoalTargetCards !== null &&
+    parsedGoalTargetAccuracy !== null &&
+    deadlineIsValid &&
+    !isDemoUser &&
+    !isCreatingGoal;
+  const disabledReason = isDemoUser
+    ? "Goal editing is disabled in the shared demo."
+    : parsedGoalTargetCards === null
+      ? "Enter a target of at least one card."
+      : parsedGoalTargetAccuracy === null
+        ? "Enter an accuracy target from 0 to 100%."
+        : !deadlineIsValid
+          ? "Choose a future deadline, or leave it blank."
+          : null;
+
+  const resetGoalForm = () => {
+    setTargetCards("");
+    setTargetAccuracy("");
+    setDeadlineDate("");
+    setDeadlineTime("");
+    setEditingGoalId(null);
+  };
+
+  const applyPreset = (preset: GoalPreset) => {
+    const deadline = new Date();
+
+    if (preset === "today-10") {
+      setTargetCards("10");
+      setTargetAccuracy("80");
+      setDeadlineDate(getDateInputValue(deadline));
+      setDeadlineTime("23:59");
+    } else if (preset === "week-20") {
+      deadline.setDate(deadline.getDate() + 7);
+      setTargetCards("20");
+      setTargetAccuracy("80");
+      setDeadlineDate(getDateInputValue(deadline));
+      setDeadlineTime("23:59");
+    } else {
+      setTargetCards("10");
+      setTargetAccuracy("80");
+      setDeadlineDate("");
+      setDeadlineTime("");
+    }
+
+    setEditingGoalId(null);
+    setFeedback(null);
+  };
+
+  const startEditingGoal = (goal: Goal) => {
+    setEditingGoalId(goal.id);
+    setTargetCards(String(goal.targetCards));
+    setTargetAccuracy(String(Math.round(goal.targetAccuracy * 100)));
+    if (goal.deadline > 0) {
+      const deadline = new Date(goal.deadline);
+      setDeadlineDate(getDateInputValue(deadline));
+      setDeadlineTime(
+        `${String(deadline.getHours()).padStart(2, "0")}:${String(
+          deadline.getMinutes()
+        ).padStart(2, "0")}`
+      );
+    } else {
+      setDeadlineDate("");
+      setDeadlineTime("");
+    }
+    setFeedback(null);
+    window.requestAnimationFrame(() => {
+      document.getElementById("new-goal")?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
+
+  const handleSaveGoal = async () => {
     if (isDemoUser) {
       setFeedback({ type: "error", message: "Goal creation is disabled in the shared demo account." });
       return;
@@ -192,16 +288,20 @@ export default function GoalsPage() {
 
     const nextTargetCards = parseTargetCardsInput(targetCards);
     const nextTargetAccuracy = parseTargetAccuracyInput(targetAccuracy);
-    const parsedDeadline = Date.parse(`${deadlineDate}T${deadlineTime || "23:59"}`);
+    const parsedDeadline = deadlineDate
+      ? Date.parse(`${deadlineDate}T${deadlineTime || "23:59"}`)
+      : 0;
 
     if (
       nextTargetCards === null ||
       nextTargetAccuracy === null ||
-      !deadlineDate ||
-      !Number.isFinite(parsedDeadline) ||
-      parsedDeadline <= Date.now()
+      (deadlineDate &&
+        (!Number.isFinite(parsedDeadline) || parsedDeadline <= Date.now()))
     ) {
-      setFeedback({ type: "error", message: "Enter a valid goal." });
+      setFeedback({
+        type: "error",
+        message: "Enter valid targets and choose a future deadline, or leave it blank.",
+      });
       return;
     }
 
@@ -209,31 +309,77 @@ export default function GoalsPage() {
     setFeedback(null);
 
     try {
-      const createdAt = Date.now();
-      const newGoal = {
+      const goalUpdates = {
         targetCards: nextTargetCards,
         targetAccuracy: nextTargetAccuracy,
         deadline: parsedDeadline,
+      };
+
+      if (editingGoalId) {
+        await updateDoc(doc(db, "users", user.uid, "goals", editingGoalId), goalUpdates);
+        setGoals((prev) =>
+          prev.map((goal) =>
+            goal.id === editingGoalId ? { ...goal, ...goalUpdates } : goal
+          )
+        );
+        setFeedback({ type: "success", message: "Goal saved." });
+      } else {
+        const createdAt = Date.now();
+        const newGoal = {
+          ...goalUpdates,
         progress: { cardsCompleted: 0, correctAnswers: 0, totalAnswers: 0 },
         status: "active" as const,
         createdAt,
-      };
-      const goalRef = await addDoc(
-        collection(db, "users", user.uid, "goals"),
-        newGoal
-      );
+        };
+        const goalRef = await addDoc(
+          collection(db, "users", user.uid, "goals"),
+          newGoal
+        );
 
-      setGoals((prev) => [{ id: goalRef.id, ...newGoal }, ...prev]);
-      setTargetCards("");
-      setTargetAccuracy("");
-      setDeadlineDate("");
-      setDeadlineTime("");
-      setFeedback({ type: "success", message: "Goal created." });
+        setGoals((prev) => [{ id: goalRef.id, ...newGoal }, ...prev]);
+        setFeedback({ type: "success", message: "Goal created." });
+      }
+
+      resetGoalForm();
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to create goal." });
+      setFeedback({
+        type: "error",
+        message: editingGoalId ? "Failed to save goal." : "Failed to create goal.",
+      });
     } finally {
       setIsCreatingGoal(false);
+    }
+  };
+
+  const handleCancelGoal = async (goal: Goal) => {
+    if (
+      isDemoUser ||
+      !window.confirm(
+        `Cancel this ${goal.targetCards}-card goal? Its progress will stay in goal history.`
+      )
+    ) {
+      return;
+    }
+
+    setCancellingGoalId(goal.id);
+    setFeedback(null);
+    try {
+      await updateDoc(doc(db, "users", user.uid, "goals", goal.id), {
+        status: "cancelled",
+      });
+      setGoals((prev) =>
+        prev.map((item) =>
+          item.id === goal.id ? { ...item, status: "cancelled" } : item
+        )
+      );
+      if (editingGoalId === goal.id) resetGoalForm();
+      setFeedback({ type: "success", message: "Goal moved to history." });
+    } catch (error) {
+      console.error(error);
+      setFeedback({ type: "error", message: "Failed to cancel goal." });
+    } finally {
+      setCancellingGoalId(null);
     }
   };
 
@@ -259,17 +405,37 @@ export default function GoalsPage() {
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        <Card tone="warm" padding="lg">
+        <Card id="new-goal" tone="warm" padding="lg">
           <SectionHeader
-            eyebrow="New goal"
-            title="Set a clear target."
+            eyebrow={editingGoalId ? "Edit goal" : "New goal"}
+            title={editingGoalId ? "Adjust this target." : "Set a clear target."}
+            action={
+              editingGoalId ? (
+                <Button type="button" variant="ghost" onClick={resetGoalForm}>
+                  Cancel edit
+                </Button>
+              ) : null
+            }
           />
           {isDemoUser ? (
             <p className="mt-3 text-sm leading-6 text-text-secondary">
               Goal creation is locked in the shared demo.
             </p>
           ) : null}
-          <div className="mt-5 grid gap-3 sm:gap-4 md:grid-cols-2">
+          <div className="mt-5">
+            <div className="mb-4 flex flex-wrap gap-2" aria-label="Goal presets">
+              <Button type="button" size="sm" variant="secondary" onClick={() => applyPreset("today-10")}>
+                Review 10 today
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={() => applyPreset("week-20")}>
+                Review 20 this week
+              </Button>
+              <Button type="button" size="sm" variant="secondary" onClick={() => applyPreset("accuracy-80")}>
+                Hit 80% accuracy
+              </Button>
+            </div>
+          </div>
+          <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
             <Input
               type="number"
               min="1"
@@ -292,13 +458,19 @@ export default function GoalsPage() {
               <div className="app-subtle-panel rounded-[1.6rem] p-4">
                 <div className="mb-4">
                   <div className="text-sm font-medium text-text-primary">Deadline</div>
+                  <p className="mt-1 text-xs leading-5 text-text-muted">
+                    Optional. Leave both fields blank for an open-ended goal.
+                  </p>
                 </div>
                 <div className="grid gap-4 sm:grid-cols-2 lg:gap-7">
                   <Input
                     type="date"
                     value={deadlineDate}
-                    onChange={(event) => setDeadlineDate(event.target.value)}
-                    label="Finish by date"
+                    onChange={(event) => {
+                      setDeadlineDate(event.target.value);
+                      if (!event.target.value) setDeadlineTime("");
+                    }}
+                    label="Finish by date (optional)"
                   />
                   <Input
                     type="time"
@@ -311,14 +483,23 @@ export default function GoalsPage() {
             </div>
             <div className="md:col-span-2">
               <Button
-                disabled={isDemoUser || isCreatingGoal}
-                onClick={() => void handleCreateGoal()}
+                disabled={!canSaveGoal}
+                onClick={() => void handleSaveGoal()}
                 variant="warm"
                 size="lg"
                 className="w-full md:w-auto"
               >
-                {isCreatingGoal ? "Creating..." : "Create goal"}
+                {isCreatingGoal
+                  ? editingGoalId
+                    ? "Saving..."
+                    : "Creating..."
+                  : editingGoalId
+                    ? "Save goal"
+                    : "Create goal"}
               </Button>
+              {disabledReason ? (
+                <p className="mt-2 text-xs leading-5 text-text-muted">{disabledReason}</p>
+              ) : null}
             </div>
           </div>
         </Card>
@@ -363,6 +544,14 @@ export default function GoalsPage() {
                 eyebrow="No active goals"
                 title="No active goals"
                 description="Create a goal to earn stars."
+                action={
+                  <a
+                    href="#new-goal"
+                    className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
+                  >
+                    Create your first goal
+                  </a>
+                }
               />
             ) : (
               <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">
@@ -376,22 +565,49 @@ export default function GoalsPage() {
                           )
                         )
                       : 0;
+                  const deadline = getDeadlineDisplay(goal.deadline);
 
                   return (
                     <div
                       key={goal.id}
                       className="app-panel-warm p-4 text-sm transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell"
                     >
-                      <div className="font-semibold">
-                        {goal.progress.cardsCompleted} / {goal.targetCards} cards
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <div className="font-semibold">
+                            {goal.progress.cardsCompleted} / {goal.targetCards} cards
+                          </div>
+                          <div className="mt-1 text-text-muted">
+                            {formatGoalAccuracyText(goal)}
+                          </div>
+                        </div>
+                        <span
+                          className={`${getGoalDeadlineClass(deadline.tone)} max-w-full rounded-full px-3 py-1.5 text-xs font-semibold`}
+                        >
+                          {deadline.label}
+                        </span>
                       </div>
-                      <div className="text-text-muted">
-                        {formatGoalAccuracyText(goal)}
+                      <ProgressBar progress={progressPct} size="sm" variant="warm" className="mt-4" />
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="secondary"
+                          disabled={isDemoUser || cancellingGoalId === goal.id}
+                          onClick={() => startEditingGoal(goal)}
+                        >
+                          Edit
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="danger"
+                          disabled={isDemoUser || cancellingGoalId === goal.id}
+                          onClick={() => void handleCancelGoal(goal)}
+                        >
+                          {cancellingGoalId === goal.id ? "Cancelling..." : "Cancel goal"}
+                        </Button>
                       </div>
-                      <div className="text-xs text-text-muted">
-                        {formatTimeRemaining(goal.deadline)}
-                      </div>
-                      <ProgressBar progress={progressPct} size="sm" variant="warm" className="mt-2" />
                     </div>
                   );
                 })}
@@ -427,13 +643,19 @@ export default function GoalsPage() {
                           {goal.progress.cardsCompleted} / {goal.targetCards} cards
                         </span>
                         <span
-                          className={`rounded-lg px-2 py-1 text-xs ${
+                          className={`rounded-full px-3 py-1 text-xs font-semibold ${
                             goal.status === "completed"
                               ? "app-success"
-                              : "app-danger"
+                              : goal.status === "cancelled"
+                                ? "app-chip"
+                                : "app-danger"
                           }`}
                         >
-                          {goal.status === "completed" ? "Completed" : "Expired"}
+                          {goal.status === "completed"
+                            ? "Completed"
+                            : goal.status === "cancelled"
+                              ? "Cancelled"
+                              : "Expired"}
                         </span>
                       </div>
                       <div className="text-text-muted">

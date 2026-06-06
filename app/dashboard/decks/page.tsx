@@ -16,9 +16,9 @@ import {
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import { db } from "@/services/firebase/client";
 import AppPage from "@/components/layout/AppPage";
-import { Button, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
-import { getDeckHref } from "@/lib/app/routes";
+import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 
 type DeckCounts = Record<string, { due: number; total: number }>;
@@ -44,6 +44,7 @@ export default function DecksPage() {
   const [editingDeckFolderId, setEditingDeckFolderId] = useState("");
   const [savingDeckId, setSavingDeckId] = useState<string | null>(null);
   const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
+  const [deckPendingDelete, setDeckPendingDelete] = useState<Deck | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const nameInputRef = useRef<HTMLInputElement>(null);
@@ -186,16 +187,12 @@ export default function DecksPage() {
       return;
     }
 
-    const shouldDelete = window.confirm(
-      `Delete ${deck.name}? This will also delete the cards in this deck.`
-    );
-    if (!shouldDelete) return;
-
     setDeletingDeckId(deck.id);
     setFeedback(null);
     try {
       await deleteDeck(user.uid, deck.id);
       await loadAll();
+      setDeckPendingDelete(null);
       setFeedback({ type: "success", message: `Deleted deck ${deck.name}.` });
     } catch (error) {
       console.error(error);
@@ -216,6 +213,20 @@ export default function DecksPage() {
         contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
+        <ConfirmDialog
+          open={deckPendingDelete !== null}
+          title={`Delete ${deckPendingDelete?.name ?? "this deck"}?`}
+          description="This permanently deletes the deck and every card inside it. This cannot be undone."
+          confirmLabel="Delete deck"
+          busy={
+            deckPendingDelete !== null &&
+            deletingDeckId === deckPendingDelete.id
+          }
+          onClose={() => setDeckPendingDelete(null)}
+          onConfirm={() => {
+            if (deckPendingDelete) void handleDeckDelete(deckPendingDelete);
+          }}
+        />
 
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <PageHero
@@ -299,16 +310,20 @@ export default function DecksPage() {
             {decks.map((deck) => {
               const counts = deckCounts[deck.id] ?? { due: 0, total: 0 };
               const deckColor = getDeckColorPreset(deck.colorPreset);
+              const folderName =
+                deck.folderIds.length === 1
+                  ? folders.find((folder) => folder.id === deck.folderIds[0])?.name
+                  : undefined;
               return (
                 <div
                   key={deck.id}
-                  className="app-panel p-3 sm:p-4 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
+                  className="app-panel p-3 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
                   style={{
                     backgroundImage: `linear-gradient(140deg, ${deckColor.base}22, ${deckColor.light}10, transparent)`,
                   }}
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
+                    <div className="min-w-0 basis-full">
                       {editingDeckId === deck.id ? (
                         <div className="space-y-3">
                           <Input value={editingDeckName} onChange={(event) => setEditingDeckName(event.target.value)} placeholder="Deck name" />
@@ -377,23 +392,10 @@ export default function DecksPage() {
                         <Link href={getDeckHref(deck.id)} aria-label={`Open ${deck.name}`} className="group flex items-center gap-3 transition duration-fast hover:opacity-90">
                           <DeckCoverIcon colorPreset={deck.colorPreset} iconPreset={deck.iconPreset} />
                           <div className="min-w-0 flex-1">
-                            <div className="line-clamp-2 font-medium leading-5 [overflow-wrap:anywhere]">{deck.name}</div>
-                            <div className="text-sm text-text-muted">{counts.total} cards | {counts.due} currently due</div>
-                            <div className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-text-secondary">
-                              <span>Open deck</span>
-                              <svg
-                                viewBox="0 0 16 16"
-                                fill="none"
-                                stroke="currentColor"
-                                strokeWidth="1.8"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                className="h-3.5 w-3.5 transition-transform duration-fast group-hover:translate-x-0.5"
-                                aria-hidden="true"
-                              >
-                                <path d="M3.5 8h9" />
-                                <path d="m8.5 3 4.5 5-4.5 5" />
-                              </svg>
+                            <div className="truncate font-medium leading-5" title={deck.name}>{deck.name}</div>
+                            <div className="mt-1 text-sm text-text-muted">
+                              {counts.total} cards, {counts.due} due
+                              {folderName ? `, ${folderName}` : ""}
                             </div>
                           </div>
                         </Link>
@@ -401,11 +403,23 @@ export default function DecksPage() {
                     </div>
 
                     {editingDeckId === deck.id ? null : (
-                      <div className="flex w-full flex-wrap gap-2 sm:w-auto">
+                      <div className="flex w-full flex-wrap gap-2">
+                        <Link
+                          href={getDeckStudyHref(deck.id)}
+                          className="inline-flex min-h-[2.5rem] flex-1 items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-3 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)] sm:flex-none"
+                        >
+                          Study
+                        </Link>
+                        <Link
+                          href={`${getDeckHref(deck.id)}#add-card`}
+                          className="inline-flex min-h-[2.5rem] flex-1 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 text-sm font-medium text-[var(--button-secondary-text)] sm:flex-none"
+                        >
+                          Add card
+                        </Link>
                         <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setEditingDeckFolderId(deck.folderIds[0] ?? ""); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
-                          Edit deck
+                          Edit
                         </Button>
-                        <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => void handleDeckDelete(deck)} variant="danger" className="flex-1 sm:flex-none">
+                        <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => setDeckPendingDelete(deck)} variant="danger" className="flex-1 sm:flex-none">
                           {deletingDeckId === deck.id ? "Deleting..." : "Delete"}
                         </Button>
                       </div>

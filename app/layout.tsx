@@ -8,6 +8,7 @@ const nunitoSans = Nunito_Sans({
 });
 import ConstellationBackgroundShell from "@/components/constellation/ConstellationBackgroundShell";
 import PwaBootstrap from "@/components/layout/PwaBootstrap";
+import OfflineBanner from "@/components/layout/OfflineBanner";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -44,6 +45,7 @@ export default function RootLayout({
     >
       <body className="min-h-full bg-surface-base text-text-primary">
         <PwaBootstrap />
+        <OfflineBanner />
         <ConstellationBackgroundShell>{children}</ConstellationBackgroundShell>
       </body>
     </html>

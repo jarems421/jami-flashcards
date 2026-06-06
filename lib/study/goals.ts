@@ -1,4 +1,4 @@
-export type GoalStatus = "active" | "completed" | "failed";
+export type GoalStatus = "active" | "completed" | "failed" | "cancelled";
 
 export type GoalProgress = {
   cardsCompleted: number;
@@ -57,7 +57,9 @@ export function normalizeGoal(
           : 0,
     },
     status:
-      data.status === "completed" || data.status === "failed"
+      data.status === "completed" ||
+      data.status === "failed" ||
+      data.status === "cancelled"
         ? data.status
         : "active",
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
@@ -69,7 +71,7 @@ export function getGoalStatusAtTime(goal: Goal, now: number): GoalStatus {
     return goal.status;
   }
 
-  if (now > goal.deadline) {
+  if (goal.deadline > 0 && now > goal.deadline) {
     return "failed";
   }
 

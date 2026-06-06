@@ -33,51 +33,42 @@ export default function FolderObjectCard({
   const preset = getObjectColorPreset(color);
   const content = (
     <div
-      className={`group mx-auto flex h-full min-h-[8.6rem] w-full max-w-[9.5rem] flex-col items-center rounded-[1.1rem] border px-2 py-2.5 text-center transition duration-fast hover:-translate-y-0.5 ${
+      className={`group mx-auto flex h-full min-h-[8.25rem] w-full max-w-[9.25rem] cursor-pointer flex-col items-center rounded-[1.05rem] border px-2 py-2.5 text-center transition duration-fast active:scale-[0.985] ${
         selected
-          ? "border-warm-border bg-warm-glow shadow-[0_18px_34px_rgba(6,8,18,0.18)]"
-          : "border-transparent bg-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
+          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-[0_14px_28px_rgba(6,8,18,0.16)]"
+          : "border-transparent bg-transparent hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
       } ${className}`}
     >
-      <div className="relative mx-auto h-[5.15rem] w-full max-w-[8.35rem]">
+      <div className="relative mx-auto h-[5rem] w-full max-w-[8rem]">
         <div
-          className="absolute left-[13%] right-[11%] top-[11%] h-[2.05rem] rounded-t-[0.7rem] border border-black/10"
+          className="absolute left-[13%] right-[10%] top-[13%] h-[2.45rem] rounded-t-[0.62rem] border border-black/10"
           style={{
-            background: `linear-gradient(180deg, ${preset.paper}, rgba(255,255,255,0.72))`,
-            boxShadow: "0 7px 14px rgba(0,0,0,0.1)",
+            backgroundColor: preset.paper,
           }}
         />
         <div
-          className="absolute left-[7%] right-[6%] top-[22%] h-[1.85rem] rounded-t-[0.7rem] border border-black/10"
+          className="absolute left-[9%] top-[7%] h-[1.4rem] w-[39%] rounded-t-[0.58rem] border border-black/10"
           style={{
-            background: `linear-gradient(180deg, rgba(255,255,255,0.86), ${preset.light})`,
+            backgroundColor: preset.light,
           }}
         />
         <div
-          className="absolute left-[10%] top-[5%] h-[1.22rem] w-[38%] rounded-t-[0.75rem] border border-black/10"
+          className="absolute inset-x-[3%] bottom-0 h-[3.55rem] rounded-[0.68rem] border border-black/15 transition-transform duration-fast group-hover:-rotate-[0.35deg]"
           style={{
-            background: `linear-gradient(180deg, ${preset.light}, ${preset.base})`,
-          }}
-        />
-        <div
-          className="absolute inset-x-[2%] bottom-0 h-[3.75rem] rounded-[0.72rem] border border-black/10"
-          style={{
-            background: `linear-gradient(145deg, ${preset.light} 0%, ${preset.base} 52%, ${preset.dark} 100%)`,
-            boxShadow: `0 10px 18px ${preset.shadow}, inset 0 1px 0 rgba(255,255,255,0.42), inset 0 -10px 16px rgba(0,0,0,0.08)`,
+            backgroundColor: preset.base,
+            boxShadow: "0 8px 16px rgba(5, 8, 18, 0.22)",
           }}
         >
-          <div
-            className="absolute inset-x-0 top-0 h-3 rounded-t-[0.72rem]"
-            style={{ background: "linear-gradient(180deg, rgba(255,255,255,0.28), transparent)" }}
-          />
-          <div className="absolute inset-x-0 top-[46%] flex -translate-y-1/2 justify-center">
-            <ObjectIcon icon={icon} className="h-6 w-6 text-white/74 drop-shadow-[0_1px_1px_rgba(0,0,0,0.25)]" />
+          <div className="absolute inset-x-0 top-1/2 flex -translate-y-1/2 justify-center">
+            <ObjectIcon icon={icon} className="h-6 w-6 text-white/88" />
           </div>
         </div>
       </div>
 
-      <div className="mt-2 min-w-0">
-        <div className="truncate text-sm font-semibold text-[var(--color-text-primary)]">{title}</div>
+      <div className="mt-2 w-full min-w-0">
+        <div className="truncate text-sm font-semibold text-[var(--color-text-primary)]" title={title}>
+          {title}
+        </div>
       </div>
     </div>
   );

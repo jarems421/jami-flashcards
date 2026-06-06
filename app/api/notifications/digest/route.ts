@@ -223,7 +223,7 @@ async function countUrgentGoals(userId: string, now: number) {
       goalDoc.data() as Record<string, unknown>
     );
 
-    if (goal.deadline <= end) {
+    if (goal.deadline > 0 && goal.deadline <= end) {
       urgentGoalCount += 1;
     }
   }

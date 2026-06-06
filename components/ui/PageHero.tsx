@@ -25,7 +25,7 @@ export default function PageHero({
   return (
     <Card tone={tone} padding="lg" className={`overflow-hidden ${className}`}>
       <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-3xl">
+        <div className="min-w-0 max-w-3xl flex-1">
           <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-secondary">
             {eyebrow}
           </div>
@@ -44,7 +44,7 @@ export default function PageHero({
             </div>
           ) : null}
         </div>
-        {aside ? <div className="shrink-0">{aside}</div> : null}
+        {aside ? <div className="min-w-0 max-w-full shrink-0">{aside}</div> : null}
       </div>
     </Card>
   );

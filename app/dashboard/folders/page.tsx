@@ -173,18 +173,16 @@ export default function FoldersPage() {
             <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
               Study spaces
             </h1>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-text-muted">
+              Keep each subject&apos;s notebooks, decks, and sources together.
+            </p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            <Button type="button" onClick={() => setShowCreate(true)}>
-              Create folder
-            </Button>
-            <Link
-              href="/dashboard/practise"
-              className="app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-full px-4 text-sm font-medium"
-            >
-              Open Practice
-            </Link>
-          </div>
+          <Link
+            href="/dashboard/practise"
+            className="app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-full px-4 text-sm font-medium"
+          >
+            Open Practice
+          </Link>
         </div>
 
         {showCreate ? (
@@ -311,8 +309,8 @@ export default function FoldersPage() {
         ) : (
           <EmptyState
             emoji="Folder"
-            title="Create your first study folder"
-            description="Create a folder to begin."
+            title="Create your first study space"
+            description="Start with one subject, then add a notebook, deck, or source."
             action={
               <Button type="button" onClick={() => setShowCreate(true)}>
                 Create folder

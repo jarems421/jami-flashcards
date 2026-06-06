@@ -13,6 +13,8 @@ import type { Goal } from "@/lib/study/goals";
 import { getStarColor, getStarRewardSize, resolveStarPresetId } from "@/lib/constellation/stars";
 import type { NormalizedStar } from "@/lib/constellation/stars";
 import { withTimeout } from "@/services/firebase/firestore";
+import { computeStudyStreak } from "@/lib/study/activity";
+import { loadStudyActivity } from "@/services/study/activity";
 
 const QUERY_MS = 30_000;
 const CREATE_MS = 30_000;
@@ -81,21 +83,27 @@ export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
     return null;
   }
 
-  const completedGoalsSnapshot = await withTimeout(
-    getDocs(
-      query(
-        collection(db, "users", userId, "goals"),
-        where("status", "==", "completed")
-      )
+  const [completedGoalsSnapshot, studyActivity] = await Promise.all([
+    withTimeout(
+      getDocs(
+        query(
+          collection(db, "users", userId, "goals"),
+          where("status", "==", "completed")
+        )
+      ),
+      QUERY_MS,
+      "Load completed goals"
     ),
-    QUERY_MS,
-    "Load completed goals"
-  );
+    loadStudyActivity(userId).catch(() => []),
+  ]);
 
   const completedGoalsCount = completedGoalsSnapshot.size;
   const createdAt = Date.now();
 
-  const presetId = resolveStarPresetId(goal);
+  const presetId = resolveStarPresetId(
+    goal,
+    computeStudyStreak(studyActivity)
+  );
   const star = {
     goalId: goal.id,
     constellationId: activeConstellation.id,

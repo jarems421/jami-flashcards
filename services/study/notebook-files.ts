@@ -72,8 +72,9 @@ export async function uploadNotebookFile(input: {
   notebookId: string;
   folderId: string;
   file: File;
+  onProgress?: (progress: number) => void;
 }): Promise<NotebookFile> {
-  const { userId, notebookId, folderId, file } = input;
+  const { userId, notebookId, folderId, file, onProgress } = input;
   validateNotebookUploadFile(file);
 
   const fileId =
@@ -97,7 +98,15 @@ export async function uploadNotebookFile(input: {
 
       uploadTask.on(
         "state_changed",
-        undefined,
+        (snapshot) => {
+          const progress =
+            snapshot.totalBytes > 0
+              ? Math.round(
+                  (snapshot.bytesTransferred / snapshot.totalBytes) * 100
+                )
+              : 0;
+          onProgress?.(progress);
+        },
         (error) => reject(error),
         () => resolve()
       );

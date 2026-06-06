@@ -2,8 +2,10 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { collection, getDocs } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { featureFlags } from "@/lib/app/feature-flags";
+import { db } from "@/services/firebase/client";
 import { buildTopicProgress } from "@/lib/practice/progress";
 import type { MasteryEvent } from "@/lib/practice/mastery";
 import type { Source } from "@/lib/practice/sources";
@@ -11,10 +13,22 @@ import type { Topic } from "@/lib/practice/topics";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
+import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
+import { computeStudyStreak, type DailyStudyActivity } from "@/lib/study/activity";
+import { getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
+import { normalizeGoal, type Goal } from "@/lib/study/goals";
+import {
+  buildProgressSectionSearch,
+  getProgressSectionFromSearch,
+  type ProgressSection,
+} from "@/lib/study/progress-navigation";
+import { getCustomStudyHref, getDeckStudyHref } from "@/lib/app/routes";
 import { getGeneratedContentDrafts, type GeneratedContentDraft } from "@/services/study/generated-content";
 import { getMasteryEvents } from "@/services/study/mastery";
 import { loadUserCards } from "@/services/study/daily-review";
 import { ensureStudyStateSetup } from "@/services/study/daily-review";
+import { loadStudyActivity } from "@/services/study/activity";
+import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
@@ -22,6 +36,7 @@ import { getActiveTopics } from "@/services/study/topics";
 import AppPage from "@/components/layout/AppPage";
 import {
   Card,
+  Button,
   EmptyState,
   FeedbackBanner,
   MetricStrip,
@@ -54,8 +69,49 @@ export default function ProgressPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [goals, setGoals] = useState<Goal[]>([]);
+  const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [section, setSection] = useState<ProgressSection>("overview");
+  const [sectionStateReady, setSectionStateReady] = useState(false);
+  const [sectionWasExplicit, setSectionWasExplicit] = useState(false);
+
+  useEffect(() => {
+    const applyUrlState = () => {
+      const params = new URLSearchParams(window.location.search);
+      setSection(getProgressSectionFromSearch(window.location.search));
+      setSectionWasExplicit(params.has("section"));
+      setSectionStateReady(true);
+    };
+
+    applyUrlState();
+    window.addEventListener("popstate", applyUrlState);
+    return () => window.removeEventListener("popstate", applyUrlState);
+  }, []);
+
+  useEffect(() => {
+    if (!sectionStateReady) return;
+    const nextSearch = buildProgressSectionSearch(
+      window.location.search,
+      section
+    );
+    const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, [section, sectionStateReady]);
+
+  useEffect(() => {
+    if (loading || !sectionWasExplicit || section === "overview") return;
+    const targetId =
+      section === "decks" ? "progress-decks" : "progress-workspace";
+    window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({
+        block: "start",
+        behavior: "auto",
+      });
+    });
+  }, [loading, section, sectionWasExplicit]);
 
   useEffect(() => {
     try {
@@ -78,6 +134,9 @@ export default function ProgressPage() {
           nextSources,
           nextStudyFolders,
           nextNotebooks,
+          nextDecks,
+          nextStudyActivity,
+          goalsSnapshot,
         ] = await Promise.all([
           getActiveTopics(user.uid),
           loadUserCards(user.uid),
@@ -86,6 +145,9 @@ export default function ProgressPage() {
           getActiveSources(user.uid).catch(() => [] as Source[]),
           getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
           getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
+          getDecks(user.uid).catch(() => [] as Deck[]),
+          loadStudyActivity(user.uid).catch(() => [] as DailyStudyActivity[]),
+          getDocs(collection(db, "users", user.uid, "goals")).catch(() => null),
         ]);
 
         if (!cancelled) {
@@ -96,6 +158,18 @@ export default function ProgressPage() {
           setSources(nextSources);
           setStudyFolders(nextStudyFolders);
           setNotebooks(nextNotebooks);
+          setDecks(nextDecks);
+          setStudyActivity(nextStudyActivity);
+          setGoals(
+            goalsSnapshot
+              ? goalsSnapshot.docs.map((goalDoc) =>
+                  normalizeGoal(
+                    goalDoc.id,
+                    goalDoc.data() as Record<string, unknown>
+                  )
+                )
+              : []
+          );
         }
       } catch (error) {
         console.error(error);
@@ -127,6 +201,74 @@ export default function ProgressPage() {
     () => [...notebooks].sort((left, right) => right.updatedAt - left.updatedAt).slice(0, 4),
     [notebooks]
   );
+  const reviewedThisWeek = useMemo(() => {
+    const todayKey = getStudyDayKey();
+    const recentKeys = new Set(
+      Array.from({ length: 7 }, (_, index) =>
+        shiftStudyDayKey(todayKey, -index)
+      )
+    );
+    return studyActivity
+      .filter((entry) => recentKeys.has(entry.dayKey))
+      .reduce((sum, entry) => sum + entry.reviewCount, 0);
+  }, [studyActivity]);
+  const currentStreak = useMemo(
+    () => computeStudyStreak(studyActivity),
+    [studyActivity]
+  );
+  const deckHealth = useMemo(() => {
+    const now = Date.now();
+    return decks
+      .map((deck) => {
+        const deckCards = cards.filter((card) => card.deckId === deck.id);
+        const risks = deckCards.map((card) => getMemoryRiskInfo(card, now));
+        const averageRisk =
+          risks.length > 0
+            ? risks.reduce((sum, risk) => sum + risk.score, 0) / risks.length
+            : Number.POSITIVE_INFINITY;
+        return {
+          deck,
+          cardCount: deckCards.length,
+          weakCount: risks.filter((risk) => risk.tier === "high").length,
+          dueCount: deckCards.filter(
+            (card) => typeof card.dueDate === "number" && card.dueDate <= now
+          ).length,
+          averageRisk,
+        };
+      })
+      .filter((summary) => summary.cardCount > 0)
+      .sort((left, right) => left.averageRisk - right.averageRisk);
+  }, [cards, decks]);
+  const strongestDeck = deckHealth[0] ?? null;
+  const weakestDeck = deckHealth.at(-1) ?? null;
+  const activeGoals = useMemo(
+    () => goals.filter((goal) => goal.status === "active"),
+    [goals]
+  );
+  const missedGoal = useMemo(
+    () =>
+      goals
+        .filter((goal) => goal.status === "failed")
+        .sort((left, right) => right.createdAt - left.createdAt)[0] ?? null,
+    [goals]
+  );
+  const upcomingGoal = useMemo(
+    () =>
+      activeGoals
+        .filter((goal) => goal.deadline > Date.now())
+        .sort((left, right) => left.deadline - right.deadline)[0] ?? null,
+    [activeGoals]
+  );
+  const studyLoop = [
+    { label: "Create deck", done: decks.length > 0, href: "/dashboard/decks" },
+    { label: "Add cards", done: cards.length > 0, href: "/dashboard/cards" },
+    {
+      label: "Review",
+      done: studyActivity.some((entry) => entry.reviewCount > 0),
+      href: "/dashboard/study",
+    },
+    { label: "Set goal", done: goals.length > 0, href: "/dashboard/goals" },
+  ];
 
   if (!featureFlags.enableMasteryProgress) {
     return (
@@ -163,12 +305,55 @@ export default function ProgressPage() {
         tone="warm"
         aside={
           <div className="grid min-w-[18rem] grid-cols-3 gap-2 text-center">
-            <MiniMetric label="Topics" value={loading ? "..." : topics.length} />
-            <MiniMetric label="Notebooks" value={loading ? "..." : notebooks.length} />
-            <MiniMetric label="Drafts" value={loading ? "..." : activeDrafts.length} />
+            <MiniMetric label="Reviewed" value={loading ? "..." : reviewedThisWeek} />
+            <MiniMetric label="Streak" value={loading ? "..." : `${currentStreak}d`} />
+            <MiniMetric label="Goals" value={loading ? "..." : activeGoals.length} />
           </div>
         }
       />
+
+      <div
+        className="app-subtle-panel flex flex-wrap gap-2 rounded-[1.15rem] p-2"
+        aria-label="Progress sections"
+      >
+        {(
+          [
+            ["overview", "Overview"],
+            ["decks", "Decks"],
+            ["workspace", "Workspace"],
+          ] as const
+        ).map(([value, label]) => (
+          <Button
+            key={value}
+            type="button"
+            variant={section === value ? "warm" : "ghost"}
+            size="sm"
+            aria-pressed={section === value}
+            onClick={() => {
+              setSection(value);
+              setSectionWasExplicit(value !== "overview");
+              const targetId =
+                value === "decks"
+                  ? "progress-decks"
+                  : value === "workspace"
+                    ? "progress-workspace"
+                    : "progress-overview";
+              window.requestAnimationFrame(() => {
+                document.getElementById(targetId)?.scrollIntoView({
+                  block: "start",
+                  behavior: window.matchMedia(
+                    "(prefers-reduced-motion: reduce)"
+                  ).matches
+                    ? "auto"
+                    : "smooth",
+                });
+              });
+            }}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
 
       {loading ? (
         <div className="space-y-4">
@@ -182,14 +367,16 @@ export default function ProgressPage() {
         </div>
       ) : (
         <>
-          <MetricStrip
-            items={[
-              { label: "Weak topics", value: weakTopics.length, tone: weakTopics.length > 0 ? "danger" : "good" },
-              { label: "Weak cards", value: weakCardCount, tone: weakCardCount > 0 ? "danger" : "good" },
-              { label: "Due cards", value: dueCardCount, tone: dueCardCount > 0 ? "warm" : "good" },
-              { label: "Drafts waiting", value: activeDrafts.length, tone: activeDrafts.length > 0 ? "warm" : "good" },
-            ]}
-          />
+          <div id="progress-overview" className="scroll-mt-24">
+            <MetricStrip
+              items={[
+                { label: "Weak topics", value: weakTopics.length, tone: weakTopics.length > 0 ? "danger" : "good" },
+                { label: "Weak cards", value: weakCardCount, tone: weakCardCount > 0 ? "danger" : "good" },
+                { label: "Due cards", value: dueCardCount, tone: dueCardCount > 0 ? "warm" : "good" },
+                { label: "Reviewed this week", value: reviewedThisWeek, tone: reviewedThisWeek > 0 ? "good" : "warm" },
+              ]}
+            />
+          </div>
 
           <Card tone="warm" padding="md">
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -200,6 +387,125 @@ export default function ProgressPage() {
                 ? `Continue "${recentNotebooks[0].title}", then review any linked cards.`
                 : "Open a folder and create a notebook for your next working session."}
             </div>
+            <div className="mt-4 flex flex-wrap gap-2">
+              {dueCardCount > 0 ? (
+                <Link href={getCustomStudyHref({ mode: "daily" })} className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium">
+                  Start review
+                </Link>
+              ) : reviewedThisWeek === 0 ? (
+                <Link href={getCustomStudyHref({ mode: "custom" })} className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium">
+                  Study for 10 minutes
+                </Link>
+              ) : null}
+            </div>
+          </Card>
+
+          <div
+            id="progress-workspace"
+            className="grid scroll-mt-24 gap-4 lg:grid-cols-2"
+          >
+            <Card padding="lg">
+              <SectionHeader title="Study loop" description="The four steps that unlock useful progress." />
+              <div className="mt-5 grid gap-2 sm:grid-cols-2">
+                {studyLoop.map((step, index) => (
+                  <Link
+                    key={step.label}
+                    href={step.href}
+                    className={`flex min-h-14 items-center gap-3 rounded-[1.1rem] border p-3 transition hover:-translate-y-px ${
+                      step.done ? "app-selected" : "app-subtle-panel"
+                    }`}
+                  >
+                    <span className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${step.done ? "app-success" : "app-chip"}`}>
+                      {step.done ? "Done" : index + 1}
+                    </span>
+                    <span className="text-sm font-semibold">{step.label}</span>
+                  </Link>
+                ))}
+              </div>
+            </Card>
+
+            <Card padding="lg">
+              <SectionHeader title="Goals and deadlines" />
+              <div className="mt-5 space-y-3">
+                {activeGoals[0] ? (
+                  <div className="app-subtle-panel rounded-[1.1rem] p-4">
+                    <div className="text-sm font-semibold text-text-primary">
+                      {activeGoals[0].progress.cardsCompleted} / {activeGoals[0].targetCards} cards
+                    </div>
+                    <div className="mt-3">
+                      <ProgressBar
+                        progress={Math.min(
+                          100,
+                          Math.round(
+                            (activeGoals[0].progress.cardsCompleted /
+                              Math.max(1, activeGoals[0].targetCards)) *
+                              100
+                          )
+                        )}
+                      />
+                    </div>
+                    {upcomingGoal ? (
+                      <p className="mt-3 text-xs text-text-muted">
+                        Due {new Intl.DateTimeFormat("en", { day: "numeric", month: "short" }).format(upcomingGoal.deadline)}
+                      </p>
+                    ) : (
+                      <p className="mt-3 text-xs text-text-muted">No deadline</p>
+                    )}
+                    <Link href="/dashboard/goals" className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">
+                      Open goal
+                    </Link>
+                  </div>
+                ) : missedGoal ? (
+                  <div className="app-subtle-panel rounded-[1.1rem] p-4">
+                    <div className="text-sm font-semibold text-text-primary">A goal expired before completion.</div>
+                    <p className="mt-2 text-sm leading-6 text-text-secondary">Use a smaller target and build momentum again.</p>
+                    <Link href="/dashboard/goals#new-goal" className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">
+                      Create an easier goal
+                    </Link>
+                  </div>
+                ) : (
+                  <div className="app-subtle-panel rounded-[1.1rem] p-4">
+                    <p className="text-sm leading-6 text-text-secondary">Set a goal when you want a clear target and a star reward.</p>
+                    <Link href="/dashboard/goals#new-goal" className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">
+                      Create goal
+                    </Link>
+                  </div>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          <Card id="progress-decks" className="scroll-mt-24" padding="lg">
+            <SectionHeader title="Deck health" description="A simple view of what is holding well and what needs another pass." />
+            {deckHealth.length > 0 ? (
+              <div className="mt-5 grid gap-3 md:grid-cols-2">
+                {strongestDeck ? (
+                  <div className="app-subtle-panel rounded-[1.15rem] p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Strongest deck</div>
+                    <div className="mt-2 text-lg font-semibold text-text-primary">{strongestDeck.deck.name}</div>
+                    <p className="mt-2 text-sm text-text-secondary">{strongestDeck.cardCount} cards, {strongestDeck.dueCount} due</p>
+                    <Link href={getDeckStudyHref(strongestDeck.deck.id)} className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">
+                      Review deck
+                    </Link>
+                  </div>
+                ) : null}
+                {weakestDeck ? (
+                  <div className="app-subtle-panel rounded-[1.15rem] p-4">
+                    <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Needs attention</div>
+                    <div className="mt-2 text-lg font-semibold text-text-primary">{weakestDeck.deck.name}</div>
+                    <p className="mt-2 text-sm text-text-secondary">{weakestDeck.weakCount} weak, {weakestDeck.dueCount} due</p>
+                    <Link href={getDeckStudyHref(weakestDeck.deck.id)} className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">
+                      Review weak deck
+                    </Link>
+                  </div>
+                ) : null}
+              </div>
+            ) : (
+              <div className="app-subtle-panel mt-5 rounded-[1.15rem] p-4">
+                <p className="text-sm leading-6 text-text-secondary">Add cards and review them to unlock deck health.</p>
+                <Link href="/dashboard/cards" className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">Add cards</Link>
+              </div>
+            )}
           </Card>
 
           {topics.length === 0 ? (
@@ -251,8 +557,16 @@ export default function ProgressPage() {
                         <MiniMetric label="Sources" value={summary.sourceCount} />
                       </div>
                       <div className="mt-4 rounded-[1rem] border border-white/[0.08] bg-white/[0.04] px-3 py-3 text-sm leading-6 text-text-secondary">
-                        <span className="font-semibold text-white">Next action:</span>{" "}
-                        Open the linked folder or notebook, continue the work, then review related flashcards.
+                          <span className="font-semibold text-white">Next action:</span>{" "}
+                          Open the linked work, then review related flashcards.
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <Link href={`/dashboard/folders?topic=${encodeURIComponent(summary.topic.id)}`} className="app-button-secondary inline-flex min-h-10 items-center rounded-2xl px-3 text-sm font-medium">
+                          Open linked work
+                        </Link>
+                        <Link href={getCustomStudyHref({ mode: "custom", tags: [summary.topic.name] })} className="app-button-secondary inline-flex min-h-10 items-center rounded-2xl px-3 text-sm font-medium">
+                          Review cards
+                        </Link>
                       </div>
                     </div>
                   ))}
@@ -279,9 +593,12 @@ export default function ProgressPage() {
                         </Link>
                       ))
                     ) : (
-                      <p className="text-sm leading-6 text-text-secondary">
-                        No notebook work yet.
-                      </p>
+                      <div className="app-subtle-panel rounded-[1.1rem] p-4">
+                        <p className="text-sm leading-6 text-text-secondary">No notebook work yet.</p>
+                        <Link href="/dashboard/folders" className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">
+                          Start a notebook
+                        </Link>
+                      </div>
                     )}
                   </div>
                 </Card>

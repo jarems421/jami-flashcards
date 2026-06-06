@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
@@ -107,6 +108,10 @@ import {
   legacyStrokesToJsDrawSvg,
   makeNotebookInkData,
 } from "@/lib/workspace/notebook-ink-data";
+import {
+  buildNotebookPageSearch,
+  getNotebookPageIdFromSearch,
+} from "@/lib/workspace/notebook-navigation";
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
@@ -559,12 +564,24 @@ function NotebookPageThumbnail({
   const pageStyle = page.pageStyle ?? notebook.pageStyle ?? "plain";
   const strokes = normalizeStrokes(page.strokeData?.strokes).slice(0, 10);
   const textBlocks = page.textBlocks.slice(0, 3);
+  const inkSvg = page.inkData?.svg;
 
   return (
     <div
       className={`relative mb-2 aspect-[900/1240] overflow-hidden rounded-[0.65rem] border shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
       style={getPageStyleBackground(pageColor, pageStyle)}
     >
+      {inkSvg ? (
+        <Image
+          alt=""
+          aria-hidden="true"
+          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(inkSvg)}`}
+          fill
+          unoptimized
+          sizes="10rem"
+          className="object-fill"
+        />
+      ) : null}
       <svg
         aria-hidden="true"
         viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
@@ -702,7 +719,10 @@ type NotebookIconName =
   | "save"
   | "chevron"
   | "trash"
-  | "dots";
+  | "dots"
+  | "zoomIn"
+  | "zoomOut"
+  | "fit";
 
 function NotebookIcon({ name }: { name: NotebookIconName }) {
   const common = {
@@ -788,6 +808,24 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
           <circle cx="17.5" cy="12" r="1.35" fill="currentColor" />
         </>
       ) : null}
+      {name === "zoomIn" ? (
+        <>
+          <circle {...common} cx="10.5" cy="10.5" r="5.5" />
+          <path {...common} d="m15 15 4.5 4.5M10.5 8v5M8 10.5h5" />
+        </>
+      ) : null}
+      {name === "zoomOut" ? (
+        <>
+          <circle {...common} cx="10.5" cy="10.5" r="5.5" />
+          <path {...common} d="m15 15 4.5 4.5M8 10.5h5" />
+        </>
+      ) : null}
+      {name === "fit" ? (
+        <>
+          <path {...common} d="M8 4H4v4M16 4h4v4M8 20H4v-4M16 20h4v-4" />
+          <rect {...common} x="8" y="7" width="8" height="10" rx="1" />
+        </>
+      ) : null}
     </svg>
   );
 }
@@ -814,10 +852,10 @@ function ToolbarIconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className={`relative inline-flex h-10 min-w-10 items-center justify-center rounded-full border text-sm font-semibold transition disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
+      className={`relative inline-flex h-11 min-w-11 items-center justify-center rounded-full border text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
         active
-          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
-          : "border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]"
+          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)] shadow-[0_0_0_3px_rgba(143,125,232,0.18),0_8px_18px_rgba(0,0,0,0.16)]"
+          : "border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:-translate-y-0.5 hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)] active:translate-y-0 active:scale-95"
       }`}
     >
       <NotebookIcon name={icon} />
@@ -973,7 +1011,7 @@ export default function NotebookEditorPage() {
   const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
   const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
   const [eraserWidth, setEraserWidth] = useState<EraserWidth>("medium");
-  const [eraserCursor, setEraserCursor] = useState<EraserCursorState>({
+  const [, setEraserCursor] = useState<EraserCursorState>({
     x: 0,
     y: 0,
     visible: false,
@@ -1107,6 +1145,16 @@ export default function NotebookEditorPage() {
   }, [selectedPage]);
 
   useEffect(() => {
+    if (typeof window === "undefined" || !selectedPage?.id) return;
+    const nextSearch = buildNotebookPageSearch(
+      window.location.search,
+      selectedPage.id
+    );
+    const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
+    window.history.replaceState(window.history.state, "", nextUrl);
+  }, [selectedPage?.id]);
+
+  useEffect(() => {
     let cancelled = false;
     const loadFileUrls = async () => {
       const entries = await Promise.all(
@@ -1205,6 +1253,22 @@ export default function NotebookEditorPage() {
     if (!editorViewport.isLandscape || userAdjustedZoom) return;
     setPageZoom(landscapeFitZoom);
   }, [editorViewport.isLandscape, landscapeFitZoom, userAdjustedZoom]);
+
+  const fitNotebookPage = useCallback(() => {
+    const container = pageScrollRef.current;
+    if (!container || typeof window === "undefined") return;
+    const rootFontSize =
+      Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
+    const basePageWidth = NOTEBOOK_PAGE_BASE_WIDTH_REM * rootFontSize;
+    const horizontalGutter = window.innerWidth < 640 ? 32 : 48;
+    setUserAdjustedZoom(true);
+    setPageZoom(
+      clampNotebookPageZoom(
+        Math.min(1, (container.clientWidth - horizontalGutter) / basePageWidth)
+      )
+    );
+    container.scrollTo({ top: 0, left: 0, behavior: "smooth" });
+  }, []);
 
   const pushUndoAction = useCallback((action: NotebookUndoAction) => {
     undoStackRef.current = [...undoStackRef.current.slice(-39), action];
@@ -1358,7 +1422,15 @@ export default function NotebookEditorPage() {
       setNotebook(nextNotebook);
       setPages(nextPages);
       setFiles(nextFiles);
-      setSelectedPageId(nextPages[0]?.id ?? null);
+      const requestedPageId =
+        typeof window === "undefined"
+          ? null
+          : getNotebookPageIdFromSearch(window.location.search);
+      setSelectedPageId(
+        nextPages.find((page) => page.id === requestedPageId)?.id ??
+          nextPages[0]?.id ??
+          null
+      );
     } catch (error) {
       console.error(error);
       setFeedback({
@@ -2207,12 +2279,16 @@ export default function NotebookEditorPage() {
   ]);
 
   useEffect(() => {
-    const saveBeforeExit = () => {
+    const saveBeforeExit = (event?: PageTransitionEvent | BeforeUnloadEvent) => {
       if (
         saveStatusRef.current === "unsaved" ||
         saveStatusRef.current === "failed"
       ) {
         void saveCurrentPage({ includeActiveStroke: true, flush: true });
+        if (event?.type === "beforeunload") {
+          event.preventDefault();
+          event.returnValue = "";
+        }
       }
     };
     const handleVisibilityChange = () => {
@@ -2250,6 +2326,19 @@ export default function NotebookEditorPage() {
       }
     }
     router.push(`/dashboard/folders/${notebook?.folderId ?? ""}`);
+  };
+
+  const handleRetryPageSave = () => {
+    if (
+      saveStatusRef.current !== "failed" ||
+      inkInteractionActiveRef.current ||
+      inkEditorRef.current?.isInteracting()
+    ) {
+      return;
+    }
+    saveStatusRef.current = "unsaved";
+    setSaveStatus("unsaved");
+    void saveCurrentPage({ flush: true });
   };
 
   const handleStartPageSwipe = (event: ReactPointerEvent<HTMLElement>) => {
@@ -3009,7 +3098,7 @@ export default function NotebookEditorPage() {
     >
       <div className="flex h-full min-h-0 flex-col">
         <header className="z-40 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-          <div className="flex min-w-0 items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
             <Link
               href={`/dashboard/folders/${notebook.folderId}`}
               onClick={(event) => void handleExitNotebook(event)}
@@ -3021,17 +3110,25 @@ export default function NotebookEditorPage() {
             </Link>
             <div className="min-w-0 flex-1">
               <div className="truncate text-sm font-semibold text-text-primary">{notebook.title}</div>
-              <div className="text-xs text-text-muted">
-                {saveStatus === "saving"
-                  ? "Saving..."
-                  : saveStatus === "unsaved"
-                    ? "Unsaved changes"
-                    : saveStatus === "failed"
-                      ? "Save failed"
+              {saveStatus === "failed" ? (
+                <button
+                  type="button"
+                  className="mt-0.5 text-xs font-semibold text-[var(--color-error-text)] underline decoration-current/45 underline-offset-2"
+                  onClick={handleRetryPageSave}
+                >
+                  Save failed. Retry save
+                </button>
+              ) : (
+                <div className="text-xs text-text-muted">
+                  {saveStatus === "saving"
+                    ? "Saving..."
+                    : saveStatus === "unsaved"
+                      ? "Unsaved changes"
                       : "Autosaved just now"}
-              </div>
+                </div>
+              )}
             </div>
-            <div className="flex shrink-0 items-center gap-1.5">
+            <div className="flex max-w-full shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <ToolbarIconButton
                 label="Pages"
                 icon="pages"
@@ -3052,6 +3149,29 @@ export default function NotebookEditorPage() {
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
                   void handleAddPage();
+                }}
+              />
+              <ToolbarIconButton
+                label="Zoom out"
+                icon="zoomOut"
+                disabled={pageZoom <= 0.85}
+                onClick={() => {
+                  setUserAdjustedZoom(true);
+                  setPageZoom((current) => clampNotebookPageZoom(current - 0.15));
+                }}
+              />
+              <ToolbarIconButton
+                label={`Fit page (${Math.round(pageZoom * 100)}%)`}
+                icon="fit"
+                onClick={fitNotebookPage}
+              />
+              <ToolbarIconButton
+                label="Zoom in"
+                icon="zoomIn"
+                disabled={pageZoom >= 2.4}
+                onClick={() => {
+                  setUserAdjustedZoom(true);
+                  setPageZoom((current) => clampNotebookPageZoom(current + 0.15));
                 }}
               />
               <ToolbarIconButton
@@ -3529,9 +3649,9 @@ export default function NotebookEditorPage() {
                         <NotebookPageThumbnail page={page} notebook={notebook} />
                         <div className="text-xs font-semibold">Page {page.pageNumber}</div>
                         <div className="mt-0.5 truncate pr-8 text-[0.68rem] text-text-muted">
-                          {page.textBlocks.length > 0
+                          {page.textBlocks.some((block) => block.text.trim())
                             ? "Text"
-                            : page.strokeData?.strokes?.length
+                            : page.inkData?.svg || page.strokeData?.strokes?.length
                               ? "Ink"
                               : "Blank"}
                         </div>
@@ -3689,6 +3809,15 @@ export default function NotebookEditorPage() {
                       )}
                     </div>
                   ) : null}
+                  {!activeNotebookFile &&
+                  !inkHasContent &&
+                  !textBlocks.some((block) => block.text.trim()) ? (
+                    <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-8 text-center">
+                      <div className="max-w-xs rounded-full border border-current/10 bg-current/[0.035] px-4 py-2 text-xs font-medium opacity-45">
+                        Write with a pen or choose Text to add a note
+                      </div>
+                    </div>
+                  ) : null}
                   <NotebookInkEditor
                     ref={inkEditorRef}
                     key={selectedPage.id}
@@ -3722,22 +3851,6 @@ export default function NotebookEditorPage() {
                     onPointerUp={handlePagePointerUp}
                     onPointerCancel={handlePagePointerCancel}
                   />
-                  {tool === "eraser" && eraserCursor.visible ? (
-                    <div
-                      aria-hidden="true"
-                      className={`pointer-events-none absolute z-[25] -translate-x-1/2 -translate-y-1/2 rounded-full border-2 shadow-sm ${
-                        pageColor === "black"
-                          ? "border-[#f8fafc]/80 bg-[#f8fafc]/10"
-                          : "border-slate-950/55 bg-slate-950/5"
-                      }`}
-                      style={{
-                        left: `${(eraserCursor.x / CANVAS_WIDTH) * 100}%`,
-                        top: `${(eraserCursor.y / CANVAS_HEIGHT) * 100}%`,
-                        width: `${(ERASER_WIDTH_VALUE[eraserWidth] / CANVAS_WIDTH) * 100}%`,
-                        height: `${(ERASER_WIDTH_VALUE[eraserWidth] / CANVAS_HEIGHT) * 100}%`,
-                      }}
-                    />
-                  ) : null}
                   <div className="pointer-events-none absolute inset-0 z-30">
                     {textBlocks.map((block) => {
                       const selected = selectedTextBlockId === block.id;

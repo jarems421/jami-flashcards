@@ -36,7 +36,7 @@ import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
-import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
+import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
 import type { Topic } from "@/lib/practice/topics";
@@ -84,6 +84,9 @@ export default function DeckDetailPageClient() {
   const [editingPendingTag, setEditingPendingTag] = useState("");
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [cardPendingDeleteId, setCardPendingDeleteId] = useState<string | null>(
+    null
+  );
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [bulkTags, setBulkTags] = useState<string[]>([]);
@@ -355,11 +358,6 @@ export default function DeckDetailPageClient() {
       return;
     }
 
-    const shouldDelete = window.confirm("Delete this card?");
-    if (!shouldDelete) {
-      return;
-    }
-
     setDeletingCardId(cardId);
     setFeedback(null);
 
@@ -370,6 +368,7 @@ export default function DeckDetailPageClient() {
       if (editingCardId === cardId) {
         resetEditingCard();
       }
+      setCardPendingDeleteId(null);
       setFeedback({
         type: "success",
         message: "Card deleted.",
@@ -488,9 +487,30 @@ export default function DeckDetailPageClient() {
       {feedback ? (
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
+      <ConfirmDialog
+        open={cardPendingDeleteId !== null}
+        title="Delete this card?"
+        description="This permanently removes the card from this deck and its review queue. This cannot be undone."
+        confirmLabel="Delete card"
+        busy={
+          cardPendingDeleteId !== null &&
+          deletingCardId === cardPendingDeleteId
+        }
+        onClose={() => setCardPendingDeleteId(null)}
+        onConfirm={() => {
+          if (cardPendingDeleteId) void handleDeleteCard(cardPendingDeleteId);
+        }}
+      />
 
       {deck ? (
         <>
+          <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm text-text-muted">
+            <Link href="/dashboard/decks" className="font-medium transition hover:text-text-primary">
+              Decks
+            </Link>
+            <span aria-hidden="true">/</span>
+            <span className="truncate text-text-secondary">{deck.name}</span>
+          </nav>
           <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.12fr)_320px]">
             <SurfaceCard padding="lg">
               <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
@@ -812,7 +832,7 @@ export default function DeckDetailPageClient() {
                           <Button
                             type="button"
                             disabled={isDemoUser || deletingCardId === card.id}
-                            onClick={() => void handleDeleteCard(card.id)}
+                            onClick={() => setCardPendingDeleteId(card.id)}
                             variant="danger"
                             className="w-full sm:w-auto"
                           >
