@@ -37,6 +37,7 @@ import AppPage from "@/components/layout/AppPage";
 import {
   Card,
   Button,
+  ButtonLink,
   EmptyState,
   FeedbackBanner,
   MetricStrip,
@@ -304,7 +305,7 @@ export default function ProgressPage() {
         title="What needs review"
         tone="warm"
         aside={
-          <div className="grid min-w-[18rem] grid-cols-3 gap-2 text-center">
+          <div className="grid w-full min-w-0 grid-cols-3 gap-2 text-center sm:min-w-[18rem]">
             <MiniMetric label="Reviewed" value={loading ? "..." : reviewedThisWeek} />
             <MiniMetric label="Streak" value={loading ? "..." : `${currentStreak}d`} />
             <MiniMetric label="Goals" value={loading ? "..." : activeGoals.length} />
@@ -382,20 +383,20 @@ export default function ProgressPage() {
             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
               Recommended next step
             </div>
-            <div className="mt-2 text-lg font-semibold text-white">
+            <div className="mt-2 text-lg font-semibold text-text-primary">
               {recentNotebooks[0]
                 ? `Continue "${recentNotebooks[0].title}", then review any linked cards.`
                 : "Open a folder and create a notebook for your next working session."}
             </div>
             <div className="mt-4 flex flex-wrap gap-2">
               {dueCardCount > 0 ? (
-                <Link href={getCustomStudyHref({ mode: "daily" })} className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium">
+                <ButtonLink href={getCustomStudyHref({ mode: "daily" })}>
                   Start review
-                </Link>
+                </ButtonLink>
               ) : reviewedThisWeek === 0 ? (
-                <Link href={getCustomStudyHref({ mode: "custom" })} className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium">
+                <ButtonLink href={getCustomStudyHref({ mode: "custom" })}>
                   Study for 10 minutes
-                </Link>
+                </ButtonLink>
               ) : null}
             </div>
           </Card>
@@ -514,12 +515,9 @@ export default function ProgressPage() {
               title="Progress needs linked study material"
               description="Create folders, notebooks, cards, or sources to build progress."
               action={
-                <Link
-                  href="/dashboard/folders"
-                  className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-4 py-2 text-sm font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105"
-                >
+                <ButtonLink href="/dashboard/folders" variant="warm">
                   Open folders
-                </Link>
+                </ButtonLink>
               }
             />
           ) : (
@@ -561,12 +559,20 @@ export default function ProgressPage() {
                           Open the linked work, then review related flashcards.
                       </div>
                       <div className="mt-3 flex flex-wrap gap-2">
-                        <Link href={`/dashboard/folders?topic=${encodeURIComponent(summary.topic.id)}`} className="app-button-secondary inline-flex min-h-10 items-center rounded-2xl px-3 text-sm font-medium">
+                        <ButtonLink
+                          href={`/dashboard/folders?topic=${encodeURIComponent(summary.topic.id)}`}
+                          variant="secondary"
+                          size="sm"
+                        >
                           Open linked work
-                        </Link>
-                        <Link href={getCustomStudyHref({ mode: "custom", tags: [summary.topic.name] })} className="app-button-secondary inline-flex min-h-10 items-center rounded-2xl px-3 text-sm font-medium">
+                        </ButtonLink>
+                        <ButtonLink
+                          href={getCustomStudyHref({ mode: "custom", tags: [summary.topic.name] })}
+                          variant="secondary"
+                          size="sm"
+                        >
                           Review cards
-                        </Link>
+                        </ButtonLink>
                       </div>
                     </div>
                   ))}

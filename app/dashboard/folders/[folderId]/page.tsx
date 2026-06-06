@@ -44,11 +44,10 @@ import {
   getNotebooksForFolder,
   updateNotebook,
 } from "@/services/study/notebooks";
-import { uploadNotebookFile } from "@/services/study/notebook-files";
+import { importUploadedNotebook } from "@/services/study/notebook-import";
 import { createSource, getActiveSources, updateSource } from "@/services/study/sources";
 
 type Feedback = { type: "success" | "error"; message: string };
-type NotebookTemplate = "blank" | "uploaded_file" | "ai_questions";
 function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
 }
@@ -88,7 +87,6 @@ export default function FolderDetailPage() {
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [showNotebookForm, setShowNotebookForm] = useState(false);
   const [notebookTitle, setNotebookTitle] = useState("");
-  const [notebookTemplate, setNotebookTemplate] = useState<NotebookTemplate>("blank");
   const [notebookColor, setNotebookColor] = useState<ObjectColorId>("violet");
   const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
   const [notebookPageColor, setNotebookPageColor] = useState<NotebookPageColor>("white");
@@ -120,9 +118,6 @@ export default function FolderDetailPage() {
   const [sourceText, setSourceText] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceFileName, setSourceFileName] = useState("");
-  const [renamingNotebookId, setRenamingNotebookId] = useState<string | null>(null);
-  const [renamingNotebookTitle, setRenamingNotebookTitle] = useState("");
-  const [busyNotebookId, setBusyNotebookId] = useState<string | null>(null);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -471,26 +466,41 @@ export default function FolderDetailPage() {
       setFeedback({ type: "error", message: "Name the notebook before creating it." });
       return;
     }
-    if (notebookTemplate === "ai_questions") {
-      setFeedback({
-        type: "error",
-        message:
-          "AI-created question notebooks are planned, but Phase 6 is focused on the notebook workspace first.",
-      });
-      return;
-    }
-    if (notebookTemplate === "uploaded_file" && !notebookFile) {
-      setFeedback({ type: "error", message: "Choose a PDF or image file for this notebook." });
-      return;
-    }
-
     setCreatingNotebook(true);
     setNotebookUploadProgress(null);
     try {
+      if (notebookFile) {
+        const imported = await importUploadedNotebook({
+          userId: user.uid,
+          folderId: folder.id,
+          title,
+          file: notebookFile,
+          topicIds: folder.topicIds,
+          color: notebookColor,
+          icon: notebookIcon,
+          pageColor: notebookPageColor,
+          pageStyle: notebookPageStyle,
+          onProgress: setNotebookUploadProgress,
+        });
+        setNotebooks((current) => [imported.notebook, ...current]);
+        setNotebookTitle("");
+        setNotebookColor("violet");
+        setNotebookIcon("none");
+        setNotebookPageColor("white");
+        setNotebookPageStyle("plain");
+        setNotebookFile(null);
+        setShowNotebookForm(false);
+        setFeedback({
+          type: "success",
+          message: `${imported.notebook.title} created with ${imported.pages.length} ${imported.pages.length === 1 ? "page" : "pages"}.`,
+        });
+        return;
+      }
+
       const notebook = await createNotebook(user.uid, {
         folderId: folder.id,
         title,
-        type: notebookTemplate === "uploaded_file" ? "uploaded_file" : "blank",
+        type: "blank",
         topicIds: folder.topicIds,
         color: notebookColor,
         icon: notebookIcon,
@@ -501,31 +511,14 @@ export default function FolderDetailPage() {
         notebookId: notebook.id,
         folderId: folder.id,
         pageNumber: 1,
-        pageType: notebookTemplate === "uploaded_file" ? "past_paper_page" : "free_working",
+        pageType: "free_working",
         title: "Page 1",
         pageColor: notebookPageColor,
         pageStyle: notebookPageStyle,
       });
 
-      let uploadedFileId: string | undefined;
-      if (notebookTemplate === "uploaded_file" && notebookFile) {
-        const fileMetadata = await uploadNotebookFile({
-          userId: user.uid,
-          notebookId: notebook.id,
-          folderId: folder.id,
-          file: notebookFile,
-          onProgress: setNotebookUploadProgress,
-        });
-        uploadedFileId = fileMetadata.id;
-        await updateNotebook(user.uid, notebook.id, { uploadedFileId });
-      }
-
-      setNotebooks((current) => [
-        uploadedFileId ? { ...notebook, uploadedFileId } : notebook,
-        ...current,
-      ]);
+      setNotebooks((current) => [notebook, ...current]);
       setNotebookTitle("");
-      setNotebookTemplate("blank");
       setNotebookColor("violet");
       setNotebookIcon("none");
       setNotebookPageColor("white");
@@ -534,10 +527,7 @@ export default function FolderDetailPage() {
       setShowNotebookForm(false);
       setFeedback({
         type: "success",
-        message:
-          notebookTemplate === "uploaded_file"
-            ? `${notebook.title} created. The file is locked behind your annotations.`
-            : `${notebook.title} created. Open it to type or draw on page 1.`,
+        message: `${notebook.title} created. Open it to type or draw on page 1.`,
       });
     } catch (error) {
       setFeedback({
@@ -550,46 +540,8 @@ export default function FolderDetailPage() {
     }
   };
 
-  const openNotebookForm = (template: NotebookTemplate = "blank") => {
-    setNotebookTemplate(template);
+  const openNotebookForm = () => {
     setShowNotebookForm(true);
-    if (template === "uploaded_file") {
-      setNotebookColor("sky");
-      setNotebookIcon("none");
-    }
-  };
-
-  const openRenameNotebook = (notebook: Notebook) => {
-    setRenamingNotebookId(notebook.id);
-    setRenamingNotebookTitle(notebook.title);
-  };
-
-  const handleRenameNotebook = async () => {
-    if (!user?.uid || !renamingNotebookId) return;
-    const title = renamingNotebookTitle.trim();
-    if (!title) return;
-    setBusyNotebookId(renamingNotebookId);
-    try {
-      await updateNotebook(user.uid, renamingNotebookId, { title });
-      const updatedAt = Date.now();
-      setNotebooks((current) =>
-        current.map((notebook) =>
-          notebook.id === renamingNotebookId
-            ? { ...notebook, title, updatedAt }
-            : notebook
-        )
-      );
-      setRenamingNotebookId(null);
-      setRenamingNotebookTitle("");
-      setFeedback({ type: "success", message: "Notebook renamed." });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not rename notebook.",
-      });
-    } finally {
-      setBusyNotebookId(null);
-    }
   };
 
   const handleArchiveNotebook = async (notebook: Notebook) => {
@@ -598,24 +550,17 @@ export default function FolderDetailPage() {
       `Archive "${notebook.title}"? Its saved pages will remain available if the notebook is restored later.`
     );
     if (!confirmed) return;
-    setBusyNotebookId(notebook.id);
     try {
       await updateNotebook(user.uid, notebook.id, { archived: true });
       setNotebooks((current) =>
         current.filter((item) => item.id !== notebook.id)
       );
-      if (renamingNotebookId === notebook.id) {
-        setRenamingNotebookId(null);
-        setRenamingNotebookTitle("");
-      }
       setFeedback({ type: "success", message: `${notebook.title} archived.` });
     } catch (error) {
       setFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "Could not archive notebook.",
       });
-    } finally {
-      setBusyNotebookId(null);
     }
   };
 
@@ -708,11 +653,8 @@ export default function FolderDetailPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Button type="button" onClick={() => openNotebookForm("blank")}>
+            <Button type="button" onClick={openNotebookForm}>
               Create notebook
-            </Button>
-            <Button type="button" variant="secondary" onClick={() => openNotebookForm("uploaded_file")}>
-              Import PDF or image
             </Button>
             <Button type="button" variant="secondary" onClick={openEditFolder}>
               Edit folder
@@ -729,40 +671,9 @@ export default function FolderDetailPage() {
         {showNotebookForm ? (
           <Card padding="md">
             <SectionHeader
-              eyebrow="Notebook template"
-              title="Add a notebook to this folder."
+              eyebrow="Create notebook"
+              title="Set up your notebook."
             />
-            <div className="mt-5 grid gap-3 md:grid-cols-3">
-              {[
-                ["blank", "Blank notebook", "Free working, notes, and questions."],
-                ["uploaded_file", "Uploaded file / paper", "Save a PDF or image reference."],
-                ["ai_questions", "AI-created questions", "Coming later."],
-              ].map(([value, title, detail]) => (
-                <button
-                  key={value}
-                  type="button"
-                  onClick={() => {
-                    const template = value as NotebookTemplate;
-                    setNotebookTemplate(template);
-                    if (template === "uploaded_file") {
-                      setNotebookColor("sky");
-                      setNotebookIcon("none");
-                    } else if (template === "ai_questions") {
-                      setNotebookColor("indigo");
-                      setNotebookIcon("none");
-                    }
-                  }}
-                  className={`rounded-[1.25rem] border p-4 text-left transition ${
-                    notebookTemplate === value
-                      ? "border-warm-border bg-warm-glow"
-                      : "border-white/[0.09] bg-white/[0.04] hover:border-white/[0.16]"
-                  }`}
-                >
-                  <div className="text-sm font-semibold text-white">{title}</div>
-                  <p className="mt-2 text-sm leading-6 text-text-secondary">{detail}</p>
-                </button>
-              ))}
-            </div>
             <div className="mt-5">
               <ObjectStylePicker
                 color={notebookColor}
@@ -807,25 +718,29 @@ export default function FolderDetailPage() {
                 ))}
               </div>
             </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.8fr)_auto] lg:items-end">
+            <div className="mt-5 grid gap-4 lg:grid-cols-2">
               <Input
                 label="Notebook title"
                 value={notebookTitle}
                 onChange={(event) => setNotebookTitle(event.target.value)}
               />
-              <div>
+              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
                 <label className="mb-1.5 block text-sm font-medium text-text-secondary">
-                  File
+                  Start with a PDF or image <span className="text-text-muted">(optional)</span>
                 </label>
                 <input
                   type="file"
                   accept="application/pdf,image/jpeg,image/png,image/webp"
-                  disabled={notebookTemplate !== "uploaded_file" || creatingNotebook}
+                  disabled={creatingNotebook}
                   onChange={(event) => setNotebookFile(event.target.files?.[0] ?? null)}
                   className="block min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed disabled:saturate-[0.82]"
                 />
+                <p className="mt-2 text-sm leading-6 text-text-muted">
+                  File pages become the notebook&apos;s first pages. You can add more
+                  PDFs or images later from notebook settings.
+                </p>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 lg:col-span-2">
                 <Button
                   type="button"
                   variant="secondary"
@@ -833,7 +748,6 @@ export default function FolderDetailPage() {
                   onClick={() => {
                     setShowNotebookForm(false);
                     setNotebookTitle("");
-                    setNotebookTemplate("blank");
                     setNotebookColor("violet");
                     setNotebookIcon("none");
                     setNotebookPageColor("white");
@@ -850,13 +764,13 @@ export default function FolderDetailPage() {
                 >
                   {creatingNotebook
                     ? notebookUploadProgress !== null
-                      ? `Importing ${notebookUploadProgress}%`
+                      ? `Adding pages ${notebookUploadProgress}%`
                       : "Creating..."
-                    : "Create"}
+                    : "Create notebook"}
                 </Button>
               </div>
             </div>
-            {notebookTemplate === "uploaded_file" ? (
+            {notebookFile ? (
               <div className="mt-3 space-y-2">
                 <p className="text-sm leading-6 text-text-muted">
                   The PDF or image stays locked as the page background. You can
@@ -879,11 +793,6 @@ export default function FolderDetailPage() {
                   </div>
                 ) : null}
               </div>
-            ) : null}
-            {notebookTemplate === "ai_questions" ? (
-              <p className="mt-3 text-sm leading-6 text-text-muted">
-                AI question notebooks are not active yet.
-              </p>
             ) : null}
           </Card>
         ) : null}
@@ -977,48 +886,11 @@ export default function FolderDetailPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeader eyebrow="Notebooks" title="Workbooks" />
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={() => openNotebookForm("blank")}>
+                <Button type="button" size="sm" onClick={openNotebookForm}>
                   Create notebook
-                </Button>
-                <Button type="button" size="sm" variant="secondary" onClick={() => openNotebookForm("uploaded_file")}>
-                  Import file
                 </Button>
               </div>
             </div>
-            {renamingNotebookId ? (
-              <Card padding="sm" className="max-w-xl">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-                  <Input
-                    label="Notebook name"
-                    value={renamingNotebookTitle}
-                    onChange={(event) => setRenamingNotebookTitle(event.target.value)}
-                    containerClassName="min-w-0 flex-1"
-                  />
-                  <div className="flex gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      disabled={!renamingNotebookTitle.trim() || busyNotebookId === renamingNotebookId}
-                      onClick={() => void handleRenameNotebook()}
-                    >
-                      {busyNotebookId === renamingNotebookId ? "Saving..." : "Save"}
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="secondary"
-                      disabled={busyNotebookId === renamingNotebookId}
-                      onClick={() => {
-                        setRenamingNotebookId(null);
-                        setRenamingNotebookTitle("");
-                      }}
-                    >
-                      Cancel
-                    </Button>
-                  </div>
-                </div>
-              </Card>
-            ) : null}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
               {notebooks.length > 0 ? (
                 notebooks.map((notebook) => (
@@ -1031,8 +903,11 @@ export default function FolderDetailPage() {
                     icon={notebook.icon}
                     pageColor={notebook.pageColor}
                     pageStyle={notebook.pageStyle}
+                    previewInkSvg={notebook.previewInkSvg}
                     updatedLabel={formatEditedLabel(notebook.updatedAt)}
-                    onRename={() => openRenameNotebook(notebook)}
+                    onEdit={() =>
+                      router.push(`/dashboard/notebooks/${notebook.id}?settings=1`)
+                    }
                     onArchive={() => void handleArchiveNotebook(notebook)}
                     compact
                   />
@@ -1044,13 +919,8 @@ export default function FolderDetailPage() {
                     title="No notebooks yet"
                     description="Create a notebook to start working in this folder."
                     action={
-                      <Button type="button" onClick={() => openNotebookForm("blank")}>
+                      <Button type="button" onClick={openNotebookForm}>
                         Create notebook
-                      </Button>
-                    }
-                    secondaryAction={
-                      <Button type="button" variant="secondary" onClick={() => openNotebookForm("uploaded_file")}>
-                        Import PDF or image
                       </Button>
                     }
                   />
@@ -1358,7 +1228,7 @@ export default function FolderDetailPage() {
                   Continue latest notebook
                 </Link>
               ) : (
-                <Button type="button" onClick={() => openNotebookForm("blank")}>
+                <Button type="button" onClick={openNotebookForm}>
                   Create notebook
                 </Button>
               )}

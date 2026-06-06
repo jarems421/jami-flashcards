@@ -88,6 +88,14 @@ export function shouldPointerSwipePages(pointerType: string) {
   return pointerType === "touch";
 }
 
+export function shouldSuppressTouchAfterStylus(input: {
+  stylusActive: boolean;
+  cooldownUntil: number;
+  now: number;
+}) {
+  return input.stylusActive || input.now < input.cooldownUntil;
+}
+
 export function getNotebookSwipeDirection(input: {
   startX: number;
   startY: number;

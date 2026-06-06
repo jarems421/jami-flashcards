@@ -1,6 +1,7 @@
 import {
   addDoc,
   collection,
+  deleteDoc,
   doc,
   getDoc,
   getDocs,
@@ -21,6 +22,7 @@ import {
   mapNotebookPageData,
   getNotebookPagesAfterDelete,
   normalizeNotebookTitle,
+  normalizeNotebookPreviewSvg,
   type Notebook,
   type NotebookFile,
   type NotebookInkData,
@@ -141,6 +143,8 @@ export async function createNotebook(
     pageColor?: NotebookPageColor;
     pageStyle?: NotebookPageStyle;
     uploadedFileId?: string;
+    previewInkSvg?: string;
+    previewPageId?: string;
   }
 ) {
   const normalizedUserId = userId.trim();
@@ -168,9 +172,10 @@ export async function updateNotebook(
     sourceIds: string[];
     color: string;
     icon: string;
-    pageColor: NotebookPageColor;
     pageStyle: NotebookPageStyle;
     uploadedFileId: string;
+    previewInkSvg: string;
+    previewPageId: string;
     archived: boolean;
   }>
 ) {
@@ -199,10 +204,15 @@ export async function updateNotebook(
   if (input.sourceIds !== undefined) updates.sourceIds = input.sourceIds;
   if (input.color !== undefined) updates.color = input.color.trim().slice(0, 80) || null;
   if (input.icon !== undefined) updates.icon = input.icon.trim().slice(0, 40) || null;
-  if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
   if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
   if (input.uploadedFileId !== undefined) {
     updates.uploadedFileId = input.uploadedFileId.trim().slice(0, 160) || null;
+  }
+  if (input.previewInkSvg !== undefined) {
+    updates.previewInkSvg = normalizeNotebookPreviewSvg(input.previewInkSvg) ?? null;
+  }
+  if (input.previewPageId !== undefined) {
+    updates.previewPageId = input.previewPageId.trim().slice(0, 160) || null;
   }
   if (typeof input.archived === "boolean") updates.archived = input.archived;
 
@@ -263,6 +273,8 @@ export async function createNotebookPage(
     linkedQuestionId?: string;
     linkedSourceId?: string;
     linkedPastPaperId?: string;
+    backgroundFileId?: string;
+    pdfPageIndex?: number;
   }
 ) {
   const normalizedUserId = userId.trim();
@@ -280,6 +292,37 @@ export async function createNotebookPage(
   return mapNotebookPageData(docRef.id, payload);
 }
 
+export async function createNotebookPages(
+  userId: string,
+  inputs: Array<{
+    notebookId: string;
+    folderId: string;
+    pageNumber: number;
+    title?: string;
+    pageType?: NotebookPageType;
+    pageColor?: NotebookPageColor;
+    pageStyle?: NotebookPageStyle;
+    status?: NotebookPageStatus;
+    backgroundFileId?: string;
+    pdfPageIndex?: number;
+  }>
+) {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (inputs.length === 0) throw new Error("Add at least one notebook page.");
+  if (inputs.length > 200) throw new Error("A PDF notebook can contain up to 200 pages.");
+
+  const batch = writeBatch(db);
+  const entries = inputs.map((input) => {
+    const pageRef = doc(notebookPagesCollection(normalizedUserId));
+    const payload = buildNotebookPagePayload(input);
+    batch.set(pageRef, payload);
+    return { id: pageRef.id, payload };
+  });
+  await withTimeout(batch.commit(), WRITE_MS, "Create notebook pages");
+  return entries.map(({ id, payload }) => mapNotebookPageData(id, payload));
+}
+
 export async function updateNotebookPage(
   userId: string,
   pageId: string,
@@ -290,13 +333,14 @@ export async function updateNotebookPage(
     textBlocks: NotebookTextBlock[];
     inkData: NotebookInkData | null;
     strokeData: NotebookStrokeData | null;
-    pageColor: NotebookPageColor;
     pageStyle: NotebookPageStyle;
     status: NotebookPageStatus;
     questionPrompt: string;
     linkedQuestionId: string;
     linkedSourceId: string;
     linkedPastPaperId: string;
+    backgroundFileId: string;
+    pdfPageIndex: number;
   }>
 ) {
   const normalizedUserId = userId.trim();
@@ -318,19 +362,72 @@ export async function updateNotebookPage(
   if (input.textBlocks !== undefined) updates.textBlocks = input.textBlocks;
   if (input.inkData !== undefined) updates.inkData = input.inkData;
   if (input.strokeData !== undefined) updates.strokeData = input.strokeData;
-  if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
   if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
   if (input.status !== undefined) updates.status = input.status;
   if (input.questionPrompt !== undefined) updates.questionPrompt = input.questionPrompt.trim().slice(0, 4_000) || null;
   if (input.linkedQuestionId !== undefined) updates.linkedQuestionId = input.linkedQuestionId.trim().slice(0, 160) || null;
   if (input.linkedSourceId !== undefined) updates.linkedSourceId = input.linkedSourceId.trim().slice(0, 160) || null;
   if (input.linkedPastPaperId !== undefined) updates.linkedPastPaperId = input.linkedPastPaperId.trim().slice(0, 160) || null;
+  if (input.backgroundFileId !== undefined) {
+    updates.backgroundFileId = input.backgroundFileId.trim().slice(0, 160) || null;
+  }
+  if (input.pdfPageIndex !== undefined) {
+    updates.pdfPageIndex =
+      Number.isFinite(input.pdfPageIndex) && input.pdfPageIndex >= 0
+        ? Math.round(input.pdfPageIndex)
+        : null;
+  }
 
   await withTimeout(
     updateDoc(doc(db, "users", normalizedUserId, "notebookPages", normalizedPageId), updates),
     WRITE_MS,
     "Update notebook page"
   );
+}
+
+export async function saveNotebookPageSnapshot(
+  userId: string,
+  input: {
+    notebookId: string;
+    pageId: string;
+    typedContent: string;
+    textBlocks: NotebookTextBlock[];
+    inkData: NotebookInkData;
+    pageStyle: NotebookPageStyle;
+    status: NotebookPageStatus;
+  }
+) {
+  const normalizedUserId = userId.trim();
+  const notebookId = input.notebookId.trim();
+  const pageId = input.pageId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (!notebookId) throw new Error("Missing notebookId.");
+  if (!pageId) throw new Error("Missing pageId.");
+
+  const now = Date.now();
+  const previewInkSvg = normalizeNotebookPreviewSvg(input.inkData.svg);
+  const batch = writeBatch(db);
+  batch.update(
+    doc(db, "users", normalizedUserId, "notebookPages", pageId),
+    {
+      typedContent: input.typedContent.trim().slice(0, 30_000) || null,
+      textBlocks: input.textBlocks,
+      inkData: input.inkData,
+      strokeData: null,
+      pageStyle: input.pageStyle,
+      status: input.status,
+      updatedAt: now,
+    }
+  );
+  batch.update(
+    doc(db, "users", normalizedUserId, "notebooks", notebookId),
+    {
+      previewInkSvg: previewInkSvg ?? null,
+      previewPageId: pageId,
+      updatedAt: now,
+    }
+  );
+  await withTimeout(batch.commit(), WRITE_MS, "Save notebook page");
 }
 
 export async function deleteNotebookPage(
@@ -418,6 +515,7 @@ export async function createNotebookFileMetadata(
     fileType: string;
     storagePath: string;
     sizeBytes?: number;
+    pageCount?: number;
   }
 ) {
   const normalizedUserId = userId.trim();
@@ -431,4 +529,73 @@ export async function createNotebookFileMetadata(
   );
 
   return mapNotebookFileData(docRef.id, payload);
+}
+
+export async function deleteNotebookImportRecords(
+  userId: string,
+  notebookId: string
+) {
+  const normalizedUserId = userId.trim();
+  const normalizedNotebookId = notebookId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (!normalizedNotebookId) throw new Error("Missing notebookId.");
+
+  const [pagesSnapshot, filesSnapshot] = await Promise.all([
+    getDocs(
+      query(
+        notebookPagesCollection(normalizedUserId),
+        where("notebookId", "==", normalizedNotebookId)
+      )
+    ),
+    getDocs(
+      query(
+        notebookFilesCollection(normalizedUserId),
+        where("notebookId", "==", normalizedNotebookId)
+      )
+    ),
+  ]);
+  const batch = writeBatch(db);
+  pagesSnapshot.docs.forEach((pageDoc) => batch.delete(pageDoc.ref));
+  filesSnapshot.docs.forEach((fileDoc) => batch.delete(fileDoc.ref));
+  batch.delete(
+    doc(db, "users", normalizedUserId, "notebooks", normalizedNotebookId)
+  );
+  await withTimeout(batch.commit(), WRITE_MS, "Clean up notebook import");
+}
+
+export async function deleteNotebookRecord(userId: string, notebookId: string) {
+  await withTimeout(
+    deleteDoc(doc(db, "users", userId, "notebooks", notebookId)),
+    WRITE_MS,
+    "Delete notebook"
+  );
+}
+
+export async function deleteNotebookFileRecord(userId: string, fileId: string) {
+  const normalizedUserId = userId.trim();
+  const normalizedFileId = fileId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (!normalizedFileId) throw new Error("Missing fileId.");
+
+  await withTimeout(
+    deleteDoc(doc(db, "users", normalizedUserId, "notebookFiles", normalizedFileId)),
+    WRITE_MS,
+    "Delete notebook file metadata"
+  );
+}
+
+export async function deleteNotebookPageRecords(
+  userId: string,
+  pageIds: string[]
+) {
+  const normalizedUserId = userId.trim();
+  const normalizedPageIds = pageIds.map((id) => id.trim()).filter(Boolean);
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (normalizedPageIds.length === 0) return;
+
+  const batch = writeBatch(db);
+  normalizedPageIds.forEach((pageId) => {
+    batch.delete(doc(db, "users", normalizedUserId, "notebookPages", pageId));
+  });
+  await withTimeout(batch.commit(), WRITE_MS, "Clean up notebook pages");
 }

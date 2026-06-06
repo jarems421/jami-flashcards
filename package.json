@@ -2,6 +2,9 @@
   "name": "jami-flashcards",
   "version": "0.1.0",
   "private": true,
+  "engines": {
+    "node": ">=22.13.0"
+  },
   "scripts": {
     "dev": "next dev --webpack",
     "dev:clean": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\" && next dev --webpack",
@@ -22,6 +25,7 @@
     "firebase-admin": "^13.7.0",
     "js-draw": "^1.33.0",
     "next": "^16.2.1",
+    "pdfjs-dist": "^6.0.227",
     "perfect-freehand": "^1.2.3",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",

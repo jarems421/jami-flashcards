@@ -226,12 +226,14 @@
     --nav-active-text: #fff9ff;
     --button-primary-bg: linear-gradient(180deg, #9f82f2 0%, #7562d9 100%);
     --button-primary-bg-hover: linear-gradient(180deg, #b295ff 0%, #8370e7 100%);
+    --button-primary-text: #ffffff;
     --button-primary-shadow: 0 14px 26px rgba(117, 98, 217, 0.26);
     --button-primary-shadow-hover: 0 18px 32px rgba(117, 98, 217, 0.34);
     --button-secondary-bg: linear-gradient(180deg, rgba(238, 225, 255, 0.18), rgba(238, 225, 255, 0.1));
     --button-secondary-bg-hover: linear-gradient(180deg, rgba(238, 225, 255, 0.26), rgba(238, 225, 255, 0.13));
     --button-secondary-border: rgba(238, 225, 255, 0.24);
     --button-secondary-border-hover: rgba(238, 225, 255, 0.36);
+    --button-secondary-text: var(--color-text-primary);
     --button-surface-bg: linear-gradient(180deg, rgba(31, 17, 48, 0.94), rgba(17, 9, 28, 0.94));
     --button-surface-bg-hover: linear-gradient(180deg, rgba(39, 21, 59, 0.96), rgba(22, 12, 35, 0.96));
     --button-surface-border: rgba(238, 225, 255, 0.24);
@@ -297,6 +299,7 @@
     --nav-active-text: #101827;
     --button-primary-bg: linear-gradient(180deg, #7464cf 0%, #5f51bb 100%);
     --button-primary-bg-hover: linear-gradient(180deg, #8170dc 0%, #695bc8 100%);
+    --button-primary-text: #ffffff;
     --button-secondary-bg: linear-gradient(180deg, rgba(20, 28, 42, 0.13), rgba(20, 28, 42, 0.075));
     --button-secondary-bg-hover: linear-gradient(180deg, rgba(20, 28, 42, 0.18), rgba(20, 28, 42, 0.1));
     --button-secondary-border: rgba(20, 28, 42, 0.26);
@@ -378,6 +381,7 @@
     --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.24), rgba(255, 255, 255, 0.12));
     --button-secondary-border: rgba(255, 255, 255, 0.24);
     --button-secondary-border-hover: rgba(255, 255, 255, 0.34);
+    --button-secondary-text: var(--color-text-primary);
     --button-secondary-shadow: 0 10px 20px rgba(0, 0, 0, 0.14);
     --button-secondary-shadow-hover: 0 14px 26px rgba(0, 0, 0, 0.2);
     --button-surface-bg: linear-gradient(180deg, rgba(38, 38, 38, 0.94), rgba(20, 20, 20, 0.94));
@@ -474,8 +478,8 @@
 
   .notebook-page-swipe-preview {
     top: 0.75rem;
-    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.16);
     pointer-events: none;
+    will-change: transform;
   }
 
   .notebook-js-draw-host,
@@ -533,9 +537,9 @@
     box-shadow:
       0 0 0 1px rgba(15, 23, 42, 0.16),
       0 3px 9px rgba(0, 0, 0, 0.28);
-    height: 18px;
-    margin-top: -8px;
-    width: 18px;
+    height: 22px;
+    margin-top: -10px;
+    width: 22px;
   }
 
   .notebook-thickness-slider::-moz-range-track {
@@ -551,8 +555,8 @@
     box-shadow:
       0 0 0 1px rgba(15, 23, 42, 0.16),
       0 3px 9px rgba(0, 0, 0, 0.28);
-    height: 18px;
-    width: 18px;
+    height: 22px;
+    width: 22px;
   }
 
   .notebook-text-editor {
@@ -580,23 +584,19 @@
 
   @keyframes notebook-page-slide-next {
     from {
-      opacity: 0.72;
-      transform: translateX(1.2rem) scale(0.992);
+      transform: translateX(4rem);
     }
     to {
-      opacity: 1;
-      transform: translateX(0) scale(1);
+      transform: translateX(0);
     }
   }
 
   @keyframes notebook-page-slide-previous {
     from {
-      opacity: 0.72;
-      transform: translateX(-1.2rem) scale(0.992);
+      transform: translateX(-4rem);
     }
     to {
-      opacity: 1;
-      transform: translateX(0) scale(1);
+      transform: translateX(0);
     }
   }
 

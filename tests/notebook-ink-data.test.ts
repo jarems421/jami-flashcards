@@ -4,9 +4,19 @@ import {
   legacyStrokesToJsDrawSvg,
   makeNotebookInkData,
 } from "@/lib/workspace/notebook-ink-data";
-import { mapNotebookPageData } from "@/lib/workspace/notebooks";
+import {
+  mapNotebookPageData,
+  normalizeNotebookPreviewSvg,
+} from "@/lib/workspace/notebooks";
 
 describe("notebook js-draw ink data", () => {
+  it("keeps bounded SVG previews and rejects invalid or oversized values", () => {
+    expect(normalizeNotebookPreviewSvg("<svg></svg>")).toBe("<svg></svg>");
+    expect(normalizeNotebookPreviewSvg("not svg")).toBeUndefined();
+    expect(
+      normalizeNotebookPreviewSvg(`<svg>${"x".repeat(120_000)}</svg>`)
+    ).toBeUndefined();
+  });
   it("converts legacy pen and highlighter strokes to importable SVG", () => {
     const svg = legacyStrokesToJsDrawSvg(
       [

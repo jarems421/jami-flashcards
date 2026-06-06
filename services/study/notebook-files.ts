@@ -1,4 +1,9 @@
-import { getDownloadURL, ref, uploadBytesResumable } from "firebase/storage";
+import {
+  deleteObject,
+  getDownloadURL,
+  ref,
+  uploadBytesResumable,
+} from "firebase/storage";
 import { storage } from "@/services/firebase/client";
 import { createNotebookFileMetadata } from "@/services/study/notebooks";
 import type { NotebookFile } from "@/lib/workspace/notebooks";
@@ -73,8 +78,9 @@ export async function uploadNotebookFile(input: {
   folderId: string;
   file: File;
   onProgress?: (progress: number) => void;
+  pageCount?: number;
 }): Promise<NotebookFile> {
-  const { userId, notebookId, folderId, file, onProgress } = input;
+  const { userId, notebookId, folderId, file, onProgress, pageCount } = input;
   validateNotebookUploadFile(file);
 
   const fileId =
@@ -119,8 +125,14 @@ export async function uploadNotebookFile(input: {
       fileType: file.type,
       storagePath,
       sizeBytes: file.size,
+      pageCount,
     });
   } catch (error) {
+    try {
+      await deleteObject(storageRef);
+    } catch {
+      // The object may not have completed uploading.
+    }
     throw new Error(getUploadErrorMessage(error));
   }
 }
@@ -129,4 +141,10 @@ export async function getNotebookFileDownloadUrl(storagePath: string) {
   const normalizedPath = storagePath.trim();
   if (!normalizedPath) throw new Error("Missing notebook file path.");
   return getDownloadURL(ref(storage, normalizedPath));
+}
+
+export async function deleteNotebookFile(storagePath: string) {
+  const normalizedPath = storagePath.trim();
+  if (!normalizedPath) return;
+  await deleteObject(ref(storage, normalizedPath));
 }

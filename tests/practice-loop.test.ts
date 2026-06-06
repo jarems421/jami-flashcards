@@ -606,6 +606,7 @@ describe("Jami notebook-first learning foundations", () => {
       fileName: "  Biology paper.pdf  ",
       fileType: "application/pdf",
       storagePath: "users/alice/notebookFiles/notebook-1/file-1-biology-paper.pdf",
+      pageCount: 3,
       sizeBytes: 1024,
       now: 70,
     });
@@ -617,6 +618,7 @@ describe("Jami notebook-first learning foundations", () => {
       folderId: "folder-1",
       fileName: "Biology paper.pdf",
       fileType: "application/pdf",
+      pageCount: 3,
       sizeBytes: 1024,
       uploadedAt: 70,
     });

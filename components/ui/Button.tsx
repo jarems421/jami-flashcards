@@ -1,13 +1,18 @@
-import { forwardRef, type ButtonHTMLAttributes } from "react";
+import Link, { type LinkProps } from "next/link";
+import {
+  forwardRef,
+  type AnchorHTMLAttributes,
+  type ButtonHTMLAttributes,
+} from "react";
 
-type ButtonVariant =
+export type ButtonVariant =
   | "primary"
   | "secondary"
   | "ghost"
   | "surface"
   | "danger"
   | "warm";
-type ButtonSize = "sm" | "md" | "lg" | "icon";
+export type ButtonSize = "sm" | "md" | "lg" | "icon";
 
 type ButtonProps = ButtonHTMLAttributes<HTMLButtonElement> & {
   variant?: ButtonVariant;
@@ -32,6 +37,14 @@ const sizeClasses: Record<ButtonSize, string> = {
   icon: "h-10 w-10 justify-center p-0",
 };
 
+function getButtonClassName(
+  variant: ButtonVariant,
+  size: ButtonSize,
+  className = ""
+) {
+  return `relative inline-flex items-center justify-center overflow-hidden rounded-[2rem] font-medium tracking-[0.01em] transition duration-fast ease-spring disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:!shadow-none disabled:saturate-[0.82] ${variantClasses[variant]} ${sizeClasses[size]} ${className}`;
+}
+
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   {
     variant = "primary",
@@ -45,12 +58,41 @@ const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   return (
     <button
       ref={ref}
-      className={`relative inline-flex items-center justify-center overflow-hidden rounded-[2rem] font-medium tracking-[0.01em] transition duration-fast ease-spring disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:!shadow-none disabled:saturate-[0.82] ${variantClasses[variant]} ${sizeClasses[size]} ${className}`}
+      className={getButtonClassName(variant, size, className)}
       {...props}
     >
       {children}
     </button>
   );
 });
+
+type ButtonLinkProps = LinkProps &
+  Omit<AnchorHTMLAttributes<HTMLAnchorElement>, keyof LinkProps> & {
+    variant?: ButtonVariant;
+    size?: ButtonSize;
+  };
+
+export const ButtonLink = forwardRef<HTMLAnchorElement, ButtonLinkProps>(
+  function ButtonLink(
+    {
+      variant = "primary",
+      size = "md",
+      className = "",
+      children,
+      ...props
+    },
+    ref
+  ) {
+    return (
+      <Link
+        ref={ref}
+        className={getButtonClassName(variant, size, className)}
+        {...props}
+      >
+        {children}
+      </Link>
+    );
+  }
+);
 
 export default Button;

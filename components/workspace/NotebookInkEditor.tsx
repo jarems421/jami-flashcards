@@ -321,6 +321,28 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       editorRef.current?.setReadOnly(readOnly);
     }, [readOnly]);
 
+    useEffect(() => {
+      const cancelInteractions = () => {
+        if (activePointersRef.current.size === 0) return;
+        activePointersRef.current.clear();
+        callbacksRef.current.onInteractionChange(false);
+        setEraserCursor((current) =>
+          current.visible ? { ...current, visible: false } : current
+        );
+      };
+      const handleVisibilityChange = () => {
+        if (document.visibilityState !== "visible") cancelInteractions();
+      };
+      window.addEventListener("blur", cancelInteractions);
+      window.addEventListener("pagehide", cancelInteractions);
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      return () => {
+        window.removeEventListener("blur", cancelInteractions);
+        window.removeEventListener("pagehide", cancelInteractions);
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+      };
+    }, []);
+
     const finishPointerInteraction = useCallback((pointerId: number) => {
       if (!activePointersRef.current.delete(pointerId)) return;
       if (activePointersRef.current.size > 0) return;
@@ -404,7 +426,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           <div
             aria-hidden="true"
             data-testid="notebook-eraser-cursor"
-            className="pointer-events-none absolute z-30 -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-950/60 bg-white/10 shadow-[0_2px_10px_rgba(15,23,42,0.18)]"
+            className="pointer-events-none absolute z-30 box-border aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-950/60 bg-transparent shadow-none"
             style={{
               left: eraserCursor.left,
               top: eraserCursor.top,

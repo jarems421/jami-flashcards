@@ -18,6 +18,7 @@ import {
   shouldPointerDraw,
   shouldPointerDrawEvent,
   shouldPointerSwipePages,
+  shouldSuppressTouchAfterStylus,
 } from "@/lib/workspace/notebook-inking";
 import {
   getFreehandOutline,
@@ -112,6 +113,30 @@ describe("notebook inking helpers", () => {
       pressure: 0.5,
       time: 32,
     });
+  });
+
+  it("suppresses touch navigation during stylus input and its palm cooldown", () => {
+    expect(
+      shouldSuppressTouchAfterStylus({
+        stylusActive: true,
+        cooldownUntil: 0,
+        now: 100,
+      })
+    ).toBe(true);
+    expect(
+      shouldSuppressTouchAfterStylus({
+        stylusActive: false,
+        cooldownUntil: 180,
+        now: 100,
+      })
+    ).toBe(true);
+    expect(
+      shouldSuppressTouchAfterStylus({
+        stylusActive: false,
+        cooldownUntil: 180,
+        now: 181,
+      })
+    ).toBe(false);
   });
 
   it("normalizes preset and custom notebook stroke colors", () => {

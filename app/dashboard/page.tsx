@@ -29,7 +29,7 @@ import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
-import { Card, FeedbackBanner, IconBubble, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
+import { Button, ButtonLink, Card, FeedbackBanner, IconBubble, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { loadInAppUsername } from "@/services/profile";
 import { getStudyDayKey } from "@/lib/study/day";
@@ -118,14 +118,15 @@ function GettingStartedChecklist({
         <SectionHeader
           title="Getting started"
         />
-        <button
+        <Button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="app-button-secondary inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
+          variant="secondary"
+          size="sm"
           aria-expanded={open}
         >
           {open ? "Hide" : "Show"}
-        </button>
+        </Button>
       </div>
       {open ? (
         <div className="mt-5 grid gap-3 md:grid-cols-2">
@@ -169,15 +170,13 @@ function ActionPill({
   children: ReactNode;
   variant?: "primary" | "secondary";
 }) {
-  const className =
-    variant === "primary"
-      ? "app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
-      : "app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium";
-
   return (
-    <Link href={href} className={className}>
+    <ButtonLink
+      href={href}
+      variant={variant === "primary" ? "primary" : "secondary"}
+    >
       {children}
-    </Link>
+    </ButtonLink>
   );
 }
 
@@ -440,14 +439,15 @@ function HowJamiWorksCard({ compact }: { compact: boolean }) {
         <SectionHeader
           title="How Jami works"
         />
-        <button
+        <Button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="app-button-secondary inline-flex min-h-[2.5rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
+          variant="secondary"
+          size="sm"
           aria-expanded={open}
         >
           {open ? "Hide" : "Show"}
-        </button>
+        </Button>
       </div>
       {!open ? null : (
       <div className="mt-5 grid gap-2 sm:grid-cols-4">
@@ -765,7 +765,7 @@ export default function DashboardHome() {
             </>
           }
           aside={
-            <div className="app-subtle-panel grid min-w-[14rem] gap-3 rounded-[1.7rem] p-4">
+            <div className="app-subtle-panel grid w-full min-w-0 grid-cols-2 gap-3 rounded-[1.4rem] p-4 sm:min-w-[14rem] sm:grid-cols-1">
               <div>
                 <div className="text-xs text-text-muted">Reviewed today</div>
                 <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">{isLoading ? "..." : todayReviews}</div>
@@ -792,7 +792,7 @@ export default function DashboardHome() {
             <TodayStatusRow plan={todayPlan} />
             <SecondaryActionsPanel plan={todayPlan} />
 
-            <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-3">
+            <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-4">
               <TodayReviewCard plan={todayPlan} />
               {todayPlan.drafts.length > 0 ? <DraftQueueCard plan={todayPlan} /> : null}
               {todayPlan.weakTopics.length > 0 ? <WeakTopicsCard plan={todayPlan} /> : null}

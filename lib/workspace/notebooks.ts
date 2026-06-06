@@ -90,6 +90,8 @@ export type Notebook = {
   pageColor: NotebookPageColor;
   pageStyle: NotebookPageStyle;
   uploadedFileId?: string;
+  previewInkSvg?: string;
+  previewPageId?: string;
   createdAt: number;
   updatedAt: number;
   archived: boolean;
@@ -107,6 +109,8 @@ export type NotebookPage = {
   inkData?: NotebookInkData;
   strokeData?: NotebookStrokeData;
   imageRefs: NotebookImageRef[];
+  backgroundFileId?: string;
+  pdfPageIndex?: number;
   pageColor: NotebookPageColor;
   pageStyle: NotebookPageStyle;
   status: NotebookPageStatus;
@@ -126,6 +130,7 @@ export type NotebookFile = {
   fileType: string;
   storagePath: string;
   sizeBytes?: number;
+  pageCount?: number;
   uploadedAt: number;
   createdAt: number;
   updatedAt: number;
@@ -145,6 +150,7 @@ export const MAX_NOTEBOOK_STROKE_POINTS = 1_200;
 export const MAX_NOTEBOOK_FILE_NAME_LENGTH = 500;
 export const MAX_NOTEBOOK_FILE_TYPE_LENGTH = 120;
 export const MAX_NOTEBOOK_FILE_STORAGE_PATH_LENGTH = 1_000;
+export const MAX_NOTEBOOK_PREVIEW_SVG_LENGTH = 120_000;
 export const MIN_NOTEBOOK_TEXT_BLOCK_WIDTH = 120;
 export const MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT = 48;
 
@@ -289,6 +295,17 @@ function normalizeInkData(value: unknown): NotebookInkData | undefined {
     format: "js-draw-svg",
     svg: data.svg,
   };
+}
+
+export function normalizeNotebookPreviewSvg(value: unknown) {
+  if (
+    typeof value !== "string" ||
+    value.length > MAX_NOTEBOOK_PREVIEW_SVG_LENGTH ||
+    !value.trimStart().startsWith("<svg")
+  ) {
+    return undefined;
+  }
+  return value;
 }
 
 function normalizeImageRefs(value: unknown): NotebookImageRef[] {
@@ -471,6 +488,8 @@ export function mapNotebookData(id: string, data: Record<string, unknown>): Note
     pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
     pageStyle: isNotebookPageStyle(data.pageStyle) ? data.pageStyle : "plain",
     uploadedFileId: normalizeOptionalString(data.uploadedFileId, 160),
+    previewInkSvg: normalizeNotebookPreviewSvg(data.previewInkSvg),
+    previewPageId: normalizeOptionalString(data.previewPageId, 160),
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
     archived: data.archived === true,
@@ -500,6 +519,13 @@ export function mapNotebookPageData(
     inkData: normalizeInkData(data.inkData),
     strokeData: normalizeStrokeData(data.strokeData),
     imageRefs: normalizeImageRefs(data.imageRefs),
+    backgroundFileId: normalizeOptionalString(data.backgroundFileId, 160),
+    pdfPageIndex:
+      typeof data.pdfPageIndex === "number" &&
+      Number.isFinite(data.pdfPageIndex) &&
+      data.pdfPageIndex >= 0
+        ? Math.round(data.pdfPageIndex)
+        : undefined,
     pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
     pageStyle: isNotebookPageStyle(data.pageStyle) ? data.pageStyle : "plain",
     status: isNotebookPageStatus(data.status) ? data.status : "blank",
@@ -525,6 +551,8 @@ export function buildNotebookPayload(input: {
   pageColor?: NotebookPageColor;
   pageStyle?: NotebookPageStyle;
   uploadedFileId?: string;
+  previewInkSvg?: string;
+  previewPageId?: string;
   now?: number;
 }) {
   const folderId = input.folderId.trim();
@@ -551,6 +579,8 @@ export function buildNotebookPayload(input: {
     pageColor: input.pageColor ?? "white",
     pageStyle: input.pageStyle ?? "plain",
     uploadedFileId: normalizeOptionalString(input.uploadedFileId, 160) ?? null,
+    previewInkSvg: normalizeNotebookPreviewSvg(input.previewInkSvg) ?? null,
+    previewPageId: normalizeOptionalString(input.previewPageId, 160) ?? null,
     archived: false,
     createdAt: now,
     updatedAt: now,
@@ -568,6 +598,8 @@ export function buildNotebookPagePayload(input: {
   inkData?: NotebookInkData;
   strokeData?: NotebookStrokeData;
   imageRefs?: NotebookImageRef[];
+  backgroundFileId?: string;
+  pdfPageIndex?: number;
   pageColor?: NotebookPageColor;
   pageStyle?: NotebookPageStyle;
   status?: NotebookPageStatus;
@@ -609,6 +641,13 @@ export function buildNotebookPagePayload(input: {
     inkData: inkData ?? null,
     strokeData: strokeData ?? null,
     imageRefs: (input.imageRefs ?? []).slice(0, MAX_NOTEBOOK_IMAGE_REFS),
+    backgroundFileId: normalizeOptionalString(input.backgroundFileId, 160) ?? null,
+    pdfPageIndex:
+      typeof input.pdfPageIndex === "number" &&
+      Number.isFinite(input.pdfPageIndex) &&
+      input.pdfPageIndex >= 0
+        ? Math.round(input.pdfPageIndex)
+        : null,
     pageColor: input.pageColor ?? "white",
     pageStyle: input.pageStyle ?? "plain",
     status: input.status ?? "blank",
@@ -637,6 +676,12 @@ export function mapNotebookFileData(id: string, data: Record<string, unknown>): 
       typeof data.sizeBytes === "number" && Number.isFinite(data.sizeBytes)
         ? Math.max(0, Math.round(data.sizeBytes))
         : undefined,
+    pageCount:
+      typeof data.pageCount === "number" &&
+      Number.isFinite(data.pageCount) &&
+      data.pageCount > 0
+        ? Math.round(data.pageCount)
+        : undefined,
     uploadedAt: typeof data.uploadedAt === "number" ? data.uploadedAt : 0,
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
@@ -650,6 +695,7 @@ export function buildNotebookFilePayload(input: {
   fileType: string;
   storagePath: string;
   sizeBytes?: number;
+  pageCount?: number;
   now?: number;
 }) {
   const notebookId = input.notebookId.trim();
@@ -674,6 +720,12 @@ export function buildNotebookFilePayload(input: {
     sizeBytes:
       typeof input.sizeBytes === "number" && Number.isFinite(input.sizeBytes)
         ? Math.max(0, Math.round(input.sizeBytes))
+        : null,
+    pageCount:
+      typeof input.pageCount === "number" &&
+      Number.isFinite(input.pageCount) &&
+      input.pageCount > 0
+        ? Math.round(input.pageCount)
         : null,
     uploadedAt: now,
     createdAt: now,

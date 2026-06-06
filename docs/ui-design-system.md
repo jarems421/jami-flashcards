@@ -147,7 +147,7 @@ Library is a focused source workspace, not a file manager.
 - Make the selected source feel central: source list, source preview, source actions.
 - Source actions should feed the Jami loop: Tutor context, flashcard drafts, practice drafts, topics, Today, and Progress.
 - Keep AI generation small and draft-only until the student approves it.
-- Library file support is still metadata/reference only. Notebook uploaded-file support may store the original PDF/image, but do not imply OCR, PDF reading, automatic parsing, or annotation exists.
+- Library file support is still metadata/reference only. Notebook uploaded-file support may count and raster-render PDF pages as immutable notebook backgrounds with ink overlays, but must not imply OCR, text extraction, semantic reading, or PDF editing.
 
 ## Component Rules
 
@@ -208,9 +208,9 @@ Do not use or build:
 - Figma design-to-code
 - Anywhere
 - OCR
-- PDF parsing
+- PDF text extraction or semantic parsing
 - Library file storage upload
-- PDF annotation
+- PDF editing or mutation (notebook ink overlays on immutable raster pages are allowed)
 - full-paper mode
 - automatic mark schemes
 - browser extension

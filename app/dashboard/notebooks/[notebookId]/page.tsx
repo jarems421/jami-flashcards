@@ -19,6 +19,7 @@ import {
   NotebookInkEditor,
   type NotebookInkEditorHandle,
 } from "@/components/workspace/NotebookInkEditor";
+import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import {
   normalizeObjectColor,
@@ -28,6 +29,7 @@ import {
 } from "@/components/workspace/object-card-styles";
 import {
   Button,
+  ButtonLink,
   Card,
   EmptyState,
   FeedbackBanner,
@@ -91,6 +93,7 @@ import {
   shouldPointerDraw,
   shouldPointerDrawEvent,
   shouldPointerSwipePages,
+  shouldSuppressTouchAfterStylus,
   type PointerClientSample,
 } from "@/lib/workspace/notebook-inking";
 import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
@@ -100,9 +103,10 @@ import {
   getNotebookById,
   getNotebookFiles,
   getNotebookPages,
+  saveNotebookPageSnapshot,
   updateNotebook,
-  updateNotebookPage,
 } from "@/services/study/notebooks";
+import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
 import { getNotebookFileDownloadUrl } from "@/services/study/notebook-files";
 import {
   legacyStrokesToJsDrawSvg,
@@ -112,6 +116,7 @@ import {
   buildNotebookPageSearch,
   getNotebookPageIdFromSearch,
 } from "@/lib/workspace/notebook-navigation";
+import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
@@ -556,9 +561,13 @@ function buildThumbnailPoints(points: InkPoint[]) {
 function NotebookPageThumbnail({
   page,
   notebook,
+  backgroundFile,
+  backgroundUrl,
 }: {
   page: NotebookPage;
   notebook: Notebook;
+  backgroundFile?: NotebookFile;
+  backgroundUrl?: string;
 }) {
   const pageColor = page.pageColor ?? notebook.pageColor ?? "white";
   const pageStyle = page.pageStyle ?? notebook.pageStyle ?? "plain";
@@ -571,6 +580,23 @@ function NotebookPageThumbnail({
       className={`relative mb-2 aspect-[900/1240] overflow-hidden rounded-[0.65rem] border shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
       style={getPageStyleBackground(pageColor, pageStyle)}
     >
+      {backgroundUrl && backgroundFile?.fileType.startsWith("image/") ? (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-contain bg-center bg-no-repeat"
+          style={{ backgroundImage: `url("${backgroundUrl}")` }}
+        />
+      ) : null}
+      {backgroundUrl && backgroundFile?.fileType === "application/pdf" ? (
+        <NotebookPdfPage
+          aria-hidden="true"
+          url={backgroundUrl}
+          pageIndex={page.pdfPageIndex ?? 0}
+          lazy
+          maxPixelRatio={1.25}
+          className="absolute inset-0"
+        />
+      ) : null}
       {inkSvg ? (
         <Image
           alt=""
@@ -720,8 +746,6 @@ type NotebookIconName =
   | "chevron"
   | "trash"
   | "dots"
-  | "zoomIn"
-  | "zoomOut"
   | "fit";
 
 function NotebookIcon({ name }: { name: NotebookIconName }) {
@@ -806,18 +830,6 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
           <circle cx="6.5" cy="12" r="1.35" fill="currentColor" />
           <circle cx="12" cy="12" r="1.35" fill="currentColor" />
           <circle cx="17.5" cy="12" r="1.35" fill="currentColor" />
-        </>
-      ) : null}
-      {name === "zoomIn" ? (
-        <>
-          <circle {...common} cx="10.5" cy="10.5" r="5.5" />
-          <path {...common} d="m15 15 4.5 4.5M10.5 8v5M8 10.5h5" />
-        </>
-      ) : null}
-      {name === "zoomOut" ? (
-        <>
-          <circle {...common} cx="10.5" cy="10.5" r="5.5" />
-          <path {...common} d="m15 15 4.5 4.5M8 10.5h5" />
         </>
       ) : null}
       {name === "fit" ? (
@@ -1041,11 +1053,14 @@ export default function NotebookEditorPage() {
   const [notebookTitle, setNotebookTitle] = useState("");
   const [notebookColor, setNotebookColor] = useState<ObjectColorId>("sky");
   const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
-  const [notebookDefaultPageColor, setNotebookDefaultPageColor] =
-    useState<NotebookPageColor>("white");
   const [notebookDefaultPageStyle, setNotebookDefaultPageStyle] =
     useState<NotebookPageStyle>("plain");
   const [savingNotebookSettings, setSavingNotebookSettings] = useState(false);
+  const [notebookFile, setNotebookFile] = useState<File | null>(null);
+  const [notebookUploadProgress, setNotebookUploadProgress] = useState<number | null>(
+    null
+  );
+  const [addingNotebookFile, setAddingNotebookFile] = useState(false);
   const [aiPlaceholderOpen, setAiPlaceholderOpen] = useState(false);
   const [pagesDrawerOpen, setPagesDrawerOpen] = useState(false);
   const [penMenuOpen, setPenMenuOpen] = useState(false);
@@ -1087,6 +1102,8 @@ export default function NotebookEditorPage() {
   const latestSaveIdRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
   const touchInkHintTimeoutRef = useRef<number | null>(null);
+  const stylusInteractionRef = useRef(false);
+  const stylusCooldownUntilRef = useRef(0);
   const hydratedPageIdRef = useRef<string | null>(null);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
   const fullNotebookEditingEnabledRef = useRef(fullNotebookEditingEnabled);
@@ -1104,6 +1121,10 @@ export default function NotebookEditorPage() {
   const selectedPageIndex = useMemo(
     () => pages.findIndex((page) => page.id === selectedPage?.id),
     [pages, selectedPage?.id]
+  );
+  const hasMappedBackgroundPages = useMemo(
+    () => pages.some((page) => Boolean(page.backgroundFileId)),
+    [pages]
   );
   const swipeAdjacentPage =
     pageSwipeOffset < 0
@@ -1125,9 +1146,20 @@ export default function NotebookEditorPage() {
     );
   }, [selectedPage]);
   const activeNotebookFile = useMemo(() => {
-    if (!notebook?.uploadedFileId) return files[0] ?? null;
-    return files.find((file) => file.id === notebook.uploadedFileId) ?? files[0] ?? null;
-  }, [files, notebook?.uploadedFileId]);
+    const backgroundFileId = resolveNotebookPageBackgroundFileId({
+      pageBackgroundFileId: selectedPage?.backgroundFileId,
+      notebookUploadedFileId: notebook?.uploadedFileId,
+      firstFileId: files[0]?.id,
+      hasMappedPages: hasMappedBackgroundPages,
+    });
+    if (!backgroundFileId) return files[0] ?? null;
+    return files.find((file) => file.id === backgroundFileId) ?? files[0] ?? null;
+  }, [
+    files,
+    hasMappedBackgroundPages,
+    notebook?.uploadedFileId,
+    selectedPage?.backgroundFileId,
+  ]);
   const activeNotebookFileUrl = activeNotebookFile ? fileUrls[activeNotebookFile.id] : undefined;
   const landscapeFitZoom = useMemo(() => {
     if (!editorViewport.isLandscape || editorViewport.height <= 0) return 1;
@@ -1574,6 +1606,8 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     const clearActiveInteractions = () => {
       finishActiveStroke();
+      stylusInteractionRef.current = false;
+      stylusCooldownUntilRef.current = Date.now() + 180;
       touchPointersRef.current.clear();
       pinchZoomRef.current = null;
       pageSwipeRef.current = null;
@@ -1635,6 +1669,17 @@ export default function NotebookEditorPage() {
 
   const handleTouchPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType !== "touch") return false;
+    if (
+      shouldSuppressTouchAfterStylus({
+        stylusActive: stylusInteractionRef.current,
+        cooldownUntil: stylusCooldownUntilRef.current,
+        now: Date.now(),
+      })
+    ) {
+      event.preventDefault();
+      event.stopPropagation();
+      return true;
+    }
     updateTouchPointer(event);
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.setPointerCapture(event.pointerId);
@@ -2003,12 +2048,12 @@ export default function NotebookEditorPage() {
         const status: NotebookPageStatus =
           typedContent.trim() || input.hasInk ? "working" : "blank";
         const inkData = makeNotebookInkData(input.inkSvg);
-        await updateNotebookPage(user.uid, input.page.id, {
+        await saveNotebookPageSnapshot(user.uid, {
+          notebookId: input.page.notebookId,
+          pageId: input.page.id,
           typedContent,
           textBlocks: persistedTextBlocks,
           inkData,
-          strokeData: null,
-          pageColor: input.pageColor,
           pageStyle: input.pageStyle,
           status,
         });
@@ -2042,6 +2087,19 @@ export default function NotebookEditorPage() {
                 }
               : page
           )
+        );
+        setNotebook((current) =>
+          current
+            ? {
+                ...current,
+                previewInkSvg:
+                  input.inkSvg.length <= 120_000
+                    ? input.inkSvg
+                    : undefined,
+                previewPageId: input.page.id,
+                updatedAt: Date.now(),
+              }
+            : current
         );
         if (canUpdateLivePage) {
           setTextBlocks(persistedTextBlocks);
@@ -2213,7 +2271,7 @@ export default function NotebookEditorPage() {
   );
 
   const selectPageByOffset = useCallback(
-    async (offset: -1 | 1) => {
+    async (offset: -1 | 1, animate = true) => {
       if (selectedPageIndex < 0) return false;
       const nextIndex = getNotebookPageIndexAfterSwipe({
         currentIndex: selectedPageIndex,
@@ -2224,7 +2282,7 @@ export default function NotebookEditorPage() {
       const nextPage = pages[nextIndex];
       if (!nextPage) return false;
       const selected = await selectPageById(nextPage.id);
-      if (selected) {
+      if (selected && animate) {
         setPageTransitionDirection(offset === 1 ? "next" : "previous");
       }
       return selected;
@@ -2429,7 +2487,7 @@ export default function NotebookEditorPage() {
         swipe.completed = true;
         setPageSwipeOffset(direction === "next" ? -pageWidth * 1.06 : pageWidth * 1.06);
         window.setTimeout(() => {
-          void selectPageByOffset(direction === "next" ? 1 : -1).finally(() => {
+          void selectPageByOffset(direction === "next" ? 1 : -1, false).finally(() => {
             setPageSwipeOffset(0);
             setPageSwipeSettling(false);
           });
@@ -2886,10 +2944,49 @@ export default function NotebookEditorPage() {
     setNotebookTitle(notebook.title);
     setNotebookColor(normalizeObjectColor(notebook.color));
     setNotebookIcon(normalizeObjectIcon(notebook.icon));
-    setNotebookDefaultPageColor(notebook.pageColor ?? "white");
     setNotebookDefaultPageStyle(notebook.pageStyle ?? "plain");
     setShowNotebookSettings(true);
+    if (typeof window !== "undefined") {
+      const search = new URLSearchParams(window.location.search);
+      search.set("settings", "1");
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}?${search.toString()}${window.location.hash}`
+      );
+    }
   };
+
+  const closeNotebookSettings = () => {
+    setShowNotebookSettings(false);
+    setNotebookFile(null);
+    setNotebookUploadProgress(null);
+    if (typeof window !== "undefined") {
+      const search = new URLSearchParams(window.location.search);
+      search.delete("settings");
+      const query = search.toString();
+      window.history.replaceState(
+        window.history.state,
+        "",
+        `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
+      );
+    }
+  };
+
+  useEffect(() => {
+    if (
+      notebook &&
+      typeof window !== "undefined" &&
+      new URLSearchParams(window.location.search).get("settings") === "1" &&
+      !showNotebookSettings
+    ) {
+      setNotebookTitle(notebook.title);
+      setNotebookColor(normalizeObjectColor(notebook.color));
+      setNotebookIcon(normalizeObjectIcon(notebook.icon));
+      setNotebookDefaultPageStyle(notebook.pageStyle ?? "plain");
+      setShowNotebookSettings(true);
+    }
+  }, [notebook, showNotebookSettings]);
 
   const handleSaveNotebookSettings = async () => {
     if (!user?.uid || !notebook) return;
@@ -2900,7 +2997,6 @@ export default function NotebookEditorPage() {
         title: notebookTitle,
         color: notebookColor,
         icon: notebookIcon,
-        pageColor: notebookDefaultPageColor,
         pageStyle: notebookDefaultPageStyle,
       });
       setNotebook((current) =>
@@ -2910,13 +3006,12 @@ export default function NotebookEditorPage() {
               title: notebookTitle.trim() || current.title,
               color: notebookColor,
               icon: notebookIcon,
-              pageColor: notebookDefaultPageColor,
               pageStyle: notebookDefaultPageStyle,
               updatedAt: Date.now(),
             }
           : current
       );
-      setShowNotebookSettings(false);
+      closeNotebookSettings();
       setFeedback({ type: "success", message: "Notebook updated." });
     } catch (error) {
       setFeedback({
@@ -2925,6 +3020,60 @@ export default function NotebookEditorPage() {
       });
     } finally {
       setSavingNotebookSettings(false);
+    }
+  };
+
+  const handleAddNotebookFile = async () => {
+    if (!user?.uid || !notebook || !notebookFile) return;
+    setAddingNotebookFile(true);
+    setNotebookUploadProgress(null);
+    setFeedback(null);
+    try {
+      const appended = await appendUploadedFileToNotebook({
+        userId: user.uid,
+        notebook,
+        existingPageCount: pages.length,
+        file: notebookFile,
+        pageStyle: notebookDefaultPageStyle,
+        onProgress: setNotebookUploadProgress,
+      });
+      const nextPages = [...pages, ...appended.pages].sort(
+        (a, b) => a.pageNumber - b.pageNumber
+      );
+      setPages(nextPages);
+      setFiles((current) => [appended.file, ...current]);
+      if (!notebook.uploadedFileId) {
+        setNotebook((current) =>
+          current
+            ? {
+                ...current,
+                uploadedFileId: appended.file.id,
+                updatedAt: Date.now(),
+              }
+            : current
+        );
+      }
+      setSelectedPageId(appended.pages[0]?.id ?? selectedPageId);
+      setNotebookFile(null);
+      setNotebookUploadProgress(null);
+      closeNotebookSettings();
+      setFeedback({
+        type: "success",
+        message: `${appended.pages.length} ${
+          appended.pages.length === 1 ? "page" : "pages"
+        } added to ${notebook.title}.`,
+      });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not add these pages to the notebook.",
+      });
+    } finally {
+      setAddingNotebookFile(false);
+      setNotebookUploadProgress(null);
     }
   };
 
@@ -2938,7 +3087,7 @@ export default function NotebookEditorPage() {
     try {
       await updateNotebook(user.uid, notebook.id, { archived: true });
       setNotebook((current) => (current ? { ...current, archived: true, updatedAt: Date.now() } : current));
-      setShowNotebookSettings(false);
+      closeNotebookSettings();
       setFeedback({ type: "success", message: "Notebook archived." });
     } catch (error) {
       setFeedback({
@@ -3079,12 +3228,9 @@ export default function NotebookEditorPage() {
           title="Notebook not found"
           description="This notebook may have been removed or belongs to another workspace."
           action={
-            <Link
-              href="/dashboard/folders"
-              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)]"
-            >
+            <ButtonLink href="/dashboard/folders">
               Back to folders
-            </Link>
+            </ButtonLink>
           }
         />
       </AppPage>
@@ -3097,8 +3243,8 @@ export default function NotebookEditorPage() {
       className="notebook-editor-shell fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
-        <header className="z-40 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] backdrop-blur-xl">
-          <div className="flex min-w-0 flex-wrap items-center gap-2">
+        <header className="z-40 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_8px_20px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+          <div className="flex min-w-0 items-center gap-2">
             <Link
               href={`/dashboard/folders/${notebook.folderId}`}
               onClick={(event) => void handleExitNotebook(event)}
@@ -3128,7 +3274,14 @@ export default function NotebookEditorPage() {
                 </div>
               )}
             </div>
-            <div className="flex max-w-full shrink-0 items-center gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+            <div className="app-chip shrink-0 rounded-full px-3 py-1 text-xs font-semibold">
+              {selectedPage ? `${selectedPage.pageNumber} / ${pages.length}` : "No page"}
+            </div>
+          </div>
+          <div
+            className="mt-2 flex max-w-full items-center gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            aria-label="Notebook tools"
+          >
               <ToolbarIconButton
                 label="Pages"
                 icon="pages"
@@ -3152,27 +3305,9 @@ export default function NotebookEditorPage() {
                 }}
               />
               <ToolbarIconButton
-                label="Zoom out"
-                icon="zoomOut"
-                disabled={pageZoom <= 0.85}
-                onClick={() => {
-                  setUserAdjustedZoom(true);
-                  setPageZoom((current) => clampNotebookPageZoom(current - 0.15));
-                }}
-              />
-              <ToolbarIconButton
                 label={`Fit page (${Math.round(pageZoom * 100)}%)`}
                 icon="fit"
                 onClick={fitNotebookPage}
-              />
-              <ToolbarIconButton
-                label="Zoom in"
-                icon="zoomIn"
-                disabled={pageZoom >= 2.4}
-                onClick={() => {
-                  setUserAdjustedZoom(true);
-                  setPageZoom((current) => clampNotebookPageZoom(current + 0.15));
-                }}
               />
               <ToolbarIconButton
                 label="Text box (T)"
@@ -3193,11 +3328,10 @@ export default function NotebookEditorPage() {
                   active={tool === "pen" || penMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    const shouldDeselect = tool === "pen";
-                    setTool(shouldDeselect ? "select" : "pen");
+                    setTool("pen");
                     setHighlighterMenuOpen(false);
                     setEraserMenuOpen(false);
-                    setPenMenuOpen(shouldDeselect ? false : (value) => !value);
+                    setPenMenuOpen((value) => !value);
                   }}
                 >
                   <span
@@ -3205,35 +3339,6 @@ export default function NotebookEditorPage() {
                     style={{ backgroundColor: getNotebookStrokePaintColor(penColor, "pen") }}
                   />
                 </ToolbarIconButton>
-                {penMenuOpen ? (
-                  <div className="absolute right-0 top-12 z-50 w-56 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
-                    <InkColorPicker
-                      label="Pen color"
-                      value={penColor}
-                      presets={["black", "white", "red", "green"]}
-                      getPresetColor={(color) => PEN_COLOR_HEX[color as NotebookPenColor]}
-                      onPresetSelect={(color) => {
-                        setPenColor(color);
-                        setTool("pen");
-                        setPenMenuOpen(false);
-                      }}
-                      onCustomColorChange={(color) => {
-                        setPenColor(color);
-                        setTool("pen");
-                      }}
-                    />
-                    <ThicknessSlider
-                      label="Pen thickness"
-                      percent={penThicknessPercent}
-                      color={getNotebookStrokePaintColor(penColor, "pen")}
-                      previewWidth={getPenWidthFromPercent(penThicknessPercent)}
-                      onChange={(value) => {
-                        setPenThicknessPercent(clampNotebookThicknessPercent(value));
-                        setTool("pen");
-                      }}
-                    />
-                  </div>
-                ) : null}
               </div>
               <div className="relative">
                 <ToolbarIconButton
@@ -3242,11 +3347,10 @@ export default function NotebookEditorPage() {
                   active={tool === "highlighter" || highlighterMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    const shouldDeselect = tool === "highlighter";
-                    setTool(shouldDeselect ? "select" : "highlighter");
+                    setTool("highlighter");
                     setPenMenuOpen(false);
                     setEraserMenuOpen(false);
-                    setHighlighterMenuOpen(shouldDeselect ? false : (value) => !value);
+                    setHighlighterMenuOpen((value) => !value);
                   }}
                 >
                   <span
@@ -3256,37 +3360,6 @@ export default function NotebookEditorPage() {
                     }}
                   />
                 </ToolbarIconButton>
-                {highlighterMenuOpen ? (
-                  <div className="absolute right-0 top-12 z-50 w-56 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
-                    <InkColorPicker
-                      label="Highlighter color"
-                      value={highlighterColor}
-                      presets={["yellow", "green", "pink"]}
-                      getPresetColor={(color) =>
-                        HIGHLIGHTER_COLOR_HEX[color as NotebookHighlighterColor]
-                      }
-                      onPresetSelect={(color) => {
-                        setHighlighterColor(color);
-                        setTool("highlighter");
-                        setHighlighterMenuOpen(false);
-                      }}
-                      onCustomColorChange={(color) => {
-                        setHighlighterColor(color);
-                        setTool("highlighter");
-                      }}
-                    />
-                    <ThicknessSlider
-                      label="Highlighter thickness"
-                      percent={highlighterThicknessPercent}
-                      color={getNotebookStrokePaintColor(highlighterColor, "highlighter")}
-                      previewWidth={getHighlighterWidthFromPercent(highlighterThicknessPercent) / 2}
-                      onChange={(value) => {
-                        setHighlighterThicknessPercent(clampNotebookThicknessPercent(value));
-                        setTool("highlighter");
-                      }}
-                    />
-                  </div>
-                ) : null}
               </div>
               <div className="relative">
                 <ToolbarIconButton
@@ -3295,11 +3368,10 @@ export default function NotebookEditorPage() {
                   active={tool === "eraser" || eraserMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    const shouldDeselect = tool === "eraser";
-                    setTool(shouldDeselect ? "select" : "eraser");
+                    setTool("eraser");
                     setPenMenuOpen(false);
                     setHighlighterMenuOpen(false);
-                    setEraserMenuOpen(shouldDeselect ? false : (value) => !value);
+                    setEraserMenuOpen((value) => !value);
                   }}
                 >
                   <span
@@ -3321,65 +3393,6 @@ export default function NotebookEditorPage() {
                     }}
                   />
                 </ToolbarIconButton>
-                {eraserMenuOpen ? (
-                  <div className="absolute right-0 top-12 z-50 w-56 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[0_18px_42px_rgba(0,0,0,0.28)]">
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["precision", "stroke"] as NotebookEraserMode[]).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          aria-label={`${mode} eraser mode`}
-                          onClick={() => {
-                            setEraserMode(mode);
-                            setTool("eraser");
-                            setEraserMenuOpen(false);
-                          }}
-                          className={`rounded-full border px-3 py-2 text-xs font-semibold capitalize transition ${
-                            eraserMode === mode ? "app-selected" : "app-chip"
-                          }`}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {(["small", "medium", "large"] as EraserWidth[]).map((width) => (
-                        <button
-                          key={width}
-                          type="button"
-                          aria-label={`${width} eraser`}
-                          onClick={() => {
-                            setEraserWidth(width);
-                            setTool("eraser");
-                            setEraserMenuOpen(false);
-                          }}
-                          className={`grid h-11 place-items-center rounded-full border transition ${
-                            eraserWidth === width ? "app-selected" : "app-chip"
-                          }`}
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="rounded-full border-2 border-current"
-                            style={{
-                              width:
-                                width === "small"
-                                  ? "0.7rem"
-                                  : width === "medium"
-                                    ? "1rem"
-                                    : "1.35rem",
-                              height:
-                                width === "small"
-                                  ? "0.7rem"
-                                  : width === "medium"
-                                    ? "1rem"
-                                    : "1.35rem",
-                            }}
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                ) : null}
               </div>
               <ToolbarIconButton
                 label="Undo (Ctrl+Z)"
@@ -3435,8 +3448,137 @@ export default function NotebookEditorPage() {
                   openNotebookSettings();
                 }}
               />
-            </div>
           </div>
+          {penMenuOpen || highlighterMenuOpen || eraserMenuOpen ? (
+            <div className="mx-auto mt-2 w-full max-w-2xl rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
+              {penMenuOpen ? (
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,0.85fr)_minmax(15rem,1.15fr)] sm:items-end">
+                  <InkColorPicker
+                    label="Pen color"
+                    value={penColor}
+                    presets={["black", "white", "red", "green"]}
+                    getPresetColor={(color) => PEN_COLOR_HEX[color as NotebookPenColor]}
+                    onPresetSelect={(color) => {
+                      setPenColor(color);
+                      setTool("pen");
+                    }}
+                    onCustomColorChange={(color) => {
+                      setPenColor(color);
+                      setTool("pen");
+                    }}
+                  />
+                  <ThicknessSlider
+                    label="Pen thickness"
+                    percent={penThicknessPercent}
+                    color={getNotebookStrokePaintColor(penColor, "pen")}
+                    previewWidth={getPenWidthFromPercent(penThicknessPercent)}
+                    onChange={(value) => {
+                      setPenThicknessPercent(clampNotebookThicknessPercent(value));
+                      setTool("pen");
+                    }}
+                  />
+                </div>
+              ) : null}
+              {highlighterMenuOpen ? (
+                <div className="grid gap-3 sm:grid-cols-[minmax(0,0.85fr)_minmax(15rem,1.15fr)] sm:items-end">
+                  <InkColorPicker
+                    label="Highlighter color"
+                    value={highlighterColor}
+                    presets={["yellow", "green", "pink"]}
+                    getPresetColor={(color) =>
+                      HIGHLIGHTER_COLOR_HEX[color as NotebookHighlighterColor]
+                    }
+                    onPresetSelect={(color) => {
+                      setHighlighterColor(color);
+                      setTool("highlighter");
+                    }}
+                    onCustomColorChange={(color) => {
+                      setHighlighterColor(color);
+                      setTool("highlighter");
+                    }}
+                  />
+                  <ThicknessSlider
+                    label="Highlighter thickness"
+                    percent={highlighterThicknessPercent}
+                    color={getNotebookStrokePaintColor(highlighterColor, "highlighter")}
+                    previewWidth={getHighlighterWidthFromPercent(highlighterThicknessPercent) / 2}
+                    onChange={(value) => {
+                      setHighlighterThicknessPercent(clampNotebookThicknessPercent(value));
+                      setTool("highlighter");
+                    }}
+                  />
+                </div>
+              ) : null}
+              {eraserMenuOpen ? (
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div>
+                    <div className="text-xs font-semibold text-text-secondary">
+                      Eraser mode
+                    </div>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      {(["precision", "stroke"] as NotebookEraserMode[]).map((mode) => (
+                        <button
+                          key={mode}
+                          type="button"
+                          aria-label={`${mode} eraser mode`}
+                          onClick={() => {
+                            setEraserMode(mode);
+                            setTool("eraser");
+                          }}
+                          className={`min-h-11 rounded-full border px-3 py-2 text-xs font-semibold capitalize transition ${
+                            eraserMode === mode ? "app-selected" : "app-chip"
+                          }`}
+                        >
+                          {mode}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-xs font-semibold text-text-secondary">
+                      Eraser size
+                    </div>
+                    <div className="mt-2 grid grid-cols-3 gap-2">
+                      {(["small", "medium", "large"] as EraserWidth[]).map((width) => (
+                        <button
+                          key={width}
+                          type="button"
+                          aria-label={`${width} eraser`}
+                          title={`${width[0].toUpperCase()}${width.slice(1)} eraser`}
+                          onClick={() => {
+                            setEraserWidth(width);
+                            setTool("eraser");
+                          }}
+                          className={`grid h-11 place-items-center rounded-full border transition ${
+                            eraserWidth === width ? "app-selected" : "app-chip"
+                          }`}
+                        >
+                          <span
+                            aria-hidden="true"
+                            className="rounded-full border-2 border-current"
+                            style={{
+                              width:
+                                width === "small"
+                                  ? "0.7rem"
+                                  : width === "medium"
+                                    ? "1rem"
+                                    : "1.35rem",
+                              height:
+                                width === "small"
+                                  ? "0.7rem"
+                                  : width === "medium"
+                                    ? "1rem"
+                                    : "1.35rem",
+                            }}
+                          />
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </header>
 
         <div className="relative min-h-0 flex-1 overflow-hidden">
@@ -3458,7 +3600,7 @@ export default function NotebookEditorPage() {
                 eyebrow="Edit notebook"
                 title="Notebook settings"
               />
-              <Button type="button" variant="secondary" onClick={() => setShowNotebookSettings(false)}>
+              <Button type="button" variant="secondary" onClick={closeNotebookSettings}>
                 Close
               </Button>
             </div>
@@ -3476,9 +3618,9 @@ export default function NotebookEditorPage() {
                   title={notebookTitle.trim() || "Notebook preview"}
                   color={notebookColor}
                   icon={notebookIcon}
-                  pageColor={notebookDefaultPageColor}
+                  pageColor={notebook.pageColor}
                   pageStyle={notebookDefaultPageStyle}
-                  updatedLabel={`${PAGE_STYLE_LABELS[notebookDefaultPageStyle]} ${notebookDefaultPageColor}`}
+                  updatedLabel={`${PAGE_STYLE_LABELS[notebookDefaultPageStyle]} ${notebook.pageColor}`}
                   compact
                   className="mt-2"
                 />
@@ -3494,22 +3636,12 @@ export default function NotebookEditorPage() {
                 />
               </div>
             </div>
-            <div className="mt-5">
-              <div className="text-sm font-medium text-text-secondary">Default page colour</div>
-              <div className="mt-2 flex gap-2">
-                {(["white", "black"] as NotebookPageColor[]).map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setNotebookDefaultPageColor(color)}
-                    className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
-                      notebookDefaultPageColor === color ? "app-selected" : "app-chip"
-                    }`}
-                  >
-                    {color}
-                  </button>
-                ))}
-              </div>
+            <div className="mt-5 rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
+              <div className="text-sm font-medium text-text-secondary">Page colour</div>
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                {notebook.pageColor === "black" ? "Black" : "White"} pages were
+                chosen when this notebook was created. New pages keep this colour.
+              </p>
             </div>
             <div className="mt-5">
               <div className="text-sm font-medium text-text-secondary">Default page style</div>
@@ -3527,6 +3659,60 @@ export default function NotebookEditorPage() {
                   </button>
                 ))}
               </div>
+            </div>
+            <div className="mt-5 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+              <div className="text-sm font-semibold text-text-primary">
+                Add PDF or image pages
+              </div>
+              <p className="mt-1 text-sm leading-6 text-text-muted">
+                Add a file to this notebook. Its pages will be placed after the
+                current last page and remain available for ink and text notes.
+              </p>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
+                <label className="min-w-0 flex-1">
+                  <span className="mb-1.5 block text-sm font-medium text-text-secondary">
+                    PDF or image
+                  </span>
+                  <input
+                    type="file"
+                    accept="application/pdf,image/jpeg,image/png,image/webp"
+                    disabled={addingNotebookFile || savingNotebookSettings}
+                    onChange={(event) =>
+                      setNotebookFile(event.target.files?.[0] ?? null)
+                    }
+                    className="block min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed"
+                  />
+                </label>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={
+                    !notebookFile || addingNotebookFile || savingNotebookSettings
+                  }
+                  onClick={() => void handleAddNotebookFile()}
+                >
+                  {addingNotebookFile
+                    ? notebookUploadProgress !== null
+                      ? `Adding ${notebookUploadProgress}%`
+                      : "Adding pages..."
+                    : "Add pages"}
+                </Button>
+              </div>
+              {addingNotebookFile && notebookUploadProgress !== null ? (
+                <div
+                  role="progressbar"
+                  aria-label="Notebook file upload progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={notebookUploadProgress}
+                  className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.08]"
+                >
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
+                    style={{ width: `${notebookUploadProgress}%` }}
+                  />
+                </div>
+              ) : null}
             </div>
             <div className="mt-5 flex flex-wrap gap-2">
               <Button
@@ -3646,7 +3832,34 @@ export default function NotebookEditorPage() {
                         }}
                         className="block w-full rounded-[0.95rem] p-2 text-left transition"
                       >
-                        <NotebookPageThumbnail page={page} notebook={notebook} />
+                        <NotebookPageThumbnail
+                          page={page}
+                          notebook={notebook}
+                          backgroundFile={
+                            files.find(
+                              (file) =>
+                                file.id ===
+                                resolveNotebookPageBackgroundFileId({
+                                  pageBackgroundFileId: page.backgroundFileId,
+                                  notebookUploadedFileId:
+                                    notebook.uploadedFileId,
+                                  firstFileId: files[0]?.id,
+                                  hasMappedPages: hasMappedBackgroundPages,
+                                })
+                            ) ?? files[0]
+                          }
+                          backgroundUrl={
+                            fileUrls[
+                              resolveNotebookPageBackgroundFileId({
+                                pageBackgroundFileId: page.backgroundFileId,
+                                notebookUploadedFileId:
+                                  notebook.uploadedFileId,
+                                firstFileId: files[0]?.id,
+                                hasMappedPages: hasMappedBackgroundPages,
+                              }) ?? ""
+                            ]
+                          }
+                        />
                         <div className="text-xs font-semibold">Page {page.pageNumber}</div>
                         <div className="mt-0.5 truncate pr-8 text-[0.68rem] text-text-muted">
                           {page.textBlocks.some((block) => block.text.trim())
@@ -3710,7 +3923,7 @@ export default function NotebookEditorPage() {
               </Card>
             ) : null}
 
-              <div className="notebook-page-stage relative mx-auto w-full">
+              <div className="notebook-page-stage relative mx-auto w-full overflow-hidden">
                 {swipeAdjacentPage ? (
                   <div
                     aria-hidden="true"
@@ -3725,7 +3938,12 @@ export default function NotebookEditorPage() {
                         : `${CANVAS_WIDTH} / ${Math.round(
                             CANVAS_HEIGHT * NOTEBOOK_PAGE_PORTRAIT_STRETCH
                           )}`,
-                      transform: `translateX(-50%) scale(${0.985 + Math.min(0.015, Math.abs(pageSwipeOffset) / 12000)})`,
+                      transform: `translateX(-50%) translateX(${
+                        pageSwipeOffset < 0 ? "100%" : "-100%"
+                      }) translateX(${pageSwipeOffset}px)`,
+                      transition: pageSwipeSettling
+                        ? "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)"
+                        : "none",
                     }}
                   >
                     <div
@@ -3761,24 +3979,10 @@ export default function NotebookEditorPage() {
                       : `${CANVAS_WIDTH} / ${Math.round(
                           CANVAS_HEIGHT * NOTEBOOK_PAGE_PORTRAIT_STRETCH
                         )}`,
-                    transform: `translateX(${pageSwipeOffset}px) scale(${
-                      pageSwipeOffset === 0
-                        ? 1
-                        : Math.max(
-                            0.982,
-                            1 -
-                              Math.abs(pageSwipeOffset) /
-                                Math.max(1, pageSurfaceRef.current?.clientWidth ?? 1) *
-                                0.018
-                          )
-                    })`,
+                    transform: `translateX(${pageSwipeOffset}px)`,
                     transition: pageSwipeSettling
-                      ? "transform 240ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease"
+                      ? "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)"
                       : "none",
-                    boxShadow:
-                      pageSwipeOffset === 0
-                        ? undefined
-                        : "0 24px 64px rgba(0, 0, 0, 0.3)",
                   }}
                 >
                   <div
@@ -3796,10 +4000,13 @@ export default function NotebookEditorPage() {
                             style={{ backgroundImage: `url("${activeNotebookFileUrl}")` }}
                           />
                         ) : activeNotebookFile.fileType === "application/pdf" ? (
-                          <iframe
-                            title={`Notebook file: ${activeNotebookFile.fileName}`}
-                            src={`${activeNotebookFileUrl}#toolbar=0&navpanes=0&scrollbar=0`}
-                            className="h-full w-full border-0 bg-white"
+                          <NotebookPdfPage
+                            aria-label={`Notebook file: ${activeNotebookFile.fileName}, page ${
+                              (selectedPage.pdfPageIndex ?? 0) + 1
+                            }`}
+                            url={activeNotebookFileUrl}
+                            pageIndex={selectedPage.pdfPageIndex ?? 0}
+                            className="absolute inset-0"
                           />
                         ) : null
                       ) : (
@@ -3844,6 +4051,10 @@ export default function NotebookEditorPage() {
                     }}
                     onInteractionChange={(active) => {
                       inkInteractionActiveRef.current = active;
+                      stylusInteractionRef.current = active;
+                      stylusCooldownUntilRef.current = active
+                        ? Number.POSITIVE_INFINITY
+                        : Date.now() + 180;
                       setInkInteractionActive(active);
                     }}
                     onPointerDown={handlePagePointerDown}

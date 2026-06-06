@@ -357,9 +357,6 @@ function PracticePanel({
             <Button variant="secondary" onClick={() => onCreateNotebook(selectedFolderId || folders[0]?.id, "blank")}>
               Create notebook
             </Button>
-            <Button variant="secondary" onClick={() => onCreateNotebook(selectedFolderId || folders[0]?.id, "uploaded_file")}>
-              Import PDF or image
-            </Button>
             <Button variant="secondary" onClick={() => onCreateNotebook(selectedFolderId || folders[0]?.id, "ai_questions")}>
               AI questions placeholder
             </Button>
@@ -439,9 +436,6 @@ function FoldersPanel(props: {
             <div className="flex flex-wrap gap-2">
               <Button variant="secondary" onClick={() => props.onCreateNotebook(selectedFolder.id, "blank")}>
                 Create notebook
-              </Button>
-              <Button variant="secondary" onClick={() => props.onCreateNotebook(selectedFolder.id, "uploaded_file")}>
-                Import PDF or image
               </Button>
             </div>
           </div>

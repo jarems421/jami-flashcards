@@ -45,10 +45,15 @@ import {
   type LibrarySourceStatusFilter,
   type LibrarySourceTypeFilter,
 } from "@/lib/study/library-navigation";
+import {
+  canRemoveSourceFromFilteredFolder,
+  getLinkedSourceFolders,
+} from "@/lib/study/library-management";
 import { askSourceTutor, generateSourceDrafts } from "@/services/ai/source";
 import AppPage from "@/components/layout/AppPage";
 import {
   Button,
+  ButtonLink,
   Card,
   ConfirmDialog,
   EmptyState,
@@ -409,6 +414,7 @@ export default function LibraryPage() {
   const [managementAction, setManagementAction] =
     useState<SourceManagementAction>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [removalChooserOpen, setRemovalChooserOpen] = useState(false);
 
   useEffect(() => {
     const applyUrlState = () => {
@@ -818,6 +824,7 @@ export default function LibraryPage() {
   };
 
   const openFolderPlacement = () => {
+    setRemovalChooserOpen(false);
     setMobileTab("actions");
     window.requestAnimationFrame(() => {
       document.getElementById("source-folder-placement")?.scrollIntoView({
@@ -1220,10 +1227,64 @@ export default function LibraryPage() {
         onClose={() => setManagementAction(null)}
         onConfirm={() => void deleteSelectedSource()}
       />
+      {removalChooserOpen && selectedSource ? (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center bg-black/45 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="remove-source-folder-title"
+            className="app-panel w-full max-w-md rounded-[1.55rem] p-5 sm:p-6"
+          >
+            <h2
+              id="remove-source-folder-title"
+              className="text-xl font-semibold text-text-primary"
+            >
+              Remove from a folder
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              The source stays in Library and in any other folders.
+            </p>
+            <div className="mt-5 space-y-2">
+              {getLinkedSourceFolders(selectedSource.folderIds, folders).map(
+                (linkedFolder) => {
+                return (
+                  <button
+                    key={linkedFolder.id}
+                    type="button"
+                    className="app-subtle-panel flex min-h-12 w-full items-center justify-between rounded-[1rem] px-4 text-left text-sm font-semibold text-text-primary transition hover:border-[var(--color-border-strong)]"
+                    onClick={() => {
+                      void toggleSourceFolder(linkedFolder.id).then(() => {
+                        setRemovalChooserOpen(false);
+                        setFeedback({
+                          type: "success",
+                          message: `Removed from ${linkedFolder.name}.`,
+                        });
+                      });
+                    }}
+                  >
+                    <span>{linkedFolder.name}</span>
+                    <span className="text-xs text-text-muted">Remove</span>
+                  </button>
+                );
+                }
+              )}
+            </div>
+            <div className="mt-6 flex justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setRemovalChooserOpen(false)}
+              >
+                Cancel
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {sources.length > 0 ? (
         <Card padding="md">
-          <div className="grid gap-3 lg:grid-cols-[minmax(220px,1.4fr)_repeat(4,minmax(0,0.75fr))]">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(4,minmax(150px,0.75fr))]">
             <Input
               aria-label="Search Library"
               placeholder="Search titles and notes"
@@ -1568,14 +1629,15 @@ export default function LibraryPage() {
                   {selectedSource.type === "file" ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
                       {selectedSourceFileUrl ? (
-                        <a
+                        <ButtonLink
                           href={selectedSourceFileUrl}
                           target="_blank"
                           rel="noreferrer"
-                          className="app-button-secondary inline-flex min-h-[2.5rem] items-center justify-center rounded-[2rem] px-4 py-2 text-sm font-semibold transition"
+                          variant="secondary"
+                          size="sm"
                         >
                           Open uploaded file
-                        </a>
+                        </ButtonLink>
                       ) : (
                         <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
                           File saved
@@ -1592,50 +1654,108 @@ export default function LibraryPage() {
                     <Button type="button" onClick={openSelectedSource}>
                       Open
                     </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={openFolderPlacement}
-                    >
-                      Move
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      onClick={() => {
-                        setRenameTitle(selectedSource.title);
-                        setRenameOpen(true);
-                      }}
-                    >
-                      Rename
-                    </Button>
-                    {selectedSource.status === "active" ? (
+                    {canRemoveSourceFromFilteredFolder(
+                      folderFilter,
+                      selectedSource.folderIds
+                    ) ? (
                       <Button
                         type="button"
                         variant="secondary"
-                        onClick={() => setManagementAction("archive")}
+                        onClick={() => {
+                          const folderName =
+                            folders.find((folder) => folder.id === folderFilter)
+                              ?.name ?? "folder";
+                          void toggleSourceFolder(folderFilter).then(() =>
+                            setFeedback({
+                              type: "success",
+                              message: `Removed from ${folderName}.`,
+                            })
+                          );
+                        }}
                       >
-                        Archive
+                        Remove from{" "}
+                        {folders.find((folder) => folder.id === folderFilter)
+                          ?.name ?? "folder"}
                       </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        disabled={busyAction === "restore-source"}
-                        onClick={() => void restoreSelectedSource()}
-                      >
-                        {busyAction === "restore-source"
-                          ? "Restoring..."
-                          : "Restore"}
-                      </Button>
-                    )}
-                    <Button
-                      type="button"
-                      variant="danger"
-                      onClick={() => setManagementAction("delete")}
-                    >
-                      Delete
-                    </Button>
+                    ) : null}
+                    <details className="group/source-actions relative">
+                      <summary className="app-button-secondary inline-flex min-h-[2.75rem] cursor-pointer list-none items-center justify-center rounded-[2rem] px-4 py-2 text-sm font-medium [&::-webkit-details-marker]:hidden">
+                        More actions
+                      </summary>
+                      <div className="absolute left-0 top-[calc(100%+0.5rem)] z-40 grid min-w-56 gap-1 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-2 shadow-[var(--shadow-shell)]">
+                        <button
+                          type="button"
+                          className="rounded-xl px-3 py-2 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                          onClick={(event) => {
+                            event.currentTarget
+                              .closest("details")
+                              ?.removeAttribute("open");
+                            setRenameTitle(selectedSource.title);
+                            setRenameOpen(true);
+                          }}
+                        >
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-xl px-3 py-2 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                          onClick={(event) => {
+                            event.currentTarget
+                              .closest("details")
+                              ?.removeAttribute("open");
+                            openFolderPlacement();
+                          }}
+                        >
+                          Manage folders
+                        </button>
+                        {!folderFilter &&
+                        selectedSource.folderIds.length > 0 ? (
+                          <button
+                            type="button"
+                            className="rounded-xl px-3 py-2 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                            onClick={(event) => {
+                              event.currentTarget
+                                .closest("details")
+                                ?.removeAttribute("open");
+                              setRemovalChooserOpen(true);
+                            }}
+                          >
+                            Remove from folder...
+                          </button>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={busyAction === "restore-source"}
+                          className="rounded-xl px-3 py-2 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:opacity-50"
+                          onClick={(event) => {
+                            event.currentTarget
+                              .closest("details")
+                              ?.removeAttribute("open");
+                            if (selectedSource.status === "active") {
+                              setManagementAction("archive");
+                            } else {
+                              void restoreSelectedSource();
+                            }
+                          }}
+                        >
+                          {selectedSource.status === "active"
+                            ? "Archive"
+                            : "Restore"}
+                        </button>
+                        <button
+                          type="button"
+                          className="rounded-xl px-3 py-2 text-left text-sm font-semibold text-[var(--color-error-text)] hover:bg-[var(--color-error-muted)]"
+                          onClick={(event) => {
+                            event.currentTarget
+                              .closest("details")
+                              ?.removeAttribute("open");
+                            setManagementAction("delete");
+                          }}
+                        >
+                          Delete from Library
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 </Card>
                 <Card padding="lg">

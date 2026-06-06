@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import ObjectIcon from "@/components/workspace/ObjectIcon";
 import { getObjectColorPreset } from "@/components/workspace/object-card-styles";
 
@@ -19,9 +20,10 @@ export type NotebookObjectCardProps = {
   pageStyle?: string;
   pageCount?: number;
   updatedLabel?: string;
+  previewInkSvg?: string;
   href?: string;
   onClick?: () => void;
-  onRename?: () => void;
+  onEdit?: () => void;
   onArchive?: () => void;
   className?: string;
   compact?: boolean;
@@ -36,6 +38,7 @@ function NotebookCardInner({
   pageStyle,
   pageCount,
   updatedLabel,
+  previewInkSvg,
   compact,
 }: NotebookObjectCardProps) {
   const preset = getObjectColorPreset(color);
@@ -87,10 +90,24 @@ function NotebookCardInner({
           >
             <div className="absolute inset-y-0 left-0 w-3 rounded-l-[0.66rem] border-r border-black/15 bg-black/10" aria-hidden="true" />
             <div className="absolute inset-y-2 right-1.5 w-px bg-white/28" aria-hidden="true" />
-            <ObjectIcon
-              icon={icon}
-              className="absolute left-[53%] top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-white/88"
-            />
+            {previewInkSvg ? (
+              <div className="absolute inset-y-5 left-5 right-4 overflow-hidden rounded-[0.35rem] border border-black/10 bg-white shadow-inner">
+                <Image
+                  alt=""
+                  aria-hidden="true"
+                  src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(previewInkSvg)}`}
+                  fill
+                  unoptimized
+                  sizes="5rem"
+                  className="object-fill opacity-80"
+                />
+              </div>
+            ) : (
+              <ObjectIcon
+                icon={icon}
+                className="absolute left-[53%] top-1/2 h-6 w-6 -translate-x-1/2 -translate-y-1/2 text-white/88"
+              />
+            )}
           </div>
         </div>
       </div>
@@ -129,7 +146,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
     </div>
   );
 
-  if (!props.onRename && !props.onArchive) return card;
+  if (!props.onEdit && !props.onArchive) return card;
   return (
     <div className="relative h-full">
       {card}
@@ -142,16 +159,16 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
           ···
         </summary>
         <div className="absolute right-0 top-9 grid min-w-36 gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-[0_16px_38px_rgba(0,0,0,0.28)]">
-          {props.onRename ? (
+          {props.onEdit ? (
             <button
               type="button"
               className="rounded-lg px-3 py-2 text-left text-sm font-medium text-text-secondary transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
               onClick={(event) => {
                 event.currentTarget.closest("details")?.removeAttribute("open");
-                props.onRename?.();
+                props.onEdit?.();
               }}
             >
-              Rename
+              Edit notebook
             </button>
           ) : null}
           {props.onArchive ? (
