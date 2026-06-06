@@ -463,6 +463,25 @@
 
   .notebook-page-surface {
     touch-action: none;
+    will-change: transform;
+  }
+
+  .notebook-page-swipe-preview {
+    top: 0.75rem;
+    box-shadow: 0 14px 38px rgba(0, 0, 0, 0.16);
+    pointer-events: none;
+  }
+
+  .notebook-js-draw-host,
+  .notebook-js-draw-host > .imageEditorContainer,
+  .notebook-js-draw-host .imageEditorRenderArea {
+    background: transparent !important;
+    height: 100% !important;
+    min-height: 0 !important;
+  }
+
+  .notebook-js-draw-host .loadingMessage {
+    display: none;
   }
 
   .notebook-page-stage {
@@ -540,6 +559,12 @@
 
     .notebook-page-transition-previous {
       animation: notebook-page-slide-previous 170ms ease-out;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .notebook-page-surface {
+      transition-duration: 1ms !important;
     }
   }
 

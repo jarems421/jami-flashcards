@@ -14,6 +14,10 @@ import {
 } from "react";
 import AppPage from "@/components/layout/AppPage";
 import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
+import {
+  NotebookInkEditor,
+  type NotebookInkEditorHandle,
+} from "@/components/workspace/NotebookInkEditor";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import {
   normalizeObjectColor,
@@ -96,6 +100,10 @@ import {
   updateNotebookPage,
 } from "@/services/study/notebooks";
 import { getNotebookFileDownloadUrl } from "@/services/study/notebook-files";
+import {
+  legacyStrokesToJsDrawSvg,
+  makeNotebookInkData,
+} from "@/lib/workspace/notebook-ink-data";
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
@@ -157,11 +165,15 @@ type PageSwipeState = {
   currentY: number;
   lastX: number;
   lastY: number;
+  lastTime: number;
+  velocityX: number;
   completed: boolean;
 };
 type PinchZoomState = {
   startDistance: number;
   startZoom: number;
+  lastCenterX: number;
+  lastCenterY: number;
 };
 type EditorViewportState = {
   height: number;
@@ -965,6 +977,9 @@ export default function NotebookEditorPage() {
   });
   const [undoDepth, setUndoDepth] = useState(0);
   const [redoDepth, setRedoDepth] = useState(0);
+  const [inkUndoDepth, setInkUndoDepth] = useState(0);
+  const [inkRedoDepth, setInkRedoDepth] = useState(0);
+  const [inkHasContent, setInkHasContent] = useState(false);
   const [pageZoom, setPageZoom] = useState(1);
   const [userAdjustedZoom, setUserAdjustedZoom] = useState(false);
   const [editorViewport, setEditorViewport] = useState<EditorViewportState>({
@@ -995,12 +1010,15 @@ export default function NotebookEditorPage() {
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
   const [pageTransitionDirection, setPageTransitionDirection] =
     useState<PageTransitionDirection>(null);
+  const [pageSwipeOffset, setPageSwipeOffset] = useState(0);
+  const [pageSwipeSettling, setPageSwipeSettling] = useState(false);
   const [activeTextGestureId, setActiveTextGestureId] = useState<string | null>(null);
   const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
   const textBlockResizeRef = useRef<TextBlockResizeState | null>(null);
   const pageScrollRef = useRef<HTMLDivElement | null>(null);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const savedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const liveHighlighterCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -1041,6 +1059,25 @@ export default function NotebookEditorPage() {
     () => pages.findIndex((page) => page.id === selectedPage?.id),
     [pages, selectedPage?.id]
   );
+  const swipeAdjacentPage =
+    pageSwipeOffset < 0
+      ? pages[selectedPageIndex + 1]
+      : pageSwipeOffset > 0
+        ? pages[selectedPageIndex - 1]
+        : null;
+  const selectedPageInkSvg = useMemo(() => {
+    if (!selectedPage) {
+      return legacyStrokesToJsDrawSvg([], CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
+    return (
+      selectedPage.inkData?.svg ??
+      legacyStrokesToJsDrawSvg(
+        normalizeStrokes(selectedPage.strokeData?.strokes),
+        CANVAS_WIDTH,
+        CANVAS_HEIGHT
+      )
+    );
+  }, [selectedPage]);
   const activeNotebookFile = useMemo(() => {
     if (!notebook?.uploadedFileId) return files[0] ?? null;
     return files.find((file) => file.id === notebook.uploadedFileId) ?? files[0] ?? null;
@@ -1349,6 +1386,9 @@ export default function NotebookEditorPage() {
       redoStackRef.current = [];
       setUndoDepth(0);
       setRedoDepth(0);
+      setInkUndoDepth(0);
+      setInkRedoDepth(0);
+      setInkHasContent(false);
       setActiveTextGestureId(null);
       clearNotebookCanvas(savedCanvasRef.current);
       clearNotebookCanvas(liveHighlighterCanvasRef.current);
@@ -1372,6 +1412,11 @@ export default function NotebookEditorPage() {
     redoStackRef.current = [];
     setUndoDepth(0);
     setRedoDepth(0);
+    setInkUndoDepth(0);
+    setInkRedoDepth(0);
+    setInkHasContent(
+      Boolean(selectedPage.inkData?.svg) || (selectedPage.strokeData?.strokes.length ?? 0) > 0
+    );
     setActiveTextGestureId(null);
     clearNotebookCanvas(liveHighlighterCanvasRef.current);
     clearNotebookCanvas(liveCanvasRef.current);
@@ -1493,6 +1538,8 @@ export default function NotebookEditorPage() {
     pinchZoomRef.current = {
       startDistance: getPinchDistance(first, second),
       startZoom: pageZoom,
+      lastCenterX: (first.clientX + second.clientX) / 2,
+      lastCenterY: (first.clientY + second.clientY) / 2,
     };
     pageSwipeRef.current = null;
   };
@@ -1522,6 +1569,8 @@ export default function NotebookEditorPage() {
 
     const [first, second] = Array.from(touchPointersRef.current.values());
     if (first && second) {
+      const centerX = (first.clientX + second.clientX) / 2;
+      const centerY = (first.clientY + second.clientY) / 2;
       setPageZoom(
         getNotebookPageZoomAfterPinch({
           startDistance: pinch.startDistance,
@@ -1529,6 +1578,13 @@ export default function NotebookEditorPage() {
           startZoom: pinch.startZoom,
         })
       );
+      pageScrollRef.current?.scrollBy({
+        left: pinch.lastCenterX - centerX,
+        top: pinch.lastCenterY - centerY,
+        behavior: "auto",
+      });
+      pinch.lastCenterX = centerX;
+      pinch.lastCenterY = centerY;
     }
     pageSwipeRef.current = null;
     event.preventDefault();
@@ -1559,7 +1615,7 @@ export default function NotebookEditorPage() {
 
   const getNotebookSampleBatchFromNativeEvent = useCallback((
     event: PointerEvent,
-    canvas: HTMLCanvasElement,
+    canvas: HTMLElement,
     strokeStartTime?: number
   ): { points: LiveInkPoint[]; startTime: number } => {
     const rect = canvas.getBoundingClientRect();
@@ -1581,7 +1637,7 @@ export default function NotebookEditorPage() {
     };
   }, []);
 
-  const getNotebookPointsFromEvent = (event: ReactPointerEvent<HTMLCanvasElement>): Point[] =>
+  const getNotebookPointsFromEvent = (event: ReactPointerEvent<HTMLElement>): Point[] =>
     getNotebookSampleBatchFromNativeEvent(event.nativeEvent, event.currentTarget).points.map(
       ({ x, y }) => ({ x, y })
     );
@@ -1842,6 +1898,8 @@ export default function NotebookEditorPage() {
       page: NotebookPage;
       textBlocks: NotebookTextBlock[];
       strokes: Stroke[];
+      inkSvg: string;
+      hasInk: boolean;
       pageColor: NotebookPageColor;
       pageStyle: NotebookPageStyle;
       saveId: number;
@@ -1853,11 +1911,13 @@ export default function NotebookEditorPage() {
         const persistedTextBlocks = input.textBlocks;
         const typedContent = buildTypedContentFromTextBlocks(persistedTextBlocks) ?? "";
         const status: NotebookPageStatus =
-          typedContent.trim() || input.strokes.length > 0 ? "working" : "blank";
+          typedContent.trim() || input.hasInk ? "working" : "blank";
+        const inkData = makeNotebookInkData(input.inkSvg);
         await updateNotebookPage(user.uid, input.page.id, {
           typedContent,
           textBlocks: persistedTextBlocks,
-          strokeData: { version: 1, strokes: input.strokes },
+          inkData,
+          strokeData: null,
           pageColor: input.pageColor,
           pageStyle: input.pageStyle,
           status,
@@ -1883,9 +1943,8 @@ export default function NotebookEditorPage() {
                   ...page,
                   typedContent: typedContent.trim() || undefined,
                   textBlocks: canReplaceStoredContent ? persistedTextBlocks : page.textBlocks,
-                  strokeData: canReplaceStoredContent
-                    ? { version: 1, strokes: input.strokes }
-                    : page.strokeData,
+                  inkData: canReplaceStoredContent ? inkData : page.inkData,
+                  strokeData: canReplaceStoredContent ? undefined : page.strokeData,
                   pageColor: canReplaceStoredContent ? input.pageColor : page.pageColor,
                   pageStyle: canReplaceStoredContent ? input.pageStyle : page.pageStyle,
                   status,
@@ -1947,13 +2006,15 @@ export default function NotebookEditorPage() {
         page,
         textBlocks: textBlocksRef.current,
         strokes: collectCurrentStrokes({ includeActiveStroke: options.includeActiveStroke }),
+        inkSvg: inkEditorRef.current?.serialize() ?? selectedPageInkSvg,
+        hasInk: inkEditorRef.current?.hasInk() ?? strokesRef.current.length > 0,
         pageColor: pageColorRef.current,
         pageStyle: pageStyleRef.current,
         saveId,
         saveRevision,
       });
     },
-    [collectCurrentStrokes, savePageSnapshot, user?.uid]
+    [collectCurrentStrokes, savePageSnapshot, selectedPageInkSvg, user?.uid]
   );
 
   const selectPageById = useCallback(
@@ -2061,7 +2122,7 @@ export default function NotebookEditorPage() {
     router.push(`/dashboard/folders/${notebook?.folderId ?? ""}`);
   };
 
-  const handleStartPageSwipe = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const handleStartPageSwipe = (event: ReactPointerEvent<HTMLElement>) => {
     if (!fullNotebookEditingEnabled || !shouldPointerSwipePages(event.pointerType)) return;
     if (activeStrokeRef.current) return;
     if (activeTextGestureId) return;
@@ -2073,29 +2134,29 @@ export default function NotebookEditorPage() {
       currentY: event.clientY,
       lastX: event.clientX,
       lastY: event.clientY,
+      lastTime: event.timeStamp,
+      velocityX: 0,
       completed: false,
     };
+    setPageSwipeSettling(false);
     if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.setPointerCapture(event.pointerId);
     }
   };
 
-  const handlePageSwipeMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const handlePageSwipeMove = (event: ReactPointerEvent<HTMLElement>) => {
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId || swipe.completed) return;
 
     const deltaX = event.clientX - swipe.lastX;
     const deltaY = event.clientY - swipe.lastY;
+    const elapsed = Math.max(1, event.timeStamp - swipe.lastTime);
+    swipe.velocityX = deltaX / elapsed;
     swipe.currentX = event.clientX;
     swipe.currentY = event.clientY;
     swipe.lastX = event.clientX;
     swipe.lastY = event.clientY;
-    const direction = getNotebookSwipeDirection({
-      startX: swipe.startX,
-      startY: swipe.startY,
-      currentX: swipe.currentX,
-      currentY: swipe.currentY,
-    });
+    swipe.lastTime = event.timeStamp;
 
     const totalDx = swipe.currentX - swipe.startX;
     const totalDy = swipe.currentY - swipe.startY;
@@ -2113,11 +2174,13 @@ export default function NotebookEditorPage() {
       return;
     }
 
-    if (!direction) return;
-
-    swipe.completed = true;
+    if (Math.abs(totalDx) <= Math.abs(totalDy) * 1.05) return;
+    const canMoveNext = totalDx < 0 && selectedPageIndex < pages.length - 1;
+    const canMovePrevious = totalDx > 0 && selectedPageIndex > 0;
+    const resistedOffset =
+      canMoveNext || canMovePrevious ? totalDx : Math.sign(totalDx) * Math.sqrt(Math.abs(totalDx)) * 5;
+    setPageSwipeOffset(resistedOffset);
     event.preventDefault();
-    void selectPageByOffset(direction === "next" ? 1 : -1);
   };
 
   const handleStopPageSwipe = (
@@ -2131,28 +2194,56 @@ export default function NotebookEditorPage() {
     }
     pageSwipeRef.current = null;
 
+    const pageWidth = pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
+    const deltaX = event.clientX - swipe.startX;
+    const direction = deltaX < 0 ? "next" : "previous";
+    const canChangePage =
+      direction === "next" ? selectedPageIndex < pages.length - 1 : selectedPageIndex > 0;
+    const shouldChangePage =
+      canChangePage &&
+      (Math.abs(deltaX) >= pageWidth * 0.22 || Math.abs(swipe.velocityX) >= 0.55);
+
+    if (Math.abs(deltaX) > 8) {
+      event.preventDefault();
+      setPageSwipeSettling(true);
+      if (shouldChangePage) {
+        swipe.completed = true;
+        setPageSwipeOffset(direction === "next" ? -pageWidth * 1.06 : pageWidth * 1.06);
+        window.setTimeout(() => {
+          void selectPageByOffset(direction === "next" ? 1 : -1).finally(() => {
+            setPageSwipeOffset(0);
+            setPageSwipeSettling(false);
+          });
+        }, 240);
+      } else {
+        setPageSwipeOffset(0);
+        window.setTimeout(() => setPageSwipeSettling(false), 260);
+      }
+    }
+
     if (
       !swipe.completed &&
+      Math.abs(deltaX) <= 8 &&
       tool === "text" &&
       options.allowTextTap &&
-      event.currentTarget instanceof HTMLCanvasElement
+        event.currentTarget instanceof HTMLElement
     ) {
-      const direction = getNotebookSwipeDirection({
+      const tapDirection = getNotebookSwipeDirection({
         startX: swipe.startX,
         startY: swipe.startY,
         currentX: event.clientX,
         currentY: event.clientY,
       });
-      if (!direction) {
+      if (!tapDirection) {
         const [point] = getNotebookPointsFromEvent(
-          event as ReactPointerEvent<HTMLCanvasElement>
+          event
         );
         if (point) createTextBlockAtPoint(point);
       }
     }
   };
 
-  const maybeShowIgnoredTouchInkHint = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const maybeShowIgnoredTouchInkHint = (event: ReactPointerEvent<HTMLElement>) => {
     if (
       event.pointerType !== "touch" ||
       tool === "text" ||
@@ -2175,7 +2266,7 @@ export default function NotebookEditorPage() {
     }, 2600);
   };
 
-  const handlePagePointerDown = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const handlePagePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (!fullNotebookEditingEnabled) return;
     setPenMenuOpen(false);
     setHighlighterMenuOpen(false);
@@ -2201,7 +2292,7 @@ export default function NotebookEditorPage() {
     createTextBlockAtPoint(point);
   };
 
-  const handlePagePointerMove = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const handlePagePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
     if (handleTouchPointerMove(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handlePageSwipeMove(event);
@@ -2212,7 +2303,7 @@ export default function NotebookEditorPage() {
     }
   };
 
-  const handlePagePointerUp = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const handlePagePointerUp = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === "touch") {
       const swipe = pageSwipeRef.current;
       const direction = swipe
@@ -2237,7 +2328,7 @@ export default function NotebookEditorPage() {
     }
   };
 
-  const handlePagePointerCancel = (event: ReactPointerEvent<HTMLCanvasElement>) => {
+  const handlePagePointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
     setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
     if (handleTouchPointerEnd(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
@@ -2630,6 +2721,10 @@ export default function NotebookEditorPage() {
   };
 
   const handleUndo = useCallback(() => {
+    if (inkUndoDepth > 0) {
+      inkEditorRef.current?.undo();
+      return;
+    }
     const action = undoStackRef.current.at(-1);
     if (!action) return;
     undoStackRef.current = undoStackRef.current.slice(0, -1);
@@ -2649,9 +2744,13 @@ export default function NotebookEditorPage() {
       setActiveTextGestureId(null);
     }
     markPageUnsaved();
-  }, [markPageUnsaved, scheduleSavedCanvasRender]);
+  }, [inkUndoDepth, markPageUnsaved, scheduleSavedCanvasRender]);
 
   const handleRedo = useCallback(() => {
+    if (inkRedoDepth > 0) {
+      inkEditorRef.current?.redo();
+      return;
+    }
     const action = redoStackRef.current.at(-1);
     if (!action) return;
     redoStackRef.current = redoStackRef.current.slice(0, -1);
@@ -2671,15 +2770,14 @@ export default function NotebookEditorPage() {
       setActiveTextGestureId(null);
     }
     markPageUnsaved();
-  }, [markPageUnsaved, scheduleSavedCanvasRender]);
+  }, [inkRedoDepth, markPageUnsaved, scheduleSavedCanvasRender]);
 
   const handleClearCurrentPage = () => {
     const confirmed = window.confirm("Clear drawing from this page?");
     if (!confirmed) return;
+    inkEditorRef.current?.clear();
+    setInkHasContent(false);
     activeStrokeRef.current = null;
-    if (strokesRef.current.length > 0) {
-      pushUndoAction({ type: "strokes", previous: strokesRef.current, next: [] });
-    }
     strokesRef.current = [];
     setStrokes([]);
     markPageUnsaved();
@@ -3025,7 +3123,7 @@ export default function NotebookEditorPage() {
               <ToolbarIconButton
                 label="Undo (Ctrl+Z)"
                 icon="undo"
-                disabled={!fullNotebookEditingEnabled || undoDepth === 0}
+                disabled={!fullNotebookEditingEnabled || (undoDepth === 0 && inkUndoDepth === 0)}
                 onClick={() => {
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
@@ -3036,7 +3134,7 @@ export default function NotebookEditorPage() {
               <ToolbarIconButton
                 label="Redo (Ctrl+Shift+Z)"
                 icon="redo"
-                disabled={!fullNotebookEditingEnabled || redoDepth === 0}
+                disabled={!fullNotebookEditingEnabled || (redoDepth === 0 && inkRedoDepth === 0)}
                 onClick={() => {
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
@@ -3047,7 +3145,7 @@ export default function NotebookEditorPage() {
               <ToolbarIconButton
                 label="Clear drawing"
                 icon="clear"
-                disabled={!fullNotebookEditingEnabled || strokes.length === 0}
+                disabled={!fullNotebookEditingEnabled || !inkHasContent}
                 onClick={() => {
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
@@ -3351,7 +3449,36 @@ export default function NotebookEditorPage() {
               </Card>
             ) : null}
 
-              <div className="notebook-page-stage mx-auto w-full">
+              <div className="notebook-page-stage relative mx-auto w-full">
+                {swipeAdjacentPage ? (
+                  <div
+                    aria-hidden="true"
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-[0.95rem] border border-[var(--color-border)] ${
+                      PAGE_COLOR_CLASS[swipeAdjacentPage.pageColor]
+                    }`}
+                    style={{
+                      width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
+                      maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
+                      aspectRatio: editorViewport.isLandscape
+                        ? `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`
+                        : `${CANVAS_WIDTH} / ${Math.round(
+                            CANVAS_HEIGHT * NOTEBOOK_PAGE_PORTRAIT_STRETCH
+                          )}`,
+                      transform: `translateX(-50%) scale(${0.985 + Math.min(0.015, Math.abs(pageSwipeOffset) / 12000)})`,
+                    }}
+                  >
+                    <div
+                      className="absolute inset-0"
+                      style={getPageStyleBackground(
+                        swipeAdjacentPage.pageColor,
+                        swipeAdjacentPage.pageStyle
+                      )}
+                    />
+                    <div className="absolute inset-x-8 top-8 text-sm font-semibold opacity-35">
+                      Page {swipeAdjacentPage.pageNumber}
+                    </div>
+                  </div>
+                ) : null}
                 <div
                   ref={pageSurfaceRef}
                   data-notebook-page-surface
@@ -3373,6 +3500,24 @@ export default function NotebookEditorPage() {
                       : `${CANVAS_WIDTH} / ${Math.round(
                           CANVAS_HEIGHT * NOTEBOOK_PAGE_PORTRAIT_STRETCH
                         )}`,
+                    transform: `translateX(${pageSwipeOffset}px) scale(${
+                      pageSwipeOffset === 0
+                        ? 1
+                        : Math.max(
+                            0.982,
+                            1 -
+                              Math.abs(pageSwipeOffset) /
+                                Math.max(1, pageSurfaceRef.current?.clientWidth ?? 1) *
+                                0.018
+                          )
+                    })`,
+                    transition: pageSwipeSettling
+                      ? "transform 240ms cubic-bezier(0.22, 1, 0.36, 1), box-shadow 240ms ease"
+                      : "none",
+                    boxShadow:
+                      pageSwipeOffset === 0
+                        ? undefined
+                        : "0 24px 64px rgba(0, 0, 0, 0.3)",
                   }}
                 >
                   <div
@@ -3403,36 +3548,34 @@ export default function NotebookEditorPage() {
                       )}
                     </div>
                   ) : null}
-                  <canvas
-                    ref={liveHighlighterCanvasRef}
-                    aria-hidden="true"
-                    width={CANVAS_WIDTH}
-                    height={CANVAS_HEIGHT}
-                    draggable={false}
-                    className="pointer-events-none absolute inset-0 z-[5] block h-full w-full select-none"
-                  />
-                  <canvas
-                    ref={savedCanvasRef}
-                    aria-hidden="true"
-                    width={CANVAS_WIDTH}
-                    height={CANVAS_HEIGHT}
-                    draggable={false}
-                    className="pointer-events-none relative z-10 block h-full w-full select-none"
-                  />
-                  <canvas
-                    ref={liveCanvasRef}
-                    role="img"
-                    aria-label="Notebook drawing page"
-                    width={CANVAS_WIDTH}
-                    height={CANVAS_HEIGHT}
-                    draggable={false}
-                    className="notebook-ink-surface absolute inset-0 z-20 block h-full w-full touch-none select-none"
+                  <NotebookInkEditor
+                    ref={inkEditorRef}
+                    key={selectedPage.id}
+                    pageId={selectedPage.id}
+                    pageWidth={CANVAS_WIDTH}
+                    pageHeight={CANVAS_HEIGHT}
+                    initialSvg={selectedPageInkSvg}
+                    activeTool={tool}
+                    penColor={penColor}
+                    penThickness={getPenWidthFromPercent(penThicknessPercent)}
+                    highlighterColor={highlighterColor}
+                    highlighterThickness={getHighlighterWidthFromPercent(
+                      highlighterThicknessPercent
+                    )}
+                    eraserThickness={ERASER_WIDTH_VALUE[eraserWidth]}
+                    readOnly={!fullNotebookEditingEnabled}
+                    onChange={() => {
+                      setInkHasContent(inkEditorRef.current?.hasInk() ?? false);
+                      markPageUnsaved();
+                    }}
+                    onHistoryChange={(nextUndoDepth, nextRedoDepth) => {
+                      setInkUndoDepth(nextUndoDepth);
+                      setInkRedoDepth(nextRedoDepth);
+                    }}
                     onPointerDown={handlePagePointerDown}
                     onPointerMove={handlePagePointerMove}
                     onPointerUp={handlePagePointerUp}
                     onPointerCancel={handlePagePointerCancel}
-                    onPointerLeave={handlePagePointerCancel}
-                    onLostPointerCapture={handlePagePointerCancel}
                   />
                   {tool === "eraser" && eraserCursor.visible ? (
                     <div

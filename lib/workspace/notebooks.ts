@@ -27,6 +27,12 @@ export type NotebookStrokeData = {
   strokes: NotebookStroke[];
 };
 
+export type NotebookInkData = {
+  version: 2;
+  format: "js-draw-svg";
+  svg: string;
+};
+
 export type NotebookPenColor = "black" | "white" | "red" | "green";
 export type NotebookHighlighterColor = "yellow" | "green" | "pink";
 export type NotebookCustomStrokeColor = `#${string}`;
@@ -98,6 +104,7 @@ export type NotebookPage = {
   pageType: NotebookPageType;
   typedContent?: string;
   textBlocks: NotebookTextBlock[];
+  inkData?: NotebookInkData;
   strokeData?: NotebookStrokeData;
   imageRefs: NotebookImageRef[];
   pageColor: NotebookPageColor;
@@ -262,6 +269,25 @@ function normalizeStrokeData(value: unknown): NotebookStrokeData | undefined {
   return {
     version: typeof data.version === "number" ? data.version : 1,
     strokes,
+  };
+}
+
+function normalizeInkData(value: unknown): NotebookInkData | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
+  const data = value as Record<string, unknown>;
+  if (
+    data.version !== 2 ||
+    data.format !== "js-draw-svg" ||
+    typeof data.svg !== "string" ||
+    data.svg.length > 700_000 ||
+    !data.svg.trimStart().startsWith("<svg")
+  ) {
+    return undefined;
+  }
+  return {
+    version: 2,
+    format: "js-draw-svg",
+    svg: data.svg,
   };
 }
 
@@ -471,6 +497,7 @@ export function mapNotebookPageData(
     pageType: isNotebookPageType(data.pageType) ? data.pageType : "blank",
     typedContent,
     textBlocks: textBlocks.length > 0 ? textBlocks : createNotebookTextBlocksFromTypedContent(typedContent),
+    inkData: normalizeInkData(data.inkData),
     strokeData: normalizeStrokeData(data.strokeData),
     imageRefs: normalizeImageRefs(data.imageRefs),
     pageColor: isNotebookPageColor(data.pageColor) ? data.pageColor : "white",
@@ -538,6 +565,7 @@ export function buildNotebookPagePayload(input: {
   pageType?: NotebookPageType;
   typedContent?: string;
   textBlocks?: NotebookTextBlock[];
+  inkData?: NotebookInkData;
   strokeData?: NotebookStrokeData;
   imageRefs?: NotebookImageRef[];
   pageColor?: NotebookPageColor;
@@ -568,6 +596,7 @@ export function buildNotebookPagePayload(input: {
     buildTypedContentFromTextBlocks(textBlocks) ??
     normalizeOptionalString(input.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT);
   const strokeData = input.strokeData ? normalizeStrokeData(input.strokeData) : undefined;
+  const inkData = input.inkData ? normalizeInkData(input.inkData) : undefined;
 
   return {
     notebookId,
@@ -577,6 +606,7 @@ export function buildNotebookPagePayload(input: {
     pageType: input.pageType ?? "blank",
     typedContent: typedContent ?? null,
     textBlocks,
+    inkData: inkData ?? null,
     strokeData: strokeData ?? null,
     imageRefs: (input.imageRefs ?? []).slice(0, MAX_NOTEBOOK_IMAGE_REFS),
     pageColor: input.pageColor ?? "white",

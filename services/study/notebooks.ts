@@ -23,6 +23,7 @@ import {
   normalizeNotebookTitle,
   type Notebook,
   type NotebookFile,
+  type NotebookInkData,
   type NotebookPageColor,
   type NotebookPageStyle,
   type NotebookPageStatus,
@@ -253,6 +254,7 @@ export async function createNotebookPage(
     pageType?: NotebookPageType;
     typedContent?: string;
     textBlocks?: NotebookTextBlock[];
+    inkData?: NotebookInkData;
     strokeData?: NotebookStrokeData;
     pageColor?: NotebookPageColor;
     pageStyle?: NotebookPageStyle;
@@ -286,6 +288,7 @@ export async function updateNotebookPage(
     pageType: NotebookPageType;
     typedContent: string;
     textBlocks: NotebookTextBlock[];
+    inkData: NotebookInkData | null;
     strokeData: NotebookStrokeData | null;
     pageColor: NotebookPageColor;
     pageStyle: NotebookPageStyle;
@@ -313,6 +316,7 @@ export async function updateNotebookPage(
   if (input.pageType !== undefined) updates.pageType = input.pageType;
   if (input.typedContent !== undefined) updates.typedContent = input.typedContent.trim().slice(0, 30_000) || null;
   if (input.textBlocks !== undefined) updates.textBlocks = input.textBlocks;
+  if (input.inkData !== undefined) updates.inkData = input.inkData;
   if (input.strokeData !== undefined) updates.strokeData = input.strokeData;
   if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
   if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
