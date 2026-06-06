@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getNotebookInkColor,
   legacyStrokesToJsDrawSvg,
   makeNotebookInkData,
 } from "@/lib/workspace/notebook-ink-data";
@@ -53,5 +54,19 @@ describe("notebook js-draw ink data", () => {
     expect(page.inkData).toEqual(inkData);
     expect(page.strokeData).toBeUndefined();
   });
-});
 
+  it("maps every Jami toolbar colour without falling back to purple", () => {
+    expect(getNotebookInkColor("black", "pen")).toEqual({
+      color: "#111827",
+      opacity: 1,
+    });
+    expect(getNotebookInkColor("white", "pen").color).toBe("#f8fafc");
+    expect(getNotebookInkColor("red", "pen").color).toBe("#ef4444");
+    expect(getNotebookInkColor("green", "pen").color).toBe("#22c55e");
+    expect(getNotebookInkColor("#123abc", "pen").color).toBe("#123abc");
+    expect(getNotebookInkColor("yellow", "highlighter")).toEqual({
+      color: "#fde047",
+      opacity: 0.42,
+    });
+  });
+});

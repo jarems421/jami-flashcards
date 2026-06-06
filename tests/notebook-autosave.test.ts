@@ -1,11 +1,18 @@
 import { describe, expect, it } from "vitest";
 import {
+  NOTEBOOK_AUTOSAVE_IDLE_MS,
   isNotebookSaveCompletionCurrent,
+  shouldDiscardNotebookInkExport,
   shouldNotebookSaveReplaceStoredPageContent,
   shouldNotebookSaveUpdateLivePage,
+  shouldStartNotebookAutosave,
 } from "@/lib/workspace/notebook-autosave";
 
 describe("notebook autosave race guards", () => {
+  it("waits five seconds after the latest edit", () => {
+    expect(NOTEBOOK_AUTOSAVE_IDLE_MS).toBe(5_000);
+  });
+
   it("allows the current latest save to mark the editor saved", () => {
     expect(
       isNotebookSaveCompletionCurrent({
@@ -79,6 +86,52 @@ describe("notebook autosave race guards", () => {
         selectedPageId: "page-1",
         saveRevision: 10,
         currentRevision: 11,
+      })
+    ).toBe(true);
+  });
+
+  it("starts autosave only after writing is idle", () => {
+    expect(
+      shouldStartNotebookAutosave({
+        loading: false,
+        saveStatus: "unsaved",
+        hasSelectedPage: true,
+        inkInteractionActive: false,
+      })
+    ).toBe(true);
+    expect(
+      shouldStartNotebookAutosave({
+        loading: false,
+        saveStatus: "unsaved",
+        hasSelectedPage: true,
+        inkInteractionActive: true,
+      })
+    ).toBe(false);
+  });
+
+  it("discards an export when writing resumes during serialization", () => {
+    expect(
+      shouldDiscardNotebookInkExport({
+        svgAvailable: true,
+        inkInteractionActive: false,
+        saveRevision: 12,
+        currentRevision: 12,
+      })
+    ).toBe(false);
+    expect(
+      shouldDiscardNotebookInkExport({
+        svgAvailable: true,
+        inkInteractionActive: false,
+        saveRevision: 12,
+        currentRevision: 13,
+      })
+    ).toBe(true);
+    expect(
+      shouldDiscardNotebookInkExport({
+        svgAvailable: true,
+        inkInteractionActive: true,
+        saveRevision: 12,
+        currentRevision: 12,
       })
     ).toBe(true);
   });

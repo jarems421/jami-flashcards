@@ -1,3 +1,5 @@
+export const NOTEBOOK_AUTOSAVE_IDLE_MS = 5_000;
+
 export type NotebookSaveCompletionInput = {
   saveId: number;
   saveRevision: number;
@@ -27,4 +29,31 @@ export function shouldNotebookSaveReplaceStoredPageContent(input: {
   currentRevision: number;
 }) {
   return input.pageId !== input.selectedPageId || input.saveRevision === input.currentRevision;
+}
+
+export function shouldStartNotebookAutosave(input: {
+  loading: boolean;
+  saveStatus: "saved" | "unsaved" | "saving" | "failed";
+  hasSelectedPage: boolean;
+  inkInteractionActive: boolean;
+}) {
+  return (
+    !input.loading &&
+    input.saveStatus === "unsaved" &&
+    input.hasSelectedPage &&
+    !input.inkInteractionActive
+  );
+}
+
+export function shouldDiscardNotebookInkExport(input: {
+  svgAvailable: boolean;
+  inkInteractionActive: boolean;
+  saveRevision: number;
+  currentRevision: number;
+}) {
+  return (
+    !input.svgAvailable ||
+    input.inkInteractionActive ||
+    input.saveRevision !== input.currentRevision
+  );
 }

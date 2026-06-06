@@ -4,6 +4,7 @@ import "js-draw/Editor.css";
 
 import {
   forwardRef,
+  useCallback,
   useEffect,
   useImperativeHandle,
   useRef,
@@ -28,8 +29,9 @@ export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "tex
 export type NotebookInkEditorHandle = {
   clear(): void;
   hasInk(): boolean;
+  isInteracting(): boolean;
   redo(): void;
-  serialize(): string;
+  serializeAsync(): Promise<string | null>;
   undo(): void;
 };
 
@@ -46,12 +48,59 @@ type Props = {
   penThickness: number;
   onChange(): void;
   onHistoryChange(undoDepth: number, redoDepth: number): void;
+  onInteractionChange(active: boolean): void;
   onPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void;
   onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void;
   onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void;
   onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void;
   readOnly?: boolean;
 };
+
+type InkStyle = Pick<
+  Props,
+  | "activeTool"
+  | "eraserThickness"
+  | "highlighterColor"
+  | "highlighterThickness"
+  | "penColor"
+  | "penThickness"
+>;
+
+function applyInkStyle(editor: Editor, style: InkStyle) {
+  const pens = editor.toolController.getMatchingTools(PenTool);
+  const erasers = editor.toolController.getMatchingTools(EraserTool);
+  const selections = editor.toolController.getMatchingTools(SelectionTool);
+  const primaryPen = pens[0];
+  if (!primaryPen) return;
+
+  editor.toolController.getPrimaryTools().forEach((editorTool) => {
+    editorTool.setEnabled(false);
+  });
+  pens.slice(1).forEach((pen) => pen.setEnabled(false));
+
+  if (style.activeTool === "pen" || style.activeTool === "highlighter") {
+    const selectedColor =
+      style.activeTool === "highlighter" ? style.highlighterColor : style.penColor;
+    const { color, opacity } = getNotebookInkColor(selectedColor, style.activeTool);
+    const parsed = Color4.fromString(color);
+    primaryPen.setColor(Color4.ofRGBA(parsed.r, parsed.g, parsed.b, opacity));
+    primaryPen.setThickness(
+      style.activeTool === "highlighter"
+        ? style.highlighterThickness
+        : style.penThickness
+    );
+    primaryPen.setPressureSensitivityEnabled(style.activeTool === "pen");
+    primaryPen.setHasStabilization(true);
+    primaryPen.setEnabled(true);
+  } else if (style.activeTool === "eraser") {
+    const eraser = erasers[0];
+    eraser?.setThickness(style.eraserThickness);
+    eraser?.getModeValue().set(EraserMode.PartialStroke);
+    eraser?.setEnabled(true);
+  } else if (style.activeTool === "select") {
+    selections[0]?.setEnabled(true);
+  }
+}
 
 export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
   function NotebookInkEditor(
@@ -63,6 +112,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       initialSvg,
       onChange,
       onHistoryChange,
+      onInteractionChange,
       onPointerCancel,
       onPointerDown,
       onPointerMove,
@@ -79,11 +129,32 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const hostRef = useRef<HTMLDivElement | null>(null);
     const editorRef = useRef<Editor | null>(null);
     const loadingRef = useRef(true);
-    const callbacksRef = useRef({ onChange, onHistoryChange });
+    const readyRef = useRef(false);
+    const activePointersRef = useRef<Set<number>>(new Set());
+    const pendingStyleRef = useRef(false);
+    const initialSvgRef = useRef(initialSvg);
+    const readOnlyRef = useRef(readOnly);
+    const desiredStyleRef = useRef<InkStyle>({
+      activeTool,
+      eraserThickness,
+      highlighterColor,
+      highlighterThickness,
+      penColor,
+      penThickness,
+    });
+    const callbacksRef = useRef({
+      onChange,
+      onHistoryChange,
+      onInteractionChange,
+    });
 
     useEffect(() => {
-      callbacksRef.current = { onChange, onHistoryChange };
-    }, [onChange, onHistoryChange]);
+      callbacksRef.current = {
+        onChange,
+        onHistoryChange,
+        onInteractionChange,
+      };
+    }, [onChange, onHistoryChange, onInteractionChange]);
 
     useImperativeHandle(
       forwardedRef,
@@ -97,17 +168,25 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         hasInk() {
           return (editorRef.current?.image.getAllComponents().length ?? 0) > 0;
         },
+        isInteracting() {
+          return activePointersRef.current.size > 0;
+        },
         redo() {
           void editorRef.current?.history.redo();
         },
-        serialize() {
-          return editorRef.current?.toSVG().outerHTML ?? initialSvg;
+        async serializeAsync() {
+          const editor = editorRef.current;
+          if (!editor || activePointersRef.current.size > 0 || !readyRef.current) {
+            return null;
+          }
+          const svg = await editor.toSVGAsync({ pauseAfterCount: 24 });
+          return activePointersRef.current.size > 0 ? null : svg.outerHTML;
         },
         undo() {
           void editorRef.current?.history.undo();
         },
       }),
-      [initialSvg]
+      []
     );
 
     useEffect(() => {
@@ -115,6 +194,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       if (!host) return;
       let disposed = false;
       loadingRef.current = true;
+      readyRef.current = false;
+      activePointersRef.current.clear();
       host.replaceChildren();
 
       const editor = new Editor(host, {
@@ -122,8 +203,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         minZoom: 1,
         maxZoom: 1,
       });
+      const activePointers = activePointersRef.current;
       editorRef.current = editor;
-      editor.setReadOnly(readOnly);
+      editor.setReadOnly(readOnlyRef.current);
+      applyInkStyle(editor, desiredStyleRef.current);
       editor.getRootElement().style.height = "100%";
       editor.getRootElement().style.minHeight = "0";
       editor.getRootElement().style.background = "transparent";
@@ -138,11 +221,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         callbacksRef.current.onHistoryChange(event.undoStackSize, event.redoStackSize);
         if (!loadingRef.current) callbacksRef.current.onChange();
       });
-      const objectListener = editor.notifier.on(EditorEventType.ObjectAdded, () => {
-        if (!loadingRef.current) callbacksRef.current.onChange();
-      });
-
-      void editor.loadFromSVG(initialSvg, true).then(() => {
+      void editor.loadFromSVG(initialSvgRef.current, true).then(() => {
         if (disposed) return;
         const pageRect = new Rect2(0, 0, pageWidth, pageHeight);
         editor.dispatchNoAnnounce(editor.image.setImportExportRect(pageRect), false);
@@ -151,7 +230,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           editor.viewport.resetTransform(
             editor.viewport.computeZoomToTransform(pageRect, true, true)
           );
+          applyInkStyle(editor, desiredStyleRef.current);
           loadingRef.current = false;
+          readyRef.current = true;
           callbacksRef.current.onHistoryChange(
             editor.history.undoStackSize,
             editor.history.redoStackSize
@@ -161,41 +242,32 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
 
       return () => {
         disposed = true;
+        readyRef.current = false;
+        activePointers.clear();
+        callbacksRef.current.onInteractionChange(false);
         historyListener.remove();
-        objectListener.remove();
         editor.remove();
         editorRef.current = null;
       };
-    }, [initialSvg, pageHeight, pageId, pageWidth, readOnly]);
+    }, [pageHeight, pageId, pageWidth]);
 
     useEffect(() => {
       const editor = editorRef.current;
+      desiredStyleRef.current = {
+        activeTool,
+        eraserThickness,
+        highlighterColor,
+        highlighterThickness,
+        penColor,
+        penThickness,
+      };
       if (!editor) return;
-      const pens = editor.toolController.getMatchingTools(PenTool);
-      const erasers = editor.toolController.getMatchingTools(EraserTool);
-      const selections = editor.toolController.getMatchingTools(SelectionTool);
-      const primaryPen = pens[0];
-      if (!primaryPen) return;
-
-      if (activeTool === "pen" || activeTool === "highlighter") {
-        const selectedColor = activeTool === "highlighter" ? highlighterColor : penColor;
-        const { color, opacity } = getNotebookInkColor(selectedColor, activeTool);
-        const parsed = Color4.fromString(color);
-        primaryPen.setColor(Color4.ofRGBA(parsed.r, parsed.g, parsed.b, opacity));
-        primaryPen.setThickness(activeTool === "highlighter" ? highlighterThickness : penThickness);
-        primaryPen.setPressureSensitivityEnabled(activeTool === "pen");
-        primaryPen.setHasStabilization(true);
-        primaryPen.setEnabled(true);
-      } else if (activeTool === "eraser") {
-        const eraser = erasers[0];
-        eraser?.setThickness(eraserThickness);
-        eraser?.getModeValue().set(EraserMode.PartialStroke);
-        eraser?.setEnabled(true);
-      } else if (activeTool === "select") {
-        selections[0]?.setEnabled(true);
-      } else {
-        editor.toolController.getPrimaryTools().forEach((tool) => tool.setEnabled(false));
+      if (activePointersRef.current.size > 0) {
+        pendingStyleRef.current = true;
+        return;
       }
+      pendingStyleRef.current = false;
+      applyInkStyle(editor, desiredStyleRef.current);
     }, [
       activeTool,
       eraserThickness,
@@ -205,13 +277,36 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       penThickness,
     ]);
 
+    useEffect(() => {
+      readOnlyRef.current = readOnly;
+      editorRef.current?.setReadOnly(readOnly);
+    }, [readOnly]);
+
+    const finishPointerInteraction = useCallback((pointerId: number) => {
+      if (!activePointersRef.current.delete(pointerId)) return;
+      if (activePointersRef.current.size > 0) return;
+      callbacksRef.current.onInteractionChange(false);
+      if (pendingStyleRef.current && editorRef.current) {
+        pendingStyleRef.current = false;
+        applyInkStyle(editorRef.current, desiredStyleRef.current);
+      }
+    }, []);
+
     const forwardInkPointer = (
       type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
       event: ReactPointerEvent<HTMLDivElement>
     ) => {
       if (event.pointerType === "touch" || activeTool === "text" || readOnly) return false;
       event.preventDefault();
+      if (!readyRef.current) return true;
+      if (type === "pointerdown") {
+        activePointersRef.current.add(event.pointerId);
+        callbacksRef.current.onInteractionChange(true);
+      }
       editorRef.current?.handleHTMLPointerEvent(type, event.nativeEvent);
+      if (type === "pointerup" || type === "pointercancel") {
+        finishPointerInteraction(event.pointerId);
+      }
       return true;
     };
 
@@ -238,7 +333,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           onPointerCancel={(event) => {
             if (!forwardInkPointer("pointercancel", event)) onPointerCancel(event);
           }}
-          onLostPointerCapture={onPointerCancel}
+          onLostPointerCapture={(event) => {
+            finishPointerInteraction(event.pointerId);
+            onPointerCancel(event);
+          }}
         />
       </div>
     );

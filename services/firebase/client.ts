@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { getFirestore, initializeFirestore } from "firebase/firestore";
 import { getStorage } from "firebase/storage";
 
 function readEnv(value: string | undefined) {
@@ -103,7 +103,13 @@ export const auth = app
   : createUninitializedProxy<ReturnType<typeof getAuth>>("auth");
 
 export const db = app
-  ? getFirestore(app)
+  ? typeof window === "undefined"
+    ? getFirestore(app)
+    : initializeFirestore(app, {
+        // Avoid WebChannel requests being buffered indefinitely by mobile
+        // networks, privacy relays, antivirus proxies, or restrictive Wi-Fi.
+        experimentalForceLongPolling: true,
+      })
   : createUninitializedProxy<ReturnType<typeof getFirestore>>("db");
 
 export const storage = app

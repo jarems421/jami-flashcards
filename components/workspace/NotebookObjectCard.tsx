@@ -119,7 +119,11 @@ function NotebookCardInner({
 export function NotebookObjectCard(props: NotebookObjectCardProps) {
   if (props.href) {
     return (
-      <Link href={props.href} className={cx("block h-full", props.className)}>
+      <Link
+        href={props.href}
+        prefetch={false}
+        className={cx("block h-full", props.className)}
+      >
         <NotebookCardInner {...props} />
       </Link>
     );

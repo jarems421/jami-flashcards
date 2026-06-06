@@ -67,9 +67,12 @@ import {
   shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
 import {
+  NOTEBOOK_AUTOSAVE_IDLE_MS,
   isNotebookSaveCompletionCurrent,
+  shouldDiscardNotebookInkExport,
   shouldNotebookSaveReplaceStoredPageContent,
   shouldNotebookSaveUpdateLivePage,
+  shouldStartNotebookAutosave,
 } from "@/lib/workspace/notebook-autosave";
 import {
   appendInkPoints,
@@ -980,6 +983,8 @@ export default function NotebookEditorPage() {
   const [inkUndoDepth, setInkUndoDepth] = useState(0);
   const [inkRedoDepth, setInkRedoDepth] = useState(0);
   const [inkHasContent, setInkHasContent] = useState(false);
+  const [inkInteractionActive, setInkInteractionActive] = useState(false);
+  const [editVersion, setEditVersion] = useState(0);
   const [pageZoom, setPageZoom] = useState(1);
   const [userAdjustedZoom, setUserAdjustedZoom] = useState(false);
   const [editorViewport, setEditorViewport] = useState<EditorViewportState>({
@@ -1030,6 +1035,9 @@ export default function NotebookEditorPage() {
   const selectedPageRef = useRef<NotebookPage | null>(null);
   const textBlocksRef = useRef<NotebookTextBlock[]>([]);
   const saveStatusRef = useRef<SaveStatus>("saved");
+  const inkInteractionActiveRef = useRef(false);
+  const saveOperationRef = useRef<Promise<boolean> | null>(null);
+  const saveQueuedRef = useRef(false);
   const pageColorRef = useRef<NotebookPageColor>("white");
   const pageStyleRef = useRef<NotebookPageStyle>("plain");
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
@@ -1207,7 +1215,9 @@ export default function NotebookEditorPage() {
 
   const markPageUnsaved = useCallback(() => {
     editorRevisionRef.current += 1;
+    saveStatusRef.current = "unsaved";
     setSaveStatus("unsaved");
+    setEditVersion((current) => current + 1);
     setFeedback((current) =>
       current?.message === "Could not autosave this page." ? null : current
     );
@@ -1389,6 +1399,9 @@ export default function NotebookEditorPage() {
       setInkUndoDepth(0);
       setInkRedoDepth(0);
       setInkHasContent(false);
+      setInkInteractionActive(false);
+      inkInteractionActiveRef.current = false;
+      setEditVersion(0);
       setActiveTextGestureId(null);
       clearNotebookCanvas(savedCanvasRef.current);
       clearNotebookCanvas(liveHighlighterCanvasRef.current);
@@ -1417,6 +1430,9 @@ export default function NotebookEditorPage() {
     setInkHasContent(
       Boolean(selectedPage.inkData?.svg) || (selectedPage.strokeData?.strokes.length ?? 0) > 0
     );
+    setInkInteractionActive(false);
+    inkInteractionActiveRef.current = false;
+    setEditVersion(0);
     setActiveTextGestureId(null);
     clearNotebookCanvas(liveHighlighterCanvasRef.current);
     clearNotebookCanvas(liveCanvasRef.current);
@@ -1424,6 +1440,7 @@ export default function NotebookEditorPage() {
     setPageStyle(selectedPage.pageStyle ?? notebook?.pageStyle ?? "plain");
     hydratedPageIdRef.current = selectedPage.id;
     editorRevisionRef.current = 0;
+    saveStatusRef.current = "saved";
     setSaveStatus("saved");
   }, [notebook?.pageColor, notebook?.pageStyle, selectedPage]);
 
@@ -1906,6 +1923,7 @@ export default function NotebookEditorPage() {
       saveRevision: number;
     }) => {
       if (!user?.uid) return false;
+      saveStatusRef.current = "saving";
       setSaveStatus("saving");
       try {
         const persistedTextBlocks = input.textBlocks;
@@ -1967,6 +1985,7 @@ export default function NotebookEditorPage() {
             latestSaveId: latestSaveIdRef.current,
           })
         ) {
+          saveStatusRef.current = "saved";
           setSaveStatus("saved");
           setFeedback((current) =>
             current?.message === "Could not autosave this page." ? null : current
@@ -1982,6 +2001,7 @@ export default function NotebookEditorPage() {
             latestSaveId: latestSaveIdRef.current,
           })
         ) {
+          saveStatusRef.current = "failed";
           setSaveStatus("failed");
           setFeedback({
             type: "error",
@@ -1995,24 +2015,107 @@ export default function NotebookEditorPage() {
   );
 
   const saveCurrentPage = useCallback(
-    async (options: { includeActiveStroke?: boolean } = {}) => {
+    async function saveCurrentPage(
+      options: { includeActiveStroke?: boolean; flush?: boolean } = {}
+    ): Promise<boolean> {
+      const activeSaveOperation = saveOperationRef.current;
+      if (activeSaveOperation) {
+        if (!options.flush) {
+          saveQueuedRef.current = true;
+          return true;
+        }
+        await activeSaveOperation;
+        if (
+          saveOperationRef.current &&
+          saveOperationRef.current !== activeSaveOperation
+        ) {
+          return saveCurrentPage({ ...options, flush: true });
+        }
+        if (
+          saveStatusRef.current === "unsaved" ||
+          saveStatusRef.current === "failed"
+        ) {
+          return saveCurrentPage({ ...options, flush: true });
+        }
+        return true;
+      }
+
       const page = selectedPageRef.current;
       if (!page || !user?.uid) return false;
-      if (activeStrokeRef.current && !options.includeActiveStroke) return false;
-      const saveId = latestSaveIdRef.current + 1;
-      latestSaveIdRef.current = saveId;
-      const saveRevision = editorRevisionRef.current;
-      return savePageSnapshot({
-        page,
-        textBlocks: textBlocksRef.current,
-        strokes: collectCurrentStrokes({ includeActiveStroke: options.includeActiveStroke }),
-        inkSvg: inkEditorRef.current?.serialize() ?? selectedPageInkSvg,
-        hasInk: inkEditorRef.current?.hasInk() ?? strokesRef.current.length > 0,
-        pageColor: pageColorRef.current,
-        pageStyle: pageStyleRef.current,
-        saveId,
-        saveRevision,
-      });
+      if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) {
+        return false;
+      }
+
+      const operation = (async () => {
+        const saveId = latestSaveIdRef.current + 1;
+        latestSaveIdRef.current = saveId;
+        const saveRevision = editorRevisionRef.current;
+        const inkEditor = inkEditorRef.current;
+        const inkSvg = inkEditor
+          ? await inkEditor.serializeAsync()
+          : selectedPageInkSvg;
+
+        if (
+          shouldDiscardNotebookInkExport({
+            svgAvailable: inkSvg !== null,
+            inkInteractionActive:
+              Boolean(inkEditorRef.current?.isInteracting()) ||
+              inkInteractionActiveRef.current,
+            saveRevision,
+            currentRevision: editorRevisionRef.current,
+          })
+        ) {
+          return false;
+        }
+
+        if (inkSvg === null) return false;
+
+        return savePageSnapshot({
+          page,
+          textBlocks: textBlocksRef.current,
+          strokes: collectCurrentStrokes({
+            includeActiveStroke: options.includeActiveStroke,
+          }),
+          inkSvg,
+          hasInk:
+            inkEditorRef.current?.hasInk() ?? strokesRef.current.length > 0,
+          pageColor: pageColorRef.current,
+          pageStyle: pageStyleRef.current,
+          saveId,
+          saveRevision,
+        });
+      })();
+
+      saveOperationRef.current = operation;
+      let saved = false;
+      try {
+        saved = await operation;
+      } finally {
+        if (saveOperationRef.current === operation) {
+          saveOperationRef.current = null;
+        }
+      }
+
+      const stillDirty =
+        saveStatusRef.current === "unsaved" || saveStatusRef.current === "failed";
+      if (options.flush && stillDirty) {
+        if (saveStatusRef.current === "failed") return false;
+        if (
+          inkInteractionActiveRef.current ||
+          inkEditorRef.current?.isInteracting()
+        ) {
+          return false;
+        }
+        return saveCurrentPage({ ...options, flush: true });
+      }
+
+      const shouldRunQueuedSave =
+        saveQueuedRef.current && !inkInteractionActiveRef.current && stillDirty;
+      saveQueuedRef.current = false;
+      if (shouldRunQueuedSave) {
+        void saveCurrentPage();
+      }
+      return saved;
     },
     [collectCurrentStrokes, savePageSnapshot, selectedPageInkSvg, user?.uid]
   );
@@ -2020,12 +2123,16 @@ export default function NotebookEditorPage() {
   const selectPageById = useCallback(
     async (pageId: string) => {
       if (pageId === selectedPageRef.current?.id) return true;
+      if (inkEditorRef.current?.isInteracting()) return false;
       if (
         saveStatusRef.current === "unsaved" ||
-        saveStatusRef.current === "failed" ||
-        activeStrokeRef.current
+        saveStatusRef.current === "failed"
       ) {
-        await saveCurrentPage({ includeActiveStroke: true });
+        const saved = await saveCurrentPage({
+          includeActiveStroke: true,
+          flush: true,
+        });
+        if (!saved) return false;
       }
       setSelectedPageId(pageId);
       return true;
@@ -2044,9 +2151,11 @@ export default function NotebookEditorPage() {
       if (nextIndex === selectedPageIndex) return false;
       const nextPage = pages[nextIndex];
       if (!nextPage) return false;
-      setPageTransitionDirection(offset === 1 ? "next" : "previous");
-      await selectPageById(nextPage.id);
-      return true;
+      const selected = await selectPageById(nextPage.id);
+      if (selected) {
+        setPageTransitionDirection(offset === 1 ? "next" : "previous");
+      }
+      return selected;
     },
     [pages, selectPageById, selectedPageIndex]
   );
@@ -2062,12 +2171,21 @@ export default function NotebookEditorPage() {
       window.clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
-    if (loading || saveStatus !== "unsaved" || !selectedPage) return;
+    if (
+      !shouldStartNotebookAutosave({
+        loading,
+        saveStatus,
+        hasSelectedPage: Boolean(selectedPage),
+        inkInteractionActive,
+      })
+    ) {
+      return;
+    }
 
     autosaveTimerRef.current = window.setTimeout(() => {
       autosaveTimerRef.current = null;
       void saveCurrentPage();
-    }, 1200);
+    }, NOTEBOOK_AUTOSAVE_IDLE_MS);
 
     return () => {
       if (autosaveTimerRef.current !== null) {
@@ -2075,16 +2193,26 @@ export default function NotebookEditorPage() {
         autosaveTimerRef.current = null;
       }
     };
-  }, [loading, pageColor, pageStyle, saveCurrentPage, saveStatus, selectedPage, strokes, textBlocks]);
+  }, [
+    editVersion,
+    inkInteractionActive,
+    loading,
+    pageColor,
+    pageStyle,
+    saveCurrentPage,
+    saveStatus,
+    selectedPage,
+    strokes,
+    textBlocks,
+  ]);
 
   useEffect(() => {
     const saveBeforeExit = () => {
       if (
         saveStatusRef.current === "unsaved" ||
-        saveStatusRef.current === "failed" ||
-        activeStrokeRef.current
+        saveStatusRef.current === "failed"
       ) {
-        void saveCurrentPage({ includeActiveStroke: true });
+        void saveCurrentPage({ includeActiveStroke: true, flush: true });
       }
     };
     const handleVisibilityChange = () => {
@@ -2107,10 +2235,12 @@ export default function NotebookEditorPage() {
     event.preventDefault();
     if (
       saveStatusRef.current === "unsaved" ||
-      saveStatusRef.current === "failed" ||
-      activeStrokeRef.current
+      saveStatusRef.current === "failed"
     ) {
-      const saved = await saveCurrentPage({ includeActiveStroke: true });
+      const saved = await saveCurrentPage({
+        includeActiveStroke: true,
+        flush: true,
+      });
       if (!saved) {
         setFeedback({
           type: "error",
@@ -2567,10 +2697,12 @@ export default function NotebookEditorPage() {
     if (!user?.uid || !notebook || !fullNotebookEditingEnabled) return;
     if (
       saveStatusRef.current === "unsaved" ||
-      saveStatusRef.current === "failed" ||
-      activeStrokeRef.current
+      saveStatusRef.current === "failed"
     ) {
-      const saved = await saveCurrentPage({ includeActiveStroke: true });
+      const saved = await saveCurrentPage({
+        includeActiveStroke: true,
+        flush: true,
+      });
       if (!saved) {
         setFeedback({
           type: "error",
@@ -2618,10 +2750,19 @@ export default function NotebookEditorPage() {
 
     if (
       saveStatusRef.current === "unsaved" ||
-      saveStatusRef.current === "failed" ||
-      activeStrokeRef.current
+      saveStatusRef.current === "failed"
     ) {
-      await saveCurrentPage({ includeActiveStroke: true });
+      const saved = await saveCurrentPage({
+        includeActiveStroke: true,
+        flush: true,
+      });
+      if (!saved) {
+        setFeedback({
+          type: "error",
+          message: "Could not autosave before deleting the page.",
+        });
+        return;
+      }
     }
 
     setDeletingPageId(page.id);
@@ -3571,6 +3712,10 @@ export default function NotebookEditorPage() {
                     onHistoryChange={(nextUndoDepth, nextRedoDepth) => {
                       setInkUndoDepth(nextUndoDepth);
                       setInkRedoDepth(nextRedoDepth);
+                    }}
+                    onInteractionChange={(active) => {
+                      inkInteractionActiveRef.current = active;
+                      setInkInteractionActive(active);
                     }}
                     onPointerDown={handlePagePointerDown}
                     onPointerMove={handlePagePointerMove}
