@@ -443,6 +443,7 @@ export default function GoalsPage() {
               value={targetCards}
               onChange={(event) => setTargetCards(event.target.value)}
               label="Target cards"
+              className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
             />
             <Input
               type="number"
@@ -453,16 +454,17 @@ export default function GoalsPage() {
               value={targetAccuracy}
               onChange={(event) => setTargetAccuracy(event.target.value)}
               label="Accuracy %"
+              className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
             />
             <div className="md:col-span-2">
-              <div className="app-subtle-panel rounded-[1.6rem] p-4">
-                <div className="mb-4">
+              <div className="app-subtle-panel rounded-[1.3rem] p-3.5">
+                <div className="mb-3">
                   <div className="text-sm font-medium text-text-primary">Deadline</div>
                   <p className="mt-1 text-xs leading-5 text-text-muted">
                     Optional. Leave both fields blank for an open-ended goal.
                   </p>
                 </div>
-                <div className="grid gap-4 sm:grid-cols-2 lg:gap-7">
+                <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
                   <Input
                     type="date"
                     value={deadlineDate}
@@ -471,12 +473,16 @@ export default function GoalsPage() {
                       if (!event.target.value) setDeadlineTime("");
                     }}
                     label="Finish by date (optional)"
+                    containerClassName="min-w-0"
+                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
                   />
                   <Input
                     type="time"
                     value={deadlineTime}
                     onChange={(event) => setDeadlineTime(event.target.value)}
                     label="Finish by time"
+                    containerClassName="min-w-0"
+                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
                   />
                 </div>
               </div>

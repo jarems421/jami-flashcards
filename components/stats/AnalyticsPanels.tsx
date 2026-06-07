@@ -55,8 +55,39 @@ function getStreakStatus(prediction: StreakPrediction) {
   };
 }
 
-export function StreakPredictionPanel({ prediction }: { prediction: StreakPrediction }) {
+export function StreakPredictionPanel({
+  prediction,
+  compact = false,
+}: {
+  prediction: StreakPrediction;
+  compact?: boolean;
+}) {
   const status = getStreakStatus(prediction);
+
+  if (compact) {
+    return (
+      <Card padding="md" className="animate-fade-in">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Streak check-in
+            </div>
+            <div className="mt-1 text-xl font-semibold text-text-primary">
+              {status.label}
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <div className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
+              {prediction.currentStreak}d streak
+            </div>
+            <div className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${getToneClass(prediction.riskTier)}`}>
+              {prediction.dueBacklog} due
+            </div>
+          </div>
+        </div>
+      </Card>
+    );
+  }
 
   return (
     <Card padding="lg" className="animate-fade-in">

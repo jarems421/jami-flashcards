@@ -10,6 +10,7 @@ type PageHeroProps = {
   aside?: ReactNode;
   tone?: "default" | "warm";
   className?: string;
+  compact?: boolean;
 };
 
 export default function PageHero({
@@ -21,19 +22,24 @@ export default function PageHero({
   aside,
   tone = "warm",
   className = "",
+  compact = false,
 }: PageHeroProps) {
   return (
-    <Card tone={tone} padding="lg" className={`overflow-hidden ${className}`}>
-      <div className="flex flex-col gap-6 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0 max-w-3xl flex-1">
+    <Card tone={tone} padding={compact ? "md" : "lg"} className={`overflow-hidden ${className}`}>
+      <div
+        className={`flex flex-col lg:flex-row lg:justify-between ${
+          compact ? "gap-4 lg:items-center" : "gap-6 lg:items-end"
+        }`}
+      >
+        <div className={`min-w-0 flex-1 ${compact ? "max-w-xl" : "max-w-3xl"}`}>
           <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-secondary">
             {eyebrow}
           </div>
-          <h2 className="mt-3 text-[1.3rem] font-medium leading-tight tracking-tight text-text-primary sm:text-[1.55rem] xl:text-[1.85rem]">
+          <h2 className={`${compact ? "mt-2" : "mt-3"} text-[1.3rem] font-medium leading-tight tracking-tight text-text-primary sm:text-[1.55rem] xl:text-[1.85rem]`}>
             {title}
           </h2>
           {description ? (
-            <div className="mt-4 max-w-2xl text-sm leading-7 text-text-muted sm:text-base">
+            <div className={`${compact ? "mt-2 leading-6" : "mt-4 leading-7"} max-w-2xl text-sm text-text-muted sm:text-base`}>
               {description}
             </div>
           ) : null}

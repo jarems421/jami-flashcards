@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
+import HowJamiWorksCard from "@/components/study/HowJamiWorksCard";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
 import { Button, Card, Input, SectionHeader } from "@/components/ui";
 import { logout, deleteAccount } from "@/services/auth";
@@ -240,6 +241,8 @@ export default function ProfilePage() {
       >
         Sign out
       </Button>
+
+      <HowJamiWorksCard />
 
       <ThemePreferenceCard />
 

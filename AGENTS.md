@@ -23,11 +23,41 @@ During the current Phase 6 notebook-first Practice phase:
 - Prefer reusable components in `components/ui` over one-off Tailwind styling.
 - Keep the app responsive across mobile, tablet, and desktop.
 - Use Browser Use / localhost visual checks when changing UI.
-- After meaningful UI changes, run:
-  - `npm run typecheck`
-  - `npm run lint`
-  - `npm test`
-  - `npm run build`
+
+## Fast UI Verification
+
+Optimise for fast UI iteration. Do not run the full Vitest suite after every small visual change.
+
+For each focused UI task:
+- Inspect the changed files and classify the change by risk.
+- During iteration, run `npm run typecheck` and `npm run lint`.
+- Manually verify the affected page at relevant desktop, tablet, and phone widths with Browser Use / localhost.
+- Run `npm run build` once the focused task is coherent, rather than after every intermediate edit.
+- Run only related tests where practical:
+  - Explicit test files: `npx vitest run tests/<relevant-file>.test.ts`
+  - Source-related tests: `npx vitest related <changed-source-files> --run`
+  - Git-changed tests: `npx vitest run --changed`
+
+Use this risk split:
+- Tiny CSS, spacing, colour, copy, button-variant, or local responsive changes:
+  - Run typecheck, lint, one build for the completed task, and a browser visual check.
+  - Do not run the full test suite unless the change exposes a regression or related tests fail.
+- Page-local JSX/layout changes with unchanged behavior:
+  - Run typecheck, lint, one build, related tests if they exist, and a browser check of that page.
+- Shared `components/ui` primitives, global theme tokens, navigation, or layout-shell changes:
+  - Run typecheck, lint, build, related tests, and browser-check 3-5 representative affected pages.
+  - Run the full suite before final handoff because these changes have broad reach.
+- Logic, state, forms, routing, auth, Firebase/data loading, notebook persistence, or interaction changes:
+  - Run related tests immediately.
+  - Run the full suite before moving on or handing off.
+
+Run the complete `npm test` suite:
+- After finishing a group of related UI changes.
+- Before final completion, deploy, commit, or PR handoff.
+- Whenever a shared component or behavioral path changed.
+- Whenever a related/changed test fails.
+
+Do not skip all verification merely because a change looks visual. Browser verification is required for UI work; if Browser Use is unavailable, state that clearly in the final response.
 
 ## UI Polish Expectations
 

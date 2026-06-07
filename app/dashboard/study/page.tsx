@@ -71,7 +71,7 @@ type FocusedReviewRecents = { deckIds: string[]; tags: string[] };
 
 const FOCUSED_REVIEW_RECENTS_PREFIX = "jami:focused-review-recents:";
 const EMPTY_FOCUSED_REVIEW_RECENTS: FocusedReviewRecents = { deckIds: [], tags: [] };
-const FOCUSED_REVIEW_RECENT_LIMIT = 5;
+const FOCUSED_REVIEW_RECENT_LIMIT = 3;
 const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
 
 const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classes: string }> = {
@@ -622,7 +622,6 @@ export default function StudyPage() {
   }, [dailyReviewState, optionalDailyCards]);
   const hasCarryoverRequiredCards = remainingCarryoverRequiredCards.length > 0;
   const hasCards = cards.length > 0;
-  const hasRecommendedDailyCards = hasCards && remainingRequiredCards.length > 0;
   const customPreviewCards = useMemo(
     () => buildCustomReviewCards(cards, selectedDeckIds, selectedTags),
     [cards, selectedDeckIds, selectedTags]
@@ -1562,12 +1561,17 @@ export default function StudyPage() {
                   <SurfaceCard padding="md" className="space-y-4">
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                       <div className="min-w-0">
-                        <StepLabel step={1}>Daily Review</StepLabel>
-                        <h3 className="mt-3 text-lg font-semibold leading-tight text-white">
-                          {remainingRequiredCards.length + remainingOptionalCards.length > 0
-                            ? `${remainingRequiredCards.length + remainingOptionalCards.length} cards available`
-                            : "Daily Review complete"}
-                        </h3>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <StepLabel step={1}>Daily Review</StepLabel>
+                          {remainingRequiredCards.length + remainingOptionalCards.length === 0 ? (
+                            <span className="app-success rounded-full px-2.5 py-1 text-xs font-medium">
+                              All clear
+                            </span>
+                          ) : null}
+                        </div>
+                        <p className="mt-3 text-sm leading-6 text-text-secondary">
+                          Review priority cards first, then choose optional easy extras.
+                        </p>
                         {hasCarryoverRequiredCards ? (
                           <div className="mt-2 text-sm font-medium text-warm-accent">
                             Unfinished from last Daily Review: {remainingCarryoverRequiredCards.length}
@@ -1582,17 +1586,6 @@ export default function StudyPage() {
                         <CountPill value={remainingOptionalCards.length} label="Easy extras" />
                       </div>
                     </div>
-                    <p className="max-w-3xl text-sm leading-6 text-text-secondary">
-                      {hasCarryoverRequiredCards
-                        ? "Finish unfinished cards or start today's fresh set."
-                        : remainingRequiredCards.length > 0 && remainingOptionalCards.length > 0
-                        ? "Start with priority cards first."
-                        : remainingRequiredCards.length > 0
-                          ? "Priority cards need attention."
-                          : remainingOptionalCards.length > 0
-                            ? "Main queue clear. Extras are optional."
-                            : "No Daily Review cards waiting."}
-                    </p>
                     <div className={`grid gap-3 ${hasCarryoverRequiredCards ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
                       {hasCarryoverRequiredCards ? (
                         <div className="space-y-1.5">
@@ -1777,7 +1770,8 @@ export default function StudyPage() {
                                 key={deck.id}
                                 type="button"
                                 onClick={() => toggleDeckFilter(deck.id)}
-                                className={`rounded-full px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
+                                className={`min-h-11 rounded-full px-4 py-2 text-left text-sm font-medium shadow-[var(--shadow-shell)] transition duration-fast hover:-translate-y-[1px] hover:border-border-strong active:translate-y-0 active:scale-[0.98] ${selected ? "app-button-primary" : "app-selected"}`}
+                                aria-pressed={selected}
                               >
                                 {deck.name} · {deckCardCounts.get(deck.id) ?? 0} cards
                               </button>
@@ -1801,7 +1795,8 @@ export default function StudyPage() {
                                 key={tag}
                                 type="button"
                                 onClick={() => toggleTagFilter(tag)}
-                                className={`rounded-full px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
+                                className={`min-h-11 rounded-full px-4 py-2 text-left text-sm font-medium shadow-[var(--shadow-shell)] transition duration-fast hover:-translate-y-[1px] hover:border-border-strong active:translate-y-0 active:scale-[0.98] ${selected ? "app-button-primary" : "app-selected"}`}
+                                aria-pressed={selected}
                               >
                                 {tag} · {tagCardCounts.get(getTagKey(tag)) ?? 0} cards
                               </button>
@@ -1826,17 +1821,6 @@ export default function StudyPage() {
                       secondaryAction={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link>}
                     />
                   ) : null}
-                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-white/[0.08] bg-white/[0.035] px-3 py-2 text-sm text-text-secondary">
-                    <span className="inline-flex items-center gap-2">
-                      <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-white/[0.08] px-2 text-xs font-semibold leading-none tabular-nums text-white">
-                        {customPreviewCards.length}
-                      </span>
-                      <span>card{customPreviewCards.length === 1 ? "" : "s"} ready</span>
-                    </span>
-                    {hasRecommendedDailyCards ? (
-                      <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent">Daily Review first</span>
-                    ) : null}
-                  </div>
                 </SurfaceCard>
               ) : null}
               {hasCards ? (
@@ -1845,15 +1829,13 @@ export default function StudyPage() {
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2">
                         <StepLabel step={3}>Simple Study</StepLabel>
-                        <span className="rounded-full border border-emerald-300/20 bg-emerald-400/[0.08] px-2.5 py-1 text-xs font-medium text-emerald-100">
+                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${simpleStudyQueue.cards.length > 0 ? "app-chip" : "app-success"}`}>
                           {simpleStudyStatusText}
                         </span>
                       </div>
-                      <h3 className="mt-3 text-lg font-semibold leading-tight text-white">
-                        {simpleStudyQueue.cards.length > 0
-                          ? `${simpleStudyQueue.cards.length} cards to clear`
-                          : "Simple Study complete"}
-                      </h3>
+                      <p className="mt-3 text-sm leading-6 text-text-secondary">
+                        Clear new and missed cards with a quick correct-or-wrong pass.
+                      </p>
                     </div>
                     <Button
                       type="button"

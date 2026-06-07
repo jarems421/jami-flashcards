@@ -182,8 +182,8 @@ function ActionPill({
 
 function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
   return (
-    <Card tone="warm" padding="lg" className="animate-slide-up">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-center lg:justify-between">
+    <Card tone="warm" padding="lg" className="h-full animate-slide-up">
+      <div className="flex h-full flex-col gap-5">
         <div className="min-w-0">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
             Recommended next action
@@ -195,7 +195,7 @@ function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
             {plan.nextAction.description}
           </p>
         </div>
-        <div className="flex shrink-0 flex-wrap gap-2">
+        <div className="mt-auto flex flex-wrap gap-2">
           <ActionPill href={plan.nextAction.href}>{plan.nextAction.label}</ActionPill>
           {plan.nextAction.secondaryHref && plan.nextAction.secondaryLabel ? (
             <ActionPill href={plan.nextAction.secondaryHref} variant="secondary">
@@ -208,95 +208,9 @@ function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
   );
 }
 
-function TodayStatusRow({ plan }: { plan: TodayPlan }) {
-  const items = [
-    ["Due", plan.dueCards.count],
-    ["Folders", plan.workspace.folderCount],
-    ["Drafts", plan.drafts.length],
-    ["Weak topics", plan.weakTopics.length],
-  ];
-
-  return (
-    <div className="app-subtle-panel flex flex-wrap gap-2 rounded-[1.25rem] p-2">
-      {items.map(([label, value]) => (
-        <span
-          key={label}
-          className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold"
-        >
-          <span className="text-text-primary">{value}</span> {label}
-        </span>
-      ))}
-    </div>
-  );
-}
-
-function SecondaryActionsPanel({ plan }: { plan: TodayPlan }) {
-  const actions = [
-    plan.workspace.recentNotebook
-      ? {
-          label: "Continue notebook",
-          title: plan.workspace.recentNotebook.title,
-          detail: "",
-          href: plan.workspace.recentNotebook.href,
-        }
-      : null,
-    plan.drafts[0]
-      ? {
-          label: "Review draft",
-          title: "Flashcard draft waiting",
-          detail: "",
-          href: plan.drafts[0].href,
-        }
-      : null,
-    plan.weakTopics[0]
-      ? {
-          label: "Practice topic",
-          title: plan.weakTopics[0].name,
-          detail: "",
-          href: plan.weakTopics[0].href,
-        }
-      : null,
-    plan.goalSummary
-      ? {
-          label: "Open goal",
-          title: "Study target",
-          detail: "",
-          href: plan.goalSummary.href,
-        }
-      : null,
-  ].filter((action): action is { label: string; title: string; detail: string; href: string } =>
-    Boolean(action)
-  ).slice(0, 4);
-
-  if (actions.length === 0) return null;
-
-  return (
-    <Card padding="md">
-      <div className="mb-3 text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-        Secondary actions
-      </div>
-      <div className="grid gap-2 md:grid-cols-3">
-        {actions.map((action) => (
-          <Link
-            key={`${action.label}-${action.href}`}
-            href={action.href}
-            className="app-subtle-panel rounded-[1.1rem] p-3 transition duration-fast hover:-translate-y-[1px]"
-          >
-            <div className="text-sm font-semibold text-text-primary">{action.label}</div>
-            <div className="mt-1 line-clamp-1 text-xs font-medium text-text-secondary">{action.title}</div>
-            {action.detail ? (
-              <p className="mt-1 line-clamp-2 text-xs leading-5 text-text-muted">{action.detail}</p>
-            ) : null}
-          </Link>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
 function TodayReviewCard({ plan }: { plan: TodayPlan }) {
   return (
-    <Card padding="lg">
+    <Card padding="lg" className="h-full">
       <SectionHeader
         eyebrow="Today's review"
         title={plan.dueCards.count > 0 ? `${plan.dueCards.count} cards due` : "Daily Review is clear"}
@@ -419,52 +333,6 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
         <p className="app-subtle-panel mt-5 rounded-[1.15rem] p-4 text-sm leading-6 text-text-secondary">
           Add a goal when you want a target.
         </p>
-      )}
-    </Card>
-  );
-}
-
-function HowJamiWorksCard({ compact }: { compact: boolean }) {
-  const [open, setOpen] = useState(!compact);
-  const steps = [
-    ["1", "Learn"],
-    ["2", "Practice"],
-    ["3", "Drafts"],
-    ["4", "Progress"],
-  ];
-
-  return (
-    <Card padding={compact ? "md" : "lg"}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <SectionHeader
-          title="How Jami works"
-        />
-        <Button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          variant="secondary"
-          size="sm"
-          aria-expanded={open}
-        >
-          {open ? "Hide" : "Show"}
-        </Button>
-      </div>
-      {!open ? null : (
-      <div className="mt-5 grid gap-2 sm:grid-cols-4">
-        {steps.map(([step, title]) => (
-          <div
-            key={step}
-            className="app-subtle-panel relative rounded-[1.1rem] p-3"
-          >
-            <div className="flex items-center gap-3">
-              <IconBubble size="sm" shape="circle" className="app-chip font-semibold">
-                {step}
-              </IconBubble>
-              <div className="text-sm font-semibold text-text-primary">{title}</div>
-            </div>
-          </div>
-        ))}
-      </div>
       )}
     </Card>
   );
@@ -741,8 +609,6 @@ export default function DashboardHome() {
     [todayPlan.checklist]
   );
   const dueCount = todayPlan.dueCards.count;
-  const hasStartedLoop = decks.length > 0 || cards.length > 0 || notebooks.length > 0 || studyFolders.length > 0;
-
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
@@ -757,6 +623,7 @@ export default function DashboardHome() {
 
         <PageHero
           className="animate-slide-up"
+          compact
           eyebrow={isLoading ? "Loading" : "Today"}
           title={isLoading ? "Getting today ready." : "Your next study step"}
           description={
@@ -779,6 +646,8 @@ export default function DashboardHome() {
           }
         />
 
+        <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
+
         {isLoading ? (
           <Card tone="warm" padding="lg">
             <SectionHeader
@@ -788,18 +657,16 @@ export default function DashboardHome() {
           </Card>
         ) : (
           <>
-            <RecommendedActionCard plan={todayPlan} />
-            <TodayStatusRow plan={todayPlan} />
-            <SecondaryActionsPanel plan={todayPlan} />
-
-            <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-4">
+            <div className="grid items-stretch gap-4 md:grid-cols-2">
+              <RecommendedActionCard plan={todayPlan} />
               <TodayReviewCard plan={todayPlan} />
+            </div>
+
+            <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
               {todayPlan.drafts.length > 0 ? <DraftQueueCard plan={todayPlan} /> : null}
               {todayPlan.weakTopics.length > 0 ? <WeakTopicsCard plan={todayPlan} /> : null}
               {todayPlan.goalSummary ? <GoalSnapshotCard plan={todayPlan} /> : null}
             </div>
-
-            <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
 
             {remainingOptionalCount > 0 ? (
               <StatTile
@@ -811,10 +678,8 @@ export default function DashboardHome() {
             ) : null}
 
             {cards.length > 0 ? (
-              <StreakPredictionPanel prediction={streakPrediction} />
+              <StreakPredictionPanel prediction={streakPrediction} compact />
             ) : null}
-
-            <HowJamiWorksCard compact={hasStartedLoop} />
           </>
         )}
       </AppPage>
