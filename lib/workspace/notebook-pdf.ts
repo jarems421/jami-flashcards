@@ -27,6 +27,29 @@ export function validateNotebookPdfPageCount(pageCount: number) {
   return Math.round(pageCount);
 }
 
+export function validateNotebookPdfPageIndex(
+  pageIndex: number,
+  pageCount: number
+) {
+  if (!Number.isInteger(pageIndex) || pageIndex < 0 || pageIndex >= pageCount) {
+    throw new Error(
+      `PDF page ${pageIndex + 1} is unavailable in this ${pageCount}-page file.`
+    );
+  }
+  return pageIndex;
+}
+
+export function assertImportedNotebookPageCount(
+  expectedPageCount: number,
+  createdPageCount: number
+) {
+  if (createdPageCount !== expectedPageCount) {
+    throw new Error(
+      `Expected ${expectedPageCount} imported pages, but created ${createdPageCount}.`
+    );
+  }
+}
+
 export function buildUploadedNotebookPageMappings(input: {
   pageCount: number;
   fileId: string;

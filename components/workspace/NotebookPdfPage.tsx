@@ -7,34 +7,33 @@ import {
   type HTMLAttributes,
 } from "react";
 import type { PDFDocumentProxy, RenderTask } from "pdfjs-dist";
+import { createNotebookPdfDocumentCache } from "@/lib/workspace/notebook-pdf-cache";
 import {
   getNotebookPdfRenderMetrics,
   loadNotebookPdfJs,
+  validateNotebookPdfPageIndex,
 } from "@/lib/workspace/notebook-pdf";
+import { getNotebookFileBytes } from "@/services/study/notebook-files";
 
-const documentCache = new Map<string, Promise<PDFDocumentProxy>>();
-
-function getPdfDocument(url: string) {
-  let cached = documentCache.get(url);
-  if (!cached) {
-    cached = loadNotebookPdfJs().then(
-      async (pdfjs) => pdfjs.getDocument({ url }).promise
-    );
-    documentCache.set(url, cached);
-    cached.catch(() => documentCache.delete(url));
+const documentCache = createNotebookPdfDocumentCache<PDFDocumentProxy>(
+  async (storagePath) => {
+    const [pdfjs, bytes] = await Promise.all([
+      loadNotebookPdfJs(),
+      getNotebookFileBytes(storagePath),
+    ]);
+    return pdfjs.getDocument({ data: bytes }).promise;
   }
-  return cached;
-}
+);
 
 type NotebookPdfPageProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
-  url: string;
+  storagePath: string;
   pageIndex: number;
   lazy?: boolean;
   maxPixelRatio?: number;
 };
 
 export default function NotebookPdfPage({
-  url,
+  storagePath,
   pageIndex,
   lazy = false,
   maxPixelRatio = 2,
@@ -44,11 +43,13 @@ export default function NotebookPdfPage({
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const [sizeRevision, setSizeRevision] = useState(0);
+  const [retryRevision, setRetryRevision] = useState(0);
   const [visible, setVisible] = useState(!lazy);
-  const renderKey = `${url}|${pageIndex}|${sizeRevision}|${visible}`;
+  const renderKey = `${storagePath}|${pageIndex}|${sizeRevision}|${visible}|${retryRevision}`;
   const [renderState, setRenderState] = useState<{
     key: string;
     status: "ready" | "error";
+    message?: string;
   } | null>(null);
   const status =
     renderState?.key === renderKey ? renderState.status : "loading";
@@ -77,16 +78,19 @@ export default function NotebookPdfPage({
   useEffect(() => {
     const host = hostRef.current;
     const canvas = canvasRef.current;
-    if (!visible || !host || !canvas || !url) return;
+    if (!visible || !host || !canvas || !storagePath) return;
 
     let disposed = false;
     let renderTask: RenderTask | null = null;
-    void getPdfDocument(url)
+    let stage: "file" | "page" | "render" = "file";
+    void documentCache
+      .get(storagePath)
       .then(async (pdf) => {
         if (disposed) return;
-        const normalizedPageIndex = Math.max(
-          0,
-          Math.min(pdf.numPages - 1, Math.round(pageIndex))
+        stage = "page";
+        const normalizedPageIndex = validateNotebookPdfPageIndex(
+          pageIndex,
+          pdf.numPages
         );
         const page = await pdf.getPage(normalizedPageIndex + 1);
         if (disposed) return;
@@ -111,6 +115,7 @@ export default function NotebookPdfPage({
         const context = canvas.getContext("2d", { alpha: false });
         if (!context) throw new Error("Canvas is unavailable.");
 
+        stage = "render";
         renderTask = page.render({
           canvas,
           canvasContext: context,
@@ -125,7 +130,22 @@ export default function NotebookPdfPage({
           !disposed &&
           !(error instanceof Error && error.name === "RenderingCancelledException")
         ) {
-          setRenderState({ key: renderKey, status: "error" });
+          console.error("Notebook PDF render failed.", {
+            storagePath,
+            pageIndex,
+            stage,
+            error,
+          });
+          setRenderState({
+            key: renderKey,
+            status: "error",
+            message:
+              stage === "file"
+                ? "This PDF could not be loaded from your notebook."
+                : stage === "page"
+                  ? "This page is missing from the uploaded PDF."
+                  : "This PDF page could not be rendered.",
+          });
         }
       });
 
@@ -133,7 +153,14 @@ export default function NotebookPdfPage({
       disposed = true;
       renderTask?.cancel();
     };
-  }, [maxPixelRatio, pageIndex, renderKey, sizeRevision, url, visible]);
+  }, [
+    maxPixelRatio,
+    pageIndex,
+    renderKey,
+    sizeRevision,
+    storagePath,
+    visible,
+  ]);
 
   return (
     <div
@@ -155,7 +182,19 @@ export default function NotebookPdfPage({
       ) : null}
       {status === "error" ? (
         <div className="absolute inset-0 grid place-items-center bg-white px-4 text-center text-xs font-semibold text-slate-600">
-          This PDF page could not be rendered.
+          <div className="space-y-2">
+            <p>{renderState?.message}</p>
+            <button
+              type="button"
+              className="pointer-events-auto rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500"
+              onClick={() => {
+                documentCache.invalidate(storagePath);
+                setRetryRevision((current) => current + 1);
+              }}
+            >
+              Try again
+            </button>
+          </div>
         </div>
       ) : null}
     </div>

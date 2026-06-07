@@ -4,6 +4,7 @@ import type {
   NotebookPage,
 } from "@/lib/workspace/notebooks";
 import {
+  assertImportedNotebookPageCount,
   buildUploadedNotebookPageMappings,
   getNotebookPdfPageCount,
 } from "@/lib/workspace/notebook-pdf";
@@ -99,6 +100,7 @@ export async function importUploadedNotebook(input: {
           pdfPageIndex: mapping.pdfPageIndex,
         }))
       );
+      assertImportedNotebookPageCount(pageCount, pages.length);
     } catch (error) {
       throw new Error(getImportStageMessage("Could not create the imported pages", error));
     }
@@ -188,6 +190,7 @@ export async function appendUploadedFileToNotebook(input: {
           pdfPageIndex: mapping.pdfPageIndex,
         }))
       );
+      assertImportedNotebookPageCount(pageCount, createdPages.length);
     } catch (error) {
       throw new Error(getImportStageMessage("Could not create the imported pages", error));
     }

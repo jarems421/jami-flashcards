@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
+  assertImportedNotebookPageCount,
   buildUploadedNotebookPageMappings,
   getNotebookPdfRenderMetrics,
   resolveNotebookPageBackgroundFileId,
+  validateNotebookPdfPageIndex,
   validateNotebookPdfPageCount,
 } from "@/lib/workspace/notebook-pdf";
 
@@ -43,6 +45,24 @@ describe("notebook PDF helpers", () => {
         isPdf: false,
       })[0]?.pdfPageIndex
     ).toBeUndefined();
+  });
+
+  it("rejects page indexes outside the uploaded PDF", () => {
+    expect(validateNotebookPdfPageIndex(0, 2)).toBe(0);
+    expect(validateNotebookPdfPageIndex(1, 2)).toBe(1);
+    expect(() => validateNotebookPdfPageIndex(2, 2)).toThrow(
+      "page 3 is unavailable"
+    );
+    expect(() => validateNotebookPdfPageIndex(-1, 2)).toThrow(
+      "page 0 is unavailable"
+    );
+  });
+
+  it("requires every detected page to have a created notebook page", () => {
+    expect(() => assertImportedNotebookPageCount(2, 2)).not.toThrow();
+    expect(() => assertImportedNotebookPageCount(2, 1)).toThrow(
+      "Expected 2 imported pages, but created 1"
+    );
   });
 
   it("fits a page within its host and caps high-DPI rendering", () => {

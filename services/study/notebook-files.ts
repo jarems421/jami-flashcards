@@ -1,5 +1,6 @@
 import {
   deleteObject,
+  getBytes,
   getDownloadURL,
   ref,
   uploadBytesResumable,
@@ -159,6 +160,16 @@ export async function getNotebookFileDownloadUrl(storagePath: string) {
   const normalizedPath = storagePath.trim();
   if (!normalizedPath) throw new Error("Missing notebook file path.");
   return getDownloadURL(ref(storage, normalizedPath));
+}
+
+export async function getNotebookFileBytes(storagePath: string) {
+  const normalizedPath = storagePath.trim();
+  if (!normalizedPath) throw new Error("Missing notebook file path.");
+  const bytes = await getBytes(
+    ref(storage, normalizedPath),
+    MAX_NOTEBOOK_FILE_SIZE
+  );
+  return new Uint8Array(bytes);
 }
 
 export async function deleteNotebookFile(storagePath: string) {

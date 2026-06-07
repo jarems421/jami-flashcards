@@ -214,6 +214,27 @@ describe("uploaded notebook import", () => {
     );
   });
 
+  it("rolls back when fewer notebook pages are created than the PDF contains", async () => {
+    mocks.createNotebookPages.mockResolvedValue([{ id: "page-1" }]);
+
+    await expect(
+      importUploadedNotebook({
+        userId: "alice",
+        folderId: "folder-1",
+        title: "Paper",
+        file,
+      })
+    ).rejects.toThrow("Expected 2 imported pages, but created 1");
+
+    expect(mocks.deleteNotebookImportRecords).toHaveBeenCalledWith(
+      "alice",
+      "notebook-1"
+    );
+    expect(mocks.deleteNotebookFile).toHaveBeenCalledWith(
+      "users/alice/notebookFiles/notebook-1/file-1-paper.pdf"
+    );
+  });
+
   it("creates one white plain mapped page for an image import", async () => {
     const image = {
       name: "diagram.png",

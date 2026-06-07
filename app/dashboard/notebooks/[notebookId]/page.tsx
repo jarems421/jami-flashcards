@@ -587,10 +587,11 @@ function NotebookPageThumbnail({
           style={{ backgroundImage: `url("${backgroundUrl}")` }}
         />
       ) : null}
-      {backgroundUrl && backgroundFile?.fileType === "application/pdf" ? (
+      {backgroundFile?.fileType === "application/pdf" &&
+      backgroundFile.storagePath ? (
         <NotebookPdfPage
           aria-hidden="true"
-          url={backgroundUrl}
+          storagePath={backgroundFile.storagePath}
           pageIndex={page.pdfPageIndex ?? 0}
           lazy
           maxPixelRatio={1.25}
@@ -1184,7 +1185,12 @@ export default function NotebookEditorPage() {
     const loadFileUrls = async () => {
       const entries = await Promise.all(
         files.map(async (file) => {
-          if (!file.storagePath) return [file.id, ""] as const;
+          if (
+            !file.storagePath ||
+            !file.fileType.startsWith("image/")
+          ) {
+            return [file.id, ""] as const;
+          }
           try {
             return [file.id, await getNotebookFileDownloadUrl(file.storagePath)] as const;
           } catch {
@@ -3959,27 +3965,30 @@ export default function NotebookEditorPage() {
                   />
                   {activeNotebookFile ? (
                     <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden">
-                      {activeNotebookFileUrl ? (
-                        activeNotebookFile.fileType.startsWith("image/") ? (
+                      {activeNotebookFile.fileType.startsWith("image/") ? (
+                        activeNotebookFileUrl ? (
                           <div
                             aria-hidden="true"
                             className="h-full w-full bg-contain bg-center bg-no-repeat"
                             style={{ backgroundImage: `url("${activeNotebookFileUrl}")` }}
                           />
-                        ) : activeNotebookFile.fileType === "application/pdf" ? (
+                        ) : (
+                          <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-1 text-xs font-semibold text-text-secondary">
+                            Loading file...
+                          </div>
+                        )
+                      ) : activeNotebookFile.fileType === "application/pdf" &&
+                        activeNotebookFile.storagePath ? (
                           <NotebookPdfPage
                             aria-label={`Notebook file: ${activeNotebookFile.fileName}, page ${
                               (selectedPage.pdfPageIndex ?? 0) + 1
                             }`}
-                            url={activeNotebookFileUrl}
+                            storagePath={activeNotebookFile.storagePath}
                             pageIndex={selectedPage.pdfPageIndex ?? 0}
                             className="absolute inset-0"
                           />
-                        ) : null
                       ) : (
-                        <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-1 text-xs font-semibold text-text-secondary">
-                          Loading file...
-                        </div>
+                        null
                       )}
                     </div>
                   ) : null}
