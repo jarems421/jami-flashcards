@@ -4,11 +4,33 @@ import {
   buildUploadedNotebookPageMappings,
   getNotebookPdfRenderMetrics,
   resolveNotebookPageBackgroundFileId,
+  validateOwnedNotebookPdfStoragePath,
   validateNotebookPdfPageIndex,
   validateNotebookPdfPageCount,
 } from "@/lib/workspace/notebook-pdf";
 
 describe("notebook PDF helpers", () => {
+  it("only permits notebook PDF paths owned by the signed-in user", () => {
+    expect(
+      validateOwnedNotebookPdfStoragePath(
+        "users/alice/notebookFiles/notebook-1/paper.pdf",
+        "alice"
+      )
+    ).toBe("users/alice/notebookFiles/notebook-1/paper.pdf");
+    expect(() =>
+      validateOwnedNotebookPdfStoragePath(
+        "users/bob/notebookFiles/notebook-1/paper.pdf",
+        "alice"
+      )
+    ).toThrow("Invalid notebook PDF path");
+    expect(() =>
+      validateOwnedNotebookPdfStoragePath(
+        "users/alice/notebookFiles/../paper.pdf",
+        "alice"
+      )
+    ).toThrow("Invalid notebook PDF path");
+  });
+
   it("accepts one and two hundred pages and rejects larger documents", () => {
     expect(validateNotebookPdfPageCount(1)).toBe(1);
     expect(validateNotebookPdfPageCount(200)).toBe(200);

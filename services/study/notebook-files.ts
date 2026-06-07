@@ -4,11 +4,11 @@ import {
   ref,
   uploadBytesResumable,
 } from "firebase/storage";
-import { storage } from "@/services/firebase/client";
+import { auth, storage } from "@/services/firebase/client";
 import { createNotebookFileMetadata } from "@/services/study/notebooks";
+import { MAX_NOTEBOOK_FILE_SIZE } from "@/lib/workspace/notebook-pdf";
 import type { NotebookFile } from "@/lib/workspace/notebooks";
 
-const MAX_NOTEBOOK_FILE_SIZE = 20 * 1024 * 1024;
 const NOTEBOOK_FILE_DOWNLOAD_TIMEOUT_MS = 30_000;
 const ALLOWED_NOTEBOOK_FILE_TYPES = [
   "application/pdf",
@@ -165,7 +165,9 @@ export async function getNotebookFileDownloadUrl(storagePath: string) {
 export async function getNotebookFileBytes(storagePath: string) {
   const normalizedPath = storagePath.trim();
   if (!normalizedPath) throw new Error("Missing notebook file path.");
-  const downloadUrl = await getDownloadURL(ref(storage, normalizedPath));
+  const user = auth.currentUser;
+  if (!user) throw new Error("Sign in again to load this PDF.");
+  const token = await user.getIdToken();
   const controller = new AbortController();
   const timeout = window.setTimeout(
     () => controller.abort(),
@@ -173,12 +175,25 @@ export async function getNotebookFileBytes(storagePath: string) {
   );
 
   try {
-    const response = await fetch(downloadUrl, {
-      cache: "force-cache",
-      signal: controller.signal,
-    });
+    const response = await fetch(
+      `/api/notebook-files/pdf?path=${encodeURIComponent(normalizedPath)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        cache: "force-cache",
+        signal: controller.signal,
+      }
+    );
     if (!response.ok) {
-      throw new Error(`Notebook file download failed (${response.status}).`);
+      const body = (await response.json().catch(() => null)) as {
+        error?: unknown;
+      } | null;
+      throw new Error(
+        typeof body?.error === "string"
+          ? body.error
+          : `Notebook file download failed (${response.status}).`
+      );
     }
     const bytes = await response.arrayBuffer();
     if (bytes.byteLength > MAX_NOTEBOOK_FILE_SIZE) {

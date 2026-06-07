@@ -1,8 +1,30 @@
 export const MAX_NOTEBOOK_PDF_PAGES = 200;
+export const MAX_NOTEBOOK_FILE_SIZE = 20 * 1024 * 1024;
 
 type PdfJsModule = typeof import("pdfjs-dist");
 
 let pdfJsPromise: Promise<PdfJsModule> | null = null;
+
+export function validateOwnedNotebookPdfStoragePath(
+  storagePath: string,
+  userId: string
+) {
+  const normalizedPath = storagePath.trim();
+  const normalizedUserId = userId.trim();
+  const prefix = `users/${normalizedUserId}/notebookFiles/`;
+  const pathSegments = normalizedPath.split("/");
+
+  if (
+    !normalizedUserId ||
+    !normalizedPath.startsWith(prefix) ||
+    pathSegments.length < 5 ||
+    pathSegments.some((segment) => !segment || segment === "." || segment === "..")
+  ) {
+    throw new Error("Invalid notebook PDF path.");
+  }
+
+  return normalizedPath;
+}
 
 export async function loadNotebookPdfJs() {
   pdfJsPromise ??= import("pdfjs-dist").then((pdfjs) => {

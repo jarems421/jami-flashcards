@@ -3,6 +3,7 @@ import "server-only";
 import { cert, getApps, initializeApp } from "firebase-admin/app";
 import { getAuth } from "firebase-admin/auth";
 import { getFirestore } from "firebase-admin/firestore";
+import { getStorage } from "firebase-admin/storage";
 
 function getRequiredAdminEnv() {
   const projectId =
@@ -48,4 +49,12 @@ export function getAdminAuth() {
 
 export function getAdminDb() {
   return getFirestore(getFirebaseAdminApp());
+}
+
+export function getAdminStorageBucket() {
+  const storageBucket = process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET?.trim();
+  if (!storageBucket) {
+    throw new Error("Missing NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET.");
+  }
+  return getStorage(getFirebaseAdminApp()).bucket(storageBucket);
 }
