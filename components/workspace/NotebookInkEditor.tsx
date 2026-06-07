@@ -12,15 +12,28 @@ import {
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import {
+  Color4,
+  Path,
+  Stroke,
+  pathToRenderable,
+  uniteCommands,
   type Editor as JsDrawEditor,
 } from "js-draw";
-import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
+import type {
+  NotebookStroke,
+  NotebookStrokeColor,
+} from "@/lib/workspace/notebooks";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
+import {
+  getFreehandOutline,
+  getSvgPathFromStrokeOutline,
+} from "@/lib/workspace/notebook-ink-engine";
 
 export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "text";
 
 export type NotebookInkEditorHandle = {
   clear(): void;
+  commitStrokes(strokes: NotebookStroke[]): Promise<void>;
   hasInk(): boolean;
   isInteracting(): boolean;
   redo(): void;
@@ -99,8 +112,7 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
         : style.penThickness
     );
     primaryPen.setPressureSensitivityEnabled(style.activeTool === "pen");
-    primaryPen.setHasStabilization(true);
-    primaryPen.setEnabled(true);
+    primaryPen.setHasStabilization(false);
   } else if (style.activeTool === "eraser") {
     const eraser = erasers[0];
     eraser?.setThickness(style.eraserThickness);
@@ -140,6 +152,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const jsDrawRef = useRef<JsDrawModule | null>(null);
     const loadingRef = useRef(true);
     const readyRef = useRef(false);
+    const suppressedChangeEventsRef = useRef(0);
     const activePointersRef = useRef<Set<number>>(new Set());
     const pendingStyleRef = useRef(false);
     const initialSvgRef = useRef(initialSvg);
@@ -181,6 +194,55 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           if (!editor || !jsDraw) return;
           const components = editor.image.getAllComponents();
           if (components.length > 0) editor.dispatch(new jsDraw.Erase(components));
+        },
+        async commitStrokes(strokes) {
+          const editor = editorRef.current;
+          if (!editor || strokes.length === 0) return;
+          const commands = strokes.flatMap((stroke) => {
+            if (stroke.tool === "eraser" || stroke.points.length === 0) return [];
+            const pathData = getSvgPathFromStrokeOutline(
+              getFreehandOutline({
+                points: stroke.points,
+                tool: stroke.tool,
+                width: stroke.width,
+                mode: "committed",
+              })
+            );
+            if (!pathData) return [];
+            const { color, opacity } = getNotebookInkColor(
+              stroke.color,
+              stroke.tool
+            );
+            const parsed = Color4.fromString(color);
+            const component = new Stroke([
+              pathToRenderable(Path.fromString(pathData), {
+                fill: Color4.ofRGBA(
+                  parsed.r,
+                  parsed.g,
+                  parsed.b,
+                  opacity
+                ),
+              }),
+            ]);
+            return [editor.image.addComponent(component)];
+          });
+          if (commands.length === 0) return;
+          suppressedChangeEventsRef.current += 1;
+          try {
+            await editor.dispatch(
+              uniteCommands(commands, {
+                description:
+                  commands.length === 1
+                    ? "Add notebook stroke"
+                    : "Add notebook strokes",
+              })
+            );
+          } finally {
+            suppressedChangeEventsRef.current = Math.max(
+              0,
+              suppressedChangeEventsRef.current - 1
+            );
+          }
         },
         hasInk() {
           return (editorRef.current?.image.getAllComponents().length ?? 0) > 0;
@@ -249,7 +311,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
                 event.undoStackSize,
                 event.redoStackSize
               );
-              if (!loadingRef.current) callbacksRef.current.onChange();
+              if (
+                !loadingRef.current &&
+                suppressedChangeEventsRef.current === 0
+              ) {
+                callbacksRef.current.onChange();
+              }
             }
           );
           await editor.loadFromSVG(initialSvgRef.current, true);

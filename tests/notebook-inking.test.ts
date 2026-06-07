@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   appendInkPoints,
+  appendPendingNotebookStroke,
   clampNotebookPageZoom,
   clampNotebookThicknessPercent,
   finalizeInkStroke,
@@ -14,6 +15,8 @@ import {
   getPointerClientSamples,
   mapClientPointToNotebookPage,
   normalizePointerPressure,
+  NOTEBOOK_MAX_PENDING_NATIVE_STROKES,
+  NOTEBOOK_NATIVE_COMMIT_IDLE_MS,
   shouldAppendInkPoint,
   shouldPointerDraw,
   shouldPointerDrawEvent,
@@ -34,6 +37,31 @@ import {
 } from "@/lib/workspace/notebooks";
 
 describe("notebook inking helpers", () => {
+  it("uses a genuine idle boundary and bounds the native pending stroke queue", () => {
+    const makeStroke = (x: number) => ({
+      points: [{ x, y: 10 }],
+      color: "black" as const,
+      tool: "pen" as const,
+      width: 6,
+    });
+    const pending = Array.from(
+      { length: NOTEBOOK_MAX_PENDING_NATIVE_STROKES },
+      (_, index) => makeStroke(index)
+    );
+
+    const bounded = appendPendingNotebookStroke(
+      pending,
+      makeStroke(NOTEBOOK_MAX_PENDING_NATIVE_STROKES)
+    );
+
+    expect(NOTEBOOK_NATIVE_COMMIT_IDLE_MS).toBe(750);
+    expect(bounded).toHaveLength(NOTEBOOK_MAX_PENDING_NATIVE_STROKES);
+    expect(bounded[0]?.points[0]?.x).toBe(1);
+    expect(bounded.at(-1)?.points[0]?.x).toBe(
+      NOTEBOOK_MAX_PENDING_NATIVE_STROKES
+    );
+  });
+
   it("maps pointer samples into notebook page coordinates", () => {
     const point = mapClientPointToNotebookPage({
       clientX: 150,

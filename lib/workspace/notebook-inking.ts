@@ -18,6 +18,8 @@ export type PointerClientSample = {
 const DEFAULT_MIN_POINT_DISTANCE = 1.35;
 const DEFAULT_MAX_INTERPOLATED_POINT_DISTANCE = 4.75;
 export const NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER = 5;
+export const NOTEBOOK_NATIVE_COMMIT_IDLE_MS = 750;
+export const NOTEBOOK_MAX_PENDING_NATIVE_STROKES = 120;
 export const NOTEBOOK_PAGE_SWIPE_THRESHOLD = 64;
 export const NOTEBOOK_PAGE_MIN_ZOOM = 0.85;
 export const NOTEBOOK_PAGE_MAX_ZOOM = 2.4;
@@ -26,6 +28,15 @@ export const NOTEBOOK_PEN_MIN_WIDTH = 2;
 export const NOTEBOOK_PEN_MAX_WIDTH = 10;
 export const NOTEBOOK_HIGHLIGHTER_MIN_WIDTH = 10;
 export const NOTEBOOK_HIGHLIGHTER_MAX_WIDTH = 30;
+
+export function appendPendingNotebookStroke(
+  pending: NotebookStroke[],
+  stroke: NotebookStroke,
+  maxPending = NOTEBOOK_MAX_PENDING_NATIVE_STROKES
+) {
+  const boundedLimit = Math.max(1, Math.floor(maxPending));
+  return [...pending, stroke].slice(-boundedLimit);
+}
 
 export function clampNotebookThicknessPercent(value: unknown) {
   if (typeof value !== "number" || !Number.isFinite(value)) {

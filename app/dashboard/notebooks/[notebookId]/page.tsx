@@ -79,6 +79,7 @@ import {
 } from "@/lib/workspace/notebook-autosave";
 import {
   appendInkPoints,
+  appendPendingNotebookStroke,
   clampNotebookPageZoom,
   clampNotebookThicknessPercent,
   finalizeInkStroke,
@@ -90,6 +91,8 @@ import {
   getPinchDistance,
   getPointerClientSamples,
   mapClientPointToNotebookPage,
+  NOTEBOOK_MAX_PENDING_NATIVE_STROKES,
+  NOTEBOOK_NATIVE_COMMIT_IDLE_MS,
   shouldPointerDraw,
   shouldPointerDrawEvent,
   shouldPointerSwipePages,
@@ -135,11 +138,6 @@ type SaveStatus = "saved" | "unsaved" | "saving" | "failed";
 type EditorTool = NotebookStrokeTool | "text" | "select";
 type EraserWidth = "small" | "medium" | "large";
 type PageTransitionDirection = "next" | "previous" | null;
-type EraserCursorState = {
-  x: number;
-  y: number;
-  visible: boolean;
-};
 type TextBlockDragState = {
   id: string;
   startX: number;
@@ -1017,11 +1015,6 @@ export default function NotebookEditorPage() {
   const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
   const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
   const [eraserWidth, setEraserWidth] = useState<EraserWidth>("medium");
-  const [, setEraserCursor] = useState<EraserCursorState>({
-    x: 0,
-    y: 0,
-    visible: false,
-  });
   const [undoDepth, setUndoDepth] = useState(0);
   const [redoDepth, setRedoDepth] = useState(0);
   const [inkUndoDepth, setInkUndoDepth] = useState(0);
@@ -1075,9 +1068,13 @@ export default function NotebookEditorPage() {
   const activeStrokeRef = useRef<ActiveStrokeState | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
+  const nativeCommitTimerRef = useRef<number | null>(null);
+  const nativeCommitOperationRef = useRef<Promise<boolean> | null>(null);
   const savedCanvasFrameRef = useRef<number | null>(null);
   const liveCanvasFrameRef = useRef<number | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
+  const pendingNativeStrokesRef = useRef<Stroke[]>([]);
+  const pendingNativeRedoRef = useRef<Stroke[]>([]);
   const selectedPageRef = useRef<NotebookPage | null>(null);
   const textBlocksRef = useRef<NotebookTextBlock[]>([]);
   const saveStatusRef = useRef<SaveStatus>("saved");
@@ -1341,12 +1338,17 @@ export default function NotebookEditorPage() {
     }, NOTEBOOK_AUTOSAVE_IDLE_MS);
   }, []);
 
-  const markPageUnsaved = useCallback((options?: { deferUi?: boolean }) => {
+  const markPageUnsaved = useCallback((options?: {
+    deferUi?: boolean;
+    scheduleUi?: boolean;
+  }) => {
     editorRevisionRef.current += 1;
     saveStatusRef.current = "unsaved";
     scheduleNotebookAutosave();
     if (options?.deferUi) {
-      scheduleInkUiSync();
+      if (options.scheduleUi !== false) {
+        scheduleInkUiSync();
+      }
       return;
     }
     flushInkUiSync();
@@ -1357,10 +1359,68 @@ export default function NotebookEditorPage() {
     if (!canvas) return;
     drawSavedNotebookCanvas({
       canvas,
-      strokes: strokesRef.current,
+      strokes: pendingNativeStrokesRef.current,
       pageColor: pageColorRef.current,
     });
   }, []);
+
+  const cancelNativeCommit = useCallback(() => {
+    if (nativeCommitTimerRef.current === null) return;
+    window.clearTimeout(nativeCommitTimerRef.current);
+    nativeCommitTimerRef.current = null;
+  }, []);
+
+  const flushPendingNativeStrokes = useCallback(async (): Promise<boolean> => {
+    cancelNativeCommit();
+    if (nativeCommitOperationRef.current) {
+      return nativeCommitOperationRef.current;
+    }
+    const editor = inkEditorRef.current;
+    const snapshot = pendingNativeStrokesRef.current.slice();
+    if (snapshot.length === 0) return true;
+    if (!editor) return false;
+
+    const operation = (async () => {
+      pendingNativeStrokesRef.current = pendingNativeStrokesRef.current.slice(
+        snapshot.length
+      );
+      renderSavedCanvasNow();
+      try {
+        await editor.commitStrokes(snapshot);
+        pendingNativeRedoRef.current = [];
+        flushInkUiSync();
+        return true;
+      } catch (error) {
+        pendingNativeStrokesRef.current = [
+          ...snapshot,
+          ...pendingNativeStrokesRef.current,
+        ].slice(-NOTEBOOK_MAX_PENDING_NATIVE_STROKES);
+        renderSavedCanvasNow();
+        console.error("Could not commit native notebook ink.", error);
+        setFeedback({
+          type: "error",
+          message: "Your writing is still visible, but it could not be prepared for saving yet.",
+        });
+        return false;
+      }
+    })();
+    nativeCommitOperationRef.current = operation;
+    try {
+      return await operation;
+    } finally {
+      if (nativeCommitOperationRef.current === operation) {
+        nativeCommitOperationRef.current = null;
+      }
+    }
+  }, [cancelNativeCommit, flushInkUiSync, renderSavedCanvasNow]);
+
+  const scheduleNativeCommit = useCallback(() => {
+    cancelNativeCommit();
+    nativeCommitTimerRef.current = window.setTimeout(() => {
+      nativeCommitTimerRef.current = null;
+      void flushPendingNativeStrokes();
+    }, NOTEBOOK_NATIVE_COMMIT_IDLE_MS);
+  }, [cancelNativeCommit, flushPendingNativeStrokes]);
 
   const renderLiveCanvasNow = useCallback(() => {
     const highlighterCanvas = liveHighlighterCanvasRef.current;
@@ -1421,27 +1481,25 @@ export default function NotebookEditorPage() {
       clearNotebookCanvas(liveCanvasRef.current);
 
       if (finalizedStroke) {
-        setStrokes((current) => {
-          const next =
-            finalizedStroke.tool === "eraser"
-              ? (applyNotebookEraser({
-                  strokes: current,
-                  eraser: finalizedStroke,
-                  mode: eraserMode,
-                }) as Stroke[])
-              : [...current, finalizedStroke];
-          const changed =
-            finalizedStroke.tool !== "eraser" || next.length !== current.length;
-          if (changed) {
-            pushUndoAction({ type: "strokes", previous: current, next });
-          }
-          strokesRef.current = next;
-          return next;
-        });
+        pendingNativeStrokesRef.current = appendPendingNotebookStroke(
+          pendingNativeStrokesRef.current,
+          finalizedStroke
+        );
+        pendingNativeRedoRef.current = [];
+        pendingInkUiRef.current = {
+          hasContent: true,
+          undoDepth: pendingNativeStrokesRef.current.length,
+          redoDepth: 0,
+        };
+        markPageUnsaved({ deferUi: true, scheduleUi: false });
+        scheduleNativeCommit();
       }
       scheduleSavedCanvasRender();
+      inkInteractionActiveRef.current = false;
+      stylusInteractionRef.current = false;
+      stylusCooldownUntilRef.current = Date.now() + 180;
     },
-    [eraserMode, pushUndoAction, scheduleSavedCanvasRender]
+    [markPageUnsaved, scheduleNativeCommit, scheduleSavedCanvasRender]
   );
 
   const loadNotebook = useCallback(async () => {
@@ -1538,6 +1596,9 @@ export default function NotebookEditorPage() {
       setInkHasContent(false);
       inkInteractionActiveRef.current = false;
       pendingInkUiRef.current = null;
+      pendingNativeStrokesRef.current = [];
+      pendingNativeRedoRef.current = [];
+      cancelNativeCommit();
       cancelInkUiSync();
       setActiveTextGestureId(null);
       clearNotebookCanvas(savedCanvasRef.current);
@@ -1569,6 +1630,9 @@ export default function NotebookEditorPage() {
     );
     inkInteractionActiveRef.current = false;
     pendingInkUiRef.current = null;
+    pendingNativeStrokesRef.current = [];
+    pendingNativeRedoRef.current = [];
+    cancelNativeCommit();
     cancelInkUiSync();
     setActiveTextGestureId(null);
     clearNotebookCanvas(liveHighlighterCanvasRef.current);
@@ -1580,6 +1644,7 @@ export default function NotebookEditorPage() {
     saveStatusRef.current = "saved";
     setSaveStatus("saved");
   }, [
+    cancelNativeCommit,
     cancelInkUiSync,
     notebook?.pageColor,
     notebook?.pageStyle,
@@ -1649,7 +1714,6 @@ export default function NotebookEditorPage() {
       touchPointersRef.current.clear();
       pinchZoomRef.current = null;
       pageSwipeRef.current = null;
-      setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
       if (typeof document !== "undefined") {
         clearNotebookNativeSelection(document);
       }
@@ -1679,9 +1743,10 @@ export default function NotebookEditorPage() {
         window.clearTimeout(touchInkHintTimeoutRef.current);
         touchInkHintTimeoutRef.current = null;
       }
+      cancelNativeCommit();
       document.body.classList.remove("jami-inking-active");
     };
-  }, [finishActiveStroke]);
+  }, [cancelNativeCommit, finishActiveStroke]);
 
   const updateTouchPointer = (event: ReactPointerEvent<HTMLElement>) => {
     touchPointersRef.current.set(event.pointerId, {
@@ -1833,19 +1898,6 @@ export default function NotebookEditorPage() {
     markPageUnsaved();
   };
 
-  const updateEraserCursorFromPoint = useCallback(
-    (point: Point | undefined, activeTool: EditorTool) => {
-      if (activeTool !== "eraser" || !point) {
-        setEraserCursor((current) =>
-          current.visible ? { ...current, visible: false } : current
-        );
-        return;
-      }
-      setEraserCursor({ ...point, visible: true });
-    },
-    []
-  );
-
   const startDrawingOnCanvas = useCallback(
     (event: PointerEvent, canvas: HTMLCanvasElement) => {
       const currentTool = toolRef.current;
@@ -1860,10 +1912,9 @@ export default function NotebookEditorPage() {
       event.preventDefault();
       event.stopPropagation();
       clearNotebookNativeSelection(document);
-      setPenMenuOpen(false);
-      setHighlighterMenuOpen(false);
-      setEraserMenuOpen(false);
       finishActiveStroke();
+      cancelNativeCommit();
+      cancelInkUiSync();
 
       safelySetPointerCapture(canvas, event.pointerId);
 
@@ -1901,18 +1952,19 @@ export default function NotebookEditorPage() {
           width: strokeWidth,
         },
       };
-      updateEraserCursorFromPoint(livePoints[0], currentTool);
+      inkInteractionActiveRef.current = true;
+      stylusInteractionRef.current = event.pointerType === "pen";
+      stylusCooldownUntilRef.current = Number.POSITIVE_INFINITY;
       document.body.classList.add("jami-inking-active");
-      markPageUnsaved();
       renderLiveCanvasNow();
       return true;
     },
     [
+      cancelNativeCommit,
+      cancelInkUiSync,
       finishActiveStroke,
       getNotebookSampleBatchFromNativeEvent,
-      markPageUnsaved,
       renderLiveCanvasNow,
-      updateEraserCursorFromPoint,
     ]
   );
 
@@ -1920,7 +1972,6 @@ export default function NotebookEditorPage() {
     (event: PointerEvent, canvas: HTMLCanvasElement) => {
       const activeStroke = activeStrokeRef.current;
       if (!activeStroke || activeStroke.pointerId !== event.pointerId) return false;
-      const currentTool = toolRef.current;
       if (
         isNotebookTextEditingTarget(event.target) ||
         !fullNotebookEditingEnabledRef.current
@@ -1949,11 +2000,10 @@ export default function NotebookEditorPage() {
         ...activeStroke.liveStroke,
         points: appendLiveInkPoints(activeStroke.liveStroke.points, livePoints, 1_200),
       };
-      updateEraserCursorFromPoint(livePoints[livePoints.length - 1], currentTool);
       scheduleLiveCanvasRender();
       return true;
     },
-    [getNotebookSampleBatchFromNativeEvent, scheduleLiveCanvasRender, updateEraserCursorFromPoint]
+    [getNotebookSampleBatchFromNativeEvent, scheduleLiveCanvasRender]
   );
 
   const stopDrawingOnCanvas = useCallback(
@@ -1962,7 +2012,6 @@ export default function NotebookEditorPage() {
       if (!activeStroke || activeStroke.pointerId !== event.pointerId) return false;
       event.preventDefault();
       event.stopPropagation();
-      setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
       finishActiveStroke({ pointerId: event.pointerId, canvas });
       return true;
     },
@@ -2023,6 +2072,11 @@ export default function NotebookEditorPage() {
       window.removeEventListener("pointercancel", handleWindowPointerStop, listenerOptions);
     };
   }, [continueDrawingOnCanvas, startDrawingOnCanvas, stopDrawingOnCanvas]);
+
+  useEffect(() => {
+    if (tool === "pen" || tool === "highlighter") return;
+    void flushPendingNativeStrokes();
+  }, [flushPendingNativeStrokes, tool]);
 
   const collectCurrentStrokes = useCallback(
     (options: { includeActiveStroke?: boolean } = {}) => {
@@ -2210,9 +2264,14 @@ export default function NotebookEditorPage() {
 
       const page = selectedPageRef.current;
       if (!page || !user?.uid) return false;
+      if (options.includeActiveStroke && activeStrokeRef.current) {
+        finishActiveStroke();
+      }
       if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) {
         return false;
       }
+
+      if (!(await flushPendingNativeStrokes())) return false;
 
       const operation = (async () => {
         const saveId = latestSaveIdRef.current + 1;
@@ -2285,7 +2344,14 @@ export default function NotebookEditorPage() {
       }
       return saved;
     },
-    [collectCurrentStrokes, savePageSnapshot, selectedPageInkSvg, user?.uid]
+    [
+      collectCurrentStrokes,
+      finishActiveStroke,
+      flushPendingNativeStrokes,
+      savePageSnapshot,
+      selectedPageInkSvg,
+      user?.uid,
+    ]
   );
 
   useEffect(() => {
@@ -2619,7 +2685,6 @@ export default function NotebookEditorPage() {
   };
 
   const handlePagePointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
-    setEraserCursor((current) => (current.visible ? { ...current, visible: false } : current));
     if (handleTouchPointerEnd(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStopPageSwipe(event);
@@ -3112,6 +3177,31 @@ export default function NotebookEditorPage() {
   };
 
   const handleUndo = useCallback(() => {
+    const pendingStroke = pendingNativeStrokesRef.current.at(-1);
+    if (pendingStroke) {
+      cancelNativeCommit();
+      pendingNativeStrokesRef.current =
+        pendingNativeStrokesRef.current.slice(0, -1);
+      pendingNativeRedoRef.current = [
+        ...pendingNativeRedoRef.current.slice(
+          -(NOTEBOOK_MAX_PENDING_NATIVE_STROKES - 1)
+        ),
+        pendingStroke,
+      ];
+      pendingInkUiRef.current = {
+        hasContent:
+          pendingNativeStrokesRef.current.length > 0 ||
+          (inkEditorRef.current?.hasInk() ?? false),
+        undoDepth: pendingNativeStrokesRef.current.length + inkUndoDepth,
+        redoDepth: pendingNativeRedoRef.current.length + inkRedoDepth,
+      };
+      renderSavedCanvasNow();
+      markPageUnsaved({ deferUi: true });
+      if (pendingNativeStrokesRef.current.length > 0) {
+        scheduleNativeCommit();
+      }
+      return;
+    }
     if (inkUndoDepth > 0) {
       inkEditorRef.current?.undo();
       return;
@@ -3135,9 +3225,35 @@ export default function NotebookEditorPage() {
       setActiveTextGestureId(null);
     }
     markPageUnsaved();
-  }, [inkUndoDepth, markPageUnsaved, scheduleSavedCanvasRender]);
+  }, [
+    cancelNativeCommit,
+    inkRedoDepth,
+    inkUndoDepth,
+    markPageUnsaved,
+    renderSavedCanvasNow,
+    scheduleNativeCommit,
+    scheduleSavedCanvasRender,
+  ]);
 
   const handleRedo = useCallback(() => {
+    const pendingStroke = pendingNativeRedoRef.current.at(-1);
+    if (pendingStroke) {
+      cancelNativeCommit();
+      pendingNativeRedoRef.current = pendingNativeRedoRef.current.slice(0, -1);
+      pendingNativeStrokesRef.current = appendPendingNotebookStroke(
+        pendingNativeStrokesRef.current,
+        pendingStroke
+      );
+      pendingInkUiRef.current = {
+        hasContent: true,
+        undoDepth: pendingNativeStrokesRef.current.length + inkUndoDepth,
+        redoDepth: pendingNativeRedoRef.current.length + inkRedoDepth,
+      };
+      renderSavedCanvasNow();
+      markPageUnsaved({ deferUi: true });
+      scheduleNativeCommit();
+      return;
+    }
     if (inkRedoDepth > 0) {
       inkEditorRef.current?.redo();
       return;
@@ -3161,17 +3277,29 @@ export default function NotebookEditorPage() {
       setActiveTextGestureId(null);
     }
     markPageUnsaved();
-  }, [inkRedoDepth, markPageUnsaved, scheduleSavedCanvasRender]);
+  }, [
+    cancelNativeCommit,
+    inkRedoDepth,
+    inkUndoDepth,
+    markPageUnsaved,
+    renderSavedCanvasNow,
+    scheduleNativeCommit,
+    scheduleSavedCanvasRender,
+  ]);
 
   const handleClearCurrentPage = () => {
     const confirmed = window.confirm("Clear drawing from this page?");
     if (!confirmed) return;
+    cancelNativeCommit();
+    pendingNativeStrokesRef.current = [];
+    pendingNativeRedoRef.current = [];
     inkEditorRef.current?.clear();
     setInkHasContent(false);
     activeStrokeRef.current = null;
     strokesRef.current = [];
     setStrokes([]);
     markPageUnsaved();
+    clearNotebookCanvas(savedCanvasRef.current);
     clearNotebookCanvas(liveHighlighterCanvasRef.current);
     clearNotebookCanvas(liveCanvasRef.current);
     scheduleSavedCanvasRender();
@@ -4095,6 +4223,27 @@ export default function NotebookEditorPage() {
                     onPointerMove={handlePagePointerMove}
                     onPointerUp={handlePagePointerUp}
                     onPointerCancel={handlePagePointerCancel}
+                  />
+                  <canvas
+                    ref={savedCanvasRef}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 z-[21] h-full w-full"
+                  />
+                  <canvas
+                    ref={liveHighlighterCanvasRef}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 z-[22] h-full w-full"
+                  />
+                  <canvas
+                    ref={liveCanvasRef}
+                    role="img"
+                    aria-label="Notebook drawing page"
+                    className={`absolute inset-0 z-[23] h-full w-full touch-none select-none ${
+                      fullNotebookEditingEnabled &&
+                      (tool === "pen" || tool === "highlighter")
+                        ? "pointer-events-auto"
+                        : "pointer-events-none"
+                    }`}
                   />
                   <div className="pointer-events-none absolute inset-0 z-30">
                     {textBlocks.map((block) => {
