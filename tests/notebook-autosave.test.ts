@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   NOTEBOOK_AUTOSAVE_IDLE_MS,
+  NOTEBOOK_INK_UI_SYNC_IDLE_MS,
   isNotebookSaveCompletionCurrent,
   shouldDiscardNotebookInkExport,
   shouldNotebookSaveReplaceStoredPageContent,
@@ -11,6 +12,10 @@ import {
 describe("notebook autosave race guards", () => {
   it("waits five seconds after the latest edit", () => {
     expect(NOTEBOOK_AUTOSAVE_IDLE_MS).toBe(5_000);
+  });
+
+  it("batches nonessential ink UI updates after a short idle period", () => {
+    expect(NOTEBOOK_INK_UI_SYNC_IDLE_MS).toBe(200);
   });
 
   it("allows the current latest save to mark the editor saved", () => {

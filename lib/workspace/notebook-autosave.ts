@@ -1,4 +1,5 @@
 export const NOTEBOOK_AUTOSAVE_IDLE_MS = 5_000;
+export const NOTEBOOK_INK_UI_SYNC_IDLE_MS = 200;
 
 export type NotebookSaveCompletionInput = {
   saveId: number;
