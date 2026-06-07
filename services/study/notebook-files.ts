@@ -1,6 +1,5 @@
 import {
   deleteObject,
-  getBytes,
   getDownloadURL,
   ref,
   uploadBytesResumable,
@@ -10,6 +9,7 @@ import { createNotebookFileMetadata } from "@/services/study/notebooks";
 import type { NotebookFile } from "@/lib/workspace/notebooks";
 
 const MAX_NOTEBOOK_FILE_SIZE = 20 * 1024 * 1024;
+const NOTEBOOK_FILE_DOWNLOAD_TIMEOUT_MS = 30_000;
 const ALLOWED_NOTEBOOK_FILE_TYPES = [
   "application/pdf",
   "image/jpeg",
@@ -165,11 +165,34 @@ export async function getNotebookFileDownloadUrl(storagePath: string) {
 export async function getNotebookFileBytes(storagePath: string) {
   const normalizedPath = storagePath.trim();
   if (!normalizedPath) throw new Error("Missing notebook file path.");
-  const bytes = await getBytes(
-    ref(storage, normalizedPath),
-    MAX_NOTEBOOK_FILE_SIZE
+  const downloadUrl = await getDownloadURL(ref(storage, normalizedPath));
+  const controller = new AbortController();
+  const timeout = window.setTimeout(
+    () => controller.abort(),
+    NOTEBOOK_FILE_DOWNLOAD_TIMEOUT_MS
   );
-  return new Uint8Array(bytes);
+
+  try {
+    const response = await fetch(downloadUrl, {
+      cache: "force-cache",
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw new Error(`Notebook file download failed (${response.status}).`);
+    }
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > MAX_NOTEBOOK_FILE_SIZE) {
+      throw new Error("Notebook files must be under 20 MB.");
+    }
+    return new Uint8Array(bytes);
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("The PDF took too long to load. Try again.");
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
 }
 
 export async function deleteNotebookFile(storagePath: string) {

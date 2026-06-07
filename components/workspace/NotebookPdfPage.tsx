@@ -42,6 +42,7 @@ export default function NotebookPdfPage({
 }: NotebookPdfPageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const hostSizeRef = useRef({ width: 0, height: 0 });
   const [sizeRevision, setSizeRevision] = useState(0);
   const [retryRevision, setRetryRevision] = useState(0);
   const [visible, setVisible] = useState(!lazy);
@@ -68,11 +69,29 @@ export default function NotebookPdfPage({
   useEffect(() => {
     const host = hostRef.current;
     if (!host) return;
-    const observer = new ResizeObserver(() => {
-      setSizeRevision((current) => current + 1);
+    let animationFrame = 0;
+    const observer = new ResizeObserver(([entry]) => {
+      window.cancelAnimationFrame(animationFrame);
+      animationFrame = window.requestAnimationFrame(() => {
+        const width = Math.round(entry?.contentRect.width ?? host.clientWidth);
+        const height = Math.round(
+          entry?.contentRect.height ?? host.clientHeight
+        );
+        if (
+          width === hostSizeRef.current.width &&
+          height === hostSizeRef.current.height
+        ) {
+          return;
+        }
+        hostSizeRef.current = { width, height };
+        setSizeRevision((current) => current + 1);
+      });
     });
     observer.observe(host);
-    return () => observer.disconnect();
+    return () => {
+      window.cancelAnimationFrame(animationFrame);
+      observer.disconnect();
+    };
   }, []);
 
   useEffect(() => {
