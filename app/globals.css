@@ -431,6 +431,16 @@
     color: #fff7ff;
   }
 
+  @media (pointer: coarse) {
+    a,
+    button,
+    summary,
+    [role="button"] {
+      -webkit-touch-callout: none;
+      -webkit-user-drag: none;
+    }
+  }
+
   body.jami-card-swipe-selecting,
   body.jami-card-swipe-selecting * {
     -webkit-user-select: none !important;

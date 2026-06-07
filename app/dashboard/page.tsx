@@ -182,7 +182,10 @@ function ActionPill({
 
 function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
   return (
-    <Card tone="warm" padding="lg" className="h-full animate-slide-up">
+    <Card
+      padding="lg"
+      className="h-full animate-slide-up !border-[color-mix(in_srgb,var(--color-text-primary)_14%,transparent)]"
+    >
       <div className="flex h-full flex-col gap-5">
         <div className="min-w-0">
           <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -210,7 +213,10 @@ function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
 
 function TodayReviewCard({ plan }: { plan: TodayPlan }) {
   return (
-    <Card padding="lg" className="h-full">
+    <Card
+      padding="lg"
+      className="h-full !border-[color-mix(in_srgb,var(--color-text-primary)_14%,transparent)]"
+    >
       <SectionHeader
         eyebrow="Today's review"
         title={plan.dueCards.count > 0 ? `${plan.dueCards.count} cards due` : "Daily Review is clear"}
@@ -609,6 +615,11 @@ export default function DashboardHome() {
     [todayPlan.checklist]
   );
   const dueCount = todayPlan.dueCards.count;
+  const hasSecondaryCards =
+    todayPlan.drafts.length > 0 ||
+    todayPlan.weakTopics.length > 0 ||
+    Boolean(todayPlan.goalSummary);
+
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
@@ -662,11 +673,13 @@ export default function DashboardHome() {
               <TodayReviewCard plan={todayPlan} />
             </div>
 
-            <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
-              {todayPlan.drafts.length > 0 ? <DraftQueueCard plan={todayPlan} /> : null}
-              {todayPlan.weakTopics.length > 0 ? <WeakTopicsCard plan={todayPlan} /> : null}
-              {todayPlan.goalSummary ? <GoalSnapshotCard plan={todayPlan} /> : null}
-            </div>
+            {hasSecondaryCards ? (
+              <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                {todayPlan.drafts.length > 0 ? <DraftQueueCard plan={todayPlan} /> : null}
+                {todayPlan.weakTopics.length > 0 ? <WeakTopicsCard plan={todayPlan} /> : null}
+                {todayPlan.goalSummary ? <GoalSnapshotCard plan={todayPlan} /> : null}
+              </div>
+            ) : null}
 
             {remainingOptionalCount > 0 ? (
               <StatTile

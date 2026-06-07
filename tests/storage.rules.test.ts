@@ -61,6 +61,18 @@ describeStorageRules("Storage security rules", () => {
     await assertFails(uploadBytes(ref(bobStorage, filePath), blob("application/pdf")));
   });
 
+  it("blocks shared demo accounts from notebook uploads", async () => {
+    const demoStorage = testEnv
+      .authenticatedContext("alice", { demo: true })
+      .storage();
+    const fileRef = ref(
+      demoStorage,
+      "users/alice/notebookFiles/notebook-1/file-1-biology-notes.pdf"
+    );
+
+    await assertFails(uploadBytes(fileRef, blob("application/pdf")));
+  });
+
   it("rejects unsupported notebook file types", async () => {
     const aliceStorage = testEnv.authenticatedContext("alice").storage();
     const fileRef = ref(aliceStorage, "users/alice/notebookFiles/notebook-1/file-1-script.js");

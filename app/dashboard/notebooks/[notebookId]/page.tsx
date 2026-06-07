@@ -993,7 +993,7 @@ function InkColorPicker({
 }
 
 export default function NotebookEditorPage() {
-  const { user } = useUser();
+  const { user, isDemoUser } = useUser();
   const router = useRouter();
   const params = useParams<{ notebookId?: string | string[] }>();
   const notebookId = Array.isArray(params.notebookId)
@@ -3007,7 +3007,6 @@ export default function NotebookEditorPage() {
         notebook,
         existingPageCount: pages.length,
         file: notebookFile,
-        pageStyle: notebookDefaultPageStyle,
         onProgress: setNotebookUploadProgress,
       });
       const nextPages = [...pages, ...appended.pages].sort(
@@ -3034,7 +3033,7 @@ export default function NotebookEditorPage() {
         type: "success",
         message: `${appended.pages.length} ${
           appended.pages.length === 1 ? "page" : "pages"
-        } added to ${notebook.title}.`,
+        } added to ${notebook.title}`,
       });
     } catch (error) {
       setFeedback({
@@ -3604,30 +3603,37 @@ export default function NotebookEditorPage() {
                 />
               </div>
             </div>
-            <div className="mt-5">
-              <div className="text-sm font-medium text-text-secondary">Default page style</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(["plain", "lined", "grid", "dot"] as NotebookPageStyle[]).map((style) => (
-                  <button
-                    key={style}
-                    type="button"
-                    onClick={() => setNotebookDefaultPageStyle(style)}
-                    className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold transition ${
-                      notebookDefaultPageStyle === style ? "app-selected" : "app-chip"
-                    }`}
-                  >
-                    {PAGE_STYLE_LABELS[style]}
-                  </button>
-                ))}
+            {notebook.type === "uploaded_file" ? (
+              <div className="app-chip mt-5 rounded-[1.15rem] px-4 py-3 text-sm leading-6">
+                Imported pages use the PDF or image as their background. Blank pages added later use white plain paper.
               </div>
-            </div>
+            ) : (
+              <div className="mt-5">
+                <div className="text-sm font-medium text-text-secondary">Default page style</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {(["plain", "lined", "grid", "dot"] as NotebookPageStyle[]).map((style) => (
+                    <button
+                      key={style}
+                      type="button"
+                      onClick={() => setNotebookDefaultPageStyle(style)}
+                      className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold transition ${
+                        notebookDefaultPageStyle === style ? "app-selected" : "app-chip"
+                      }`}
+                    >
+                      {PAGE_STYLE_LABELS[style]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div className="mt-5 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
               <div className="text-sm font-semibold text-text-primary">
                 Add PDF or image pages
               </div>
               <p className="mt-1 text-sm leading-6 text-text-muted">
-                Add a file to this notebook. Its pages will be placed after the
-                current last page and remain available for ink and text notes.
+                {isDemoUser
+                  ? "Exit the shared demo to upload PDF or image pages."
+                  : "Add a file to this notebook. Its pages will be placed after the current last page and remain available for ink and text notes."}
               </p>
               <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
                 <label className="min-w-0 flex-1">
@@ -3637,7 +3643,7 @@ export default function NotebookEditorPage() {
                   <input
                     type="file"
                     accept="application/pdf,image/jpeg,image/png,image/webp"
-                    disabled={addingNotebookFile || savingNotebookSettings}
+                    disabled={isDemoUser || addingNotebookFile || savingNotebookSettings}
                     onChange={(event) =>
                       setNotebookFile(event.target.files?.[0] ?? null)
                     }
@@ -3648,7 +3654,7 @@ export default function NotebookEditorPage() {
                   type="button"
                   variant="secondary"
                   disabled={
-                    !notebookFile || addingNotebookFile || savingNotebookSettings
+                    isDemoUser || !notebookFile || addingNotebookFile || savingNotebookSettings
                   }
                   onClick={() => void handleAddNotebookFile()}
                 >

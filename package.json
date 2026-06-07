@@ -17,7 +17,7 @@
     "emulators:firestore": "firebase emulators:start --only firestore,storage",
     "firebase:login": "firebase login",
     "firebase:projects": "firebase projects:list",
-    "firebase:rules:deploy": "firebase deploy --only firestore"
+    "firebase:rules:deploy": "firebase deploy --only firestore:rules,storage"
   },
   "dependencies": {
     "@google/generative-ai": "^0.24.1",

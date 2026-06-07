@@ -13,8 +13,6 @@ import {
   saveSidebarHiddenPreference,
 } from "@/lib/app/sidebar-preference";
 
-const PUBLIC_WALKTHROUGH_FALLBACK_MS = 2500;
-
 function DashboardSpinner() {
   return (
     <div className="flex min-h-screen items-center justify-center">
@@ -56,42 +54,26 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
   const [hasUser, setHasUser] = useState(false);
 
   useEffect(() => {
-    let resolved = false;
+    let active = true;
     let unsubscribe: (() => void) | undefined;
-    let errorFallbackId: number | undefined;
-
-    const fallbackId = window.setTimeout(() => {
-      if (resolved) {
-        return;
-      }
-
-      setHasUser(false);
-      setChecked(true);
-    }, PUBLIC_WALKTHROUGH_FALLBACK_MS);
 
     try {
       unsubscribe = listenToAuth((nextUser: User | null) => {
-        resolved = true;
-        window.clearTimeout(fallbackId);
+        if (!active) return;
         setHasUser(Boolean(nextUser));
         setChecked(true);
       });
     } catch (error) {
-      resolved = true;
-      window.clearTimeout(fallbackId);
       console.error("Dashboard auth gate failed; showing public walkthrough.", error);
-      errorFallbackId = window.setTimeout(() => {
+      queueMicrotask(() => {
+        if (!active) return;
         setHasUser(false);
         setChecked(true);
-      }, 0);
+      });
     }
 
     return () => {
-      resolved = true;
-      window.clearTimeout(fallbackId);
-      if (errorFallbackId !== undefined) {
-        window.clearTimeout(errorFallbackId);
-      }
+      active = false;
       unsubscribe?.();
     };
   }, []);

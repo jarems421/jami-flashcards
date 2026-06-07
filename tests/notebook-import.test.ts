@@ -94,7 +94,6 @@ describe("uploaded notebook import", () => {
       },
       existingPageCount: 3,
       file,
-      pageStyle: "plain",
     });
 
     expect(mocks.createNotebook).not.toHaveBeenCalled();
@@ -103,6 +102,7 @@ describe("uploaded notebook import", () => {
         pageNumber: 4,
         title: "Page 4",
         pageColor: "white",
+        pageStyle: "plain",
         backgroundFileId: "file-1",
         pdfPageIndex: 0,
       }),
@@ -141,11 +141,10 @@ describe("uploaded notebook import", () => {
           archived: false,
           createdAt: 1,
           updatedAt: 1,
-        },
-        existingPageCount: 3,
-        file,
-        pageStyle: "plain",
-      })
+          },
+          existingPageCount: 3,
+          file,
+        })
     ).rejects.toThrow("notebook update failed");
 
     expect(mocks.deleteNotebookPageRecords).toHaveBeenCalledWith("alice", [
@@ -167,13 +166,21 @@ describe("uploaded notebook import", () => {
       folderId: "folder-1",
       title: "Paper",
       file,
-      pageColor: "white",
-      pageStyle: "plain",
     });
 
+    expect(mocks.createNotebook).toHaveBeenCalledWith(
+      "alice",
+      expect.objectContaining({
+        type: "uploaded_file",
+        pageColor: "white",
+        pageStyle: "plain",
+      })
+    );
     expect(mocks.createNotebookPages).toHaveBeenCalledWith("alice", [
       expect.objectContaining({
         pageNumber: 1,
+        pageColor: "white",
+        pageStyle: "plain",
         backgroundFileId: "file-1",
         pdfPageIndex: 0,
       }),
@@ -195,8 +202,6 @@ describe("uploaded notebook import", () => {
         folderId: "folder-1",
         title: "Paper",
         file,
-        pageColor: "white",
-        pageStyle: "plain",
       })
     ).rejects.toThrow("page write failed");
 
@@ -206,6 +211,53 @@ describe("uploaded notebook import", () => {
     );
     expect(mocks.deleteNotebookFile).toHaveBeenCalledWith(
       "users/alice/notebookFiles/notebook-1/file-1-paper.pdf"
+    );
+  });
+
+  it("creates one white plain mapped page for an image import", async () => {
+    const image = {
+      name: "diagram.png",
+      type: "image/png",
+      size: 1024,
+    } as File;
+    mocks.getNotebookPdfPageCount.mockResolvedValue(1);
+    mocks.createNotebookPages.mockResolvedValue([{ id: "page-1" }]);
+
+    await importUploadedNotebook({
+      userId: "alice",
+      folderId: "folder-1",
+      title: "Diagram",
+      file: image,
+    });
+
+    expect(mocks.createNotebookPages).toHaveBeenCalledWith("alice", [
+      expect.objectContaining({
+        pageColor: "white",
+        pageStyle: "plain",
+        pdfPageIndex: undefined,
+      }),
+    ]);
+  });
+
+  it("identifies the failed import stage while preserving cleanup", async () => {
+    mocks.uploadNotebookFile.mockRejectedValue(
+      new Error("You do not have permission to upload this notebook file.")
+    );
+
+    await expect(
+      importUploadedNotebook({
+        userId: "alice",
+        folderId: "folder-1",
+        title: "Paper",
+        file,
+      })
+    ).rejects.toThrow(
+      "Could not upload the PDF or image: You do not have permission to upload this notebook file."
+    );
+
+    expect(mocks.deleteNotebookImportRecords).toHaveBeenCalledWith(
+      "alice",
+      "notebook-1"
     );
   });
 });

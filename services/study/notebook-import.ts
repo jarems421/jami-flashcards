@@ -2,8 +2,6 @@ import type {
   Notebook,
   NotebookFile,
   NotebookPage,
-  NotebookPageColor,
-  NotebookPageStyle,
 } from "@/lib/workspace/notebooks";
 import {
   buildUploadedNotebookPageMappings,
@@ -24,6 +22,15 @@ import {
   validateNotebookUploadFile,
 } from "@/services/study/notebook-files";
 
+const IMPORTED_PAGE_COLOR = "white" as const;
+const IMPORTED_PAGE_STYLE = "plain" as const;
+
+function getImportStageMessage(stage: string, error: unknown) {
+  const message =
+    error instanceof Error ? error.message : "An unexpected error occurred.";
+  return `${stage}: ${message}`;
+}
+
 export async function importUploadedNotebook(input: {
   userId: string;
   folderId: string;
@@ -32,8 +39,6 @@ export async function importUploadedNotebook(input: {
   topicIds?: string[];
   color?: string;
   icon?: string;
-  pageColor: NotebookPageColor;
-  pageStyle: NotebookPageStyle;
   onProgress?: (progress: number) => void;
 }) {
   validateNotebookUploadFile(input.file);
@@ -42,50 +47,69 @@ export async function importUploadedNotebook(input: {
   let storagePath = "";
 
   try {
-    const notebook = await createNotebook(input.userId, {
-      folderId: input.folderId,
-      title: input.title,
-      type: "blank",
-      topicIds: input.topicIds,
-      color: input.color,
-      icon: input.icon,
-      pageColor: input.pageColor,
-      pageStyle: input.pageStyle,
-    });
+    let notebook;
+    try {
+      notebook = await createNotebook(input.userId, {
+        folderId: input.folderId,
+        title: input.title,
+        type: "uploaded_file",
+        topicIds: input.topicIds,
+        color: input.color,
+        icon: input.icon,
+        pageColor: IMPORTED_PAGE_COLOR,
+        pageStyle: IMPORTED_PAGE_STYLE,
+      });
+    } catch (error) {
+      throw new Error(getImportStageMessage("Could not create the notebook", error));
+    }
     notebookId = notebook.id;
 
-    const file = await uploadNotebookFile({
-      userId: input.userId,
-      notebookId: notebook.id,
-      folderId: input.folderId,
-      file: input.file,
-      pageCount,
-      onProgress: input.onProgress,
-    });
-    storagePath = file.storagePath;
-
-    const pages = await createNotebookPages(
-      input.userId,
-      buildUploadedNotebookPageMappings({
-        pageCount,
-        fileId: file.id,
-        isPdf: input.file.type === "application/pdf",
-      }).map((mapping) => ({
+    let file;
+    try {
+      file = await uploadNotebookFile({
+        userId: input.userId,
         notebookId: notebook.id,
         folderId: input.folderId,
-        pageNumber: mapping.pageNumber,
-        pageType: "past_paper_page" as const,
-        title: mapping.title,
-        pageColor: input.pageColor,
-        pageStyle: input.pageStyle,
-        backgroundFileId: mapping.backgroundFileId,
-        pdfPageIndex: mapping.pdfPageIndex,
-      }))
-    );
+        file: input.file,
+        pageCount,
+        onProgress: input.onProgress,
+      });
+    } catch (error) {
+      throw new Error(getImportStageMessage("Could not upload the PDF or image", error));
+    }
+    storagePath = file.storagePath;
 
-    await updateNotebook(input.userId, notebook.id, {
-      uploadedFileId: file.id,
-    });
+    let pages;
+    try {
+      pages = await createNotebookPages(
+        input.userId,
+        buildUploadedNotebookPageMappings({
+          pageCount,
+          fileId: file.id,
+          isPdf: input.file.type === "application/pdf",
+        }).map((mapping) => ({
+          notebookId: notebook.id,
+          folderId: input.folderId,
+          pageNumber: mapping.pageNumber,
+          pageType: "past_paper_page" as const,
+          title: mapping.title,
+          pageColor: IMPORTED_PAGE_COLOR,
+          pageStyle: IMPORTED_PAGE_STYLE,
+          backgroundFileId: mapping.backgroundFileId,
+          pdfPageIndex: mapping.pdfPageIndex,
+        }))
+      );
+    } catch (error) {
+      throw new Error(getImportStageMessage("Could not create the imported pages", error));
+    }
+
+    try {
+      await updateNotebook(input.userId, notebook.id, {
+        uploadedFileId: file.id,
+      });
+    } catch (error) {
+      throw new Error(getImportStageMessage("Could not finish the notebook import", error));
+    }
 
     return {
       notebook: { ...notebook, uploadedFileId: file.id },
@@ -120,47 +144,62 @@ export async function appendUploadedFileToNotebook(input: {
   notebook: Notebook;
   existingPageCount: number;
   file: File;
-  pageStyle: NotebookPageStyle;
   onProgress?: (progress: number) => void;
 }): Promise<{ file: NotebookFile; pages: NotebookPage[] }> {
   validateNotebookUploadFile(input.file);
   const pageCount = await getNotebookPdfPageCount(input.file);
   let uploadedFile: NotebookFile | null = null;
+  let uploadedFileId = "";
+  let uploadedStoragePath = "";
   let createdPages: NotebookPage[] = [];
 
   try {
-    uploadedFile = await uploadNotebookFile({
-      userId: input.userId,
-      notebookId: input.notebook.id,
-      folderId: input.notebook.folderId,
-      file: input.file,
-      pageCount,
-      onProgress: input.onProgress,
-    });
-
-    createdPages = await createNotebookPages(
-      input.userId,
-      buildUploadedNotebookPageMappings({
-        pageCount,
-        fileId: uploadedFile.id,
-        isPdf: input.file.type === "application/pdf",
-      }).map((mapping) => ({
+    try {
+      uploadedFile = await uploadNotebookFile({
+        userId: input.userId,
         notebookId: input.notebook.id,
         folderId: input.notebook.folderId,
-        pageNumber: input.existingPageCount + mapping.pageNumber,
-        pageType: "past_paper_page" as const,
-        title: `Page ${input.existingPageCount + mapping.pageNumber}`,
-        pageColor: input.notebook.pageColor,
-        pageStyle: input.pageStyle,
-        backgroundFileId: mapping.backgroundFileId,
-        pdfPageIndex: mapping.pdfPageIndex,
-      }))
-    );
+        file: input.file,
+        pageCount,
+        onProgress: input.onProgress,
+      });
+      uploadedFileId = uploadedFile.id;
+      uploadedStoragePath = uploadedFile.storagePath;
+    } catch (error) {
+      throw new Error(getImportStageMessage("Could not upload the PDF or image", error));
+    }
+
+    try {
+      createdPages = await createNotebookPages(
+        input.userId,
+        buildUploadedNotebookPageMappings({
+          pageCount,
+          fileId: uploadedFile.id,
+          isPdf: input.file.type === "application/pdf",
+        }).map((mapping) => ({
+          notebookId: input.notebook.id,
+          folderId: input.notebook.folderId,
+          pageNumber: input.existingPageCount + mapping.pageNumber,
+          pageType: "past_paper_page" as const,
+          title: `Page ${input.existingPageCount + mapping.pageNumber}`,
+          pageColor: IMPORTED_PAGE_COLOR,
+          pageStyle: IMPORTED_PAGE_STYLE,
+          backgroundFileId: mapping.backgroundFileId,
+          pdfPageIndex: mapping.pdfPageIndex,
+        }))
+      );
+    } catch (error) {
+      throw new Error(getImportStageMessage("Could not create the imported pages", error));
+    }
 
     if (!input.notebook.uploadedFileId) {
-      await updateNotebook(input.userId, input.notebook.id, {
-        uploadedFileId: uploadedFile.id,
-      });
+      try {
+        await updateNotebook(input.userId, input.notebook.id, {
+          uploadedFileId: uploadedFile.id,
+        });
+      } catch (error) {
+        throw new Error(getImportStageMessage("Could not finish the notebook import", error));
+      }
     }
 
     return { file: uploadedFile, pages: createdPages };
@@ -175,14 +214,16 @@ export async function appendUploadedFileToNotebook(input: {
         // Best-effort rollback; preserve the original append error.
       }
     }
-    if (uploadedFile) {
+    if (uploadedFileId) {
       try {
-        await deleteNotebookFileRecord(input.userId, uploadedFile.id);
+        await deleteNotebookFileRecord(input.userId, uploadedFileId);
       } catch {
         // Best-effort rollback; preserve the original append error.
       }
+    }
+    if (uploadedStoragePath) {
       try {
-        await deleteNotebookFile(uploadedFile.storagePath);
+        await deleteNotebookFile(uploadedStoragePath);
       } catch {
         // Best-effort rollback; preserve the original append error.
       }

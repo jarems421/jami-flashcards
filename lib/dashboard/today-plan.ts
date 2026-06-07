@@ -335,7 +335,7 @@ function buildNextAction(input: {
   if (input.workspace.recentNotebook) {
     return {
       type: "continue_notebook",
-      title: `Continue ${input.workspace.recentNotebook.title}.`,
+      title: `Continue ${input.workspace.recentNotebook.title}`,
       description: "Open the latest notebook page and keep working naturally.",
       href: input.workspace.recentNotebook.href,
       label: "Continue notebook",
@@ -349,7 +349,7 @@ function buildNextAction(input: {
     const deckText = input.dueCards.primaryDeckName ? ` in ${input.dueCards.primaryDeckName}` : "";
     return {
       type: "review_due_cards",
-      title: `Review ${pluralize(input.dueCards.count, "due flashcard")}${deckText}.`,
+      title: `Review ${pluralize(input.dueCards.count, "due flashcard")}${deckText}${input.dueCards.primaryDeckName ? "" : "."}`,
       description: "Due cards are time-sensitive. Review them, then return to notebook work.",
       href: getCustomStudyHref({ mode: "daily" }),
       label: "Start review",

@@ -48,6 +48,20 @@ function getUploadErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Could not upload this notebook file.";
 }
 
+function getMetadataErrorMessage(error: unknown) {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+
+  if (code === "permission-denied") {
+    return "The file uploaded, but Jami could not save its notebook metadata. Check Firestore permissions and try again.";
+  }
+  return error instanceof Error
+    ? `The file uploaded, but its notebook metadata could not be saved: ${error.message}`
+    : "The file uploaded, but its notebook metadata could not be saved.";
+}
+
 export function validateNotebookUploadFile(file: File) {
   if (!ALLOWED_NOTEBOOK_FILE_TYPES.includes(file.type as (typeof ALLOWED_NOTEBOOK_FILE_TYPES)[number])) {
     throw new Error("Upload a PDF, JPEG, PNG, or WebP file.");
@@ -118,15 +132,19 @@ export async function uploadNotebookFile(input: {
       );
     });
 
-    return await createNotebookFileMetadata(userId, {
-      notebookId,
-      folderId,
-      fileName: file.name,
-      fileType: file.type,
-      storagePath,
-      sizeBytes: file.size,
-      pageCount,
-    });
+    try {
+      return await createNotebookFileMetadata(userId, {
+        notebookId,
+        folderId,
+        fileName: file.name,
+        fileType: file.type,
+        storagePath,
+        sizeBytes: file.size,
+        pageCount,
+      });
+    } catch (error) {
+      throw new Error(getMetadataErrorMessage(error));
+    }
   } catch (error) {
     try {
       await deleteObject(storageRef);

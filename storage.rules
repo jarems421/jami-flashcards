@@ -9,6 +9,12 @@ service firebase.storage {
       return isSignedIn() && request.auth.uid == userId;
     }
 
+    function isDemoAccount() {
+      return isSignedIn() &&
+        ('demo' in request.auth.token) &&
+        request.auth.token.demo == true;
+    }
+
     function isAllowedNotebookFile() {
       return request.resource.size < 20 * 1024 * 1024 &&
         request.resource.contentType.matches('(application/pdf|image/jpeg|image/png|image/webp)');
@@ -29,7 +35,7 @@ service firebase.storage {
 
     match /users/{userId}/notebookFiles/{notebookId}/{fileName} {
       allow read: if isSelf(userId);
-      allow write: if isSelf(userId) && isAllowedNotebookFile();
+      allow write: if isSelf(userId) && !isDemoAccount() && isAllowedNotebookFile();
     }
 
     match /users/{userId}/sourceFiles/{sourceId}/{fileName} {

@@ -1257,7 +1257,7 @@ export default function LibraryPage() {
                         setRemovalChooserOpen(false);
                         setFeedback({
                           type: "success",
-                          message: `Removed from ${linkedFolder.name}.`,
+                          message: `Removed from ${linkedFolder.name}`,
                         });
                       });
                     }}
@@ -1668,7 +1668,7 @@ export default function LibraryPage() {
                           void toggleSourceFolder(folderFilter).then(() =>
                             setFeedback({
                               type: "success",
-                              message: `Removed from ${folderName}.`,
+                              message: `Removed from ${folderName}`,
                             })
                           );
                         }}

@@ -74,7 +74,7 @@ function formatEditedLabel(updatedAt: number) {
 }
 
 export default function FolderDetailPage() {
-  const { user } = useUser();
+  const { user, isDemoUser } = useUser();
   const router = useRouter();
   const params = useParams<{ folderId?: string | string[] }>();
   const folderId = Array.isArray(params.folderId) ? params.folderId[0] : params.folderId;
@@ -258,8 +258,8 @@ export default function FolderDetailPage() {
       setFeedback({
         type: "success",
         message: shouldLink
-          ? `${deck.name} now appears in ${folder.name}.`
-          : `${deck.name} was removed from ${folder.name}.`,
+          ? `${deck.name} now appears in ${folder.name}`
+          : `${deck.name} was removed from ${folder.name}`,
       });
     } catch (error) {
       setFeedback({
@@ -284,8 +284,8 @@ export default function FolderDetailPage() {
       setFeedback({
         type: "success",
         message: shouldLink
-          ? `${source.title} now appears in ${folder.name}.`
-          : `${source.title} was removed from ${folder.name}.`,
+          ? `${source.title} now appears in ${folder.name}`
+          : `${source.title} was removed from ${folder.name}`,
       });
     } catch (error) {
       setFeedback({
@@ -478,8 +478,6 @@ export default function FolderDetailPage() {
           topicIds: folder.topicIds,
           color: notebookColor,
           icon: notebookIcon,
-          pageColor: notebookPageColor,
-          pageStyle: notebookPageStyle,
           onProgress: setNotebookUploadProgress,
         });
         setNotebooks((current) => [imported.notebook, ...current]);
@@ -541,6 +539,13 @@ export default function FolderDetailPage() {
   };
 
   const openNotebookForm = () => {
+    if (isDemoUser) {
+      setFeedback({
+        type: "error",
+        message: "Exit the shared demo to create notebooks or upload PDF and image files.",
+      });
+      return;
+    }
     setShowNotebookForm(true);
   };
 
@@ -653,7 +658,7 @@ export default function FolderDetailPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Button type="button" onClick={openNotebookForm}>
+            <Button type="button" onClick={openNotebookForm} disabled={isDemoUser}>
               Create notebook
             </Button>
             <Button type="button" variant="secondary" onClick={openEditFolder}>
@@ -678,40 +683,6 @@ export default function FolderDetailPage() {
                 iconLabel="Cover icon"
               />
             </div>
-            <div className="mt-5">
-              <div className="text-sm font-medium text-text-secondary">Page colour</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(["white", "black"] as NotebookPageColor[]).map((color) => (
-                  <button
-                    key={color}
-                    type="button"
-                    onClick={() => setNotebookPageColor(color)}
-                    className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
-                      notebookPageColor === color ? "app-selected" : "app-chip"
-                    }`}
-                  >
-                    {color}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="mt-5">
-              <div className="text-sm font-medium text-text-secondary">Page style</div>
-              <div className="mt-2 flex flex-wrap gap-2">
-                {(["plain", "lined", "grid", "dot"] as NotebookPageStyle[]).map((style) => (
-                  <button
-                    key={style}
-                    type="button"
-                    onClick={() => setNotebookPageStyle(style)}
-                    className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
-                      notebookPageStyle === style ? "app-selected" : "app-chip"
-                    }`}
-                  >
-                    {style}
-                  </button>
-                ))}
-              </div>
-            </div>
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
               <Input
                 label="Notebook title"
@@ -734,6 +705,48 @@ export default function FolderDetailPage() {
                   PDFs or images later from notebook settings.
                 </p>
               </div>
+              {!notebookFile ? (
+                <>
+                  <div>
+                    <div className="text-sm font-medium text-text-secondary">Page colour</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(["white", "black"] as NotebookPageColor[]).map((color) => (
+                        <button
+                          key={color}
+                          type="button"
+                          onClick={() => setNotebookPageColor(color)}
+                          className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
+                            notebookPageColor === color ? "app-selected" : "app-chip"
+                          }`}
+                        >
+                          {color}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div className="text-sm font-medium text-text-secondary">Page style</div>
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {(["plain", "lined", "grid", "dot"] as NotebookPageStyle[]).map((style) => (
+                        <button
+                          key={style}
+                          type="button"
+                          onClick={() => setNotebookPageStyle(style)}
+                          className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
+                            notebookPageStyle === style ? "app-selected" : "app-chip"
+                          }`}
+                        >
+                          {style}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <div className="app-chip rounded-[1.15rem] px-4 py-3 text-sm leading-6 lg:col-span-2">
+                  PDF and image pages use the file itself as their background. Any blank pages added later will use white plain paper.
+                </div>
+              )}
               <div className="flex gap-2 lg:col-span-2">
                 <Button
                   type="button"
@@ -877,10 +890,15 @@ export default function FolderDetailPage() {
 
         {activeTab === "notebooks" ? (
           <section className="space-y-4">
+            {isDemoUser ? (
+              <div className="app-warning rounded-[1.2rem] px-4 py-3 text-sm leading-6">
+                Exit the shared demo to create notebooks or upload PDF and image files.
+              </div>
+            ) : null}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeader eyebrow="Notebooks" title="Workbooks" />
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={openNotebookForm}>
+                <Button type="button" size="sm" onClick={openNotebookForm} disabled={isDemoUser}>
                   Create notebook
                 </Button>
               </div>
@@ -913,7 +931,7 @@ export default function FolderDetailPage() {
                     title="No notebooks yet"
                     description="Create a notebook to start working in this folder."
                     action={
-                      <Button type="button" onClick={openNotebookForm}>
+                      <Button type="button" onClick={openNotebookForm} disabled={isDemoUser}>
                         Create notebook
                       </Button>
                     }
@@ -1222,7 +1240,7 @@ export default function FolderDetailPage() {
                   Continue latest notebook
                 </Link>
               ) : (
-                <Button type="button" onClick={openNotebookForm}>
+                <Button type="button" onClick={openNotebookForm} disabled={isDemoUser}>
                   Create notebook
                 </Button>
               )}

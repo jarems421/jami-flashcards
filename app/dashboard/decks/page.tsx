@@ -146,7 +146,7 @@ export default function DecksPage() {
       setName("");
       setCreateFolderId("");
       await loadAll();
-      setFeedback({ type: "success", message: `Created deck ${deckName}.` });
+      setFeedback({ type: "success", message: `Created deck ${deckName}` });
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "Error creating deck. Please try again." });
@@ -172,7 +172,7 @@ export default function DecksPage() {
       await updateDeckFolders(user.uid, deck.id, editingDeckFolderId ? [editingDeckFolderId] : []);
       await loadAll();
       resetDeckEditing();
-      setFeedback({ type: "success", message: `Saved changes to ${editingDeckName.trim()}.` });
+      setFeedback({ type: "success", message: `Saved changes to ${editingDeckName.trim()}` });
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "Failed to rename deck." });
@@ -193,7 +193,7 @@ export default function DecksPage() {
       await deleteDeck(user.uid, deck.id);
       await loadAll();
       setDeckPendingDelete(null);
-      setFeedback({ type: "success", message: `Deleted deck ${deck.name}.` });
+      setFeedback({ type: "success", message: `Deleted deck ${deck.name}` });
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "Failed to delete deck." });

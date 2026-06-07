@@ -148,6 +148,7 @@ describe("today plan", () => {
 
     expect(plan.nextAction.type).toBe("continue_notebook");
     expect(plan.nextAction.href).toBe("/dashboard/notebooks/notebook-1");
+    expect(plan.nextAction.title).toBe("Continue Photosynthesis working");
     expect(plan.workspace.recentNotebook?.title).toBe("Photosynthesis working");
   });
 
@@ -165,6 +166,7 @@ describe("today plan", () => {
     });
 
     expect(plan.nextAction.type).toBe("review_due_cards");
+    expect(plan.nextAction.title).toBe("Review 3 due flashcards in History deck");
     expect(plan.dueCards.primaryDeckName).toBe("History deck");
   });
 
