@@ -33,13 +33,13 @@ export default function FolderObjectCard({
   const preset = getObjectColorPreset(color);
   const content = (
     <div
-      className={`group mx-auto flex h-full min-h-[8.75rem] w-full max-w-[6.5rem] cursor-pointer flex-col items-center rounded-[1.05rem] border px-2 py-2.5 text-center transition duration-fast active:scale-[0.985] ${
+      className={`group mx-auto flex h-full min-h-[8.75rem] w-full max-w-[7.25rem] cursor-pointer flex-col items-center rounded-[1.05rem] border px-2 py-2.5 text-center transition duration-fast active:scale-[0.985] ${
         selected
           ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-[0_14px_28px_rgba(6,8,18,0.16)]"
           : "border-transparent bg-transparent hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
       } ${className}`}
     >
-      <div className="relative mx-auto h-[5.5rem] w-full max-w-[6rem]">
+      <div className="relative mx-auto h-[5.5rem] w-full max-w-[6.7rem]">
         <div
           className="absolute left-[13%] right-[10%] top-[13%] h-[2.8rem] rounded-t-[0.62rem] border border-black/10"
           style={{

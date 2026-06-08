@@ -642,7 +642,7 @@ export default function FolderDetailPage() {
 
         <div className="flex flex-col gap-4 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
-            <div className="w-[6.5rem] shrink-0">
+            <div className="w-[7.25rem] shrink-0">
               <FolderObjectCard title={folder.name} color={folder.color} icon={folder.icon} />
             </div>
             <div className="min-w-0">
