@@ -1459,7 +1459,7 @@ export default function NotebookEditorPage() {
   }, [renderLiveCanvasNow]);
 
   const finishActiveStroke = useCallback(
-    (options?: { pointerId?: number; canvas?: HTMLCanvasElement | null }) => {
+    (options?: { pointerId?: number; surface?: HTMLElement | null }) => {
       const activeStroke = activeStrokeRef.current;
       if (!activeStroke) {
         document.body.classList.remove("jami-inking-active");
@@ -1469,9 +1469,9 @@ export default function NotebookEditorPage() {
         return;
       }
 
-      const releaseCanvas = options?.canvas ?? liveCanvasRef.current;
-      if (releaseCanvas) {
-        safelyReleasePointerCapture(releaseCanvas, activeStroke.pointerId);
+      const releaseSurface = options?.surface ?? pageSurfaceRef.current;
+      if (releaseSurface) {
+        safelyReleasePointerCapture(releaseSurface, activeStroke.pointerId);
       }
 
       const finalizedStroke = finalizeInkStroke(activeStroke.stroke);
@@ -1898,8 +1898,8 @@ export default function NotebookEditorPage() {
     markPageUnsaved();
   };
 
-  const startDrawingOnCanvas = useCallback(
-    (event: PointerEvent, canvas: HTMLCanvasElement) => {
+  const startDrawingOnSurface = useCallback(
+    (event: PointerEvent, surface: HTMLElement) => {
       const currentTool = toolRef.current;
       if (
         isNotebookTextEditingTarget(event.target) ||
@@ -1916,9 +1916,9 @@ export default function NotebookEditorPage() {
       cancelNativeCommit();
       cancelInkUiSync();
 
-      safelySetPointerCapture(canvas, event.pointerId);
+      safelySetPointerCapture(surface, event.pointerId);
 
-      const sampleBatch = getNotebookSampleBatchFromNativeEvent(event, canvas);
+      const sampleBatch = getNotebookSampleBatchFromNativeEvent(event, surface);
       const livePoints = sampleBatch.points;
       const points = livePoints.map(({ x, y, pressure, time }) => ({ x, y, pressure, time }));
       const strokeTool: NotebookStrokeTool =
@@ -1968,8 +1968,8 @@ export default function NotebookEditorPage() {
     ]
   );
 
-  const continueDrawingOnCanvas = useCallback(
-    (event: PointerEvent, canvas: HTMLCanvasElement) => {
+  const continueDrawingOnSurface = useCallback(
+    (event: PointerEvent, surface: HTMLElement) => {
       const activeStroke = activeStrokeRef.current;
       if (!activeStroke || activeStroke.pointerId !== event.pointerId) return false;
       if (
@@ -1983,7 +1983,7 @@ export default function NotebookEditorPage() {
       event.stopPropagation();
       const sampleBatch = getNotebookSampleBatchFromNativeEvent(
         event,
-        canvas,
+        surface,
         activeStroke.startTime
       );
       const livePoints = dedupeLiveInkPoints(activeStroke.liveStroke.points, sampleBatch.points);
@@ -2006,21 +2006,21 @@ export default function NotebookEditorPage() {
     [getNotebookSampleBatchFromNativeEvent, scheduleLiveCanvasRender]
   );
 
-  const stopDrawingOnCanvas = useCallback(
-    (event: PointerEvent, canvas: HTMLCanvasElement) => {
+  const stopDrawingOnSurface = useCallback(
+    (event: PointerEvent, surface: HTMLElement) => {
       const activeStroke = activeStrokeRef.current;
       if (!activeStroke || activeStroke.pointerId !== event.pointerId) return false;
       event.preventDefault();
       event.stopPropagation();
-      finishActiveStroke({ pointerId: event.pointerId, canvas });
+      finishActiveStroke({ pointerId: event.pointerId, surface });
       return true;
     },
     [finishActiveStroke]
   );
 
   useEffect(() => {
-    const canvas = liveCanvasRef.current;
-    if (!canvas || typeof window === "undefined") return;
+    const surface = pageSurfaceRef.current;
+    if (!surface || !selectedPage?.id || typeof window === "undefined") return;
 
     const stopReactIfHandled = (event: PointerEvent, handled: boolean) => {
       if (!handled) return;
@@ -2029,49 +2029,54 @@ export default function NotebookEditorPage() {
 
     const handleNativePointerDown: EventListener = (event) => {
       if (!(event instanceof PointerEvent)) return;
-      stopReactIfHandled(event, startDrawingOnCanvas(event, canvas));
+      stopReactIfHandled(event, startDrawingOnSurface(event, surface));
     };
     const handleNativePointerMove: EventListener = (event) => {
       if (!(event instanceof PointerEvent)) return;
-      stopReactIfHandled(event, continueDrawingOnCanvas(event, canvas));
+      stopReactIfHandled(event, continueDrawingOnSurface(event, surface));
     };
     const handleNativePointerStop: EventListener = (event) => {
       if (!(event instanceof PointerEvent)) return;
-      stopReactIfHandled(event, stopDrawingOnCanvas(event, canvas));
+      stopReactIfHandled(event, stopDrawingOnSurface(event, surface));
     };
     const handleWindowPointerStop: EventListener = (event) => {
       if (!(event instanceof PointerEvent)) return;
       const activeStroke = activeStrokeRef.current;
       if (!activeStroke || activeStroke.pointerId !== event.pointerId) return;
-      stopReactIfHandled(event, stopDrawingOnCanvas(event, canvas));
+      stopReactIfHandled(event, stopDrawingOnSurface(event, surface));
     };
 
     const listenerOptions = { passive: false, capture: true };
     const supportsRawUpdate = "onpointerrawupdate" in window;
-    canvas.addEventListener("pointerdown", handleNativePointerDown, listenerOptions);
-    canvas.addEventListener("pointermove", handleNativePointerMove, listenerOptions);
+    surface.addEventListener("pointerdown", handleNativePointerDown, listenerOptions);
+    surface.addEventListener("pointermove", handleNativePointerMove, listenerOptions);
     if (supportsRawUpdate) {
-      canvas.addEventListener("pointerrawupdate", handleNativePointerMove, listenerOptions);
+      surface.addEventListener("pointerrawupdate", handleNativePointerMove, listenerOptions);
     }
-    canvas.addEventListener("pointerup", handleNativePointerStop, listenerOptions);
-    canvas.addEventListener("pointercancel", handleNativePointerStop, listenerOptions);
-    canvas.addEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
+    surface.addEventListener("pointerup", handleNativePointerStop, listenerOptions);
+    surface.addEventListener("pointercancel", handleNativePointerStop, listenerOptions);
+    surface.addEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
     window.addEventListener("pointerup", handleWindowPointerStop, listenerOptions);
     window.addEventListener("pointercancel", handleWindowPointerStop, listenerOptions);
 
     return () => {
-      canvas.removeEventListener("pointerdown", handleNativePointerDown, listenerOptions);
-      canvas.removeEventListener("pointermove", handleNativePointerMove, listenerOptions);
+      surface.removeEventListener("pointerdown", handleNativePointerDown, listenerOptions);
+      surface.removeEventListener("pointermove", handleNativePointerMove, listenerOptions);
       if (supportsRawUpdate) {
-        canvas.removeEventListener("pointerrawupdate", handleNativePointerMove, listenerOptions);
+        surface.removeEventListener("pointerrawupdate", handleNativePointerMove, listenerOptions);
       }
-      canvas.removeEventListener("pointerup", handleNativePointerStop, listenerOptions);
-      canvas.removeEventListener("pointercancel", handleNativePointerStop, listenerOptions);
-      canvas.removeEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
+      surface.removeEventListener("pointerup", handleNativePointerStop, listenerOptions);
+      surface.removeEventListener("pointercancel", handleNativePointerStop, listenerOptions);
+      surface.removeEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
       window.removeEventListener("pointerup", handleWindowPointerStop, listenerOptions);
       window.removeEventListener("pointercancel", handleWindowPointerStop, listenerOptions);
     };
-  }, [continueDrawingOnCanvas, startDrawingOnCanvas, stopDrawingOnCanvas]);
+  }, [
+    continueDrawingOnSurface,
+    selectedPage?.id,
+    startDrawingOnSurface,
+    stopDrawingOnSurface,
+  ]);
 
   useEffect(() => {
     if (tool === "pen" || tool === "highlighter") return;
@@ -2088,8 +2093,8 @@ export default function NotebookEditorPage() {
         document.body.classList.remove("jami-inking-active");
         clearNotebookCanvas(liveHighlighterCanvasRef.current);
         clearNotebookCanvas(liveCanvasRef.current);
-        const canvas = liveCanvasRef.current;
-        if (canvas) safelyReleasePointerCapture(canvas, activeStroke.pointerId);
+        const surface = pageSurfaceRef.current;
+        if (surface) safelyReleasePointerCapture(surface, activeStroke.pointerId);
         if (finalizedStroke) {
           currentStrokes =
             finalizedStroke.tool === "eraser"
@@ -4236,14 +4241,8 @@ export default function NotebookEditorPage() {
                   />
                   <canvas
                     ref={liveCanvasRef}
-                    role="img"
-                    aria-label="Notebook drawing page"
-                    className={`absolute inset-0 z-[23] h-full w-full touch-none select-none ${
-                      fullNotebookEditingEnabled &&
-                      (tool === "pen" || tool === "highlighter")
-                        ? "pointer-events-auto"
-                        : "pointer-events-none"
-                    }`}
+                    aria-hidden="true"
+                    className="pointer-events-none absolute inset-0 z-[23] h-full w-full"
                   />
                   <div className="pointer-events-none absolute inset-0 z-30">
                     {textBlocks.map((block) => {
