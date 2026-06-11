@@ -1,70 +1,89 @@
 "use client";
 
 import Link from "next/link";
-import { Card, SectionHeader } from "@/components/ui";
+import { useState } from "react";
+import { Button, Card, SectionHeader } from "@/components/ui";
 
 const STUDY_LOOP_STEPS = [
-  { label: "Create deck", href: "/dashboard/decks", position: "top-0 left-1/2 -translate-x-1/2" },
-  { label: "Add cards", href: "/dashboard/cards", position: "right-0 top-1/2 -translate-y-1/2" },
-  { label: "Review", href: "/dashboard/study", position: "bottom-0 left-1/2 -translate-x-1/2" },
-  { label: "Set goal", href: "/dashboard/goals", position: "left-0 top-1/2 -translate-y-1/2" },
+  { label: "Create deck", href: "/dashboard/decks", position: "left-1/2 top-[15%]" },
+  { label: "Add cards", href: "/dashboard/cards", position: "left-[85%] top-1/2" },
+  { label: "Review", href: "/dashboard/study", position: "left-1/2 top-[85%]" },
+  { label: "Set goal", href: "/dashboard/goals", position: "left-[15%] top-1/2" },
+] as const;
+
+const CYCLE_ARROWS = [
+  { position: "right-[19%] top-[22%]", rotation: "rotate-45" },
+  { position: "bottom-[20%] right-[21%]", rotation: "rotate-[135deg]" },
+  { position: "bottom-[21%] left-[20%]", rotation: "-rotate-[135deg]" },
+  { position: "left-[20%] top-[21%]", rotation: "-rotate-45" },
 ] as const;
 
 export default function StudyLoopCard() {
+  const [open, setOpen] = useState(false);
+
   return (
-    <Card padding="md" className="sm:p-6">
-      <SectionHeader
-        title="Study loop"
-        description="Build, review, reflect, then begin the cycle again."
-      />
+    <Card padding="md" className="sm:p-5">
+      <div className="flex items-center justify-between gap-3">
+        <SectionHeader
+          title="Study loop"
+          description="Build, review, reflect, then repeat."
+        />
+        <Button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          variant="secondary"
+          size="sm"
+          aria-expanded={open}
+        >
+          {open ? "Hide" : "Show"}
+        </Button>
+      </div>
 
-      <nav aria-label="Jami study loop" className="mx-auto mt-6 w-full max-w-[21rem]">
-        <div className="relative aspect-square">
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 320 320"
-            className="absolute inset-[12%] h-[76%] w-[76%] overflow-visible text-[var(--color-border-strong)]"
-          >
-            <defs>
-              <marker
-                id="study-loop-arrow"
-                markerWidth="8"
-                markerHeight="8"
-                refX="6"
-                refY="4"
-                orient="auto"
-              >
-                <path d="M 0 0 L 8 4 L 0 8 Z" fill="currentColor" />
-              </marker>
-            </defs>
-            <path
-              d="M 160 18 A 142 142 0 1 1 159.8 18"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="5"
-              strokeLinecap="round"
-              markerEnd="url(#study-loop-arrow)"
+      {open ? (
+        <nav aria-label="Jami study loop" className="mx-auto mt-4 w-full max-w-[17rem]">
+          <div className="relative aspect-square">
+            <div
+              aria-hidden="true"
+              className="absolute inset-[15%] rounded-full border-[3px] border-[var(--color-border-strong)]"
             />
-          </svg>
 
-          <div className="app-subtle-panel absolute left-1/2 top-1/2 grid h-24 w-24 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] text-center shadow-sm">
-            <span className="px-3 text-sm font-semibold leading-5 text-text-primary">
-              Keep learning
-            </span>
+            {CYCLE_ARROWS.map((arrow) => (
+              <svg
+                key={arrow.position}
+                viewBox="0 0 16 16"
+                aria-hidden="true"
+                className={`absolute z-[5] h-4 w-4 text-text-muted ${arrow.position} ${arrow.rotation}`}
+              >
+                <path
+                  d="M3 5.5 8 10.5l5-5"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            ))}
+
+            <div className="app-subtle-panel absolute left-1/2 top-1/2 grid h-16 w-16 -translate-x-1/2 -translate-y-1/2 place-items-center rounded-full border border-[var(--color-border)] text-center shadow-sm">
+              <span className="px-2 text-[0.68rem] font-semibold leading-4 text-text-primary">
+                Keep learning
+              </span>
+            </div>
+
+            {STUDY_LOOP_STEPS.map((step, index) => (
+              <Link
+                key={step.label}
+                href={step.href}
+                className={`app-chip absolute z-10 flex min-h-10 min-w-[6.25rem] -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--color-border)] px-2.5 py-1.5 text-center text-xs font-semibold text-text-primary shadow-sm transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${step.position}`}
+                aria-label={`${index + 1}. ${step.label}`}
+              >
+                {step.label}
+              </Link>
+            ))}
           </div>
-
-          {STUDY_LOOP_STEPS.map((step, index) => (
-            <Link
-              key={step.label}
-              href={step.href}
-              className={`app-chip absolute z-10 flex min-h-12 min-w-[7.25rem] items-center justify-center rounded-full border border-[var(--color-border)] px-3 py-2 text-center text-sm font-semibold text-text-primary shadow-sm transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${step.position}`}
-              aria-label={`${index + 1}. ${step.label}`}
-            >
-              {step.label}
-            </Link>
-          ))}
-        </div>
-      </nav>
+        </nav>
+      ) : null}
     </Card>
   );
 }
