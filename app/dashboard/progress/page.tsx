@@ -260,17 +260,6 @@ export default function ProgressPage() {
         .sort((left, right) => left.deadline - right.deadline)[0] ?? null,
     [activeGoals]
   );
-  const studyLoop = [
-    { label: "Create deck", done: decks.length > 0, href: "/dashboard/decks" },
-    { label: "Add cards", done: cards.length > 0, href: "/dashboard/cards" },
-    {
-      label: "Review",
-      done: studyActivity.some((entry) => entry.reviewCount > 0),
-      href: "/dashboard/study",
-    },
-    { label: "Set goal", done: goals.length > 0, href: "/dashboard/goals" },
-  ];
-
   if (!featureFlags.enableMasteryProgress) {
     return (
       <AppPage title="Progress" backHref="/dashboard" backLabel="Today">
@@ -401,30 +390,7 @@ export default function ProgressPage() {
             </div>
           </Card>
 
-          <div
-            id="progress-workspace"
-            className="grid scroll-mt-24 gap-4 lg:grid-cols-2"
-          >
-            <Card padding="lg">
-              <SectionHeader title="Study loop" description="The four steps that unlock useful progress." />
-              <div className="mt-5 grid gap-2 sm:grid-cols-2">
-                {studyLoop.map((step, index) => (
-                  <Link
-                    key={step.label}
-                    href={step.href}
-                    className={`flex min-h-14 items-center gap-3 rounded-[1.1rem] border p-3 transition hover:-translate-y-px ${
-                      step.done ? "app-selected" : "app-subtle-panel"
-                    }`}
-                  >
-                    <span className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-semibold ${step.done ? "app-success" : "app-chip"}`}>
-                      {step.done ? "Done" : index + 1}
-                    </span>
-                    <span className="text-sm font-semibold">{step.label}</span>
-                  </Link>
-                ))}
-              </div>
-            </Card>
-
+          <div id="progress-workspace" className="scroll-mt-24">
             <Card padding="lg">
               <SectionHeader title="Goals and deadlines" />
               <div className="mt-5 space-y-3">
