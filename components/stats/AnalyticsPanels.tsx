@@ -139,106 +139,55 @@ export function StreakPredictionPanel({
   );
 }
 
-export function RetentionHealthPanel({
-  analytics,
-  compact = false,
-}: {
-  analytics: SpacedRepetitionAnalytics;
-  compact?: boolean;
-}) {
-  return (
-    <Card padding={compact ? "md" : "lg"} className="animate-fade-in">
-      <SectionHeader
-        title="Retention health"
-        description={
-          compact
-            ? "A compact view of memory risk, review stage, and learning pressure."
-            : "FSRS state, difficulty, and risk are now grouped into one calmer view of what is holding and what is sliding."
-        }
-      />
-      <div className={`mt-4 grid ${compact ? "gap-3 sm:grid-cols-3" : "gap-4 lg:grid-cols-3"}`}>
-        <div className="app-subtle-panel rounded-[1.2rem] p-4">
-          <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Risk mix</div>
-          <div className="mt-3 grid gap-2">
-            {[
-              { label: "High", value: analytics.retentionSummary.high },
-              { label: "Medium", value: analytics.retentionSummary.medium },
-              { label: "Low", value: analytics.retentionSummary.low },
-              { label: "New", value: analytics.retentionSummary.new },
-            ].map((item) => (
-              <div key={item.label} className="flex items-center justify-between text-sm">
-                <span className="text-text-secondary">{item.label}</span>
-                <span className="font-semibold tabular-nums text-white">{item.value}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="app-subtle-panel rounded-[1.2rem] p-4">
-          <div className="text-xs uppercase tracking-[0.16em] text-text-muted">FSRS stages</div>
-          <div className="mt-3 space-y-2">
-            {analytics.stateDistribution.map((item) => (
-              <div key={item.label} className="flex items-center justify-between text-sm">
-                <span className="text-text-secondary">{item.label}</span>
-                <span className="font-semibold tabular-nums text-white">{item.count}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-        <div className="app-subtle-panel rounded-[1.2rem] p-4">
-          <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Learning pressure</div>
-          <div className="mt-3 space-y-2 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">Lapse rate</span>
-              <span className="font-semibold tabular-nums text-white">{analytics.retentionSummary.lapseRate}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">Avg difficulty</span>
-              <span className="font-semibold tabular-nums text-white">{analytics.retentionSummary.averageDifficulty}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">Overdue</span>
-              <span className="font-semibold tabular-nums text-white">{analytics.retentionSummary.overdue}</span>
-            </div>
-            <div className="flex items-center justify-between">
-              <span className="text-text-secondary">Avg overdue days</span>
-              <span className="font-semibold tabular-nums text-white">{analytics.averageOverdueDays}</span>
-            </div>
-          </div>
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 export function ScheduleForecastPanel({ analytics }: { analytics: SpacedRepetitionAnalytics }) {
   const maxDueCount = Math.max(1, ...analytics.dueForecast7d.map((point) => point.dueCount));
+  const weeklyDueCount = analytics.dueForecast7d.reduce(
+    (sum, point) => sum + point.dueCount,
+    0
+  );
 
   return (
-    <Card padding="lg" className="animate-fade-in">
+    <Card padding="md" className="animate-fade-in">
       <SectionHeader
         title="Scheduling forecast"
-        description={`FSRS has ${analytics.dueIn7Days} card${analytics.dueIn7Days === 1 ? "" : "s"} due in the next 7 days and ${analytics.dueIn30Days} due inside 30 days.`}
+        description={`${weeklyDueCount} card${weeklyDueCount === 1 ? "" : "s"} scheduled over the next 7 days.`}
       />
-      <div className="mt-5 grid gap-3 sm:grid-cols-7">
-        {analytics.dueForecast7d.map((point) => (
-          <div
-            key={point.dayKey}
-            className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] p-3"
-          >
-            <div className="text-xs text-text-muted">{point.label}</div>
-            <div className="mt-2 flex h-20 items-end">
+      <div
+        className="app-subtle-panel mt-4 rounded-[1.2rem] px-3 pb-3 pt-4 sm:px-4"
+        role="img"
+        aria-label={`Seven-day scheduling forecast with ${weeklyDueCount} cards scheduled`}
+      >
+        <div className="grid grid-cols-7 gap-2 sm:gap-3">
+          {analytics.dueForecast7d.map((point, index) => (
+            <div key={point.dayKey} className="min-w-0 text-center">
+              <div className="h-5 text-xs font-semibold tabular-nums text-text-secondary">
+                {point.dueCount > 0 ? point.dueCount : ""}
+              </div>
+              <div className="mt-1 flex h-24 items-end rounded-[0.8rem] bg-glass-medium px-1.5 pt-2">
+                <div
+                  className={`w-full rounded-t-[0.65rem] ${
+                    index === 0
+                      ? "bg-[var(--color-warm-accent)]"
+                      : "bg-[var(--color-accent)]"
+                  }`}
+                  style={{
+                    height:
+                      point.dueCount === 0
+                        ? "3px"
+                        : `${Math.max(12, Math.round((point.dueCount / maxDueCount) * 100))}%`,
+                  }}
+                />
+              </div>
               <div
-                className="w-full rounded-[0.9rem] bg-[linear-gradient(180deg,#ffc7ea_0%,#b77cff_100%)]"
-                style={{
-                  height: `${Math.max(12, Math.round((point.dueCount / maxDueCount) * 100))}%`,
-                }}
-              />
+                className={`mt-2 truncate text-[0.68rem] font-semibold ${
+                  index === 0 ? "text-warm-accent" : "text-text-muted"
+                }`}
+              >
+                {index === 0 ? "Today" : point.label}
+              </div>
             </div>
-            <div className="mt-2 text-sm font-semibold tabular-nums text-white">
-              {point.dueCount}
-            </div>
-          </div>
-        ))}
+          ))}
+        </div>
       </div>
     </Card>
   );

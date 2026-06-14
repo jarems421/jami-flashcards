@@ -21,6 +21,7 @@ import type { Source } from "@/lib/practice/sources";
 import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
 import { computeStudyStreak, type DailyStudyActivity } from "@/lib/study/activity";
 import type { Card as StudyCard } from "@/lib/study/cards";
+import { getStudyDayWindow } from "@/lib/study/day";
 import { normalizeGoal, type Goal } from "@/lib/study/goals";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import {
@@ -29,9 +30,6 @@ import {
   buildWorkspaceActivitySummary,
   countStudyActiveDays,
   filterStudyActivityByRange,
-  getAverageReviewsPerActiveDay,
-  getAverageStudySessionMinutes,
-  getPercentage,
   getStudyAccuracy,
   PROGRESS_TIME_RANGE_OPTIONS,
   type ProgressTimeRange,
@@ -44,14 +42,13 @@ import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import AppPage from "@/components/layout/AppPage";
-import { RetentionHealthPanel, ScheduleForecastPanel } from "@/components/stats/AnalyticsPanels";
+import { ScheduleForecastPanel } from "@/components/stats/AnalyticsPanels";
 import {
   Button,
   ButtonLink,
   Card,
   EmptyState,
   FeedbackBanner,
-  MetricStrip,
   PageHero,
   SectionHeader,
   Skeleton,
@@ -202,30 +199,65 @@ export default function ProgressPage() {
   );
   const deckHealth = useMemo(() => {
     const now = Date.now();
+    const currentStudyDayStart = getStudyDayWindow(now).start;
     return decks
       .map((deck) => {
         const deckCards = cards.filter((card) => card.deckId === deck.id);
         const risks = deckCards.map((card) => getMemoryRiskInfo(card, now));
+        const weakCount = risks.filter((risk) => risk.tier === "high").length;
+        const dueCount = deckCards.filter(
+          (card) => typeof card.dueDate === "number" && card.dueDate <= now
+        ).length;
+        const overdueCount = deckCards.filter(
+          (card) =>
+            typeof card.dueDate === "number" &&
+            card.dueDate < currentStudyDayStart
+        ).length;
+        const holdingCount = risks.filter((risk) => risk.tier === "low").length;
+        const holdingPercent =
+          deckCards.length > 0
+            ? Math.round((holdingCount / deckCards.length) * 100)
+            : 0;
+        const weakPercent =
+          deckCards.length > 0
+            ? Math.round((weakCount / deckCards.length) * 100)
+            : 0;
+        const status: "attention" | "review" | "healthy" =
+          overdueCount > 0 || weakPercent >= 25
+            ? "attention"
+            : dueCount > 0 || weakCount > 0
+              ? "review"
+              : "healthy";
+
         return {
           deck,
           cardCount: deckCards.length,
-          weakCount: risks.filter((risk) => risk.tier === "high").length,
-          dueCount: deckCards.filter(
-            (card) => typeof card.dueDate === "number" && card.dueDate <= now
-          ).length,
-          averageRisk:
-            risks.length > 0
-              ? risks.reduce((sum, risk) => sum + risk.score, 0) / risks.length
-              : 0,
+          weakCount,
+          dueCount,
+          overdueCount,
+          holdingPercent,
+          status,
         };
       })
       .filter((summary) => summary.cardCount > 0)
-      .sort((left, right) => right.averageRisk - left.averageRisk);
+      .sort((left, right) => {
+        const priority = { attention: 2, review: 1, healthy: 0 };
+        return (
+          priority[right.status] - priority[left.status] ||
+          right.overdueCount - left.overdueCount ||
+          right.dueCount - left.dueCount ||
+          left.holdingPercent - right.holdingPercent
+        );
+      });
   }, [cards, decks]);
+  const decksNeedingReview = deckHealth.filter(
+    (summary) => summary.status !== "healthy"
+  ).length;
   const selectedHasReviews = selectedActivity.some((entry) => entry.reviewCount > 0);
   const selectedHasTime = selectedActivity.some((entry) => entry.totalDurationMs > 0);
-  const reviewedCoverage = getPercentage(analytics.reviewedCards, analytics.totalCards);
-  const dueToday = analytics.dueForecast7d[0]?.dueCount ?? 0;
+  const cardsDue = cards.filter(
+    (card) => typeof card.dueDate === "number" && card.dueDate <= Date.now()
+  ).length;
 
   if (!featureFlags.enableMasteryProgress) {
     return (
@@ -399,15 +431,17 @@ export default function ProgressPage() {
             <Card padding="md">
               <SectionHeader
                 title="Due workload"
-                description="The current card load and how much of your library has review history."
+                description="Cards ready to review now, with the overdue portion shown separately."
               />
               <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
-                <StatTile compact label="Due today" value={dueToday} />
-                <StatTile compact label="Overdue" value={analytics.retentionSummary.overdue} />
-                <StatTile compact label="Due next 7" value={analytics.dueIn7Days} />
-                <StatTile compact label="Reviewed" value={`${reviewedCoverage}%`} />
+                <StatTile compact label="Cards due" value={cardsDue} />
+                <StatTile
+                  compact
+                  label="Overdue cards"
+                  value={analytics.retentionSummary.overdue}
+                />
               </div>
-              {analytics.retentionSummary.overdue > 0 ? (
+              {cardsDue > 0 ? (
                 <ButtonLink
                   href={getCustomStudyHref({ mode: "daily" })}
                   size="sm"
@@ -421,13 +455,18 @@ export default function ProgressPage() {
             <ScheduleForecastPanel analytics={analytics} />
           </div>
 
-          <RetentionHealthPanel analytics={analytics} compact />
-
           <Card padding="md">
               <SectionHeader
                 title="Deck health"
-                description="A risk-based comparison of decks with reviewed cards."
+                description="See which decks are holding up well and which have cards ready or overdue."
               />
+              {deckHealth.length > 0 ? (
+                <div className="app-chip mt-4 inline-flex rounded-full px-3 py-1.5 text-xs font-semibold">
+                  {decksNeedingReview === 0
+                    ? "All decks are up to date"
+                    : `${decksNeedingReview} of ${deckHealth.length} deck${deckHealth.length === 1 ? "" : "s"} need review`}
+                </div>
+              ) : null}
               <div className="mt-4 space-y-3">
                 {deckHealth.length > 0 ? (
                   deckHealth.slice(0, 6).map((summary) => (
@@ -438,21 +477,60 @@ export default function ProgressPage() {
                             {summary.deck.name}
                           </div>
                           <div className="mt-1 text-xs text-text-muted">
-                            {summary.cardCount} cards · {summary.weakCount} high risk · {summary.dueCount} due
+                            {summary.dueCount} due
+                            <span aria-hidden="true"> / </span>
+                            {summary.overdueCount} overdue
                           </div>
                         </div>
-                        <span className="app-chip shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold">
-                          {Math.round(summary.averageRisk)}
+                        <span
+                          className={`shrink-0 rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                            summary.status === "healthy"
+                              ? "border-success/35 bg-success-muted text-[var(--color-success-text)]"
+                              : summary.status === "attention"
+                                ? "border-error/35 bg-error-muted text-[var(--color-error-text)]"
+                                : "app-selected"
+                          }`}
+                        >
+                          {summary.status === "healthy"
+                            ? "Healthy"
+                            : summary.status === "attention"
+                              ? "Needs attention"
+                              : "Needs review"}
                         </span>
                       </div>
-                      <ButtonLink
-                        href={getDeckStudyHref(summary.deck.id)}
-                        size="sm"
-                        variant="ghost"
-                        className="mt-2"
-                      >
-                        Open deck
-                      </ButtonLink>
+                      <div className="mt-4">
+                        <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                          <span className="text-text-muted">Cards holding well</span>
+                          <span className="font-semibold tabular-nums text-text-primary">
+                            {summary.holdingPercent}%
+                          </span>
+                        </div>
+                        <div
+                          className="h-2 overflow-hidden rounded-full bg-glass-medium"
+                          role="progressbar"
+                          aria-label={`${summary.deck.name} cards holding well`}
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={summary.holdingPercent}
+                        >
+                          <div
+                            className="h-full rounded-full bg-success transition-all duration-slow"
+                            style={{ width: `${summary.holdingPercent}%` }}
+                          />
+                        </div>
+                      </div>
+                      <div className="mt-3 flex items-center justify-between gap-3">
+                        <span className="text-xs text-text-muted">
+                          {summary.cardCount} card{summary.cardCount === 1 ? "" : "s"} total
+                        </span>
+                        <ButtonLink
+                          href={getDeckStudyHref(summary.deck.id)}
+                          size="sm"
+                          variant="ghost"
+                        >
+                          Open deck
+                        </ButtonLink>
+                      </div>
                     </div>
                   ))
                 ) : (
@@ -460,50 +538,44 @@ export default function ProgressPage() {
                     variant="plain"
                     emoji="Decks"
                     title="No deck health data yet"
-                    description="Review cards in a deck to reveal its memory-risk pattern."
+                    description="Add cards to a deck and start reviewing to see how it is doing."
                   />
                 )}
               </div>
           </Card>
 
-          <Card padding="md">
-            <SectionHeader
-              title="Workspace activity"
-              description="High-level activity only; your actual notebook and draft content stays in its workspace."
-            />
-            <MetricStrip
-              variant="full"
-              className="mt-4"
-              items={[
-                { label: "Notebooks", value: workspace.notebookCount },
-                { label: "Edited 30d", value: workspace.recentlyEditedNotebookCount },
-                { label: "Sources", value: workspace.sourceCount },
-                {
-                  label: "Drafts waiting",
-                  value: workspace.waitingDraftCount,
-                  tone: workspace.waitingDraftCount > 0 ? "warm" : "good",
-                },
-                { label: "Active goals", value: workspace.activeGoalCount },
-                { label: "Completed goals", value: workspace.completedGoalCount, tone: "good" },
-                {
-                  label: "Avg session",
-                  value: `${getAverageStudySessionMinutes(last30Activity)}m`,
-                },
-                {
-                  label: "Reviews / active day",
-                  value: getAverageReviewsPerActiveDay(last30Activity),
-                },
-              ]}
-            />
-            <div className="mt-4 flex flex-wrap gap-2">
-              <ButtonLink href="/dashboard/folders" size="sm" variant="ghost">
-                Open folders
-              </ButtonLink>
-              <ButtonLink href="/dashboard/library" size="sm" variant="ghost">
-                Open library
-              </ButtonLink>
-              <ButtonLink href="/dashboard/goals" size="sm" variant="ghost">
-                Open goals
+          <Card padding="sm" tone="subtle">
+            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-text-primary">Your workspace</div>
+                <p className="mt-1 text-xs text-text-muted">
+                  A quick count of what you are currently working with.
+                </p>
+              </div>
+              <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-4 lg:max-w-2xl">
+                {[
+                  { label: "Notebooks", value: workspace.notebookCount },
+                  { label: "Sources", value: workspace.sourceCount },
+                  { label: "Drafts waiting", value: workspace.waitingDraftCount },
+                  { label: "Active goals", value: workspace.activeGoalCount },
+                ].map((item) => (
+                  <div key={item.label} className="app-chip rounded-[1rem] px-3 py-2.5">
+                    <div className="text-base font-semibold tabular-nums text-text-primary">
+                      {item.value}
+                    </div>
+                    <div className="mt-0.5 truncate text-[0.65rem] font-semibold uppercase tracking-[0.1em] text-text-muted">
+                      {item.label}
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <ButtonLink
+                href="/dashboard/folders"
+                size="sm"
+                variant="ghost"
+                className="shrink-0"
+              >
+                Open workspace
               </ButtonLink>
             </div>
           </Card>

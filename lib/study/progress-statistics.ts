@@ -131,7 +131,6 @@ export function getPercentage(part: number, total: number) {
   return total > 0 ? Math.round((part / total) * 100) : 0;
 }
 
-type WorkspaceNotebook = { updatedAt: number };
 type WorkspaceDraft = { contentStatus?: string };
 type WorkspaceGoal = { status: string };
 
@@ -142,23 +141,16 @@ export function buildWorkspaceActivitySummary(
     drafts,
     goals,
   }: {
-    notebooks: WorkspaceNotebook[];
+    notebooks: unknown[];
     sources: unknown[];
     drafts: WorkspaceDraft[];
     goals: WorkspaceGoal[];
-  },
-  now = Date.now()
+  }
 ) {
-  const recentCutoff = now - 30 * 86_400_000;
-
   return {
     notebookCount: notebooks.length,
-    recentlyEditedNotebookCount: notebooks.filter(
-      (notebook) => notebook.updatedAt >= recentCutoff
-    ).length,
     sourceCount: sources.length,
     waitingDraftCount: drafts.filter((draft) => draft.contentStatus === "draft").length,
     activeGoalCount: goals.filter((goal) => goal.status === "active").length,
-    completedGoalCount: goals.filter((goal) => goal.status === "completed").length,
   };
 }

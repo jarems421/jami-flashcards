@@ -83,16 +83,13 @@ describe("progress statistics", () => {
             { status: "completed" },
             { status: "failed" },
           ],
-        },
-        NOW
+        }
       )
     ).toEqual({
       notebookCount: 2,
-      recentlyEditedNotebookCount: 1,
       sourceCount: 3,
       waitingDraftCount: 1,
       activeGoalCount: 1,
-      completedGoalCount: 1,
     });
   });
 });
