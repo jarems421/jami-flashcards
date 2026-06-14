@@ -71,6 +71,46 @@ async function deleteUserOwnedCardDocs(uid: string) {
 }
 
 const provider = new GoogleAuthProvider();
+const AUTH_OPERATION_TIMEOUT_MS = 30_000;
+
+export function shouldFallbackToGoogleRedirect(code: string | undefined) {
+  return (
+    code === "auth/popup-blocked" ||
+    code === "auth/operation-not-supported-in-this-environment"
+  );
+}
+
+function withAuthTimeout<T>(operation: Promise<T>, timeoutMs = AUTH_OPERATION_TIMEOUT_MS) {
+  return new Promise<T>((resolve, reject) => {
+    const timeout = globalThis.setTimeout(() => {
+      reject(Object.assign(new Error("Sign-in timed out."), {
+        code: "auth/timeout",
+      }));
+    }, timeoutMs);
+
+    operation.then(
+      (value) => {
+        globalThis.clearTimeout(timeout);
+        resolve(value);
+      },
+      (error) => {
+        globalThis.clearTimeout(timeout);
+        reject(error);
+      }
+    );
+  });
+}
+
+function isStandaloneAppWindow() {
+  if (typeof window === "undefined") return false;
+  const navigatorWithStandalone = window.navigator as Navigator & {
+    standalone?: boolean;
+  };
+  return (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    navigatorWithStandalone.standalone === true
+  );
+}
 
 export function createRetryableInitializer(initialize: () => Promise<void>) {
   let initializationPromise: Promise<void> | null = null;
@@ -102,17 +142,18 @@ export const initAuth = async () => {
 // Google sign-in — try popup first, fall back to redirect
 export const signInWithGoogle = async () => {
   await initAuth();
+  if (isStandaloneAppWindow()) {
+    await signInWithRedirect(auth, provider);
+    return null;
+  }
   try {
-    const result = await signInWithPopup(auth, provider);
+    const result = await withAuthTimeout(signInWithPopup(auth, provider));
     return result.user;
   } catch (popupError: unknown) {
     const code = (popupError as { code?: string }).code;
-    // If popup was blocked or unavailable, fall back to redirect flow
-    if (
-      code === "auth/popup-blocked" ||
-      code === "auth/popup-closed-by-user" ||
-      code === "auth/cancelled-popup-request"
-    ) {
+    // Redirect only when the browser cannot open a popup. User cancellation
+    // should return control to the current page instead of starting a redirect.
+    if (shouldFallbackToGoogleRedirect(code)) {
       await signInWithRedirect(auth, provider);
       return null; // page will reload via redirect
     }
@@ -135,14 +176,18 @@ export const logout = async () => {
 // Email sign-up
 export const signUpWithEmail = async (email: string, password: string) => {
   await initAuth();
-  const result = await createUserWithEmailAndPassword(auth, email, password);
+  const result = await withAuthTimeout(
+    createUserWithEmailAndPassword(auth, email, password)
+  );
   return result.user;
 };
 
 // Email sign-in
 export const signInWithEmail = async (email: string, password: string) => {
   await initAuth();
-  const result = await signInWithEmailAndPassword(auth, email, password);
+  const result = await withAuthTimeout(
+    signInWithEmailAndPassword(auth, email, password)
+  );
   return result.user;
 };
 

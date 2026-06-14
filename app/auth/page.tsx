@@ -2,14 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FirebaseError } from "firebase/app";
 import {
+  handleGoogleRedirectResult,
   signInWithEmail,
   signInWithGoogle,
   signUpWithEmail,
 } from "@/services/auth";
 import { listenToAuth } from "@/lib/auth/auth-listener";
-import { getFriendlyAuthError } from "@/lib/auth/errors";
+import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, Input, PageHero } from "@/components/ui";
 
@@ -49,6 +49,21 @@ export default function AuthPage() {
       }
     });
 
+    void handleGoogleRedirectResult()
+      .then((user) => {
+        if (user) {
+          routerRef.current.replace("/dashboard");
+        } else {
+          setGoogleLoading(false);
+        }
+      })
+      .catch((nextError) => {
+        const code = getAuthErrorCode(nextError);
+        setError(getFriendlyAuthError(code));
+        setGoogleLoading(false);
+        console.error("Redirect result error:", nextError);
+      });
+
     return () => unsubscribe();
   }, []);
 
@@ -71,7 +86,7 @@ export default function AuthPage() {
       }
     } catch (nextError) {
       console.error(nextError);
-      const maybeCode = nextError instanceof FirebaseError ? nextError.code : undefined;
+      const maybeCode = getAuthErrorCode(nextError);
       setError(getFriendlyAuthError(maybeCode));
     } finally {
       setLoading(false);
@@ -154,15 +169,13 @@ export default function AuthPage() {
               setGoogleLoading(true);
               setError(null);
               try {
-                await signInWithGoogle();
-              } catch (nextError) {
-                const code =
-                  nextError instanceof FirebaseError
-                    ? nextError.code
-                    : undefined;
-                if (code !== "auth/popup-closed-by-user") {
-                  setError(getFriendlyAuthError(code));
+                const user = await signInWithGoogle();
+                if (user) {
+                  routerRef.current.replace("/dashboard");
                 }
+              } catch (nextError) {
+                const code = getAuthErrorCode(nextError);
+                setError(getFriendlyAuthError(code));
                 console.error(nextError);
                 setGoogleLoading(false);
               }

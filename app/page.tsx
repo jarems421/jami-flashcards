@@ -2,9 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { FirebaseError } from "firebase/app";
 import { signInWithGoogle, handleGoogleRedirectResult } from "@/services/auth";
-import { getFriendlyAuthError } from "@/lib/auth/errors";
+import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
 import { isDemoModeEnabledClient } from "@/lib/demo/client";
 import { listenToAuth } from "@/lib/auth/auth-listener";
 import AppPage from "@/components/layout/AppPage";
@@ -38,9 +37,20 @@ export default function Home() {
       }
     });
 
-    void handleGoogleRedirectResult().catch((nextError) => {
-      console.error("Redirect result error:", nextError);
-    });
+    void handleGoogleRedirectResult()
+      .then((user) => {
+        if (user) {
+          redirectToDashboard();
+        } else {
+          setIsSigningIn(false);
+        }
+      })
+      .catch((nextError) => {
+        const maybeCode = getAuthErrorCode(nextError);
+        setError(getFriendlyAuthError(maybeCode));
+        setIsSigningIn(false);
+        console.error("Redirect result error:", nextError);
+      });
 
     return () => unsubscribe();
   }, [redirectToDashboard]);
@@ -116,15 +126,13 @@ export default function Home() {
                   setError(null);
 
                   try {
-                    await signInWithGoogle();
-                  } catch (nextError) {
-                    const maybeCode =
-                      nextError instanceof FirebaseError
-                        ? nextError.code
-                        : undefined;
-                    if (maybeCode !== "auth/popup-closed-by-user") {
-                      setError(getFriendlyAuthError(maybeCode));
+                    const user = await signInWithGoogle();
+                    if (user) {
+                      redirectToDashboard();
                     }
+                  } catch (nextError) {
+                    const maybeCode = getAuthErrorCode(nextError);
+                    setError(getFriendlyAuthError(maybeCode));
                     console.error(nextError);
                     setIsSigningIn(false);
                   }
