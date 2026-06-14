@@ -139,15 +139,25 @@ export function StreakPredictionPanel({
   );
 }
 
-export function RetentionHealthPanel({ analytics }: { analytics: SpacedRepetitionAnalytics }) {
+export function RetentionHealthPanel({
+  analytics,
+  compact = false,
+}: {
+  analytics: SpacedRepetitionAnalytics;
+  compact?: boolean;
+}) {
   return (
-    <Card padding="lg" className="animate-fade-in">
+    <Card padding={compact ? "md" : "lg"} className="animate-fade-in">
       <SectionHeader
         title="Retention health"
-        description="FSRS state, difficulty, and risk are now grouped into one calmer view of what is holding and what is sliding."
+        description={
+          compact
+            ? "A compact view of memory risk, review stage, and learning pressure."
+            : "FSRS state, difficulty, and risk are now grouped into one calmer view of what is holding and what is sliding."
+        }
       />
-      <div className="mt-4 grid gap-4 lg:grid-cols-3">
-        <div className="rounded-[1.4rem] border border-white/[0.08] bg-white/[0.045] p-4">
+      <div className={`mt-4 grid ${compact ? "gap-3 sm:grid-cols-3" : "gap-4 lg:grid-cols-3"}`}>
+        <div className="app-subtle-panel rounded-[1.2rem] p-4">
           <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Risk mix</div>
           <div className="mt-3 grid gap-2">
             {[
@@ -163,7 +173,7 @@ export function RetentionHealthPanel({ analytics }: { analytics: SpacedRepetitio
             ))}
           </div>
         </div>
-        <div className="rounded-[1.4rem] border border-white/[0.08] bg-white/[0.045] p-4">
+        <div className="app-subtle-panel rounded-[1.2rem] p-4">
           <div className="text-xs uppercase tracking-[0.16em] text-text-muted">FSRS stages</div>
           <div className="mt-3 space-y-2">
             {analytics.stateDistribution.map((item) => (
@@ -174,7 +184,7 @@ export function RetentionHealthPanel({ analytics }: { analytics: SpacedRepetitio
             ))}
           </div>
         </div>
-        <div className="rounded-[1.4rem] border border-white/[0.08] bg-white/[0.045] p-4">
+        <div className="app-subtle-panel rounded-[1.2rem] p-4">
           <div className="text-xs uppercase tracking-[0.16em] text-text-muted">Learning pressure</div>
           <div className="mt-3 space-y-2 text-sm">
             <div className="flex items-center justify-between">
