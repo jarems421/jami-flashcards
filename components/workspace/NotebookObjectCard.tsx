@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
+import { createPortal } from "react-dom";
 import ObjectIcon from "@/components/workspace/ObjectIcon";
 import { getObjectColorPreset } from "@/components/workspace/object-card-styles";
 
@@ -26,6 +28,7 @@ export type NotebookObjectCardProps = {
   onArchive?: () => void;
   className?: string;
   compact?: boolean;
+  editorPreview?: boolean;
 };
 
 function NotebookCardInner({
@@ -38,6 +41,7 @@ function NotebookCardInner({
   pageCount,
   updatedLabel,
   compact,
+  editorPreview,
 }: NotebookObjectCardProps) {
   const preset = getObjectColorPreset(color);
   const paperFill = pageColor === "black" ? "#0b1020" : "#f8fafc";
@@ -66,11 +70,11 @@ function NotebookCardInner({
     <div
       className={cx(
         "group/notebook mx-auto flex h-full w-full max-w-[8.35rem] cursor-pointer flex-col items-center rounded-[1.05rem] border border-transparent bg-transparent px-2 py-2.5 text-center transition duration-200 hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)] active:scale-[0.985]",
-        compact ? "min-h-[9.6rem]" : "min-h-[10.9rem]",
+        editorPreview ? "min-h-[7rem] max-w-[6rem] px-1.5 py-2" : compact ? "min-h-[9.6rem]" : "min-h-[10.9rem]",
       )}
     >
       <div className="flex items-center justify-center">
-        <div className={cx("relative", compact ? "h-24 w-[5.45rem]" : "h-28 w-[6.1rem]")}>
+        <div className={cx("relative", editorPreview ? "h-[4.8rem] w-[4.6rem]" : compact ? "h-24 w-[5.45rem]" : "h-28 w-[6.1rem]")}>
           <div
             className="absolute left-3 top-1.5 h-[94%] w-[82%] rounded-[0.62rem] border border-slate-900/10"
             style={paperStyle}
@@ -96,7 +100,7 @@ function NotebookCardInner({
         </div>
       </div>
 
-      <div className="mt-3 w-full space-y-1">
+      <div className={cx("w-full space-y-1", editorPreview ? "mt-1.5" : "mt-3")}>
         <div>
           <p className="line-clamp-2 text-sm font-semibold leading-5 text-[var(--color-text-primary)]" title={title}>{title}</p>
         </div>
@@ -112,6 +116,70 @@ function NotebookCardInner({
 }
 
 export function NotebookObjectCard(props: NotebookObjectCardProps) {
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const mobileActionsTitleId = useId();
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
+  const suppressNextClickRef = useRef(false);
+
+  const clearLongPress = () => {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    touchStartRef.current = null;
+  };
+
+  useEffect(() => {
+    if (!mobileActionsOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setMobileActionsOpen(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [mobileActionsOpen]);
+
+  useEffect(() => clearLongPress, []);
+
+  const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
+    if (
+      event.pointerType !== "touch" ||
+      !window.matchMedia("(max-width: 767px)").matches
+    ) {
+      return;
+    }
+
+    clearLongPress();
+    touchStartRef.current = {
+      pointerId: event.pointerId,
+      x: event.clientX,
+      y: event.clientY,
+    };
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+      suppressNextClickRef.current = true;
+      setMobileActionsOpen(true);
+      navigator.vibrate?.(20);
+    }, 550);
+  };
+
+  const handlePointerMove = (event: PointerEvent<HTMLDivElement>) => {
+    const start = touchStartRef.current;
+    if (!start || start.pointerId !== event.pointerId) return;
+
+    if (
+      Math.abs(event.clientX - start.x) > 10 ||
+      Math.abs(event.clientY - start.y) > 10
+    ) {
+      clearLongPress();
+    }
+  };
+
+  const hasActions = Boolean(props.onEdit || props.onArchive);
   const card = props.href ? (
     <Link
       href={props.href}
@@ -130,11 +198,44 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
     </div>
   );
 
-  if (!props.onEdit && !props.onArchive) return card;
+  if (!hasActions) return card;
   return (
-    <div className="relative h-full">
+    <div
+      className="relative h-full select-none md:select-auto"
+      style={{ WebkitTouchCallout: "none" }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={clearLongPress}
+      onPointerCancel={clearLongPress}
+      onLostPointerCapture={clearLongPress}
+      onClickCapture={(event) => {
+        if (
+          event.target instanceof Element &&
+          event.target.closest("[data-mobile-notebook-actions]")
+        ) {
+          suppressNextClickRef.current = false;
+          return;
+        }
+        if (!suppressNextClickRef.current) return;
+        event.preventDefault();
+        event.stopPropagation();
+        suppressNextClickRef.current = false;
+      }}
+      onContextMenu={(event) => {
+        if (window.matchMedia("(max-width: 767px) and (pointer: coarse)").matches) {
+          event.preventDefault();
+        }
+      }}
+    >
       {card}
-      <details className="group/actions absolute right-1 top-1 z-20">
+      <button
+        type="button"
+        className="sr-only md:hidden"
+        onClick={() => setMobileActionsOpen(true)}
+      >
+        Open notebook actions for {props.title}
+      </button>
+      <details className="group/actions absolute right-1 top-1 z-20 hidden md:block">
         <summary
           aria-label={`Notebook actions for ${props.title}`}
           title="Notebook actions"
@@ -165,10 +266,81 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
               }}
             >
               Archive
-            </button>
-          ) : null}
-        </div>
+              </button>
+            ) : null}
+          </div>
       </details>
+      {mobileActionsOpen
+        ? createPortal(
+            <div
+              data-mobile-notebook-actions
+              className="fixed inset-0 z-[100] flex items-end bg-black/45 p-3 backdrop-blur-[2px] md:hidden"
+              role="presentation"
+              onPointerDown={(event) => {
+                if (event.target === event.currentTarget) {
+                  suppressNextClickRef.current = false;
+                  setMobileActionsOpen(false);
+                }
+              }}
+            >
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={mobileActionsTitleId}
+                className="app-panel w-full rounded-[1.5rem] p-3 shadow-[0_24px_60px_rgba(0,0,0,0.38)]"
+              >
+                <div className="px-2 pb-3 pt-1">
+                  <div
+                    id={mobileActionsTitleId}
+                    className="truncate text-sm font-semibold text-text-primary"
+                  >
+                    {props.title}
+                  </div>
+                  <div className="mt-1 text-xs text-text-muted">Notebook actions</div>
+                </div>
+                <div className="grid gap-2">
+                  {props.onEdit ? (
+                    <button
+                      type="button"
+                      className="min-h-12 rounded-[1rem] bg-[var(--color-glass-subtle)] px-4 text-left text-sm font-semibold text-text-primary"
+                      onClick={() => {
+                        suppressNextClickRef.current = false;
+                        setMobileActionsOpen(false);
+                        props.onEdit?.();
+                      }}
+                    >
+                      Edit notebook
+                    </button>
+                  ) : null}
+                  {props.onArchive ? (
+                    <button
+                      type="button"
+                      className="min-h-12 rounded-[1rem] bg-error-muted px-4 text-left text-sm font-semibold text-danger-text"
+                      onClick={() => {
+                        suppressNextClickRef.current = false;
+                        setMobileActionsOpen(false);
+                        props.onArchive?.();
+                      }}
+                    >
+                      Archive
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="min-h-12 rounded-[1rem] px-4 text-left text-sm font-semibold text-text-secondary"
+                    onClick={() => {
+                      suppressNextClickRef.current = false;
+                      setMobileActionsOpen(false);
+                    }}
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body
+          )
+        : null}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import ObjectIcon from "@/components/workspace/ObjectIcon";
 import IconBubble from "@/components/ui/IconBubble";
 import {
   OBJECT_COLOR_PRESETS,
-  OBJECT_ICON_PRESETS,
+  OBJECT_ICON_PICKER_PRESETS,
   type ObjectColorId,
   type ObjectIconId,
 } from "@/components/workspace/object-card-styles";
@@ -21,6 +21,7 @@ type ObjectStylePickerProps = {
   colorLabel?: string;
   iconLabel?: string;
   className?: string;
+  compact?: boolean;
 };
 
 export function ObjectStylePicker({
@@ -31,10 +32,11 @@ export function ObjectStylePicker({
   colorLabel = "Colour",
   iconLabel = "Icon",
   className,
+  compact = false,
 }: ObjectStylePickerProps) {
   return (
-    <div className={cx("space-y-4", className)}>
-      <div className="space-y-2">
+    <div className={cx(compact ? "space-y-3" : "space-y-4", className)}>
+      <div className={compact ? "space-y-1.5" : "space-y-2"}>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
           {colorLabel}
         </p>
@@ -49,7 +51,7 @@ export function ObjectStylePicker({
                 aria-pressed={selected}
                 onClick={() => onColorChange(preset.id)}
                 className={cx(
-                  "h-9 w-9 rounded-full border p-0.5 transition hover:-translate-y-0.5",
+                  `${compact ? "h-8 w-8" : "h-9 w-9"} rounded-full border p-0.5 transition hover:-translate-y-0.5`,
                   selected
                     ? "border-[var(--color-accent)] shadow-[0_0_0_3px_var(--color-accent-muted)]"
                     : "border-[var(--color-border)]",
@@ -67,12 +69,12 @@ export function ObjectStylePicker({
         </div>
       </div>
 
-      <div className="space-y-2">
+      <div className={compact ? "space-y-1.5" : "space-y-2"}>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
           {iconLabel}
         </p>
         <div className="flex flex-wrap gap-2">
-          {OBJECT_ICON_PRESETS.map((preset) => {
+          {OBJECT_ICON_PICKER_PRESETS.map((preset) => {
             const selected = preset.id === icon;
             return (
               <button
@@ -82,7 +84,7 @@ export function ObjectStylePicker({
                 aria-pressed={selected}
                 onClick={() => onIconChange(preset.id)}
                 className={cx(
-                  "inline-grid h-10 w-10 place-items-center rounded-2xl border transition hover:-translate-y-0.5",
+                  `inline-grid ${compact ? "h-9 w-9 rounded-xl" : "h-10 w-10 rounded-2xl"} place-items-center border transition hover:-translate-y-0.5`,
                   selected
                     ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)] text-[var(--color-accent)]"
                     : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-[var(--color-text-muted)]",

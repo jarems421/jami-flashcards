@@ -1,4 +1,4 @@
-export type FolderWorkspaceTab = "notebooks" | "decks" | "sources" | "progress";
+export type FolderWorkspaceTab = "notebooks" | "decks" | "sources";
 
 const DEFAULT_FOLDER_TAB: FolderWorkspaceTab = "notebooks";
 
@@ -6,7 +6,6 @@ export function getFolderTabFromSearch(search: string): FolderWorkspaceTab {
   const value = new URLSearchParams(search).get("tab");
   return value === "decks" ||
     value === "sources" ||
-    value === "progress" ||
     value === "notebooks"
     ? value
     : DEFAULT_FOLDER_TAB;

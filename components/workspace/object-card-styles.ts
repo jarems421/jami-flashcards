@@ -137,6 +137,17 @@ export const OBJECT_ICON_PRESETS: Array<{ id: ObjectIconId; label: string }> = [
   { id: "heart", label: "Heart" },
 ];
 
+const HIDDEN_OBJECT_ICON_IDS = new Set<ObjectIconId>([
+  "book",
+  "language",
+  "history",
+  "code",
+]);
+
+export const OBJECT_ICON_PICKER_PRESETS = OBJECT_ICON_PRESETS.filter(
+  (preset) => !HIDDEN_OBJECT_ICON_IDS.has(preset.id)
+);
+
 export function normalizeObjectColor(value?: string | null): ObjectColorId {
   return OBJECT_COLOR_PRESETS.some((preset) => preset.id === value)
     ? (value as ObjectColorId)

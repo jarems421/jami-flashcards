@@ -34,7 +34,6 @@ import {
   EmptyState,
   FeedbackBanner,
   Input,
-  SectionHeader,
   Skeleton,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
@@ -3733,27 +3732,21 @@ export default function NotebookEditorPage() {
         ) : null}
 
         {showNotebookSettings ? (
-          <div className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-4 backdrop-blur-sm">
-          <Card padding="md" className="mt-10 w-full max-w-3xl">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <SectionHeader
-                eyebrow="Edit notebook"
-                title="Notebook settings"
-              />
-              <Button type="button" variant="secondary" onClick={closeNotebookSettings}>
-                Close
-              </Button>
+          <div className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-3 backdrop-blur-sm sm:p-4">
+          <Card padding="sm" className="my-4 w-full max-w-2xl sm:my-8">
+            <div>
+              <div className="text-sm font-semibold text-text-primary">Edit notebook</div>
+              <p className="mt-0.5 text-xs text-text-muted">
+                Update the title, cover, and default page style.
+              </p>
             </div>
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-start">
               <Input
                 label="Notebook title"
                 value={notebookTitle}
                 onChange={(event) => setNotebookTitle(event.target.value)}
               />
-              <div className="app-subtle-panel rounded-[1.4rem] p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  Preview
-                </div>
+              <div className="app-subtle-panel rounded-[1rem] p-2">
                 <NotebookObjectCard
                   title={notebookTitle.trim() || "Notebook preview"}
                   color={notebookColor}
@@ -3762,10 +3755,10 @@ export default function NotebookEditorPage() {
                   pageStyle={notebookDefaultPageStyle}
                   updatedLabel={`${PAGE_STYLE_LABELS[notebookDefaultPageStyle]} ${notebook.pageColor}`}
                   compact
-                  className="mt-2"
+                  editorPreview
                 />
               </div>
-              <div className="lg:col-span-2">
+              <div className="sm:col-span-2">
                 <ObjectStylePicker
                   color={notebookColor}
                   icon={notebookIcon}
@@ -3773,23 +3766,24 @@ export default function NotebookEditorPage() {
                   onIconChange={setNotebookIcon}
                   colorLabel="Cover colour"
                   iconLabel="Cover icon"
+                  compact
                 />
               </div>
             </div>
             {notebook.type === "uploaded_file" ? (
-              <div className="app-chip mt-5 rounded-[1.15rem] px-4 py-3 text-sm leading-6">
+              <div className="app-chip mt-3 rounded-[1rem] px-3 py-2 text-xs leading-5">
                 Imported pages use the PDF or image as their background. Blank pages added later use white plain paper.
               </div>
             ) : (
-              <div className="mt-5">
-                <div className="text-sm font-medium text-text-secondary">Default page style</div>
-                <div className="mt-2 flex flex-wrap gap-2">
+              <div className="mt-3">
+                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Default page style</div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
                   {(["plain", "lined", "grid", "dot"] as NotebookPageStyle[]).map((style) => (
                     <button
                       key={style}
                       type="button"
                       onClick={() => setNotebookDefaultPageStyle(style)}
-                      className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold transition ${
+                      className={`min-h-[2.1rem] rounded-full border px-3 text-xs font-semibold transition ${
                         notebookDefaultPageStyle === style ? "app-selected" : "app-chip"
                       }`}
                     >
@@ -3799,77 +3793,93 @@ export default function NotebookEditorPage() {
                 </div>
               </div>
             )}
-            <div className="mt-5 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-              <div className="text-sm font-semibold text-text-primary">
-                Add PDF or image pages
-              </div>
-              <p className="mt-1 text-sm leading-6 text-text-muted">
-                {isDemoUser
-                  ? "Exit the shared demo to upload PDF or image pages."
-                  : "Add a file to this notebook. Its pages will be placed after the current last page and remain available for ink and text notes."}
-              </p>
-              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-end">
-                <label className="min-w-0 flex-1">
-                  <span className="mb-1.5 block text-sm font-medium text-text-secondary">
-                    PDF or image
-                  </span>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/jpeg,image/png,image/webp"
-                    disabled={isDemoUser || addingNotebookFile || savingNotebookSettings}
-                    onChange={(event) =>
-                      setNotebookFile(event.target.files?.[0] ?? null)
+            <details className="group mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)]">
+              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-text-primary [&::-webkit-details-marker]:hidden">
+                <span>Add PDF or image pages</span>
+                <span className="text-xs font-medium text-text-muted group-open:hidden">Show</span>
+                <span className="hidden text-xs font-medium text-text-muted group-open:inline">Hide</span>
+              </summary>
+              <div className="border-t border-[var(--color-border)] px-3 pb-3 pt-2">
+                <p className="text-xs leading-5 text-text-muted">
+                  {isDemoUser
+                    ? "Exit the shared demo to upload PDF or image pages."
+                    : "Add a file after the current last page."}
+                </p>
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
+                  <label className="min-w-0 flex-1">
+                    <span className="sr-only">PDF or image</span>
+                    <input
+                      type="file"
+                      accept="application/pdf,image/jpeg,image/png,image/webp"
+                      disabled={isDemoUser || addingNotebookFile || savingNotebookSettings}
+                      onChange={(event) =>
+                        setNotebookFile(event.target.files?.[0] ?? null)
+                      }
+                      className="block min-h-[2.5rem] w-full rounded-xl border border-border bg-surface-panel-strong px-2.5 py-1.5 text-xs text-text-primary file:mr-2 file:rounded-full file:border-0 file:bg-warm-glow file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed"
+                    />
+                  </label>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    disabled={
+                      isDemoUser || !notebookFile || addingNotebookFile || savingNotebookSettings
                     }
-                    className="block min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed"
-                  />
-                </label>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={
-                    isDemoUser || !notebookFile || addingNotebookFile || savingNotebookSettings
-                  }
-                  onClick={() => void handleAddNotebookFile()}
-                >
-                  {addingNotebookFile
-                    ? notebookUploadProgress !== null
-                      ? `Adding ${notebookUploadProgress}%`
-                      : "Adding pages..."
-                    : "Add pages"}
-                </Button>
-              </div>
-              {addingNotebookFile && notebookUploadProgress !== null ? (
-                <div
-                  role="progressbar"
-                  aria-label="Notebook file upload progress"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={notebookUploadProgress}
-                  className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.08]"
-                >
-                  <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
-                    style={{ width: `${notebookUploadProgress}%` }}
-                  />
+                    onClick={() => void handleAddNotebookFile()}
+                  >
+                    {addingNotebookFile
+                      ? notebookUploadProgress !== null
+                        ? `Adding ${notebookUploadProgress}%`
+                        : "Adding pages..."
+                      : "Add pages"}
+                  </Button>
                 </div>
-              ) : null}
-            </div>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                disabled={savingNotebookSettings || !notebookTitle.trim()}
-                onClick={() => void handleSaveNotebookSettings()}
-              >
-                {savingNotebookSettings ? "Saving..." : "Save notebook"}
-              </Button>
+                {addingNotebookFile && notebookUploadProgress !== null ? (
+                  <div
+                    role="progressbar"
+                    aria-label="Notebook file upload progress"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={notebookUploadProgress}
+                    className="mt-2 h-2 overflow-hidden rounded-full bg-white/[0.08]"
+                  >
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
+                      style={{ width: `${notebookUploadProgress}%` }}
+                    />
+                  </div>
+                ) : null}
+              </div>
+            </details>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3">
               <Button
                 type="button"
                 variant="danger"
+                size="sm"
                 disabled={savingNotebookSettings}
                 onClick={() => void handleArchiveNotebook()}
               >
                 Archive notebook
               </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={savingNotebookSettings}
+                  onClick={closeNotebookSettings}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={savingNotebookSettings || !notebookTitle.trim()}
+                  onClick={() => void handleSaveNotebookSettings()}
+                >
+                  {savingNotebookSettings ? "Saving..." : "Save notebook"}
+                </Button>
+              </div>
             </div>
           </Card>
           </div>

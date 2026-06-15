@@ -326,22 +326,6 @@ export default function DecksPage() {
                     <div className="min-w-0 basis-full">
                       {editingDeckId === deck.id ? (
                         <div className="space-y-3">
-                          <Input value={editingDeckName} onChange={(event) => setEditingDeckName(event.target.value)} placeholder="Deck name" />
-                          <label className="block">
-                            <span className="mb-2 block text-sm font-medium text-text-secondary">Folder</span>
-                            <select
-                              value={editingDeckFolderId}
-                              onChange={(event) => setEditingDeckFolderId(event.target.value)}
-                              className="app-field min-h-[2.75rem] w-full rounded-2xl px-3 text-sm outline-none"
-                            >
-                              <option value="">No folder</option>
-                              {folders.map((folder) => (
-                                <option key={folder.id} value={folder.id}>
-                                  {folder.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
                           <div className="app-subtle-panel space-y-3 rounded-[1.4rem] p-3">
                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Deck cover</div>
                             <div className="app-chip flex flex-wrap items-center gap-3 rounded-[1rem] p-3 sm:flex-nowrap">
@@ -359,6 +343,29 @@ export default function DecksPage() {
                                 </div>
                               </div>
                             </div>
+                            <div className="grid gap-3 sm:grid-cols-2">
+                              <Input
+                                label="Deck name"
+                                value={editingDeckName}
+                                onChange={(event) => setEditingDeckName(event.target.value)}
+                                placeholder="Deck name"
+                              />
+                              <label className="block">
+                                <span className="mb-2 block text-sm font-medium text-text-secondary">Folder</span>
+                                <select
+                                  value={editingDeckFolderId}
+                                  onChange={(event) => setEditingDeckFolderId(event.target.value)}
+                                  className="app-field min-h-[2.75rem] w-full rounded-2xl px-3 text-sm outline-none"
+                                >
+                                  <option value="">No folder</option>
+                                  {folders.map((folder) => (
+                                    <option key={folder.id} value={folder.id}>
+                                      {folder.name}
+                                    </option>
+                                  ))}
+                                </select>
+                              </label>
+                            </div>
                             <ObjectStylePicker
                               color={editingDeckColor}
                               icon={editingDeckIcon}
@@ -366,6 +373,7 @@ export default function DecksPage() {
                               onIconChange={setEditingDeckIcon}
                               colorLabel="Deck colour"
                               iconLabel="Deck icon"
+                              compact
                             />
                           </div>
                           <div className="flex flex-col gap-2 sm:flex-row">

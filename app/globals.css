@@ -438,6 +438,7 @@
     [role="button"] {
       -webkit-touch-callout: none;
       -webkit-user-drag: none;
+      touch-action: manipulation;
     }
   }
 

@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
+import DeckObjectCard from "@/components/workspace/DeckObjectCard";
 import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import {
@@ -25,7 +26,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { getDeckHref, getDeckStudyRouteHref } from "@/lib/app/routes";
+import { getDeckHref } from "@/lib/app/routes";
 import { useUser } from "@/lib/auth/user-context";
 import type { Source, SourceType } from "@/lib/practice/sources";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
@@ -805,34 +806,28 @@ export default function FolderDetailPage() {
         ) : null}
 
         {showEditFolder ? (
-          <Card padding="md">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-              <SectionHeader
-                eyebrow="Edit folder"
-                title="Edit folder"
-              />
-              <Button type="button" variant="secondary" onClick={() => setShowEditFolder(false)}>
-                Close
-              </Button>
+          <Card padding="sm" className="mx-auto max-w-2xl">
+            <div>
+              <div className="text-sm font-semibold text-text-primary">Edit folder</div>
+              <p className="mt-0.5 text-xs text-text-muted">
+                Update the folder name, colour, or icon.
+              </p>
             </div>
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)]">
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-start">
               <Input
                 label="Folder name"
                 value={editFolderName}
                 onChange={(event) => setEditFolderName(event.target.value)}
               />
-              <div className="app-subtle-panel rounded-[1.4rem] p-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  Preview
-                </div>
+              <div className="app-subtle-panel rounded-[1rem] p-2">
                 <FolderObjectCard
                   title={editFolderName.trim() || "Folder preview"}
                   color={editFolderColor}
                   icon={editFolderIcon}
-                  className="mt-2"
+                  compact
                 />
               </div>
-              <div className="lg:col-span-2">
+              <div className="sm:col-span-2">
                 <ObjectStylePicker
                   color={editFolderColor}
                   icon={editFolderIcon}
@@ -840,25 +835,39 @@ export default function FolderDetailPage() {
                   onIconChange={setEditFolderIcon}
                   colorLabel="Folder colour"
                   iconLabel="Folder icon"
+                  compact
                 />
               </div>
             </div>
-            <div className="mt-5 flex flex-wrap gap-2">
-              <Button
-                type="button"
-                disabled={savingFolder || !editFolderName.trim()}
-                onClick={() => void handleSaveFolder()}
-              >
-                {savingFolder ? "Saving..." : "Save folder"}
-              </Button>
+            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3">
               <Button
                 type="button"
                 variant="danger"
+                size="sm"
                 disabled={savingFolder}
                 onClick={() => void handleArchiveFolder()}
               >
                 Archive folder
               </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={savingFolder}
+                  onClick={() => setShowEditFolder(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  size="sm"
+                  disabled={savingFolder || !editFolderName.trim()}
+                  onClick={() => void handleSaveFolder()}
+                >
+                  {savingFolder ? "Saving..." : "Save folder"}
+                </Button>
+              </div>
             </div>
           </Card>
         ) : null}
@@ -868,7 +877,6 @@ export default function FolderDetailPage() {
             ["notebooks", "Notebooks"],
             ["decks", "Decks"],
             ["sources", "Sources"],
-            ["progress", "Progress"],
           ].map(([value, label]) => {
             const selected = activeTab === value;
             return (
@@ -999,44 +1007,19 @@ export default function FolderDetailPage() {
                 </div>
               </Card>
             ) : null}
-            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {folderDecks.length > 0 ? (
-                folderDecks.map((deck) => {
-                  return (
-                    <div
-                      key={deck.id}
-                      className="group rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 transition duration-fast hover:-translate-y-[1px] hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass)]"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <Link
-                          href={getDeckStudyRouteHref(deck.id)}
-                          className="min-w-0 flex-1 rounded-[0.8rem] outline-none focus-visible:ring-2 focus-visible:ring-[var(--focus-ring)]"
-                          aria-label={`Practice ${deck.name}`}
-                        >
-                          <div className="text-sm font-semibold leading-5 text-text-primary [overflow-wrap:anywhere]">{deck.name}</div>
-                          <div className="mt-1 text-xs text-text-muted">Practice deck</div>
-                        </Link>
-                        <div className="flex shrink-0 flex-col gap-2">
-                          <Link
-                            href={getDeckHref(deck.id)}
-                            className="inline-flex min-h-[2.25rem] items-center justify-center rounded-[2rem] border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 py-1 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:-translate-y-[1px] hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]"
-                          >
-                            View
-                          </Link>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="secondary"
-                            disabled={busyAssetId === deck.id}
-                            onClick={() => void toggleDeckFolder(deck)}
-                          >
-                            Remove from folder
-                          </Button>
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })
+                folderDecks.map((deck) => (
+                  <DeckObjectCard
+                    key={deck.id}
+                    href={getDeckHref(deck.id)}
+                    title={deck.name}
+                    colorPreset={deck.colorPreset}
+                    iconPreset={deck.iconPreset}
+                    removing={busyAssetId === deck.id}
+                    onRemoveFromFolder={() => void toggleDeckFolder(deck)}
+                  />
+                ))
               ) : (
                 <EmptyState
                   title="No decks in this folder yet"
@@ -1179,74 +1162,6 @@ export default function FolderDetailPage() {
           </section>
         ) : null}
 
-        {activeTab === "progress" ? (
-          <section className="space-y-4">
-            <SectionHeader
-              eyebrow="Folder progress"
-              title="Keep this study space moving"
-              description="A simple view of what is ready to continue."
-            />
-            <div className="grid gap-3 sm:grid-cols-3">
-              {[
-                {
-                  label: "Notebooks",
-                  value: notebooks.length,
-                  detail: notebooks.length === 1 ? "workbook" : "workbooks",
-                  tab: "notebooks" as FolderWorkspaceTab,
-                },
-                {
-                  label: "Decks",
-                  value: folderDecks.length,
-                  detail: folderDecks.length === 1 ? "deck" : "decks",
-                  tab: "decks" as FolderWorkspaceTab,
-                },
-                {
-                  label: "Sources",
-                  value: folderSources.length,
-                  detail: folderSources.length === 1 ? "source" : "sources",
-                  tab: "sources" as FolderWorkspaceTab,
-                },
-              ].map((item) => (
-                <button
-                  key={item.label}
-                  type="button"
-                  onClick={() => selectFolderTab(item.tab)}
-                  className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-left transition hover:-translate-y-0.5 hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass)]"
-                >
-                  <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                    {item.label}
-                  </div>
-                  <div className="mt-2 text-3xl font-semibold text-text-primary">
-                    {item.value}
-                  </div>
-                  <div className="mt-1 text-sm text-text-secondary">
-                    {item.detail}
-                  </div>
-                </button>
-              ))}
-            </div>
-            <div className="flex flex-wrap gap-2">
-              <Link
-                href="/dashboard/progress"
-                className="app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-full px-4 text-sm font-medium"
-              >
-                Open full Progress
-              </Link>
-              {notebooks[0] ? (
-                <Link
-                  href={`/dashboard/notebooks/${notebooks[0].id}`}
-                  className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)]"
-                >
-                  Continue latest notebook
-                </Link>
-              ) : (
-                <Button type="button" onClick={openNotebookForm} disabled={isDemoUser}>
-                  Create notebook
-                </Button>
-              )}
-            </div>
-          </section>
-        ) : null}
       </div>
     </AppPage>
   );
