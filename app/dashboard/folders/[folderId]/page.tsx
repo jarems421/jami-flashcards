@@ -806,25 +806,25 @@ export default function FolderDetailPage() {
         ) : null}
 
         {showEditFolder ? (
-          <Card padding="sm" className="mx-auto max-w-2xl">
+          <Card padding="sm" className="mx-auto max-w-[44rem]">
             <div>
               <div className="text-sm font-semibold text-text-primary">Edit folder</div>
               <p className="mt-0.5 text-xs text-text-muted">
                 Update the folder name, colour, or icon.
               </p>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-start">
+            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,18rem)_8.5rem] sm:items-start">
               <Input
                 label="Folder name"
                 value={editFolderName}
                 onChange={(event) => setEditFolderName(event.target.value)}
+                containerClassName="w-full max-w-[18rem]"
               />
               <div className="app-subtle-panel rounded-[1rem] p-2">
                 <FolderObjectCard
                   title={editFolderName.trim() || "Folder preview"}
                   color={editFolderColor}
                   icon={editFolderIcon}
-                  compact
                 />
               </div>
               <div className="sm:col-span-2">
@@ -839,7 +839,7 @@ export default function FolderDetailPage() {
                 />
               </div>
             </div>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3">
+            <div className="mt-4 flex min-h-[3.25rem] flex-wrap items-center justify-center gap-3 border-t border-[var(--color-border)] px-1 pt-3 sm:justify-between sm:px-2">
               <Button
                 type="button"
                 variant="danger"
@@ -849,7 +849,7 @@ export default function FolderDetailPage() {
               >
                 Archive folder
               </Button>
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap items-center justify-center gap-2.5">
                 <Button
                   type="button"
                   variant="ghost"

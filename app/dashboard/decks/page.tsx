@@ -16,7 +16,7 @@ import {
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import { db } from "@/services/firebase/client";
 import AppPage from "@/components/layout/AppPage";
-import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
+import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
@@ -376,24 +376,39 @@ export default function DecksPage() {
                               compact
                             />
                           </div>
-                          <div className="flex flex-col gap-2 sm:flex-row">
+                          <div className="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3 sm:flex-row sm:items-center sm:justify-between">
                             <Button
                               type="button"
-                              disabled={isDemoUser || savingDeckId === deck.id || !editingDeckName.trim()}
-                              onClick={() => void handleDeckRename(deck)}
+                              variant="danger"
+                              disabled={
+                                isDemoUser ||
+                                savingDeckId === deck.id ||
+                                deletingDeckId === deck.id
+                              }
+                              onClick={() => setDeckPendingDelete(deck)}
                               className="w-full sm:w-auto"
                             >
-                              {savingDeckId === deck.id ? "Saving..." : "Save deck"}
+                              {deletingDeckId === deck.id ? "Deleting..." : "Delete deck"}
                             </Button>
-                            <Button
-                              type="button"
-                              disabled={isDemoUser || savingDeckId === deck.id}
-                              onClick={resetDeckEditing}
-                              variant="secondary"
-                              className="w-full sm:w-auto"
-                            >
-                              Cancel
-                            </Button>
+                            <div className="flex flex-col gap-2 sm:flex-row">
+                              <Button
+                                type="button"
+                                disabled={isDemoUser || savingDeckId === deck.id}
+                                onClick={resetDeckEditing}
+                                variant="ghost"
+                                className="w-full sm:w-auto"
+                              >
+                                Cancel
+                              </Button>
+                              <Button
+                                type="button"
+                                disabled={isDemoUser || savingDeckId === deck.id || !editingDeckName.trim()}
+                                onClick={() => void handleDeckRename(deck)}
+                                className="w-full sm:w-auto"
+                              >
+                                {savingDeckId === deck.id ? "Saving..." : "Save deck"}
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ) : (
@@ -412,12 +427,13 @@ export default function DecksPage() {
 
                     {editingDeckId === deck.id ? null : (
                       <div className="flex w-full flex-wrap gap-2">
-                        <Link
+                        <ButtonLink
                           href={getDeckStudyHref(deck.id)}
-                          className="inline-flex min-h-[2.5rem] flex-1 items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-3 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)] sm:flex-none"
+                          size="sm"
+                          className="flex-1 sm:flex-none"
                         >
                           Study
-                        </Link>
+                        </ButtonLink>
                         <Link
                           href={`${getDeckHref(deck.id)}#add-card`}
                           className="inline-flex min-h-[2.5rem] flex-1 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-3 text-sm font-medium text-[var(--button-secondary-text)] sm:flex-none"
@@ -426,9 +442,6 @@ export default function DecksPage() {
                         </Link>
                         <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setEditingDeckFolderId(deck.folderIds[0] ?? ""); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
                           Edit
-                        </Button>
-                        <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => setDeckPendingDelete(deck)} variant="danger" className="flex-1 sm:flex-none">
-                          {deletingDeckId === deck.id ? "Deleting..." : "Delete"}
                         </Button>
                       </div>
                     )}

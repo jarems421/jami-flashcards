@@ -50,7 +50,8 @@ function sanitizeFileName(value: string) {
 }
 
 function downloadTextFile(fileName: string, text: string, type: string) {
-  const blob = new Blob([text], { type });
+  const content = type.startsWith("text/csv") ? `\uFEFF${text}` : text;
+  const blob = new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -555,26 +556,50 @@ export default function DeckDetailPageClient() {
                   <div className="mt-1 text-2xl font-medium sm:text-3xl">{deckTagCount}</div>
                 </div>
               </div>
-              <div className="mt-5 flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={cards.length === 0}
-                  onClick={() => handleExportCards("tsv")}
+              <details className="group/export mt-5">
+                <summary
+                  aria-disabled={cards.length === 0}
+                  className={`app-button-secondary inline-flex min-h-[2.25rem] list-none items-center justify-center rounded-[2rem] px-3 py-1 text-sm font-medium [&::-webkit-details-marker]:hidden ${
+                    cards.length === 0
+                      ? "pointer-events-none opacity-60"
+                      : "cursor-pointer"
+                  }`}
                 >
-                  Download list
-                </Button>
-                <Button
-                  type="button"
-                  variant="secondary"
-                  size="sm"
-                  disabled={cards.length === 0}
-                  onClick={() => handleExportCards("csv")}
-                >
-                  Download for spreadsheet
-                </Button>
-              </div>
+                  Export
+                </summary>
+                <div className="mt-2 grid gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1.5 text-left">
+                  <button
+                    type="button"
+                    className="rounded-lg px-3 py-2 text-left transition hover:bg-[var(--color-glass-subtle)]"
+                    onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                      handleExportCards("tsv");
+                    }}
+                  >
+                    <span className="block text-sm font-medium text-text-primary">
+                      Tab-separated list
+                    </span>
+                    <span className="mt-0.5 block text-xs text-text-muted">
+                      Best for re-importing cards
+                    </span>
+                  </button>
+                  <button
+                    type="button"
+                    className="rounded-lg px-3 py-2 text-left transition hover:bg-[var(--color-glass-subtle)]"
+                    onClick={(event) => {
+                      event.currentTarget.closest("details")?.removeAttribute("open");
+                      handleExportCards("csv");
+                    }}
+                  >
+                    <span className="block text-sm font-medium text-text-primary">
+                      Spreadsheet CSV
+                    </span>
+                    <span className="mt-0.5 block text-xs text-text-muted">
+                      Best for Excel or Google Sheets
+                    </span>
+                  </button>
+                </div>
+              </details>
             </SurfaceCard>
           </div>
 

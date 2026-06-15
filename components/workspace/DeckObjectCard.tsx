@@ -147,7 +147,7 @@ export default function DeckObjectCard({
           >
             Open deck actions for {title}
           </button>
-          <details className="group/actions absolute right-2 top-2 z-20 hidden md:block">
+          <details className="group/actions absolute right-3 top-3 z-20 hidden md:block">
             <summary
               aria-label={`Deck actions for ${title}`}
               title="Deck actions"
