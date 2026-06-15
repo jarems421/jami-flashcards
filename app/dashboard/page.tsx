@@ -42,9 +42,11 @@ import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
+import { usePersistentDisclosure } from "@/lib/app/disclosure-preference";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
+const GETTING_STARTED_OPEN_STORAGE_KEY = "jami:getting-started-open";
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
 type ChecklistItem = {
@@ -61,7 +63,10 @@ function GettingStartedChecklist({
   items: ChecklistItem[];
   isLoading: boolean;
 }) {
-  const [open, setOpen] = useState(true);
+  const [open, toggleOpen] = usePersistentDisclosure(
+    GETTING_STARTED_OPEN_STORAGE_KEY,
+    true,
+  );
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
     try {
@@ -120,7 +125,7 @@ function GettingStartedChecklist({
         />
         <Button
           type="button"
-          onClick={() => setOpen((value) => !value)}
+          onClick={toggleOpen}
           variant="secondary"
           size="sm"
           aria-expanded={open}

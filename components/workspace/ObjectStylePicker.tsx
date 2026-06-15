@@ -22,6 +22,7 @@ type ObjectStylePickerProps = {
   iconLabel?: string;
   className?: string;
   compact?: boolean;
+  centered?: boolean;
 };
 
 export function ObjectStylePicker({
@@ -33,14 +34,18 @@ export function ObjectStylePicker({
   iconLabel = "Icon",
   className,
   compact = false,
+  centered = false,
 }: ObjectStylePickerProps) {
   return (
     <div className={cx(compact ? "space-y-3" : "space-y-4", className)}>
       <div className={compact ? "space-y-1.5" : "space-y-2"}>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+        <p className={cx(
+          "text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]",
+          centered && "text-center",
+        )}>
           {colorLabel}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className={cx("flex flex-wrap gap-2", centered && "justify-center")}>
           {OBJECT_COLOR_PRESETS.map((preset) => {
             const selected = preset.id === color;
             return (
@@ -70,10 +75,13 @@ export function ObjectStylePicker({
       </div>
 
       <div className={compact ? "space-y-1.5" : "space-y-2"}>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]">
+        <p className={cx(
+          "text-xs font-semibold uppercase tracking-[0.18em] text-[var(--color-text-muted)]",
+          centered && "text-center",
+        )}>
           {iconLabel}
         </p>
-        <div className="flex flex-wrap gap-2">
+        <div className={cx("flex flex-wrap gap-2", centered && "justify-center")}>
           {OBJECT_ICON_PICKER_PRESETS.map((preset) => {
             const selected = preset.id === icon;
             return (

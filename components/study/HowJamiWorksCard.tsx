@@ -1,10 +1,15 @@
 "use client";
 
-import { useState } from "react";
 import { Button, Card, IconBubble, SectionHeader } from "@/components/ui";
+import { usePersistentDisclosure } from "@/lib/app/disclosure-preference";
+
+const HOW_JAMI_WORKS_OPEN_STORAGE_KEY = "jami:how-jami-works-open";
 
 export default function HowJamiWorksCard() {
-  const [open, setOpen] = useState(false);
+  const [open, toggleOpen] = usePersistentDisclosure(
+    HOW_JAMI_WORKS_OPEN_STORAGE_KEY,
+    false,
+  );
   const steps = [
     ["1", "Learn"],
     ["2", "Practice"],
@@ -18,7 +23,7 @@ export default function HowJamiWorksCard() {
         <SectionHeader title="How Jami works" />
         <Button
           type="button"
-          onClick={() => setOpen((value) => !value)}
+          onClick={toggleOpen}
           variant="secondary"
           size="sm"
           aria-expanded={open}

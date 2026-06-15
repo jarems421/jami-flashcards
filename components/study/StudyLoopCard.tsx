@@ -1,8 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
 import { Button, Card, SectionHeader } from "@/components/ui";
+import { usePersistentDisclosure } from "@/lib/app/disclosure-preference";
+
+const STUDY_LOOP_OPEN_STORAGE_KEY = "jami:study-loop-open";
 
 const STUDY_LOOP_STEPS = [
   { label: "Create deck", href: "/dashboard/decks", position: "left-1/2 top-[15%]" },
@@ -19,7 +21,10 @@ const CYCLE_ARROWS = [
 ] as const;
 
 export default function StudyLoopCard() {
-  const [open, setOpen] = useState(false);
+  const [open, toggleOpen] = usePersistentDisclosure(
+    STUDY_LOOP_OPEN_STORAGE_KEY,
+    false,
+  );
 
   return (
     <Card padding="md" className="sm:p-5">
@@ -30,7 +35,7 @@ export default function StudyLoopCard() {
         />
         <Button
           type="button"
-          onClick={() => setOpen((value) => !value)}
+          onClick={toggleOpen}
           variant="secondary"
           size="sm"
           aria-expanded={open}

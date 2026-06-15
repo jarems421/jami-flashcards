@@ -807,13 +807,13 @@ export default function FolderDetailPage() {
 
         {showEditFolder ? (
           <Card padding="sm" className="mx-auto max-w-[44rem]">
-            <div>
+            <div className="text-center sm:text-left">
               <div className="text-sm font-semibold text-text-primary">Edit folder</div>
               <p className="mt-0.5 text-xs text-text-muted">
                 Update the folder name, colour, or icon.
               </p>
             </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,18rem)_8.5rem] sm:items-start">
+            <div className="mx-auto mt-4 grid max-w-[28rem] gap-3 sm:grid-cols-[minmax(0,18rem)_8.5rem] sm:items-start">
               <Input
                 label="Folder name"
                 value={editFolderName}
@@ -836,6 +836,7 @@ export default function FolderDetailPage() {
                   colorLabel="Folder colour"
                   iconLabel="Folder icon"
                   compact
+                  centered
                 />
               </div>
             </div>

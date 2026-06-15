@@ -442,12 +442,6 @@
     }
   }
 
-  body.jami-card-swipe-selecting,
-  body.jami-card-swipe-selecting * {
-    -webkit-user-select: none !important;
-    user-select: none !important;
-  }
-
   body.jami-inking-active,
   body.jami-inking-active * {
     -webkit-touch-callout: none !important;

@@ -282,7 +282,6 @@ export default function CardsSearchPage() {
     selectVisibleCards,
     clearSelection,
     handleCheckboxClick,
-    getCardLongPressHandlers,
   } = useCardSelection({
     visibleCardIds,
     selectedCardIds,
@@ -1016,10 +1015,6 @@ export default function CardsSearchPage() {
                   {selectedCardIds.length} selected for bulk edit
                 </span>
               </div>
-              <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-sm leading-6 text-text-muted">
-                Tip: Shift-click on desktop or long-press and swipe on touch to select several cards.
-              </div>
-
               <BulkTagToolbar
                 selectedCount={selectedCardIds.length}
                 tags={bulkTags}
@@ -1087,8 +1082,6 @@ export default function CardsSearchPage() {
             {visibleCards.map((card) => (
               <section
                 key={card.id}
-                data-card-id={card.id}
-                {...getCardLongPressHandlers(card.id)}
                 className={`app-panel p-3 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell ${
                   viewMode === "list" ? "sm:px-4 sm:py-3" : "sm:p-4"
                 } ${

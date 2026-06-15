@@ -495,7 +495,6 @@ export default function CardCreationPanel({
           >
             {addingSingleCard ? "Adding..." : "Add card"}
           </Button>
-          <p className="text-xs text-text-muted">Press Ctrl/Cmd + Enter to add the card.</p>
         </div>
       ) : null}
 

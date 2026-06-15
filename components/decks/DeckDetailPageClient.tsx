@@ -405,7 +405,6 @@ export default function DeckDetailPageClient() {
     selectVisibleCards,
     clearSelection,
     handleCheckboxClick,
-    getCardLongPressHandlers,
   } = useCardSelection({
     visibleCardIds,
     selectedCardIds,
@@ -559,7 +558,7 @@ export default function DeckDetailPageClient() {
               <details className="group/export mt-5">
                 <summary
                   aria-disabled={cards.length === 0}
-                  className={`app-button-secondary inline-flex min-h-[2.25rem] list-none items-center justify-center rounded-[2rem] px-3 py-1 text-sm font-medium [&::-webkit-details-marker]:hidden ${
+                  className={`app-button-secondary inline-flex min-h-[2.75rem] min-w-[7.5rem] list-none items-center justify-center rounded-[2rem] px-5 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden ${
                     cards.length === 0
                       ? "pointer-events-none opacity-60"
                       : "cursor-pointer"
@@ -667,10 +666,6 @@ export default function DeckDetailPageClient() {
                   </span>
                 </span>
               </div>
-              <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] px-4 py-3 text-sm leading-6 text-text-muted">
-                Tip: Shift-click on desktop or long-press and swipe on touch to select several cards.
-              </div>
-
               <BulkTagToolbar
                 selectedCount={selectedCardIds.length}
                 tags={bulkTags}
@@ -703,8 +698,6 @@ export default function DeckDetailPageClient() {
               {filteredCards.map((card) => (
                 <section
                   key={card.id}
-                  data-card-id={card.id}
-                  {...getCardLongPressHandlers(card.id)}
                   className={`app-panel p-3 transition duration-fast sm:p-4 ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
                 >
                   {!isDemoUser ? (
