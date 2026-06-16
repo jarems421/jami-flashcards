@@ -15,6 +15,10 @@ import {
   shouldShowCardBrowserResults,
 } from "@/lib/study/card-search";
 import {
+  getTagFilterAfterRename,
+  shouldClearTagFilterAfterRemoval,
+} from "@/lib/study/tag-manager-state";
+import {
   buildCardBrowserSearch,
   getCardBrowserStateFromSearch,
 } from "@/lib/study/card-browser-navigation";
@@ -88,6 +92,7 @@ export default function CardsSearchPage() {
     null
   );
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const [showTagManager, setShowTagManager] = useState(false);
   const [tagManagerSource, setTagManagerSource] = useState("");
   const [tagManagerTarget, setTagManagerTarget] = useState("");
   const [tagManagerAction, setTagManagerAction] = useState<"rename" | "remove" | null>(null);
@@ -151,6 +156,11 @@ export default function CardsSearchPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewCardId]);
+
+  useEffect(() => {
+    setTagManagerSource(tagFilter);
+    setTagManagerTarget("");
+  }, [tagFilter]);
 
   // Load all user cards + decks
   useEffect(() => {
@@ -312,6 +322,9 @@ export default function CardsSearchPage() {
     return counts;
   }, [cards]);
   const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
+  const selectedTagCount = tagManagerSource
+    ? tagCounts.get(getTagKey(tagManagerSource))?.count ?? 0
+    : 0;
   const clearAllFilters = () => {
     setSearchTerm("");
     setDebouncedTerm("");
@@ -319,6 +332,13 @@ export default function CardsSearchPage() {
     setFolderFilter("");
     setTagFilter("");
     setStatusFilter("all");
+  };
+
+  const selectManagedTag = (tag: string) => {
+    setTagFilter(tag);
+    setTagManagerSource(tag);
+    setTagManagerTarget("");
+    setFeedback(null);
   };
 
   const startEditing = (card: Card) => {
@@ -621,9 +641,11 @@ export default function CardsSearchPage() {
     setFeedback(null);
     try {
       const count = await renameUserTag(user.uid, sourceTag, targetTag);
+      const nextTagFilter = getTagFilterAfterRename(targetTag);
       applyLocalTagRename(sourceTag, targetTag);
-      setTagManagerSource(targetTag);
+      setTagManagerSource(nextTagFilter);
       setTagManagerTarget("");
+      setTagFilter(nextTagFilter);
       setFeedback({ type: "success", message: `Updated ${count} card${count === 1 ? "" : "s"}.` });
     } catch (error) {
       console.error(error);
@@ -660,6 +682,9 @@ export default function CardsSearchPage() {
       applyLocalTagRemoval(sourceTag);
       setTagManagerSource("");
       setTagManagerTarget("");
+      if (shouldClearTagFilterAfterRemoval(tagFilter, sourceTag)) {
+        setTagFilter("");
+      }
       setFeedback({ type: "success", message: `Removed tag from ${count} card${count === 1 ? "" : "s"}.` });
     } catch (error) {
       console.error(error);
@@ -764,99 +789,29 @@ export default function CardsSearchPage() {
         />
       )}
 
-      {!isDemoUser ? (
-        <section className="app-panel p-4 sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-            <div className="min-w-0">
-              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
-                Tag manager
-              </div>
-              <h2 className="mt-2 text-lg font-semibold tracking-tight text-white sm:text-xl">
-                Rename, merge, or remove tags.
-              </h2>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-                Pick a tag below, then rename it. Renaming to an existing tag will merge them across your cards.
-              </p>
-            </div>
-            <div className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.04] px-3 py-2 text-sm text-text-secondary">
-              <span className="font-semibold text-white">{availableTags.length}</span> tag{availableTags.length === 1 ? "" : "s"}
-            </div>
-          </div>
-
-          {availableTags.length === 0 ? (
-            <div className="mt-4 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-              Add a tag to any card and it will appear here for cleanup later.
-            </div>
-          ) : (
-            <div className="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,0.72fr)]">
-              <div className="max-h-56 overflow-y-auto rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] p-2">
-                <div className="flex flex-wrap gap-2">
-                  {availableTags.map((tag) => {
-                    const selected = getTagKey(tagManagerSource) === getTagKey(tag);
-                    const count = tagCounts.get(getTagKey(tag))?.count ?? 0;
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        onClick={() => {
-                          setTagManagerSource(tag);
-                          setTagManagerTarget("");
-                          setFeedback(null);
-                        }}
-                        className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${
-                          selected
-                            ? "border-accent bg-accent/20 text-accent"
-                            : "border-border bg-white/[0.04] text-white hover:border-border-strong hover:bg-white/[0.07]"
-                        }`}
-                      >
-                        {tag} · {count} card{count === 1 ? "" : "s"}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-
-              <div className="space-y-3 rounded-[1.25rem] border border-white/[0.08] bg-white/[0.035] p-4">
-                <Input
-                  label="Selected tag"
-                  value={tagManagerSource}
-                  onChange={(event) => setTagManagerSource(event.target.value)}
-                  placeholder="Choose or type a tag"
-                  disabled={tagManagerAction !== null}
-                />
-                <Input
-                  label="Rename or merge into"
-                  value={tagManagerTarget}
-                  onChange={(event) => setTagManagerTarget(event.target.value)}
-                  placeholder="New or existing tag"
-                  disabled={tagManagerAction !== null}
-                />
-                <div className="flex flex-col gap-2 sm:flex-row">
-                  <Button
-                    type="button"
-                    disabled={tagManagerAction !== null || !tagManagerSource.trim() || !tagManagerTarget.trim()}
-                    onClick={() => void handleRenameTag()}
-                    className="w-full sm:w-auto"
-                  >
-                    {tagManagerAction === "rename" ? "Updating..." : "Rename / merge"}
-                  </Button>
-                  <Button
-                    type="button"
-                    variant="danger"
-                    disabled={tagManagerAction !== null || !tagManagerSource.trim()}
-                    onClick={() => void handleRemoveTag()}
-                    className="w-full sm:w-auto"
-                  >
-                    {tagManagerAction === "remove" ? "Removing..." : "Remove tag"}
-                  </Button>
-                </div>
-              </div>
-            </div>
-          )}
-        </section>
-      ) : null}
-
       <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <div className="text-sm font-semibold text-text-primary">Find cards</div>
+            <p className="mt-0.5 text-xs leading-5 text-text-muted">
+              {shouldShowCardResults
+                ? `Showing ${filtered.length} matching card${filtered.length === 1 ? "" : "s"}`
+                : "Search card fronts or choose a filter"}
+            </p>
+          </div>
+          {!isDemoUser ? (
+            <Button
+              type="button"
+              variant={showTagManager ? "secondary" : "ghost"}
+              size="sm"
+              aria-expanded={showTagManager}
+              onClick={() => setShowTagManager((value) => !value)}
+              className="w-full sm:w-auto"
+            >
+              {showTagManager ? "Hide tags" : "Manage tags"}
+            </Button>
+          ) : null}
+        </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
             placeholder="Search card fronts"
@@ -941,6 +896,93 @@ export default function CardsSearchPage() {
             <Button type="button" size="sm" variant="ghost" onClick={clearAllFilters}>
               Clear all filters
             </Button>
+          </div>
+        ) : null}
+        {showTagManager && !isDemoUser ? (
+          <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 sm:p-4">
+            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+              <div>
+                <div className="text-sm font-semibold text-text-primary">Manage tags</div>
+                <p className="mt-1 max-w-2xl text-xs leading-5 text-text-muted">
+                  Rename, merge, or remove tags. Selecting a tag filters the cards below.
+                </p>
+              </div>
+              <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-xs font-semibold text-text-secondary">
+                {availableTags.length} tag{availableTags.length === 1 ? "" : "s"}
+              </div>
+            </div>
+
+            {availableTags.length === 0 ? (
+              <div className="mt-4 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 text-sm leading-6 text-text-secondary">
+                Tags will appear here after you add them to cards.
+              </div>
+            ) : (
+              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,0.68fr)]">
+                <div className="max-h-52 overflow-y-auto rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-2">
+                  <div className="flex flex-wrap gap-2">
+                    {availableTags.map((tag) => {
+                      const selected = getTagKey(tagManagerSource) === getTagKey(tag);
+                      const count = tagCounts.get(getTagKey(tag))?.count ?? 0;
+                      return (
+                        <button
+                          key={tag}
+                          type="button"
+                          onClick={() => selectManagedTag(tag)}
+                          className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${
+                            selected
+                              ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
+                              : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-primary hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)]"
+                          }`}
+                        >
+                          {tag} - {count} card{count === 1 ? "" : "s"}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
+                  <div className="rounded-[0.9rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-sm text-text-secondary">
+                    {tagManagerSource ? (
+                      <>
+                        Editing <span className="font-semibold text-text-primary">{tagManagerSource}</span>
+                        <span className="ml-1 text-xs text-text-muted">
+                          ({selectedTagCount} card{selectedTagCount === 1 ? "" : "s"})
+                        </span>
+                      </>
+                    ) : (
+                      "Select a tag to edit it."
+                    )}
+                  </div>
+                  <Input
+                    label="Rename or merge into"
+                    value={tagManagerTarget}
+                    onChange={(event) => setTagManagerTarget(event.target.value)}
+                    placeholder="New or existing tag"
+                    disabled={tagManagerAction !== null || !tagManagerSource.trim()}
+                  />
+                  <div className="grid gap-2 sm:flex sm:flex-wrap">
+                    <Button
+                      type="button"
+                      disabled={tagManagerAction !== null || !tagManagerSource.trim() || !tagManagerTarget.trim()}
+                      onClick={() => void handleRenameTag()}
+                      className="w-full sm:w-auto"
+                    >
+                      {tagManagerAction === "rename" ? "Updating..." : "Rename / merge"}
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="danger"
+                      disabled={tagManagerAction !== null || !tagManagerSource.trim()}
+                      onClick={() => void handleRemoveTag()}
+                      className="w-full sm:w-auto"
+                    >
+                      {tagManagerAction === "remove" ? "Removing..." : "Remove tag"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         ) : null}
       </div>
