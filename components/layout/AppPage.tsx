@@ -41,7 +41,7 @@ export default function AppPage({
   return (
     <main
       data-app-surface="true"
-      className={`min-h-screen min-w-0 overflow-x-hidden px-4 pb-32 pt-3 text-text-primary sm:px-6 sm:pb-14 sm:pt-4 lg:px-10 ${className}`}
+      className={`min-h-screen min-w-0 overflow-x-hidden bg-[var(--app-background)] px-4 pb-32 pt-3 text-text-primary sm:px-6 sm:pb-14 sm:pt-4 lg:px-10 ${className}`}
     >
       <div className={`mx-auto w-full min-w-0 ${widthClasses[width]}`}>
         <div

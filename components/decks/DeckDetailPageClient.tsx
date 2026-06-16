@@ -647,44 +647,27 @@ export default function DeckDetailPageClient() {
         />
       ) : deck ? (
         <>
-          {!isDemoUser ? (
-            <>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={selectVisibleCards}
-                  disabled={filteredCards.length === 0}
-                  className="w-full sm:w-auto"
-                >
-                  Select visible cards
-                </Button>
-                <span className="text-center text-sm text-text-muted sm:text-right">
-                  <span className="sm:hidden">{selectedCardIds.length} selected for bulk edit</span>
-                  <span className="hidden sm:inline">
-                    {selectedCardIds.length} selected for bulk edit.
-                  </span>
-                </span>
-              </div>
-              <BulkTagToolbar
-                selectedCount={selectedCardIds.length}
-                tags={bulkTags}
-                pendingTag={bulkPendingTag}
-                availableTags={availableTags}
-                disabled={applyingBulkTags}
-                onTagsChange={setBulkTags}
-                onPendingTagChange={setBulkPendingTag}
-                onApply={() => void handleAddTagsToSelectedCards()}
-                onClearSelection={clearSelection}
-              />
-            </>
-          ) : null}
-
           <Input
             placeholder="Search this deck"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
+          {!isDemoUser ? (
+            <BulkTagToolbar
+              selectedCount={selectedCardIds.length}
+              visibleCount={filteredCards.length}
+              tags={bulkTags}
+              pendingTag={bulkPendingTag}
+              availableTags={availableTags}
+              disabled={applyingBulkTags}
+              onSelectAll={selectVisibleCards}
+              onTagsChange={setBulkTags}
+              onPendingTagChange={setBulkPendingTag}
+              onApply={() => void handleAddTagsToSelectedCards()}
+              onClearSelection={clearSelection}
+            />
+          ) : null}
+
           {filteredCards.length === 0 ? (
             <EmptyState
               emoji="Search"

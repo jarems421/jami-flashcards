@@ -68,8 +68,8 @@
     --color-border-strong: rgba(233, 219, 255, 0.24);
 
     /* Gradient card overlay */
-    --app-background: linear-gradient(180deg, #090c14 0%, #0d1018 48%, #121725 100%);
-    --app-overlay: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0) 62%);
+    --app-background: var(--color-surface-base);
+    --app-overlay: transparent;
     --gradient-card: linear-gradient(
       160deg,
       rgba(24, 29, 43, 0.97) 0%,
@@ -148,10 +148,14 @@
     --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
+  html,
   body {
-    min-height: 100vh;
+    min-height: 100%;
     background-color: var(--color-surface-base);
     background: var(--app-background);
+  }
+
+  body {
     background-attachment: fixed;
     color: var(--color-text-primary);
     font-family:
@@ -176,6 +180,12 @@
     z-index: 0;
   }
 
+  body:not(.constellation-background-enabled) [data-app-surface="true"] {
+    background: var(--app-background);
+  }
+
+  html.app-theme-purple,
+  html.app-theme-purple-pink,
   body.app-theme-purple,
   body.app-theme-purple-pink {
     --color-surface-base: #100719;
@@ -211,8 +221,8 @@
     --color-selected-border: rgba(232, 217, 255, 0.36);
     --color-border: rgba(214, 193, 244, 0.15);
     --color-border-strong: rgba(232, 217, 255, 0.24);
-    --app-background: linear-gradient(180deg, #0a0510 0%, #160a23 46%, #0f0718 100%);
-    --app-overlay: linear-gradient(180deg, rgba(178, 149, 255, 0.035), rgba(178, 149, 255, 0) 66%);
+    --app-background: var(--color-surface-base);
+    --app-overlay: transparent;
     --gradient-card: linear-gradient(160deg, rgba(34, 18, 51, 0.97) 0%, rgba(43, 22, 64, 0.93) 52%, rgba(19, 10, 31, 0.98) 100%);
     --topbar-bg: linear-gradient(180deg, rgba(31, 16, 48, 0.9), rgba(15, 8, 25, 0.84));
     --topbar-border: rgba(218, 198, 255, 0.13);
@@ -248,6 +258,7 @@
     --shadow-bubble: 0 18px 34px rgba(7, 3, 13, 0.24);
   }
 
+  html.app-theme-paper-white,
   body.app-theme-paper-white {
     --color-surface-base: #f8f7fb;
     --color-surface-raised: #ffffff;
@@ -285,8 +296,8 @@
     --color-selected-border: rgba(116, 100, 207, 0.34);
     --color-border: rgba(20, 28, 42, 0.14);
     --color-border-strong: rgba(20, 28, 42, 0.23);
-    --app-background: linear-gradient(180deg, #fffdfd 0%, #f8f7fb 48%, #eef1f7 100%);
-    --app-overlay: linear-gradient(180deg, rgba(255, 255, 255, 0.32), rgba(255, 255, 255, 0) 66%);
+    --app-background: var(--color-surface-base);
+    --app-overlay: transparent;
     --gradient-card: linear-gradient(160deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 248, 252, 0.92) 54%, rgba(239, 241, 248, 0.96) 100%);
     --topbar-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.84), rgba(247, 248, 252, 0.74));
     --topbar-border: rgba(20, 28, 42, 0.14);
@@ -326,6 +337,7 @@
     --shadow-bubble: 0 18px 34px rgba(43, 55, 83, 0.11);
   }
 
+  html.app-theme-soft-grey,
   body.app-theme-soft-grey {
     --color-surface-base: #171717;
     --color-surface-raised: #202020;
@@ -360,8 +372,8 @@
     --color-selected-border: rgba(255, 255, 255, 0.28);
     --color-border: rgba(255, 255, 255, 0.12);
     --color-border-strong: rgba(255, 255, 255, 0.2);
-    --app-background: linear-gradient(180deg, #252525 0%, #171717 48%, #0e0e0e 100%);
-    --app-overlay: linear-gradient(180deg, rgba(255, 255, 255, 0.018), rgba(255, 255, 255, 0) 66%);
+    --app-background: var(--color-surface-base);
+    --app-overlay: transparent;
     --gradient-card: linear-gradient(160deg, rgba(43, 43, 43, 0.97) 0%, rgba(36, 36, 36, 0.94) 54%, rgba(22, 22, 22, 0.98) 100%);
     --topbar-bg: linear-gradient(180deg, rgba(37, 37, 37, 0.88), rgba(18, 18, 18, 0.8));
     --topbar-border: rgba(255, 255, 255, 0.12);
@@ -873,6 +885,10 @@
     box-shadow: var(--button-warm-shadow-hover);
   }
 
+  .app-button-primary:disabled,
+  .app-button-secondary:disabled,
+  .app-button-ghost:disabled,
+  .app-button-warm:disabled,
   .app-button-primary[aria-disabled="true"],
   .app-button-secondary[aria-disabled="true"],
   .app-button-ghost[aria-disabled="true"],
@@ -1071,6 +1087,7 @@
 
 /* Constellation background overrides */
 
+html.constellation-background-enabled,
 body.constellation-background-enabled {
   background: #060311;
 

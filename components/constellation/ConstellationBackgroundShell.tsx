@@ -114,30 +114,42 @@ export default function ConstellationBackgroundShell({
   }, [isBackgroundReady, shouldShowBackground]);
 
   useEffect(() => {
-    document.body.classList.toggle("app-theme-normal", appTheme === "normal");
-    document.body.classList.toggle("app-theme-purple", appTheme === "purple");
-    document.body.classList.toggle("app-theme-paper-white", appTheme === "paper-white");
-    document.body.classList.toggle("app-theme-soft-grey", appTheme === "soft-grey");
+    const themeTargets = [document.documentElement, document.body];
+
+    for (const target of themeTargets) {
+      target.classList.toggle("app-theme-normal", appTheme === "normal");
+      target.classList.toggle("app-theme-purple", appTheme === "purple");
+      target.classList.toggle("app-theme-paper-white", appTheme === "paper-white");
+      target.classList.toggle("app-theme-soft-grey", appTheme === "soft-grey");
+    }
 
     return () => {
-      document.body.classList.remove(
-        "app-theme-normal",
-        "app-theme-purple",
-        "app-theme-purple-pink",
-        "app-theme-paper-white",
-        "app-theme-soft-grey"
-      );
+      for (const target of themeTargets) {
+        target.classList.remove(
+          "app-theme-normal",
+          "app-theme-purple",
+          "app-theme-purple-pink",
+          "app-theme-paper-white",
+          "app-theme-soft-grey"
+        );
+      }
     };
   }, [appTheme]);
 
   useEffect(() => {
-    document.body.classList.toggle(
-      "constellation-background-enabled",
-      shouldShowBackground
-    );
+    const backgroundTargets = [document.documentElement, document.body];
+
+    for (const target of backgroundTargets) {
+      target.classList.toggle(
+        "constellation-background-enabled",
+        shouldShowBackground
+      );
+    }
 
     return () => {
-      document.body.classList.remove("constellation-background-enabled");
+      for (const target of backgroundTargets) {
+        target.classList.remove("constellation-background-enabled");
+      }
     };
   }, [shouldShowBackground]);
 

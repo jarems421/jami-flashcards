@@ -1001,26 +1001,14 @@ export default function CardsSearchPage() {
         <>
           {!isDemoUser ? (
             <>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={selectVisibleCards}
-                  disabled={visibleCards.length === 0}
-                  className="w-full sm:w-auto"
-                >
-                  Select shown cards
-                </Button>
-                <span className="text-center text-sm text-text-muted sm:text-right">
-                  {selectedCardIds.length} selected for bulk edit
-                </span>
-              </div>
               <BulkTagToolbar
                 selectedCount={selectedCardIds.length}
+                visibleCount={visibleCards.length}
                 tags={bulkTags}
                 pendingTag={bulkPendingTag}
                 availableTags={availableTags}
                 disabled={applyingBulkTags}
+                onSelectAll={selectVisibleCards}
                 onTagsChange={setBulkTags}
                 onPendingTagChange={setBulkPendingTag}
                 onApply={() => void handleAddTagsToSelectedCards()}
