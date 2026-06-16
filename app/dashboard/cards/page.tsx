@@ -92,6 +92,7 @@ export default function CardsSearchPage() {
     null
   );
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
+  const [showFilters, setShowFilters] = useState(false);
   const [showTagManager, setShowTagManager] = useState(false);
   const [tagManagerSource, setTagManagerSource] = useState("");
   const [tagManagerTarget, setTagManagerTarget] = useState("");
@@ -241,6 +242,7 @@ export default function CardsSearchPage() {
     Number(Boolean(folderFilter)) +
     Number(Boolean(tagFilter)) +
     Number(statusFilter !== "all");
+  const showFilterControls = showFilters;
   const hasSearchQuery = debouncedTerm.trim().length > 0;
   const shouldShowCardResults = shouldShowCardBrowserResults(
     debouncedTerm,
@@ -799,18 +801,30 @@ export default function CardsSearchPage() {
                 : "Search card fronts or choose a filter"}
             </p>
           </div>
-          {!isDemoUser ? (
+          <div className="grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
             <Button
               type="button"
-              variant={showTagManager ? "secondary" : "ghost"}
+              variant={showFilterControls ? "secondary" : "ghost"}
               size="sm"
-              aria-expanded={showTagManager}
-              onClick={() => setShowTagManager((value) => !value)}
+              aria-expanded={showFilterControls}
+              onClick={() => setShowFilters((value) => !value)}
               className="w-full sm:w-auto"
             >
-              {showTagManager ? "Hide tags" : "Manage tags"}
+              {showFilterControls ? "Hide filters" : `Filters${activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}`}
             </Button>
-          ) : null}
+            {!isDemoUser ? (
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                aria-expanded={showTagManager}
+                onClick={() => setShowTagManager((value) => !value)}
+                className="w-full sm:w-auto"
+              >
+                {showTagManager ? "Hide tag tools" : `Manage tags (${availableTags.length})`}
+              </Button>
+            ) : null}
+          </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
@@ -825,52 +839,66 @@ export default function CardsSearchPage() {
             </Button>
           ) : null}
         </div>
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <select
-            aria-label="Filter cards by deck"
-            value={deckFilter}
-            onChange={(event) => setDeckFilter(event.target.value)}
-            className="app-field min-h-10 rounded-full px-3 text-sm"
-          >
-            <option value="">All decks</option>
-            {decks.map((deck) => (
-              <option key={deck.id} value={deck.id}>{deck.name}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter cards by folder"
-            value={folderFilter}
-            onChange={(event) => setFolderFilter(event.target.value)}
-            className="app-field min-h-10 rounded-full px-3 text-sm"
-          >
-            <option value="">All folders</option>
-            {folders.map((folder) => (
-              <option key={folder.id} value={folder.id}>{folder.name}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter cards by tag"
-            value={tagFilter}
-            onChange={(event) => setTagFilter(event.target.value)}
-            className="app-field min-h-10 rounded-full px-3 text-sm"
-          >
-            <option value="">All tags</option>
-            {availableTags.map((tag) => (
-              <option key={tag} value={tag}>{tag}</option>
-            ))}
-          </select>
-          <select
-            aria-label="Filter cards by study status"
-            value={statusFilter}
-            onChange={(event) => setStatusFilter(event.target.value as CardStatusFilter)}
-            className="app-field min-h-10 rounded-full px-3 text-sm"
-          >
-            <option value="all">All statuses</option>
-            <option value="due">Due</option>
-            <option value="weak">Weak</option>
-            <option value="new">New</option>
-          </select>
-        </div>
+        {showFilterControls ? (
+          <div className="grid gap-3 rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 sm:grid-cols-2 xl:grid-cols-4">
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-text-muted">Deck</span>
+              <select
+                aria-label="Filter cards by deck"
+                value={deckFilter}
+                onChange={(event) => setDeckFilter(event.target.value)}
+                className="app-field min-h-10 w-full rounded-full px-3 text-sm"
+              >
+                <option value="">All decks</option>
+                {decks.map((deck) => (
+                  <option key={deck.id} value={deck.id}>{deck.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-text-muted">Folder</span>
+              <select
+                aria-label="Filter cards by folder"
+                value={folderFilter}
+                onChange={(event) => setFolderFilter(event.target.value)}
+                className="app-field min-h-10 w-full rounded-full px-3 text-sm"
+              >
+                <option value="">All folders</option>
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>{folder.name}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-text-muted">Tag</span>
+              <select
+                aria-label="Filter cards by tag"
+                value={tagFilter}
+                onChange={(event) => setTagFilter(event.target.value)}
+                className="app-field min-h-10 w-full rounded-full px-3 text-sm"
+              >
+                <option value="">All tags</option>
+                {availableTags.map((tag) => (
+                  <option key={tag} value={tag}>{tag}</option>
+                ))}
+              </select>
+            </label>
+            <label className="block">
+              <span className="mb-1.5 block text-xs font-semibold text-text-muted">Status</span>
+              <select
+                aria-label="Filter cards by study status"
+                value={statusFilter}
+                onChange={(event) => setStatusFilter(event.target.value as CardStatusFilter)}
+                className="app-field min-h-10 w-full rounded-full px-3 text-sm"
+              >
+                <option value="all">All statuses</option>
+                <option value="due">Due</option>
+                <option value="weak">Weak</option>
+                <option value="new">New</option>
+              </select>
+            </label>
+          </div>
+        ) : null}
         {activeFilterCount > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
             {deckFilter ? (
@@ -985,6 +1013,11 @@ export default function CardsSearchPage() {
             )}
           </div>
         ) : null}
+        {!loading && cards.length > 0 && !shouldShowCardResults ? (
+          <div className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm leading-6 text-text-secondary">
+            Search from the start of a card front, or open filters to narrow cards by deck, folder, tag, or status.
+          </div>
+        ) : null}
       </div>
 
       {loading ? (
@@ -1004,13 +1037,7 @@ export default function CardsSearchPage() {
           action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
         />
       ) : !shouldShowCardResults ? (
-        <EmptyState
-          emoji="Search"
-          eyebrow="Card browser"
-          title="Search or filter your cards"
-          description="Type the start of a card front, or choose a deck, folder, tag, or status filter."
-          helperText="Add a space after a word to find that whole word anywhere in a card front."
-        />
+        null
       ) : filtered.length === 0 ? (
         <EmptyState
           emoji="Search"
