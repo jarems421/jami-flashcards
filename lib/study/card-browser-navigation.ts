@@ -1,9 +1,7 @@
-export type CardBrowserView = "grid" | "list";
 export type CardBrowserStatus = "all" | "due" | "weak" | "new";
 
 export type CardBrowserState = {
   search: string;
-  view: CardBrowserView;
   deckId: string;
   folderId: string;
   tag: string;
@@ -12,7 +10,6 @@ export type CardBrowserState = {
 
 export const DEFAULT_CARD_BROWSER_STATE: CardBrowserState = {
   search: "",
-  view: "grid",
   deckId: "",
   folderId: "",
   tag: "",
@@ -21,12 +18,10 @@ export const DEFAULT_CARD_BROWSER_STATE: CardBrowserState = {
 
 export function getCardBrowserStateFromSearch(search: string): CardBrowserState {
   const params = new URLSearchParams(search);
-  const view = params.get("view");
   const status = params.get("status");
 
   return {
     search: params.get("q")?.trim() ?? "",
-    view: view === "list" ? "list" : "grid",
     deckId: params.get("deck")?.trim() ?? "",
     folderId: params.get("folder")?.trim() ?? "",
     tag: params.get("tag")?.trim() ?? "",
@@ -52,9 +47,7 @@ export function buildCardBrowserSearch(
   setOptional("deck", state.deckId);
   setOptional("folder", state.folderId);
   setOptional("tag", state.tag);
-
-  if (state.view === "list") params.set("view", "list");
-  else params.delete("view");
+  params.delete("view");
 
   if (state.status === "all") params.delete("status");
   else params.set("status", state.status);

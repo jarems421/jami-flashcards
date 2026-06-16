@@ -11,6 +11,10 @@ import { getActiveStudyFolders } from "@/services/study/folders";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import {
+  frontMatchesCardSearch,
+  shouldShowCardBrowserResults,
+} from "@/lib/study/card-search";
+import {
   buildCardBrowserSearch,
   getCardBrowserStateFromSearch,
 } from "@/lib/study/card-browser-navigation";
@@ -42,18 +46,7 @@ import { useCardSelection } from "@/components/decks/useCardSelection";
 import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import Link from "next/link";
 
-function cardMatchesSearch(card: Card, term: string, deckName?: string) {
-  if (!term) return true;
-  const lower = term.toLowerCase();
-  if (card.front.toLowerCase().includes(lower)) return true;
-  if (card.back.toLowerCase().includes(lower)) return true;
-  if (card.tags.some((tag) => tag.toLowerCase().includes(lower))) return true;
-  if (deckName && deckName.toLowerCase().includes(lower)) return true;
-  return false;
-}
-
 const CARD_RESULT_PAGE_SIZE = 50;
-type CardViewMode = "grid" | "list";
 type CardStatusFilter = "all" | "due" | "weak" | "new";
 
 function isPermissionDenied(error: unknown) {
@@ -74,7 +67,6 @@ export default function CardsSearchPage() {
   const [visibleResultLimit, setVisibleResultLimit] = useState(CARD_RESULT_PAGE_SIZE);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [previewCardId, setPreviewCardId] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<CardViewMode>("grid");
   const [deckFilter, setDeckFilter] = useState("");
   const [folderFilter, setFolderFilter] = useState("");
   const [tagFilter, setTagFilter] = useState("");
@@ -114,7 +106,6 @@ export default function CardsSearchPage() {
     const applyUrlState = () => {
       const state = getCardBrowserStateFromSearch(window.location.search);
       setSearchTerm(state.search);
-      setViewMode(state.view);
       setDeckFilter(state.deckId);
       setFolderFilter(state.folderId);
       setTagFilter(state.tag);
@@ -132,7 +123,6 @@ export default function CardsSearchPage() {
 
     const nextSearch = buildCardBrowserSearch(window.location.search, {
       search: searchTerm,
-      view: viewMode,
       deckId: deckFilter,
       folderId: folderFilter,
       tag: tagFilter,
@@ -147,12 +137,11 @@ export default function CardsSearchPage() {
     statusFilter,
     tagFilter,
     urlStateReady,
-    viewMode,
   ]);
 
   useEffect(() => {
     setVisibleResultLimit(CARD_RESULT_PAGE_SIZE);
-  }, [cards.length, debouncedTerm]);
+  }, [cards.length, debouncedTerm, deckFilter, folderFilter, statusFilter, tagFilter]);
 
   useEffect(() => {
     if (!previewCardId) return;
@@ -237,10 +226,23 @@ export default function CardsSearchPage() {
     [decks]
   );
 
+  const activeFilterCount =
+    Number(Boolean(deckFilter)) +
+    Number(Boolean(folderFilter)) +
+    Number(Boolean(tagFilter)) +
+    Number(statusFilter !== "all");
+  const hasSearchQuery = debouncedTerm.trim().length > 0;
+  const shouldShowCardResults = shouldShowCardBrowserResults(
+    debouncedTerm,
+    activeFilterCount > 0,
+  );
+
   const filtered = useMemo(() => {
+    if (!shouldShowCardResults) return [];
+
     const now = Date.now();
     return cards.filter((card) => {
-      if (!cardMatchesSearch(card, debouncedTerm, deckNamesById[card.deckId])) return false;
+      if (hasSearchQuery && !frontMatchesCardSearch(card.front, debouncedTerm)) return false;
       if (deckFilter && card.deckId !== deckFilter) return false;
       if (
         folderFilter &&
@@ -267,11 +269,19 @@ export default function CardsSearchPage() {
     debouncedTerm,
     deckFilter,
     deckFolderIdsById,
-    deckNamesById,
     folderFilter,
+    hasSearchQuery,
+    shouldShowCardResults,
     statusFilter,
     tagFilter,
   ]);
+
+  useEffect(() => {
+    if (shouldShowCardResults) return;
+
+    setSelectedCardIds([]);
+    setBulkMoveDeckId("");
+  }, [shouldShowCardResults]);
 
   const visibleCards = filtered.slice(0, visibleResultLimit);
   const visibleCardIds = useMemo(() => visibleCards.map((card) => card.id), [visibleCards]);
@@ -302,12 +312,6 @@ export default function CardsSearchPage() {
     return counts;
   }, [cards]);
   const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
-  const activeFilterCount =
-    Number(Boolean(deckFilter)) +
-    Number(Boolean(folderFilter)) +
-    Number(Boolean(tagFilter)) +
-    Number(statusFilter !== "all");
-
   const clearAllFilters = () => {
     setSearchTerm("");
     setDebouncedTerm("");
@@ -750,23 +754,14 @@ export default function CardsSearchPage() {
           </p>
         </div>
       ) : (
-        <>
-          <section className="rounded-[1.45rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary">
-            <div className="font-semibold text-white">Cards are the individual flashcards inside your decks.</div>
-            <p className="mt-1">
-              This page lets you search and edit cards across every deck. To create your first card,
-              choose a deck first, then write the front and back.
-            </p>
-          </section>
-          <CardCreationPanel
-            userId={user.uid}
-            decks={decks}
-            existingCards={cards}
-            availableTags={availableTags}
-            onCardsCreated={handleCardsCreated}
-            onFeedback={setFeedback}
-          />
-        </>
+        <CardCreationPanel
+          userId={user.uid}
+          decks={decks}
+          existingCards={cards}
+          availableTags={availableTags}
+          onCardsCreated={handleCardsCreated}
+          onFeedback={setFeedback}
+        />
       )}
 
       {!isDemoUser ? (
@@ -864,34 +859,16 @@ export default function CardsSearchPage() {
       <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
         <div className="flex flex-col gap-2 sm:flex-row">
           <Input
-            placeholder="Search cards, decks, or tags"
+            placeholder="Search card fronts"
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
             containerClassName="min-w-0 flex-1"
           />
-          <div className="flex gap-2">
-            {searchTerm ? (
-              <Button type="button" size="sm" variant="ghost" onClick={() => setSearchTerm("")}>
-                Clear search
-              </Button>
-            ) : null}
-            <div className="flex rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1">
-              {(["grid", "list"] as CardViewMode[]).map((mode) => (
-                <button
-                  key={mode}
-                  type="button"
-                  onClick={() => setViewMode(mode)}
-                  className={`min-h-9 rounded-full px-3 text-xs font-semibold capitalize transition ${
-                    viewMode === mode
-                      ? "bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
-                      : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  {mode}
-                </button>
-              ))}
-            </div>
-          </div>
+          {searchTerm ? (
+            <Button type="button" size="sm" variant="ghost" onClick={() => setSearchTerm("")}>
+              Clear search
+            </Button>
+          ) : null}
         </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
           <select
@@ -984,6 +961,14 @@ export default function CardsSearchPage() {
           helperText={decks.length === 0 ? "Create a deck first." : undefined}
           action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
         />
+      ) : !shouldShowCardResults ? (
+        <EmptyState
+          emoji="Search"
+          eyebrow="Card browser"
+          title="Search or filter your cards"
+          description="Type the start of a card front, or choose a deck, folder, tag, or status filter."
+          helperText="Add a space after a word to find that whole word anywhere in a card front."
+        />
       ) : filtered.length === 0 ? (
         <EmptyState
           emoji="Search"
@@ -1061,18 +1046,12 @@ export default function CardsSearchPage() {
           </p>
 
           <div
-            className={
-              viewMode === "grid"
-                ? "grid animate-slide-up touch-pan-y gap-3 sm:gap-4 lg:grid-cols-2"
-                : "animate-slide-up touch-pan-y space-y-2"
-            }
+            className="grid animate-slide-up touch-pan-y gap-3 sm:gap-4 lg:grid-cols-2"
           >
             {visibleCards.map((card) => (
               <section
                 key={card.id}
-                className={`app-panel p-3 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell ${
-                  viewMode === "list" ? "sm:px-4 sm:py-3" : "sm:p-4"
-                } ${
+                className={`app-panel p-3 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell sm:p-4 ${
                   selectedCardIdSet.has(card.id)
                     ? "border-accent/45 ring-2 ring-accent/20"
                     : ""
@@ -1168,12 +1147,12 @@ export default function CardsSearchPage() {
                         <StudyText
                           as="div"
                           text={card.front}
-                          className={`${viewMode === "list" ? "line-clamp-1" : "line-clamp-3"} whitespace-pre-wrap text-[0.9rem] font-medium leading-6 text-white sm:text-[0.95rem] sm:leading-7`}
+                          className="line-clamp-3 whitespace-pre-wrap text-[0.9rem] font-medium leading-6 text-white sm:text-[0.95rem] sm:leading-7"
                         />
                         <StudyText
                           as="div"
                           text={card.back}
-                          className={`${viewMode === "list" ? "line-clamp-1" : "line-clamp-3"} whitespace-pre-wrap text-sm leading-6 text-text-secondary`}
+                          className="line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-text-secondary"
                         />
                       </button>
                       <div className="grid grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap">

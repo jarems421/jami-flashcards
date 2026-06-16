@@ -13,7 +13,6 @@ describe("card browser URL state", () => {
       )
     ).toEqual({
       search: "cell",
-      view: "list",
       deckId: "biology",
       folderId: "science",
       tag: "exam",
@@ -29,13 +28,12 @@ describe("card browser URL state", () => {
     expect(
       buildCardBrowserSearch("?agent=1", {
         search: "mitosis",
-        view: "list",
         deckId: "",
         folderId: "",
         tag: "biology",
         status: "due",
       })
-    ).toBe("?agent=1&q=mitosis&tag=biology&view=list&status=due");
+    ).toBe("?agent=1&q=mitosis&tag=biology&status=due");
 
     expect(
       buildCardBrowserSearch(
