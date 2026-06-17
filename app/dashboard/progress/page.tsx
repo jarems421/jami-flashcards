@@ -325,106 +325,112 @@ export default function ProgressPage() {
       ) : (
         <>
           <section aria-labelledby="progress-charts-heading">
-            <div className="mb-3 flex flex-col gap-3 px-1 sm:flex-row sm:items-end sm:justify-between">
-              <div>
-                <h2 id="progress-charts-heading" className="text-lg font-semibold text-text-primary">
-                  Study trends
-                </h2>
-                <div className="mt-1 text-xs text-text-muted">
-                  Accuracy and study time across the same selected range.
+            <Card padding="md">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                  <h2 id="progress-charts-heading" className="text-lg font-semibold text-text-primary">
+                    Study trends
+                  </h2>
+                  <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
+                    Accuracy and study time across the same selected range.
+                  </p>
+                </div>
+                <div className="flex gap-2 overflow-x-auto sm:justify-end" aria-label="Statistics time range">
+                  {PROGRESS_TIME_RANGE_OPTIONS.map((option) => (
+                    <Button
+                      key={option.value}
+                      type="button"
+                      size="sm"
+                      variant={range === option.value ? "warm" : "ghost"}
+                      aria-pressed={range === option.value}
+                      onClick={() => setRange(option.value)}
+                      className="shrink-0"
+                    >
+                      {option.label}
+                    </Button>
+                  ))}
                 </div>
               </div>
-              <div className="flex gap-2 overflow-x-auto" aria-label="Statistics time range">
-                {PROGRESS_TIME_RANGE_OPTIONS.map((option) => (
-                  <Button
-                    key={option.value}
-                    type="button"
-                    size="sm"
-                    variant={range === option.value ? "warm" : "ghost"}
-                    aria-pressed={range === option.value}
-                    onClick={() => setRange(option.value)}
-                    className="shrink-0"
+
+              <div className="mt-5 grid gap-4 xl:grid-cols-2">
+                <div className="rounded-[1.25rem] border border-border/70 bg-surface-subtle/55 p-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-primary">Accuracy</h3>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Recall accuracy across this range.
+                    </p>
+                  </div>
+                  <div
+                    className="mt-4 h-64 w-full"
+                    role="img"
+                    aria-label={`Accuracy chart for ${PROGRESS_TIME_RANGE_OPTIONS.find((option) => option.value === range)?.label}`}
                   >
-                    {option.label}
-                  </Button>
-                ))}
-              </div>
-            </div>
-
-            <div className="grid gap-4 xl:grid-cols-2">
-              <Card padding="md">
-                <SectionHeader
-                  title="Accuracy"
-                  description="Recall accuracy across the selected range."
-                />
-                <div
-                  className="mt-4 h-64 w-full"
-                  role="img"
-                  aria-label={`Accuracy chart for ${PROGRESS_TIME_RANGE_OPTIONS.find((option) => option.value === range)?.label}`}
-                >
-                  {selectedHasReviews ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <LineChart data={accuracyData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                        <XAxis dataKey="day" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                        <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(value: number) => `${value}%`} />
-                        <Tooltip formatter={(value: unknown) => [formatTooltipNumber(value, "%"), "Accuracy"]} />
-                        <Line
-                          type="monotone"
-                          dataKey="accuracy"
-                          stroke="var(--color-accent)"
-                          strokeWidth={2.5}
-                          dot={range === "7d"}
-                          activeDot={{ r: 5 }}
+                    {selectedHasReviews ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <LineChart data={accuracyData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                          <XAxis dataKey="day" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(value: number) => `${value}%`} />
+                          <Tooltip formatter={(value: unknown) => [formatTooltipNumber(value, "%"), "Accuracy"]} />
+                          <Line
+                            type="monotone"
+                            dataKey="accuracy"
+                            stroke="var(--color-accent)"
+                            strokeWidth={2.5}
+                            dot={range === "7d"}
+                            activeDot={{ r: 5 }}
+                          />
+                        </LineChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <EmptyState
+                          variant="plain"
+                          emoji="Stats"
+                          title="No reviews in this range"
+                          description="Accuracy will appear after you review some cards."
                         />
-                      </LineChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <EmptyState
-                        variant="plain"
-                        emoji="Stats"
-                        title="No reviews in this range"
-                        description="Accuracy will appear after you review some cards."
-                      />
-                    </div>
-                  )}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </Card>
 
-              <Card padding="md">
-                <SectionHeader
-                  title="Study time"
-                  description="Minutes spent in completed study sessions."
-                />
-                <div
-                  className="mt-4 h-64 w-full"
-                  role="img"
-                  aria-label={`Study time chart for ${PROGRESS_TIME_RANGE_OPTIONS.find((option) => option.value === range)?.label}`}
-                >
-                  {selectedHasTime ? (
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={studyTimeData}>
-                        <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                        <XAxis dataKey="day" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                        <YAxis tick={{ fontSize: 11 }} tickFormatter={(value: number) => `${value}m`} />
-                        <Tooltip formatter={(value: unknown) => [formatTooltipNumber(value, " min"), "Time"]} />
-                        <Bar dataKey="minutes" fill="var(--color-accent)" radius={[7, 7, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  ) : (
-                    <div className="flex h-full items-center justify-center">
-                      <EmptyState
-                        variant="plain"
-                        emoji="Time"
-                        title="No study time in this range"
-                        description="Completed sessions will build this chart."
-                      />
-                    </div>
-                  )}
+                <div className="rounded-[1.25rem] border border-border/70 bg-surface-subtle/55 p-4">
+                  <div>
+                    <h3 className="text-sm font-semibold text-text-primary">Study time</h3>
+                    <p className="mt-1 text-xs text-text-muted">
+                      Minutes spent in completed study sessions.
+                    </p>
+                  </div>
+                  <div
+                    className="mt-4 h-64 w-full"
+                    role="img"
+                    aria-label={`Study time chart for ${PROGRESS_TIME_RANGE_OPTIONS.find((option) => option.value === range)?.label}`}
+                  >
+                    {selectedHasTime ? (
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={studyTimeData}>
+                          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
+                          <XAxis dataKey="day" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
+                          <YAxis tick={{ fontSize: 11 }} tickFormatter={(value: number) => `${value}m`} />
+                          <Tooltip formatter={(value: unknown) => [formatTooltipNumber(value, " min"), "Time"]} />
+                          <Bar dataKey="minutes" fill="var(--color-accent)" radius={[7, 7, 0, 0]} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    ) : (
+                      <div className="flex h-full items-center justify-center">
+                        <EmptyState
+                          variant="plain"
+                          emoji="Time"
+                          title="No study time in this range"
+                          description="Completed sessions will build this chart."
+                        />
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </Card>
-            </div>
+              </div>
+            </Card>
           </section>
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
@@ -545,26 +551,29 @@ export default function ProgressPage() {
           </Card>
 
           <Card padding="sm" tone="subtle">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-text-primary">Your workspace</div>
                 <p className="mt-1 text-xs text-text-muted">
                   A quick count of what you are currently working with.
                 </p>
               </div>
-              <div className="grid min-w-0 flex-1 grid-cols-2 gap-2 sm:grid-cols-4 lg:max-w-2xl">
+              <div className="grid min-w-0 flex-1 grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:max-w-3xl">
                 {[
                   { label: "Notebooks", value: workspace.notebookCount },
                   { label: "Sources", value: workspace.sourceCount },
                   { label: "Drafts waiting", value: workspace.waitingDraftCount },
                   { label: "Active goals", value: workspace.activeGoalCount },
                 ].map((item) => (
-                  <div key={item.label} className="app-chip rounded-[1rem] px-3 py-2.5">
-                    <div className="text-base font-semibold tabular-nums text-text-primary">
-                      {item.value}
-                    </div>
-                    <div className="mt-0.5 truncate text-[0.65rem] font-semibold uppercase tracking-[0.1em] text-text-muted">
+                  <div
+                    key={item.label}
+                    className="app-chip flex min-w-0 items-center justify-between gap-3 rounded-[1rem] px-3 py-2.5"
+                  >
+                    <div className="min-w-0 text-xs font-semibold text-text-muted">
                       {item.label}
+                    </div>
+                    <div className="shrink-0 text-base font-semibold tabular-nums text-text-primary">
+                      {item.value}
                     </div>
                   </div>
                 ))}
