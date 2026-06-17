@@ -41,6 +41,8 @@ import { removeUserTag, renameUserTag } from "@/services/study/tags";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
+import CardActionsMenu from "@/components/decks/CardActionsMenu";
+import CardFaceSummary from "@/components/decks/CardFaceSummary";
 import BulkTagToolbar from "@/components/decks/BulkTagToolbar";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardBackEditor from "@/components/decks/CardBackEditor";
@@ -1206,52 +1208,21 @@ export default function CardsSearchPage() {
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <button
-                        type="button"
-                        className="min-w-0 flex-1 space-y-1 text-left"
-                        onClick={() => setPreviewCardId(card.id)}
-                        aria-label={`Preview card: ${card.front}`}
-                      >
-                        <StudyText
-                          as="div"
-                          text={card.front}
-                          className="line-clamp-3 whitespace-pre-wrap text-[0.9rem] font-medium leading-6 text-white sm:text-[0.95rem] sm:leading-7"
+                    <div className="flex items-start gap-3">
+                      <div className="min-w-0 flex-1">
+                        <CardFaceSummary
+                          front={card.front}
+                          back={card.back}
+                          onPreview={() => setPreviewCardId(card.id)}
                         />
-                        <StudyText
-                          as="div"
-                          text={card.back}
-                          className="line-clamp-3 whitespace-pre-wrap text-sm leading-6 text-text-secondary"
-                        />
-                      </button>
-                      <div className="grid grid-cols-3 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-                        <Button
-                          type="button"
-                          onClick={() => setPreviewCardId(card.id)}
-                          variant="ghost"
-                          className="w-full sm:w-auto"
-                        >
-                          Preview
-                        </Button>
-                        <Button
-                          type="button"
-                          disabled={isDemoUser || deletingCardId === card.id}
-                          onClick={() => startEditing(card)}
-                          variant="secondary"
-                          className="w-full sm:w-auto"
-                        >
-                          Edit card
-                        </Button>
-                        <Button
-                          type="button"
-                          disabled={isDemoUser || deletingCardId === card.id}
-                          onClick={() => setCardPendingDeleteId(card.id)}
-                          variant="danger"
-                          className="w-full sm:w-auto"
-                        >
-                          {deletingCardId === card.id ? "Deleting..." : "Delete"}
-                        </Button>
                       </div>
+                      <CardActionsMenu
+                        deleting={deletingCardId === card.id}
+                        disabled={isDemoUser || deletingCardId === card.id}
+                        onPreview={() => setPreviewCardId(card.id)}
+                        onEdit={() => startEditing(card)}
+                        onDelete={() => setCardPendingDeleteId(card.id)}
+                      />
                     </div>
 
                     <div className="flex flex-wrap items-center gap-2">

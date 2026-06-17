@@ -29,6 +29,8 @@ import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
 import TagInput from "@/components/decks/TagInput";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
+import CardActionsMenu from "@/components/decks/CardActionsMenu";
+import CardFaceSummary from "@/components/decks/CardFaceSummary";
 import BulkTagToolbar from "@/components/decks/BulkTagToolbar";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
@@ -85,6 +87,7 @@ export default function DeckDetailPageClient() {
   const [editingPendingTag, setEditingPendingTag] = useState("");
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const [previewCardId, setPreviewCardId] = useState<string | null>(null);
   const [cardPendingDeleteId, setCardPendingDeleteId] = useState<string | null>(
     null
   );
@@ -189,6 +192,17 @@ export default function DeckDetailPageClient() {
       cancelled = true;
     };
   }, [user.uid, deckId]);
+
+  useEffect(() => {
+    if (!previewCardId) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setPreviewCardId(null);
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [previewCardId]);
 
   const resetEditingCard = () => {
     setEditingCardId(null);
@@ -413,6 +427,7 @@ export default function DeckDetailPageClient() {
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
   const topicsById = useMemo(() => new Map(topics.map((topic) => [topic.id, topic])), [topics]);
+  const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
 
   const handleAddTagsToSelectedCards = async () => {
     const tagResult = addCardTag(bulkTags, bulkPendingTag);
@@ -807,39 +822,21 @@ export default function DeckDetailPageClient() {
                     </div>
                   ) : (
                     <div className="space-y-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0 flex-1 space-y-2">
-                          <StudyText
-                            as="div"
-                            text={card.front}
-                            className="whitespace-pre-wrap text-[0.95rem] font-medium leading-6 text-white sm:text-lg sm:leading-7"
-                          />
-                          <StudyText
-                            as="div"
-                            text={card.back}
-                            className="whitespace-pre-wrap text-sm leading-6 text-text-secondary"
+                      <div className="flex items-start gap-3">
+                        <div className="min-w-0 flex-1">
+                          <CardFaceSummary
+                            front={card.front}
+                            back={card.back}
+                            onPreview={() => setPreviewCardId(card.id)}
                           />
                         </div>
-                        <div className="grid grid-cols-2 gap-2 sm:flex sm:w-auto sm:flex-wrap">
-                          <Button
-                            type="button"
-                            disabled={isDemoUser || deletingCardId === card.id}
-                            onClick={() => startEditingCard(card)}
-                            variant="secondary"
-                            className="w-full sm:w-auto"
-                          >
-                            Edit card
-                          </Button>
-                          <Button
-                            type="button"
-                            disabled={isDemoUser || deletingCardId === card.id}
-                            onClick={() => setCardPendingDeleteId(card.id)}
-                            variant="danger"
-                            className="w-full sm:w-auto"
-                          >
-                            {deletingCardId === card.id ? "Deleting..." : "Delete"}
-                          </Button>
-                        </div>
+                        <CardActionsMenu
+                          deleting={deletingCardId === card.id}
+                          disabled={isDemoUser || deletingCardId === card.id}
+                          onPreview={() => setPreviewCardId(card.id)}
+                          onEdit={() => startEditingCard(card)}
+                          onDelete={() => setCardPendingDeleteId(card.id)}
+                        />
                       </div>
 
                       <div className="flex flex-wrap gap-2 pt-1">
@@ -878,6 +875,60 @@ export default function DeckDetailPageClient() {
             </div>
           )}
         </>
+      ) : null}
+      {previewCard ? (
+        <div
+          role="presentation"
+          className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setPreviewCardId(null);
+          }}
+        >
+          <section
+            role="dialog"
+            aria-modal="true"
+            aria-label="Card preview"
+            className="w-full max-w-2xl rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.45)] sm:p-7"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  Card preview
+                </div>
+                <div className="mt-2 text-sm text-text-secondary">
+                  {deck?.name ?? "Deck"}
+                </div>
+              </div>
+              <Button type="button" size="sm" variant="ghost" onClick={() => setPreviewCardId(null)}>
+                Close
+              </Button>
+            </div>
+            <div className="mt-6 grid gap-4">
+              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Front</div>
+                <StudyText as="div" text={previewCard.front} className="mt-3 whitespace-pre-wrap text-lg font-medium leading-8 text-text-primary" />
+              </div>
+              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Back</div>
+                <StudyText as="div" text={previewCard.back} className="mt-3 whitespace-pre-wrap text-base leading-7 text-text-secondary" />
+              </div>
+            </div>
+            {!isDemoUser ? (
+              <div className="mt-5 flex justify-end">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  onClick={() => {
+                    setPreviewCardId(null);
+                    startEditingCard(previewCard);
+                  }}
+                >
+                  Edit card
+                </Button>
+              </div>
+            ) : null}
+          </section>
+        </div>
       ) : null}
     </AppPage>
   );
