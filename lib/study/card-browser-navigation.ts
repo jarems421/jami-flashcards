@@ -4,7 +4,8 @@ export type CardBrowserState = {
   search: string;
   deckId: string;
   folderId: string;
-  tag: string;
+  topicId: string;
+  legacyTag: string;
   status: CardBrowserStatus;
 };
 
@@ -12,7 +13,8 @@ export const DEFAULT_CARD_BROWSER_STATE: CardBrowserState = {
   search: "",
   deckId: "",
   folderId: "",
-  tag: "",
+  topicId: "",
+  legacyTag: "",
   status: "all",
 };
 
@@ -24,7 +26,8 @@ export function getCardBrowserStateFromSearch(search: string): CardBrowserState 
     search: params.get("q")?.trim() ?? "",
     deckId: params.get("deck")?.trim() ?? "",
     folderId: params.get("folder")?.trim() ?? "",
-    tag: params.get("tag")?.trim() ?? "",
+    topicId: params.get("topic")?.trim() ?? "",
+    legacyTag: params.get("tag")?.trim() ?? "",
     status:
       status === "due" || status === "weak" || status === "new"
         ? status
@@ -46,7 +49,8 @@ export function buildCardBrowserSearch(
   setOptional("q", state.search.trim());
   setOptional("deck", state.deckId);
   setOptional("folder", state.folderId);
-  setOptional("tag", state.tag);
+  setOptional("topic", state.topicId);
+  setOptional("tag", state.topicId ? "" : state.legacyTag);
   params.delete("view");
 
   if (state.status === "all") params.delete("status");

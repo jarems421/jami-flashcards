@@ -140,21 +140,11 @@ describe("Jami notebook-first learning foundations", () => {
       createdAt: 1,
       updatedAt: 2,
     });
-    const folder = mapStudyFolderData("folder-1", {
-      name: "Science",
-      subject: "Biology",
-      topicIds: ["topic-1"],
-      archived: false,
-      createdAt: 1,
-      updatedAt: 2,
-    });
-
     const summary = buildTopicProgress({
       topics: [topic],
       cards: [card],
       sources: [source],
       notebooks: [notebook],
-      studyFolders: [folder],
       masteryEvents: [
         {
           id: "event-1",
@@ -176,7 +166,6 @@ describe("Jami notebook-first learning foundations", () => {
       dueCardCount: 1,
       notebookCount: 1,
       sourceCount: 1,
-      folderCount: 1,
       masteryScore: -2,
     });
   });

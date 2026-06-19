@@ -195,7 +195,8 @@ export function buildSpacedRepetitionAnalytics(
   cards: Card[],
   activity: DailyStudyActivity[],
   deckNamesById: Record<string, string>,
-  now = Date.now()
+  now = Date.now(),
+  topicNamesById: Record<string, string> = {}
 ): SpacedRepetitionAnalytics {
   const reviewedCards = cards.filter((card) => (card.reps ?? 0) > 0);
   const totalLapses = reviewedCards.reduce((sum, card) => sum + (card.lapses ?? 0), 0);
@@ -272,7 +273,7 @@ export function buildSpacedRepetitionAnalytics(
       retentionSummary.overdue > 0
         ? Number((overdueDaysTotal / retentionSummary.overdue).toFixed(1))
         : 0,
-    weakestAreas: getWeakPoints(cards, deckNamesById, 5),
+    weakestAreas: getWeakPoints(cards, deckNamesById, topicNamesById, 5),
     recentChanges: {
       last7Reviews,
       previous7Reviews,

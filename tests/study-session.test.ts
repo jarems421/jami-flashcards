@@ -104,7 +104,7 @@ describe("study session persistence", () => {
       index: 1,
       stats: { ...createEmptySessionStats(), reviewedCards: 1 },
       selectedDeckIds: [],
-      selectedTags: [],
+      selectedTopicIds: [],
       startedAt: 100,
       now: 200,
     });
@@ -173,7 +173,7 @@ describe("study session persistence", () => {
       index: 2,
       stats: createEmptySessionStats(),
       selectedDeckIds: [],
-      selectedTags: [],
+      selectedTopicIds: [],
       now: 100,
     });
     const dailyReviewState = createDailyReviewState({
@@ -195,12 +195,12 @@ describe("study session persistence", () => {
       index: 0,
       stats: createEmptySessionStats(),
       selectedDeckIds: ["deck-1"],
-      selectedTags: ["Cell Biology"],
+      selectedTopicIds: ["topic-cell-biology"],
       now: 100,
     });
 
-    expect(canRestorePersistedSession(session, "custom", ["deck-1"], ["cell biology"])).toBe(true);
-    expect(canRestorePersistedSession(session, "custom", ["deck-2"], ["cell biology"])).toBe(false);
+    expect(canRestorePersistedSession(session, "custom", ["deck-1"], ["topic-cell-biology"])).toBe(true);
+    expect(canRestorePersistedSession(session, "custom", ["deck-2"], ["topic-cell-biology"])).toBe(false);
     expect(canRestorePersistedSession(session, "daily", [], [])).toBe(false);
   });
 
@@ -214,7 +214,7 @@ describe("study session persistence", () => {
       index: 0,
       stats: createEmptySessionStats(),
       selectedDeckIds: [],
-      selectedTags: [],
+      selectedTopicIds: [],
       startedAt: 100,
       now: 200,
     });
@@ -238,7 +238,7 @@ describe("study session persistence", () => {
       index: 1,
       stats: { ...createEmptySessionStats(), reviewedCards: 1 },
       selectedDeckIds: [],
-      selectedTags: [],
+      selectedTopicIds: [],
       startedAt: 100,
       now: 200,
     });
@@ -270,7 +270,7 @@ describe("study session persistence", () => {
       index: 2,
       stats: { ...createEmptySessionStats(), reviewedCards: 2 },
       selectedDeckIds: [],
-      selectedTags: [],
+      selectedTopicIds: [],
       startedAt: 100,
       now: 300,
     });
@@ -291,7 +291,7 @@ describe("study session persistence", () => {
       index: 0,
       stats: createEmptySessionStats(),
       selectedDeckIds: [],
-      selectedTags: [],
+      selectedTopicIds: [],
       startedAt: 100,
       now: 300,
     });
@@ -313,7 +313,7 @@ describe("study session persistence", () => {
       index: 0,
       stats: createEmptySessionStats(),
       selectedDeckIds: [],
-      selectedTags: [],
+      selectedTopicIds: [],
       startedAt: 100,
       now: 300,
     });

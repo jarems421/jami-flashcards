@@ -8,7 +8,6 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import {
-  addCardTag,
   getCardContentKey,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
@@ -17,10 +16,11 @@ import {
   type Card,
   type ImportedCardDraft,
 } from "@/lib/study/cards";
+import type { Topic } from "@/lib/practice/topics";
 import { db } from "@/services/firebase/client";
 import type { Deck } from "@/services/study/decks";
 import { featureFlags } from "@/lib/app/feature-flags";
-import TagInput from "@/components/decks/TagInput";
+import TopicPicker from "@/components/topics/TopicPicker";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import { Button, Input, SectionHeader, StudyText, Textarea } from "@/components/ui";
@@ -32,7 +32,8 @@ type CardCreationPanelProps = {
   userId: string;
   decks: Deck[];
   existingCards: Card[];
-  availableTags: string[];
+  topics: Topic[];
+  onTopicsChange: (topics: Topic[]) => void;
   defaultDeckId?: string;
   onCardsCreated: (
     cards: Card[],
@@ -105,7 +106,8 @@ export default function CardCreationPanel({
   userId,
   decks,
   existingCards,
-  availableTags,
+  topics,
+  onTopicsChange,
   defaultDeckId,
   onCardsCreated,
   onFeedback,
@@ -117,13 +119,13 @@ export default function CardCreationPanel({
   const [singleDeckId, setSingleDeckId] = useState(fallbackDeckId);
   const [singleFront, setSingleFront] = useState("");
   const [singleBack, setSingleBack] = useState("");
-  const [singleTags, setSingleTags] = useState<string[]>([]);
-  const [singlePendingTag, setSinglePendingTag] = useState("");
+  const [singleTopicIds, setSingleTopicIds] = useState<string[]>([]);
   const [addingSingleCard, setAddingSingleCard] = useState(false);
 
   const [listDeckId, setListDeckId] = useState(fallbackDeckId);
   const [listText, setListText] = useState("");
   const [listFileName, setListFileName] = useState("");
+  const [listTopicIds, setListTopicIds] = useState<string[]>([]);
   const [addingListCards, setAddingListCards] = useState(false);
   const [listProgress, setListProgress] = useState<{ completed: number; total: number } | null>(null);
 
@@ -161,7 +163,7 @@ export default function CardCreationPanel({
   const createCardsFromDrafts = async (
     drafts: ImportedCardDraft[],
     deckId: string,
-    tags: string[] = [],
+    topicIds: string[] = [],
     onProgress?: (completed: number, total: number) => void
   ) => {
     const createdCards: Card[] = [];
@@ -186,7 +188,8 @@ export default function CardCreationPanel({
             userId,
             front,
             back,
-            tags,
+            tags: [],
+            topicIds,
             createdAt,
           };
 
@@ -195,7 +198,8 @@ export default function CardCreationPanel({
             userId,
             front,
             back,
-            tags,
+            tags: [],
+            topicIds,
             createdAt,
           });
           chunkCards.push(card);
@@ -247,8 +251,6 @@ export default function CardCreationPanel({
   const handleAddSingleCard = async () => {
     const front = normalizeCardContentInput(singleFront);
     const back = normalizeCardContentInput(singleBack);
-    const tagResult = addCardTag(singleTags, singlePendingTag);
-
     if (!singleDeckId) {
       onFeedback({ type: "error", message: "Choose a deck first." });
       return;
@@ -267,13 +269,7 @@ export default function CardCreationPanel({
       return;
     }
 
-    if (tagResult.error) {
-      onFeedback({ type: "error", message: tagResult.error });
-      return;
-    }
-
     setAddingSingleCard(true);
-    const tags = tagResult.nextTags;
 
     try {
       const createdAt = Date.now();
@@ -282,7 +278,8 @@ export default function CardCreationPanel({
         userId,
         front,
         back,
-        tags,
+        tags: [],
+        topicIds: singleTopicIds,
         createdAt,
       });
       const card: Card = {
@@ -291,14 +288,14 @@ export default function CardCreationPanel({
         userId,
         front,
         back,
-        tags,
+        tags: [],
+        topicIds: singleTopicIds,
         createdAt,
       };
 
       setSingleFront("");
       setSingleBack("");
-      setSingleTags([]);
-      setSinglePendingTag("");
+      setSingleTopicIds([]);
       onCardsCreated([card], { source: "single", selectCreated: false });
       onFeedback({
         type: "success",
@@ -357,7 +354,7 @@ export default function CardCreationPanel({
       const createdCards = await createCardsFromDrafts(
         listDraftSummary.newDrafts,
         listDeckId,
-        [],
+        listTopicIds,
         (completed, total) => setListProgress({ completed, total })
       );
       const duplicateMessage =
@@ -367,11 +364,12 @@ export default function CardCreationPanel({
 
       setListText("");
       setListFileName("");
+      setListTopicIds([]);
       setListProgress(null);
       onCardsCreated(createdCards, { source: "list", selectCreated: true });
       onFeedback({
         type: "success",
-        message: `Added ${createdCards.length} cards.${duplicateMessage} They are selected below so you can tag them if needed.`,
+        message: `Added ${createdCards.length} cards.${duplicateMessage} They are selected below so you can add Topics if needed.`,
       });
     } catch (error) {
       console.error(error);
@@ -462,7 +460,10 @@ export default function CardCreationPanel({
                   currentBack={singleBack}
                   deckId={singleDeckId || undefined}
                   deckName={deckNamesById[singleDeckId]}
-                  tags={singleTags}
+                  topics={topics
+                    .filter((topic) => singleTopicIds.includes(topic.id))
+                    .map((topic) => topic.name)}
+                  topicIds={singleTopicIds}
                   disabled={addingSingleCard}
                   onApply={setSingleBack}
                 />
@@ -471,16 +472,15 @@ export default function CardCreationPanel({
           </div>
           <details className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
             <summary className="cursor-pointer text-sm font-medium text-text-secondary">
-              Tags <span className="font-normal text-text-muted">(optional)</span>
+              Topics <span className="font-normal text-text-muted">(optional)</span>
             </summary>
             <div className="mt-4">
-              <TagInput
-                tags={singleTags}
-                pendingTag={singlePendingTag}
-                availableTags={availableTags}
-                onTagsChange={setSingleTags}
-                onPendingTagChange={setSinglePendingTag}
-                suggestionLabel="topic"
+              <TopicPicker
+                userId={userId}
+                topics={topics}
+                selectedTopicIds={singleTopicIds}
+                onChange={setSingleTopicIds}
+                onTopicsChange={onTopicsChange}
                 disabled={addingSingleCard}
               />
             </div>
@@ -516,6 +516,22 @@ export default function CardCreationPanel({
             rows={8}
             disabled={addingListCards}
           />
+          <details className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
+            <summary className="cursor-pointer text-sm font-medium text-text-secondary">
+              Topics for imported cards{" "}
+              <span className="font-normal text-text-muted">(optional)</span>
+            </summary>
+            <div className="mt-4">
+              <TopicPicker
+                userId={userId}
+                topics={topics}
+                selectedTopicIds={listTopicIds}
+                onChange={setListTopicIds}
+                onTopicsChange={onTopicsChange}
+                disabled={addingListCards}
+              />
+            </div>
+          </details>
 
           <div className="grid gap-3 lg:grid-cols-2">
             <div className="app-subtle-panel rounded-[1.25rem] p-4">
@@ -634,6 +650,7 @@ export default function CardCreationPanel({
               onClick={() => {
                 setListText("");
                 setListFileName("");
+                setListTopicIds([]);
                 setListProgress(null);
               }}
               variant="ghost"

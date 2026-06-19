@@ -5,7 +5,8 @@ export type CardBackAutocompleteInput = {
   currentBack?: string;
   deckId?: string;
   deckName?: string;
-  tags?: string[];
+  topics?: string[];
+  topicIds?: string[];
 };
 
 function getFriendlyAutocompleteError(status: number, message?: string) {

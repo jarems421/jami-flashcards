@@ -28,7 +28,8 @@ type StudyChatContext = {
   back?: unknown;
   deckId?: unknown;
   deckName?: unknown;
-  tags?: unknown;
+  topicIds?: unknown;
+  topics?: unknown;
   difficulty?: unknown;
   lapses?: unknown;
   reps?: unknown;
@@ -111,7 +112,8 @@ export async function POST(request: NextRequest) {
     back: string;
     deckId?: string;
     deckName?: string;
-    tags?: string[];
+    topicIds?: string[];
+    topics?: string[];
     difficulty?: number;
     lapses?: number;
     reps?: number;
@@ -163,10 +165,15 @@ export async function POST(request: NextRequest) {
           rawStudyContext.deckName.trim()
             ? rawStudyContext.deckName.slice(0, 120)
             : undefined,
-        tags: Array.isArray(rawStudyContext.tags)
-          ? rawStudyContext.tags
-              .filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
-              .slice(0, 8)
+        topicIds: Array.isArray(rawStudyContext.topicIds)
+          ? rawStudyContext.topicIds
+              .filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
+              .slice(0, 5)
+          : undefined,
+        topics: Array.isArray(rawStudyContext.topics)
+          ? rawStudyContext.topics
+              .filter((topic): topic is string => typeof topic === "string" && topic.trim().length > 0)
+              .slice(0, 5)
           : undefined,
         difficulty:
           typeof rawStudyContext.difficulty === "number"
@@ -215,8 +222,8 @@ export async function POST(request: NextRequest) {
         const front = typeof data.front === "string" ? data.front : "";
         const back = typeof data.back === "string" ? data.back : "";
         const deckId = typeof data.deckId === "string" ? data.deckId : "";
-        const tags = Array.isArray(data.tags)
-          ? data.tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+        const topicIds = Array.isArray(data.topicIds)
+          ? data.topicIds.filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
           : [];
 
         let score = 0;
@@ -224,9 +231,11 @@ export async function POST(request: NextRequest) {
           score += 6;
         }
 
-        if (studyContext?.tags?.length) {
-          const matchingTags = tags.filter((tag) => studyContext.tags?.includes(tag));
-          score += matchingTags.length * 3;
+        if (studyContext?.topicIds?.length) {
+          const matchingTopicIds = topicIds.filter((topicId) =>
+            studyContext.topicIds?.includes(topicId)
+          );
+          score += matchingTopicIds.length * 3;
         }
 
         if (
@@ -237,7 +246,7 @@ export async function POST(request: NextRequest) {
           score = -1;
         }
 
-        return { front, back, tags, score };
+        return { front, back, score };
       })
       .sort((left, right) => right.score - left.score);
 
@@ -254,14 +263,12 @@ export async function POST(request: NextRequest) {
       .filter((card) => card.score > 0)
       .slice(0, MAX_RELATED_CARDS);
     const relatedCardsPrompt = relatedCards.length
-      ? `Nearby related cards from the same deck or overlapping tags:
+      ? `Nearby related cards from the same deck or overlapping Topics:
 ${relatedCards
   .map(
     (card) =>
       `- Q: ${card.front.slice(0, 140)}
-  A: ${card.back.slice(0, 220)}${
-        card.tags.length ? `\n  Tags: ${card.tags.map((tag) => `#${tag}`).join(", ")}` : ""
-      }`
+  A: ${card.back.slice(0, 220)}`
   )
   .join("\n")}`
       : "";
@@ -313,8 +320,8 @@ ${studyContext.front}
 Deck:
 ${studyContext.deckName ?? "Unknown"}
 
-Tags:
-${studyContext.tags?.length ? studyContext.tags.map((tag) => `#${tag}`).join(", ") : "None"}
+Topics:
+${studyContext.topics?.length ? studyContext.topics.join(", ") : "None"}
 
 Correct answer:
 ${studyContext.back}
@@ -333,8 +340,8 @@ ${studyContext.front}
 Deck:
 ${studyContext.deckName ?? "Unknown"}
 
-Tags:
-${studyContext.tags?.length ? studyContext.tags.map((tag) => `#${tag}`).join(", ") : "None"}
+Topics:
+${studyContext.topics?.length ? studyContext.topics.join(", ") : "None"}
 
 Answer:
 ${studyContext.back}

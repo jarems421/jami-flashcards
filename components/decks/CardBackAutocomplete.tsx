@@ -9,7 +9,8 @@ type Props = {
   currentBack?: string;
   deckId?: string;
   deckName?: string;
-  tags?: string[];
+  topics?: string[];
+  topicIds?: string[];
   disabled?: boolean;
   onApply: (back: string) => void;
 };
@@ -19,7 +20,8 @@ export default function CardBackAutocomplete({
   currentBack = "",
   deckId,
   deckName,
-  tags = [],
+  topics = [],
+  topicIds = [],
   disabled = false,
   onApply,
 }: Props) {
@@ -39,7 +41,8 @@ export default function CardBackAutocomplete({
         currentBack,
         deckId,
         deckName,
-        tags,
+        topics,
+        topicIds,
       });
       onApply(back);
     } catch (err) {

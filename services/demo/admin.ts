@@ -10,6 +10,7 @@ import { normalizeGoal, type Goal } from "@/lib/study/goals";
 import { normalizeConstellation, type Constellation } from "@/lib/constellation/constellations";
 import { buildPreviewStar, parseStarData, type NormalizedStar } from "@/lib/constellation/stars";
 import { getDemoUserId, isDemoModeEnabledServer, requireDemoUserId } from "@/lib/demo/server";
+import { getTopicNameKey, slugifyTopicName } from "@/lib/practice/topics";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 
 type DemoDeck = {
@@ -36,6 +37,7 @@ type DemoSeed = {
   userDoc: Record<string, unknown>;
   decks: DemoDeck[];
   cards: Card[];
+  topics: Array<{ id: string; data: Record<string, unknown> }>;
   goals: Goal[];
   activity: DailyStudyActivity[];
   constellations: Array<{ id: string; data: Record<string, unknown> }>;
@@ -69,8 +71,14 @@ function createDemoDeck(
 }
 
 function createDemoCard(base: Omit<Card, "userId">, userId: string): Card {
+  const topicIds =
+    base.topicIds?.length
+      ? base.topicIds
+      : base.tags.map((tag) => `demo-topic-${slugifyTopicName(tag)}`);
   return {
     ...base,
+    tags: [],
+    topicIds,
     userId,
   };
 }
@@ -402,6 +410,35 @@ function buildDemoSeed(userId: string, now = Date.now()): DemoSeed {
       userId
     ),
   ];
+  const topics = Array.from(
+    new Map(
+      cards.flatMap((card) =>
+        card.topicIds?.map((topicId, index) => {
+          const legacyName =
+            card.tags[index] ??
+            topicId.replace(/^demo-topic-/, "").replace(/-/g, " ");
+          const name = legacyName.replace(/\b\w/g, (letter) => letter.toUpperCase());
+          return [
+            topicId,
+            {
+              id: topicId,
+              data: {
+                name,
+                normalizedName: getTopicNameKey(name),
+                slug: slugifyTopicName(name),
+                subject: "General",
+                aliases: [],
+                status: "active",
+                createdBy: "user",
+                createdAt: now - 20 * DAY_MS,
+                updatedAt: now,
+              },
+            },
+          ] as const;
+        }) ?? []
+      )
+    ).values()
+  );
 
   const reviewCounts = [0, 22, 18, 28, 16, 24, 14, 0, 19, 21, 11, 0, 17, 13];
   const accuracyRatios = [0, 0.86, 0.83, 0.89, 0.81, 0.87, 0.79, 0, 0.82, 0.84, 0.78, 0, 0.8, 0.77];
@@ -511,6 +548,7 @@ function buildDemoSeed(userId: string, now = Date.now()): DemoSeed {
     },
     decks,
     cards,
+    topics,
     goals,
     activity,
     constellations: [
@@ -595,6 +633,7 @@ async function resetUserSubcollections(userId: string) {
     "constellationState",
     "notificationPreferences",
     "pushSubscriptions",
+    "topics",
   ];
 
   for (const collectionName of collectionNames) {
@@ -645,6 +684,15 @@ export async function resetDemoWorkspace(now = Date.now()) {
   for (const card of seed.cards) {
     const { id, ...data } = card;
     await adminDb.collection("cards").doc(id).set(data);
+  }
+
+  for (const topic of seed.topics) {
+    await adminDb
+      .collection("users")
+      .doc(demoUserId)
+      .collection("topics")
+      .doc(topic.id)
+      .set(topic.data);
   }
 
   for (const goal of seed.goals) {

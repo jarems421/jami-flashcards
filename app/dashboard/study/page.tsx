@@ -18,7 +18,7 @@ import {
 } from "@/lib/study/daily-review";
 import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
-import { getTagKey, parseCardTagsParam, type Card } from "@/lib/study/cards";
+import type { Card } from "@/lib/study/cards";
 import {
   applySimpleStudyResultToCard,
   applySimpleStudyResultToQueue,
@@ -56,6 +56,8 @@ import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActive
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
+import { getActiveTopics } from "@/services/study/topics";
+import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
 import StudyAssistant from "@/components/study/StudyAssistant";
@@ -67,10 +69,17 @@ type SessionStats = StudySessionStats;
 type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
 const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
 type AnswerFeedback = { tone: "error" | "warm" | "good" | "calm"; message: string };
-type FocusedReviewRecents = { deckIds: string[]; tags: string[] };
+type FocusedReviewRecents = {
+  deckIds: string[];
+  topicIds: string[];
+  legacyTags?: string[];
+};
 
 const FOCUSED_REVIEW_RECENTS_PREFIX = "jami:focused-review-recents:";
-const EMPTY_FOCUSED_REVIEW_RECENTS: FocusedReviewRecents = { deckIds: [], tags: [] };
+const EMPTY_FOCUSED_REVIEW_RECENTS: FocusedReviewRecents = {
+  deckIds: [],
+  topicIds: [],
+};
 const FOCUSED_REVIEW_RECENT_LIMIT = 3;
 const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
 
@@ -163,7 +172,7 @@ function InlineStudyFeedback({ feedback }: { feedback: AnswerFeedback | null }) 
   );
 }
 
-function parseDeckIdsParam(value: string | null) {
+function parseIdsParam(value: string | null) {
   if (!value) return [];
   return Array.from(new Set(value.split(",").map((entry) => entry.trim()).filter(Boolean)));
 }
@@ -204,19 +213,19 @@ function getCardsByIds(cards: Card[], ids: string[]) {
   return ids.map((id) => cardsById.get(id) ?? null).filter((card): card is Card => card !== null);
 }
 
-function buildCustomReviewCards(cards: Card[], selectedDeckIds: string[], selectedTags: string[]) {
+function buildCustomReviewCards(cards: Card[], selectedDeckIds: string[], selectedTopicIds: string[]) {
   const selectedDeckIdSet = new Set(selectedDeckIds);
-  const selectedTagSet = new Set(selectedTags.map(getTagKey));
+  const selectedTopicIdSet = new Set(selectedTopicIds);
   const filteredCards =
-    selectedDeckIds.length === 0 && selectedTags.length === 0
+    selectedDeckIds.length === 0 && selectedTopicIds.length === 0
       ? cards
       : cards.filter((card) => {
           const matchesDeck =
             selectedDeckIdSet.size > 0 && selectedDeckIdSet.has(card.deckId);
-          const matchesTag =
-            selectedTagSet.size > 0 &&
-            card.tags.some((tag) => selectedTagSet.has(getTagKey(tag)));
-          return matchesDeck || matchesTag;
+          const matchesTopic =
+            selectedTopicIdSet.size > 0 &&
+            (card.topicIds ?? []).some((topicId) => selectedTopicIdSet.has(topicId));
+          return matchesDeck || matchesTopic;
         });
 
   return sortCardsByStudyPriority(filteredCards);
@@ -231,14 +240,21 @@ function normalizeFocusedReviewRecents(value: unknown): FocusedReviewRecents {
     return EMPTY_FOCUSED_REVIEW_RECENTS;
   }
 
-  const data = value as { deckIds?: unknown; tags?: unknown };
+  const data = value as { deckIds?: unknown; topicIds?: unknown; tags?: unknown };
   return {
     deckIds: Array.isArray(data.deckIds)
       ? data.deckIds.filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim())).slice(0, FOCUSED_REVIEW_RECENT_LIMIT)
       : [],
-    tags: Array.isArray(data.tags)
-      ? data.tags.filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim())).slice(0, FOCUSED_REVIEW_RECENT_LIMIT)
+    topicIds: Array.isArray(data.topicIds)
+      ? data.topicIds.filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim())).slice(0, FOCUSED_REVIEW_RECENT_LIMIT)
       : [],
+    ...(Array.isArray(data.tags)
+      ? {
+          legacyTags: data.tags
+            .filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim()))
+            .slice(0, FOCUSED_REVIEW_RECENT_LIMIT),
+        }
+      : {}),
   };
 }
 
@@ -268,18 +284,21 @@ export default function StudyPage() {
   const { user, demoMode } = useUser();
   const rawMode = searchParams.get("mode");
   const rawDecksParam = searchParams.get("decks");
+  const rawTopicsParam = searchParams.get("topics");
   const rawTagsParam = searchParams.get("tags");
   const requestedMode =
     rawMode === "custom" || rawMode === "daily" ? rawMode : null;
-  const requestedDeckIds = useMemo(() => parseDeckIdsParam(rawDecksParam), [rawDecksParam]);
-  const requestedTags = useMemo(() => parseCardTagsParam(rawTagsParam), [rawTagsParam]);
+  const requestedDeckIds = useMemo(() => parseIdsParam(rawDecksParam), [rawDecksParam]);
+  const requestedTopicIds = useMemo(() => parseIdsParam(rawTopicsParam), [rawTopicsParam]);
+  const requestedLegacyTags = useMemo(() => parseIdsParam(rawTagsParam), [rawTagsParam]);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [dailyReviewState, setDailyReviewState] = useState<DailyReviewState | null>(null);
   const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>(requestedDeckIds);
-  const [selectedTags, setSelectedTags] = useState<string[]>(requestedTags);
+  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>(requestedTopicIds);
   const [deckSearch, setDeckSearch] = useState("");
-  const [tagSearch, setTagSearch] = useState("");
+  const [topicSearch, setTopicSearch] = useState("");
   const [focusedReviewRecents, setFocusedReviewRecents] = useState<FocusedReviewRecents>(EMPTY_FOCUSED_REVIEW_RECENTS);
   const [sessionKind, setSessionKind] = useState<SessionKind | null>(null);
   const [sessionCards, setSessionCards] = useState<Card[]>([]);
@@ -312,7 +331,7 @@ export default function StudyPage() {
 
   useEffect(() => {
     setSelectedDeckIds(requestedDeckIds);
-    setSelectedTags(requestedTags);
+    setSelectedTopicIds(requestedTopicIds);
     setSessionKind(null);
     setSessionCards([]);
     setIndex(0);
@@ -329,7 +348,7 @@ export default function StudyPage() {
     latestPersistedSessionRef.current = null;
     remoteCloseKeyRef.current = null;
     setSessionRestoreReady(false);
-  }, [requestedDeckIds, requestedTags, requestedMode]);
+  }, [requestedDeckIds, requestedMode, requestedTopicIds]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -346,11 +365,11 @@ export default function StudyPage() {
   }, [user.uid]);
 
   const pushFocusedReviewRecents = useCallback(
-    (deckIds: string[], tags: string[]) => {
+    (deckIds: string[], topicIds: string[]) => {
       setFocusedReviewRecents((current) => {
         const next = {
           deckIds: mergeRecentValues(current.deckIds, deckIds),
-          tags: mergeRecentValues(current.tags, tags, getTagKey),
+          topicIds: mergeRecentValues(current.topicIds, topicIds),
         };
 
         if (typeof window !== "undefined") {
@@ -403,9 +422,10 @@ export default function StudyPage() {
         console.warn("Failed to load remote active study session before daily review refresh.", error);
         return { session: null, foundRemoteSession: false };
       });
-      const [nextDecks, nextCards, activeSessionResult] = await Promise.all([
+      const [nextDecks, nextCards, nextTopics, activeSessionResult] = await Promise.all([
         getDecks(user.uid),
         loadUserCards(user.uid),
+        getActiveTopics(user.uid).catch(() => [] as Topic[]),
         activeSessionPromise,
       ]);
       const sortedCards = sortCardsByStudyPriority(nextCards, now);
@@ -417,6 +437,7 @@ export default function StudyPage() {
       }
       setDecks(nextDecks);
       setCards(sortedCards);
+      setTopics(nextTopics);
       setDailyReviewState(nextDailyReviewState);
       saveOfflineStudySnapshot(user.uid, { cards: sortedCards, decks: nextDecks });
       setOfflineMode(false);
@@ -442,6 +463,7 @@ export default function StudyPage() {
         const queues = buildDailyReviewQueues(sortedCards, now);
         setDecks(snapshot.decks);
         setCards(sortedCards);
+        setTopics([]);
         setDailyReviewState({
           id: DAILY_REVIEW_STATE_DOC_ID,
           studyDayKey: getStudyDayKey(now),
@@ -461,6 +483,7 @@ export default function StudyPage() {
       } else {
         setDecks([]);
         setCards([]);
+        setTopics([]);
         setDailyReviewState(null);
         setFeedback({ type: "error", message: "Failed to load your study queue." });
       }
@@ -474,6 +497,58 @@ export default function StudyPage() {
   useEffect(() => {
     void loadAll();
   }, [loadAll, user.uid]);
+
+  useEffect(() => {
+    if (topics.length === 0 || requestedLegacyTags.length === 0) return;
+    const topicIds = requestedLegacyTags
+      .map(
+        (legacyTag) =>
+          topics.find(
+            (topic) => getTopicNameKey(topic.name) === getTopicNameKey(legacyTag)
+          )?.id
+      )
+      .filter((topicId): topicId is string => Boolean(topicId));
+    const nextTopicIds = Array.from(new Set([...requestedTopicIds, ...topicIds]));
+    setSelectedTopicIds(nextTopicIds);
+
+    const params = new URLSearchParams(window.location.search);
+    params.delete("tags");
+    if (nextTopicIds.length > 0) params.set("topics", nextTopicIds.join(","));
+    const nextSearch = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
+    );
+  }, [requestedLegacyTags, requestedTopicIds, topics]);
+
+  useEffect(() => {
+    if (!focusedReviewRecents.legacyTags?.length || topics.length === 0) return;
+    const migratedTopicIds = focusedReviewRecents.legacyTags
+      .map(
+        (legacyTag) =>
+          topics.find(
+            (topic) => getTopicNameKey(topic.name) === getTopicNameKey(legacyTag)
+          )?.id
+      )
+      .filter((topicId): topicId is string => Boolean(topicId));
+    const next = {
+      deckIds: focusedReviewRecents.deckIds,
+      topicIds: mergeRecentValues(
+        focusedReviewRecents.topicIds,
+        migratedTopicIds
+      ),
+    };
+    setFocusedReviewRecents(next);
+    try {
+      window.localStorage.setItem(
+        getFocusedReviewRecentsKey(user.uid),
+        JSON.stringify(next)
+      );
+    } catch (error) {
+      console.warn("Failed to migrate focused review recents.", error);
+    }
+  }, [focusedReviewRecents, topics, user.uid]);
 
   useEffect(() => {
     const retryClosedSessionSync = () => {
@@ -588,13 +663,6 @@ export default function StudyPage() {
     };
   }, [refreshPendingOfflineReviews, syncPendingOfflineReviews]);
 
-  const availableTags = useMemo(
-    () =>
-      Array.from(new Set(cards.flatMap((card) => card.tags))).sort((left, right) =>
-        left.localeCompare(right)
-      ),
-    [cards]
-  );
   const optionalDailyCards = useMemo(
     () => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.optionalCardIds) : []),
     [cards, dailyReviewState]
@@ -623,15 +691,19 @@ export default function StudyPage() {
   const hasCarryoverRequiredCards = remainingCarryoverRequiredCards.length > 0;
   const hasCards = cards.length > 0;
   const customPreviewCards = useMemo(
-    () => buildCustomReviewCards(cards, selectedDeckIds, selectedTags),
-    [cards, selectedDeckIds, selectedTags]
+    () => buildCustomReviewCards(cards, selectedDeckIds, selectedTopicIds),
+    [cards, selectedDeckIds, selectedTopicIds]
   );
   const simpleStudyQueue = useMemo(() => buildSimpleStudyQueue(cards), [cards]);
-  const hasCustomFilters = selectedDeckIds.length > 0 || selectedTags.length > 0;
+  const hasCustomFilters = selectedDeckIds.length > 0 || selectedTopicIds.length > 0;
   const customSelectionEmpty = hasCards && customPreviewCards.length === 0;
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
     [decks]
+  );
+  const topicNamesById = useMemo(
+    () => Object.fromEntries(topics.map((topic) => [topic.id, topic.name])),
+    [topics]
   );
   const deckCardCounts = useMemo(() => {
     const counts = new Map<string, number>();
@@ -640,12 +712,11 @@ export default function StudyPage() {
     }
     return counts;
   }, [cards]);
-  const tagCardCounts = useMemo(() => {
+  const topicCardCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const card of cards) {
-      const cardTagKeys = new Set(card.tags.map(getTagKey));
-      for (const tagKey of cardTagKeys) {
-        counts.set(tagKey, (counts.get(tagKey) ?? 0) + 1);
+      for (const topicId of new Set(card.topicIds ?? [])) {
+        counts.set(topicId, (counts.get(topicId) ?? 0) + 1);
       }
     }
     return counts;
@@ -657,13 +728,13 @@ export default function StudyPage() {
       .filter((deck) => deck.name.toLowerCase().includes(query))
       .slice(0, 8);
   }, [deckSearch, decks]);
-  const tagSearchResults = useMemo(() => {
-    const query = getTagKey(tagSearch);
+  const topicSearchResults = useMemo(() => {
+    const query = getTopicNameKey(topicSearch);
     if (!query) return [];
-    return availableTags
-      .filter((tag) => getTagKey(tag).includes(query))
+    return topics
+      .filter((topic) => getTopicNameKey(topic.name).includes(query))
       .slice(0, 8);
-  }, [availableTags, tagSearch]);
+  }, [topicSearch, topics]);
   const simpleStudyStatusText =
     simpleStudyQueue.cards.length > 0
       ? `${simpleStudyQueue.newCount} new · ${simpleStudyQueue.wrongCount} missed`
@@ -675,13 +746,13 @@ export default function StudyPage() {
       .filter((deck): deck is Deck => deck !== null)
       .slice(0, FOCUSED_REVIEW_RECENT_LIMIT);
   }, [decks, focusedReviewRecents.deckIds]);
-  const recentTags = useMemo(() => {
-    const tagsByKey = new Map(availableTags.map((tag) => [getTagKey(tag), tag]));
-    return focusedReviewRecents.tags
-      .map((tag) => tagsByKey.get(getTagKey(tag)) ?? null)
-      .filter((tag): tag is string => tag !== null)
+  const recentTopics = useMemo(() => {
+    const topicsById = new Map(topics.map((topic) => [topic.id, topic]));
+    return focusedReviewRecents.topicIds
+      .map((topicId) => topicsById.get(topicId) ?? null)
+      .filter((topic): topic is Topic => topic !== null)
       .slice(0, FOCUSED_REVIEW_RECENT_LIMIT);
-  }, [availableTags, focusedReviewRecents.tags]);
+  }, [focusedReviewRecents.topicIds, topics]);
 
   const toggleDeckFilter = useCallback((deckId: string) => {
     setSelectedDeckIds((prev) =>
@@ -692,12 +763,11 @@ export default function StudyPage() {
     setFeedback(null);
   }, []);
 
-  const toggleTagFilter = useCallback((tag: string) => {
-    const tagKey = getTagKey(tag);
-    setSelectedTags((prev) =>
-      prev.some((currentTag) => getTagKey(currentTag) === tagKey)
-        ? prev.filter((currentTag) => getTagKey(currentTag) !== tagKey)
-        : [...prev, tag]
+  const toggleTopicFilter = useCallback((topicId: string) => {
+    setSelectedTopicIds((prev) =>
+      prev.includes(topicId)
+        ? prev.filter((currentTopicId) => currentTopicId !== topicId)
+        : [...prev, topicId]
     );
     setFeedback(null);
   }, []);
@@ -719,7 +789,7 @@ export default function StudyPage() {
       const now = Date.now();
       const nextStats = createEmptySessionStats();
       const sessionSelectedDeckIds = kind === "simple" ? [] : selectedDeckIds;
-      const sessionSelectedTags = kind === "simple" ? [] : selectedTags;
+      const sessionSelectedTopicIds = kind === "simple" ? [] : selectedTopicIds;
       const nextSession = buildPersistedStudySession({
         userId: user.uid,
         kind,
@@ -727,7 +797,7 @@ export default function StudyPage() {
         index: 0,
         stats: nextStats,
         selectedDeckIds: sessionSelectedDeckIds,
-        selectedTags: sessionSelectedTags,
+        selectedTopicIds: sessionSelectedTopicIds,
         startedAt: now,
         now,
       });
@@ -754,10 +824,10 @@ export default function StudyPage() {
       });
 
       if (kind === "custom") {
-        pushFocusedReviewRecents(selectedDeckIds, selectedTags);
+        pushFocusedReviewRecents(selectedDeckIds, selectedTopicIds);
       }
     },
-    [customPreviewCards, pushFocusedReviewRecents, remainingCarryoverRequiredCards, remainingFreshRequiredCards, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTags, simpleStudyQueue.cards, user.uid]
+    [customPreviewCards, pushFocusedReviewRecents, remainingCarryoverRequiredCards, remainingFreshRequiredCards, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTopicIds, simpleStudyQueue.cards, user.uid]
   );
 
   const handleCustomReviewClick = useCallback(() => {
@@ -773,7 +843,7 @@ export default function StudyPage() {
       setFeedback({
         type: "error",
         message: hasCustomFilters
-          ? "No cards match those filters. Clear them or choose a different deck or tag."
+          ? "No cards match those filters. Clear them or choose a different deck or Topic."
           : "Add cards first, then Focused Review will be ready.",
       });
       return;
@@ -784,7 +854,7 @@ export default function StudyPage() {
 
   const clearCustomFilters = useCallback(() => {
     setSelectedDeckIds([]);
-    setSelectedTags([]);
+    setSelectedTopicIds([]);
     setFeedback(null);
   }, []);
 
@@ -812,6 +882,26 @@ export default function StudyPage() {
       let restoredSession = localSession;
       if (remoteSession && (!restoredSession || isIncomingSessionNewer(restoredSession, remoteSession))) {
         restoredSession = remoteSession;
+      }
+      if (
+        restoredSession &&
+        restoredSession.selectedTopicIds.length === 0 &&
+        restoredSession.legacySelectedTags?.length
+      ) {
+        const migratedTopicIds = restoredSession.legacySelectedTags
+          .map(
+            (legacyTag) =>
+              topics.find(
+                (topic) =>
+                  getTopicNameKey(topic.name) === getTopicNameKey(legacyTag)
+              )?.id
+          )
+          .filter((topicId): topicId is string => Boolean(topicId));
+        restoredSession = {
+          ...restoredSession,
+          selectedTopicIds: migratedTopicIds,
+          legacySelectedTags: undefined,
+        };
       }
 
       if (cancelled) {
@@ -880,7 +970,7 @@ export default function StudyPage() {
           restoredSession,
           requestedMode,
           requestedDeckIds,
-          requestedTags
+          requestedTopicIds
         )
       ) {
         setSessionRestoreReady(true);
@@ -919,7 +1009,7 @@ export default function StudyPage() {
 
       if (restoredSession.kind === "custom") {
         setSelectedDeckIds(restoredSession.selectedDeckIds);
-        setSelectedTags(restoredSession.selectedTags);
+        setSelectedTopicIds(restoredSession.selectedTopicIds);
       }
 
       autoStartHandledRef.current = true;
@@ -931,7 +1021,7 @@ export default function StudyPage() {
     return () => {
       cancelled = true;
     };
-  }, [cards, dailyReviewState, loaded, requestedDeckIds, requestedMode, requestedTags, user.uid]);
+  }, [cards, dailyReviewState, loaded, requestedDeckIds, requestedMode, requestedTopicIds, topics, user.uid]);
 
   useEffect(() => {
     if (!loaded || !sessionRestoreReady || autoStartHandledRef.current) return;
@@ -955,7 +1045,7 @@ export default function StudyPage() {
       return;
     }
     autoStartHandledRef.current = true;
-  }, [customPreviewCards.length, loaded, remainingCarryoverRequiredCards.length, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTags.length, sessionRestoreReady, startSession]);
+  }, [customPreviewCards.length, loaded, remainingCarryoverRequiredCards.length, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTopicIds.length, sessionRestoreReady, startSession]);
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
@@ -1000,7 +1090,7 @@ export default function StudyPage() {
         index,
         stats: sessionStats,
         selectedDeckIds,
-        selectedTags,
+        selectedTopicIds,
         startedAt: sessionStartedAtRef.current,
         now,
       });
@@ -1012,7 +1102,7 @@ export default function StudyPage() {
       latestPersistedSessionRef.current = currentSession;
       return currentSession;
     },
-    [index, selectedDeckIds, selectedTags, sessionCards, sessionKind, sessionStats, user.uid]
+    [index, selectedDeckIds, selectedTopicIds, sessionCards, sessionKind, sessionStats, user.uid]
   );
 
   useEffect(() => {
@@ -1439,7 +1529,7 @@ export default function StudyPage() {
           index: done ? sessionCards.length : index,
           stats: sessionStats,
           selectedDeckIds,
-          selectedTags,
+          selectedTopicIds,
           startedAt: sessionStartedAtRef.current,
           now,
         });
@@ -1626,7 +1716,7 @@ export default function StudyPage() {
                         Build a focused session
                       </h3>
                       <p className="mt-2 text-sm leading-7 text-text-secondary sm:text-base">
-                        Choose decks or tags.
+                        Choose decks or Topics.
                       </p>
                     </div>
                     <Button type="button" onClick={handleCustomReviewClick} disabled={customPreviewCards.length === 0} size="lg" className="w-full sm:w-auto">
@@ -1655,22 +1745,22 @@ export default function StudyPage() {
                         )}
                       </div>
                       <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted md:col-start-2 md:row-start-1">
-                        Selected tags
+                        Selected Topics
                       </div>
                       <div className="flex flex-wrap gap-2 md:col-start-2">
-                        {selectedTags.length > 0 ? (
-                          selectedTags.map((tag) => (
+                        {selectedTopicIds.length > 0 ? (
+                          selectedTopicIds.map((topicId) => (
                             <button
-                              key={tag}
+                              key={topicId}
                               type="button"
-                              onClick={() => toggleTagFilter(tag)}
+                              onClick={() => toggleTopicFilter(topicId)}
                               className="app-selected rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
                             >
-                              {tag} · {tagCardCounts.get(getTagKey(tag)) ?? 0} cards x
+                              {topicNamesById[topicId] ?? "Topic"} · {topicCardCounts.get(topicId) ?? 0} cards x
                             </button>
                           ))
                         ) : (
-                          <span className="text-xs leading-5 text-text-muted">No tag filter selected.</span>
+                          <span className="text-xs leading-5 text-text-muted">No Topic filter selected.</span>
                         )}
                       </div>
                     </div>
@@ -1719,26 +1809,26 @@ export default function StudyPage() {
 
                     <div className="rounded-[1.35rem] border border-white/[0.08] bg-white/[0.035] p-4">
                       <Input
-                        label="Search tags"
-                        placeholder="Type a tag name"
-                        value={tagSearch}
-                        onChange={(event) => setTagSearch(event.target.value)}
+                        label="Search Topics"
+                        placeholder="Type a Topic name"
+                        value={topicSearch}
+                        onChange={(event) => setTopicSearch(event.target.value)}
                       />
                       <div className="mt-3 min-h-12 space-y-2">
-                        {tagSearch.trim() ? (
-                          tagSearchResults.length > 0 ? (
-                            tagSearchResults.map((tag) => {
-                              const selected = selectedTags.some((currentTag) => getTagKey(currentTag) === getTagKey(tag));
+                        {topicSearch.trim() ? (
+                          topicSearchResults.length > 0 ? (
+                            topicSearchResults.map((topic) => {
+                              const selected = selectedTopicIds.includes(topic.id);
                               return (
                                 <button
-                                  key={tag}
+                                  key={topic.id}
                                   type="button"
-                                  onClick={() => toggleTagFilter(tag)}
+                                  onClick={() => toggleTopicFilter(topic.id)}
                                   className={`flex w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
                                 >
                                   <span className="min-w-0">
-                                    <span className="block truncate">{tag}</span>
-                                    <span className="mt-0.5 block text-xs text-text-muted">{tagCardCounts.get(getTagKey(tag)) ?? 0} cards</span>
+                                    <span className="block truncate">{topic.name}</span>
+                                    <span className="mt-0.5 block text-xs text-text-muted">{topicCardCounts.get(topic.id) ?? 0} cards</span>
                                   </span>
                                   <span className="shrink-0 text-xs text-text-muted">{selected ? "Selected" : "Add"}</span>
                                 </button>
@@ -1746,12 +1836,12 @@ export default function StudyPage() {
                             })
                           ) : (
                             <p className="rounded-[1rem] border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-sm text-text-muted">
-                              No tags match that search.
+                              No Topics match that search.
                             </p>
                           )
                         ) : (
                           <p className="rounded-[1rem] border border-white/[0.08] bg-white/[0.025] px-3 py-2 text-sm text-text-muted">
-                            Start typing to find a tag.
+                            Start typing to find a Topic.
                           </p>
                         )}
                       </div>
@@ -1785,27 +1875,27 @@ export default function StudyPage() {
                       )}
                     </div>
                     <div className="rounded-[1.25rem] border border-white/[0.08] bg-white/[0.025] p-4">
-                      <div className="mb-3 text-sm font-medium text-white">Recent tags</div>
-                      {recentTags.length > 0 ? (
+                      <div className="mb-3 text-sm font-medium text-white">Recent Topics</div>
+                      {recentTopics.length > 0 ? (
                         <div className="flex flex-wrap gap-2">
-                          {recentTags.map((tag) => {
-                            const selected = selectedTags.some((currentTag) => getTagKey(currentTag) === getTagKey(tag));
+                          {recentTopics.map((topic) => {
+                            const selected = selectedTopicIds.includes(topic.id);
                             return (
                               <button
-                                key={tag}
+                                key={topic.id}
                                 type="button"
-                                onClick={() => toggleTagFilter(tag)}
+                                onClick={() => toggleTopicFilter(topic.id)}
                                 className={`min-h-11 rounded-full px-4 py-2 text-left text-sm font-medium shadow-[var(--shadow-shell)] transition duration-fast hover:-translate-y-[1px] hover:border-border-strong active:translate-y-0 active:scale-[0.98] ${selected ? "app-button-primary" : "app-selected"}`}
                                 aria-pressed={selected}
                               >
-                                {tag} · {tagCardCounts.get(getTagKey(tag)) ?? 0} cards
+                                {topic.name} · {topicCardCounts.get(topic.id) ?? 0} cards
                               </button>
                             );
                           })}
                         </div>
                       ) : (
                         <p className="text-sm leading-6 text-text-muted">
-                          Tags from focused sessions will collect here.
+                          Topics from focused sessions will collect here.
                         </p>
                       )}
                     </div>
@@ -1816,7 +1906,7 @@ export default function StudyPage() {
                       align="left"
                       emoji="Search"
                       title="No cards match these filters"
-                      description={hasCustomFilters ? "Your selected decks and tags do not currently match any cards. Clear them or try a different combination." : "There are no cards available for Focused Review yet."}
+                      description={hasCustomFilters ? "Your selected decks and Topics do not currently match any cards. Clear them or try a different combination." : "There are no cards available for Focused Review yet."}
                       action={hasCustomFilters ? <Button type="button" variant="secondary" onClick={clearCustomFilters}>Clear filters</Button> : undefined}
                       secondaryAction={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link>}
                     />
@@ -1931,7 +2021,7 @@ export default function StudyPage() {
                       : sessionKind === "daily-required" && remainingOptionalCards.length > 0
                       ? "These are lighter extra reps. Do them only if you want a little more practice today."
                       : hasCards && customPreviewCards.length > 0
-                        ? "Build a session from any deck or tag whenever you want targeted practice."
+                        ? "Build a session from any deck or Topic whenever you want targeted practice."
                         : sessionStats.completedGoals > 0
                           ? "Goal rewards become stars in your constellation."
                           : "Review is done for now. Add, fix, or tidy cards whenever something feels off."}
@@ -2003,13 +2093,15 @@ export default function StudyPage() {
                           <div className="min-w-0 text-xs font-medium opacity-65">
                             {deckNamesById[current.deckId] ?? "Flashcard"}
                           </div>
-                          {current.tags.length > 0 ? (
+                          {(current.topicIds?.length ?? 0) > 0 ? (
                             <div className="flex max-w-[60%] flex-wrap justify-end gap-1.5">
-                              {current.tags.slice(0, 2).map((tag) => (
-                                <span key={tag} className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-[0.68rem] font-medium opacity-75">{tag}</span>
+                              {(current.topicIds ?? []).slice(0, 2).map((topicId) => (
+                                <span key={topicId} className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-[0.68rem] font-medium opacity-75">
+                                  {topicNamesById[topicId] ?? "Topic"}
+                                </span>
                               ))}
-                              {current.tags.length > 2 ? (
-                                <span className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-[0.68rem] font-medium opacity-65">+{current.tags.length - 2}</span>
+                              {(current.topicIds?.length ?? 0) > 2 ? (
+                                <span className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-[0.68rem] font-medium opacity-65">+{(current.topicIds?.length ?? 0) - 2}</span>
                               ) : null}
                             </div>
                           ) : null}
@@ -2053,6 +2145,9 @@ export default function StudyPage() {
                       autoExplain={false}
                       mode="clue"
                       deckName={deckNamesById[current.deckId]}
+                      topicNames={(current.topicIds ?? [])
+                        .map((topicId) => topicNamesById[topicId])
+                        .filter((name): name is string => Boolean(name))}
                       onContinue={goNext}
                     />
                   ) : null}
@@ -2062,7 +2157,16 @@ export default function StudyPage() {
                 <div className="sticky bottom-3 z-30 animate-fade-in space-y-3 rounded-[1.5rem] border border-white/[0.08] bg-surface-panel/95 p-2 shadow-[0_18px_36px_rgba(8,2,26,0.28)] backdrop-blur-md sm:static sm:z-auto sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
                   {savingRating ? <div className="text-center text-sm text-text-muted">Saving...</div> : null}
                   {showExplanation && flashcardAiEnabled ? (
-                    <StudyAssistant card={current} autoExplain mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
+                    <StudyAssistant
+                      card={current}
+                      autoExplain
+                      mode="review"
+                      deckName={deckNamesById[current.deckId]}
+                      topicNames={(current.topicIds ?? [])
+                        .map((topicId) => topicNamesById[topicId])
+                        .filter((name): name is string => Boolean(name))}
+                      onContinue={goNext}
+                    />
                   ) : (
                     <div className="space-y-3">
                       {sessionKind === "simple" ? (
@@ -2111,7 +2215,16 @@ export default function StudyPage() {
                         </div>
                       )}
                       {flashcardAiEnabled ? (
-                        <StudyAssistant card={current} autoExplain={false} mode="review" deckName={deckNamesById[current.deckId]} onContinue={goNext} />
+                        <StudyAssistant
+                          card={current}
+                          autoExplain={false}
+                          mode="review"
+                          deckName={deckNamesById[current.deckId]}
+                          topicNames={(current.topicIds ?? [])
+                            .map((topicId) => topicNamesById[topicId])
+                            .filter((name): name is string => Boolean(name))}
+                          onContinue={goNext}
+                        />
                       ) : null}
                     </div>
                   )}

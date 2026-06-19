@@ -17,11 +17,9 @@ import {
 } from "@/components/ui";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useUser } from "@/lib/auth/user-context";
-import type { Topic } from "@/lib/practice/topics";
 import { getFolderNameValidationError } from "@/lib/workspace/folder-form";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { createStudyFolder, getActiveStudyFolders } from "@/services/study/folders";
-import { getActiveTopics } from "@/services/study/topics";
 
 type Feedback = { type: "success" | "error"; message: string };
 
@@ -32,13 +30,11 @@ function isPermissionDenied(error: unknown) {
 export default function FoldersPage() {
   const { user } = useUser();
   const [folders, setFolders] = useState<StudyFolder[]>([]);
-  const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
   const [showCreate, setShowCreate] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
-  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [folderColor, setFolderColor] = useState<ObjectColorId>("sky");
   const [folderIcon, setFolderIcon] = useState<ObjectIconId>("none");
   const [saving, setSaving] = useState(false);
@@ -55,16 +51,11 @@ export default function FoldersPage() {
 
     setLoading(true);
     try {
-      const [nextFolders, nextTopics] = await Promise.all([
-        getActiveStudyFolders(user.uid),
-        getActiveTopics(user.uid),
-      ]);
+      const nextFolders = await getActiveStudyFolders(user.uid);
       setFolders(nextFolders);
-      setTopics(nextTopics);
     } catch (error) {
       console.error(error);
       setFolders([]);
-      setTopics([]);
       setFeedback(
         isPermissionDenied(error)
           ? null
@@ -82,18 +73,9 @@ export default function FoldersPage() {
     void loadFolders();
   }, [loadFolders]);
 
-  const toggleTopic = (topicId: string) => {
-    setSelectedTopicIds((current) =>
-      current.includes(topicId)
-        ? current.filter((id) => id !== topicId)
-        : [...current, topicId]
-    );
-  };
-
   const resetForm = () => {
     setName("");
     setSubject("");
-    setSelectedTopicIds([]);
     setFolderColor("sky");
     setFolderIcon("none");
     setNameTouched(false);
@@ -111,7 +93,6 @@ export default function FoldersPage() {
       const folder = await createStudyFolder(user.uid, {
         name,
         subject,
-        topicIds: selectedTopicIds,
         color: folderColor,
         icon: folderIcon,
       });
@@ -197,7 +178,7 @@ export default function FoldersPage() {
               </Button>
             </div>
 
-            <div className="mt-6 grid gap-4 lg:grid-cols-[1fr_0.9fr]">
+            <div className="mt-6">
               <div className="space-y-4">
                 <Input
                   label="Folder name"
@@ -231,34 +212,6 @@ export default function FoldersPage() {
                   colorLabel="Folder colour"
                   iconLabel="Folder icon"
                 />
-              </div>
-              <div className="app-subtle-panel rounded-[1.25rem] p-4">
-                <div className="text-sm font-semibold text-text-primary">Linked topics</div>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {topics.length > 0 ? (
-                    topics.map((topic) => {
-                      const selected = selectedTopicIds.includes(topic.id);
-                      return (
-                        <button
-                          key={topic.id}
-                          type="button"
-                          onClick={() => toggleTopic(topic.id)}
-                          className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition ${
-                            selected
-                              ? "app-selected"
-                              : "app-chip hover:border-border-strong"
-                          }`}
-                        >
-                          {topic.name}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="text-sm leading-6 text-text-muted">
-                      No topics yet.
-                    </p>
-                  )}
-                </div>
               </div>
             </div>
 

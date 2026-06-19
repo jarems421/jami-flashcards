@@ -114,7 +114,8 @@ export async function POST(request: NextRequest) {
   let currentBack: string;
   let deckId: string | undefined;
   let deckName: string | undefined;
-  let tags: string[];
+  let topics: string[];
+  let topicIds: string[];
 
   try {
     const body = (await request.json()) as Record<string, unknown>;
@@ -122,11 +123,17 @@ export async function POST(request: NextRequest) {
     currentBack = typeof body.currentBack === "string" ? body.currentBack.slice(0, 1500).trim() : "";
     deckId = typeof body.deckId === "string" && body.deckId.trim() ? body.deckId.slice(0, 120) : undefined;
     deckName = typeof body.deckName === "string" && body.deckName.trim() ? body.deckName.slice(0, 120) : undefined;
-    tags = Array.isArray(body.tags)
-      ? body.tags
-          .filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
-          .map((tag) => tag.trim().slice(0, 60))
-          .slice(0, 10)
+    topics = Array.isArray(body.topics)
+      ? body.topics
+          .filter((topic): topic is string => typeof topic === "string" && topic.trim().length > 0)
+          .map((topic) => topic.trim().slice(0, 80))
+          .slice(0, 5)
+      : [];
+    topicIds = Array.isArray(body.topicIds)
+      ? body.topicIds
+          .filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
+          .map((topicId) => topicId.trim().slice(0, 120))
+          .slice(0, 5)
       : [];
 
     if (!front) {
@@ -150,18 +157,18 @@ export async function POST(request: NextRequest) {
         const cardFront = typeof data.front === "string" ? data.front : "";
         const cardBack = typeof data.back === "string" ? data.back : "";
         const cardDeckId = typeof data.deckId === "string" ? data.deckId : "";
-        const cardTags = Array.isArray(data.tags)
-          ? data.tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+        const cardTopicIds = Array.isArray(data.topicIds)
+          ? data.topicIds.filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
           : [];
 
         let score = 0;
         if (deckId && cardDeckId === deckId) score += 5;
-        if (tags.length > 0) {
-          score += cardTags.filter((tag) => tags.includes(tag)).length * 3;
+        if (topicIds.length > 0) {
+          score += cardTopicIds.filter((topicId) => topicIds.includes(topicId)).length * 3;
         }
         if (cardFront.trim() === front.trim()) score -= 10;
 
-        return { front: cardFront, back: cardBack, tags: cardTags, score };
+        return { front: cardFront, back: cardBack, score };
       })
       .filter((card) => card.score > 0 && card.front && card.back)
       .sort((left, right) => right.score - left.score)
@@ -173,13 +180,12 @@ ${relatedCards
   .map(
     (card) =>
       `- Front: ${card.front.slice(0, 160)}
-  Back: ${card.back.slice(0, 260)}
-  Tags: ${card.tags.length ? card.tags.join(", ") : "None"}`,
+  Back: ${card.back.slice(0, 260)}`,
   )
   .join("\n")}`
       : "No nearby cards are available.";
 
-    const subject = detectCardBackSubject({ front, deckName, tags });
+    const subject = detectCardBackSubject({ front, deckName, topics });
     const subjectPrompt = getSubjectPrompt(subject);
     const systemPrompt = `You write the BACK side of a flashcard for a student.
 
@@ -191,13 +197,13 @@ Non-negotiable rules:
 - If the front is ambiguous, give the most likely useful answer and include the key assumption in a short phrase.
 - If equations are useful, keep symbols readable, define them briefly, and avoid malformed characters.
 - Never output raw HTML entities, literal unicode escape codes, or broken symbol substitutes.
-- Do not invent niche facts that are not implied by the front, deck, tags, or related cards.
+- Do not invent niche facts that are not implied by the front, deck, Topics, or related cards.
 - Match the user's existing card style when nearby cards give a clear pattern.
 
 ${subjectPrompt}`;
 
     const userPrompt = `Deck: ${deckName ?? "Unknown"}
-Tags: ${tags.length ? tags.join(", ") : "None"}
+Topics: ${topics.length ? topics.join(", ") : "None"}
 
 Front:
 ${front}

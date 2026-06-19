@@ -21,6 +21,7 @@ import {
 } from "@/components/workspace/NotebookInkEditor";
 import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
+import TopicPicker from "@/components/topics/TopicPicker";
 import {
   normalizeObjectColor,
   normalizeObjectIcon,
@@ -37,6 +38,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
+import type { Topic } from "@/lib/practice/topics";
 import type {
   Notebook,
   NotebookFile,
@@ -119,6 +121,7 @@ import {
   getNotebookPageIdFromSearch,
 } from "@/lib/workspace/notebook-navigation";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
+import { getActiveTopics } from "@/services/study/topics";
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
@@ -1035,6 +1038,8 @@ export default function NotebookEditorPage() {
   const [phoneFullEditing, setPhoneFullEditing] = useState(false);
   const [showNotebookSettings, setShowNotebookSettings] = useState(false);
   const [notebookTitle, setNotebookTitle] = useState("");
+  const [notebookTopicIds, setNotebookTopicIds] = useState<string[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [notebookColor, setNotebookColor] = useState<ObjectColorId>("sky");
   const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
   const [notebookDefaultPageStyle, setNotebookDefaultPageStyle] =
@@ -1512,7 +1517,10 @@ export default function NotebookEditorPage() {
     editorRevisionRef.current = 0;
     latestSaveIdRef.current = 0;
     try {
-      const nextNotebook = await getNotebookById(user.uid, notebookId);
+      const [nextNotebook, nextTopics] = await Promise.all([
+        getNotebookById(user.uid, notebookId),
+        getActiveTopics(user.uid).catch(() => [] as Topic[]),
+      ]);
       let nextPages: NotebookPage[] = [];
       let nextFiles: NotebookFile[] = [];
 
@@ -1542,6 +1550,7 @@ export default function NotebookEditorPage() {
       }
 
       setNotebook(nextNotebook);
+      setTopics(nextTopics);
       setPages(nextPages);
       setFiles(nextFiles);
       const requestedPageId =
@@ -3024,6 +3033,7 @@ export default function NotebookEditorPage() {
   const openNotebookSettings = () => {
     if (!notebook) return;
     setNotebookTitle(notebook.title);
+    setNotebookTopicIds(notebook.topicIds);
     setNotebookColor(normalizeObjectColor(notebook.color));
     setNotebookIcon(normalizeObjectIcon(notebook.icon));
     setNotebookDefaultPageStyle(notebook.pageStyle ?? "plain");
@@ -3063,6 +3073,7 @@ export default function NotebookEditorPage() {
       !showNotebookSettings
     ) {
       setNotebookTitle(notebook.title);
+      setNotebookTopicIds(notebook.topicIds);
       setNotebookColor(normalizeObjectColor(notebook.color));
       setNotebookIcon(normalizeObjectIcon(notebook.icon));
       setNotebookDefaultPageStyle(notebook.pageStyle ?? "plain");
@@ -3077,6 +3088,7 @@ export default function NotebookEditorPage() {
     try {
       await updateNotebook(user.uid, notebook.id, {
         title: notebookTitle,
+        topicIds: notebookTopicIds,
         color: notebookColor,
         icon: notebookIcon,
         pageStyle: notebookDefaultPageStyle,
@@ -3086,6 +3098,7 @@ export default function NotebookEditorPage() {
           ? {
               ...current,
               title: notebookTitle.trim() || current.title,
+              topicIds: notebookTopicIds,
               color: notebookColor,
               icon: notebookIcon,
               pageStyle: notebookDefaultPageStyle,
@@ -3737,7 +3750,7 @@ export default function NotebookEditorPage() {
             <div>
               <div className="text-sm font-semibold text-text-primary">Edit notebook</div>
               <p className="mt-0.5 text-xs text-text-muted">
-                Update the title, cover, and default page style.
+                Update the title, cover, Topics, and default page style.
               </p>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-start">
@@ -3767,6 +3780,16 @@ export default function NotebookEditorPage() {
                   colorLabel="Cover colour"
                   iconLabel="Cover icon"
                   compact
+                />
+              </div>
+              <div className="sm:col-span-2">
+                <TopicPicker
+                  userId={user.uid}
+                  topics={topics}
+                  selectedTopicIds={notebookTopicIds}
+                  onChange={setNotebookTopicIds}
+                  onTopicsChange={setTopics}
+                  disabled={savingNotebookSettings}
                 />
               </div>
             </div>

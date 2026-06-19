@@ -15,41 +15,39 @@ import {
   shouldShowCardBrowserResults,
 } from "@/lib/study/card-search";
 import {
-  getTagFilterAfterRename,
-  shouldClearTagFilterAfterRemoval,
-} from "@/lib/study/tag-manager-state";
-import {
   buildCardBrowserSearch,
   getCardBrowserStateFromSearch,
 } from "@/lib/study/card-browser-navigation";
 import {
-  addCardTag,
   getCardContentKey,
-  getTagKey,
   mapCardData,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
   normalizeCardContentInput,
-  normalizeCardTags,
   type Card,
 } from "@/lib/study/cards";
 import type { Source } from "@/lib/practice/sources";
+import {
+  getTopicNameKey,
+  MAX_LINKED_TOPICS,
+  type Topic,
+} from "@/lib/practice/topics";
 import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { getDeckHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { removeUserTag, renameUserTag } from "@/services/study/tags";
+import { getActiveTopics } from "@/services/study/topics";
 import AppPage from "@/components/layout/AppPage";
-import TagInput from "@/components/decks/TagInput";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import CardActionsMenu from "@/components/decks/CardActionsMenu";
 import CardFaceSummary from "@/components/decks/CardFaceSummary";
-import BulkTagToolbar from "@/components/decks/BulkTagToolbar";
+import BulkTopicToolbar from "@/components/topics/BulkTopicToolbar";
+import TopicPicker from "@/components/topics/TopicPicker";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
-import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
+import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import Link from "next/link";
 
 const CARD_RESULT_PAGE_SIZE = 50;
@@ -66,7 +64,7 @@ export default function CardsSearchPage() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [folders, setFolders] = useState<StudyFolder[]>([]);
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
@@ -75,19 +73,18 @@ export default function CardsSearchPage() {
   const [previewCardId, setPreviewCardId] = useState<string | null>(null);
   const [deckFilter, setDeckFilter] = useState("");
   const [folderFilter, setFolderFilter] = useState("");
-  const [tagFilter, setTagFilter] = useState("");
+  const [topicFilter, setTopicFilter] = useState("");
+  const [legacyTagFilter, setLegacyTagFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<CardStatusFilter>("all");
   const [urlStateReady, setUrlStateReady] = useState(false);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
-  const [editingTags, setEditingTags] = useState<string[]>([]);
-  const [editingPendingTag, setEditingPendingTag] = useState("");
+  const [editingTopicIds, setEditingTopicIds] = useState<string[]>([]);
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
-  const [bulkTags, setBulkTags] = useState<string[]>([]);
-  const [bulkPendingTag, setBulkPendingTag] = useState("");
-  const [applyingBulkTags, setApplyingBulkTags] = useState(false);
+  const [bulkTopicIds, setBulkTopicIds] = useState<string[]>([]);
+  const [applyingBulkTopics, setApplyingBulkTopics] = useState(false);
   const [bulkMoveDeckId, setBulkMoveDeckId] = useState("");
   const [applyingBulkAction, setApplyingBulkAction] = useState<"move" | "delete" | null>(null);
   const [cardPendingDeleteId, setCardPendingDeleteId] = useState<string | null>(
@@ -95,10 +92,6 @@ export default function CardsSearchPage() {
   );
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [showTagManager, setShowTagManager] = useState(false);
-  const [tagManagerSource, setTagManagerSource] = useState("");
-  const [tagManagerTarget, setTagManagerTarget] = useState("");
-  const [tagManagerAction, setTagManagerAction] = useState<"rename" | "remove" | null>(null);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -116,7 +109,8 @@ export default function CardsSearchPage() {
       setSearchTerm(state.search);
       setDeckFilter(state.deckId);
       setFolderFilter(state.folderId);
-      setTagFilter(state.tag);
+      setTopicFilter(state.topicId);
+      setLegacyTagFilter(state.legacyTag);
       setStatusFilter(state.status);
       setUrlStateReady(true);
     };
@@ -133,7 +127,8 @@ export default function CardsSearchPage() {
       search: searchTerm,
       deckId: deckFilter,
       folderId: folderFilter,
-      tag: tagFilter,
+      topicId: topicFilter,
+      legacyTag: legacyTagFilter,
       status: statusFilter,
     });
     const nextUrl = `${window.location.pathname}${nextSearch}${window.location.hash}`;
@@ -141,15 +136,16 @@ export default function CardsSearchPage() {
   }, [
     deckFilter,
     folderFilter,
+    legacyTagFilter,
     searchTerm,
     statusFilter,
-    tagFilter,
+    topicFilter,
     urlStateReady,
   ]);
 
   useEffect(() => {
     setVisibleResultLimit(CARD_RESULT_PAGE_SIZE);
-  }, [cards.length, debouncedTerm, deckFilter, folderFilter, statusFilter, tagFilter]);
+  }, [cards.length, debouncedTerm, deckFilter, folderFilter, statusFilter, topicFilter]);
 
   useEffect(() => {
     if (!previewCardId) return;
@@ -160,11 +156,6 @@ export default function CardsSearchPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewCardId]);
 
-  useEffect(() => {
-    setTagManagerSource(tagFilter);
-    setTagManagerTarget("");
-  }, [tagFilter]);
-
   // Load all user cards + decks
   useEffect(() => {
     let cancelled = false;
@@ -172,7 +163,7 @@ export default function CardsSearchPage() {
     void (async () => {
       setLoading(true);
       try {
-        const [userDecks, cardsSnapshot, userSources, userFolders] = await Promise.all([
+        const [userDecks, cardsSnapshot, userSources, userFolders, userTopics] = await Promise.all([
           getDecks(user.uid),
           getDocs(
             query(
@@ -182,6 +173,7 @@ export default function CardsSearchPage() {
           ),
           getActiveSources(user.uid),
           getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
+          getActiveTopics(user.uid),
         ]);
 
         if (cancelled) return;
@@ -192,15 +184,11 @@ export default function CardsSearchPage() {
           )
           .sort((a, b) => b.createdAt - a.createdAt);
 
-        const tags = Array.from(
-          new Set(allCards.flatMap((c) => normalizeCardTags(c.tags)))
-        ).sort((a, b) => a.localeCompare(b));
-
         setDecks(userDecks);
         setCards(allCards);
         setSources(userSources);
         setFolders(userFolders);
-        setAvailableTags(tags);
+        setTopics(userTopics);
       } catch (error) {
         console.error(error);
         if (!isPermissionDenied(error)) {
@@ -215,6 +203,15 @@ export default function CardsSearchPage() {
       cancelled = true;
     };
   }, [user.uid]);
+
+  useEffect(() => {
+    if (!legacyTagFilter || topics.length === 0) return;
+    const match = topics.find(
+      (topic) => getTopicNameKey(topic.name) === getTopicNameKey(legacyTagFilter)
+    );
+    if (match) setTopicFilter(match.id);
+    setLegacyTagFilter("");
+  }, [legacyTagFilter, topics]);
 
   const deckNamesById = useMemo(() => {
     const map: Record<string, string> = {};
@@ -234,6 +231,10 @@ export default function CardsSearchPage() {
     () => Object.fromEntries(folders.map((folder) => [folder.id, folder.name])),
     [folders]
   );
+  const topicNamesById = useMemo(
+    () => Object.fromEntries(topics.map((topic) => [topic.id, topic.name])),
+    [topics]
+  );
   const deckFolderIdsById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.folderIds])),
     [decks]
@@ -242,7 +243,7 @@ export default function CardsSearchPage() {
   const activeFilterCount =
     Number(Boolean(deckFilter)) +
     Number(Boolean(folderFilter)) +
-    Number(Boolean(tagFilter)) +
+    Number(Boolean(topicFilter)) +
     Number(statusFilter !== "all");
   const showFilterControls = showFilters;
   const hasSearchQuery = debouncedTerm.trim().length > 0;
@@ -264,7 +265,7 @@ export default function CardsSearchPage() {
       ) {
         return false;
       }
-      if (tagFilter && !card.tags.some((tag) => getTagKey(tag) === getTagKey(tagFilter))) {
+      if (topicFilter && !card.topicIds?.includes(topicFilter)) {
         return false;
       }
       if (statusFilter === "due" && !(typeof card.dueDate !== "number" || card.dueDate <= now)) {
@@ -287,7 +288,7 @@ export default function CardsSearchPage() {
     hasSearchQuery,
     shouldShowCardResults,
     statusFilter,
-    tagFilter,
+    topicFilter,
   ]);
 
   useEffect(() => {
@@ -313,44 +314,22 @@ export default function CardsSearchPage() {
     disabled: isDemoUser,
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
-  const tagCounts = useMemo(() => {
-    const counts = new Map<string, { label: string; count: number }>();
-    for (const card of cards) {
-      for (const tag of card.tags) {
-        const key = getTagKey(tag);
-        const current = counts.get(key) ?? { label: tag, count: 0 };
-        current.count += 1;
-        counts.set(key, current);
-      }
-    }
-    return counts;
-  }, [cards]);
   const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
-  const selectedTagCount = tagManagerSource
-    ? tagCounts.get(getTagKey(tagManagerSource))?.count ?? 0
-    : 0;
   const clearAllFilters = () => {
     setSearchTerm("");
     setDebouncedTerm("");
     setDeckFilter("");
     setFolderFilter("");
-    setTagFilter("");
+    setTopicFilter("");
+    setLegacyTagFilter("");
     setStatusFilter("all");
-  };
-
-  const selectManagedTag = (tag: string) => {
-    setTagFilter(tag);
-    setTagManagerSource(tag);
-    setTagManagerTarget("");
-    setFeedback(null);
   };
 
   const startEditing = (card: Card) => {
     setExpandedCardId(card.id);
     setEditingFront(card.front);
     setEditingBack(card.back);
-    setEditingTags(card.tags);
-    setEditingPendingTag("");
+    setEditingTopicIds(card.topicIds ?? []);
     setFeedback(null);
   };
 
@@ -358,8 +337,7 @@ export default function CardsSearchPage() {
     setExpandedCardId(null);
     setEditingFront("");
     setEditingBack("");
-    setEditingTags([]);
-    setEditingPendingTag("");
+    setEditingTopicIds([]);
     setSavingCardId(null);
   };
 
@@ -371,7 +349,6 @@ export default function CardsSearchPage() {
 
     const nextFront = normalizeCardContentInput(editingFront);
     const nextBack = normalizeCardContentInput(editingBack);
-    const tagResult = addCardTag(editingTags, editingPendingTag);
 
     if (!nextFront || !nextBack) {
       setFeedback({ type: "error", message: "Both front and back are required." });
@@ -386,12 +363,6 @@ export default function CardsSearchPage() {
       return;
     }
 
-    if (tagResult.error) {
-      setFeedback({ type: "error", message: tagResult.error });
-      return;
-    }
-
-    const nextTags = tagResult.nextTags;
     setSavingCardId(cardId);
     setFeedback(null);
 
@@ -399,19 +370,21 @@ export default function CardsSearchPage() {
       await updateDoc(doc(db, "cards", cardId), {
         front: nextFront,
         back: nextBack,
-        tags: nextTags,
+        topicIds: editingTopicIds,
+        tags: [],
       });
 
       setCards((prev) =>
         prev.map((card) =>
           card.id === cardId
-            ? { ...card, front: nextFront, back: nextBack, tags: nextTags }
+            ? {
+                ...card,
+                front: nextFront,
+                back: nextBack,
+                topicIds: editingTopicIds,
+                tags: [],
+              }
             : card
-        )
-      );
-      setAvailableTags((prev) =>
-        Array.from(new Set([...prev, ...nextTags])).sort((a, b) =>
-          a.localeCompare(b)
         )
       );
       cancelEditing();
@@ -460,41 +433,39 @@ export default function CardsSearchPage() {
       const freshCards = createdCards.filter((card) => !existingIds.has(card.id));
       return [...freshCards, ...prev];
     });
-    setAvailableTags((prev) =>
-      Array.from(new Set([...prev, ...createdCards.flatMap((card) => card.tags)])).sort((a, b) =>
-        a.localeCompare(b)
-      )
-    );
 
     if (meta.selectCreated) {
       setSelectedCardIds(createdCards.map((card) => card.id));
-      setBulkTags([]);
-      setBulkPendingTag("");
+      setBulkTopicIds([]);
     }
   };
 
-  const handleAddTagsToSelectedCards = async () => {
-    const tagResult = addCardTag(bulkTags, bulkPendingTag);
-    if (tagResult.error) {
-      setFeedback({ type: "error", message: tagResult.error });
-      return;
-    }
-
-    const nextBulkTags = tagResult.nextTags;
-    if (selectedCardIds.length === 0 || nextBulkTags.length === 0) {
-      setFeedback({ type: "error", message: "Select cards and add at least one tag first." });
+  const handleAddTopicsToSelectedCards = async () => {
+    if (selectedCardIds.length === 0 || bulkTopicIds.length === 0) {
+      setFeedback({ type: "error", message: "Select cards and choose at least one Topic first." });
       return;
     }
 
     const selected = new Set(selectedCardIds);
-    const cardsToUpdate = cards
-      .filter((card) => selected.has(card.id))
-      .map((card) => ({
-        id: card.id,
-        tags: normalizeCardTags([...card.tags, ...nextBulkTags]),
-      }));
+    const selectedCards = cards.filter((card) => selected.has(card.id));
+    const overLimitCard = selectedCards.find((card) => {
+      const current = card.topicIds ?? [];
+      const additions = bulkTopicIds.filter((topicId) => !current.includes(topicId));
+      return current.length + additions.length > MAX_LINKED_TOPICS;
+    });
+    if (overLimitCard) {
+      setFeedback({
+        type: "error",
+        message: "One or more selected cards already has five Topics. Reduce its Topics before adding more.",
+      });
+      return;
+    }
+    const cardsToUpdate = selectedCards.map((card) => ({
+      id: card.id,
+      topicIds: Array.from(new Set([...(card.topicIds ?? []), ...bulkTopicIds])),
+    }));
 
-    setApplyingBulkTags(true);
+    setApplyingBulkTopics(true);
     setFeedback(null);
 
     try {
@@ -502,34 +473,39 @@ export default function CardsSearchPage() {
         const batch = writeBatch(db);
         const chunk = cardsToUpdate.slice(start, start + 450);
         for (const card of chunk) {
-          batch.update(doc(db, "cards", card.id), { tags: card.tags });
+          batch.update(doc(db, "cards", card.id), {
+            topicIds: card.topicIds,
+            tags: [],
+          });
         }
         await batch.commit();
       }
 
-      const tagsByCardId = new Map(cardsToUpdate.map((card) => [card.id, card.tags]));
+      const topicIdsByCardId = new Map(
+        cardsToUpdate.map((card) => [card.id, card.topicIds])
+      );
       setCards((prev) =>
         prev.map((card) =>
-          tagsByCardId.has(card.id)
-            ? { ...card, tags: tagsByCardId.get(card.id) ?? card.tags }
+          topicIdsByCardId.has(card.id)
+            ? {
+                ...card,
+                topicIds: topicIdsByCardId.get(card.id) ?? card.topicIds,
+                tags: [],
+              }
             : card
         )
       );
-      setAvailableTags((prev) =>
-        Array.from(new Set([...prev, ...nextBulkTags])).sort((a, b) => a.localeCompare(b))
-      );
-      setBulkTags([]);
-      setBulkPendingTag("");
+      setBulkTopicIds([]);
       setSelectedCardIds([]);
       setFeedback({
         type: "success",
-        message: `Added tags to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`,
+        message: `Added Topics to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`,
       });
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to add tags to the selected cards." });
+      setFeedback({ type: "error", message: "Failed to add Topics to the selected cards." });
     } finally {
-      setApplyingBulkTags(false);
+      setApplyingBulkTopics(false);
     }
   };
 
@@ -598,109 +574,6 @@ export default function CardsSearchPage() {
     }
   };
 
-  const refreshAvailableTagsFromCards = (nextCards: Card[]) => {
-    setAvailableTags(
-      Array.from(new Set(nextCards.flatMap((card) => normalizeCardTags(card.tags)))).sort((a, b) =>
-        a.localeCompare(b)
-      )
-    );
-  };
-
-  const applyLocalTagRename = (sourceTag: string, targetTag: string) => {
-    const sourceKey = getTagKey(sourceTag);
-    const nextCards = cards.map((card) => ({
-      ...card,
-      tags: normalizeCardTags(
-        card.tags.map((tag) => (getTagKey(tag) === sourceKey ? targetTag : tag))
-      ),
-    }));
-    setCards(nextCards);
-    refreshAvailableTagsFromCards(nextCards);
-  };
-
-  const applyLocalTagRemoval = (sourceTag: string) => {
-    const sourceKey = getTagKey(sourceTag);
-    const nextCards = cards.map((card) => ({
-      ...card,
-      tags: normalizeCardTags(card.tags.filter((tag) => getTagKey(tag) !== sourceKey)),
-    }));
-    setCards(nextCards);
-    refreshAvailableTagsFromCards(nextCards);
-  };
-
-  const handleRenameTag = async () => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Tag editing is disabled in the shared demo account." });
-      return;
-    }
-
-    const sourceTag = tagManagerSource.trim();
-    const targetTag = tagManagerTarget.trim();
-    if (!sourceTag || !targetTag) {
-      setFeedback({ type: "error", message: "Choose a tag and enter the new tag name." });
-      return;
-    }
-
-    setTagManagerAction("rename");
-    setFeedback(null);
-    try {
-      const count = await renameUserTag(user.uid, sourceTag, targetTag);
-      const nextTagFilter = getTagFilterAfterRename(targetTag);
-      applyLocalTagRename(sourceTag, targetTag);
-      setTagManagerSource(nextTagFilter);
-      setTagManagerTarget("");
-      setTagFilter(nextTagFilter);
-      setFeedback({ type: "success", message: `Updated ${count} card${count === 1 ? "" : "s"}.` });
-    } catch (error) {
-      console.error(error);
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Failed to rename that tag.",
-      });
-    } finally {
-      setTagManagerAction(null);
-    }
-  };
-
-  const handleRemoveTag = async () => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Tag editing is disabled in the shared demo account." });
-      return;
-    }
-
-    const sourceTag = tagManagerSource.trim();
-    if (!sourceTag) {
-      setFeedback({ type: "error", message: "Choose a tag to remove." });
-      return;
-    }
-
-    const shouldRemove = window.confirm(`Remove "${sourceTag}" from every card?`);
-    if (!shouldRemove) {
-      return;
-    }
-
-    setTagManagerAction("remove");
-    setFeedback(null);
-    try {
-      const count = await removeUserTag(user.uid, sourceTag);
-      applyLocalTagRemoval(sourceTag);
-      setTagManagerSource("");
-      setTagManagerTarget("");
-      if (shouldClearTagFilterAfterRemoval(tagFilter, sourceTag)) {
-        setTagFilter("");
-      }
-      setFeedback({ type: "success", message: `Removed tag from ${count} card${count === 1 ? "" : "s"}.` });
-    } catch (error) {
-      console.error(error);
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Failed to remove that tag.",
-      });
-    } finally {
-      setTagManagerAction(null);
-    }
-  };
-
   return (
     <AppPage
       title="Cards"
@@ -738,7 +611,7 @@ export default function CardsSearchPage() {
         onConfirm={() => void handleDeleteSelectedCards()}
       />
 
-      {!loading && !isDemoUser && (decks.length === 0 || cards.length === 0 || availableTags.length === 0) ? (
+      {!loading && !isDemoUser && (decks.length === 0 || cards.length === 0 || topics.length === 0) ? (
         <section className="grid gap-3 rounded-[1.5rem] border border-white/[0.08] bg-white/[0.035] p-4 sm:grid-cols-3">
           <div className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">1. Decks</div>
@@ -764,12 +637,12 @@ export default function CardsSearchPage() {
             </p>
           </div>
           <div className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] p-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">3. Tags</div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">3. Topics</div>
             <div className="mt-2 text-sm font-medium text-white">
-              {availableTags.length > 0 ? `${availableTags.length} ready` : "Add tags when useful"}
+              {topics.length > 0 ? `${topics.length} ready` : "Add Topics when useful"}
             </div>
             <p className="mt-1 text-xs leading-5 text-text-muted">
-              Tags unlock cleaner Focused Review sessions.
+              Topics connect cards to the rest of your study material.
             </p>
           </div>
         </section>
@@ -779,7 +652,7 @@ export default function CardsSearchPage() {
         <div className="rounded-[1.6rem] border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-text-secondary">
           <div className="font-semibold text-white">Card editing is locked in the shared demo</div>
           <p className="mt-1 leading-6">
-            You can search the seeded cards here, but new cards, edits, deletes, and tag changes are reserved for private accounts.
+            You can search the seeded cards here, but new cards, edits, deletes, and Topic changes are reserved for private accounts.
           </p>
         </div>
       ) : (
@@ -787,7 +660,8 @@ export default function CardsSearchPage() {
           userId={user.uid}
           decks={decks}
           existingCards={cards}
-          availableTags={availableTags}
+          topics={topics}
+          onTopicsChange={setTopics}
           onCardsCreated={handleCardsCreated}
           onFeedback={setFeedback}
         />
@@ -815,16 +689,14 @@ export default function CardsSearchPage() {
               {showFilterControls ? "Hide filters" : `Filters${activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}`}
             </Button>
             {!isDemoUser ? (
-              <Button
-                type="button"
+              <ButtonLink
+                href="/dashboard/topics"
                 variant="secondary"
                 size="sm"
-                aria-expanded={showTagManager}
-                onClick={() => setShowTagManager((value) => !value)}
                 className="w-full sm:w-auto"
               >
-                {showTagManager ? "Hide tag tools" : `Manage tags (${availableTags.length})`}
-              </Button>
+                Manage Topics ({topics.length})
+              </ButtonLink>
             ) : null}
           </div>
         </div>
@@ -872,16 +744,16 @@ export default function CardsSearchPage() {
               </select>
             </label>
             <label className="block">
-              <span className="mb-1.5 block text-xs font-semibold text-text-muted">Tag</span>
+              <span className="mb-1.5 block text-xs font-semibold text-text-muted">Topic</span>
               <select
-                aria-label="Filter cards by tag"
-                value={tagFilter}
-                onChange={(event) => setTagFilter(event.target.value)}
+                aria-label="Filter cards by Topic"
+                value={topicFilter}
+                onChange={(event) => setTopicFilter(event.target.value)}
                 className="app-field min-h-10 w-full rounded-full px-3 text-sm"
               >
-                <option value="">All tags</option>
-                {availableTags.map((tag) => (
-                  <option key={tag} value={tag}>{tag}</option>
+                <option value="">All Topics</option>
+                {topics.map((topic) => (
+                  <option key={topic.id} value={topic.id}>{topic.name}</option>
                 ))}
               </select>
             </label>
@@ -913,9 +785,9 @@ export default function CardsSearchPage() {
                 {folderNamesById[folderFilter] ?? "Folder"} ×
               </button>
             ) : null}
-            {tagFilter ? (
-              <button type="button" onClick={() => setTagFilter("")} className="app-selected rounded-full px-3 py-1.5 text-xs font-medium">
-                {tagFilter} ×
+            {topicFilter ? (
+              <button type="button" onClick={() => setTopicFilter("")} className="app-selected rounded-full px-3 py-1.5 text-xs font-medium">
+                {topicNamesById[topicFilter] ?? "Topic"} ×
               </button>
             ) : null}
             {statusFilter !== "all" ? (
@@ -928,96 +800,9 @@ export default function CardsSearchPage() {
             </Button>
           </div>
         ) : null}
-        {showTagManager && !isDemoUser ? (
-          <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 sm:p-4">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-text-primary">Manage tags</div>
-                <p className="mt-1 max-w-2xl text-xs leading-5 text-text-muted">
-                  Rename, merge, or remove tags. Selecting a tag filters the cards below.
-                </p>
-              </div>
-              <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-xs font-semibold text-text-secondary">
-                {availableTags.length} tag{availableTags.length === 1 ? "" : "s"}
-              </div>
-            </div>
-
-            {availableTags.length === 0 ? (
-              <div className="mt-4 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 text-sm leading-6 text-text-secondary">
-                Tags will appear here after you add them to cards.
-              </div>
-            ) : (
-              <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(17rem,0.68fr)]">
-                <div className="max-h-52 overflow-y-auto rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-2">
-                  <div className="flex flex-wrap gap-2">
-                    {availableTags.map((tag) => {
-                      const selected = getTagKey(tagManagerSource) === getTagKey(tag);
-                      const count = tagCounts.get(getTagKey(tag))?.count ?? 0;
-                      return (
-                        <button
-                          key={tag}
-                          type="button"
-                          onClick={() => selectManagedTag(tag)}
-                          className={`rounded-full border px-3 py-2 text-left text-sm transition duration-fast ${
-                            selected
-                              ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
-                              : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-primary hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)]"
-                          }`}
-                        >
-                          {tag} - {count} card{count === 1 ? "" : "s"}
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
-
-                <div className="space-y-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
-                  <div className="rounded-[0.9rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-sm text-text-secondary">
-                    {tagManagerSource ? (
-                      <>
-                        Editing <span className="font-semibold text-text-primary">{tagManagerSource}</span>
-                        <span className="ml-1 text-xs text-text-muted">
-                          ({selectedTagCount} card{selectedTagCount === 1 ? "" : "s"})
-                        </span>
-                      </>
-                    ) : (
-                      "Select a tag to edit it."
-                    )}
-                  </div>
-                  <Input
-                    label="Rename or merge into"
-                    value={tagManagerTarget}
-                    onChange={(event) => setTagManagerTarget(event.target.value)}
-                    placeholder="New or existing tag"
-                    disabled={tagManagerAction !== null || !tagManagerSource.trim()}
-                  />
-                  <div className="grid gap-2 sm:flex sm:flex-wrap">
-                    <Button
-                      type="button"
-                      disabled={tagManagerAction !== null || !tagManagerSource.trim() || !tagManagerTarget.trim()}
-                      onClick={() => void handleRenameTag()}
-                      className="w-full sm:w-auto"
-                    >
-                      {tagManagerAction === "rename" ? "Updating..." : "Rename / merge"}
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="danger"
-                      disabled={tagManagerAction !== null || !tagManagerSource.trim()}
-                      onClick={() => void handleRemoveTag()}
-                      className="w-full sm:w-auto"
-                    >
-                      {tagManagerAction === "remove" ? "Removing..." : "Remove tag"}
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : null}
         {!loading && cards.length > 0 && !shouldShowCardResults ? (
           <div className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm leading-6 text-text-secondary">
-            Search from the start of a card front, or open filters to narrow cards by deck, folder, tag, or status.
+            Search from the start of a card front, or open filters to narrow cards by deck, folder, Topic, or status.
           </div>
         ) : null}
       </div>
@@ -1057,17 +842,17 @@ export default function CardsSearchPage() {
         <>
           {!isDemoUser ? (
             <>
-              <BulkTagToolbar
+              <BulkTopicToolbar
+                userId={user.uid}
                 selectedCount={selectedCardIds.length}
                 visibleCount={visibleCards.length}
-                tags={bulkTags}
-                pendingTag={bulkPendingTag}
-                availableTags={availableTags}
-                disabled={applyingBulkTags}
+                topicIds={bulkTopicIds}
+                topics={topics}
+                disabled={applyingBulkTopics}
                 onSelectAll={selectVisibleCards}
-                onTagsChange={setBulkTags}
-                onPendingTagChange={setBulkPendingTag}
-                onApply={() => void handleAddTagsToSelectedCards()}
+                onTopicIdsChange={setBulkTopicIds}
+                onTopicsChange={setTopics}
+                onApply={() => void handleAddTopicsToSelectedCards()}
                 onClearSelection={clearSelection}
               />
               {selectedCardIds.length > 0 ? (
@@ -1149,7 +934,7 @@ export default function CardsSearchPage() {
                     </div>
                     <CardQualityWarnings
                       warnings={getCardQualityWarnings(
-                        { front: editingFront, back: editingBack, tags: editingTags },
+                        { front: editingFront, back: editingBack, topicIds: editingTopicIds },
                         { duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)) }
                       )}
                     />
@@ -1173,17 +958,20 @@ export default function CardsSearchPage() {
                         currentBack={editingBack}
                         deckId={card.deckId}
                         deckName={deckNamesById[card.deckId]}
-                        tags={editingTags}
+                        topics={editingTopicIds
+                          .map((topicId) => topicNamesById[topicId])
+                          .filter((name): name is string => Boolean(name))}
+                        topicIds={editingTopicIds}
                         disabled={savingCardId === card.id}
                         onApply={setEditingBack}
                       />
                     ) : null}
-                    <TagInput
-                      tags={editingTags}
-                      pendingTag={editingPendingTag}
-                      availableTags={availableTags}
-                      onTagsChange={setEditingTags}
-                      onPendingTagChange={setEditingPendingTag}
+                    <TopicPicker
+                      userId={user.uid}
+                      topics={topics}
+                      selectedTopicIds={editingTopicIds}
+                      onChange={setEditingTopicIds}
+                      onTopicsChange={setTopics}
                       disabled={savingCardId === card.id}
                     />
                     <div className="grid gap-2 sm:flex sm:flex-wrap">
@@ -1257,12 +1045,12 @@ export default function CardsSearchPage() {
                           </span>
                         );
                       })}
-                      {card.tags.map((tag) => (
+                      {(card.topicIds ?? []).map((topicId) => (
                         <span
-                          key={tag}
+                          key={topicId}
                           className="max-w-full rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
                         >
-                          <span className="block truncate">{tag}</span>
+                          <span className="block truncate">{topicNamesById[topicId] ?? "Topic"}</span>
                         </span>
                       ))}
                     </div>

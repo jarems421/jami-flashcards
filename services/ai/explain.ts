@@ -3,7 +3,8 @@ import { auth } from "@/services/firebase/client";
 export type ExplanationContext = {
   deckId?: string;
   deckName?: string;
-  tags?: string[];
+  topicIds?: string[];
+  topics?: string[];
   difficulty?: number;
   lapses?: number;
   reps?: number;

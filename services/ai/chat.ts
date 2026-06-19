@@ -11,7 +11,8 @@ export type StudyChatContext = {
   back: string;
   deckId?: string;
   deckName?: string;
-  tags?: string[];
+  topicIds?: string[];
+  topics?: string[];
   difficulty?: number;
   lapses?: number;
   reps?: number;

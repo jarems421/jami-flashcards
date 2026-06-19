@@ -6,6 +6,7 @@ import PublicDashboardShell from "@/components/demo/PublicDashboardShell";
 import DemoAccountNotice from "@/components/layout/DemoAccountNotice";
 import InAppNotice from "@/components/layout/InAppNotice";
 import TabBar from "@/components/layout/TabBar";
+import TopicMigrationGate from "@/components/topics/TopicMigrationGate";
 import { listenToAuth } from "@/lib/auth/auth-listener";
 import UserProvider from "@/lib/auth/user-context";
 import {
@@ -38,7 +39,7 @@ function AuthenticatedDashboard({ children }: { children: ReactNode }) {
           sidebarHidden ? "md:pl-0" : "md:pl-24 lg:pl-72"
         }`}
       >
-        {children}
+        <TopicMigrationGate>{children}</TopicMigrationGate>
       </div>
       <InAppNotice />
       <TabBar

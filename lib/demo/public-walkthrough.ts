@@ -13,7 +13,6 @@ export type WalkthroughCard = {
   front: string;
   back: string;
   topicIds: string[];
-  tags: string[];
   due: boolean;
   weak: boolean;
   status: "learning" | "review" | "relearning";
@@ -155,7 +154,6 @@ export const WALKTHROUGH_CARDS: WalkthroughCard[] = [
     front: "What does chlorophyll do in photosynthesis?",
     back: "It absorbs light energy so the plant can make glucose from carbon dioxide and water.",
     topicIds: ["topic-photosynthesis"],
-    tags: ["definition", "core"],
     due: true,
     weak: false,
     status: "review",
@@ -166,7 +164,6 @@ export const WALKTHROUGH_CARDS: WalkthroughCard[] = [
     front: "What was containment?",
     back: "A US policy aiming to stop communism spreading into more countries after World War II.",
     topicIds: ["topic-cold-war"],
-    tags: ["definition"],
     due: false,
     weak: true,
     status: "learning",
@@ -177,7 +174,6 @@ export const WALKTHROUGH_CARDS: WalkthroughCard[] = [
     front: "What are the regular -ar preterite endings in Spanish?",
     back: "e, aste, o, amos, asteis, aron.",
     topicIds: ["topic-spanish-preterite"],
-    tags: ["grammar"],
     due: true,
     weak: true,
     status: "relearning",

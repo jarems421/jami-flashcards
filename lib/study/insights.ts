@@ -20,7 +20,7 @@ type StudyReasonOptions = {
   card: Card;
   sessionKind: "daily-required" | "daily-optional" | "custom";
   selectedDeckIds?: string[];
-  selectedTags?: string[];
+  selectedTopicIds?: string[];
   now?: number;
 };
 
@@ -73,7 +73,7 @@ export function getStudyReason({
   card,
   sessionKind,
   selectedDeckIds = [],
-  selectedTags = [],
+  selectedTopicIds = [],
   now = Date.now(),
 }: StudyReasonOptions) {
   if (sessionKind === "daily-optional") {
@@ -82,18 +82,20 @@ export function getStudyReason({
 
   if (sessionKind === "custom") {
     const matchesDeck = selectedDeckIds.includes(card.deckId);
-    const matchesTag = card.tags.some((tag) => selectedTags.includes(tag));
+    const matchesTopic = (card.topicIds ?? []).some((topicId) =>
+      selectedTopicIds.includes(topicId)
+    );
 
-    if (matchesDeck && matchesTag) {
-      return "Included because it matches both your chosen deck and tag filters.";
+    if (matchesDeck && matchesTopic) {
+      return "Included because it matches both your chosen deck and Topic filters.";
     }
 
     if (matchesDeck) {
       return "Included because it belongs to one of the decks you selected for this custom session.";
     }
 
-    if (matchesTag) {
-      return "Included because it matches one of the tags you selected, even outside the chosen decks.";
+    if (matchesTopic) {
+      return "Included because it matches one of the Topics you selected, even outside the chosen decks.";
     }
 
     return "Included by your custom review filters.";
@@ -152,7 +154,7 @@ export function buildLearningInsights({
       eyebrow: "Next step",
       title: "Custom Review is open",
       description:
-        "Daily Review is clear, so you can choose any decks or tags and practise freely.",
+        "Daily Review is clear, so you can choose any decks or Topics and practise freely.",
     });
   }
 

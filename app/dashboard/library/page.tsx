@@ -58,6 +58,7 @@ import {
 import { askSourceTutor } from "@/services/ai/source";
 import AppPage from "@/components/layout/AppPage";
 import SourcePreview from "@/components/library/SourcePreview";
+import TopicPicker from "@/components/topics/TopicPicker";
 import {
   Button,
   ButtonLink,
@@ -176,6 +177,7 @@ function DraftEditor({
   onDeckChange,
   onNotebookChange,
   onSaved,
+  onTopicsChange,
   userId,
   sourceTitle,
 }: {
@@ -188,6 +190,7 @@ function DraftEditor({
   onDeckChange: (value: string) => void;
   onNotebookChange: (value: string) => void;
   onSaved: (message: string) => void;
+  onTopicsChange: (topics: Topic[]) => void;
   userId: string;
   sourceTitle?: string;
 }) {
@@ -196,6 +199,7 @@ function DraftEditor({
   const [questionText, setQuestionText] = useState(draft.questionText ?? "");
   const [answerText, setAnswerText] = useState(draft.answerText ?? "");
   const [solutionText, setSolutionText] = useState(draft.solutionText ?? "");
+  const [topicIds, setTopicIds] = useState(draft.topicIds);
   const [busy, setBusy] = useState(false);
   const isFlashcard = draft.kind === "flashcard";
 
@@ -205,6 +209,7 @@ function DraftEditor({
     setQuestionText(draft.questionText ?? "");
     setAnswerText(draft.answerText ?? "");
     setSolutionText(draft.solutionText ?? "");
+    setTopicIds(draft.topicIds);
   }, [draft]);
 
   return (
@@ -250,13 +255,14 @@ function DraftEditor({
             />
           </>
         )}
-        <div className="flex flex-wrap gap-2">
-          {topicNames(draft.topicIds, topics).map((name) => (
-            <span key={name} className="rounded-full border border-white/[0.1] bg-white/[0.05] px-3 py-1 text-xs text-text-secondary">
-              {name}
-            </span>
-          ))}
-        </div>
+        <TopicPicker
+          userId={userId}
+          topics={topics}
+          selectedTopicIds={topicIds}
+          onChange={setTopicIds}
+          onTopicsChange={onTopicsChange}
+          disabled={busy}
+        />
         {isFlashcard ? (
           decks.length > 0 ? (
             <label className="block">
@@ -334,7 +340,13 @@ function DraftEditor({
             onClick={async () => {
               setBusy(true);
               try {
-                await updateGeneratedContentDraftContent(userId, draft.id, isFlashcard ? { front, back } : { questionText, answerText, solutionText });
+                await updateGeneratedContentDraftContent(
+                  userId,
+                  draft.id,
+                  isFlashcard
+                    ? { front, back, topicIds }
+                    : { questionText, answerText, solutionText, topicIds }
+                );
                 onSaved("Draft edits saved.");
               } finally {
                 setBusy(false);
@@ -349,7 +361,13 @@ function DraftEditor({
             onClick={async () => {
               setBusy(true);
               try {
-                await updateGeneratedContentDraftContent(userId, draft.id, isFlashcard ? { front, back } : { questionText, answerText, solutionText });
+                await updateGeneratedContentDraftContent(
+                  userId,
+                  draft.id,
+                  isFlashcard
+                    ? { front, back, topicIds }
+                    : { questionText, answerText, solutionText, topicIds }
+                );
                 if (isFlashcard) {
                   await convertFlashcardDraftToCard(userId, { draftId: draft.id, deckId: selectedDeckId });
                   onSaved("Card added to your deck. You can review it in Learn.");
@@ -957,13 +975,29 @@ export default function LibraryPage() {
     }
   };
 
-  const toggleSourceTopic = async (topicId: string) => {
+  const updateSelectedSourceTopics = async (nextTopicIds: string[]) => {
     if (!selectedSource) return;
-    const nextTopicIds = selectedSource.topicIds.includes(topicId)
-      ? selectedSource.topicIds.filter((id) => id !== topicId)
-      : [...selectedSource.topicIds, topicId];
-    await updateSource(user.uid, selectedSource.id, { topicIds: nextTopicIds });
-    await loadAll();
+    setBusyAction("source-topics");
+    try {
+      await updateSource(user.uid, selectedSource.id, { topicIds: nextTopicIds });
+      setSources((current) =>
+        current.map((source) =>
+          source.id === selectedSource.id
+            ? { ...source, topicIds: nextTopicIds, updatedAt: Date.now() }
+            : source
+        )
+      );
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not update source Topics.",
+      });
+    } finally {
+      setBusyAction(null);
+    }
   };
 
   const toggleSourceFolder = async (folderId: string) => {
@@ -1134,36 +1168,13 @@ export default function LibraryPage() {
                     ) : null}
                   </div>
                 ) : null}
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Topics</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {topics.length === 0 ? (
-                      <span className="text-sm text-text-secondary">No topics yet.</span>
-                    ) : (
-                      topics.map((topic) => {
-                        const active = selectedTopicIds.includes(topic.id);
-                        return (
-                          <button
-                            key={topic.id}
-                            type="button"
-                            onClick={() =>
-                              setSelectedTopicIds((current) =>
-                                active ? current.filter((id) => id !== topic.id) : [...current, topic.id]
-                              )
-                            }
-                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                              active
-                                ? "border-warm-border bg-warm-glow text-warm-accent"
-                                : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
-                            }`}
-                          >
-                            {topic.name}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
+                <TopicPicker
+                  userId={user.uid}
+                  topics={topics}
+                  selectedTopicIds={selectedTopicIds}
+                  onChange={setSelectedTopicIds}
+                  onTopicsChange={setTopics}
+                />
                 <div>
                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Folders</div>
                   <div className="mt-2 flex flex-wrap gap-2">
@@ -1905,6 +1916,7 @@ export default function LibraryPage() {
                             onDeckChange={(value) => setDeckIdByDraft((current) => ({ ...current, [selectedDraft.id]: value }))}
                             onNotebookChange={(value) => setNotebookIdByDraft((current) => ({ ...current, [selectedDraft.id]: value }))}
                             onSaved={handleDraftSaved}
+                            onTopicsChange={setTopics}
                             userId={user.uid}
                             sourceTitle={selectedSource.title}
                           />
@@ -1985,25 +1997,18 @@ export default function LibraryPage() {
                 eyebrow="Topic links"
                 title="Connect to Progress"
               />
-              <div className="mt-5 flex flex-wrap gap-2">
-                {selectedSource && topics.length > 0 ? (
-                  topics.map((topic) => {
-                    const active = selectedSource.topicIds.includes(topic.id);
-                    return (
-                      <button
-                        key={topic.id}
-                        type="button"
-                        onClick={() => void toggleSourceTopic(topic.id)}
-                        className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                          active
-                            ? "border-warm-border bg-warm-glow text-warm-accent"
-                            : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
-                        }`}
-                      >
-                        {topic.name}
-                      </button>
-                    );
-                  })
+              <div className="mt-5">
+                {selectedSource ? (
+                  <TopicPicker
+                    userId={user.uid}
+                    topics={topics}
+                    selectedTopicIds={selectedSource.topicIds}
+                    onChange={(nextTopicIds) =>
+                      void updateSelectedSourceTopics(nextTopicIds)
+                    }
+                    onTopicsChange={setTopics}
+                    disabled={busyAction !== null}
+                  />
                 ) : (
                   <p className="text-sm leading-6 text-text-secondary">
                     No topics yet.

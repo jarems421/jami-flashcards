@@ -1,9 +1,11 @@
 import { normalizeStudyTextInput } from "@/lib/study/display-text";
+import { normalizeStringArray } from "@/lib/practice/content";
 
 export const MAX_FRONT_LENGTH = 400;
 export const MAX_BACK_LENGTH = 2_000;
-export const MAX_CARD_TAGS = 10;
-export const MAX_CARD_TAG_LENGTH = 42;
+const MAX_LEGACY_CARD_TAGS = 100;
+const MAX_LEGACY_CARD_TAG_LENGTH = 80;
+export const MAX_CARD_LEGACY_TOPIC_IDS = 30;
 const MAX_IMPORT_ERROR_MESSAGES = 8;
 
 export type Card = {
@@ -55,7 +57,7 @@ function normalizeTagText(value: string): string {
   return value.trim().replace(/\s+/g, " ");
 }
 
-export function getTagKey(value: string): string {
+function getTagKey(value: string): string {
   return normalizeTagText(value).toLowerCase();
 }
 
@@ -63,7 +65,7 @@ function normalizeSingleTag(value: string): string {
   return normalizeTagText(value);
 }
 
-export function normalizeCardTags(value: unknown): string[] {
+function normalizeCardTags(value: unknown): string[] {
   if (!Array.isArray(value)) {
     return [];
   }
@@ -78,31 +80,19 @@ export function normalizeCardTags(value: unknown): string[] {
 
     const nextTag = normalizeSingleTag(entry);
     const nextKey = getTagKey(nextTag);
-    if (!nextTag || nextTag.length > MAX_CARD_TAG_LENGTH || seenKeys.has(nextKey)) {
+    if (!nextTag || nextTag.length > MAX_LEGACY_CARD_TAG_LENGTH || seenKeys.has(nextKey)) {
       continue;
     }
 
     seenKeys.add(nextKey);
     normalized.push(nextTag);
 
-    if (normalized.length >= MAX_CARD_TAGS) {
+    if (normalized.length >= MAX_LEGACY_CARD_TAGS) {
       break;
     }
   }
 
   return normalized;
-}
-
-export function parseCardTagsInput(value: string): string[] {
-  return normalizeCardTags(value.split(","));
-}
-
-export function parseCardTagsParam(value: string | null): string[] {
-  if (!value) {
-    return [];
-  }
-
-  return parseCardTagsInput(value);
 }
 
 function normalizeImportCell(value: string): string {
@@ -394,129 +384,6 @@ export function exportCardsToSeparatedText(
   return [header, ...rows].join("\n");
 }
 
-export function addCardTag(
-  tags: string[],
-  value: string
-): { nextTags: string[]; added: boolean; error: string | null } {
-  const normalizedTags = normalizeCardTags(tags);
-  const nextTag = normalizeSingleTag(value);
-
-  if (!nextTag) {
-    return {
-      nextTags: normalizedTags,
-      added: false,
-      error: null,
-    };
-  }
-
-  if (nextTag.length > MAX_CARD_TAG_LENGTH) {
-    return {
-      nextTags: normalizedTags,
-      added: false,
-      error: `Each tag must be ${MAX_CARD_TAG_LENGTH} characters or less.`,
-    };
-  }
-
-  const nextTagKey = getTagKey(nextTag);
-  if (normalizedTags.some((tag) => getTagKey(tag) === nextTagKey)) {
-    return {
-      nextTags: normalizedTags,
-      added: false,
-      error: null,
-    };
-  }
-
-  if (normalizedTags.length >= MAX_CARD_TAGS) {
-    return {
-      nextTags: normalizedTags,
-      added: false,
-      error: `Use up to ${MAX_CARD_TAGS} tags per card.`,
-    };
-  }
-
-  return {
-    nextTags: [...normalizedTags, nextTag],
-    added: true,
-    error: null,
-  };
-}
-
-export function removeCardTag(tags: string[], value: string): string[] {
-  const nextTagKey = getTagKey(value);
-  if (!nextTagKey) {
-    return normalizeCardTags(tags);
-  }
-
-  return normalizeCardTags(
-    tags.filter((tag) => getTagKey(tag) !== nextTagKey)
-  );
-}
-
-export function getTagSuggestions(
-  availableTags: string[],
-  value: string,
-  selectedTags: string[],
-  limit = 8
-): string[] {
-  const queryKey = getTagKey(value);
-  const selected = new Set(normalizeCardTags(selectedTags).map(getTagKey));
-
-  return normalizeCardTags(availableTags)
-    .filter((tag) => {
-      const key = getTagKey(tag);
-      return !selected.has(key) && (!queryKey || key.includes(queryKey));
-    })
-    .sort((left, right) => {
-      const leftStartsWith = queryKey ? getTagKey(left).startsWith(queryKey) : false;
-      const rightStartsWith = queryKey ? getTagKey(right).startsWith(queryKey) : false;
-
-      if (leftStartsWith !== rightStartsWith) {
-        return leftStartsWith ? -1 : 1;
-      }
-
-      return left.localeCompare(right);
-    })
-    .slice(0, limit);
-}
-
-export function getCardTagsInputError(value: string): string | null {
-  const seenKeys = new Set<string>();
-
-  for (const rawTag of value.split(",")) {
-    const normalized = normalizeSingleTag(rawTag);
-    if (!normalized) {
-      continue;
-    }
-
-    if (normalized.length > MAX_CARD_TAG_LENGTH) {
-      return `Each tag must be ${MAX_CARD_TAG_LENGTH} characters or less.`;
-    }
-
-    seenKeys.add(getTagKey(normalized));
-    if (seenKeys.size > MAX_CARD_TAGS) {
-      return `Use up to ${MAX_CARD_TAGS} tags per card.`;
-    }
-  }
-
-  return null;
-}
-
-export function cardMatchesAnyTag(
-  card: Pick<Card, "tags">,
-  selectedTags: string[]
-): boolean {
-  if (selectedTags.length === 0) {
-    return true;
-  }
-
-  const allowedTags = new Set(normalizeCardTags(selectedTags).map(getTagKey));
-  if (allowedTags.size === 0) {
-    return true;
-  }
-
-  return card.tags.some((tag) => allowedTags.has(getTagKey(tag)));
-}
-
 export function mapCardData(id: string, data: Record<string, unknown>): Card {
   return {
     id,
@@ -531,8 +398,8 @@ export function mapCardData(id: string, data: Record<string, unknown>): Card {
     back: typeof data.back === "string" ? data.back : "",
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     tags: normalizeCardTags(data.tags),
-    topicIds: normalizeCardTags(data.topicIds),
-    sourceIds: normalizeCardTags(data.sourceIds),
+    topicIds: normalizeStringArray(data.topicIds, MAX_CARD_LEGACY_TOPIC_IDS, 120),
+    sourceIds: normalizeStringArray(data.sourceIds, 30, 160),
     interval: typeof data.interval === "number" ? data.interval : undefined,
     repetitions: typeof data.repetitions === "number" ? data.repetitions : undefined,
     easeFactor: typeof data.easeFactor === "number" ? data.easeFactor : undefined,

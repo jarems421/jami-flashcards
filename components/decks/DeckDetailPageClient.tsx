@@ -14,24 +14,22 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import {
-  addCardTag,
   exportCardsToSeparatedText,
   getCardContentKey,
   mapCardData,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
   normalizeCardContentInput,
-  normalizeCardTags,
   type Card,
 } from "@/lib/study/cards";
 import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
-import TagInput from "@/components/decks/TagInput";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import CardActionsMenu from "@/components/decks/CardActionsMenu";
 import CardFaceSummary from "@/components/decks/CardFaceSummary";
-import BulkTagToolbar from "@/components/decks/BulkTagToolbar";
+import BulkTopicToolbar from "@/components/topics/BulkTopicToolbar";
+import TopicPicker from "@/components/topics/TopicPicker";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import CardBackEditor from "@/components/decks/CardBackEditor";
@@ -41,7 +39,7 @@ import { useCardSelection } from "@/components/decks/useCardSelection";
 import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
-import type { Topic } from "@/lib/practice/topics";
+import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
 import { db } from "@/services/firebase/client";
 import { getDeckStudyHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -73,7 +71,6 @@ export default function DeckDetailPageClient() {
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [availableTags, setAvailableTags] = useState<string[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
@@ -82,9 +79,7 @@ export default function DeckDetailPageClient() {
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
-  const [editingTags, setEditingTags] = useState<string[]>([]);
   const [editingTopicIds, setEditingTopicIds] = useState<string[]>([]);
-  const [editingPendingTag, setEditingPendingTag] = useState("");
   const [savingCardId, setSavingCardId] = useState<string | null>(null);
   const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
   const [previewCardId, setPreviewCardId] = useState<string | null>(null);
@@ -93,16 +88,14 @@ export default function DeckDetailPageClient() {
   );
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
-  const [bulkTags, setBulkTags] = useState<string[]>([]);
-  const [bulkPendingTag, setBulkPendingTag] = useState("");
-  const [applyingBulkTags, setApplyingBulkTags] = useState(false);
+  const [bulkTopicIds, setBulkTopicIds] = useState<string[]>([]);
+  const [applyingBulkTopics, setApplyingBulkTopics] = useState(false);
 
   useEffect(() => {
     if (!deckId) {
       setDeck(null);
       setCards([]);
       setTopics([]);
-      setAvailableTags([]);
       setLoadingCards(false);
       setFeedback({
         type: "error",
@@ -123,7 +116,6 @@ export default function DeckDetailPageClient() {
           if (!cancelled) {
             setDeck(null);
             setCards([]);
-            setAvailableTags([]);
             setFeedback({
               type: "error",
               message: "Deck not found.",
@@ -137,14 +129,8 @@ export default function DeckDetailPageClient() {
           where("deckId", "==", deckId),
           where("userId", "==", user.uid)
         );
-        const userCardsQuery = query(
-          collection(db, "cards"),
-          where("userId", "==", user.uid)
-        );
-
-        const [snapshot, allUserCardsSnapshot, nextTopics] = await Promise.all([
+        const [snapshot, nextTopics] = await Promise.all([
           getDocs(deckCardsQuery),
-          getDocs(userCardsQuery),
           getActiveTopics(user.uid).catch(() => []),
         ]);
 
@@ -157,25 +143,15 @@ export default function DeckDetailPageClient() {
         );
         nextCards.sort((left, right) => right.createdAt - left.createdAt);
 
-        const nextAvailableTags = Array.from(
-          new Set(
-            allUserCardsSnapshot.docs.flatMap((cardDoc) =>
-              normalizeCardTags(cardDoc.data().tags)
-            )
-          )
-        ).sort((left, right) => left.localeCompare(right));
-
         setDeck(ownedDeck);
         setCards(nextCards);
         setTopics(nextTopics);
-        setAvailableTags(nextAvailableTags);
       } catch (error) {
         console.error(error);
         if (!cancelled) {
           setDeck(null);
           setCards([]);
           setTopics([]);
-          setAvailableTags([]);
           setFeedback({
             type: "error",
             message: "Failed to load cards.",
@@ -208,9 +184,7 @@ export default function DeckDetailPageClient() {
     setEditingCardId(null);
     setEditingFront("");
     setEditingBack("");
-    setEditingTags([]);
     setEditingTopicIds([]);
-    setEditingPendingTag("");
     setSavingCardId(null);
   };
 
@@ -218,9 +192,7 @@ export default function DeckDetailPageClient() {
     setEditingCardId(card.id);
     setEditingFront(card.front);
     setEditingBack(card.back);
-    setEditingTags(card.tags);
     setEditingTopicIds(card.topicIds ?? []);
-    setEditingPendingTag("");
     setFeedback(null);
   };
 
@@ -241,16 +213,10 @@ export default function DeckDetailPageClient() {
     meta: { selectCreated: boolean }
   ) => {
     addCreatedCardsToList(createdCards);
-    setAvailableTags((prev) =>
-      Array.from(new Set([...prev, ...createdCards.flatMap((card) => card.tags)])).sort((left, right) =>
-        left.localeCompare(right)
-      )
-    );
 
     if (meta.selectCreated) {
       setSelectedCardIds(createdCards.map((card) => card.id));
-      setBulkTags([]);
-      setBulkPendingTag("");
+      setBulkTopicIds([]);
     }
   };
 
@@ -288,20 +254,11 @@ export default function DeckDetailPageClient() {
 
     const nextFront = normalizeCardContentInput(editingFront);
     const nextBack = normalizeCardContentInput(editingBack);
-    const tagResult = addCardTag(editingTags, editingPendingTag);
 
     if (!nextFront || !nextBack) {
       setFeedback({
         type: "error",
         message: "Both front and back are required.",
-      });
-      return;
-    }
-
-    if (tagResult.error) {
-      setFeedback({
-        type: "error",
-        message: tagResult.error,
       });
       return;
     }
@@ -317,7 +274,6 @@ export default function DeckDetailPageClient() {
       return;
     }
 
-    const nextTags = tagResult.nextTags;
     const nextTopicIds = editingTopicIds;
 
     setSavingCardId(cardId);
@@ -327,7 +283,7 @@ export default function DeckDetailPageClient() {
       await updateDoc(doc(db, "cards", cardId), {
         front: nextFront,
         back: nextBack,
-        tags: nextTags,
+        tags: [],
         topicIds: nextTopicIds,
       });
 
@@ -338,15 +294,10 @@ export default function DeckDetailPageClient() {
                 ...card,
                 front: nextFront,
                 back: nextBack,
-                tags: nextTags,
+                tags: [],
                 topicIds: nextTopicIds,
               }
             : card
-        )
-      );
-      setAvailableTags((prev) =>
-        Array.from(new Set([...prev, ...nextTags])).sort((left, right) =>
-          left.localeCompare(right)
         )
       );
       resetEditingCard();
@@ -399,7 +350,8 @@ export default function DeckDetailPageClient() {
     }
   };
 
-  const deckTagCount = Array.from(new Set(cards.flatMap((card) => card.tags))).length;
+  const deckTopicCount = new Set(cards.flatMap((card) => card.topicIds ?? [])).size;
+  const topicsById = useMemo(() => new Map(topics.map((topic) => [topic.id, topic])), [topics]);
   const filteredCards = useMemo(() => {
     const term = searchTerm.trim().toLowerCase();
     if (!term) {
@@ -410,9 +362,11 @@ export default function DeckDetailPageClient() {
       (card) =>
         card.front.toLowerCase().includes(term) ||
         card.back.toLowerCase().includes(term) ||
-      card.tags.some((tag) => tag.toLowerCase().includes(term))
+        (card.topicIds ?? []).some((topicId) =>
+          topicsById.get(topicId)?.name.toLowerCase().includes(term)
+        )
     );
-  }, [cards, searchTerm]);
+  }, [cards, searchTerm, topicsById]);
   const visibleCardIds = useMemo(() => filteredCards.map((card) => card.id), [filteredCards]);
   const {
     selectedCardIdSet,
@@ -426,31 +380,34 @@ export default function DeckDetailPageClient() {
     disabled: isDemoUser,
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
-  const topicsById = useMemo(() => new Map(topics.map((topic) => [topic.id, topic])), [topics]);
   const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
 
-  const handleAddTagsToSelectedCards = async () => {
-    const tagResult = addCardTag(bulkTags, bulkPendingTag);
-    if (tagResult.error) {
-      setFeedback({ type: "error", message: tagResult.error });
-      return;
-    }
-
-    const nextBulkTags = tagResult.nextTags;
-    if (selectedCardIds.length === 0 || nextBulkTags.length === 0) {
-      setFeedback({ type: "error", message: "Select cards and add at least one tag first." });
+  const handleAddTopicsToSelectedCards = async () => {
+    if (selectedCardIds.length === 0 || bulkTopicIds.length === 0) {
+      setFeedback({ type: "error", message: "Select cards and choose at least one Topic first." });
       return;
     }
 
     const selected = new Set(selectedCardIds);
-    const cardsToUpdate = cards
-      .filter((card) => selected.has(card.id))
-      .map((card) => ({
-        id: card.id,
-        tags: normalizeCardTags([...card.tags, ...nextBulkTags]),
-      }));
+    const selectedCards = cards.filter((card) => selected.has(card.id));
+    const overLimitCard = selectedCards.find((card) => {
+      const current = card.topicIds ?? [];
+      const additions = bulkTopicIds.filter((topicId) => !current.includes(topicId));
+      return current.length + additions.length > MAX_LINKED_TOPICS;
+    });
+    if (overLimitCard) {
+      setFeedback({
+        type: "error",
+        message: "One or more selected cards already has five Topics. Reduce its Topics before adding more.",
+      });
+      return;
+    }
+    const cardsToUpdate = selectedCards.map((card) => ({
+      id: card.id,
+      topicIds: Array.from(new Set([...(card.topicIds ?? []), ...bulkTopicIds])),
+    }));
 
-    setApplyingBulkTags(true);
+    setApplyingBulkTopics(true);
     setFeedback(null);
 
     try {
@@ -458,36 +415,39 @@ export default function DeckDetailPageClient() {
         const batch = writeBatch(db);
         const chunk = cardsToUpdate.slice(start, start + 450);
         for (const card of chunk) {
-          batch.update(doc(db, "cards", card.id), { tags: card.tags });
+          batch.update(doc(db, "cards", card.id), {
+            topicIds: card.topicIds,
+            tags: [],
+          });
         }
         await batch.commit();
       }
 
-      const tagsByCardId = new Map(cardsToUpdate.map((card) => [card.id, card.tags]));
+      const topicIdsByCardId = new Map(
+        cardsToUpdate.map((card) => [card.id, card.topicIds])
+      );
       setCards((prev) =>
         prev.map((card) =>
-          tagsByCardId.has(card.id)
-            ? { ...card, tags: tagsByCardId.get(card.id) ?? card.tags }
+          topicIdsByCardId.has(card.id)
+            ? {
+                ...card,
+                topicIds: topicIdsByCardId.get(card.id) ?? card.topicIds,
+                tags: [],
+              }
             : card
         )
       );
-      setAvailableTags((prev) =>
-        Array.from(new Set([...prev, ...nextBulkTags])).sort((left, right) =>
-          left.localeCompare(right)
-        )
-      );
-      setBulkTags([]);
-      setBulkPendingTag("");
+      setBulkTopicIds([]);
       setSelectedCardIds([]);
       setFeedback({
         type: "success",
-        message: `Added tags to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`,
+        message: `Added Topics to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`,
       });
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to add tags to the selected cards." });
+      setFeedback({ type: "error", message: "Failed to add Topics to the selected cards." });
     } finally {
-      setApplyingBulkTags(false);
+      setApplyingBulkTopics(false);
     }
   };
 
@@ -566,8 +526,8 @@ export default function DeckDetailPageClient() {
                   <div className="mt-1 text-2xl font-medium sm:text-3xl">{cards.length}</div>
                 </div>
                 <div>
-                  <div className="text-xs text-text-muted">Tags</div>
-                  <div className="mt-1 text-2xl font-medium sm:text-3xl">{deckTagCount}</div>
+                  <div className="text-xs text-text-muted">Topics</div>
+                  <div className="mt-1 text-2xl font-medium sm:text-3xl">{deckTopicCount}</div>
                 </div>
               </div>
               <details className="group/export mt-5">
@@ -621,7 +581,7 @@ export default function DeckDetailPageClient() {
             <div className="rounded-[1.6rem] border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-text-secondary">
               <div className="font-semibold text-white">Card editing is locked in the shared demo</div>
               <p className="mt-1 leading-6">
-                You can inspect the seeded cards in this deck, but creating, editing, and bulk tagging are reserved for private accounts.
+                You can inspect the seeded cards in this deck, but creating, editing, and bulk Topic changes are reserved for private accounts.
               </p>
             </div>
           ) : (
@@ -629,7 +589,8 @@ export default function DeckDetailPageClient() {
               userId={user.uid}
               decks={[deck]}
               existingCards={cards}
-              availableTags={availableTags}
+              topics={topics}
+              onTopicsChange={setTopics}
               defaultDeckId={deck.id}
               onCardsCreated={handleCardsCreated}
               onFeedback={setFeedback}
@@ -668,17 +629,17 @@ export default function DeckDetailPageClient() {
             onChange={(event) => setSearchTerm(event.target.value)}
           />
           {!isDemoUser ? (
-            <BulkTagToolbar
+            <BulkTopicToolbar
+              userId={user.uid}
               selectedCount={selectedCardIds.length}
               visibleCount={filteredCards.length}
-              tags={bulkTags}
-              pendingTag={bulkPendingTag}
-              availableTags={availableTags}
-              disabled={applyingBulkTags}
+              topicIds={bulkTopicIds}
+              topics={topics}
+              disabled={applyingBulkTopics}
               onSelectAll={selectVisibleCards}
-              onTagsChange={setBulkTags}
-              onPendingTagChange={setBulkPendingTag}
-              onApply={() => void handleAddTagsToSelectedCards()}
+              onTopicIdsChange={setBulkTopicIds}
+              onTopicsChange={setTopics}
+              onApply={() => void handleAddTopicsToSelectedCards()}
               onClearSelection={clearSelection}
             />
           ) : null}
@@ -719,7 +680,7 @@ export default function DeckDetailPageClient() {
                       </div>
                       <CardQualityWarnings
                         warnings={getCardQualityWarnings(
-                          { front: editingFront, back: editingBack, tags: editingTags },
+                          { front: editingFront, back: editingBack, topicIds: editingTopicIds },
                           { duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)) }
                         )}
                       />
@@ -743,63 +704,22 @@ export default function DeckDetailPageClient() {
                           currentBack={editingBack}
                           deckId={deckId}
                           deckName={deck.name}
-                          tags={editingTags}
+                          topics={editingTopicIds
+                            .map((topicId) => topicsById.get(topicId)?.name)
+                            .filter((name): name is string => Boolean(name))}
+                          topicIds={editingTopicIds}
                           disabled={savingCardId === card.id}
                           onApply={setEditingBack}
                         />
                       ) : null}
-                      <TagInput
-                        tags={editingTags}
-                        pendingTag={editingPendingTag}
-                        availableTags={availableTags}
-                        onTagsChange={setEditingTags}
-                        onPendingTagChange={setEditingPendingTag}
-                        helperText="Suggestions come from tags you already use across all decks."
+                      <TopicPicker
+                        userId={user.uid}
+                        topics={topics}
+                        selectedTopicIds={editingTopicIds}
+                        onChange={setEditingTopicIds}
+                        onTopicsChange={setTopics}
                         disabled={savingCardId === card.id}
                       />
-                      <div>
-                        <div className="mb-2 text-sm font-medium tracking-[0.01em] text-text-secondary">
-                          Topics
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {topics.length > 0 ? (
-                            topics.map((topic) => {
-                              const active = editingTopicIds.includes(topic.id);
-                              return (
-                                <button
-                                  key={topic.id}
-                                  type="button"
-                                  disabled={savingCardId === card.id}
-                                  onClick={() =>
-                                    setEditingTopicIds((current) =>
-                                      current.includes(topic.id)
-                                        ? current.filter((topicId) => topicId !== topic.id)
-                                        : [...current, topic.id]
-                                    )
-                                  }
-                                  className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
-                                    active
-                                      ? "border-warm-accent bg-warm-glow text-warm-accent"
-                                      : "border-white/[0.10] bg-white/[0.05] text-text-secondary hover:border-white/[0.18]"
-                                  } disabled:cursor-not-allowed disabled:saturate-[0.82]`}
-                                >
-                                  {topic.name}
-                                </button>
-                              );
-                            })
-                          ) : (
-                            <Link
-                              href="/dashboard/practise"
-                              className="text-sm font-medium text-warm-accent underline-offset-4 hover:underline"
-                            >
-                              Create topics from your workspace first
-                            </Link>
-                          )}
-                        </div>
-                        <p className="mt-2 text-xs leading-5 text-text-muted">
-                          Tags organise cards. Topics connect this card to mastery and Progress.
-                        </p>
-                      </div>
                       <div className="grid gap-2 sm:flex sm:flex-wrap">
                         <Button
                           type="button"
@@ -846,14 +766,6 @@ export default function DeckDetailPageClient() {
                             duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)),
                           })}
                         />
-                        {card.tags.map((tag) => (
-                          <span
-                            key={tag}
-                            className="max-w-full rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
-                          >
-                            <span className="block truncate">{tag}</span>
-                          </span>
-                        ))}
                         {(card.topicIds ?? []).map((topicId) => {
                           const topic = topicsById.get(topicId);
                           if (!topic) return null;

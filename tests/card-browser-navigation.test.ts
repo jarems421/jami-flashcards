@@ -9,13 +9,14 @@ describe("card browser URL state", () => {
   it("reads supported filters and ignores unsupported values", () => {
     expect(
       getCardBrowserStateFromSearch(
-        "?q=cell&view=list&deck=biology&folder=science&tag=exam&status=weak"
+        "?q=cell&view=list&deck=biology&folder=science&topic=topic-1&tag=exam&status=weak"
       )
     ).toEqual({
       search: "cell",
       deckId: "biology",
       folderId: "science",
-      tag: "exam",
+      topicId: "topic-1",
+      legacyTag: "exam",
       status: "weak",
     });
 
@@ -30,10 +31,11 @@ describe("card browser URL state", () => {
         search: "mitosis",
         deckId: "",
         folderId: "",
-        tag: "biology",
+        topicId: "biology-topic",
+        legacyTag: "",
         status: "due",
       })
-    ).toBe("?agent=1&q=mitosis&tag=biology&status=due");
+    ).toBe("?agent=1&q=mitosis&topic=biology-topic&status=due");
 
     expect(
       buildCardBrowserSearch(
@@ -41,5 +43,14 @@ describe("card browser URL state", () => {
         DEFAULT_CARD_BROWSER_STATE
       )
     ).toBe("?agent=1");
+  });
+
+  it("preserves a legacy tag until the page resolves it to a Topic", () => {
+    expect(
+      buildCardBrowserSearch("", {
+        ...DEFAULT_CARD_BROWSER_STATE,
+        legacyTag: "Cell Biology",
+      })
+    ).toBe("?tag=Cell+Biology");
   });
 });

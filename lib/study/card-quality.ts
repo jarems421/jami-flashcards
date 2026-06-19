@@ -8,7 +8,7 @@ export type CardQualityWarning = {
 };
 
 export function getCardQualityWarnings(
-  card: Pick<Card, "front" | "back" | "tags">,
+  card: Pick<Card, "front" | "back"> & { topicIds?: string[] },
   options: { duplicateCount?: number } = {}
 ): CardQualityWarning[] {
   const warnings: CardQualityWarning[] = [];
@@ -60,11 +60,11 @@ export function getCardQualityWarnings(
     });
   }
 
-  if (card.tags.length === 0) {
+  if ((card.topicIds?.length ?? 0) === 0) {
     warnings.push({
-      id: "untagged",
-      label: "No tags",
-      detail: "Tags make focused review easier later.",
+      id: "no-topics",
+      label: "No Topics",
+      detail: "Topics make focused review and connected study easier later.",
       tone: "calm",
     });
   }

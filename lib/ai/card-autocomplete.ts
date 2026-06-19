@@ -8,7 +8,7 @@ type SubjectHint =
 type SubjectInput = {
   front: string;
   deckName?: string;
-  tags?: string[];
+  topics?: string[];
 };
 
 type CleanGeneratedStudyTextOptions = {
@@ -357,9 +357,9 @@ export function cleanGeneratedCardBack(text: string) {
 export function detectCardBackSubject({
   front,
   deckName,
-  tags = [],
+  topics = [],
 }: SubjectInput): SubjectHint {
-  const haystack = [front, deckName, ...tags].join(" ").toLowerCase();
+  const haystack = [front, deckName, ...topics].join(" ").toLowerCase();
 
   if (
     /[=+\-*/^\u221a\u03c0\u03b8\u0394\u03a3\u222b\u2264\u2265<>]/.test(front) ||
@@ -419,7 +419,7 @@ export function getSubjectPrompt(subject: SubjectHint) {
     case "general":
     default:
       return `General accuracy rules:
-- Use the deck name, tags, and nearby cards to infer level and format.
+- Use the deck name, Topics, and nearby cards to infer level and format.
 - If the front is under-specified, make the smallest reasonable assumption and state it briefly.
 - Do not add decorative facts that make the card harder to review.`;
   }

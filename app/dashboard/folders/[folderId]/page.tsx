@@ -8,6 +8,7 @@ import AppPage from "@/components/layout/AppPage";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
 import DeckObjectCard from "@/components/workspace/DeckObjectCard";
 import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
+import TopicPicker from "@/components/topics/TopicPicker";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import {
   normalizeObjectColor,
@@ -29,6 +30,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckHref } from "@/lib/app/routes";
 import { useUser } from "@/lib/auth/user-context";
 import type { Source, SourceType } from "@/lib/practice/sources";
+import type { Topic } from "@/lib/practice/topics";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import {
   buildFolderTabSearch,
@@ -47,6 +49,7 @@ import {
 } from "@/services/study/notebooks";
 import { importUploadedNotebook } from "@/services/study/notebook-import";
 import { createSource, getActiveSources, updateSource } from "@/services/study/sources";
+import { getActiveTopics } from "@/services/study/topics";
 
 type Feedback = { type: "success" | "error"; message: string };
 function isPermissionDenied(error: unknown) {
@@ -93,6 +96,7 @@ export default function FolderDetailPage() {
   const [notebookPageColor, setNotebookPageColor] = useState<NotebookPageColor>("white");
   const [notebookPageStyle, setNotebookPageStyle] = useState<NotebookPageStyle>("plain");
   const [notebookFile, setNotebookFile] = useState<File | null>(null);
+  const [notebookTopicIds, setNotebookTopicIds] = useState<string[]>([]);
   const [creatingNotebook, setCreatingNotebook] = useState(false);
   const [notebookUploadProgress, setNotebookUploadProgress] = useState<
     number | null
@@ -119,6 +123,8 @@ export default function FolderDetailPage() {
   const [sourceText, setSourceText] = useState("");
   const [sourceUrl, setSourceUrl] = useState("");
   const [sourceFileName, setSourceFileName] = useState("");
+  const [sourceTopicIds, setSourceTopicIds] = useState<string[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
 
   useEffect(() => {
     const handlePopState = () => {
@@ -151,11 +157,13 @@ export default function FolderDetailPage() {
         decksResult,
         sourcesResult,
         notebooksResult,
+        topicsResult,
       ] = await Promise.allSettled([
         getStudyFolderById(user.uid, folderId),
         getDecks(user.uid),
         getActiveSources(user.uid),
         getNotebooksForFolder(user.uid, folderId),
+        getActiveTopics(user.uid),
       ]);
 
       if (folderResult.status === "rejected") {
@@ -166,6 +174,7 @@ export default function FolderDetailPage() {
         decksResult,
         sourcesResult,
         notebooksResult,
+        topicsResult,
       ]
         .map(resultError)
         .filter(Boolean);
@@ -183,11 +192,13 @@ export default function FolderDetailPage() {
       const nextDecks = resultValue<Deck[]>(decksResult, []);
       const nextSources = resultValue<Source[]>(sourcesResult, []);
       const nextNotebooks = resultValue<Notebook[]>(notebooksResult, []);
+      const nextTopics = resultValue<Topic[]>(topicsResult, []);
 
       setFolder(nextFolder);
       setDecks(nextDecks);
       setSources(nextSources);
       setNotebooks(nextNotebooks);
+      setTopics(nextTopics);
     } catch (error) {
       console.error(error);
       setFeedback({
@@ -420,7 +431,7 @@ export default function FolderDetailPage() {
         type: sourceType,
         subject: folder.subject,
         folderIds: [folder.id],
-        topicIds: folder.topicIds,
+        topicIds: sourceTopicIds,
         contentText: sourceType === "pasted_text" || sourceType === "manual_note" ? sourceText : undefined,
         externalUrl: sourceType === "link" ? sourceUrl : undefined,
         fileName: sourceType === "file" ? sourceFileName : undefined,
@@ -433,7 +444,7 @@ export default function FolderDetailPage() {
         type: sourceType,
         subject: folder.subject,
         folderIds: [folder.id],
-        topicIds: folder.topicIds,
+        topicIds: sourceTopicIds,
         contentText: sourceType === "pasted_text" || sourceType === "manual_note" ? sourceText.trim() || undefined : undefined,
         externalUrl: sourceType === "link" ? sourceUrl.trim() || undefined : undefined,
         fileName: sourceType === "file" ? sourceFileName.trim() || undefined : undefined,
@@ -448,6 +459,7 @@ export default function FolderDetailPage() {
       setSourceText("");
       setSourceUrl("");
       setSourceFileName("");
+      setSourceTopicIds([]);
       setShowCreateSource(false);
       setFeedback({ type: "success", message: "Source created in this folder and Library." });
     } catch (error) {
@@ -476,7 +488,7 @@ export default function FolderDetailPage() {
           folderId: folder.id,
           title,
           file: notebookFile,
-          topicIds: folder.topicIds,
+          topicIds: notebookTopicIds,
           color: notebookColor,
           icon: notebookIcon,
           onProgress: setNotebookUploadProgress,
@@ -488,6 +500,7 @@ export default function FolderDetailPage() {
         setNotebookPageColor("white");
         setNotebookPageStyle("plain");
         setNotebookFile(null);
+        setNotebookTopicIds([]);
         setShowNotebookForm(false);
         setFeedback({
           type: "success",
@@ -500,7 +513,7 @@ export default function FolderDetailPage() {
         folderId: folder.id,
         title,
         type: "blank",
-        topicIds: folder.topicIds,
+        topicIds: notebookTopicIds,
         color: notebookColor,
         icon: notebookIcon,
         pageColor: notebookPageColor,
@@ -523,6 +536,7 @@ export default function FolderDetailPage() {
       setNotebookPageColor("white");
       setNotebookPageStyle("plain");
       setNotebookFile(null);
+      setNotebookTopicIds([]);
       setShowNotebookForm(false);
       setFeedback({
         type: "success",
@@ -748,6 +762,16 @@ export default function FolderDetailPage() {
                   PDF and image pages use the file itself as their background. Any blank pages added later will use white plain paper.
                 </div>
               )}
+              <div className="lg:col-span-2">
+                <TopicPicker
+                  userId={user.uid}
+                  topics={topics}
+                  selectedTopicIds={notebookTopicIds}
+                  onChange={setNotebookTopicIds}
+                  onTopicsChange={setTopics}
+                  disabled={creatingNotebook}
+                />
+              </div>
               <div className="flex gap-2 lg:col-span-2">
                 <Button
                   type="button"
@@ -761,6 +785,7 @@ export default function FolderDetailPage() {
                     setNotebookPageColor("white");
                     setNotebookPageStyle("plain");
                     setNotebookFile(null);
+                    setNotebookTopicIds([]);
                   }}
                 >
                   Cancel
@@ -1116,6 +1141,16 @@ export default function FolderDetailPage() {
                 ) : (
                   <Textarea label="Source text" value={sourceText} onChange={(event) => setSourceText(event.target.value)} rows={5} containerClassName="mt-3" />
                 )}
+                <div className="mt-3">
+                  <TopicPicker
+                    userId={user.uid}
+                    topics={topics}
+                    selectedTopicIds={sourceTopicIds}
+                    onChange={setSourceTopicIds}
+                    onTopicsChange={setTopics}
+                    disabled={busyAssetId === "new-source"}
+                  />
+                </div>
                 <div className="mt-3">
                   <Button
                     type="button"

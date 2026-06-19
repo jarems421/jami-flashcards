@@ -26,7 +26,8 @@ Sound encouraging and concrete.`;
 type ExplanationContext = {
   deckId?: unknown;
   deckName?: unknown;
-  tags?: unknown;
+  topicIds?: unknown;
+  topics?: unknown;
   difficulty?: unknown;
   lapses?: unknown;
   reps?: unknown;
@@ -76,7 +77,8 @@ export async function POST(request: NextRequest) {
   let context: {
     deckId?: string;
     deckName?: string;
-    tags?: string[];
+    topicIds?: string[];
+    topics?: string[];
     difficulty?: number;
     lapses?: number;
     reps?: number;
@@ -100,10 +102,15 @@ export async function POST(request: NextRequest) {
           typeof rawContext.deckName === "string" && rawContext.deckName.trim()
             ? rawContext.deckName.slice(0, 120)
             : undefined,
-        tags: Array.isArray(rawContext.tags)
-          ? rawContext.tags
-              .filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
-              .slice(0, 8)
+        topicIds: Array.isArray(rawContext.topicIds)
+          ? rawContext.topicIds
+              .filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
+              .slice(0, 5)
+          : undefined,
+        topics: Array.isArray(rawContext.topics)
+          ? rawContext.topics
+              .filter((topic): topic is string => typeof topic === "string" && topic.trim().length > 0)
+              .slice(0, 5)
           : undefined,
         difficulty:
           typeof rawContext.difficulty === "number"
@@ -142,7 +149,7 @@ export async function POST(request: NextRequest) {
     const memoryProfilePrompt = context
       ? `Card context:
 - Deck: ${context.deckName ?? "Unknown"}
-- Tags: ${context.tags?.length ? context.tags.map((tag) => `#${tag}`).join(", ") : "None"}
+- Topics: ${context.topics?.length ? context.topics.join(", ") : "None"}
 - Difficulty: ${
           typeof context.difficulty === "number"
             ? context.difficulty >= 7
@@ -177,8 +184,8 @@ If this looks like a shaky card, be extra clear about the key distinction and gi
           const cardFront = typeof data.front === "string" ? data.front : "";
           const cardBack = typeof data.back === "string" ? data.back : "";
           const deckId = typeof data.deckId === "string" ? data.deckId : "";
-          const tags = Array.isArray(data.tags)
-            ? data.tags.filter((tag): tag is string => typeof tag === "string" && tag.trim().length > 0)
+          const topicIds = Array.isArray(data.topicIds)
+            ? data.topicIds.filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
             : [];
 
           let score = 0;
@@ -186,9 +193,11 @@ If this looks like a shaky card, be extra clear about the key distinction and gi
             score += 6;
           }
 
-          if (Array.isArray(context.tags) && context.tags.length > 0) {
-            const matchingTags = tags.filter((tag) => context.tags?.includes(tag));
-            score += matchingTags.length * 3;
+          if (Array.isArray(context.topicIds) && context.topicIds.length > 0) {
+            const matchingTopicIds = topicIds.filter((topicId) =>
+              context.topicIds?.includes(topicId)
+            );
+            score += matchingTopicIds.length * 3;
           }
 
           if (
@@ -198,7 +207,7 @@ If this looks like a shaky card, be extra clear about the key distinction and gi
             score = -1;
           }
 
-          return { front: cardFront, back: cardBack, tags, score };
+          return { front: cardFront, back: cardBack, score };
         })
         .filter((card) => card.score > 0)
         .sort((left, right) => right.score - left.score)
@@ -210,9 +219,7 @@ ${relatedCards
   .map(
     (card) =>
       `- Q: ${card.front.slice(0, 140)}
-  A: ${card.back.slice(0, 220)}${
-        card.tags.length ? `\n  Tags: ${card.tags.map((tag) => `#${tag}`).join(", ")}` : ""
-      }`
+  A: ${card.back.slice(0, 220)}`
   )
   .join("\n")}
 

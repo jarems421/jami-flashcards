@@ -44,7 +44,6 @@ export type TodayWeakTopic = {
   topicId: string;
   name: string;
   subject: string;
-  accuracy: number;
   reason: string;
   href: string;
 };
@@ -156,7 +155,7 @@ function getPrimaryDeckId(cards: Card[]) {
 }
 
 function getTopicHref(topicId: string) {
-  return `/dashboard/folders?topic=${encodeURIComponent(topicId)}`;
+  return `/dashboard/topics/${encodeURIComponent(topicId)}`;
 }
 
 function getNotebookHref(notebookId: string) {
@@ -211,7 +210,6 @@ function buildWeakTopics(input: BuildTodayPlanInput, now: number) {
     masteryEvents: input.masteryEvents,
     sources: input.sources,
     notebooks: input.notebooks,
-    studyFolders: input.studyFolders,
     now,
   });
 
@@ -220,24 +218,22 @@ function buildWeakTopics(input: BuildTodayPlanInput, now: number) {
       (summary) =>
         summary.weakCardCount > 0 ||
         summary.dueCardCount > 0 ||
-        summary.masteryScore < 0 ||
-        summary.notebookCount > 0
+        summary.masteryScore < 0
     )
     .map((summary) => {
-      let reason = "Open the linked folder, continue a notebook page, then review related cards.";
+      let reason = "Recent study evidence suggests this Topic needs another pass.";
       if (summary.weakCardCount > 0) {
         reason = `${pluralize(summary.weakCardCount, "weak card")} linked to this topic.`;
       } else if (summary.dueCardCount > 0) {
         reason = `${pluralize(summary.dueCardCount, "due card")} linked to this topic.`;
-      } else if (summary.notebookCount > 0) {
-        reason = `${pluralize(summary.notebookCount, "notebook")} linked to this topic.`;
+      } else if (summary.masteryScore < 0) {
+        reason = "Recent practice showed difficulty in this Topic.";
       }
 
       return {
         topicId: summary.topic.id,
         name: summary.topic.name,
         subject: summary.topic.subject,
-        accuracy: summary.cardCount > 0 ? Math.max(0, 100 - summary.weakCardCount * 20) : 0,
         reason,
         href: getTopicHref(summary.topic.id),
       };

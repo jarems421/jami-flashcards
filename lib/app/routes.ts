@@ -9,7 +9,7 @@ export function getDeckStudyRouteHref(deckId: string) {
 export function getCustomStudyHref(options?: {
   mode?: "daily" | "custom";
   deckIds?: string[];
-  tags?: string[];
+  topicIds?: string[];
 }) {
   const searchParams = new URLSearchParams();
   const mode = options?.mode ?? "custom";
@@ -20,18 +20,18 @@ export function getCustomStudyHref(options?: {
     searchParams.set("decks", deckIds.join(","));
   }
 
-  const tags = (options?.tags ?? []).filter(Boolean);
-  if (tags.length > 0) {
-    searchParams.set("tags", tags.join(","));
+  const topicIds = (options?.topicIds ?? []).filter(Boolean);
+  if (topicIds.length > 0) {
+    searchParams.set("topics", topicIds.join(","));
   }
 
   return `/dashboard/study?${searchParams.toString()}`;
 }
 
-export function getDeckStudyHref(deckId: string, tag?: string) {
+export function getDeckStudyHref(deckId: string, topicId?: string) {
   return getCustomStudyHref({
     mode: "custom",
     deckIds: [deckId],
-    tags: tag ? [tag] : [],
+    topicIds: topicId ? [topicId] : [],
   });
 }

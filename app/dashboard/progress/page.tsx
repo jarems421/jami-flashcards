@@ -18,6 +18,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { getCustomStudyHref, getDeckStudyHref } from "@/lib/app/routes";
 import { db } from "@/services/firebase/client";
 import type { Source } from "@/lib/practice/sources";
+import type { Topic } from "@/lib/practice/topics";
 import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
 import { computeStudyStreak, type DailyStudyActivity } from "@/lib/study/activity";
 import type { Card as StudyCard } from "@/lib/study/cards";
@@ -41,6 +42,7 @@ import { loadStudyActivity } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
 import { getActiveNotebooks } from "@/services/study/notebooks";
+import { getActiveTopics } from "@/services/study/topics";
 import AppPage from "@/components/layout/AppPage";
 import { ScheduleForecastPanel } from "@/components/stats/AnalyticsPanels";
 import {
@@ -88,6 +90,7 @@ export default function ProgressPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [range, setRange] = useState<ProgressTimeRange>("30d");
@@ -113,6 +116,7 @@ export default function ProgressPage() {
           nextSources,
           nextNotebooks,
           nextDecks,
+          nextTopics,
           nextStudyActivity,
           goalsSnapshot,
         ] = await Promise.all([
@@ -121,6 +125,7 @@ export default function ProgressPage() {
           getActiveSources(user.uid).catch(() => [] as Source[]),
           getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
           getDecks(user.uid).catch(() => [] as Deck[]),
+          getActiveTopics(user.uid).catch(() => [] as Topic[]),
           loadStudyActivity(user.uid).catch(() => [] as DailyStudyActivity[]),
           getDocs(collection(db, "users", user.uid, "goals")).catch(() => null),
         ]);
@@ -131,6 +136,7 @@ export default function ProgressPage() {
           setSources(nextSources);
           setNotebooks(nextNotebooks);
           setDecks(nextDecks);
+          setTopics(nextTopics);
           setStudyActivity(nextStudyActivity);
           setGoals(
             goalsSnapshot
@@ -161,9 +167,20 @@ export default function ProgressPage() {
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
     [decks]
   );
+  const topicNamesById = useMemo(
+    () => Object.fromEntries(topics.map((topic) => [topic.id, topic.name])),
+    [topics]
+  );
   const analytics = useMemo(
-    () => buildSpacedRepetitionAnalytics(cards, studyActivity, deckNamesById),
-    [cards, deckNamesById, studyActivity]
+    () =>
+      buildSpacedRepetitionAnalytics(
+        cards,
+        studyActivity,
+        deckNamesById,
+        undefined,
+        topicNamesById
+      ),
+    [cards, deckNamesById, studyActivity, topicNamesById]
   );
   const last7Activity = useMemo(
     () => filterStudyActivityByRange(studyActivity, "7d"),

@@ -16,6 +16,7 @@ type Props = {
   onContinue: () => void;
   mode?: "clue" | "review";
   deckName?: string;
+  topicNames?: string[];
 };
 
 function ThinkingIndicator({ compact = false }: { compact?: boolean }) {
@@ -57,6 +58,7 @@ export default function StudyAssistant({
   onContinue,
   mode = "review",
   deckName,
+  topicNames = [],
 }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
@@ -71,7 +73,8 @@ export default function StudyAssistant({
     back: card.back,
     deckId: card.deckId,
     deckName,
-    tags: card.tags,
+    topicIds: card.topicIds,
+    topics: topicNames,
     difficulty: card.difficulty,
     lapses: card.lapses,
     reps: card.reps,

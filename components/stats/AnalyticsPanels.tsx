@@ -244,7 +244,7 @@ export function RecentChangesPanel({ analytics }: { analytics: SpacedRepetitionA
 export function WeakAreasPanel({
   analytics,
   title = "Weakest areas",
-  description = "Decks and tags carrying the heaviest lapse and difficulty signal right now.",
+  description = "Decks and Topics carrying the strongest lapse and difficulty signal right now.",
 }: {
   analytics: SpacedRepetitionAnalytics;
   title?: string;

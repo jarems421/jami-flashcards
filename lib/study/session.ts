@@ -1,5 +1,4 @@
 import type { Card } from "@/lib/study/cards";
-import { getTagKey } from "@/lib/study/cards";
 import type { DailyReviewState } from "@/lib/study/daily-review";
 import { getStudyDayKey } from "@/lib/study/day";
 import type { CardRating } from "@/lib/study/scheduler";
@@ -17,7 +16,7 @@ export type StudySessionStats = {
 };
 
 export type PersistedStudySession = {
-  version: 1;
+  version: 2;
   sessionId: string;
   revision: number;
   userId: string;
@@ -28,7 +27,8 @@ export type PersistedStudySession = {
   index: number;
   stats: StudySessionStats;
   selectedDeckIds: string[];
-  selectedTags: string[];
+  selectedTopicIds: string[];
+  legacySelectedTags?: string[];
   startedAt: number;
   savedAt: number;
   endedAt?: number;
@@ -39,11 +39,11 @@ export type PersistedStudySession = {
 export const ACTIVE_STUDY_SESSION_DOC_ID = "activeSession";
 export const ACTIVE_STUDY_SESSION_PREFIX = "jami:active-study-session:";
 export const CLOSED_STUDY_SESSION_PREFIX = "jami:closed-study-session:";
-export const ACTIVE_STUDY_SESSION_VERSION = 1;
+export const ACTIVE_STUDY_SESSION_VERSION = 2;
 export const ACTIVE_STUDY_SESSION_MAX_AGE_MS = 30 * 60 * 60 * 1000;
 
 export type ClosedStudySessionTombstone = {
-  version: 1;
+  version: 2;
   userId: string;
   sessionId: string;
   revision: number;
@@ -186,7 +186,7 @@ export function normalizePersistedStudySession(
       : currentStudyDayKey;
 
   if (
-    data.version !== ACTIVE_STUDY_SESSION_VERSION ||
+    (data.version !== 1 && data.version !== ACTIVE_STUDY_SESSION_VERSION) ||
     data.userId !== userId ||
     !isSessionKind(data.kind) ||
     status !== "active" ||
@@ -214,7 +214,10 @@ export function normalizePersistedStudySession(
     index,
     stats,
     selectedDeckIds: normalizeStringList(data.selectedDeckIds),
-    selectedTags: normalizeStringList(data.selectedTags),
+    selectedTopicIds: normalizeStringList(data.selectedTopicIds),
+    ...(normalizeStringList(data.selectedTags).length > 0
+      ? { legacySelectedTags: normalizeStringList(data.selectedTags) }
+      : {}),
     startedAt,
     savedAt,
     ...(closedRevision > 0 ? { closedRevision } : {}),
@@ -272,7 +275,7 @@ function normalizeTombstone(value: unknown, userId: string, now = Date.now()) {
       : null;
 
   if (
-    data.version !== ACTIVE_STUDY_SESSION_VERSION ||
+    (data.version !== 1 && data.version !== ACTIVE_STUDY_SESSION_VERSION) ||
     !session ||
     !sessionId ||
     sessionId !== session.sessionId ||
@@ -421,7 +424,7 @@ export function canRestorePersistedSession(
   session: PersistedStudySession,
   requestedMode: "custom" | "daily" | null,
   requestedDeckIds: string[],
-  requestedTags: string[]
+  requestedTopicIds: string[]
 ) {
   if (requestedMode === "daily") {
     return session.kind === "daily-required" || session.kind === "daily-optional";
@@ -435,13 +438,13 @@ export function canRestorePersistedSession(
     return false;
   }
 
-  if (requestedDeckIds.length === 0 && requestedTags.length === 0) {
+  if (requestedDeckIds.length === 0 && requestedTopicIds.length === 0) {
     return true;
   }
 
   return (
     sameSelection(session.selectedDeckIds, requestedDeckIds) &&
-    sameSelection(session.selectedTags, requestedTags, getTagKey)
+    sameSelection(session.selectedTopicIds, requestedTopicIds)
   );
 }
 
@@ -513,7 +516,7 @@ export function buildPersistedStudySession({
   index,
   stats,
   selectedDeckIds,
-  selectedTags,
+  selectedTopicIds,
   startedAt,
   now = Date.now(),
 }: {
@@ -526,7 +529,7 @@ export function buildPersistedStudySession({
   index: number;
   stats: StudySessionStats;
   selectedDeckIds: string[];
-  selectedTags: string[];
+  selectedTopicIds: string[];
   startedAt?: number | null;
   now?: number;
 }): PersistedStudySession {
@@ -543,7 +546,7 @@ export function buildPersistedStudySession({
     index: Math.max(0, Math.min(index, sessionCards.length)),
     stats,
     selectedDeckIds,
-    selectedTags,
+    selectedTopicIds,
     startedAt: startedAt ?? now,
     savedAt: now,
   };

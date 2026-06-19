@@ -2,7 +2,7 @@ import type { Card } from "@/lib/study/cards";
 
 export type WeakArea = {
   name: string;
-  kind: "deck" | "tag";
+  kind: "deck" | "topic";
   /** Average FSRS difficulty (0–10) across cards in this area. */
   avgDifficulty: number;
   /** Total number of times cards in this area were forgotten. */
@@ -14,7 +14,7 @@ export type WeakArea = {
 };
 
 /**
- * Analyse a set of cards and return the weakest decks and tags,
+ * Analyse a set of cards and return the weakest decks and Topics,
  * ranked by a composite score of average difficulty and lapse rate.
  *
  * Only cards that have been reviewed at least once (reps > 0) are included.
@@ -23,11 +23,12 @@ export type WeakArea = {
 export function getWeakPoints(
   cards: Card[],
   deckNamesById: Record<string, string>,
+  topicNamesById: Record<string, string> = {},
   limit = 5,
 ): WeakArea[] {
   const buckets = new Map<
     string,
-    { kind: "deck" | "tag"; difficulties: number[]; lapses: number }
+    { kind: "deck" | "topic"; difficulties: number[]; lapses: number }
   >();
 
   for (const card of cards) {
@@ -47,17 +48,16 @@ export function getWeakPoints(
     deckBucket.lapses += lapses;
     buckets.set(deckKey, deckBucket);
 
-    // Tag buckets
-    for (const tag of card.tags) {
-      const tagKey = `tag:${tag}`;
-      const tagBucket = buckets.get(tagKey) ?? {
-        kind: "tag" as const,
+    for (const topicId of card.topicIds ?? []) {
+      const topicKey = `topic:${topicId}`;
+      const topicBucket = buckets.get(topicKey) ?? {
+        kind: "topic" as const,
         difficulties: [],
         lapses: 0,
       };
-      tagBucket.difficulties.push(diff);
-      tagBucket.lapses += lapses;
-      buckets.set(tagKey, tagBucket);
+      topicBucket.difficulties.push(diff);
+      topicBucket.lapses += lapses;
+      buckets.set(topicKey, topicBucket);
     }
   }
 
@@ -77,7 +77,7 @@ export function getWeakPoints(
     const name =
       bucket.kind === "deck"
         ? deckNamesById[key.slice(5)] ?? "Unknown deck"
-        : `#${key.slice(4)}`;
+        : topicNamesById[key.slice(6)] ?? "Unknown Topic";
 
     areas.push({
       name,

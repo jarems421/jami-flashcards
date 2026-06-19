@@ -1,16 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
-  addCardTag,
-  cardMatchesAnyTag,
   exportCardsToSeparatedText,
   getCardContentKey,
-  getTagSuggestions,
-  getCardTagsInputError,
+  mapCardData,
   parseCardImportText,
-  parseCardTagsInput,
-  parseCardTagsParam,
   MAX_FRONT_LENGTH,
-  MAX_CARD_TAG_LENGTH,
 } from "@/lib/study/cards";
 import type { Card } from "@/lib/study/cards";
 import { getCardQualityWarnings } from "@/lib/study/card-quality";
@@ -30,85 +24,37 @@ import {
 } from "@/lib/study/scheduler";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 
-describe("card tag helpers", () => {
-  it("normalizes and deduplicates comma-separated tags", () => {
-    expect(parseCardTagsInput("Biology, cells, biology, Cell Biology")).toEqual([
-      "Biology",
-      "cells",
-      "Cell Biology",
-    ]);
-  });
-
-  it("rejects tag lists that exceed the per-card limit", () => {
-    expect(getCardTagsInputError("a,b,c,d,e,f,g,h,i,j,k")).toBe(
-      "Use up to 10 tags per card."
-    );
-  });
-
-  it("matches cards when any selected tag overlaps", () => {
-    expect(
-      cardMatchesAnyTag({ tags: ["biology", "cells"] }, ["physics", "cells"])
-    ).toBe(true);
-    expect(cardMatchesAnyTag({ tags: ["biology", "cells"] }, ["physics"])).toBe(
-      false
-    );
-    expect(
-      cardMatchesAnyTag({ tags: ["Biology", "Cells"] }, ["biology"])
-    ).toBe(true);
-  });
-
-  it("parses tag query params with the same normalization as card input", () => {
-    expect(parseCardTagsParam("Anatomy,  cell biology,anatomy")).toEqual([
-      "Anatomy",
-      "cell biology",
-    ]);
-  });
-
-  it("adds a normalized pending tag to the current tag list", () => {
-    expect(addCardTag(["Biology"], " Cell Biology ")).toEqual({
-      nextTags: ["Biology", "Cell Biology"],
-      added: true,
-      error: null,
-    });
-  });
-
-  it("allows tags up to the current length limit", () => {
-    const tag = "a".repeat(MAX_CARD_TAG_LENGTH);
-    expect(addCardTag([], tag)).toEqual({
-      nextTags: [tag],
-      added: true,
-      error: null,
-    });
-    expect(addCardTag([], `${tag}x`).error).toBe(
-      `Each tag must be ${MAX_CARD_TAG_LENGTH} characters or less.`
-    );
-  });
-
-  it("suggests reusable tags that match the current input", () => {
-    expect(
-      getTagSuggestions(
-        ["biology", "cell biology", "physics", "anatomy"],
-        "bio",
-        ["physics"]
-      )
-    ).toEqual(["biology", "cell biology"]);
-  });
-});
-
 describe("card quality helpers", () => {
   it("flags cards that are harder to maintain", () => {
     const warnings = getCardQualityWarnings(
       {
         front: "Same",
         back: "Same",
-        tags: [],
+        topicIds: [],
       },
       { duplicateCount: 2 }
     ).map((warning) => warning.id);
 
     expect(warnings).toContain("duplicate");
     expect(warnings).toContain("same-front-back");
-    expect(warnings).toContain("untagged");
+    expect(warnings).toContain("no-topics");
+  });
+});
+
+describe("card Topic compatibility", () => {
+  it("preserves legacy records with more than five Topic links", () => {
+    const topicIds = Array.from({ length: 12 }, (_, index) => `topic-${index}`);
+    expect(
+      mapCardData("card-1", {
+        deckId: "deck-1",
+        userId: "user-1",
+        front: "Front",
+        back: "Back",
+        topicIds,
+        tags: [],
+        createdAt: 1,
+      }).topicIds
+    ).toEqual(topicIds);
   });
 });
 
@@ -562,7 +508,7 @@ describe("daily review memory risk", () => {
       updatedAt: 1,
     };
     const activeSession = {
-      version: 1 as const,
+      version: 2 as const,
       sessionId: "session-1",
       revision: 1,
       userId: "user",
@@ -579,7 +525,7 @@ describe("daily review memory risk", () => {
         ratings: { again: 0, hard: 0, good: 0, easy: 0 },
       },
       selectedDeckIds: [],
-      selectedTags: [],
+      selectedTopicIds: [],
       startedAt: 1,
       savedAt: 1,
     };

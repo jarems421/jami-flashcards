@@ -296,14 +296,9 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
               href={topic.href}
             className="app-subtle-panel block rounded-[1.15rem] p-4 transition duration-fast hover:-translate-y-[1px]"
           >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-text-primary">{topic.name}</div>
-                  <div className="mt-1 text-xs text-text-muted">{topic.subject}</div>
-                </div>
-                <div className="app-chip rounded-full px-3 py-1 text-xs font-semibold">
-                  {topic.accuracy}%
-                </div>
+              <div>
+                <div className="text-sm font-semibold text-text-primary">{topic.name}</div>
+                <div className="mt-1 text-xs text-text-muted">{topic.subject}</div>
               </div>
               <p className="mt-3 text-sm leading-6 text-text-secondary">{topic.reason}</p>
             </Link>

@@ -9,6 +9,7 @@ export type TopicCreatedBy = "user" | "system" | "ai-suggested";
 export type Topic = {
   id: string;
   name: string;
+  normalizedName?: string;
   slug: string;
   subject: string;
   parentTopicId?: string;
@@ -24,6 +25,7 @@ export type Topic = {
 export const MAX_TOPIC_NAME_LENGTH = 80;
 export const MAX_TOPIC_SUBJECT_LENGTH = 80;
 export const MAX_TOPIC_ALIASES = 12;
+export const MAX_LINKED_TOPICS = 5;
 
 export function slugifyTopicName(value: string) {
   const slug = value
@@ -39,6 +41,14 @@ export function slugifyTopicName(value: string) {
 
 export function normalizeTopicName(value: string) {
   return value.trim().replace(/\s+/g, " ").slice(0, MAX_TOPIC_NAME_LENGTH);
+}
+
+export function getTopicNameKey(value: string) {
+  return normalizeTopicName(value).toLocaleLowerCase();
+}
+
+export function normalizeTopicIds(value: unknown, limit = MAX_LINKED_TOPICS) {
+  return normalizeStringArray(value, limit, 120);
 }
 
 export function normalizeTopicSubject(value: string) {
@@ -64,6 +74,9 @@ export function mapTopicData(id: string, data: Record<string, unknown>): Topic {
   return {
     id,
     name: name || "Untitled topic",
+    normalizedName:
+      normalizeOptionalString(data.normalizedName, MAX_TOPIC_NAME_LENGTH) ??
+      getTopicNameKey(name),
     slug,
     subject: subject || "General",
     parentTopicId: normalizeOptionalString(data.parentTopicId, 120),

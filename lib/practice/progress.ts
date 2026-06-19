@@ -3,7 +3,6 @@ import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import type { MasteryEvent } from "@/lib/practice/mastery";
 import type { Source } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
-import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
 
 export type TopicProgressSummary = {
@@ -13,7 +12,6 @@ export type TopicProgressSummary = {
   dueCardCount: number;
   notebookCount: number;
   sourceCount: number;
-  folderCount: number;
   masteryScore: number;
 };
 
@@ -23,7 +21,6 @@ export function buildTopicProgress(input: {
   masteryEvents: MasteryEvent[];
   sources?: Source[];
   notebooks?: Notebook[];
-  studyFolders?: StudyFolder[];
   now?: number;
 }): TopicProgressSummary[] {
   const now = input.now ?? Date.now();
@@ -37,7 +34,7 @@ export function buildTopicProgress(input: {
       );
       const weakCards = topicCards.filter((card) => {
         const risk = getMemoryRiskInfo(card, now);
-        return risk.tier === "high" || (typeof card.dueDate === "number" && card.dueDate <= now);
+        return risk.tier === "high";
       });
       const dueCardCount = topicCards.filter(
         (card) => typeof card.dueDate === "number" && card.dueDate <= now
@@ -51,9 +48,6 @@ export function buildTopicProgress(input: {
       const sourceCount = (input.sources ?? []).filter((source) =>
         source.topicIds.includes(topic.id)
       ).length;
-      const folderCount = (input.studyFolders ?? []).filter((folder) =>
-        folder.topicIds.includes(topic.id)
-      ).length;
 
       return {
         topic,
@@ -62,7 +56,6 @@ export function buildTopicProgress(input: {
         dueCardCount,
         notebookCount,
         sourceCount,
-        folderCount,
         masteryScore,
       };
     })
