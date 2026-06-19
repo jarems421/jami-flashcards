@@ -14,6 +14,7 @@ import {
   Input,
   Skeleton,
 } from "@/components/ui";
+import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
 import { useUser } from "@/lib/auth/user-context";
 import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
@@ -41,6 +42,66 @@ import {
 
 const RECENT_TOPIC_COUNT = 3;
 const TOPIC_BROWSE_PAGE_SIZE = 30;
+
+function TopicActionsMenu({
+  topic,
+  onRename,
+  onDelete,
+}: {
+  topic: Topic;
+  onRename: () => void;
+  onDelete: () => void;
+}) {
+  const { handleToggle, menuPositionClass } =
+    useAdaptiveMenuPlacement(100);
+
+  return (
+    <details
+      className="group/menu absolute right-2 top-2"
+      onToggle={handleToggle}
+    >
+      <summary
+        aria-label={`Actions for ${topic.name}`}
+        className="app-chip flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
+      >
+        <svg
+          viewBox="0 0 20 20"
+          fill="currentColor"
+          aria-hidden="true"
+          className="h-5 w-5"
+        >
+          <circle cx="4" cy="10" r="1.6" />
+          <circle cx="10" cy="10" r="1.6" />
+          <circle cx="16" cy="10" r="1.6" />
+        </svg>
+      </summary>
+      <div
+        className={`absolute right-0 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${menuPositionClass}`}
+      >
+        <button
+          type="button"
+          className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)]"
+          onClick={(event) => {
+            event.currentTarget.closest("details")?.removeAttribute("open");
+            onRename();
+          }}
+        >
+          Rename Topic
+        </button>
+        <button
+          type="button"
+          className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)]"
+          onClick={(event) => {
+            event.currentTarget.closest("details")?.removeAttribute("open");
+            onDelete();
+          }}
+        >
+          Delete Topic
+        </button>
+      </div>
+    </details>
+  );
+}
 
 export default function TopicsPage() {
   const router = useRouter();
@@ -343,7 +404,7 @@ export default function TopicsPage() {
               return (
                 <section
                   key={summary.topic.id}
-                  className={`app-panel relative rounded-[1.35rem] transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell ${
+                  className={`app-panel relative overflow-visible rounded-[1.35rem] transition duration-fast has-[details[open]]:z-40 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell ${
                     editing ? "sm:col-span-2" : ""
                   }`}
                 >
@@ -412,49 +473,13 @@ export default function TopicsPage() {
                         ) : null}
                       </Link>
                       {!isDemoUser ? (
-                        <details className="group/menu absolute right-2 top-2">
-                          <summary
-                            aria-label={`Actions for ${summary.topic.name}`}
-                            className="app-chip flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
-                          >
-                            <svg
-                              viewBox="0 0 20 20"
-                              fill="currentColor"
-                              aria-hidden="true"
-                              className="h-5 w-5"
-                            >
-                              <circle cx="4" cy="10" r="1.6" />
-                              <circle cx="10" cy="10" r="1.6" />
-                              <circle cx="16" cy="10" r="1.6" />
-                            </svg>
-                          </summary>
-                          <div className="absolute right-0 top-12 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
-                            <button
-                              type="button"
-                              className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)]"
-                              onClick={(event) => {
-                                event.currentTarget
-                                  .closest("details")
-                                  ?.removeAttribute("open");
-                                startRenaming(summary.topic);
-                              }}
-                            >
-                              Rename Topic
-                            </button>
-                            <button
-                              type="button"
-                              className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)]"
-                              onClick={(event) => {
-                                event.currentTarget
-                                  .closest("details")
-                                  ?.removeAttribute("open");
-                                setTopicPendingDelete(summary.topic);
-                              }}
-                            >
-                              Delete Topic
-                            </button>
-                          </div>
-                        </details>
+                        <TopicActionsMenu
+                          topic={summary.topic}
+                          onRename={() => startRenaming(summary.topic)}
+                          onDelete={() =>
+                            setTopicPendingDelete(summary.topic)
+                          }
+                        />
                       ) : null}
                     </>
                   )}

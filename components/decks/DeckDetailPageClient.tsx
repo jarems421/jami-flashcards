@@ -666,7 +666,7 @@ export default function DeckDetailPageClient() {
               {filteredCards.map((card) => (
                 <section
                   key={card.id}
-                  className={`app-panel min-w-0 p-3 transition duration-fast ${
+                  className={`app-panel min-w-0 overflow-visible p-3 transition duration-fast has-[details[open]]:z-40 ${
                     editingCardId === card.id ? "sm:col-span-2" : ""
                   } ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
                 >

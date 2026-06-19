@@ -1,5 +1,7 @@
 "use client";
 
+import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
+
 type CardActionsMenuProps = {
   deleting?: boolean;
   disabled?: boolean;
@@ -20,8 +22,11 @@ export default function CardActionsMenu({
   onEdit,
   onDelete,
 }: CardActionsMenuProps) {
+  const { handleToggle, menuPositionClass } =
+    useAdaptiveMenuPlacement(132);
+
   return (
-    <details className="group relative">
+    <details className="group relative" onToggle={handleToggle}>
       <summary
         aria-label="Card actions"
         className="app-chip flex h-10 w-10 list-none items-center justify-center rounded-full transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
@@ -32,7 +37,7 @@ export default function CardActionsMenu({
           <circle cx="16" cy="10" r="1.6" />
         </svg>
       </summary>
-      <div className="absolute right-0 top-12 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+      <div className={`absolute right-0 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${menuPositionClass}`}>
         <button
           type="button"
           onClick={(event) => {

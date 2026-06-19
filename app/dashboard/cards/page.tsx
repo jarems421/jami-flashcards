@@ -944,7 +944,7 @@ export default function CardsSearchPage() {
             {visibleCards.map((card) => (
               <section
                 key={card.id}
-                className={`app-panel min-w-0 p-3 transition duration-fast ease-spring hover:-translate-y-0.5 hover:shadow-shell ${
+                className={`app-panel min-w-0 overflow-visible p-3 transition duration-fast ease-spring has-[details[open]]:z-40 hover:-translate-y-0.5 hover:shadow-shell ${
                   expandedCardId === card.id ? "sm:col-span-2" : ""
                 } ${
                   selectedCardIdSet.has(card.id)
