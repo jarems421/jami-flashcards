@@ -230,7 +230,7 @@ export default function DecksPage() {
 
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <PageHero
-            eyebrow="Library"
+            eyebrow="Flashcards"
             title="Decks"
             action={
               <div className="w-full min-w-0 max-w-[32rem] space-y-3">
@@ -281,7 +281,7 @@ export default function DecksPage() {
 
           <div className="grid gap-4">
             <StatTile label="Decks" value={decks.length} detail="Card sets ready to study." />
-            <StatTile label="Card library" value="Open" detail="Search and edit cards across every deck." href="/dashboard/cards" />
+            <StatTile label="All cards" value="Open" detail="Search and edit cards across every deck." href="/dashboard/cards" />
           </div>
         </div>
 

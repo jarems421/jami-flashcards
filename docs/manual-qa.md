@@ -13,7 +13,7 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 3. Review or study the card in Learn.
 4. Open Practice and confirm the main surface is Continue working plus Folders.
 5. Open a notebook and save typed or drawn working.
-6. Add or open a Library source.
+6. Add or open a saved source.
 7. Generate a flashcard draft from the source and approve it into a deck.
 8. Generate a practice-question draft from the source and approve it into a notebook page.
 9. Check Today for notebook, folder, review, and draft actions.
@@ -82,9 +82,9 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 12. Confirm there is no deck creation form inside the folder Decks tab; new decks are created from global Decks.
 13. Use `Remove` on a folder deck and confirm it leaves the folder without deleting the global deck.
 14. Open the Sources tab and confirm it shows only sources already in this folder.
-15. Use `Add existing source` to choose a Library source and confirm it appears in the folder.
-16. Use `Create source` inside the folder and confirm the source also appears globally in Library.
-17. Use `Remove` on a folder source and confirm it leaves the folder without deleting the Library source.
+15. Use `Add existing source` to choose a saved source and confirm it appears in the folder.
+16. Use `Create source` inside the folder and confirm the source also appears globally in Sources.
+17. Use `Remove` on a folder source and confirm it leaves the folder without deleting the saved source.
 18. Open `Edit folder`, rename it, change colour/icon, and archive it only after confirming the warning says decks and sources are not deleted.
 19. Open a notebook and use `Edit notebook` to rename it, change cover colour/icon, and archive it safely.
 20. Confirm Cards do not expose folder linking directly; cards inherit folder context through decks.
@@ -112,7 +112,7 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 ## Public Walkthrough And Agent Routes
 
 1. Open `/agent` while signed out.
-2. Confirm the route map links to Today, Learn, Practice, Folders, Notebook, Library, Cards, Decks, Progress, and Account.
+2. Confirm the route map links to Today, Learn, Practice, Folders, Notebook, Sources, Cards, Decks, Progress, and Account.
 3. Open `/llms.txt` and confirm it lists the same notebook-first route map in plain text.
 4. Open `/dashboard?agent=1` while signed out.
 5. Confirm it does not redirect to auth.
@@ -122,11 +122,11 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 9. Open `/dashboard/notebooks/notebook-photosynthesis?agent=1`.
 10. Type, save, add a page, and confirm local-only page navigation.
 11. Open `/dashboard/folders?agent=1` and confirm public folders are balanced across subjects.
-12. Open Library and approve a practice draft into a local notebook page.
+12. Open Sources and approve a practice draft into a local notebook page.
 13. Confirm all public actions are labelled or behave as local-only simulations.
 14. Confirm there are no Firebase permission errors in the browser console.
 
-## Library Loop
+## Sources Loop
 
 1. Open `/dashboard/library`.
 2. Add a pasted source or manual note.
@@ -142,7 +142,7 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 12. Confirm the approved draft creates a notebook page, not a `users/{uid}/questions` document.
 13. Check Today for source-linked draft actions.
 14. Check Progress for linked source recommendations on weak topics.
-15. On mobile/tablet widths, confirm Library uses Sources/Source/Actions navigation without horizontal scroll.
+15. On mobile/tablet widths, confirm Sources uses Sources/Source/Actions navigation without horizontal scroll.
 
 ## Today And Progress
 
@@ -166,7 +166,7 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 
 1. Sign in with a normal account.
 2. Confirm the dashboard uses real Firebase-backed data.
-3. Confirm existing decks, cards, reviews, goals, folders, notebooks, Library, and study modes still work.
+3. Confirm existing decks, cards, reviews, goals, folders, notebooks, Sources, and study modes still work.
 4. Confirm old cards without topics still display and review normally.
 5. Confirm a generated flashcard draft can be saved.
 6. Confirm adding a saved draft to a deck creates a real card and marks the draft approved.
@@ -180,5 +180,5 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 2. `/dashboard` should remain public-readable when signed out.
 3. Public walkthrough components must not call private Firestore services.
 4. `/agent` and `/llms.txt` should remain public and must not expose private user data.
-5. Library, folders, notebooks, source Tutor, and generated drafts are allowed.
+5. Sources, folders, notebooks, source Tutor, and generated drafts are allowed.
 6. Do not expose OCR, PDF parsing, PDF annotation, file AI, full-paper mode, browser extension, always-on screen watching, advanced voice tutor, or advanced analytics.

@@ -408,7 +408,7 @@ function FoldersPanel(props: {
         subject: selectedFolder.subject,
         folderId: selectedFolder.id,
         topicIds: selectedFolder.topicIds,
-        contentText: "Local-only walkthrough source. Signed-in users save this in Library.",
+        contentText: "Local-only walkthrough source. Signed-in users save this in Sources.",
         status: "active",
       },
       ...current,
@@ -760,7 +760,7 @@ function LibraryPanel({ drafts, onApprove }: { drafts: WalkthroughDraft[]; onApp
   const [selectedSourceId, setSelectedSourceId] = useState(WALKTHROUGH_SOURCES[0]?.id ?? "");
   const selectedSource = WALKTHROUGH_SOURCES.find((source) => source.id === selectedSourceId);
   return (
-    <Panel title="Library">
+    <Panel title="Sources">
       <div className="grid gap-4 lg:grid-cols-[1fr_1fr]">
         <div className="space-y-2">
           <SectionHeader eyebrow="Sources" title="Saved study material" />
@@ -958,7 +958,7 @@ function AgentNotes() {
       <ul className="mt-3 space-y-2 text-sm text-text-secondary">
         <li>Open Practice and confirm it only shows Continue working, Folders, and notebook template entry points.</li>
         <li>Open a notebook, type on a page, save, add a page, and switch pages.</li>
-        <li>Open Library and approve a practice draft; it should become a notebook page in local state.</li>
+        <li>Open Sources and approve a practice draft; it should become a notebook page in local state.</li>
         <li>Confirm no old question bank, old attempt form, confidence block, or Practice Tutor panel appears.</li>
       </ul>
     </Card>

@@ -20,7 +20,7 @@ Core route family:
 - /dashboard/notebooks/notebook-photosynthesis?agent=1 - Notebook / icon toolbar, long page, text boxes, pen tools, page counter, add page, and page navigation.
 - /dashboard/progress?agent=1 - Progress / weak cards, drafts, sources, folders, and notebook activity.
 - /dashboard/folders?agent=1 - Folders / folder-first study spaces with seeded local data.
-- /dashboard/library?agent=1 - Library / seeded sources and local source actions.
+- /dashboard/library?agent=1 - Sources / seeded references and local source actions.
 - /dashboard/cards?agent=1 - Cards / browse cards and drafts.
 - /dashboard/decks?agent=1 - Decks / card-set organisation.
 - /dashboard/goals?agent=1 - Goals / study targets.
@@ -38,7 +38,7 @@ Suggested click test:
 8. Open Folders and confirm the folder detail view uses Notebooks, Decks, and Sources tabs.
 9. In a folder, confirm the Decks tab only shows folder decks and only adds existing global decks.
 10. In a folder, confirm the Sources tab only shows folder sources and uses add/create local simulations.
-11. Open Library and inspect seeded source actions.
+11. Open Sources and inspect seeded source actions.
 10. Open Account and confirm no private data was accessed.
 
 Phase 6 notebook-first Practice test:
@@ -48,7 +48,7 @@ Phase 6 notebook-first Practice test:
 4. Use the notebook toolbar to create a text box, draw, save, and check the page counter.
 5. Add a page and navigate between pages.
 6. Open /dashboard/folders?agent=1 and inspect notebook templates plus folder Decks/Sources add flows.
-7. Open Library and approve a practice draft into a notebook page.
+7. Open Sources and approve a practice draft into a notebook page.
 8. Confirm uploaded-file copy says file saved only; no OCR, PDF annotation, or automatic reading is claimed.
 
 Out of scope in public walkthrough:

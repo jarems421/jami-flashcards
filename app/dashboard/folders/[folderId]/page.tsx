@@ -461,7 +461,7 @@ export default function FolderDetailPage() {
       setSourceFileName("");
       setSourceTopicIds([]);
       setShowCreateSource(false);
-      setFeedback({ type: "success", message: "Source created in this folder and Library." });
+      setFeedback({ type: "success", message: "Source created in this folder and Sources." });
     } catch (error) {
       setFeedback({
         type: "error",
@@ -1059,7 +1059,7 @@ export default function FolderDetailPage() {
         {activeTab === "sources" ? (
           <section className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <SectionHeader eyebrow="Sources" title="Library sources" />
+              <SectionHeader eyebrow="Sources" title="Saved sources" />
               <div className="flex flex-wrap gap-2">
                 <Button type="button" variant="secondary" onClick={() => setShowSourcePicker((value) => !value)}>
                   Add existing source
@@ -1074,7 +1074,7 @@ export default function FolderDetailPage() {
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
                   <Input
                     label="Find source"
-                    placeholder="Search Library sources"
+                    placeholder="Search saved sources"
                     value={sourceSearch}
                     onChange={(event) => setSourceSearch(event.target.value)}
                     containerClassName="sm:max-w-sm"
@@ -1111,7 +1111,7 @@ export default function FolderDetailPage() {
                       );
                     })
                   ) : (
-                    <p className="text-sm text-text-muted">No Library sources to add.</p>
+                    <p className="text-sm text-text-muted">No saved sources to add.</p>
                   )}
                 </div>
               </Card>

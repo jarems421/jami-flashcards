@@ -258,7 +258,7 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
               <p className="mt-2 line-clamp-2 text-sm leading-6 text-text-secondary">{draft.back}</p>
               {draft.sourceTitle ? (
                 <p className="mt-2 text-xs text-text-muted">
-                  From Library source: {draft.sourceTitle}
+                  From source: {draft.sourceTitle}
                 </p>
               ) : null}
               {draft.suggestedTopic ? (

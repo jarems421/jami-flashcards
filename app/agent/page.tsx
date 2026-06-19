@@ -35,7 +35,7 @@ const dashboardRoutes = [
   },
   {
     href: "/dashboard/library?agent=1",
-    label: "Library",
+    label: "Sources",
     purpose: "Inspect seeded sources and source-to-draft flows.",
   },
   {
@@ -74,7 +74,7 @@ const testFlow = [
   "In the folder Decks tab, confirm only folder decks appear and decks can only be added from existing global decks.",
   "In the folder Sources tab, confirm only folder sources appear, then use Add source/Create source local simulations.",
   "Go to Progress and confirm cards, drafts, sources, folders, and notebook activity are shown without old attempt data.",
-  "Go to Library and inspect a source; source actions in public mode remain local-only.",
+  "Go to Sources and inspect a source; source actions in public mode remain local-only.",
   "Go to Cards/Decks to confirm card organisation and draft status.",
   "Go to Account and confirm signed-out mode did not access private data.",
 ];
@@ -87,7 +87,7 @@ const phase6TestFlow = [
   "Add a page and navigate between pages.",
   "Open a folder and inspect Blank, Uploaded file / paper, and AI-created questions templates.",
   "Confirm uploaded-file copy says file saved only; no OCR, PDF annotation, or automatic reading is claimed.",
-  "Open Library and approve a practice draft; it should become a notebook page, not a legacy question.",
+  "Open Sources and approve a practice draft; it should become a notebook page, not a legacy question.",
 ];
 
 function AgentLink({

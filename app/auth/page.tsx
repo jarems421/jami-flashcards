@@ -15,8 +15,8 @@ import { Button, Card, Input, PageHero } from "@/components/ui";
 
 const AUTH_HIGHLIGHTS = [
   {
-    label: "Library",
-    detail: "Keep decks, cards, and Topics in one place.",
+    label: "Sources",
+    detail: "Save useful notes, links, images, and documents.",
   },
   {
     label: "Study history",

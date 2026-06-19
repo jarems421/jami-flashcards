@@ -67,7 +67,6 @@ import {
   EmptyState,
   FeedbackBanner,
   Input,
-  MetricStrip,
   SectionHeader,
   Skeleton,
   Textarea,
@@ -224,7 +223,7 @@ function DraftEditor({
           </div>
         </div>
         <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
-          Based on: {sourceTitle ?? "Library source"}
+          Based on: {sourceTitle ?? "Saved source"}
         </span>
       </div>
       <div className="mt-4 space-y-3">
@@ -629,7 +628,7 @@ export default function LibraryPage() {
       setNotebooks([]);
       setDrafts([]);
       if (!isPermissionDenied(error)) {
-        setFeedback({ type: "error", message: "Failed to load Library." });
+        setFeedback({ type: "error", message: "Failed to load Sources." });
       }
     } finally {
       setLoading(false);
@@ -779,7 +778,7 @@ export default function LibraryPage() {
       setTutorSourceIds((current) =>
         current.includes(sourceId) ? current : [...current, sourceId].slice(-5)
       );
-      setFeedback({ type: "success", message: sourceType === "file" ? "File uploaded to Library." : "Source saved." });
+      setFeedback({ type: "success", message: sourceType === "file" ? "File uploaded to Sources." : "Source saved." });
     } catch (error) {
       if (uploadedStoragePath) {
         await deleteSourceFile(uploadedStoragePath).catch(() => undefined);
@@ -878,7 +877,7 @@ export default function LibraryPage() {
       await loadAll();
       setFeedback({
         type: "success",
-        message: "Source deleted from Library and its folders.",
+        message: "Source deleted from Sources and its folders.",
       });
     } catch (error) {
       setFeedback({
@@ -1014,21 +1013,6 @@ export default function LibraryPage() {
     await loadAll();
   };
 
-  const metrics = [
-    { label: "Sources", value: sources.length, detail: "Saved study material." },
-    {
-      label: "Drafts waiting",
-      value: drafts.filter((draft) => draft.sourceType === "source" && draft.contentStatus === "draft").length,
-      detail: "Approve before study.",
-      tone: "warm" as const,
-    },
-    {
-      label: "Linked topics",
-      value: new Set(sources.flatMap((source) => source.topicIds)).size,
-      detail: "Connected to Progress.",
-      tone: "good" as const,
-    },
-  ];
   const mobileTabs: Array<{ value: LibraryMobileTab; label: string }> = [
     { value: "sources", label: "Sources" },
     { value: "source", label: "Source" },
@@ -1037,9 +1021,9 @@ export default function LibraryPage() {
 
   if (loading) {
     return (
-      <AppPage title="Library" backHref="/dashboard" backLabel="Today">
+      <AppPage title="Sources" backHref="/dashboard" backLabel="Today">
         <div className="space-y-4">
-          <Skeleton className="h-28" />
+          <Skeleton className="h-16" />
           <Skeleton className="h-80" />
         </div>
       </AppPage>
@@ -1048,7 +1032,7 @@ export default function LibraryPage() {
 
   return (
     <AppPage
-      title="Library"
+      title="Sources"
       backHref="/dashboard"
       backLabel="Today"
       width="study"
@@ -1060,16 +1044,6 @@ export default function LibraryPage() {
       contentClassName="space-y-4 sm:space-y-6"
     >
       {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
-      <Card tone="warm" padding="lg">
-        <SectionHeader
-          eyebrow="Library"
-          title="Sources"
-        />
-        <div className="mt-5">
-          <MetricStrip items={metrics} variant="compact" />
-        </div>
-      </Card>
-
       {showAddSource ? (
         <div className="fixed inset-0 z-50 flex items-end justify-center px-4 py-5 sm:items-center">
           <button
@@ -1292,7 +1266,7 @@ export default function LibraryPage() {
       <ConfirmDialog
         open={managementAction === "archive"}
         title="Archive this source?"
-        description="It will leave the active Library and its folders, but the source and uploaded file will be kept. You can restore it later."
+        description="It will leave active Sources and its folders, but the source and uploaded file will be kept. You can restore it later."
         confirmLabel="Archive source"
         busy={busyAction === "archive-source"}
         tone="primary"
@@ -1302,7 +1276,7 @@ export default function LibraryPage() {
       <ConfirmDialog
         open={managementAction === "delete"}
         title="Delete this source everywhere?"
-        description="This permanently removes the source from Library and every folder. An uploaded file will also be deleted. This cannot be undone."
+        description="This permanently removes the source from Sources and every folder. An uploaded file will also be deleted. This cannot be undone."
         confirmLabel="Delete source"
         busy={busyAction === "delete-source"}
         onClose={() => setManagementAction(null)}
@@ -1323,7 +1297,7 @@ export default function LibraryPage() {
               Remove from a folder
             </h2>
             <p className="mt-2 text-sm leading-6 text-text-secondary">
-              The source stays in Library and in any other folders.
+              The source stays in Sources and in any other folders.
             </p>
             <div className="mt-5 space-y-2">
               {getLinkedSourceFolders(selectedSource.folderIds, folders).map(
@@ -1367,7 +1341,7 @@ export default function LibraryPage() {
         <Card padding="md">
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(4,minmax(150px,0.75fr))]">
             <Input
-              aria-label="Search Library"
+              aria-label="Search Sources"
               placeholder="Search titles and notes"
               value={searchTerm}
               onChange={(event) => setSearchTerm(event.target.value)}
@@ -1515,7 +1489,7 @@ export default function LibraryPage() {
 
       {sources.length === 0 ? (
         <EmptyState
-          emoji="Library"
+          emoji="Sources"
           eyebrow="No sources yet"
           title="Build your study material hub."
           description="Save text, links, images, and study documents in one place."
@@ -1846,7 +1820,7 @@ export default function LibraryPage() {
                             setManagementAction("delete");
                           }}
                         >
-                          Delete from Library
+                          Delete source
                         </button>
                       </div>
                     </details>

@@ -82,7 +82,7 @@ Folders are broad study spaces.
 
 - A folder can contain notebooks, decks, sources, and recent work.
 - A deck can appear inside a folder and still appear globally in Decks.
-- A source can appear inside a folder and still appear globally in Library.
+- A source can appear inside a folder and still appear globally in Sources.
 - Cards should inherit folder context through decks rather than carrying folder links directly in V1.
 - Folder pages should feel like calm workspaces, not analytics dashboards.
 - Folder and notebook browsing should feel like a clean object browser, not a dashboard.
@@ -139,15 +139,15 @@ Use language like:
 
 Progress MVP should stay focused on weak topics, weak/due cards by topic, notebook/folder activity, source links, and generated drafts. Do not turn it into an advanced analytics dashboard yet, and do not reintroduce legacy attempt analytics.
 
-### Library
+### Sources
 
-Library is a focused source workspace, not a file manager.
+Sources is a focused reference workspace, not a file manager.
 
 - Save useful study sources, pasted notes, manual notes, links, and file references.
 - Make the selected source feel central: source list, source preview, source actions.
 - Source actions should feed the Jami loop through explicit Tutor help, topics, Today, and Progress.
 - Saving or uploading a source must never trigger AI work or draft creation automatically.
-- Tutor may read up to five deliberately selected Library sources only after the student submits a request. This may include bounded on-demand document extraction, image understanding, and public-link reading.
+- Tutor may read up to five deliberately selected sources only after the student submits a request. This may include bounded on-demand document extraction, image understanding, and public-link reading.
 - On-demand source processing must not become background scanning, persistent OCR/indexing, automatic draft creation, always-on document understanding, or PDF editing. Keep originals immutable and do not persist extracted source text.
 
 ## Component Rules
@@ -210,7 +210,7 @@ Do not use or build:
 - Anywhere
 - Background or persistent OCR
 - Automatic or background PDF text extraction and semantic parsing
-- Library file storage upload
+- Source file storage upload
 - PDF editing or mutation (notebook ink overlays on immutable raster pages are allowed)
 - full-paper mode
 - automatic mark schemes

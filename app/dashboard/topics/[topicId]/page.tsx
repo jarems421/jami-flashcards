@@ -303,7 +303,7 @@ export default function TopicDetailPage() {
               .map((item) => ({
                 id: item.id,
                 title: item.title,
-                detail: "Library source",
+                detail: "Saved source",
                 linked: item.topicIds.includes(topicId),
                 href: `/dashboard/library?source=${encodeURIComponent(item.id)}`,
                 toggle: () => void toggleSource(item),

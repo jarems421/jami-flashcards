@@ -69,18 +69,18 @@ const tabs: Tab[] = [
     icon: "M5.25 3A2.25 2.25 0 003 5.25v10.5A2.25 2.25 0 005.25 18h.5V7.25A2.25 2.25 0 018 5h10v-.25A1.75 1.75 0 0016.25 3h-11zM8 6.5A.75.75 0 007.25 7.25v11A2.75 2.75 0 0010 21h8.25A2.75 2.75 0 0021 18.25v-9A2.75 2.75 0 0018.25 6.5H8zm2.5 3h7.25a.75.75 0 010 1.5H10.5a.75.75 0 010-1.5zm0 3.5h5.25a.75.75 0 010 1.5H10.5a.75.75 0 010-1.5z",
   },
   {
-    href: "/dashboard/library",
-    label: "Library",
-    description: "Study sources",
-    group: "support",
-    icon: "M2 19h20v2H2v-2zM4 7a1 1 0 011-1h3a1 1 0 011 1v12H4V7zM10 4a1 1 0 011-1h3a1 1 0 011 1v15h-5V4zM16 9a1 1 0 011-1h3a1 1 0 011 1v10h-5V9z",
-  },
-  {
     href: "/dashboard/topics",
     label: "Topics",
     description: "Connect study material",
     group: "support",
     icon: "M12 2.25a8.75 8.75 0 00-5.62 15.46v3.1a.75.75 0 001.23.58l3.31-2.76c.36.05.72.07 1.08.07a8.75 8.75 0 100-17.5zm-3.5 6.1a.75.75 0 01.75-.75h5.5a.75.75 0 010 1.5h-5.5a.75.75 0 01-.75-.75zm0 4a.75.75 0 01.75-.75h4a.75.75 0 010 1.5h-4a.75.75 0 01-.75-.75z",
+  },
+  {
+    href: "/dashboard/library",
+    label: "Sources",
+    description: "Saved references",
+    group: "support",
+    icon: "M2 19h20v2H2v-2zM4 7a1 1 0 011-1h3a1 1 0 011 1v12H4V7zM10 4a1 1 0 011-1h3a1 1 0 011 1v15h-5V4zM16 9a1 1 0 011-1h3a1 1 0 011 1v10h-5V9z",
   },
   {
     href: "/dashboard/goals",

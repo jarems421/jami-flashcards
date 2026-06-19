@@ -2011,7 +2011,7 @@ export default function StudyPage() {
                         ? "Focused Review is ready"
                         : sessionStats.completedGoals > 0
                           ? "Check your new star"
-                          : "Tidy your card library"}
+                          : "Tidy your cards"}
                   </div>
                   <p className="mt-1 text-sm leading-6 text-text-secondary">
                     {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0
