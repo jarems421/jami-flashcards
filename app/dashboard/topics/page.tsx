@@ -15,6 +15,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
+import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
 import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
 import {
@@ -38,6 +39,9 @@ import {
   updateTopic,
 } from "@/services/study/topics";
 
+const RECENT_TOPIC_COUNT = 3;
+const TOPIC_BROWSE_PAGE_SIZE = 30;
+
 export default function TopicsPage() {
   const router = useRouter();
   const { user, isDemoUser } = useUser();
@@ -47,6 +51,10 @@ export default function TopicsPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [search, setSearch] = useState("");
+  const [showAllTopics, setShowAllTopics] = useState(false);
+  const [visibleTopicLimit, setVisibleTopicLimit] = useState(
+    TOPIC_BROWSE_PAGE_SIZE
+  );
   const [newTopicName, setNewTopicName] = useState("");
   const [creating, setCreating] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
@@ -94,12 +102,31 @@ export default function TopicsPage() {
     [cards, drafts, notebooks, sources, topics]
   );
   const hasSearchQuery = shouldShowSmartSearchResults(search);
+  const recentSummaries = useMemo(
+    () =>
+      sortByCreatedAtNewest(summaries, (summary) => summary.topic.createdAt),
+    [summaries]
+  );
   const filtered = useMemo(() => {
     if (!hasSearchQuery) return [];
     return summaries.filter((summary) =>
       textMatchesSmartSearch(summary.topic.name, search)
     );
   }, [hasSearchQuery, search, summaries]);
+  const visibleSummaries = hasSearchQuery
+    ? filtered
+    : recentSummaries.slice(
+        0,
+        showAllTopics ? visibleTopicLimit : RECENT_TOPIC_COUNT
+      );
+  const remainingTopics = Math.max(
+    recentSummaries.length - visibleSummaries.length,
+    0
+  );
+
+  useEffect(() => {
+    setVisibleTopicLimit(TOPIC_BROWSE_PAGE_SIZE);
+  }, [topics.length]);
 
   const createTopic = async () => {
     if (!newTopicName.trim() || isDemoUser) return;
@@ -268,155 +295,201 @@ export default function TopicsPage() {
         />
       ) : null}
 
+      {!loading && topics.length > 0 && !hasSearchQuery ? (
+        <div
+          id="recent-topics"
+          className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"
+        >
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">
+              Recently added
+            </h2>
+            <p className="mt-1 text-sm text-text-muted">
+              {showAllTopics
+                ? "All Topics, newest to oldest"
+                : `Your latest ${Math.min(RECENT_TOPIC_COUNT, topics.length)} Topics`}
+            </p>
+          </div>
+          {topics.length > RECENT_TOPIC_COUNT ? (
+            <Button
+              type="button"
+              size="sm"
+              variant="ghost"
+              aria-expanded={showAllTopics}
+              aria-controls="recent-topics-grid"
+              onClick={() => setShowAllTopics((current) => !current)}
+              className="w-full sm:w-auto"
+            >
+              {showAllTopics ? "Show less" : "View all"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {Array.from({ length: 6 }, (_, index) => (
             <Skeleton key={index} className="h-40" />
           ))}
         </div>
-      ) : filtered.length > 0 ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((summary) => {
-            const editing = editingTopicId === summary.topic.id;
-            return (
-              <section
-                key={summary.topic.id}
-                className="app-panel relative rounded-[1.35rem] transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
-              >
-                {editing ? (
-                  <div className="p-5">
-                    <Input
-                      label="Topic name"
-                      value={renameValue}
-                      onChange={(event) => setRenameValue(event.target.value)}
-                      disabled={savingTopicId === summary.topic.id}
-                    />
-                    <div className="mt-4 flex flex-wrap gap-2">
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={
-                          savingTopicId === summary.topic.id ||
-                          !renameValue.trim()
-                        }
-                        onClick={() => void saveTopicName(summary.topic)}
-                      >
-                        {savingTopicId === summary.topic.id
-                          ? "Saving..."
-                          : "Save Topic"}
-                      </Button>
-                      <Button
-                        type="button"
-                        size="sm"
-                        variant="ghost"
+      ) : visibleSummaries.length > 0 ? (
+        <>
+          <div
+            id={!hasSearchQuery ? "recent-topics-grid" : undefined}
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+          >
+            {visibleSummaries.map((summary) => {
+              const editing = editingTopicId === summary.topic.id;
+              return (
+                <section
+                  key={summary.topic.id}
+                  className="app-panel relative rounded-[1.35rem] transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
+                >
+                  {editing ? (
+                    <div className="p-5">
+                      <Input
+                        label="Topic name"
+                        value={renameValue}
+                        onChange={(event) => setRenameValue(event.target.value)}
                         disabled={savingTopicId === summary.topic.id}
-                        onClick={cancelRenaming}
-                      >
-                        Cancel
-                      </Button>
-                    </div>
-                  </div>
-                ) : (
-                  <>
-                    <Link
-                      href={`/dashboard/topics/${encodeURIComponent(summary.topic.id)}`}
-                      className="group block rounded-[1.35rem] p-5 pr-16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <h2 className="min-w-0 truncate text-lg font-semibold text-text-primary">
-                          {summary.topic.name}
-                        </h2>
-                        <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
-                          {summary.cardCount +
-                            summary.notebookCount +
-                            summary.sourceCount +
-                            summary.draftCount}
-                        </span>
-                      </div>
-                      <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-text-muted">
-                        <span>{summary.cardCount} cards</span>
-                        <span>{summary.notebookCount} notebooks</span>
-                        <span>{summary.sourceCount} sources</span>
-                        <span>{summary.draftCount} drafts</span>
-                      </div>
-                      {summary.dueCardCount > 0 ||
-                      summary.weakCardCount > 0 ? (
-                        <div className="mt-4 flex flex-wrap gap-2">
-                          {summary.dueCardCount > 0 ? (
-                            <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
-                              {summary.dueCardCount} due
-                            </span>
-                          ) : null}
-                          {summary.weakCardCount > 0 ? (
-                            <span className="rounded-full border border-[var(--color-error-border)] bg-[var(--color-error-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--color-error-text)]">
-                              {summary.weakCardCount} weak
-                            </span>
-                          ) : null}
-                        </div>
-                      ) : null}
-                    </Link>
-                    {!isDemoUser ? (
-                      <details className="group/menu absolute right-3 top-3">
-                        <summary
-                          aria-label={`Actions for ${summary.topic.name}`}
-                          className="app-chip flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
+                      />
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={
+                            savingTopicId === summary.topic.id ||
+                            !renameValue.trim()
+                          }
+                          onClick={() => void saveTopicName(summary.topic)}
                         >
-                          <svg
-                            viewBox="0 0 20 20"
-                            fill="currentColor"
-                            aria-hidden="true"
-                            className="h-5 w-5"
-                          >
-                            <circle cx="4" cy="10" r="1.6" />
-                            <circle cx="10" cy="10" r="1.6" />
-                            <circle cx="16" cy="10" r="1.6" />
-                          </svg>
-                        </summary>
-                        <div className="absolute right-0 top-12 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
-                          <button
-                            type="button"
-                            className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)]"
-                            onClick={(event) => {
-                              event.currentTarget
-                                .closest("details")
-                                ?.removeAttribute("open");
-                              startRenaming(summary.topic);
-                            }}
-                          >
-                            Rename Topic
-                          </button>
-                          <button
-                            type="button"
-                            className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)]"
-                            onClick={(event) => {
-                              event.currentTarget
-                                .closest("details")
-                                ?.removeAttribute("open");
-                              setTopicPendingDelete(summary.topic);
-                            }}
-                          >
-                            Delete Topic
-                          </button>
+                          {savingTopicId === summary.topic.id
+                            ? "Saving..."
+                            : "Save Topic"}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="ghost"
+                          disabled={savingTopicId === summary.topic.id}
+                          onClick={cancelRenaming}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <>
+                      <Link
+                        href={`/dashboard/topics/${encodeURIComponent(summary.topic.id)}`}
+                        className="group block rounded-[1.35rem] p-5 pr-16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <h2 className="min-w-0 truncate text-lg font-semibold text-text-primary">
+                            {summary.topic.name}
+                          </h2>
+                          <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
+                            {summary.cardCount +
+                              summary.notebookCount +
+                              summary.sourceCount +
+                              summary.draftCount}
+                          </span>
                         </div>
-                      </details>
-                    ) : null}
-                  </>
-                )}
-              </section>
-            );
-          })}
-        </div>
+                        <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-text-muted">
+                          <span>{summary.cardCount} cards</span>
+                          <span>{summary.notebookCount} notebooks</span>
+                          <span>{summary.sourceCount} sources</span>
+                          <span>{summary.draftCount} drafts</span>
+                        </div>
+                        {summary.dueCardCount > 0 ||
+                        summary.weakCardCount > 0 ? (
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            {summary.dueCardCount > 0 ? (
+                              <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
+                                {summary.dueCardCount} due
+                              </span>
+                            ) : null}
+                            {summary.weakCardCount > 0 ? (
+                              <span className="rounded-full border border-[var(--color-error-border)] bg-[var(--color-error-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--color-error-text)]">
+                                {summary.weakCardCount} weak
+                              </span>
+                            ) : null}
+                          </div>
+                        ) : null}
+                      </Link>
+                      {!isDemoUser ? (
+                        <details className="group/menu absolute right-3 top-3">
+                          <summary
+                            aria-label={`Actions for ${summary.topic.name}`}
+                            className="app-chip flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
+                          >
+                            <svg
+                              viewBox="0 0 20 20"
+                              fill="currentColor"
+                              aria-hidden="true"
+                              className="h-5 w-5"
+                            >
+                              <circle cx="4" cy="10" r="1.6" />
+                              <circle cx="10" cy="10" r="1.6" />
+                              <circle cx="16" cy="10" r="1.6" />
+                            </svg>
+                          </summary>
+                          <div className="absolute right-0 top-12 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+                            <button
+                              type="button"
+                              className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)]"
+                              onClick={(event) => {
+                                event.currentTarget
+                                  .closest("details")
+                                  ?.removeAttribute("open");
+                                startRenaming(summary.topic);
+                              }}
+                            >
+                              Rename Topic
+                            </button>
+                            <button
+                              type="button"
+                              className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)]"
+                              onClick={(event) => {
+                                event.currentTarget
+                                  .closest("details")
+                                  ?.removeAttribute("open");
+                                setTopicPendingDelete(summary.topic);
+                              }}
+                            >
+                              Delete Topic
+                            </button>
+                          </div>
+                        </details>
+                      ) : null}
+                    </>
+                  )}
+                </section>
+              );
+            })}
+          </div>
+          {!hasSearchQuery && showAllTopics && remainingTopics > 0 ? (
+            <div className="flex justify-center pt-1">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() =>
+                  setVisibleTopicLimit(
+                    (limit) => limit + TOPIC_BROWSE_PAGE_SIZE
+                  )
+                }
+                className="w-full sm:w-auto"
+              >
+                Show {Math.min(TOPIC_BROWSE_PAGE_SIZE, remainingTopics)} more
+              </Button>
+            </div>
+          ) : null}
+        </>
       ) : topics.length > 0 && hasSearchQuery ? (
         <EmptyState
           emoji="Search"
           title="No Topics match"
           description="Try a shorter Topic name."
-        />
-      ) : topics.length > 0 ? (
-        <EmptyState
-          emoji="Search"
-          title="Search your Topics"
-          description="Search your Topics to view or edit them."
         />
       ) : (
         <EmptyState

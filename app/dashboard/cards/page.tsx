@@ -35,6 +35,7 @@ import {
 import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { getDeckHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
+import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
 import { getActiveTopics } from "@/services/study/topics";
 import AppPage from "@/components/layout/AppPage";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
@@ -51,6 +52,7 @@ import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, Stu
 import Link from "next/link";
 
 const CARD_RESULT_PAGE_SIZE = 50;
+const RECENT_CARD_COUNT = 4;
 type CardStatusFilter = "all" | "due" | "weak" | "new";
 
 function isPermissionDenied(error: unknown) {
@@ -69,6 +71,8 @@ export default function CardsSearchPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
   const [visibleResultLimit, setVisibleResultLimit] = useState(CARD_RESULT_PAGE_SIZE);
+  const [visibleBrowseLimit, setVisibleBrowseLimit] = useState(CARD_RESULT_PAGE_SIZE);
+  const [showAllCards, setShowAllCards] = useState(false);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
   const [previewCardId, setPreviewCardId] = useState<string | null>(null);
   const [deckFilter, setDeckFilter] = useState("");
@@ -148,6 +152,10 @@ export default function CardsSearchPage() {
   }, [cards.length, debouncedTerm, deckFilter, folderFilter, statusFilter, topicFilter]);
 
   useEffect(() => {
+    setVisibleBrowseLimit(CARD_RESULT_PAGE_SIZE);
+  }, [cards.length]);
+
+  useEffect(() => {
     if (!previewCardId) return;
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setPreviewCardId(null);
@@ -178,11 +186,12 @@ export default function CardsSearchPage() {
 
         if (cancelled) return;
 
-        const allCards = cardsSnapshot.docs
-          .map((cardDoc) =>
+        const allCards = sortByCreatedAtNewest(
+          cardsSnapshot.docs.map((cardDoc) =>
             mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
-          )
-          .sort((a, b) => b.createdAt - a.createdAt);
+          ),
+          (card) => card.createdAt
+        );
 
         setDecks(userDecks);
         setCards(allCards);
@@ -251,6 +260,10 @@ export default function CardsSearchPage() {
     debouncedTerm,
     activeFilterCount > 0,
   );
+  const recentCards = useMemo(
+    () => sortByCreatedAtNewest(cards, (card) => card.createdAt),
+    [cards]
+  );
 
   const filtered = useMemo(() => {
     if (!shouldShowCardResults) return [];
@@ -291,17 +304,19 @@ export default function CardsSearchPage() {
     topicFilter,
   ]);
 
-  useEffect(() => {
-    if (shouldShowCardResults) return;
-
-    setSelectedCardIds([]);
-    setBulkMoveDeckId("");
-  }, [shouldShowCardResults]);
-
-  const visibleCards = filtered.slice(0, visibleResultLimit);
+  const browseLimit = showAllCards ? visibleBrowseLimit : RECENT_CARD_COUNT;
+  const displayedCardPool = shouldShowCardResults ? filtered : recentCards;
+  const visibleCards = displayedCardPool.slice(
+    0,
+    shouldShowCardResults ? visibleResultLimit : browseLimit
+  );
   const visibleCardIds = useMemo(() => visibleCards.map((card) => card.id), [visibleCards]);
-  const remainingHiddenCards = Math.max(filtered.length - visibleCards.length, 0);
-  const hasMore = remainingHiddenCards > 0;
+  const remainingHiddenCards = Math.max(
+    displayedCardPool.length - visibleCards.length,
+    0
+  );
+  const hasMore =
+    remainingHiddenCards > 0 && (shouldShowCardResults || showAllCards);
   const {
     selectedCardIdSet,
     selectVisibleCards,
@@ -674,7 +689,7 @@ export default function CardsSearchPage() {
             <p className="mt-0.5 text-xs leading-5 text-text-muted">
               {shouldShowCardResults
                 ? `Showing ${filtered.length} matching card${filtered.length === 1 ? "" : "s"}`
-                : "Search card fronts or choose a filter"}
+                : "Search your cards or browse what you added recently"}
             </p>
           </div>
           <div className="grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
@@ -790,11 +805,6 @@ export default function CardsSearchPage() {
             </Button>
           </div>
         ) : null}
-        {!loading && cards.length > 0 && !shouldShowCardResults ? (
-          <div className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm leading-6 text-text-secondary">
-            Search from the start of a card front, or open filters to narrow cards by deck, folder, Topic, or status.
-          </div>
-        ) : null}
       </div>
 
       {loading ? (
@@ -813,9 +823,7 @@ export default function CardsSearchPage() {
           helperText={decks.length === 0 ? "Create a deck first." : undefined}
           action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
         />
-      ) : !shouldShowCardResults ? (
-        null
-      ) : filtered.length === 0 ? (
+      ) : shouldShowCardResults && filtered.length === 0 ? (
         <EmptyState
           emoji="Search"
           eyebrow="No match"
@@ -830,6 +838,37 @@ export default function CardsSearchPage() {
         />
       ) : (
         <>
+          {!shouldShowCardResults ? (
+            <div
+              id="recent-cards"
+              className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"
+            >
+              <div>
+                <h2 className="text-lg font-semibold text-text-primary">
+                  Recently added
+                </h2>
+                <p className="mt-1 text-sm text-text-muted">
+                  {showAllCards
+                    ? "All cards, newest to oldest"
+                    : `Your latest ${Math.min(RECENT_CARD_COUNT, cards.length)} cards`}
+                </p>
+              </div>
+              {cards.length > RECENT_CARD_COUNT ? (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  aria-expanded={showAllCards}
+                  aria-controls="recent-cards-grid"
+                  onClick={() => setShowAllCards((current) => !current)}
+                  className="w-full sm:w-auto"
+                >
+                  {showAllCards ? "Show less" : "View all"}
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+
           {!isDemoUser ? (
             <>
               <BulkTopicToolbar
@@ -887,11 +926,12 @@ export default function CardsSearchPage() {
           ) : null}
 
           <p className="text-sm text-text-secondary">
-            Showing {visibleCards.length} of {filtered.length} card{filtered.length === 1 ? "" : "s"}.
+            Showing {visibleCards.length} of {displayedCardPool.length} card{displayedCardPool.length === 1 ? "" : "s"}.
             Use the deck pill on any card to jump into that deck.
           </p>
 
           <div
+            id={!shouldShowCardResults ? "recent-cards-grid" : undefined}
             className="grid animate-slide-up touch-pan-y gap-3 sm:gap-4 lg:grid-cols-2"
           >
             {visibleCards.map((card) => (
@@ -1054,7 +1094,13 @@ export default function CardsSearchPage() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => setVisibleResultLimit((limit) => limit + CARD_RESULT_PAGE_SIZE)}
+                onClick={() => {
+                  if (shouldShowCardResults) {
+                    setVisibleResultLimit((limit) => limit + CARD_RESULT_PAGE_SIZE);
+                  } else {
+                    setVisibleBrowseLimit((limit) => limit + CARD_RESULT_PAGE_SIZE);
+                  }
+                }}
                 className="w-full sm:w-auto"
               >
                 Show {Math.min(CARD_RESULT_PAGE_SIZE, remainingHiddenCards)} more
