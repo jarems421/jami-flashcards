@@ -29,6 +29,7 @@ import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import CardActionsMenu from "@/components/decks/CardActionsMenu";
 import CardFaceSummary from "@/components/decks/CardFaceSummary";
 import BulkTopicToolbar from "@/components/topics/BulkTopicToolbar";
+import { getBulkTopicCapacity } from "@/lib/practice/topic-management";
 import TopicPicker from "@/components/topics/TopicPicker";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
@@ -380,6 +381,14 @@ export default function DeckDetailPageClient() {
     disabled: isDemoUser,
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
+  const selectedCards = useMemo(() => {
+    const selected = new Set(selectedCardIds);
+    return cards.filter((card) => selected.has(card.id));
+  }, [cards, selectedCardIds]);
+  const bulkTopicCapacity = useMemo(
+    () => getBulkTopicCapacity(selectedCards),
+    [selectedCards]
+  );
   const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
 
   const handleAddTopicsToSelectedCards = async () => {
@@ -388,8 +397,6 @@ export default function DeckDetailPageClient() {
       return;
     }
 
-    const selected = new Set(selectedCardIds);
-    const selectedCards = cards.filter((card) => selected.has(card.id));
     const overLimitCard = selectedCards.find((card) => {
       const current = card.topicIds ?? [];
       const additions = bulkTopicIds.filter((topicId) => !current.includes(topicId));
@@ -635,6 +642,7 @@ export default function DeckDetailPageClient() {
               visibleCount={filteredCards.length}
               topicIds={bulkTopicIds}
               topics={topics}
+              maxTopicsToAdd={bulkTopicCapacity}
               disabled={applyingBulkTopics}
               onSelectAll={selectVisibleCards}
               onTopicIdsChange={setBulkTopicIds}

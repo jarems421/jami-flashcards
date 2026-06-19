@@ -17,6 +17,8 @@ type TopicPickerProps = {
   onTopicsChange: (topics: Topic[]) => void;
   disabled?: boolean;
   label?: string;
+  maxSelections?: number;
+  selectionCountLabel?: string;
 };
 
 export default function TopicPicker({
@@ -27,6 +29,8 @@ export default function TopicPicker({
   onTopicsChange,
   disabled = false,
   label = "Topics",
+  maxSelections = MAX_LINKED_TOPICS,
+  selectionCountLabel,
 }: TopicPickerProps) {
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
@@ -45,7 +49,11 @@ export default function TopicPicker({
         .slice(0, 12),
     [normalizedQuery, topics]
   );
-  const canAdd = selectedTopicIds.length < MAX_LINKED_TOPICS;
+  const selectionLimit = Math.max(
+    0,
+    Math.min(MAX_LINKED_TOPICS, maxSelections)
+  );
+  const canAdd = selectedTopicIds.length < selectionLimit;
   const exactMatch = topics.find(
     (topic) =>
       topic.status === "active" &&
@@ -88,7 +96,8 @@ export default function TopicPicker({
       <div className="flex items-center justify-between gap-3">
         <div className="text-sm font-medium text-text-secondary">{label}</div>
         <span className="text-xs text-text-muted">
-          {selectedTopicIds.length}/{MAX_LINKED_TOPICS}
+          {selectionCountLabel ??
+            `${selectedTopicIds.length}/${selectionLimit}`}
         </span>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
@@ -157,7 +166,9 @@ export default function TopicPicker({
       ) : null}
       {!canAdd ? (
         <p className="mt-2 text-xs text-text-muted">
-          Remove a Topic before adding another.
+          {selectionLimit === 0
+            ? "The selected cards cannot accept another Topic."
+            : "Remove a Topic before adding another."}
         </p>
       ) : null}
       {error ? (

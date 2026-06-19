@@ -320,7 +320,7 @@ export default function TopicsPage() {
               onClick={() => setShowAllTopics((current) => !current)}
               className="w-full sm:w-auto"
             >
-              {showAllTopics ? "Show less" : "View all"}
+              {showAllTopics ? "Show less" : "View more"}
             </Button>
           ) : null}
         </div>

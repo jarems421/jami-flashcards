@@ -4,6 +4,7 @@ import {
   buildTopicSummaries,
   chunkTopicWrites,
   collectMissingTopicNames,
+  getBulkTopicCapacity,
 } from "@/lib/practice/topic-management";
 import type { Topic } from "@/lib/practice/topics";
 import type { Card } from "@/lib/study/cards";
@@ -41,6 +42,31 @@ describe("Topic migration helpers", () => {
     const chunks = chunkTopicWrites(writes, 400);
     expect(chunks.map((chunk) => chunk.length)).toEqual([400, 400, 1]);
     expect(chunks.flat()).toEqual(writes);
+  });
+
+  it("uses the most Topic-heavy selected card as the bulk addition limit", () => {
+    expect(
+      getBulkTopicCapacity([
+        { topicIds: ["topic-a"] },
+        { topicIds: ["topic-b"] },
+        { topicIds: ["topic-c"] },
+        { topicIds: ["topic-d", "topic-e"] },
+      ])
+    ).toBe(3);
+  });
+
+  it("does not offer more Topics when a selected card is at or over the limit", () => {
+    expect(
+      getBulkTopicCapacity([
+        { topicIds: ["a", "b", "c", "d", "e"] },
+        { topicIds: ["a"] },
+      ])
+    ).toBe(0);
+    expect(
+      getBulkTopicCapacity([
+        { topicIds: ["a", "b", "c", "d", "e", "legacy"] },
+      ])
+    ).toBe(0);
   });
 
   it("counts pending drafts and real card evidence only", () => {

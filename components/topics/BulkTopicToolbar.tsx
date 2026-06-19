@@ -10,6 +10,7 @@ type BulkTopicToolbarProps = {
   visibleCount: number;
   topicIds: string[];
   topics: Topic[];
+  maxTopicsToAdd: number;
   disabled?: boolean;
   onSelectAll: () => void;
   onTopicIdsChange: (topicIds: string[]) => void;
@@ -24,6 +25,7 @@ export default function BulkTopicToolbar({
   visibleCount,
   topicIds,
   topics,
+  maxTopicsToAdd,
   disabled = false,
   onSelectAll,
   onTopicIdsChange,
@@ -31,6 +33,10 @@ export default function BulkTopicToolbar({
   onApply,
   onClearSelection,
 }: BulkTopicToolbarProps) {
+  if (selectedCount < 2) return null;
+
+  const overCapacity = topicIds.length > maxTopicsToAdd;
+
   return (
     <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
@@ -48,18 +54,23 @@ export default function BulkTopicToolbar({
               onTopicsChange={onTopicsChange}
               disabled={disabled}
               label="Add Topics"
+              maxSelections={maxTopicsToAdd}
+              selectionCountLabel={`${topicIds.length} Topic${topicIds.length === 1 ? "" : "s"} selected`}
             />
+            <p className="mt-2 text-xs text-text-muted">
+              Up to {maxTopicsToAdd} more per card
+            </p>
           </div>
         </div>
         <div className="grid shrink-0 gap-2 sm:flex sm:flex-wrap">
           <Button type="button" size="sm" variant="ghost" disabled={disabled || visibleCount === 0} onClick={onSelectAll}>
             Select visible
           </Button>
-          <Button type="button" size="sm" variant="secondary" disabled={disabled || selectedCount === 0 || topicIds.length === 0} onClick={onApply}>
-            Apply Topics
-          </Button>
           <Button type="button" size="sm" variant="ghost" disabled={disabled || selectedCount === 0} onClick={onClearSelection}>
             Clear selection
+          </Button>
+          <Button type="button" size="sm" variant="secondary" disabled={disabled || topicIds.length === 0 || overCapacity} onClick={onApply}>
+            Apply Topics
           </Button>
         </div>
       </div>

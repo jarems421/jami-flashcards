@@ -32,6 +32,7 @@ import {
   MAX_LINKED_TOPICS,
   type Topic,
 } from "@/lib/practice/topics";
+import { getBulkTopicCapacity } from "@/lib/practice/topic-management";
 import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { getDeckHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
@@ -329,6 +330,14 @@ export default function CardsSearchPage() {
     disabled: isDemoUser,
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
+  const selectedCards = useMemo(() => {
+    const selected = new Set(selectedCardIds);
+    return cards.filter((card) => selected.has(card.id));
+  }, [cards, selectedCardIds]);
+  const bulkTopicCapacity = useMemo(
+    () => getBulkTopicCapacity(selectedCards),
+    [selectedCards]
+  );
   const previewCard = cards.find((card) => card.id === previewCardId) ?? null;
   const clearAllFilters = () => {
     setSearchTerm("");
@@ -461,8 +470,6 @@ export default function CardsSearchPage() {
       return;
     }
 
-    const selected = new Set(selectedCardIds);
-    const selectedCards = cards.filter((card) => selected.has(card.id));
     const overLimitCard = selectedCards.find((card) => {
       const current = card.topicIds ?? [];
       const additions = bulkTopicIds.filter((topicId) => !current.includes(topicId));
@@ -863,7 +870,7 @@ export default function CardsSearchPage() {
                   onClick={() => setShowAllCards((current) => !current)}
                   className="w-full sm:w-auto"
                 >
-                  {showAllCards ? "Show less" : "View all"}
+                  {showAllCards ? "Show less" : "View more"}
                 </Button>
               ) : null}
             </div>
@@ -877,6 +884,7 @@ export default function CardsSearchPage() {
                 visibleCount={visibleCards.length}
                 topicIds={bulkTopicIds}
                 topics={topics}
+                maxTopicsToAdd={bulkTopicCapacity}
                 disabled={applyingBulkTopics}
                 onSelectAll={selectVisibleCards}
                 onTopicIdsChange={setBulkTopicIds}

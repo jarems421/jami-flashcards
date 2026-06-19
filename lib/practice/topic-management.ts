@@ -8,6 +8,7 @@ import {
 import type { Card } from "@/lib/study/cards";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import type { Notebook } from "@/lib/workspace/notebooks";
+import { MAX_LINKED_TOPICS } from "@/lib/practice/topics";
 
 export type TopicSummary = {
   topic: Topic;
@@ -60,6 +61,18 @@ export function chunkTopicWrites<T>(items: T[], size = 400) {
     chunks.push(items.slice(index, index + size));
   }
   return chunks;
+}
+
+export function getBulkTopicCapacity(
+  cards: Array<Pick<Card, "topicIds">>
+) {
+  if (cards.length === 0) return MAX_LINKED_TOPICS;
+
+  const largestTopicCount = Math.max(
+    ...cards.map((card) => new Set(card.topicIds ?? []).size)
+  );
+
+  return Math.max(0, MAX_LINKED_TOPICS - largestTopicCount);
 }
 
 export function buildTopicSummaries(input: {

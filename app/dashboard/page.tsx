@@ -288,19 +288,21 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
         eyebrow="Weak-topic practice"
         title="Topics to repair"
       />
-      <div className="mt-5 space-y-3">
+      <div className="mt-5 grid gap-3">
         {plan.weakTopics.length > 0 ? (
           plan.weakTopics.map((topic) => (
             <Link
               key={topic.topicId}
               href={topic.href}
-            className="app-subtle-panel block rounded-[1.15rem] p-4 transition duration-fast hover:-translate-y-[1px]"
-          >
-              <div>
+              className="app-subtle-panel grid gap-3 rounded-[1.15rem] p-4 transition duration-fast hover:-translate-y-[1px] sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] sm:items-center"
+            >
+              <div className="min-w-0">
                 <div className="text-sm font-semibold text-text-primary">{topic.name}</div>
                 <div className="mt-1 text-xs text-text-muted">{topic.subject}</div>
               </div>
-              <p className="mt-3 text-sm leading-6 text-text-secondary">{topic.reason}</p>
+              <p className="text-sm leading-6 text-text-secondary sm:border-l sm:border-[var(--color-border)] sm:pl-4">
+                {topic.reason}
+              </p>
             </Link>
           ))
         ) : (
@@ -619,6 +621,10 @@ export default function DashboardHome() {
     todayPlan.drafts.length > 0 ||
     todayPlan.weakTopics.length > 0 ||
     Boolean(todayPlan.goalSummary);
+  const secondaryCardCount =
+    Number(todayPlan.drafts.length > 0) +
+    Number(todayPlan.weakTopics.length > 0) +
+    Number(Boolean(todayPlan.goalSummary));
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -674,7 +680,13 @@ export default function DashboardHome() {
             </div>
 
             {hasSecondaryCards ? (
-              <div className="grid items-start gap-4 md:grid-cols-2 2xl:grid-cols-3">
+              <div
+                className={`grid items-start gap-4 ${
+                  secondaryCardCount === 1
+                    ? "grid-cols-1"
+                    : "md:grid-cols-2 2xl:grid-cols-3"
+                }`}
+              >
                 {todayPlan.drafts.length > 0 ? <DraftQueueCard plan={todayPlan} /> : null}
                 {todayPlan.weakTopics.length > 0 ? <WeakTopicsCard plan={todayPlan} /> : null}
                 {todayPlan.goalSummary ? <GoalSnapshotCard plan={todayPlan} /> : null}
