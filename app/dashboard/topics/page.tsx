@@ -8,6 +8,7 @@ import AppPage from "@/components/layout/AppPage";
 import {
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   FeedbackBanner,
   Input,
@@ -15,7 +16,11 @@ import {
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
-import type { Topic } from "@/lib/practice/topics";
+import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
+import {
+  shouldShowSmartSearchResults,
+  textMatchesSmartSearch,
+} from "@/lib/study/card-search";
 import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
 import type { Source } from "@/lib/practice/sources";
 import type { Notebook } from "@/lib/workspace/notebooks";
@@ -26,7 +31,12 @@ import {
 } from "@/services/study/generated-content";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getActiveSources } from "@/services/study/sources";
-import { createOrGetTopic, getActiveTopics } from "@/services/study/topics";
+import {
+  createOrGetTopic,
+  deleteTopicEverywhere,
+  getActiveTopics,
+  updateTopic,
+} from "@/services/study/topics";
 
 export default function TopicsPage() {
   const router = useRouter();
@@ -39,6 +49,11 @@ export default function TopicsPage() {
   const [search, setSearch] = useState("");
   const [newTopicName, setNewTopicName] = useState("");
   const [creating, setCreating] = useState(false);
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState("");
+  const [savingTopicId, setSavingTopicId] = useState<string | null>(null);
+  const [topicPendingDelete, setTopicPendingDelete] = useState<Topic | null>(null);
+  const [deletingTopicId, setDeletingTopicId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
@@ -78,12 +93,13 @@ export default function TopicsPage() {
     () => buildTopicSummaries({ topics, cards, notebooks, sources, drafts }),
     [cards, drafts, notebooks, sources, topics]
   );
+  const hasSearchQuery = shouldShowSmartSearchResults(search);
   const filtered = useMemo(() => {
-    const queryText = search.trim().toLowerCase();
-    return queryText
-      ? summaries.filter((summary) => summary.topic.name.toLowerCase().includes(queryText))
-      : summaries;
-  }, [search, summaries]);
+    if (!hasSearchQuery) return [];
+    return summaries.filter((summary) =>
+      textMatchesSmartSearch(summary.topic.name, search)
+    );
+  }, [hasSearchQuery, search, summaries]);
 
   const createTopic = async () => {
     if (!newTopicName.trim() || isDemoUser) return;
@@ -109,6 +125,71 @@ export default function TopicsPage() {
     }
   };
 
+  const startRenaming = (topic: Topic) => {
+    setEditingTopicId(topic.id);
+    setRenameValue(topic.name);
+    setFeedback(null);
+  };
+
+  const cancelRenaming = () => {
+    setEditingTopicId(null);
+    setRenameValue("");
+  };
+
+  const saveTopicName = async (topic: Topic) => {
+    const nextName = renameValue.trim();
+    if (!nextName || isDemoUser) return;
+    setSavingTopicId(topic.id);
+    setFeedback(null);
+    try {
+      await updateTopic(user.uid, topic.id, { name: nextName });
+      setTopics((current) =>
+        current.map((item) =>
+          item.id === topic.id
+            ? {
+                ...item,
+                name: nextName,
+                normalizedName: getTopicNameKey(nextName),
+                updatedAt: Date.now(),
+              }
+            : item
+        )
+      );
+      cancelRenaming();
+      setFeedback({ type: "success", message: "Topic renamed." });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Could not rename Topic.",
+      });
+    } finally {
+      setSavingTopicId(null);
+    }
+  };
+
+  const deleteTopic = async () => {
+    if (!topicPendingDelete || isDemoUser) return;
+    const topic = topicPendingDelete;
+    setDeletingTopicId(topic.id);
+    setFeedback(null);
+    try {
+      await deleteTopicEverywhere(user.uid, topic.id);
+      setTopics((current) => current.filter((item) => item.id !== topic.id));
+      if (editingTopicId === topic.id) cancelRenaming();
+      setTopicPendingDelete(null);
+      setFeedback({ type: "success", message: `${topic.name} was deleted.` });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Could not delete Topic.",
+      });
+    } finally {
+      setDeletingTopicId(null);
+    }
+  };
+
   return (
     <AppPage
       title="Topics"
@@ -124,6 +205,22 @@ export default function TopicsPage() {
           onDismiss={() => setFeedback(null)}
         />
       ) : null}
+      <ConfirmDialog
+        open={topicPendingDelete !== null}
+        title={
+          topicPendingDelete
+            ? `Delete ${topicPendingDelete.name}?`
+            : "Delete Topic?"
+        }
+        description="This permanently removes the Topic from every linked card, notebook, source, and draft. Your study material will not be deleted."
+        confirmLabel="Delete Topic"
+        busy={
+          topicPendingDelete !== null &&
+          deletingTopicId === topicPendingDelete.id
+        }
+        onClose={() => setTopicPendingDelete(null)}
+        onConfirm={() => void deleteTopic()}
+      />
 
       <Card tone="warm" padding="lg">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
@@ -164,7 +261,10 @@ export default function TopicsPage() {
           aria-label="Search Topics"
           placeholder="Search Topics"
           value={search}
-          onChange={(event) => setSearch(event.target.value)}
+          onChange={(event) => {
+            setSearch(event.target.value);
+            if (editingTopicId) cancelRenaming();
+          }}
         />
       ) : null}
 
@@ -176,48 +276,147 @@ export default function TopicsPage() {
         </div>
       ) : filtered.length > 0 ? (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {filtered.map((summary) => (
-            <Link
-              key={summary.topic.id}
-              href={`/dashboard/topics/${encodeURIComponent(summary.topic.id)}`}
-              className="app-panel group block rounded-[1.35rem] p-5 transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <h2 className="min-w-0 truncate text-lg font-semibold text-text-primary">
-                  {summary.topic.name}
-                </h2>
-                <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
-                  {summary.cardCount + summary.notebookCount + summary.sourceCount + summary.draftCount}
-                </span>
-              </div>
-              <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-text-muted">
-                <span>{summary.cardCount} cards</span>
-                <span>{summary.notebookCount} notebooks</span>
-                <span>{summary.sourceCount} sources</span>
-                <span>{summary.draftCount} drafts</span>
-              </div>
-              {(summary.dueCardCount > 0 || summary.weakCardCount > 0) ? (
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {summary.dueCardCount > 0 ? (
-                    <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
-                      {summary.dueCardCount} due
-                    </span>
-                  ) : null}
-                  {summary.weakCardCount > 0 ? (
-                    <span className="rounded-full border border-[var(--color-error-border)] bg-[var(--color-error-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--color-error-text)]">
-                      {summary.weakCardCount} weak
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-            </Link>
-          ))}
+          {filtered.map((summary) => {
+            const editing = editingTopicId === summary.topic.id;
+            return (
+              <section
+                key={summary.topic.id}
+                className="app-panel relative rounded-[1.35rem] transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
+              >
+                {editing ? (
+                  <div className="p-5">
+                    <Input
+                      label="Topic name"
+                      value={renameValue}
+                      onChange={(event) => setRenameValue(event.target.value)}
+                      disabled={savingTopicId === summary.topic.id}
+                    />
+                    <div className="mt-4 flex flex-wrap gap-2">
+                      <Button
+                        type="button"
+                        size="sm"
+                        disabled={
+                          savingTopicId === summary.topic.id ||
+                          !renameValue.trim()
+                        }
+                        onClick={() => void saveTopicName(summary.topic)}
+                      >
+                        {savingTopicId === summary.topic.id
+                          ? "Saving..."
+                          : "Save Topic"}
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        disabled={savingTopicId === summary.topic.id}
+                        onClick={cancelRenaming}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <Link
+                      href={`/dashboard/topics/${encodeURIComponent(summary.topic.id)}`}
+                      className="group block rounded-[1.35rem] p-5 pr-16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <h2 className="min-w-0 truncate text-lg font-semibold text-text-primary">
+                          {summary.topic.name}
+                        </h2>
+                        <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
+                          {summary.cardCount +
+                            summary.notebookCount +
+                            summary.sourceCount +
+                            summary.draftCount}
+                        </span>
+                      </div>
+                      <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-text-muted">
+                        <span>{summary.cardCount} cards</span>
+                        <span>{summary.notebookCount} notebooks</span>
+                        <span>{summary.sourceCount} sources</span>
+                        <span>{summary.draftCount} drafts</span>
+                      </div>
+                      {summary.dueCardCount > 0 ||
+                      summary.weakCardCount > 0 ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
+                          {summary.dueCardCount > 0 ? (
+                            <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
+                              {summary.dueCardCount} due
+                            </span>
+                          ) : null}
+                          {summary.weakCardCount > 0 ? (
+                            <span className="rounded-full border border-[var(--color-error-border)] bg-[var(--color-error-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--color-error-text)]">
+                              {summary.weakCardCount} weak
+                            </span>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </Link>
+                    {!isDemoUser ? (
+                      <details className="group/menu absolute right-3 top-3">
+                        <summary
+                          aria-label={`Actions for ${summary.topic.name}`}
+                          className="app-chip flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
+                        >
+                          <svg
+                            viewBox="0 0 20 20"
+                            fill="currentColor"
+                            aria-hidden="true"
+                            className="h-5 w-5"
+                          >
+                            <circle cx="4" cy="10" r="1.6" />
+                            <circle cx="10" cy="10" r="1.6" />
+                            <circle cx="16" cy="10" r="1.6" />
+                          </svg>
+                        </summary>
+                        <div className="absolute right-0 top-12 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+                          <button
+                            type="button"
+                            className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)]"
+                            onClick={(event) => {
+                              event.currentTarget
+                                .closest("details")
+                                ?.removeAttribute("open");
+                              startRenaming(summary.topic);
+                            }}
+                          >
+                            Rename Topic
+                          </button>
+                          <button
+                            type="button"
+                            className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)]"
+                            onClick={(event) => {
+                              event.currentTarget
+                                .closest("details")
+                                ?.removeAttribute("open");
+                              setTopicPendingDelete(summary.topic);
+                            }}
+                          >
+                            Delete Topic
+                          </button>
+                        </div>
+                      </details>
+                    ) : null}
+                  </>
+                )}
+              </section>
+            );
+          })}
         </div>
-      ) : topics.length > 0 ? (
+      ) : topics.length > 0 && hasSearchQuery ? (
         <EmptyState
           emoji="Search"
           title="No Topics match"
           description="Try a shorter Topic name."
+        />
+      ) : topics.length > 0 ? (
+        <EmptyState
+          emoji="Search"
+          title="Search your Topics"
+          description="Search your Topics to view or edit them."
         />
       ) : (
         <EmptyState

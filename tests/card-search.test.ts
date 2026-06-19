@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   frontMatchesCardSearch,
   shouldShowCardBrowserResults,
+  shouldShowSmartSearchResults,
+  textMatchesSmartSearch,
 } from "@/lib/study/card-search";
 
 describe("card front smart search", () => {
@@ -29,5 +31,24 @@ describe("card front smart search", () => {
     expect(shouldShowCardBrowserResults("   ", false)).toBe(false);
     expect(shouldShowCardBrowserResults("", true)).toBe(true);
     expect(shouldShowCardBrowserResults("o", false)).toBe(true);
+  });
+});
+
+describe("shared smart text search", () => {
+  it("matches prefixes case-insensitively", () => {
+    expect(textMatchesSmartSearch("Cell Biology", "ce")).toBe(true);
+    expect(textMatchesSmartSearch("Cell Biology", "CE")).toBe(true);
+    expect(textMatchesSmartSearch("Advanced Cell Biology", "ce")).toBe(false);
+  });
+
+  it("matches complete words anywhere after a trailing space", () => {
+    expect(textMatchesSmartSearch("Advanced Cell Biology", "cell ")).toBe(true);
+    expect(textMatchesSmartSearch("Cellular Biology", "cell ")).toBe(false);
+  });
+
+  it("keeps name-search results hidden until a query is entered", () => {
+    expect(shouldShowSmartSearchResults("")).toBe(false);
+    expect(shouldShowSmartSearchResults("   ")).toBe(false);
+    expect(shouldShowSmartSearchResults("cell")).toBe(true);
   });
 });

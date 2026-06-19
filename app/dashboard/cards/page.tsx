@@ -47,7 +47,7 @@ import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
-import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
+import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import Link from "next/link";
 
 const CARD_RESULT_PAGE_SIZE = 50;
@@ -688,16 +688,6 @@ export default function CardsSearchPage() {
             >
               {showFilterControls ? "Hide filters" : `Filters${activeFilterCount > 0 ? ` (${activeFilterCount})` : ""}`}
             </Button>
-            {!isDemoUser ? (
-              <ButtonLink
-                href="/dashboard/topics"
-                variant="secondary"
-                size="sm"
-                className="w-full sm:w-auto"
-              >
-                Manage Topics ({topics.length})
-              </ButtonLink>
-            ) : null}
           </div>
         </div>
         <div className="flex flex-col gap-2 sm:flex-row">
