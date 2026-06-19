@@ -327,26 +327,28 @@ export default function TopicsPage() {
       ) : null}
 
       {loading ? (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {Array.from({ length: 6 }, (_, index) => (
-            <Skeleton key={index} className="h-40" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+          {Array.from({ length: 8 }, (_, index) => (
+            <Skeleton key={index} className="h-28" />
           ))}
         </div>
       ) : visibleSummaries.length > 0 ? (
         <>
           <div
             id={!hasSearchQuery ? "recent-topics-grid" : undefined}
-            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
           >
             {visibleSummaries.map((summary) => {
               const editing = editingTopicId === summary.topic.id;
               return (
                 <section
                   key={summary.topic.id}
-                  className="app-panel relative rounded-[1.35rem] transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell"
+                  className={`app-panel relative rounded-[1.35rem] transition duration-fast hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell ${
+                    editing ? "sm:col-span-2" : ""
+                  }`}
                 >
                   {editing ? (
-                    <div className="p-5">
+                    <div className="p-4">
                       <Input
                         label="Topic name"
                         value={renameValue}
@@ -382,20 +384,12 @@ export default function TopicsPage() {
                     <>
                       <Link
                         href={`/dashboard/topics/${encodeURIComponent(summary.topic.id)}`}
-                        className="group block rounded-[1.35rem] p-5 pr-16 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        className="group block rounded-[1.35rem] p-4 pr-14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <h2 className="min-w-0 truncate text-lg font-semibold text-text-primary">
-                            {summary.topic.name}
-                          </h2>
-                          <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
-                            {summary.cardCount +
-                              summary.notebookCount +
-                              summary.sourceCount +
-                              summary.draftCount}
-                          </span>
-                        </div>
-                        <div className="mt-4 grid grid-cols-2 gap-2 text-xs text-text-muted">
+                        <h2 className="min-w-0 truncate text-base font-semibold text-text-primary">
+                          {summary.topic.name}
+                        </h2>
+                        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[0.7rem] leading-5 text-text-muted">
                           <span>{summary.cardCount} cards</span>
                           <span>{summary.notebookCount} notebooks</span>
                           <span>{summary.sourceCount} sources</span>
@@ -403,14 +397,14 @@ export default function TopicsPage() {
                         </div>
                         {summary.dueCardCount > 0 ||
                         summary.weakCardCount > 0 ? (
-                          <div className="mt-4 flex flex-wrap gap-2">
+                          <div className="mt-3 flex flex-wrap gap-1.5">
                             {summary.dueCardCount > 0 ? (
-                              <span className="app-chip rounded-full px-2.5 py-1 text-xs font-semibold">
+                              <span className="app-chip rounded-full px-2.5 py-1 text-[0.68rem] font-semibold">
                                 {summary.dueCardCount} due
                               </span>
                             ) : null}
                             {summary.weakCardCount > 0 ? (
-                              <span className="rounded-full border border-[var(--color-error-border)] bg-[var(--color-error-muted)] px-2.5 py-1 text-xs font-semibold text-[var(--color-error-text)]">
+                              <span className="rounded-full border border-[var(--color-error-border)] bg-[var(--color-error-muted)] px-2.5 py-1 text-[0.68rem] font-semibold text-[var(--color-error-text)]">
                                 {summary.weakCardCount} weak
                               </span>
                             ) : null}
@@ -418,7 +412,7 @@ export default function TopicsPage() {
                         ) : null}
                       </Link>
                       {!isDemoUser ? (
-                        <details className="group/menu absolute right-3 top-3">
+                        <details className="group/menu absolute right-2 top-2">
                           <summary
                             aria-label={`Actions for ${summary.topic.name}`}
                             className="app-chip flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"

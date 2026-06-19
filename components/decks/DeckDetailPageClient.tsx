@@ -616,9 +616,10 @@ export default function DeckDetailPageClient() {
       ) : null}
 
       {deck && loadingCards ? (
-        <div className="grid gap-4 lg:grid-cols-2">
-          <Skeleton className="h-28" />
-          <Skeleton className="h-28" />
+        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+          {Array.from({ length: 6 }, (_, index) => (
+            <Skeleton key={index} className="h-28" />
+          ))}
         </div>
       ) : deck && cards.length === 0 ? (
         <EmptyState
@@ -661,30 +662,31 @@ export default function DeckDetailPageClient() {
               action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
             />
           ) : (
-            <div className="grid gap-4 lg:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {filteredCards.map((card) => (
                 <section
                   key={card.id}
-                  className={`app-panel p-3 transition duration-fast sm:p-4 ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
+                  className={`app-panel min-w-0 p-3 transition duration-fast ${
+                    editingCardId === card.id ? "sm:col-span-2" : ""
+                  } ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
                 >
-                  {!isDemoUser ? (
-                    <div className="mb-3 flex items-center justify-end">
-                      <label className="flex min-h-9 items-center justify-center gap-2 rounded-full border border-white/[0.08] bg-white/[0.035] px-3 py-1.5 text-xs font-medium text-text-secondary">
-                        <input
-                          type="checkbox"
-                          checked={selectedCardIdSet.has(card.id)}
-                          onClick={(event) => handleCheckboxClick(card.id, event)}
-                          onChange={() => undefined}
-                          className="h-4 w-4 accent-[var(--color-accent)]"
-                        />
-                        Select
-                      </label>
-                    </div>
-                  ) : null}
                   {editingCardId === card.id ? (
                     <div className="space-y-4">
-                      <div className="flex flex-wrap gap-2">
-                        <CardDifficultyBadge card={card} />
+                      <div className="flex items-center justify-between gap-3">
+                        <CardDifficultyBadge card={card} compact />
+                        {!isDemoUser ? (
+                          <label className="flex h-10 w-10 cursor-pointer items-center justify-center" title="Select card">
+                            <span className="sr-only">Select card</span>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select card: ${card.front}`}
+                              checked={selectedCardIdSet.has(card.id)}
+                              onClick={(event) => handleCheckboxClick(card.id, event)}
+                              onChange={() => undefined}
+                              className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
+                            />
+                          </label>
+                        ) : null}
                       </div>
                       <CardQualityWarnings
                         warnings={getCardQualityWarnings(
@@ -749,7 +751,7 @@ export default function DeckDetailPageClient() {
                       </div>
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="flex h-full min-w-0 flex-col gap-3">
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <CardFaceSummary
@@ -758,17 +760,32 @@ export default function DeckDetailPageClient() {
                             onPreview={() => setPreviewCardId(card.id)}
                           />
                         </div>
-                        <CardActionsMenu
-                          deleting={deletingCardId === card.id}
-                          disabled={isDemoUser || deletingCardId === card.id}
-                          onPreview={() => setPreviewCardId(card.id)}
-                          onEdit={() => startEditingCard(card)}
-                          onDelete={() => setCardPendingDeleteId(card.id)}
-                        />
+                        <div className="flex shrink-0 items-center gap-0.5">
+                          {!isDemoUser ? (
+                            <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
+                              <span className="sr-only">Select card</span>
+                              <input
+                                type="checkbox"
+                                aria-label={`Select card: ${card.front}`}
+                                checked={selectedCardIdSet.has(card.id)}
+                                onClick={(event) => handleCheckboxClick(card.id, event)}
+                                onChange={() => undefined}
+                                className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
+                              />
+                            </label>
+                          ) : null}
+                          <CardActionsMenu
+                            deleting={deletingCardId === card.id}
+                            disabled={isDemoUser || deletingCardId === card.id}
+                            onPreview={() => setPreviewCardId(card.id)}
+                            onEdit={() => startEditingCard(card)}
+                            onDelete={() => setCardPendingDeleteId(card.id)}
+                          />
+                        </div>
                       </div>
 
-                      <div className="flex flex-wrap gap-2 pt-1">
-                        <CardDifficultyBadge card={card} />
+                      <div className="mt-auto flex flex-wrap gap-1.5">
+                        <CardDifficultyBadge card={card} compact />
                         <CardQualityWarnings
                           warnings={getCardQualityWarnings(card, {
                             duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)),
@@ -781,7 +798,7 @@ export default function DeckDetailPageClient() {
                           return (
                             <span
                               key={topicId}
-                              className="max-w-full rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent"
+                              className="max-w-full rounded-full border border-warm-border bg-warm-glow px-2.5 py-1 text-[0.68rem] font-medium text-warm-accent"
                             >
                               <span className="block truncate">{topic.name}</span>
                             </span>

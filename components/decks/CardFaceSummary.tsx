@@ -17,22 +17,20 @@ export default function CardFaceSummary({
     <button
       type="button"
       onClick={onPreview}
-      className="group w-full rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 text-left transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)]"
+      className="group block w-full min-w-0 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       aria-label={`Preview card: ${front}`}
     >
       <StudyText
         as="div"
         text={front}
-        className="line-clamp-4 whitespace-pre-wrap text-[0.95rem] font-semibold leading-6 text-text-primary sm:text-base sm:leading-7"
+        className="line-clamp-2 whitespace-pre-wrap text-[0.95rem] font-semibold leading-6 text-text-primary transition group-hover:text-accent"
       />
-      <div className="my-3 h-px bg-[var(--color-border)]" />
-      <StudyText
-        as="div"
-        text={back}
-        className="line-clamp-4 whitespace-pre-wrap text-sm leading-6 text-text-secondary"
-      />
-      <div className="mt-3 text-xs font-medium text-text-muted transition group-hover:text-text-secondary">
-        Preview full card
+      <div className="mt-2 border-t border-[var(--color-border)] pt-2">
+        <StudyText
+          as="div"
+          text={back}
+          className="line-clamp-2 whitespace-pre-wrap text-xs leading-5 text-text-secondary"
+        />
       </div>
     </button>
   );
