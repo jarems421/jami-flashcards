@@ -345,45 +345,41 @@ export default function TopicsPage() {
       </Card>
 
       {topics.length > 0 ? (
-        <Input
-          aria-label="Search Topics"
-          placeholder="Search Topics"
-          value={search}
-          onChange={(event) => {
-            setSearch(event.target.value);
-            if (editingTopicId) cancelRenaming();
-          }}
-        />
-      ) : null}
-
-      {!loading && topics.length > 0 && !hasSearchQuery ? (
-        <div
-          id="recent-topics"
-          className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"
-        >
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">
-              Browse Topics
-            </h2>
-            <p className="mt-1 text-sm text-text-muted">
-              {showAllTopics
-                ? "All Topics, newest to oldest"
-                : `Your latest ${Math.min(RECENT_TOPIC_COUNT, topics.length)} Topics`}
-            </p>
+        <div className="space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">
+                Browse Topics
+              </h2>
+              <p className="mt-0.5 text-sm text-text-muted">
+                {hasSearchQuery
+                  ? `${filtered.length} matching Topic${filtered.length === 1 ? "" : "s"}`
+                  : `${topics.length} Topic${topics.length === 1 ? "" : "s"}`}
+              </p>
+            </div>
+            {!hasSearchQuery && topics.length > RECENT_TOPIC_COUNT ? (
+              <Button
+                type="button"
+                size="sm"
+                variant={showAllTopics ? "secondary" : "ghost"}
+                aria-expanded={showAllTopics}
+                aria-controls="recent-topics-grid"
+                onClick={() => setShowAllTopics((current) => !current)}
+                className="w-full sm:w-auto"
+              >
+                {showAllTopics ? "Show less" : "View more"}
+              </Button>
+            ) : null}
           </div>
-          {topics.length > RECENT_TOPIC_COUNT ? (
-            <Button
-              type="button"
-              size="sm"
-              variant="ghost"
-              aria-expanded={showAllTopics}
-              aria-controls="recent-topics-grid"
-              onClick={() => setShowAllTopics((current) => !current)}
-              className="w-full sm:w-auto"
-            >
-              {showAllTopics ? "Show less" : "View more"}
-            </Button>
-          ) : null}
+          <Input
+            aria-label="Search Topics"
+            placeholder="Search Topics"
+            value={search}
+            onChange={(event) => {
+              setSearch(event.target.value);
+              if (editingTopicId) cancelRenaming();
+            }}
+          />
         </div>
       ) : null}
 

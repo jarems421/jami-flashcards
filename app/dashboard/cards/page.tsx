@@ -692,11 +692,11 @@ export default function CardsSearchPage() {
       <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-sm font-semibold text-text-primary">Find cards</div>
-            <p className="mt-0.5 text-xs leading-5 text-text-muted">
+            <div className="text-lg font-semibold text-text-primary">Browse cards</div>
+            <p className="mt-0.5 text-sm text-text-muted">
               {shouldShowCardResults
-                ? `Showing ${filtered.length} matching card${filtered.length === 1 ? "" : "s"}`
-                : "Search your cards or browse what you added recently"}
+                ? `${filtered.length} matching card${filtered.length === 1 ? "" : "s"}`
+                : `${cards.length} card${cards.length === 1 ? "" : "s"}`}
             </p>
           </div>
           <div className="grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
@@ -857,24 +857,6 @@ export default function CardsSearchPage() {
         />
       ) : (
         <>
-          {!shouldShowCardResults ? (
-            <div
-              id="recent-cards"
-              className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between"
-            >
-              <div>
-                <h2 className="text-lg font-semibold text-text-primary">
-                  Browse cards
-                </h2>
-                <p className="mt-1 text-sm text-text-muted">
-                  {showAllCards
-                    ? "All cards, newest to oldest"
-                    : `Your latest ${Math.min(RECENT_CARD_COUNT, cards.length)} cards`}
-                </p>
-              </div>
-            </div>
-          ) : null}
-
           {!isDemoUser ? (
             <>
               <BulkTopicToolbar
@@ -931,11 +913,6 @@ export default function CardsSearchPage() {
               ) : null}
             </>
           ) : null}
-
-          <p className="text-sm text-text-secondary">
-            Showing {visibleCards.length} of {displayedCardPool.length} card{displayedCardPool.length === 1 ? "" : "s"}.
-            Use the deck pill on any card to jump into that deck.
-          </p>
 
           <div
             id={!shouldShowCardResults ? "recent-cards-grid" : undefined}
