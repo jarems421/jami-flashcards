@@ -36,7 +36,6 @@ const topic: Topic = {
 const folder: StudyFolder = {
   id: "folder-science",
   name: "Science",
-  description: "Biology notes and cards.",
   subject: "Science",
   topicIds: [topic.id],
   archived: false,

@@ -296,7 +296,6 @@ describe("Jami notebook-first learning foundations", () => {
   it("validates broad study folders separately from topics", () => {
     const payload = buildStudyFolderPayload({
       name: "  Humanities  ",
-      description: " History, politics, and source analysis. ",
       subject: " History ",
       topicIds: ["topic-cold-war", "topic-cold-war"],
       now: 40,

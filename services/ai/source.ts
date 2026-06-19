@@ -28,13 +28,20 @@ async function authedPost<T>(url: string, body: Record<string, unknown>): Promis
   return data as T;
 }
 
-export async function askSourceTutor(input: { sourceId: string; message: string }) {
-  const data = await authedPost<{ reply?: string; threadId?: string }>("/api/ai/source-tutor", input);
+export async function askSourceTutor(input: { sourceIds: string[]; message: string }) {
+  const data = await authedPost<{
+    reply?: string;
+    threadId?: string;
+    sourcesUsed?: Array<{ id: string; title: string }>;
+    sourceFailures?: Array<{ id: string; title: string; reason: string }>;
+  }>("/api/ai/source-tutor", input);
   const reply = typeof data.reply === "string" ? data.reply.trim() : "";
   if (!reply) throw new Error("Source Tutor could not answer just now.");
   return {
     reply,
     threadId: typeof data.threadId === "string" ? data.threadId : undefined,
+    sourcesUsed: Array.isArray(data.sourcesUsed) ? data.sourcesUsed : [],
+    sourceFailures: Array.isArray(data.sourceFailures) ? data.sourceFailures : [],
   };
 }
 

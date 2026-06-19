@@ -76,7 +76,6 @@ export async function createStudyFolder(
   userId: string,
   input: {
     name: string;
-    description?: string;
     subject?: string;
     color?: string;
     icon?: string;
@@ -103,7 +102,6 @@ export async function updateStudyFolder(
   folderId: string,
   input: Partial<{
     name: string;
-    description: string;
     subject: string;
     color: string;
     icon: string;
@@ -130,9 +128,6 @@ export async function updateStudyFolder(
       throw new Error("Folder name is required.");
     }
     updates.name = name;
-  }
-  if (input.description !== undefined) {
-    updates.description = input.description.trim().slice(0, 400) || null;
   }
   if (input.subject !== undefined) {
     updates.subject = input.subject.trim().slice(0, 120) || null;

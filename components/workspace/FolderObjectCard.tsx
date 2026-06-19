@@ -10,7 +10,6 @@ export type FolderObjectStat = {
 type FolderObjectCardProps = {
   title: string;
   subtitle?: string;
-  description?: string;
   color?: string | null;
   icon?: string | null;
   stats?: FolderObjectStat[];

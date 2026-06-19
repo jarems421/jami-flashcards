@@ -5,14 +5,10 @@ import {
   uploadBytesResumable,
 } from "firebase/storage";
 import { storage } from "@/services/firebase/client";
-
-const MAX_SOURCE_FILE_SIZE = 20 * 1024 * 1024;
-const ALLOWED_SOURCE_FILE_TYPES = [
-  "application/pdf",
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-] as const;
+import {
+  resolveSourceFileMimeType,
+  validateSourceFile,
+} from "@/lib/practice/source-files";
 
 function sanitizeFileName(fileName: string) {
   const [baseName, ...extensionParts] = fileName.trim().split(".");
@@ -48,12 +44,9 @@ function getUploadErrorMessage(error: unknown) {
 }
 
 export function validateSourceUploadFile(file: File) {
-  if (!ALLOWED_SOURCE_FILE_TYPES.includes(file.type as (typeof ALLOWED_SOURCE_FILE_TYPES)[number])) {
-    throw new Error("Upload a PDF, JPEG, PNG, or WebP file.");
-  }
-  if (file.size > MAX_SOURCE_FILE_SIZE) {
-    throw new Error("Source files must be under 20 MB.");
-  }
+  const fileType = resolveSourceFileMimeType(file.name, file.type);
+  validateSourceFile({ type: fileType ?? file.type, size: file.size });
+  return fileType;
 }
 
 export function buildSourceStoragePath(input: {
@@ -78,7 +71,7 @@ export async function uploadSourceFile(input: {
   onProgress?: (progress: number) => void;
 }) {
   const { userId, sourceId, file, onProgress } = input;
-  validateSourceUploadFile(file);
+  const fileType = validateSourceUploadFile(file);
   const fileId =
     typeof crypto !== "undefined" && "randomUUID" in crypto
       ? crypto.randomUUID()
@@ -94,7 +87,7 @@ export async function uploadSourceFile(input: {
   try {
     await new Promise<void>((resolve, reject) => {
       const uploadTask = uploadBytesResumable(storageRef, file, {
-        contentType: file.type,
+        contentType: fileType ?? file.type,
         cacheControl: "private,max-age=3600",
       });
 
@@ -114,7 +107,7 @@ export async function uploadSourceFile(input: {
 
     return {
       fileName: file.name,
-      fileType: file.type,
+      fileType: fileType ?? file.type,
       sizeBytes: file.size,
       storagePath,
     };

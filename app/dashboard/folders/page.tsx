@@ -14,7 +14,6 @@ import {
   FeedbackBanner,
   Input,
   Skeleton,
-  Textarea,
 } from "@/components/ui";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { useUser } from "@/lib/auth/user-context";
@@ -39,7 +38,6 @@ export default function FoldersPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [name, setName] = useState("");
   const [subject, setSubject] = useState("");
-  const [description, setDescription] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [folderColor, setFolderColor] = useState<ObjectColorId>("sky");
   const [folderIcon, setFolderIcon] = useState<ObjectIconId>("none");
@@ -95,7 +93,6 @@ export default function FoldersPage() {
   const resetForm = () => {
     setName("");
     setSubject("");
-    setDescription("");
     setSelectedTopicIds([]);
     setFolderColor("sky");
     setFolderIcon("none");
@@ -114,7 +111,6 @@ export default function FoldersPage() {
       const folder = await createStudyFolder(user.uid, {
         name,
         subject,
-        description,
         topicIds: selectedTopicIds,
         color: folderColor,
         icon: folderIcon,
@@ -226,13 +222,6 @@ export default function FoldersPage() {
                   value={subject}
                   placeholder="Optional"
                   onChange={(event) => setSubject(event.target.value)}
-                />
-                <Textarea
-                  label="Notes"
-                  rows={4}
-                  value={description}
-                  placeholder="Optional"
-                  onChange={(event) => setDescription(event.target.value)}
                 />
                 <ObjectStylePicker
                   color={folderColor}

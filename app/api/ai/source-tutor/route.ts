@@ -4,16 +4,23 @@ import { getBearerToken } from "@/lib/auth/bearer";
 import { checkAiBudget } from "@/lib/ai/budgets";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { generateGeminiText } from "@/lib/ai/gemini";
+import {
+  normalizeSourceTutorIds,
+  prepareSourceForTutor,
+} from "@/lib/ai/source-ingestion";
 import { hasDemoClaim } from "@/lib/demo/token";
 import { mapSourceData } from "@/lib/practice/sources";
+import { getAdminStorageBucket } from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
-const REQUEST_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 45_000;
+const MAX_TUTOR_SOURCES = 5;
+const MAX_COMBINED_SOURCE_BYTES = 30 * 1024 * 1024;
 
 function getFallbackReply() {
-  return "Based on this source, pick one key definition, restate it in your own words, then turn it into one flashcard or one short practice question.";
+  return "I could not finish reading the selected sources just now. Try again with fewer or smaller sources.";
 }
 
 export async function POST(request: NextRequest) {
@@ -35,17 +42,26 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  let sourceId: string;
+  let sourceIds: string[];
   let message: string;
   try {
     const body = await request.json();
-    sourceId = typeof body.sourceId === "string" ? body.sourceId.trim().slice(0, 160) : "";
+    const requestedSourceIds: unknown[] = Array.isArray(body.sourceIds)
+      ? body.sourceIds
+      : [];
+    sourceIds = normalizeSourceTutorIds(requestedSourceIds);
     message =
       typeof body.message === "string" && body.message.trim()
         ? body.message.trim().slice(0, 1_000)
-        : "Explain this source and identify the most useful revision ideas.";
-    if (!sourceId) {
-      return Response.json({ error: "sourceId is required" }, { status: 400 });
+        : "Explain the selected sources and identify the most useful revision ideas.";
+    if (sourceIds.length === 0) {
+      return Response.json({ error: "Select at least one source." }, { status: 400 });
+    }
+    if (sourceIds.length > MAX_TUTOR_SOURCES) {
+      return Response.json(
+        { error: "Tutor can use up to five sources at once." },
+        { status: 400 }
+      );
     }
   } catch {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
@@ -57,19 +73,69 @@ export async function POST(request: NextRequest) {
   }
 
   const adminDb = getAdminDb();
-  const sourceSnapshot = await adminDb.collection("users").doc(uid).collection("sources").doc(sourceId).get();
-  if (!sourceSnapshot.exists) {
-    return Response.json({ error: "Source not found" }, { status: 404 });
+  const snapshots = await Promise.all(
+    sourceIds.map((sourceId) =>
+      adminDb.collection("users").doc(uid).collection("sources").doc(sourceId).get()
+    )
+  );
+  if (snapshots.some((snapshot) => !snapshot.exists)) {
+    return Response.json({ error: "One or more sources could not be found." }, { status: 404 });
   }
 
-  const source = mapSourceData(sourceSnapshot.id, sourceSnapshot.data() ?? {});
-  if (!source.contentText) {
+  const sources = snapshots.map((snapshot) =>
+    mapSourceData(snapshot.id, snapshot.data() ?? {})
+  );
+  const bucket = getAdminStorageBucket();
+  const preparedResults = await Promise.all(
+    sources.map(async (source) => {
+      try {
+        const prepared = await prepareSourceForTutor(source, async (storagePath) => {
+          const [buffer] = await bucket.file(storagePath).download();
+          return buffer;
+        });
+        return { source, prepared } as const;
+      } catch (error) {
+        return {
+          source,
+          error: error instanceof Error ? error.message : "This source could not be read.",
+        } as const;
+      }
+    })
+  );
+  const readable = preparedResults.filter(
+    (result): result is Extract<(typeof preparedResults)[number], { prepared: unknown }> =>
+      "prepared" in result
+  );
+  const failures = preparedResults
+    .filter(
+      (result): result is Extract<(typeof preparedResults)[number], { error: unknown }> =>
+        "error" in result
+    )
+    .map((result) => ({
+      id: result.source.id,
+      title: result.source.title,
+      reason: result.error,
+    }));
+
+  if (readable.length === 0) {
     return Response.json(
       {
-        error:
-          "This source is saved as a reference only. Paste the relevant text before using Tutor or generating drafts.",
+        error: failures[0]?.reason
+          ? `The selected sources could not be read. ${failures[0].reason}`
+          : "The selected sources could not be read.",
+        sourceFailures: failures,
       },
-      { status: 400 }
+      { status: 422 }
+    );
+  }
+  const combinedBytes = readable.reduce(
+    (total, result) => total + result.prepared.inputBytes,
+    0
+  );
+  if (combinedBytes > MAX_COMBINED_SOURCE_BYTES) {
+    return Response.json(
+      { error: "Choose fewer or smaller sources. Tutor can read up to 30 MB at once." },
+      { status: 413 }
     );
   }
 
@@ -79,23 +145,19 @@ export async function POST(request: NextRequest) {
       timeoutMs: REQUEST_TIMEOUT_MS,
       request: {
         systemInstruction: `You are Jami's source tutor.
-Ground your answer in the supplied source text and start with "Based on this source".
-If the source does not contain enough information, say that clearly before offering a next step.
-If you use outside knowledge, label it under "Outside context".
-Be concise, student-friendly, and revision-focused.
-Do not create final flashcards or notebook question drafts unless asked by a separate draft action.`,
+Answer only from the selected sources supplied in this request.
+Use inline source labels such as [Biology notes] after claims or sections.
+Finish with a short "Sources used" list containing only sources that supported the answer.
+If sources conflict or do not contain enough information, say that clearly.
+Do not silently use outside knowledge and do not create flashcards or notebook question drafts.
+Be concise, student-friendly, and focused on helping the student understand.`,
         contents: [
           {
             role: "user",
             parts: [
+              ...readable.flatMap((result) => result.prepared.parts),
               {
-                text: `Source title: ${source.title}
-Subject: ${source.subject ?? "Unspecified"}
-Source text:
-${source.contentText.slice(0, 12_000)}
-
-Student request:
-${message}`,
+                text: `Student request:\n${message}`,
               },
             ],
           },
@@ -106,12 +168,23 @@ ${message}`,
       },
     });
 
-    const reply = cleanGeneratedStudyText(text) || getFallbackReply();
+    const generatedReply = cleanGeneratedStudyText(text) || getFallbackReply();
+    const failureNote =
+      failures.length > 0
+        ? `\n\nI could not read ${failures.map((failure) => `[${failure.title}]`).join(", ")}. Paste the relevant text or upload a readable copy if you want Tutor to include ${failures.length === 1 ? "it" : "them"}.`
+        : "";
+    const reply = `${generatedReply}${failureNote}`;
     const now = Date.now();
+    const sourceTitles = readable.map((result) => result.source.title);
+    const sourceIdList = readable.map((result) => result.source.id);
     const threadRef = await adminDb.collection("users").doc(uid).collection("tutorThreads").add({
       contextType: "source",
-      contextId: source.id,
-      title: source.title.slice(0, 120),
+      contextId: sourceIdList[0],
+      contextIds: sourceIdList,
+      title:
+        sourceTitles.length === 1
+          ? sourceTitles[0].slice(0, 120)
+          : `${sourceTitles[0]} + ${sourceTitles.length - 1} more`.slice(0, 120),
       createdAt: now,
       updatedAt: now,
     });
@@ -133,7 +206,15 @@ ${message}`,
       }),
     ]);
 
-    return Response.json({ reply, threadId: threadRef.id });
+    return Response.json({
+      reply,
+      threadId: threadRef.id,
+      sourcesUsed: readable.map((result) => ({
+        id: result.source.id,
+        title: result.source.title,
+      })),
+      sourceFailures: failures,
+    });
   } catch (error) {
     console.error("Source tutor error:", error);
     return Response.json({ reply: getFallbackReply(), fallback: true });

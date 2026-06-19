@@ -145,9 +145,10 @@ Library is a focused source workspace, not a file manager.
 
 - Save useful study sources, pasted notes, manual notes, links, and file references.
 - Make the selected source feel central: source list, source preview, source actions.
-- Source actions should feed the Jami loop: Tutor context, flashcard drafts, practice drafts, topics, Today, and Progress.
-- Keep AI generation small and draft-only until the student approves it.
-- Library file support is still metadata/reference only. Notebook uploaded-file support may count and raster-render PDF pages as immutable notebook backgrounds with ink overlays, but must not imply OCR, text extraction, semantic reading, or PDF editing.
+- Source actions should feed the Jami loop through explicit Tutor help, topics, Today, and Progress.
+- Saving or uploading a source must never trigger AI work or draft creation automatically.
+- Tutor may read up to five deliberately selected Library sources only after the student submits a request. This may include bounded on-demand document extraction, image understanding, and public-link reading.
+- On-demand source processing must not become background scanning, persistent OCR/indexing, automatic draft creation, always-on document understanding, or PDF editing. Keep originals immutable and do not persist extracted source text.
 
 ## Component Rules
 
@@ -207,8 +208,8 @@ Do not use or build:
 - Figma MCP
 - Figma design-to-code
 - Anywhere
-- OCR
-- PDF text extraction or semantic parsing
+- Background or persistent OCR
+- Automatic or background PDF text extraction and semantic parsing
 - Library file storage upload
 - PDF editing or mutation (notebook ink overlays on immutable raster pages are allowed)
 - full-paper mode

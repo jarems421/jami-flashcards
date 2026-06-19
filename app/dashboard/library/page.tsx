@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode,
 } from "react";
@@ -37,6 +38,11 @@ import {
   getSourceFileDownloadUrl,
   uploadSourceFile,
 } from "@/services/study/source-files";
+import {
+  getSourceFileKind,
+  getSourceFileTypeLabel,
+  resolveSourceFileMimeType,
+} from "@/lib/practice/source-files";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import {
@@ -49,8 +55,9 @@ import {
   canRemoveSourceFromFilteredFolder,
   getLinkedSourceFolders,
 } from "@/lib/study/library-management";
-import { askSourceTutor, generateSourceDrafts } from "@/services/ai/source";
+import { askSourceTutor } from "@/services/ai/source";
 import AppPage from "@/components/layout/AppPage";
+import SourcePreview from "@/components/library/SourcePreview";
 import {
   Button,
   ButtonLink,
@@ -69,20 +76,37 @@ type Feedback = { type: "success" | "error"; message: string };
 type TutorMessage = { role: "user" | "model"; text: string };
 type LibraryMobileTab = "sources" | "source" | "actions";
 type SourceManagementAction = "archive" | "delete" | null;
+type SourceComposerKind = "text" | "link" | "image" | "document";
 
 function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
 }
 
-const sourceTypes: Array<{ value: SourceType; label: string; helper: string }> = [
-  { value: "pasted_text", label: "Paste text", helper: "Notes, extracts, worked examples." },
-  { value: "manual_note", label: "Manual note", helper: "Your own summary or reminder." },
-  { value: "link", label: "Link", helper: "Save the reference; parsing comes later." },
-  { value: "file", label: "Upload file", helper: "Store a PDF or image for reference." },
+const sourceTypes: Array<{ value: SourceType; label: string }> = [
+  { value: "pasted_text", label: "Pasted text" },
+  { value: "manual_note", label: "Text note" },
+  { value: "link", label: "Link" },
+  { value: "file", label: "File" },
+];
+
+const sourceComposerKinds: Array<{
+  value: SourceComposerKind;
+  label: string;
+}> = [
+  { value: "text", label: "Text" },
+  { value: "link", label: "Link" },
+  { value: "image", label: "Image" },
+  { value: "document", label: "Document" },
 ];
 
 function typeLabel(type: SourceType) {
   return sourceTypes.find((item) => item.value === type)?.label ?? "Source";
+}
+
+function sourceDisplayLabel(source: Source) {
+  return source.type === "file"
+    ? getSourceFileTypeLabel(source.fileType)
+    : typeLabel(source.type);
 }
 
 function SourceTypeIcon({
@@ -140,13 +164,6 @@ function topicNames(topicIds: string[], topics: Topic[]) {
   return topicIds
     .map((topicId) => topics.find((topic) => topic.id === topicId)?.name)
     .filter((name): name is string => Boolean(name));
-}
-
-function sourcePreview(source: Source) {
-  if (source.contentText) return source.contentText;
-  if (source.externalUrl) return source.externalUrl;
-  if (source.fileName) return `${source.fileName}${source.fileType ? ` (${source.fileType})` : ""}`;
-  return "No source text yet.";
 }
 
 function DraftEditor({
@@ -381,7 +398,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [showAddSource, setShowAddSource] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [sourceType, setSourceType] = useState<SourceType>("pasted_text");
+  const [composerKind, setComposerKind] = useState<SourceComposerKind>("text");
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
@@ -394,6 +411,8 @@ export default function LibraryPage() {
   const [sourceFileUrls, setSourceFileUrls] = useState<Record<string, string>>({});
   const [tutorMessage, setTutorMessage] = useState("Explain the key ideas in this source.");
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
+  const [tutorSourceIds, setTutorSourceIds] = useState<string[]>([]);
+  const tutorSelectionInitializedRef = useRef(false);
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [deckIdByDraft, setDeckIdByDraft] = useState<Record<string, string>>({});
   const [notebookIdByDraft, setNotebookIdByDraft] = useState<Record<string, string>>({});
@@ -480,6 +499,12 @@ export default function LibraryPage() {
       ).sort((left, right) => left.localeCompare(right)),
     [sources]
   );
+  const sourceType: SourceType =
+    composerKind === "text"
+      ? "manual_note"
+      : composerKind === "link"
+        ? "link"
+        : "file";
   const filteredSources = useMemo(() => {
     const normalizedSearch = searchTerm.trim().toLowerCase();
     const recentCutoff = Date.now() - 30 * 24 * 60 * 60 * 1000;
@@ -568,6 +593,15 @@ export default function LibraryPage() {
           ? current
           : nextSources[0]?.id ?? null
       );
+      setTutorSourceIds((current) => {
+        const availableIds = new Set(nextSources.map((source) => source.id));
+        const retained = current.filter((sourceId) => availableIds.has(sourceId));
+        if (retained.length > 0 || tutorSelectionInitializedRef.current) {
+          return retained;
+        }
+        tutorSelectionInitializedRef.current = true;
+        return nextSources[0] ? [nextSources[0].id] : [];
+      });
     } catch (error) {
       console.error(error);
       setSources([]);
@@ -657,10 +691,33 @@ export default function LibraryPage() {
     setBusyAction("create-source");
     setUploadProgress(null);
     setFeedback(null);
+    let createdSourceId = "";
+    let uploadedStoragePath = "";
     try {
       if (sourceType === "file" && !sourceFile) {
-        setFeedback({ type: "error", message: "Choose a PDF or image to upload." });
+        setFeedback({ type: "error", message: "Choose a file to upload." });
         return;
+      }
+      if (sourceFile) {
+        const resolvedFileType = resolveSourceFileMimeType(
+          sourceFile.name,
+          sourceFile.type
+        );
+        const fileKind = getSourceFileKind(resolvedFileType);
+        if (composerKind === "image" && fileKind !== "image") {
+          setFeedback({ type: "error", message: "Choose a JPEG, PNG, or WebP image." });
+          return;
+        }
+        if (
+          composerKind === "document" &&
+          (fileKind === "image" || fileKind === null)
+        ) {
+          setFeedback({
+            type: "error",
+            message: "Choose a PDF, Word document, PowerPoint, or text file.",
+          });
+          return;
+        }
       }
       const sourceId = await createSource(user.uid, {
         title: title.trim() || sourceFile?.name || title,
@@ -673,6 +730,7 @@ export default function LibraryPage() {
         fileName: sourceType === "file" ? sourceFile?.name ?? fileName : fileName,
         fileType: sourceType === "file" ? sourceFile?.type ?? fileType : fileType,
       });
+      createdSourceId = sourceId;
       if (sourceType === "file" && sourceFile) {
         const upload = await uploadSourceFile({
           userId: user.uid,
@@ -680,6 +738,7 @@ export default function LibraryPage() {
           file: sourceFile,
           onProgress: setUploadProgress,
         });
+        uploadedStoragePath = upload.storagePath;
         await updateSource(user.uid, sourceId, {
           fileName: upload.fileName,
           fileType: upload.fileType,
@@ -699,8 +758,17 @@ export default function LibraryPage() {
       setShowAddSource(false);
       await loadAll();
       setSelectedSourceId(sourceId);
+      setTutorSourceIds((current) =>
+        current.includes(sourceId) ? current : [...current, sourceId].slice(-5)
+      );
       setFeedback({ type: "success", message: sourceType === "file" ? "File uploaded to Library." : "Source saved." });
     } catch (error) {
+      if (uploadedStoragePath) {
+        await deleteSourceFile(uploadedStoragePath).catch(() => undefined);
+      }
+      if (createdSourceId) {
+        await deleteSource(user.uid, createdSourceId).catch(() => undefined);
+      }
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Could not save source." });
     } finally {
       setBusyAction(null);
@@ -708,8 +776,8 @@ export default function LibraryPage() {
     }
   };
 
-  const openSourceComposer = (type: SourceType) => {
-    setSourceType(type);
+  const openSourceComposer = (kind: SourceComposerKind = "text") => {
+    setComposerKind(kind);
     setShowAddSource(true);
   };
 
@@ -845,39 +913,45 @@ export default function LibraryPage() {
     setStatusFilter("active");
   };
 
+  const toggleTutorSource = (sourceId: string) => {
+    setTutorSourceIds((current) => {
+      if (current.includes(sourceId)) {
+        return current.filter((id) => id !== sourceId);
+      }
+      if (current.length >= 5) {
+        setFeedback({
+          type: "error",
+          message: "Tutor can use up to five sources at once.",
+        });
+        return current;
+      }
+      return [...current, sourceId];
+    });
+  };
+
   const runSourceTutor = async () => {
-    if (!selectedSource) return;
+    if (tutorSourceIds.length === 0) {
+      setFeedback({ type: "error", message: "Select at least one source for Tutor." });
+      return;
+    }
     setBusyAction("source-tutor");
     setFeedback(null);
     setTutorMessages((current) => [...current, { role: "user", text: tutorMessage }]);
     try {
-      const response = await askSourceTutor({ sourceId: selectedSource.id, message: tutorMessage });
+      const response = await askSourceTutor({
+        sourceIds: tutorSourceIds,
+        message: tutorMessage,
+      });
       setTutorMessages((current) => [...current, { role: "model", text: response.reply }]);
-      setFeedback({ type: "success", message: "Tutor used this source as context." });
-    } catch (error) {
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Source Tutor failed." });
-    } finally {
-      setBusyAction(null);
-    }
-  };
-
-  const generateDrafts = async (kind: "flashcard" | "practice-question") => {
-    if (!selectedSource) return;
-    setBusyAction(kind);
-    setFeedback(null);
-    try {
-      const result = await generateSourceDrafts({ sourceId: selectedSource.id, kind });
-      await loadAll();
-      const removedMessage =
-        result.removedDraftCount > 0
-          ? ` ${result.removedDraftCount} weaker suggestion${result.removedDraftCount === 1 ? " was" : "s were"} removed.`
-          : "";
       setFeedback({
         type: "success",
-        message: `${result.drafts.length} source-grounded ${kind === "flashcard" ? "flashcard" : "practice question"} draft${result.drafts.length === 1 ? "" : "s"} created.${removedMessage} Review before approving.`,
+        message:
+          response.sourceFailures.length > 0
+            ? `Tutor used ${response.sourcesUsed.length} source${response.sourcesUsed.length === 1 ? "" : "s"}. ${response.sourceFailures.length} could not be read.`
+            : `Tutor used ${response.sourcesUsed.length} selected source${response.sourcesUsed.length === 1 ? "" : "s"}.`,
       });
     } catch (error) {
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Could not generate drafts." });
+      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Source Tutor failed." });
     } finally {
       setBusyAction(null);
     }
@@ -945,25 +1019,9 @@ export default function LibraryPage() {
       backLabel="Today"
       width="study"
       action={
-        <div className="flex flex-wrap justify-end gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => openSourceComposer("link")}
-          >
-            Add link
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => openSourceComposer("manual_note")}
-          >
-            Add note
-          </Button>
-          <Button type="button" onClick={() => openSourceComposer("file")}>
-            Upload PDF
-          </Button>
-        </div>
+        <Button type="button" onClick={() => openSourceComposer("text")}>
+          Add source
+        </Button>
       }
       contentClassName="space-y-4 sm:space-y-6"
     >
@@ -1003,13 +1061,18 @@ export default function LibraryPage() {
             </div>
             <div className="mt-5 grid gap-4 lg:grid-cols-[0.75fr_1.25fr]">
               <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
-                {sourceTypes.map((item) => (
+                {sourceComposerKinds.map((item) => (
                   <button
                     key={item.value}
                     type="button"
-                    onClick={() => setSourceType(item.value)}
+                    onClick={() => {
+                      setComposerKind(item.value);
+                      setSourceFile(null);
+                      setFileName("");
+                      setFileType("");
+                    }}
                     className={`w-full rounded-[1.2rem] border p-4 text-left transition ${
-                      sourceType === item.value
+                      composerKind === item.value
                         ? "border-warm-border bg-warm-glow text-white"
                         : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
                     }`}
@@ -1023,7 +1086,7 @@ export default function LibraryPage() {
                   <Input label="Title" value={title} onChange={(event) => setTitle(event.target.value)} />
                   <Input label="Subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
                 </div>
-                {(sourceType === "pasted_text" || sourceType === "manual_note") ? (
+                {composerKind === "text" ? (
                   <Textarea
                     label="Source text"
                     rows={8}
@@ -1031,18 +1094,22 @@ export default function LibraryPage() {
                     onChange={(event) => setContentText(event.target.value)}
                   />
                 ) : null}
-                {sourceType === "link" ? (
+                {composerKind === "link" ? (
                   <Input label="Source link" value={externalUrl} onChange={(event) => setExternalUrl(event.target.value)} />
                 ) : null}
-                {sourceType === "file" ? (
+                {composerKind === "image" || composerKind === "document" ? (
                   <div className="app-subtle-panel rounded-[1.25rem] p-4">
                     <label className="block text-sm font-semibold text-text-primary" htmlFor="library-source-file">
-                      PDF or image
+                      {composerKind === "image" ? "Image" : "Study document"}
                     </label>
                     <input
                       id="library-source-file"
                       type="file"
-                      accept="application/pdf,image/jpeg,image/png,image/webp"
+                      accept={
+                        composerKind === "image"
+                          ? "image/jpeg,image/png,image/webp"
+                          : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,.pdf,.docx,.pptx,.txt"
+                      }
                       onChange={(event) => {
                         const file = event.target.files?.[0] ?? null;
                         setSourceFile(file);
@@ -1055,7 +1122,10 @@ export default function LibraryPage() {
                       className="mt-3 block w-full cursor-pointer rounded-[1rem] border border-[var(--color-field-border)] bg-[var(--color-field-bg)] p-3 text-sm text-[var(--color-field-text)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--button-secondary-bg)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--button-secondary-text)]"
                     />
                     <p className="mt-2 text-xs leading-5 text-text-muted">
-                      PDF, JPEG, PNG, or WebP. Stored for reference; no OCR or automatic reading.
+                      {composerKind === "image"
+                        ? "JPEG, PNG, or WebP."
+                        : "PDF, Word, PowerPoint, or plain text."}{" "}
+                      Tutor reads it only when you select it and ask.
                     </p>
                     {sourceFile ? (
                       <div className="mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-2 text-sm text-text-secondary">
@@ -1437,27 +1507,11 @@ export default function LibraryPage() {
           emoji="Library"
           eyebrow="No sources yet"
           title="Build your study material hub."
-          description="Upload a PDF or image, add a link, or write a note."
+          description="Save text, links, images, and study documents in one place."
           action={
-            <div className="flex flex-wrap justify-center gap-2">
-              <Button type="button" onClick={() => openSourceComposer("file")}>
-                Upload PDF
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => openSourceComposer("manual_note")}
-              >
-                Add note
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => openSourceComposer("link")}
-              >
-                Add link
-              </Button>
-            </div>
+            <Button type="button" onClick={() => openSourceComposer("text")}>
+              Add source
+            </Button>
           }
         />
       ) : filteredSources.length === 0 ? (
@@ -1478,7 +1532,7 @@ export default function LibraryPage() {
               <Button
                 type="button"
                 variant="secondary"
-                onClick={() => openSourceComposer("manual_note")}
+                onClick={() => openSourceComposer("text")}
               >
                 Add source
               </Button>
@@ -1512,6 +1566,7 @@ export default function LibraryPage() {
             <div className="mt-5 space-y-3">
               {filteredSources.map((source) => {
                 const active = source.id === selectedSource?.id;
+                const includedForTutor = tutorSourceIds.includes(source.id);
                 const linkedFolders = source.folderIds
                   .map(
                     (folderId) =>
@@ -1519,46 +1574,61 @@ export default function LibraryPage() {
                   )
                   .filter((name): name is string => Boolean(name));
                 return (
-                  <button
-                    key={source.id}
-                    type="button"
-                    onClick={() => {
-                      setSelectedSourceId(source.id);
-                      setMobileTab("source");
-                    }}
-                    className={`w-full cursor-pointer rounded-[1.2rem] border p-4 text-left transition hover:-translate-y-px ${
-                      active
-                        ? "border-warm-border bg-warm-glow text-white"
-                        : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
-                    }`}
-                  >
-                    <div className="flex items-start gap-3">
-                      <span className="app-chip flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.9rem]">
-                        <SourceTypeIcon type={source.type} className="h-5 w-5" />
+                  <div key={source.id} className="relative">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedSourceId(source.id);
+                        setMobileTab("source");
+                      }}
+                      className={`w-full cursor-pointer rounded-[1.2rem] border p-4 pr-12 text-left transition hover:-translate-y-px ${
+                        active
+                          ? "border-warm-border bg-warm-glow text-white"
+                          : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                      }`}
+                    >
+                      <span className="flex items-start gap-3">
+                        <span className="app-chip flex h-10 w-10 shrink-0 items-center justify-center rounded-[0.9rem]">
+                          <SourceTypeIcon type={source.type} className="h-5 w-5" />
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate font-semibold">
+                            {source.title}
+                          </span>
+                          <span className="mt-1 block text-xs text-text-muted">
+                            {sourceDisplayLabel(source)}
+                            {linkedFolders[0] ? ` in ${linkedFolders[0]}` : ""}
+                          </span>
+                          <span className="mt-2 block text-[0.68rem] text-text-muted">
+                            Added{" "}
+                            {new Intl.DateTimeFormat("en", {
+                              day: "numeric",
+                              month: "short",
+                              year:
+                                new Date(source.createdAt).getFullYear() ===
+                                new Date().getFullYear()
+                                  ? undefined
+                                  : "numeric",
+                            }).format(source.createdAt)}
+                          </span>
+                        </span>
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate font-semibold">
-                          {source.title}
-                        </span>
-                        <span className="mt-1 block text-xs text-text-muted">
-                          {typeLabel(source.type)}
-                          {linkedFolders[0] ? ` in ${linkedFolders[0]}` : ""}
-                        </span>
-                        <span className="mt-2 block text-[0.68rem] text-text-muted">
-                          Added{" "}
-                          {new Intl.DateTimeFormat("en", {
-                            day: "numeric",
-                            month: "short",
-                            year:
-                              new Date(source.createdAt).getFullYear() ===
-                              new Date().getFullYear()
-                                ? undefined
-                                : "numeric",
-                          }).format(source.createdAt)}
-                        </span>
-                      </span>
-                    </div>
-                  </button>
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`${includedForTutor ? "Remove" : "Include"} ${source.title} ${includedForTutor ? "from" : "in"} Tutor`}
+                      aria-pressed={includedForTutor}
+                      onClick={() => toggleTutorSource(source.id)}
+                      className={`absolute right-3 top-3 flex h-8 w-8 items-center justify-center rounded-full border text-sm font-semibold transition ${
+                        includedForTutor
+                          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-text-primary"
+                          : "border-[var(--color-border)] bg-[var(--color-surface-panel)] text-text-muted hover:text-text-primary"
+                      }`}
+                      title={includedForTutor ? "Included in Tutor" : "Include in Tutor"}
+                    >
+                      {includedForTutor ? "✓" : "+"}
+                    </button>
+                  </div>
                 );
               })}
             </div>
@@ -1577,7 +1647,7 @@ export default function LibraryPage() {
                         />
                       </span>
                       <SectionHeader
-                        eyebrow={typeLabel(selectedSource.type)}
+                        eyebrow={sourceDisplayLabel(selectedSource)}
                         title={selectedSource.title}
                         description={
                           selectedSource.subject || "No subject set yet."
@@ -1622,9 +1692,12 @@ export default function LibraryPage() {
                   </div>
                   <div
                     id="selected-source-preview"
-                    className="mt-5 max-h-[24rem] scroll-mt-24 overflow-y-auto whitespace-pre-wrap rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-4 text-sm leading-6 text-text-secondary"
+                    className="mt-5 scroll-mt-24 overflow-hidden rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-4"
                   >
-                    {sourcePreview(selectedSource)}
+                    <SourcePreview
+                      source={selectedSource}
+                      fileUrl={selectedSourceFileUrl}
+                    />
                   </div>
                   {selectedSource.type === "file" ? (
                     <div className="mt-4 flex flex-wrap items-center gap-2">
@@ -1653,6 +1726,16 @@ export default function LibraryPage() {
                   <div className="mt-5 flex flex-wrap gap-2 border-t border-white/[0.08] pt-4">
                     <Button type="button" onClick={openSelectedSource}>
                       Open
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      aria-pressed={tutorSourceIds.includes(selectedSource.id)}
+                      onClick={() => toggleTutorSource(selectedSource.id)}
+                    >
+                      {tutorSourceIds.includes(selectedSource.id)
+                        ? "Remove from Tutor"
+                        : "Include in Tutor"}
                     </Button>
                     {canRemoveSourceFromFilteredFolder(
                       folderFilter,
@@ -1758,17 +1841,13 @@ export default function LibraryPage() {
                     </details>
                   </div>
                 </Card>
+                {sourceDrafts.length > 0 ? (
                 <Card padding="lg">
                   <SectionHeader
                     eyebrow="Draft review"
                     title="Source-generated drafts"
                   />
                   <div className="mt-5 space-y-3">
-                    {sourceDrafts.length === 0 ? (
-                      <p className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
-                        No drafts waiting.
-                      </p>
-                    ) : (
                       <>
                         <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1831,9 +1910,9 @@ export default function LibraryPage() {
                           />
                         ) : null}
                       </>
-                    )}
                   </div>
                 </Card>
+                ) : null}
               </>
             ) : null}
           </div>
@@ -1841,11 +1920,42 @@ export default function LibraryPage() {
           <div className={`${mobileTab === "actions" ? "block" : "hidden"} space-y-4 lg:sticky lg:top-4 lg:block lg:self-start`}>
             <Card padding="lg">
               <SectionHeader
-                eyebrow="Actions"
-                title="Use this source"
+                eyebrow="Tutor"
+                title="Ask from your sources"
               />
-              {selectedSource ? (
-                <div className="mt-5 space-y-3">
+              <div className="mt-5 space-y-4">
+                <div>
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="text-sm font-semibold text-text-primary">
+                      Selected sources
+                    </div>
+                    <span className="text-xs text-text-muted">
+                      {tutorSourceIds.length}/5
+                    </span>
+                  </div>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {tutorSourceIds.length > 0 ? (
+                      tutorSourceIds.map((sourceId) => {
+                        const source = sources.find((item) => item.id === sourceId);
+                        return source ? (
+                          <button
+                            key={source.id}
+                            type="button"
+                            onClick={() => toggleTutorSource(source.id)}
+                            className="app-selected rounded-full px-3 py-1.5 text-xs font-semibold"
+                            title={`Remove ${source.title} from Tutor`}
+                          >
+                            {source.title} ×
+                          </button>
+                        ) : null;
+                      })
+                    ) : (
+                      <p className="text-xs leading-5 text-text-muted">
+                        Use the plus button beside a source to include it.
+                      </p>
+                    )}
+                  </div>
+                </div>
                   <Textarea
                     label="Tutor request"
                     rows={4}
@@ -1853,18 +1963,22 @@ export default function LibraryPage() {
                     onChange={(event) => setTutorMessage(event.target.value)}
                   />
                   <div className="grid gap-2">
-                    <Button type="button" variant="secondary" disabled={busyAction === "source-tutor"} onClick={runSourceTutor}>
-                      {busyAction === "source-tutor" ? "Asking..." : "Ask Tutor about source"}
-                    </Button>
-                    <Button type="button" variant="secondary" disabled={busyAction === "flashcard"} onClick={() => generateDrafts("flashcard")}>
-                      {busyAction === "flashcard" ? "Generating..." : "Make up to 8 flashcards"}
-                    </Button>
-                    <Button type="button" variant="secondary" disabled={busyAction === "practice-question"} onClick={() => generateDrafts("practice-question")}>
-                      {busyAction === "practice-question" ? "Generating..." : "Make up to 5 notebook questions"}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={
+                        busyAction === "source-tutor" ||
+                        tutorSourceIds.length === 0 ||
+                        !tutorMessage.trim()
+                      }
+                      onClick={runSourceTutor}
+                    >
+                      {busyAction === "source-tutor"
+                        ? "Reading sources..."
+                        : `Ask Tutor using ${tutorSourceIds.length || 0} source${tutorSourceIds.length === 1 ? "" : "s"}`}
                     </Button>
                   </div>
                 </div>
-              ) : null}
             </Card>
             <Card padding="lg">
               <SectionHeader

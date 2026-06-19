@@ -22,7 +22,9 @@ service firebase.storage {
 
     function isAllowedSourceFile() {
       return request.resource.size < 20 * 1024 * 1024 &&
-        request.resource.contentType.matches('(application/pdf|image/jpeg|image/png|image/webp)');
+        request.resource.contentType.matches(
+          '(application/pdf|image/jpeg|image/png|image/webp|application/vnd.openxmlformats-officedocument.wordprocessingml.document|application/vnd.openxmlformats-officedocument.presentationml.presentation|text/plain)'
+        );
     }
 
     match /profilePhotos/{userId}/{fileName} {
@@ -40,7 +42,8 @@ service firebase.storage {
 
     match /users/{userId}/sourceFiles/{sourceId}/{fileName} {
       allow read: if isSelf(userId);
-      allow write: if isSelf(userId) && isAllowedSourceFile();
+      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedSourceFile();
+      allow delete: if isSelf(userId) && !isDemoAccount();
     }
   }
 }

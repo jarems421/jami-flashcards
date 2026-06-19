@@ -49,7 +49,6 @@ export default function PracticePage() {
   const [showCreateFolder, setShowCreateFolder] = useState(false);
   const [folderName, setFolderName] = useState("");
   const [folderSubject, setFolderSubject] = useState("");
-  const [folderDescription, setFolderDescription] = useState("");
   const [folderColor, setFolderColor] = useState<ObjectColorId>("sky");
   const [folderIcon, setFolderIcon] = useState<ObjectIconId>("none");
   const [creatingFolder, setCreatingFolder] = useState(false);
@@ -95,13 +94,11 @@ export default function PracticePage() {
       const folder = await createStudyFolder(user.uid, {
         name: folderName,
         subject: folderSubject,
-        description: folderDescription,
         color: folderColor,
         icon: folderIcon,
       });
       setFolderName("");
       setFolderSubject("");
-      setFolderDescription("");
       setFolderColor("sky");
       setFolderIcon("none");
       setFolderNameTouched(false);
@@ -196,12 +193,6 @@ export default function PracticePage() {
                 </div>
                 <Input label="Subject" value={folderSubject} onChange={(event) => setFolderSubject(event.target.value)} />
               </div>
-              <Input
-                label="Description"
-                value={folderDescription}
-                onChange={(event) => setFolderDescription(event.target.value)}
-                containerClassName="mt-3"
-              />
               <div className="mt-5">
                 <ObjectStylePicker
                   color={folderColor}

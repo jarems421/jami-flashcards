@@ -6,7 +6,6 @@ import {
 export type StudyFolder = {
   id: string;
   name: string;
-  description?: string;
   subject?: string;
   color?: string;
   icon?: string;
@@ -17,7 +16,6 @@ export type StudyFolder = {
 };
 
 export const MAX_STUDY_FOLDER_NAME_LENGTH = 90;
-export const MAX_STUDY_FOLDER_DESCRIPTION_LENGTH = 400;
 export const MAX_STUDY_FOLDER_SUBJECT_LENGTH = 120;
 export const MAX_STUDY_FOLDER_TOPIC_IDS = 30;
 
@@ -38,7 +36,6 @@ export function mapStudyFolderData(
   return {
     id,
     name: name || "Untitled folder",
-    description: normalizeOptionalString(data.description, MAX_STUDY_FOLDER_DESCRIPTION_LENGTH),
     subject: normalizeStudyFolderSubject(data.subject),
     color: normalizeOptionalString(data.color, 80),
     icon: normalizeOptionalString(data.icon, 40),
@@ -56,7 +53,6 @@ export function mapStudyFolderData(
 export function buildStudyFolderPayload(
   input: {
     name: string;
-    description?: string;
     subject?: string;
     color?: string;
     icon?: string;
@@ -73,8 +69,6 @@ export function buildStudyFolderPayload(
 
   return {
     name,
-    description:
-      normalizeOptionalString(input.description, MAX_STUDY_FOLDER_DESCRIPTION_LENGTH) ?? null,
     subject: normalizeStudyFolderSubject(input.subject) ?? null,
     color: normalizeOptionalString(input.color, 80) ?? null,
     icon: normalizeOptionalString(input.icon, 40) ?? null,

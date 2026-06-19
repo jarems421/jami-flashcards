@@ -14,7 +14,7 @@ During the current Phase 6 notebook-first Practice phase:
 - Use user-facing spelling `Practice`, while keeping existing routes such as `/dashboard/practise` compatible until a safe alias exists.
 - The legacy question-bank Practice workflow has been removed from the product surface. Do not reintroduce question bank, standalone Add question, answer/working attempt forms, confidence blocks, old Practice Tutor panels, or tiny scratchpad side features.
 - Notebook file upload infrastructure is in scope for uploaded-file/paper notebooks.
-- Do not build Anywhere, OCR, PDF text extraction, semantic PDF reading, full-paper mode, browser extension, always-on screen watching, voice tutor expansion, or iPad companion.
+- Do not build Anywhere, background/persistent OCR, automatic PDF indexing, full-paper mode, browser extension, always-on screen watching, voice tutor expansion, or iPad companion. Library Tutor may read up to five deliberately selected sources on demand after the student asks; do not persist extracted source content or process sources in the background.
 - Client-side PDF page counting, raster page rendering, and notebook ink overlays are in scope. Keep the original PDF immutable and do not imply OCR or automatic understanding.
 - Do not build a full GoodNotes clone. Notebook V1 should stay humble and page-based.
 - Optimise notebook creation/editing for desktop and iPad/tablet. Phone should support viewing and light typed notes, not serious pen/page editing.
