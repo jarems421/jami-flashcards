@@ -662,12 +662,14 @@ export default function DeckDetailPageClient() {
               action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
             />
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {filteredCards.map((card) => (
                 <section
                   key={card.id}
                   className={`app-panel min-w-0 overflow-visible p-3 transition duration-fast has-[details[open]]:z-40 ${
-                    editingCardId === card.id ? "sm:col-span-2" : ""
+                    editingCardId === card.id
+                      ? "sm:col-span-2"
+                      : "min-h-[8.5rem]"
                   } ${selectedCardIdSet.has(card.id) ? "ring-2 ring-accent/35" : ""}`}
                 >
                   {editingCardId === card.id ? (
@@ -751,7 +753,7 @@ export default function DeckDetailPageClient() {
                       </div>
                     </div>
                   ) : (
-                    <div className="flex h-full min-w-0 flex-col gap-3">
+                    <div className="flex h-full min-w-0 flex-col">
                       <div className="flex items-start gap-3">
                         <div className="min-w-0 flex-1">
                           <CardFaceSummary
@@ -777,34 +779,12 @@ export default function DeckDetailPageClient() {
                           <CardActionsMenu
                             deleting={deletingCardId === card.id}
                             disabled={isDemoUser || deletingCardId === card.id}
-                            onPreview={() => setPreviewCardId(card.id)}
                             onEdit={() => startEditingCard(card)}
                             onDelete={() => setCardPendingDeleteId(card.id)}
                           />
                         </div>
                       </div>
 
-                      <div className="mt-auto flex flex-wrap gap-1.5">
-                        <CardDifficultyBadge card={card} compact />
-                        <CardQualityWarnings
-                          warnings={getCardQualityWarnings(card, {
-                            duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)),
-                          })}
-                        />
-                        {(card.topicIds ?? []).map((topicId) => {
-                          const topic = topicsById.get(topicId);
-                          if (!topic) return null;
-
-                          return (
-                            <span
-                              key={topicId}
-                              className="max-w-full rounded-full border border-warm-border bg-warm-glow px-2.5 py-1 text-[0.68rem] font-medium text-warm-accent"
-                            >
-                              <span className="block truncate">{topic.name}</span>
-                            </span>
-                          );
-                        })}
-                      </div>
                     </div>
                   )}
                 </section>
@@ -849,6 +829,28 @@ export default function DeckDetailPageClient() {
                 <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Back</div>
                 <StudyText as="div" text={previewCard.back} className="mt-3 whitespace-pre-wrap text-base leading-7 text-text-secondary" />
               </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <CardDifficultyBadge card={previewCard} />
+              <CardQualityWarnings
+                warnings={getCardQualityWarnings(previewCard, {
+                  duplicateCount: duplicateCounts.get(
+                    getCardContentKey(previewCard.front, previewCard.back)
+                  ),
+                })}
+              />
+              {(previewCard.topicIds ?? []).map((topicId) => {
+                const topic = topicsById.get(topicId);
+                if (!topic) return null;
+                return (
+                  <span
+                    key={topicId}
+                    className="max-w-full rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent"
+                  >
+                    <span className="block truncate">{topic.name}</span>
+                  </span>
+                );
+              })}
             </div>
             {!isDemoUser ? (
               <div className="mt-5 flex justify-end">

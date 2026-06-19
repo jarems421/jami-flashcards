@@ -57,22 +57,22 @@ function TopicActionsMenu({
 
   return (
     <details
-      className="group/menu absolute right-2 top-2"
+      className="group/menu absolute right-1.5 top-1.5 flex h-10 w-10 items-center justify-center"
       onToggle={handleToggle}
     >
       <summary
         aria-label={`Actions for ${topic.name}`}
-        className="app-chip flex h-10 w-10 cursor-pointer list-none items-center justify-center rounded-full transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
+        className="flex h-[1.875rem] w-[1.875rem] cursor-pointer list-none items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-muted transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
       >
         <svg
           viewBox="0 0 20 20"
           fill="currentColor"
           aria-hidden="true"
-          className="h-5 w-5"
+          className="h-4 w-4"
         >
-          <circle cx="4" cy="10" r="1.6" />
-          <circle cx="10" cy="10" r="1.6" />
-          <circle cx="16" cy="10" r="1.6" />
+          <circle cx="4" cy="10" r="1.35" />
+          <circle cx="10" cy="10" r="1.35" />
+          <circle cx="16" cy="10" r="1.35" />
         </svg>
       </summary>
       <div
@@ -363,7 +363,7 @@ export default function TopicsPage() {
         >
           <div>
             <h2 className="text-lg font-semibold text-text-primary">
-              Recently added
+              Browse Topics
             </h2>
             <p className="mt-1 text-sm text-text-muted">
               {showAllTopics
@@ -397,7 +397,7 @@ export default function TopicsPage() {
         <>
           <div
             id={!hasSearchQuery ? "recent-topics-grid" : undefined}
-            className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4"
+            className="grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-4"
           >
             {visibleSummaries.map((summary) => {
               const editing = editingTopicId === summary.topic.id;
@@ -405,7 +405,7 @@ export default function TopicsPage() {
                 <section
                   key={summary.topic.id}
                   className={`app-panel relative overflow-visible rounded-[1.35rem] transition duration-fast has-[details[open]]:z-40 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell ${
-                    editing ? "sm:col-span-2" : ""
+                    editing ? "sm:col-span-2" : "min-h-[8.5rem]"
                   }`}
                 >
                   {editing ? (
@@ -445,7 +445,7 @@ export default function TopicsPage() {
                     <>
                       <Link
                         href={`/dashboard/topics/${encodeURIComponent(summary.topic.id)}`}
-                        className="group block rounded-[1.35rem] p-4 pr-14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        className="group flex h-full flex-col rounded-[1.35rem] p-4 pr-14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                       >
                         <h2 className="min-w-0 truncate text-base font-semibold text-text-primary">
                           {summary.topic.name}
@@ -458,7 +458,7 @@ export default function TopicsPage() {
                         </div>
                         {summary.dueCardCount > 0 ||
                         summary.weakCardCount > 0 ? (
-                          <div className="mt-3 flex flex-wrap gap-1.5">
+                          <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
                             {summary.dueCardCount > 0 ? (
                               <span className="app-chip rounded-full px-2.5 py-1 text-[0.68rem] font-semibold">
                                 {summary.dueCardCount} due

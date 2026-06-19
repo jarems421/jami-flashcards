@@ -700,6 +700,19 @@ export default function CardsSearchPage() {
             </p>
           </div>
           <div className="grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
+            {!shouldShowCardResults && cards.length > RECENT_CARD_COUNT ? (
+              <Button
+                type="button"
+                variant={showAllCards ? "secondary" : "ghost"}
+                size="sm"
+                aria-expanded={showAllCards}
+                aria-controls="recent-cards-grid"
+                onClick={() => setShowAllCards((current) => !current)}
+                className="w-full sm:w-auto"
+              >
+                {showAllCards ? "Show less" : "View more"}
+              </Button>
+            ) : null}
             <Button
               type="button"
               variant={showFilterControls ? "secondary" : "ghost"}
@@ -851,7 +864,7 @@ export default function CardsSearchPage() {
             >
               <div>
                 <h2 className="text-lg font-semibold text-text-primary">
-                  Recently added
+                  Browse cards
                 </h2>
                 <p className="mt-1 text-sm text-text-muted">
                   {showAllCards
@@ -859,19 +872,6 @@ export default function CardsSearchPage() {
                     : `Your latest ${Math.min(RECENT_CARD_COUNT, cards.length)} cards`}
                 </p>
               </div>
-              {cards.length > RECENT_CARD_COUNT ? (
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="ghost"
-                  aria-expanded={showAllCards}
-                  aria-controls="recent-cards-grid"
-                  onClick={() => setShowAllCards((current) => !current)}
-                  className="w-full sm:w-auto"
-                >
-                  {showAllCards ? "Show less" : "View more"}
-                </Button>
-              ) : null}
             </div>
           ) : null}
 
@@ -939,13 +939,15 @@ export default function CardsSearchPage() {
 
           <div
             id={!shouldShowCardResults ? "recent-cards-grid" : undefined}
-            className="grid animate-slide-up touch-pan-y gap-3 sm:grid-cols-2 xl:grid-cols-3"
+            className="grid auto-rows-fr animate-slide-up touch-pan-y gap-3 sm:grid-cols-2 xl:grid-cols-3"
           >
             {visibleCards.map((card) => (
               <section
                 key={card.id}
                 className={`app-panel min-w-0 overflow-visible p-3 transition duration-fast ease-spring has-[details[open]]:z-40 hover:-translate-y-0.5 hover:shadow-shell ${
-                  expandedCardId === card.id ? "sm:col-span-2" : ""
+                  expandedCardId === card.id
+                    ? "sm:col-span-2"
+                    : "min-h-[8.5rem]"
                 } ${
                   selectedCardIdSet.has(card.id)
                     ? "border-accent/45 ring-2 ring-accent/20"
@@ -1059,21 +1061,14 @@ export default function CardsSearchPage() {
                         <CardActionsMenu
                           deleting={deletingCardId === card.id}
                           disabled={isDemoUser || deletingCardId === card.id}
-                          onPreview={() => setPreviewCardId(card.id)}
                           onEdit={() => startEditing(card)}
                           onDelete={() => setCardPendingDeleteId(card.id)}
                         />
                       </div>
                     </div>
 
-                    <div className="mt-auto flex flex-wrap items-center gap-1.5">
-                      <CardDifficultyBadge card={card} compact />
-                      <CardQualityWarnings
-                        warnings={getCardQualityWarnings(card, {
-                          duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)),
-                        })}
-                      />
-                      {deckNamesById[card.deckId] ? (
+                    {deckNamesById[card.deckId] ? (
+                      <div className="mt-auto flex flex-wrap items-center gap-1.5">
                         <Link
                           href={getDeckHref(card.deckId)}
                           aria-label={`Open deck ${deckNamesById[card.deckId]}`}
@@ -1085,28 +1080,8 @@ export default function CardsSearchPage() {
                             <path d="m8.5 3 4.5 5-4.5 5" />
                           </svg>
                         </Link>
-                      ) : null}
-                      {card.sourceIds?.map((sourceId) => {
-                        const sourceName = sourceNamesById[sourceId];
-                        if (!sourceName) return null;
-                        return (
-                          <span
-                            key={sourceId}
-                            className="max-w-full rounded-full border border-warm-border bg-warm-glow px-2.5 py-1 text-[0.68rem] font-medium text-warm-accent"
-                          >
-                            <span className="block truncate">Based on: {sourceName}</span>
-                          </span>
-                        );
-                      })}
-                      {(card.topicIds ?? []).map((topicId) => (
-                        <span
-                          key={topicId}
-                          className="max-w-full rounded-full border border-accent/30 bg-accent/10 px-2.5 py-1 text-[0.68rem] font-medium text-accent"
-                        >
-                          <span className="block truncate">{topicNamesById[topicId] ?? "Topic"}</span>
-                        </span>
-                      ))}
-                    </div>
+                      </div>
+                    ) : null}
                   </div>
                 )}
               </section>
@@ -1168,6 +1143,38 @@ export default function CardsSearchPage() {
                 <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Back</div>
                 <StudyText as="div" text={previewCard.back} className="mt-3 whitespace-pre-wrap text-base leading-7 text-text-secondary" />
               </div>
+            </div>
+            <div className="mt-4 flex flex-wrap items-center gap-2">
+              <CardDifficultyBadge card={previewCard} />
+              <CardQualityWarnings
+                warnings={getCardQualityWarnings(previewCard, {
+                  duplicateCount: duplicateCounts.get(
+                    getCardContentKey(previewCard.front, previewCard.back)
+                  ),
+                })}
+              />
+              {previewCard.sourceIds?.map((sourceId) => {
+                const sourceName = sourceNamesById[sourceId];
+                if (!sourceName) return null;
+                return (
+                  <span
+                    key={sourceId}
+                    className="max-w-full rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent"
+                  >
+                    <span className="block truncate">Based on: {sourceName}</span>
+                  </span>
+                );
+              })}
+              {(previewCard.topicIds ?? []).map((topicId) => (
+                <span
+                  key={topicId}
+                  className="max-w-full rounded-full border border-accent/30 bg-accent/10 px-3 py-1.5 text-xs font-medium text-accent"
+                >
+                  <span className="block truncate">
+                    {topicNamesById[topicId] ?? "Topic"}
+                  </span>
+                </span>
+              ))}
             </div>
             {!isDemoUser ? (
               <div className="mt-5 flex justify-end">
