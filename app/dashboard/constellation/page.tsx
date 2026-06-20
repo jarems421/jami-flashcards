@@ -390,6 +390,7 @@ export default function ConstellationDashboardPage() {
 
         {!isLoading && activeConstellation ? (
           <PageHero
+            compact
             eyebrow="Goal rewards"
             title={
               renamingConstellationId === activeConstellation.id ? (
