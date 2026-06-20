@@ -7,9 +7,12 @@ import {
   finalizeInkStroke,
   getHighlighterWidthFromPercent,
   interpolateInkSampleGaps,
+  getNotebookCreatePagePull,
+  getNotebookCreatePageThreshold,
   getNotebookPageIndexAfterSwipe,
   getNotebookPageZoomAfterPinch,
   getNotebookSwipeDirection,
+  shouldCreateNotebookPageOnRelease,
   getPenWidthFromPercent,
   getPinchDistance,
   getPointerClientSamples,
@@ -399,6 +402,50 @@ describe("notebook inking helpers", () => {
     expect(
       getNotebookPageIndexAfterSwipe({ currentIndex: -1, pageCount: 3, direction: "next" })
     ).toBe(-1);
+  });
+
+  it("describes the create-page pull progress and rubber-band offset", () => {
+    const pageWidth = 1000;
+    const threshold = getNotebookCreatePageThreshold(pageWidth);
+    expect(threshold).toBe(320);
+
+    // No forward pull yet (rightward / zero drag) → no progress, no offset.
+    expect(getNotebookCreatePagePull({ totalDx: 0, pageWidth })).toEqual({
+      progress: 0,
+      resistedOffset: 0,
+    });
+    expect(getNotebookCreatePagePull({ totalDx: 40, pageWidth }).progress).toBe(0);
+
+    // Halfway pull → half progress; offset is negative (page gives leftward).
+    const halfway = getNotebookCreatePagePull({ totalDx: -160, pageWidth });
+    expect(halfway.progress).toBeCloseTo(0.5, 5);
+    expect(halfway.resistedOffset).toBeLessThan(0);
+
+    // Progress clamps at 1 once the threshold is exceeded.
+    expect(getNotebookCreatePagePull({ totalDx: -500, pageWidth }).progress).toBe(1);
+
+    // Tiny pages fall back to the px floor.
+    expect(getNotebookCreatePageThreshold(100)).toBe(96);
+  });
+
+  it("decides when releasing the create-page pull should add a page", () => {
+    const pageWidth = 1000;
+    // Full pull, no flick → create.
+    expect(
+      shouldCreateNotebookPageOnRelease({ totalDx: -340, pageWidth, velocityX: 0 })
+    ).toBe(true);
+    // Short pull, no flick → keep (rubber-band back).
+    expect(
+      shouldCreateNotebookPageOnRelease({ totalDx: -120, pageWidth, velocityX: 0 })
+    ).toBe(false);
+    // Partial pull but a fast forward (leftward) flick → create.
+    expect(
+      shouldCreateNotebookPageOnRelease({ totalDx: -200, pageWidth, velocityX: -1.2 })
+    ).toBe(true);
+    // Partial pull with a rightward flick → keep.
+    expect(
+      shouldCreateNotebookPageOnRelease({ totalDx: -200, pageWidth, velocityX: 1.2 })
+    ).toBe(false);
   });
 
   it("calculates bounded notebook page pinch zoom", () => {

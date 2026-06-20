@@ -44,6 +44,7 @@ export type NotebookInkEditorHandle = {
   isInteracting(): boolean;
   redo(): void;
   serializeAsync(): Promise<string | null>;
+  setEraserMode(mode: NotebookEraserMode): void;
   undo(): void;
 };
 
@@ -112,6 +113,13 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
   });
   pens.slice(1).forEach((pen) => pen.setEnabled(false));
 
+  // Keep the eraser's mode and thickness in sync on every style application,
+  // not only while the eraser is the active tool. js-draw defaults the eraser
+  // to FullStroke, so configuring it unconditionally ensures the selected
+  // precision/stroke mode is already correct the moment the eraser is enabled.
+  applyNotebookEraserMode(editor, style.eraserMode, jsDraw);
+  erasers[0]?.setThickness(style.eraserThickness);
+
   if (style.activeTool === "pen" || style.activeTool === "highlighter") {
     const selectedColor =
       style.activeTool === "highlighter" ? style.highlighterColor : style.penColor;
@@ -126,19 +134,30 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
     primaryPen.setPressureSensitivityEnabled(style.activeTool === "pen");
     primaryPen.setHasStabilization(false);
   } else if (style.activeTool === "eraser") {
-    const eraser = erasers[0];
-    eraser?.setThickness(style.eraserThickness);
-    eraser
-      ?.getModeValue()
-      .set(
-        getNotebookEraserModeValue(style.eraserMode) === "full-stroke"
-          ? jsDraw.EraserMode.FullStroke
-          : jsDraw.EraserMode.PartialStroke
-      );
-    eraser?.setEnabled(true);
+    erasers[0]?.setEnabled(true);
   } else if (style.activeTool === "select") {
     selections[0]?.setEnabled(true);
   }
+}
+
+// Pushes the precision/stroke selection straight to js-draw's eraser. Kept
+// separate so it can be called imperatively (bypassing the deferred style
+// effect), guaranteeing "stroke" maps to FullStroke and "precision" to
+// PartialStroke regardless of which tool is active or whether a stale pointer
+// is deferring the normal style application.
+function applyNotebookEraserMode(
+  editor: JsDrawEditor,
+  mode: NotebookEraserMode,
+  jsDraw: JsDrawModule
+) {
+  const eraser = editor.toolController.getMatchingTools(jsDraw.EraserTool)[0];
+  eraser
+    ?.getModeValue()
+    .set(
+      getNotebookEraserModeValue(mode) === "full-stroke"
+        ? jsDraw.EraserMode.FullStroke
+        : jsDraw.EraserMode.PartialStroke
+    );
 }
 
 export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
@@ -289,6 +308,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           }
           const svg = await editor.toSVGAsync({ pauseAfterCount: 24 });
           return activePointersRef.current.size > 0 ? null : svg.outerHTML;
+        },
+        setEraserMode(mode) {
+          desiredStyleRef.current = { ...desiredStyleRef.current, eraserMode: mode };
+          const editor = editorRef.current;
+          const jsDraw = jsDrawRef.current;
+          if (!editor || !jsDraw) return;
+          applyNotebookEraserMode(editor, mode, jsDraw);
         },
         undo() {
           void editorRef.current?.history.undo();

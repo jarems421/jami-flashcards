@@ -592,6 +592,11 @@
     user-select: text;
   }
 
+  .notebook-create-page-affordance {
+    transition: opacity 120ms ease;
+    will-change: transform, opacity;
+  }
+
   @media (prefers-reduced-motion: no-preference) {
     .notebook-page-transition-next {
       animation: notebook-page-slide-next 170ms ease-out;
@@ -599,6 +604,22 @@
 
     .notebook-page-transition-previous {
       animation: notebook-page-slide-previous 170ms ease-out;
+    }
+
+    .notebook-create-page-pop {
+      animation: notebook-create-page-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+  }
+
+  @keyframes notebook-create-page-pop {
+    0% {
+      transform: scale(1);
+    }
+    45% {
+      transform: scale(1.22);
+    }
+    100% {
+      transform: scale(1);
     }
   }
 
@@ -709,6 +730,12 @@
   .goal-deadline-input {
     min-inline-size: 0;
     inline-size: 100%;
+    max-inline-size: 100%;
+  }
+
+  .goal-deadline-field {
+    min-inline-size: 0;
+    max-inline-size: 100%;
   }
 
   .goal-deadline-input::-webkit-datetime-edit,
@@ -725,20 +752,31 @@
 
   @media (pointer: coarse) and (min-width: 640px) and (max-width: 1024px) {
     .goal-deadline-grid {
+      grid-template-columns: repeat(2, calc((100% - 0.375rem) / 2));
       gap: 0.375rem;
+    }
+
+    .goal-deadline-field {
+      overflow: hidden;
+      border-radius: 1.15rem;
     }
 
     .goal-deadline-input {
       -webkit-appearance: none;
       appearance: none;
+      inline-size: 100% !important;
+      min-inline-size: 0 !important;
+      max-inline-size: 100% !important;
       overflow: hidden;
-      padding-inline: 0.5rem !important;
-      font-size: 0.8125rem !important;
+      padding-inline: 0.4375rem !important;
+      font-size: 0.75rem !important;
     }
 
-    .goal-deadline-input::-webkit-datetime-edit {
-      display: block;
-      max-inline-size: calc(100% - 1.25rem);
+    .goal-deadline-input::-webkit-datetime-edit,
+    .goal-deadline-input::-webkit-date-and-time-value {
+      display: flex;
+      min-inline-size: 0;
+      max-inline-size: calc(100% - 1.125rem);
       overflow: hidden;
       white-space: nowrap;
     }

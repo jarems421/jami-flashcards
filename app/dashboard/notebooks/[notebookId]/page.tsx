@@ -75,10 +75,12 @@ import {
   clampNotebookThicknessPercent,
   finalizeInkStroke,
   getHighlighterWidthFromPercent,
+  getNotebookCreatePagePull,
   getNotebookPageIndexAfterSwipe,
   getNotebookSwipeDirection,
   getNotebookPageZoomAfterPinch,
   getPenWidthFromPercent,
+  shouldCreateNotebookPageOnRelease,
   getPinchDistance,
   getPointerClientSamples,
   mapClientPointToNotebookPage,
@@ -753,7 +755,6 @@ type NotebookIconName =
   | "redo"
   | "clear"
   | "ai"
-  | "plus"
   | "save"
   | "chevron"
   | "trash"
@@ -816,7 +817,6 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
       {name === "ai" ? (
         <path {...common} d="M12 3l1.6 5 5.1 1.6-5.1 1.7L12 16l-1.6-4.7-5.1-1.7 5.1-1.6L12 3ZM18 15l.7 2.1L21 18l-2.3.8L18 21l-.8-2.2L15 18l2.2-.9L18 15Z" />
       ) : null}
-      {name === "plus" ? <path {...common} d="M12 5v14M5 12h14" /> : null}
       {name === "save" ? (
         <>
           <path {...common} d="M5 5h11l3 3v11H5V5Z" />
@@ -1036,7 +1036,6 @@ export default function NotebookEditorPage() {
   const [tool, setTool] = useState<EditorTool>("pen");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [loading, setLoading] = useState(true);
-  const [addingPage, setAddingPage] = useState(false);
   const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
@@ -1057,6 +1056,10 @@ export default function NotebookEditorPage() {
     useState<PageTransitionDirection>(null);
   const [pageSwipeOffset, setPageSwipeOffset] = useState(0);
   const [pageSwipeSettling, setPageSwipeSettling] = useState(false);
+  const [createPageActive, setCreatePageActive] = useState(false);
+  const [createPageProgress, setCreatePageProgress] = useState(0);
+  const [creatingPage, setCreatingPage] = useState(false);
+  const [createPageBounce, setCreatePageBounce] = useState(false);
   const [activeTextGestureId, setActiveTextGestureId] = useState<string | null>(null);
   const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
@@ -1253,6 +1256,14 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     textBlocksRef.current = textBlocks;
   }, [textBlocks]);
+
+  // Push the precision/stroke selection straight to the ink editor whenever it
+  // changes. This bypasses the deferred style application (which can stall if a
+  // stale eraser pointer leaves activePointers > 0), so the chosen mode always
+  // reaches js-draw and the two modes keep their distinct roles.
+  useEffect(() => {
+    inkEditorRef.current?.setEraserMode(eraserMode);
+  }, [eraserMode]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1844,6 +1855,8 @@ export default function NotebookEditorPage() {
       touchPointersRef.current.clear();
       pinchZoomRef.current = null;
       pageSwipeRef.current = null;
+      setCreatePageActive(false);
+      setCreatePageProgress(0);
       if (typeof document !== "undefined") {
         clearNotebookNativeSelection(document);
       }
@@ -2631,6 +2644,64 @@ export default function NotebookEditorPage() {
     void saveCurrentPage({ flush: true });
   };
 
+  const settleCreatePageBack = () => {
+    setCreatePageActive(false);
+    setCreatePageProgress(0);
+    setPageSwipeSettling(true);
+    setPageSwipeOffset(0);
+    window.setTimeout(() => setPageSwipeSettling(false), 260);
+  };
+
+  const createBlankPageAtEnd = async () => {
+    if (isDemoUser) {
+      setFeedback({ type: "error", message: "Sign in to add pages to a notebook." });
+      settleCreatePageBack();
+      return;
+    }
+    if (!user?.uid || !notebook) {
+      settleCreatePageBack();
+      return;
+    }
+    const lastPage = pages[pages.length - 1];
+    const basePage = selectedPage ?? lastPage;
+    const pageColorValue = basePage?.pageColor ?? notebook.pageColor ?? "white";
+    const pageStyleValue = basePage?.pageStyle ?? notebook.pageStyle ?? "plain";
+    const nextPageNumber = (lastPage?.pageNumber ?? pages.length) + 1;
+
+    setCreatingPage(true);
+    setCreatePageBounce(true);
+    window.setTimeout(() => setCreatePageBounce(false), 420);
+    try {
+      const newPage = await createNotebookPage(user.uid, {
+        notebookId: notebook.id,
+        folderId: notebook.folderId,
+        pageNumber: nextPageNumber,
+        pageType: "blank",
+        pageColor: pageColorValue,
+        pageStyle: pageStyleValue,
+        status: "blank",
+      });
+      setPages((current) =>
+        [...current, newPage].sort((a, b) => a.pageNumber - b.pageNumber)
+      );
+      setSelectedPageId(newPage.id);
+      setPageSwipeSettling(true);
+      setPageSwipeOffset(0);
+      window.setTimeout(() => setPageSwipeSettling(false), 260);
+    } catch (error) {
+      console.error("Could not add a notebook page.", error);
+      setFeedback({
+        type: "error",
+        message: error instanceof Error ? error.message : "Could not add a new page.",
+      });
+      settleCreatePageBack();
+    } finally {
+      setCreatingPage(false);
+      setCreatePageActive(false);
+      setCreatePageProgress(0);
+    }
+  };
+
   const handleStartPageSwipe = (event: ReactPointerEvent<HTMLElement>) => {
     if (!fullNotebookEditingEnabled || !shouldPointerSwipePages(event.pointerType)) return;
     if (activeStrokeRef.current) return;
@@ -2684,6 +2755,23 @@ export default function NotebookEditorPage() {
     }
 
     if (Math.abs(totalDx) <= Math.abs(totalDy) * 1.05) return;
+
+    // Forward pull past the last page → engage the "create new page" affordance.
+    if (selectedPageIndex === pages.length - 1 && totalDx < 0) {
+      const pageWidth = pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
+      const { progress, resistedOffset } = getNotebookCreatePagePull({
+        totalDx,
+        pageWidth,
+      });
+      setCreatePageActive(true);
+      setCreatePageProgress(progress);
+      setPageSwipeOffset(resistedOffset);
+      event.preventDefault();
+      return;
+    }
+    setCreatePageActive(false);
+    setCreatePageProgress(0);
+
     const canMoveNext = totalDx < 0 && selectedPageIndex < pages.length - 1;
     const canMovePrevious = totalDx > 0 && selectedPageIndex > 0;
     const resistedOffset =
@@ -2705,6 +2793,27 @@ export default function NotebookEditorPage() {
 
     const pageWidth = pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
     const deltaX = event.clientX - swipe.startX;
+
+    // Releasing a forward pull past the last page either creates a page or
+    // rubber-bands back, depending on how far it was pulled (or a fast flick).
+    if (createPageActive) {
+      event.preventDefault();
+      setCreatePageActive(false);
+      if (
+        shouldCreateNotebookPageOnRelease({
+          totalDx: deltaX,
+          pageWidth,
+          velocityX: swipe.velocityX,
+        })
+      ) {
+        swipe.completed = true;
+        void createBlankPageAtEnd();
+      } else {
+        settleCreatePageBack();
+      }
+      return;
+    }
+
     const direction = deltaX < 0 ? "next" : "previous";
     const canChangePage =
       direction === "next" ? selectedPageIndex < pages.length - 1 : selectedPageIndex > 0;
@@ -2717,9 +2826,25 @@ export default function NotebookEditorPage() {
       setPageSwipeSettling(true);
       if (shouldChangePage) {
         swipe.completed = true;
-        setPageSwipeOffset(0);
-        setPageSwipeSettling(false);
-        void selectPageByOffset(direction === "next" ? 1 : -1);
+        // Continuous slide: ease the current page fully out while the adjacent
+        // preview slides to centre, then swap to the real page underneath it.
+        const targetPage =
+          direction === "next"
+            ? pages[selectedPageIndex + 1]
+            : pages[selectedPageIndex - 1];
+        if (targetPage) {
+          setPageSwipeOffset(direction === "next" ? -pageWidth : pageWidth);
+          window.setTimeout(() => {
+            void (async () => {
+              await selectPageById(targetPage.id);
+              setPageSwipeSettling(false);
+              setPageSwipeOffset(0);
+            })();
+          }, 240);
+        } else {
+          setPageSwipeOffset(0);
+          setPageSwipeSettling(false);
+        }
       } else {
         setPageSwipeOffset(0);
         window.setTimeout(() => setPageSwipeSettling(false), 260);
@@ -3064,50 +3189,6 @@ export default function NotebookEditorPage() {
     }
     if (textBlockDragRef.current) {
       stopTextBlockDrag(event);
-    }
-  };
-
-  const handleAddPage = async () => {
-    if (!user?.uid || !notebook || !fullNotebookEditingEnabled) return;
-    if (
-      saveStatusRef.current === "unsaved" ||
-      saveStatusRef.current === "failed"
-    ) {
-      const saved = await saveCurrentPage({
-        includeActiveStroke: true,
-        flush: true,
-      });
-      if (!saved) {
-        setFeedback({
-          type: "error",
-          message: "Could not autosave before adding a page.",
-        });
-        return;
-      }
-    }
-    setAddingPage(true);
-    try {
-      const nextPageNumber =
-        pages.length > 0 ? Math.max(...pages.map((page) => page.pageNumber)) + 1 : 1;
-      const page = await createNotebookPage(user.uid, {
-        notebookId: notebook.id,
-        folderId: notebook.folderId,
-        pageNumber: nextPageNumber,
-        pageType: "free_working",
-        title: `Page ${nextPageNumber}`,
-        pageColor: notebook.pageColor,
-        pageStyle: notebook.pageStyle ?? "plain",
-      });
-      setPages((current) => [...current, page].sort((a, b) => a.pageNumber - b.pageNumber));
-      setSelectedPageId(page.id);
-      setFeedback({ type: "success", message: `Page ${page.pageNumber} added.` });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not add a page.",
-      });
-    } finally {
-      setAddingPage(false);
     }
   };
 
@@ -3496,7 +3577,7 @@ export default function NotebookEditorPage() {
             </div>
           </div>
           <div
-            className="mt-2 flex max-w-full items-center gap-1.5 overflow-x-auto overscroll-x-contain pb-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            className="-mx-1 mt-1 flex max-w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto overscroll-x-contain px-1 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
             aria-label="Notebook tools"
           >
               <ToolbarIconButton
@@ -3508,17 +3589,6 @@ export default function NotebookEditorPage() {
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
                   setPagesDrawerOpen((value) => !value);
-                }}
-              />
-              <ToolbarIconButton
-                label="Add page"
-                icon="plus"
-                disabled={addingPage || !fullNotebookEditingEnabled}
-                onClick={() => {
-                  setPenMenuOpen(false);
-                  setHighlighterMenuOpen(false);
-                  setEraserMenuOpen(false);
-                  void handleAddPage();
                 }}
               />
               <ToolbarIconButton
@@ -3650,16 +3720,6 @@ export default function NotebookEditorPage() {
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
                   setAiPlaceholderOpen((value) => !value);
-                }}
-              />
-              <ToolbarIconButton
-                label="Add PDF or image pages"
-                icon="plus"
-                onClick={() => {
-                  setPenMenuOpen(false);
-                  setHighlighterMenuOpen(false);
-                  setEraserMenuOpen(false);
-                  setShowAddPagesDialog(true);
                 }}
               />
           </div>
@@ -3951,15 +4011,6 @@ export default function NotebookEditorPage() {
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Pages
               </div>
-              <Button
-                type="button"
-                size="sm"
-                variant="secondary"
-                disabled={addingPage || !fullNotebookEditingEnabled}
-                onClick={() => void handleAddPage()}
-              >
-                {addingPage ? "..." : "+ Page"}
-              </Button>
             </div>
             <div className="max-h-[calc(100vh-7rem)] space-y-2 overflow-y-auto pr-1">
               {pages.length > 0 ? (
@@ -4075,6 +4126,58 @@ export default function NotebookEditorPage() {
             ) : null}
 
               <div className="notebook-page-stage relative mx-auto w-full overflow-hidden">
+                {createPageActive || creatingPage ? (
+                  <div
+                    aria-hidden="true"
+                    className="notebook-create-page-affordance pointer-events-none absolute right-3 top-1/2 z-30 -translate-y-1/2 sm:right-6"
+                    style={{
+                      opacity: creatingPage
+                        ? 1
+                        : Math.min(1, 0.2 + createPageProgress * 0.8),
+                    }}
+                  >
+                    <div
+                      className={`grid h-16 w-16 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-[0_12px_30px_rgba(0,0,0,0.2)] ${
+                        createPageBounce ? "notebook-create-page-pop" : ""
+                      }`}
+                      style={{
+                        transform: `scale(${
+                          creatingPage ? 1 : 0.72 + createPageProgress * 0.28
+                        })`,
+                      }}
+                    >
+                      <svg viewBox="0 0 48 48" className="h-11 w-11 -rotate-90">
+                        <circle
+                          cx="24"
+                          cy="24"
+                          r="20"
+                          fill="none"
+                          stroke="var(--color-border)"
+                          strokeWidth="3.5"
+                        />
+                        <circle
+                          cx="24"
+                          cy="24"
+                          r="20"
+                          fill="none"
+                          stroke="var(--color-selected-border)"
+                          strokeWidth="3.5"
+                          strokeLinecap="round"
+                          strokeDasharray={2 * Math.PI * 20}
+                          strokeDashoffset={2 * Math.PI * 20 * (1 - createPageProgress)}
+                          style={{ transition: "stroke-dashoffset 80ms linear" }}
+                        />
+                        <path
+                          d="M24 15v18M15 24h18"
+                          fill="none"
+                          stroke="var(--color-selected-border)"
+                          strokeWidth="3.5"
+                          strokeLinecap="round"
+                        />
+                      </svg>
+                    </div>
+                  </div>
+                ) : null}
                 {swipeAdjacentPage ? (
                   <div
                     aria-hidden="true"

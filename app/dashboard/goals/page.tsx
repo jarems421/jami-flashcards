@@ -462,7 +462,7 @@ export default function GoalsPage() {
                       if (!event.target.value) setDeadlineTime("");
                     }}
                     label="Finish by date"
-                    containerClassName="box-border w-full min-w-0"
+                    containerClassName="goal-deadline-field box-border w-full min-w-0"
                     className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-2 !py-2.5 text-xs sm:!px-3 sm:text-sm"
                   />
                   <Input
@@ -470,7 +470,7 @@ export default function GoalsPage() {
                     value={deadlineTime}
                     onChange={(event) => setDeadlineTime(event.target.value)}
                     label="Finish by time"
-                    containerClassName="box-border w-full min-w-0"
+                    containerClassName="goal-deadline-field box-border w-full min-w-0"
                     className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-2 !py-2.5 text-xs sm:!px-3 sm:text-sm"
                   />
                 </div>

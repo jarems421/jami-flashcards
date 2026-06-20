@@ -709,6 +709,8 @@ export default function FolderDetailPage() {
                   title={notebookTitle.trim() || "Notebook preview"}
                   color={notebookColor}
                   icon={notebookIcon}
+                  pageColor={notebookPageColor}
+                  pageStyle={notebookPageStyle}
                   updatedLabel="Notebook preview"
                   compact
                   editorPreview
@@ -737,10 +739,6 @@ export default function FolderDetailPage() {
                   onChange={(event) => setNotebookFile(event.target.files?.[0] ?? null)}
                   className="block min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed disabled:saturate-[0.82]"
                 />
-                <p className="mt-2 text-sm leading-6 text-text-muted">
-                  File pages become the notebook&apos;s first pages. You can add more
-                  PDFs or images later from notebook settings.
-                </p>
               </div>
               {!notebookFile ? (
                 <>
@@ -779,11 +777,7 @@ export default function FolderDetailPage() {
                     </div>
                   </div>
                 </>
-              ) : (
-                <div className="app-chip rounded-[1.15rem] px-4 py-3 text-sm leading-6 lg:col-span-2">
-                  PDF and image pages use the file itself as their background. Any blank pages added later will use white plain paper.
-                </div>
-              )}
+              ) : null}
               <div className="lg:col-span-2">
                 <TopicPicker
                   userId={user.uid}
@@ -825,28 +819,19 @@ export default function FolderDetailPage() {
                 </Button>
               </div>
             </div>
-            {notebookFile ? (
-              <div className="mt-3 space-y-2">
-                <p className="text-sm leading-6 text-text-muted">
-                  The PDF or image stays locked as the page background. You can
-                  write, highlight, erase annotations, and add text over it;
-                  OCR is not included.
-                </p>
-                {creatingNotebook && notebookUploadProgress !== null ? (
-                  <div
-                    role="progressbar"
-                    aria-label="Notebook file import progress"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={notebookUploadProgress}
-                    className="h-2 overflow-hidden rounded-full bg-white/[0.08]"
-                  >
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
-                      style={{ width: `${notebookUploadProgress}%` }}
-                    />
-                  </div>
-                ) : null}
+            {notebookFile && creatingNotebook && notebookUploadProgress !== null ? (
+              <div
+                role="progressbar"
+                aria-label="Notebook file import progress"
+                aria-valuemin={0}
+                aria-valuemax={100}
+                aria-valuenow={notebookUploadProgress}
+                className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.08]"
+              >
+                <div
+                  className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
+                  style={{ width: `${notebookUploadProgress}%` }}
+                />
               </div>
             ) : null}
           </Card>

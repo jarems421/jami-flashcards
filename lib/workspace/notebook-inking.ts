@@ -21,6 +21,11 @@ export const NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER = 5;
 export const NOTEBOOK_NATIVE_COMMIT_IDLE_MS = 750;
 export const NOTEBOOK_MAX_PENDING_NATIVE_STROKES = 120;
 export const NOTEBOOK_PAGE_SWIPE_THRESHOLD = 64;
+// Pulling forward past the last page far enough to fill this fraction of the page
+// width (with a px floor) creates a new page. A fast forward flick can shortcut it.
+export const NOTEBOOK_CREATE_PAGE_THRESHOLD_RATIO = 0.32;
+export const NOTEBOOK_CREATE_PAGE_MIN_THRESHOLD = 96;
+export const NOTEBOOK_CREATE_PAGE_FLICK_VELOCITY = 0.6;
 export const NOTEBOOK_PAGE_MIN_ZOOM = 0.85;
 export const NOTEBOOK_PAGE_MAX_ZOOM = 2.4;
 export const NOTEBOOK_DEFAULT_THICKNESS_PERCENT = 50;
@@ -132,6 +137,44 @@ export function getNotebookPageIndexAfterSwipe(input: {
   }
   const offset = input.direction === "next" ? 1 : -1;
   return Math.max(0, Math.min(input.pageCount - 1, input.currentIndex + offset));
+}
+
+export function getNotebookCreatePageThreshold(pageWidth: number) {
+  return Math.max(
+    NOTEBOOK_CREATE_PAGE_MIN_THRESHOLD,
+    Math.max(1, pageWidth) * NOTEBOOK_CREATE_PAGE_THRESHOLD_RATIO
+  );
+}
+
+// Describes the "pull past the last page to create a new one" gesture. A forward
+// pull is a leftward drag, so `totalDx` is negative; `progress` (0..1) drives the
+// circular ring, and `resistedOffset` is the rubber-banded page translation (the
+// same sqrt curve used for the first/last-page bounce).
+export function getNotebookCreatePagePull(input: {
+  totalDx: number;
+  pageWidth: number;
+}): { progress: number; resistedOffset: number } {
+  const pull = Math.max(0, -input.totalDx);
+  const threshold = getNotebookCreatePageThreshold(input.pageWidth);
+  const progress = Math.max(0, Math.min(1, pull / threshold));
+  const resistedOffset = pull > 0 ? -Math.sqrt(pull) * 5 : 0;
+  return { progress, resistedOffset };
+}
+
+export function shouldCreateNotebookPageOnRelease(input: {
+  totalDx: number;
+  pageWidth: number;
+  velocityX: number;
+}): boolean {
+  const { progress } = getNotebookCreatePagePull({
+    totalDx: input.totalDx,
+    pageWidth: input.pageWidth,
+  });
+  if (progress >= 1) return true;
+  // A fast forward flick (leftward → negative velocityX) past a partial pull.
+  return (
+    progress >= 0.5 && input.velocityX <= -NOTEBOOK_CREATE_PAGE_FLICK_VELOCITY
+  );
 }
 
 export function clampNotebookPageZoom(value: number) {
