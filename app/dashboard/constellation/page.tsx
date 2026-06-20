@@ -196,7 +196,27 @@ export default function ConstellationDashboardPage() {
     [allStars, selectedConstellation]
   );
   const selectedProgressPercent = getConstellationProgressPercent(selectedConstellation);
-  const recentStars = allStars.slice(0, 5);
+  const isSelectedConstellationBackground =
+    Boolean(selectedConstellation) &&
+    isConstellationBackgroundEnabled &&
+    backgroundConstellationId === selectedConstellation?.id;
+
+  const handleToggleSelectedBackground = () => {
+    if (!selectedConstellation) {
+      return;
+    }
+
+    if (isSelectedConstellationBackground) {
+      setIsConstellationBackgroundEnabled(false);
+      setConstellationBackgroundEnabled(false);
+      return;
+    }
+
+    setBackgroundConstellationId(selectedConstellation.id);
+    setConstellationBackgroundConstellationId(selectedConstellation.id);
+    setIsConstellationBackgroundEnabled(true);
+    setConstellationBackgroundEnabled(true);
+  };
 
   useEffect(() => {
     if (!draggingStarId || !canEditSelectedConstellation) {
@@ -504,6 +524,16 @@ export default function ConstellationDashboardPage() {
                         View only
                       </span>
                     ) : null}
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={isSelectedConstellationBackground ? "secondary" : "primary"}
+                      onClick={handleToggleSelectedBackground}
+                    >
+                      {isSelectedConstellationBackground
+                        ? "Remove background"
+                        : "Use as background"}
+                    </Button>
                   </div>
                 ) : null}
               </div>
@@ -571,62 +601,6 @@ export default function ConstellationDashboardPage() {
               ) : null}
             </Card>
 
-            <Card padding="md" className="space-y-4">
-              <SectionHeader
-                title="Recently earned"
-                description="Each star keeps the target that earned it."
-              />
-              {recentStars.length > 0 ? (
-                <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-                  {recentStars.map((star) => {
-                    const goal = goalsById[star.goalId];
-                    return (
-                      <div
-                        key={star.id}
-                        className="app-subtle-panel flex items-center gap-4 rounded-[1.2rem] p-4"
-                      >
-                        <div className="relative h-12 w-12 shrink-0 rounded-full bg-[#090413]">
-                          <ConstellationStar
-                            star={{
-                              ...star,
-                              position: { x: 50, y: 50 },
-                            }}
-                            variant="preview"
-                            label={
-                              goal
-                                ? `Star from a ${goal.targetCards}-card goal`
-                                : "Earned star"
-                            }
-                          />
-                        </div>
-                        <div className="min-w-0">
-                          <div className="text-sm font-semibold text-text-primary">
-                            {goal
-                              ? `${goal.targetCards}-card goal at ${Math.round(
-                                  goal.targetAccuracy * 100
-                                )}%`
-                              : "Goal reward"}
-                          </div>
-                          <div className="mt-1 text-xs text-text-muted">
-                            Earned{" "}
-                            {new Intl.DateTimeFormat("en", {
-                              day: "numeric",
-                              month: "short",
-                              year: "numeric",
-                            }).format(star.createdAt)}
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-sm leading-6 text-text-secondary">
-                  Complete a goal and its star will appear here.
-                </p>
-              )}
-            </Card>
-
             {constellations.length > 1 ? (
               <Card padding="md" className="space-y-4">
                 <SectionHeader
@@ -679,92 +653,6 @@ export default function ConstellationDashboardPage() {
                 </div>
               </Card>
             ) : null}
-
-            <Card
-              padding="md"
-              className="space-y-4 text-sm"
-            >
-              <SectionHeader
-                title="Background"
-                description="Use your selected constellation as a subtle app background. Turn it off any time."
-                action={
-                  <Button
-                    type="button"
-                    variant={isConstellationBackgroundEnabled ? "secondary" : "primary"}
-                    onClick={() => {
-                      if (isConstellationBackgroundEnabled) {
-                        setIsConstellationBackgroundEnabled(false);
-                        setConstellationBackgroundEnabled(false);
-                        return;
-                      }
-
-                      const nextId =
-                        backgroundConstellationId ||
-                        selectedConstellation?.id ||
-                        activeConstellation?.id ||
-                        "";
-
-                      setBackgroundConstellationId(nextId);
-                      setConstellationBackgroundConstellationId(nextId);
-                      setIsConstellationBackgroundEnabled(true);
-                      setConstellationBackgroundEnabled(true);
-                    }}
-                  >
-                    {isConstellationBackgroundEnabled
-                      ? "Turn off"
-                      : "Use background"}
-                  </Button>
-                }
-              />
-
-              <div className="flex flex-wrap items-center gap-3">
-                <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted sm:max-w-xs">
-                  Background sky
-                  <span className="relative mt-1 block">
-                    <select
-                      value={backgroundConstellationId}
-                      onChange={(event) => {
-                        const nextId = event.target.value;
-                        setBackgroundConstellationId(nextId);
-                        setConstellationBackgroundConstellationId(nextId);
-                      }}
-                      className="app-field w-full appearance-none truncate rounded-[1.7rem] py-3 pl-4 pr-12 text-sm font-medium normal-case tracking-normal"
-                    >
-                      <option value="">
-                        Active or latest
-                      </option>
-                      {constellations.map((constellation) => (
-                        <option
-                          key={constellation.id}
-                          value={constellation.id}
-                        >
-                          {constellation.name}
-                        </option>
-                      ))}
-                    </select>
-                    <svg
-                      aria-hidden="true"
-                      viewBox="0 0 20 20"
-                      fill="none"
-                      className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
-                    >
-                      <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                    </svg>
-                  </span>
-                </label>
-
-                <div className="app-chip rounded-full px-3 py-2 text-xs font-medium">
-                  {isConstellationBackgroundEnabled
-                    ? `Showing ${
-                        constellations.find(
-                          (constellation) =>
-                            constellation.id === backgroundConstellationId
-                        )?.name ?? "active constellation"
-                      }`
-                    : "Off"}
-                </div>
-              </div>
-            </Card>
 
           </>
         )}

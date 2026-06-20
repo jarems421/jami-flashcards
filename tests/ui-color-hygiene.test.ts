@@ -71,8 +71,9 @@ describe("theme colour hygiene", () => {
 
     expect(home).toContain('variant="primary"');
     expect(home).toContain("Continue with Google");
-    expect(constellation).toContain("app-field mt-1 w-full truncate");
-    expect(constellation).toContain("Use background");
+    expect(constellation).toContain("app-field w-full appearance-none truncate");
+    expect(constellation).toContain("Use as background");
+    expect(constellation).toContain("Remove background");
     expect(button).not.toContain("disabled:opacity-50");
     expect(button).toContain("disabled:!bg-[var(--button-disabled-bg)]");
     expect(button).toContain("disabled:saturate-[0.82]");
