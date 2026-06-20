@@ -27,6 +27,7 @@ import {
   getNotebookEraserModeValue,
   type NotebookEraserMode,
 } from "@/lib/workspace/notebook-eraser";
+import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
 import {
   getFreehandOutline,
@@ -302,6 +303,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       let disposed = false;
       let editor: JsDrawEditor | null = null;
       let historyListener: { remove(): void } | null = null;
+      let viewportResizeObserver: ResizeObserver | null = null;
+      let viewportFrame: number | null = null;
       loadingRef.current = true;
       readyRef.current = false;
       activePointersRef.current.clear();
@@ -319,6 +322,22 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           });
           editorRef.current = editor;
           editor.setReadOnly(readOnlyRef.current);
+          editor.toolController
+            .getMatchingTools(jsDraw.EraserTool)
+            .forEach((eraser) => {
+              // js-draw renders its eraser cursor as a square in the wet-ink
+              // layer (not a DOM element, so CSS cannot hide it). Suppress its
+              // preview so our circular DOM cursor is the only indicator —
+              // notably on iPad/Safari, where there is no hover cursor and the
+              // square is what users were seeing.
+              const previewable = eraser as unknown as {
+                drawPreviewAt?: () => void;
+                clearPreview?: () => void;
+              };
+              previewable.drawPreviewAt = function suppressedDrawPreviewAt() {
+                previewable.clearPreview?.();
+              };
+            });
           applyInkStyle(editor, desiredStyleRef.current, jsDraw);
           editor.getRootElement().style.height = "100%";
           editor.getRootElement().style.minHeight = "0";
@@ -351,11 +370,34 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           if (disposed || !editor) return;
           const pageRect = new jsDraw.Rect2(0, 0, pageWidth, pageHeight);
           editor.dispatchNoAnnounce(editor.image.setImportExportRect(pageRect), false);
+
+          const syncViewport = () => {
+            if (disposed || !editor) return;
+            const scale = getNotebookInkViewportScale({
+              displayWidth: editor.display.width,
+              displayHeight: editor.display.height,
+              pageWidth,
+              pageHeight,
+            });
+            if (scale.x <= 0 || scale.y <= 0) return;
+            editor.viewport.resetTransform(
+              jsDraw.Mat33.scaling2D(jsDraw.Vec2.of(scale.x, scale.y))
+            );
+          };
+          const scheduleViewportSync = () => {
+            if (viewportFrame !== null) return;
+            viewportFrame = window.requestAnimationFrame(() => {
+              viewportFrame = null;
+              syncViewport();
+            });
+          };
+
+          viewportResizeObserver = new ResizeObserver(scheduleViewportSync);
+          viewportResizeObserver.observe(host);
+          viewportResizeObserver.observe(editor.getRootElement());
           window.requestAnimationFrame(() => {
             if (disposed || !editor) return;
-            editor.viewport.resetTransform(
-              editor.viewport.computeZoomToTransform(pageRect, true, true)
-            );
+            syncViewport();
             applyInkStyle(editor, desiredStyleRef.current, jsDraw);
             loadingRef.current = false;
             readyRef.current = true;
@@ -376,6 +418,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         readyRef.current = false;
         activePointers.clear();
         callbacksRef.current.onInteractionChange(false);
+        viewportResizeObserver?.disconnect();
+        if (viewportFrame !== null) {
+          window.cancelAnimationFrame(viewportFrame);
+        }
         historyListener?.remove();
         editor?.remove();
         editorRef.current = null;

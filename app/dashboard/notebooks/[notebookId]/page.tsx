@@ -412,43 +412,81 @@ function getLivePointWidth(stroke: LiveStroke, point: LiveInkPoint) {
   return Math.max(1, stroke.width * multiplier);
 }
 
-function drawLiveStrokePath(
+// Draws only the live-stroke segments from `fromIndex` onward and returns the
+// new rendered point count. Opaque pen/eraser strokes can be drawn this way
+// incrementally (without clearing the canvas first), so a long stroke costs
+// O(new points) per frame instead of re-rendering every segment each frame.
+// Straight segments with round caps/joins stay gap-free at the dense live
+// sampling rate, while still varying width per point for pressure feel.
+function drawLivePenSegments(
   context: CanvasRenderingContext2D,
   stroke: LiveStroke,
-  pageColor: NotebookPageColor
-) {
-  if (stroke.points.length === 0) return;
+  pageColor: NotebookPageColor,
+  fromIndex: number
+): number {
+  const points = stroke.points;
+  if (points.length === 0) return 0;
 
   context.save();
   context.lineCap = "round";
   context.lineJoin = "round";
-  context.strokeStyle = strokePaintColor(stroke, pageColor);
-  context.fillStyle = strokePaintColor(stroke, pageColor);
-  if (stroke.tool === "highlighter") {
-    context.globalAlpha = 0.28;
+  const paint = strokePaintColor(stroke, pageColor);
+  context.strokeStyle = paint;
+  context.fillStyle = paint;
+
+  if (points.length === 1) {
+    drawFallbackDot(context, stroke, points[0]);
+    context.restore();
+    return 1;
   }
 
-  if (stroke.points.length === 1) {
-    drawFallbackDot(context, stroke, stroke.points[0]);
+  for (let index = Math.max(1, fromIndex); index < points.length; index += 1) {
+    const previousPoint = points[index - 1];
+    const currentPoint = points[index];
+    context.beginPath();
+    context.lineWidth =
+      stroke.tool === "eraser" ? stroke.width : getLivePointWidth(stroke, currentPoint);
+    context.moveTo(previousPoint.x, previousPoint.y);
+    context.lineTo(currentPoint.x, currentPoint.y);
+    context.stroke();
+  }
+
+  context.restore();
+  return points.length;
+}
+
+// The highlighter is translucent, so it must be drawn as a single compound
+// path with one stroke() call per frame. Incremental/overlapping segments
+// would accumulate opacity and darken at every join.
+function drawLiveHighlighterStroke(
+  context: CanvasRenderingContext2D,
+  stroke: LiveStroke,
+  pageColor: NotebookPageColor
+) {
+  const points = stroke.points;
+  if (points.length === 0) return;
+
+  context.save();
+  context.lineCap = "round";
+  context.lineJoin = "round";
+  context.globalAlpha = 0.28;
+  const paint = strokePaintColor(stroke, pageColor);
+  context.strokeStyle = paint;
+  context.fillStyle = paint;
+  context.lineWidth = stroke.width;
+
+  if (points.length === 1) {
+    drawFallbackDot(context, stroke, points[0]);
     context.restore();
     return;
   }
 
-  for (let index = 1; index < stroke.points.length; index += 1) {
-    const previousPoint = stroke.points[index - 1];
-    const currentPoint = stroke.points[index];
-    const midpoint = {
-      x: (previousPoint.x + currentPoint.x) / 2,
-      y: (previousPoint.y + currentPoint.y) / 2,
-    };
-
-    context.beginPath();
-    context.lineWidth = stroke.tool === "eraser" ? stroke.width : getLivePointWidth(stroke, currentPoint);
-    context.moveTo(previousPoint.x, previousPoint.y);
-    context.quadraticCurveTo(previousPoint.x, previousPoint.y, midpoint.x, midpoint.y);
-    context.stroke();
+  context.beginPath();
+  context.moveTo(points[0].x, points[0].y);
+  for (let index = 1; index < points.length; index += 1) {
+    context.lineTo(points[index].x, points[index].y);
   }
-
+  context.stroke();
   context.restore();
 }
 
@@ -486,16 +524,23 @@ function drawSavedNotebookCanvas(input: {
   }
 }
 
-function drawLiveInkCanvas(input: {
-  canvas: HTMLCanvasElement;
-  activeStroke: LiveStroke | null;
-  pageColor: NotebookPageColor;
-  tool?: NotebookStrokeTool;
-}) {
-  const context = prepareNotebookCanvas(input.canvas);
-  if (!context || !input.activeStroke) return;
-  if (input.tool && input.activeStroke.tool !== input.tool) return;
-  drawLiveStrokePath(context, input.activeStroke, input.pageColor);
+// Like prepareNotebookCanvas but WITHOUT clearing. Used for incremental live
+// rendering, where previously drawn segments must remain on the canvas. The
+// width/height assignments only clear when dimensions actually change (they
+// don't between frames of the same stroke), so the existing pixels survive.
+function getScaledNotebookContext(canvas: HTMLCanvasElement) {
+  const pixelRatio = Math.max(1, window.devicePixelRatio || 1);
+  const width = Math.round(CANVAS_WIDTH * pixelRatio);
+  const height = Math.round(CANVAS_HEIGHT * pixelRatio);
+
+  if (canvas.width !== width) canvas.width = width;
+  if (canvas.height !== height) canvas.height = height;
+
+  const context = canvas.getContext("2d");
+  if (!context) return null;
+
+  context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+  return context;
 }
 
 function getPageStyleBackground(pageColor: NotebookPageColor, style: NotebookPageStyle) {
@@ -1022,6 +1067,7 @@ export default function NotebookEditorPage() {
   const savedCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const liveHighlighterCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const liveCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const liveRenderedCountRef = useRef(0);
   const activeStrokeRef = useRef<ActiveStrokeState | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
@@ -1370,6 +1416,11 @@ export default function NotebookEditorPage() {
             })
           );
         }
+        // Yield once before js-draw's synchronous SVG work. Any pointer events
+        // queued during the outline computation above (typically the start of
+        // the next stroke in a fast sequence like "1+1+2") get processed here,
+        // so a new stroke is not dropped or delayed while the commit blocks.
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
         await editor.commitStrokes(snapshot);
         const committed = new Set(snapshot);
         pendingNativeStrokesRef.current =
@@ -1416,24 +1467,45 @@ export default function NotebookEditorPage() {
     }, NOTEBOOK_NATIVE_COMMIT_IDLE_MS);
   }, [cancelNativeCommit, flushPendingNativeStrokes]);
 
-  const renderLiveCanvasNow = useCallback(() => {
+  const renderLiveCanvasNow = useCallback((reset = false) => {
+    const activeStroke = activeStrokeRef.current?.liveStroke ?? null;
+    const pageColor = pageColorRef.current;
+    const isHighlighter = activeStroke?.tool === "highlighter";
+
+    // Highlighter canvas: translucent, redrawn as one compound stroke per frame.
     const highlighterCanvas = liveHighlighterCanvasRef.current;
     if (highlighterCanvas) {
-      drawLiveInkCanvas({
-        canvas: highlighterCanvas,
-        activeStroke: activeStrokeRef.current?.liveStroke ?? null,
-        pageColor: pageColorRef.current,
-        tool: "highlighter",
-      });
+      const context = prepareNotebookCanvas(highlighterCanvas);
+      if (context && activeStroke && isHighlighter) {
+        drawLiveHighlighterStroke(context, activeStroke, pageColor);
+      }
     }
-    const canvas = liveCanvasRef.current;
-    if (!canvas) return;
-    drawLiveInkCanvas({
-      canvas,
-      activeStroke: activeStrokeRef.current?.liveStroke ?? null,
-      pageColor: pageColorRef.current,
-      tool: activeStrokeRef.current?.liveStroke.tool === "highlighter" ? "pen" : undefined,
-    });
+
+    // Pen/eraser canvas: opaque, rendered incrementally. Only the segments
+    // added since the last frame are drawn, so per-frame cost stays at
+    // O(new points) instead of redrawing the whole stroke every frame.
+    const penCanvas = liveCanvasRef.current;
+    if (!penCanvas) return;
+    if (!activeStroke || isHighlighter) {
+      clearNotebookCanvas(penCanvas);
+      liveRenderedCountRef.current = 0;
+      return;
+    }
+    if (reset || liveRenderedCountRef.current === 0) {
+      const context = prepareNotebookCanvas(penCanvas);
+      liveRenderedCountRef.current = context
+        ? drawLivePenSegments(context, activeStroke, pageColor, 0)
+        : 0;
+      return;
+    }
+    const context = getScaledNotebookContext(penCanvas);
+    if (!context) return;
+    liveRenderedCountRef.current = drawLivePenSegments(
+      context,
+      activeStroke,
+      pageColor,
+      liveRenderedCountRef.current
+    );
   }, []);
 
   const scheduleSavedCanvasRender = useCallback(() => {
@@ -1473,6 +1545,7 @@ export default function NotebookEditorPage() {
       document.body.classList.remove("jami-inking-active");
       clearNotebookCanvas(liveHighlighterCanvasRef.current);
       clearNotebookCanvas(liveCanvasRef.current);
+      liveRenderedCountRef.current = 0;
 
       if (finalizedStroke) {
         const preparedStroke: Stroke = { ...finalizedStroke };
@@ -1487,6 +1560,26 @@ export default function NotebookEditorPage() {
           redoDepth: 0,
         };
         markPageUnsaved({ deferUi: true, scheduleUi: false });
+        // Pre-compute the committed freehand outline now, while the pen is
+        // lifted, instead of doing it in a batch when the commit timer fires.
+        // By the time flushPendingNativeStrokes runs, pathData already exists
+        // so its loop skips the expensive work and the main thread stays free
+        // for the next stroke. Deferred a tick so it never competes with the
+        // pointerup/next-pointerdown handling.
+        if (preparedStroke.tool !== "eraser" && !preparedStroke.pathData) {
+          const outlineTool = preparedStroke.tool;
+          window.setTimeout(() => {
+            if (preparedStroke.pathData) return;
+            preparedStroke.pathData = getSvgPathFromStrokeOutline(
+              getFreehandOutline({
+                points: preparedStroke.points,
+                tool: outlineTool,
+                width: preparedStroke.width,
+                mode: "committed",
+              })
+            );
+          }, 0);
+        }
         scheduleNativeCommit();
       }
       scheduleSavedCanvasRender();
@@ -1990,7 +2083,7 @@ export default function NotebookEditorPage() {
       stylusInteractionRef.current = event.pointerType === "pen";
       stylusCooldownUntilRef.current = Number.POSITIVE_INFINITY;
       document.body.classList.add("jami-inking-active");
-      renderLiveCanvasNow();
+      renderLiveCanvasNow(true);
       return true;
     },
     [
