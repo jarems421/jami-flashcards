@@ -32,7 +32,7 @@ import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
 type Feedback = { type: "success" | "error"; message: string };
-type GoalPreset = "today-10" | "week-20" | "accuracy-80";
+type GoalPreset = "today-10" | "week-20";
 
 function getDateInputValue(date: Date) {
   const year = date.getFullYear();
@@ -244,11 +244,6 @@ export default function GoalsPage() {
       setTargetAccuracy("80");
       setDeadlineDate(getDateInputValue(deadline));
       setDeadlineTime("23:59");
-    } else {
-      setTargetCards("10");
-      setTargetAccuracy("80");
-      setDeadlineDate("");
-      setDeadlineTime("");
     }
 
     setEditingGoalId(null);
@@ -430,9 +425,6 @@ export default function GoalsPage() {
               <Button type="button" size="sm" variant="secondary" onClick={() => applyPreset("week-20")}>
                 Review 20 this week
               </Button>
-              <Button type="button" size="sm" variant="secondary" onClick={() => applyPreset("accuracy-80")}>
-                Hit 80% accuracy
-              </Button>
             </div>
           </div>
           <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
@@ -464,7 +456,7 @@ export default function GoalsPage() {
                     Optional. Leave both fields blank for an open-ended goal.
                   </p>
                 </div>
-                <div className="grid min-w-0 gap-3 md:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+                <div className="grid min-w-0 gap-3 xl:grid-cols-2">
                   <Input
                     type="date"
                     value={deadlineDate}
@@ -472,8 +464,8 @@ export default function GoalsPage() {
                       setDeadlineDate(event.target.value);
                       if (!event.target.value) setDeadlineTime("");
                     }}
-                    label="Finish by date (optional)"
-                    containerClassName="min-w-0"
+                    label="Finish by date"
+                    containerClassName="min-w-0 overflow-hidden"
                     className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
                   />
                   <Input
@@ -481,7 +473,7 @@ export default function GoalsPage() {
                     value={deadlineTime}
                     onChange={(event) => setDeadlineTime(event.target.value)}
                     label="Finish by time"
-                    containerClassName="min-w-0"
+                    containerClassName="min-w-0 overflow-hidden"
                     className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
                   />
                 </div>
