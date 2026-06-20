@@ -23,7 +23,6 @@ import {
 } from "@/lib/study/goals";
 import {
   buildPreviewStar,
-  getEffectiveStarVisualSize,
 } from "@/lib/constellation/stars";
 import { getDeadlineDisplay } from "@/lib/study/time";
 import AppPage from "@/components/layout/AppPage";
@@ -179,7 +178,7 @@ export default function GoalsPage() {
   const parsedGoalTargetCards = parseTargetCardsInput(targetCards);
   const parsedGoalTargetAccuracy = parseTargetAccuracyInput(targetAccuracy);
   const previewTargetCards = parsedGoalTargetCards ?? 10;
-  const previewTargetAccuracy = parsedGoalTargetAccuracy ?? 1;
+  const previewTargetAccuracy = parsedGoalTargetAccuracy ?? 0.8;
   const previewConstellationId =
     activeConstellation?.id ?? "preview-constellation";
   const previewStar = buildPreviewStar({
@@ -215,7 +214,7 @@ export default function GoalsPage() {
   const disabledReason = isDemoUser
     ? "Goal editing is disabled in the shared demo."
     : parsedGoalTargetCards === null
-      ? "Enter a target of at least one card."
+      ? null
       : parsedGoalTargetAccuracy === null
         ? "Enter an accuracy target from 0 to 100%."
         : !deadlineIsValid
@@ -431,7 +430,6 @@ export default function GoalsPage() {
             <Input
               type="number"
               min="1"
-              placeholder="Target cards"
               value={targetCards}
               onChange={(event) => setTargetCards(event.target.value)}
               label="Target cards"
@@ -442,7 +440,6 @@ export default function GoalsPage() {
               min="0"
               max="100"
               step="1"
-              placeholder="Accuracy %"
               value={targetAccuracy}
               onChange={(event) => setTargetAccuracy(event.target.value)}
               label="Accuracy %"
@@ -465,65 +462,51 @@ export default function GoalsPage() {
                       if (!event.target.value) setDeadlineTime("");
                     }}
                     label="Finish by date"
-                    containerClassName="min-w-0 w-full overflow-hidden"
-                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-3 !py-2.5"
+                    containerClassName="min-w-0 w-full"
+                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
                   />
                   <Input
                     type="time"
                     value={deadlineTime}
                     onChange={(event) => setDeadlineTime(event.target.value)}
                     label="Finish by time"
-                    containerClassName="min-w-0 w-full overflow-hidden"
-                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-3 !py-2.5"
+                    containerClassName="min-w-0 w-full"
+                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
                   />
                 </div>
               </div>
             </div>
-            <div className="md:col-span-2">
-              <Button
-                disabled={!canSaveGoal}
-                onClick={() => void handleSaveGoal()}
-                variant="warm"
-                size="lg"
-                className="w-full md:w-auto"
-              >
-                {isCreatingGoal
-                  ? editingGoalId
-                    ? "Saving..."
-                    : "Creating..."
-                  : editingGoalId
-                    ? "Save goal"
-                    : "Create goal"}
-              </Button>
-              {disabledReason ? (
-                <p className="mt-2 text-xs leading-5 text-text-muted">{disabledReason}</p>
-              ) : null}
-            </div>
-          </div>
-        </Card>
-
-        <Card tone="warm" padding="lg">
-          <SectionHeader
-            eyebrow="Reward preview"
-            title="See the star before you commit."
-          />
-
-          <div className="mt-5 grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1fr)_260px]">
-            <div className="space-y-2 text-sm text-text-secondary">
-              <div>
-                {previewTargetCards}-card goal at{" "}
-                {Math.round(previewTargetAccuracy * 100)}% accuracy
+            <div className="grid gap-4 md:col-span-2 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-center">
+              <div className="flex flex-col items-start">
+                <p className="order-3 mt-4 text-sm font-medium text-text-secondary lg:order-1 lg:mb-4 lg:mt-0">
+                  Complete this goal to earn this star.
+                </p>
+                <Button
+                  disabled={!canSaveGoal}
+                  onClick={() => void handleSaveGoal()}
+                  variant="warm"
+                  size="lg"
+                  className="order-1 w-full md:w-auto lg:order-2"
+                >
+                  {isCreatingGoal
+                    ? editingGoalId
+                      ? "Saving..."
+                      : "Creating..."
+                    : editingGoalId
+                      ? "Save goal"
+                      : "Create goal"}
+                </Button>
+                {disabledReason ? (
+                  <p className="order-2 mt-2 text-xs leading-5 text-text-muted lg:order-3">
+                    {disabledReason}
+                  </p>
+                ) : null}
               </div>
-              <div className="grid gap-2 text-xs text-text-muted sm:grid-cols-2">
-                <div>Reward scale: {getEffectiveStarVisualSize(previewStar) >= 18 ? "large" : "subtle"}</div>
-                <div>Star glow: {previewStar.glow >= 0.8 ? "bright" : "soft"}</div>
-              </div>
-            </div>
-
               <div className="relative h-44 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-56">
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(143,125,232,0.16),rgba(6,3,17,0.66))]" />
-              <div className="absolute inset-0 z-10">
-                <ConstellationStar star={previewStar} variant="preview" />
+                <div className="absolute inset-0 z-10">
+                  <ConstellationStar star={previewStar} variant="preview" />
+                </div>
               </div>
             </div>
           </div>

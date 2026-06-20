@@ -91,42 +91,14 @@ export function getStarPresetIconPath(presetId?: StarPresetId): string | null {
   return presetId ? `/images/${STAR_PRESET_ICON_MAP[presetId]}` : null;
 }
 
-const STAR_PRESET_RANK: Record<StarPresetId, number> = {
-  classic: 0,
-  "blue-spark": 1,
-  "violet-comet": 2,
-  "gold-burst": 3,
-  "magenta-elite": 4,
-};
-
-function getStreakPresetId(streakDays: number): StarPresetId {
-  if (streakDays >= 30) return "magenta-elite";
-  if (streakDays >= 14) return "gold-burst";
-  if (streakDays >= 7) return "violet-comet";
-  if (streakDays >= 3) return "blue-spark";
-  return "classic";
-}
-
-export function resolveStarPresetId(
-  goal: Goal,
-  streakDays = 0
-): StarPresetId {
-  let goalPreset: StarPresetId = "classic";
-
+export function resolveStarPresetId(goal: Goal): StarPresetId {
   if (goal.targetCards >= 100 && goal.targetAccuracy >= 0.9) {
-    goalPreset = "magenta-elite";
-  } else if (goal.targetCards >= 60) {
-    goalPreset = "gold-burst";
-  } else if (goal.targetCards >= 30) {
-    goalPreset = "violet-comet";
-  } else if (goal.targetCards >= 15) {
-    goalPreset = "blue-spark";
+    return "magenta-elite";
   }
-
-  const streakPreset = getStreakPresetId(Math.max(0, Math.floor(streakDays)));
-  return STAR_PRESET_RANK[streakPreset] > STAR_PRESET_RANK[goalPreset]
-    ? streakPreset
-    : goalPreset;
+  if (goal.targetCards >= 60) return "gold-burst";
+  if (goal.targetCards >= 30) return "violet-comet";
+  if (goal.targetCards >= 15) return "blue-spark";
+  return "classic";
 }
 
 function getDefaultStarPosition(seed = "default-star"): StarPosition {
@@ -242,7 +214,21 @@ export function buildPreviewStar({
     color: getStarColor(completedGoalsCount),
     createdAt,
     position,
-    presetId: presetId ?? "classic",
+    presetId:
+      presetId ??
+      resolveStarPresetId({
+        id: goalId,
+        deadline: 0,
+        progress: {
+          cardsCompleted: 0,
+          correctAnswers: 0,
+          totalAnswers: 0,
+        },
+        status: "active",
+        createdAt,
+        targetCards,
+        targetAccuracy,
+      }),
   });
 }
 

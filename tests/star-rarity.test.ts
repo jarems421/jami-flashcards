@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { resolveStarPresetId } from "@/lib/constellation/stars";
+import {
+  buildPreviewStar,
+  resolveStarPresetId,
+} from "@/lib/constellation/stars";
 import type { Goal } from "@/lib/study/goals";
 
 function buildGoal(targetCards: number, targetAccuracy = 0.8): Goal {
@@ -27,19 +30,26 @@ describe("star rarity", () => {
     expect(resolveStarPresetId(buildGoal(100, 0.95))).toBe("magenta-elite");
   });
 
-  it("upgrades rewards for longer study streaks", () => {
-    const smallGoal = buildGoal(5, 0.7);
-
-    expect(resolveStarPresetId(smallGoal, 2)).toBe("classic");
-    expect(resolveStarPresetId(smallGoal, 3)).toBe("blue-spark");
-    expect(resolveStarPresetId(smallGoal, 7)).toBe("violet-comet");
-    expect(resolveStarPresetId(smallGoal, 14)).toBe("gold-burst");
-    expect(resolveStarPresetId(smallGoal, 30)).toBe("magenta-elite");
+  it("uses goal values alone to determine the reward", () => {
+    expect(resolveStarPresetId(buildGoal(5, 0.7))).toBe("classic");
+    expect(resolveStarPresetId(buildGoal(100, 0.95))).toBe("magenta-elite");
   });
 
-  it("keeps a harder goal preset when it is rarer than the streak preset", () => {
-    expect(resolveStarPresetId(buildGoal(100, 0.95), 3)).toBe(
-      "magenta-elite"
-    );
+  it("keeps preview presets aligned with earned goal presets", () => {
+    for (const [targetCards, targetAccuracy] of [
+      [10, 0.8],
+      [20, 0.8],
+      [40, 0.8],
+      [70, 0.8],
+      [100, 0.95],
+    ] as const) {
+      expect(
+        buildPreviewStar({
+          targetCards,
+          targetAccuracy,
+          completedGoalsCount: 0,
+        }).presetId
+      ).toBe(resolveStarPresetId(buildGoal(targetCards, targetAccuracy)));
+    }
   });
 });
