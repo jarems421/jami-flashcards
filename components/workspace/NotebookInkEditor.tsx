@@ -23,6 +23,10 @@ import type {
   NotebookStroke,
   NotebookStrokeColor,
 } from "@/lib/workspace/notebooks";
+import {
+  getNotebookEraserModeValue,
+  type NotebookEraserMode,
+} from "@/lib/workspace/notebook-eraser";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
 import {
   getFreehandOutline,
@@ -33,7 +37,8 @@ export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "tex
 
 export type NotebookInkEditorHandle = {
   clear(): void;
-  commitStrokes(strokes: NotebookStroke[]): Promise<void>;
+  commitStrokes(strokes: PreparedNotebookStroke[]): Promise<void>;
+  getHistoryState(): { undoDepth: number; redoDepth: number };
   hasInk(): boolean;
   isInteracting(): boolean;
   redo(): void;
@@ -41,8 +46,13 @@ export type NotebookInkEditorHandle = {
   undo(): void;
 };
 
+export type PreparedNotebookStroke = NotebookStroke & {
+  pathData?: string;
+};
+
 type Props = {
   activeTool: NotebookInkTool;
+  eraserMode: NotebookEraserMode;
   eraserThickness: number;
   highlighterColor: NotebookStrokeColor;
   highlighterThickness: number;
@@ -65,6 +75,7 @@ type Props = {
 type InkStyle = Pick<
   Props,
   | "activeTool"
+  | "eraserMode"
   | "eraserThickness"
   | "highlighterColor"
   | "highlighterThickness"
@@ -116,7 +127,13 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
   } else if (style.activeTool === "eraser") {
     const eraser = erasers[0];
     eraser?.setThickness(style.eraserThickness);
-    eraser?.getModeValue().set(jsDraw.EraserMode.PartialStroke);
+    eraser
+      ?.getModeValue()
+      .set(
+        getNotebookEraserModeValue(style.eraserMode) === "full-stroke"
+          ? jsDraw.EraserMode.FullStroke
+          : jsDraw.EraserMode.PartialStroke
+      );
     eraser?.setEnabled(true);
   } else if (style.activeTool === "select") {
     selections[0]?.setEnabled(true);
@@ -127,6 +144,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
   function NotebookInkEditor(
     {
       activeTool,
+      eraserMode,
       eraserThickness,
       highlighterColor,
       highlighterThickness,
@@ -159,6 +177,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const readOnlyRef = useRef(readOnly);
     const desiredStyleRef = useRef<InkStyle>({
       activeTool,
+      eraserMode,
       eraserThickness,
       highlighterColor,
       highlighterThickness,
@@ -200,14 +219,16 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           if (!editor || strokes.length === 0) return;
           const commands = strokes.flatMap((stroke) => {
             if (stroke.tool === "eraser" || stroke.points.length === 0) return [];
-            const pathData = getSvgPathFromStrokeOutline(
-              getFreehandOutline({
-                points: stroke.points,
-                tool: stroke.tool,
-                width: stroke.width,
-                mode: "committed",
-              })
-            );
+            const pathData =
+              stroke.pathData ??
+              getSvgPathFromStrokeOutline(
+                getFreehandOutline({
+                  points: stroke.points,
+                  tool: stroke.tool,
+                  width: stroke.width,
+                  mode: "committed",
+                })
+              );
             if (!pathData) return [];
             const { color, opacity } = getNotebookInkColor(
               stroke.color,
@@ -243,6 +264,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               suppressedChangeEventsRef.current - 1
             );
           }
+        },
+        getHistoryState() {
+          const history = editorRef.current?.history;
+          return {
+            undoDepth: history?.undoStackSize ?? 0,
+            redoDepth: history?.redoStackSize ?? 0,
+          };
         },
         hasInk() {
           return (editorRef.current?.image.getAllComponents().length ?? 0) > 0;
@@ -359,6 +387,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       const editor = editorRef.current;
       desiredStyleRef.current = {
         activeTool,
+        eraserMode,
         eraserThickness,
         highlighterColor,
         highlighterThickness,
@@ -376,6 +405,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       applyInkStyle(editor, desiredStyleRef.current, jsDraw);
     }, [
       activeTool,
+      eraserMode,
       eraserThickness,
       highlighterColor,
       highlighterThickness,
@@ -428,7 +458,15 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
       event: ReactPointerEvent<HTMLDivElement>
     ) => {
-      if (event.pointerType === "touch" || activeTool === "text" || readOnly) return false;
+      if (
+        event.pointerType === "touch" ||
+        activeTool === "text" ||
+        activeTool === "pen" ||
+        activeTool === "highlighter" ||
+        readOnly
+      ) {
+        return false;
+      }
       event.preventDefault();
       if (activeTool === "eraser") {
         const rect = event.currentTarget.getBoundingClientRect();

@@ -17,6 +17,7 @@ import AppPage from "@/components/layout/AppPage";
 import {
   NotebookInkEditor,
   type NotebookInkEditorHandle,
+  type PreparedNotebookStroke,
 } from "@/components/workspace/NotebookInkEditor";
 import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
 import {
@@ -47,11 +48,11 @@ import {
   normalizeNotebookStrokeColor,
   resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
-import { applyNotebookEraser, type NotebookEraserMode } from "@/lib/workspace/notebook-eraser";
+import type { NotebookEraserMode } from "@/lib/workspace/notebook-eraser";
 import {
   getFreehandOutline,
+  getSvgPathFromStrokeOutline,
   normalizeTimedInkPoint,
-  type StrokeOutlinePoint,
 } from "@/lib/workspace/notebook-ink-engine";
 import {
   clearNotebookNativeSelection,
@@ -113,11 +114,8 @@ import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pd
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
 type InkPoint = Point & { pressure?: number; time?: number };
-type Stroke = {
+type Stroke = PreparedNotebookStroke & {
   points: InkPoint[];
-  color: NotebookStrokeColor;
-  width: number;
-  tool: NotebookStrokeTool;
 };
 type LiveInkPoint = InkPoint & { pressure: number; time: number };
 type LiveStroke = Omit<Stroke, "points"> & {
@@ -339,18 +337,6 @@ function strokePaintColor(stroke: Stroke | LiveStroke, pageColor: NotebookPageCo
   return getNotebookStrokePaintColor(stroke.color, stroke.tool);
 }
 
-function fillStrokeOutline(context: CanvasRenderingContext2D, outline: StrokeOutlinePoint[]) {
-  if (outline.length === 0) return false;
-  context.beginPath();
-  context.moveTo(outline[0][0], outline[0][1]);
-  for (let index = 1; index < outline.length; index += 1) {
-    context.lineTo(outline[index][0], outline[index][1]);
-  }
-  context.closePath();
-  context.fill();
-  return true;
-}
-
 function drawFallbackDot(
   context: CanvasRenderingContext2D,
   stroke: Stroke | LiveStroke,
@@ -389,14 +375,8 @@ function drawStrokePath(
     return;
   }
 
-  if (stroke.tool !== "eraser") {
-    const outline = getFreehandOutline({
-      points: stroke.points,
-      tool: stroke.tool,
-      width: stroke.width,
-      mode: "committed",
-    });
-    if (fillStrokeOutline(context, outline)) {
+  if (stroke.tool !== "eraser" && stroke.pathData) {
+    if (fillSvgPath(context, stroke.pathData)) {
       context.restore();
       return;
     }
@@ -417,6 +397,12 @@ function drawStrokePath(
     context.stroke();
   }
   context.restore();
+}
+
+function fillSvgPath(context: CanvasRenderingContext2D, pathData: string) {
+  if (!pathData || typeof Path2D === "undefined") return false;
+  context.fill(new Path2D(pathData));
+  return true;
 }
 
 function getLivePointWidth(stroke: LiveStroke, point: LiveInkPoint) {
@@ -1021,6 +1007,7 @@ export default function NotebookEditorPage() {
   const [penMenuOpen, setPenMenuOpen] = useState(false);
   const [highlighterMenuOpen, setHighlighterMenuOpen] = useState(false);
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
+  const [toolTransitioning, setToolTransitioning] = useState(false);
   const [pageTransitionDirection, setPageTransitionDirection] =
     useState<PageTransitionDirection>(null);
   const [pageSwipeOffset, setPageSwipeOffset] = useState(0);
@@ -1039,7 +1026,11 @@ export default function NotebookEditorPage() {
   const autosaveTimerRef = useRef<number | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
   const nativeCommitTimerRef = useRef<number | null>(null);
+  const nativeCommitIdleRef = useRef<number | null>(null);
   const nativeCommitOperationRef = useRef<Promise<boolean> | null>(null);
+  const toolTransitionRef = useRef<Promise<boolean> | null>(null);
+  const toolTransitionActiveRef = useRef(false);
+  const toolRequestIdRef = useRef(0);
   const savedCanvasFrameRef = useRef<number | null>(null);
   const liveCanvasFrameRef = useRef<number | null>(null);
   const strokesRef = useRef<Stroke[]>([]);
@@ -1080,7 +1071,6 @@ export default function NotebookEditorPage() {
   const penThicknessPercentRef = useRef(50);
   const highlighterColorRef = useRef<NotebookStrokeColor>("yellow");
   const highlighterThicknessPercentRef = useRef(50);
-  const eraserWidthRef = useRef<EraserWidth>("medium");
 
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
@@ -1215,10 +1205,6 @@ export default function NotebookEditorPage() {
   }, [highlighterThicknessPercent]);
 
   useEffect(() => {
-    eraserWidthRef.current = eraserWidth;
-  }, [eraserWidth]);
-
-  useEffect(() => {
     textBlocksRef.current = textBlocks;
   }, [textBlocks]);
 
@@ -1335,37 +1321,64 @@ export default function NotebookEditorPage() {
   }, []);
 
   const cancelNativeCommit = useCallback(() => {
-    if (nativeCommitTimerRef.current === null) return;
-    window.clearTimeout(nativeCommitTimerRef.current);
-    nativeCommitTimerRef.current = null;
+    if (nativeCommitTimerRef.current !== null) {
+      window.clearTimeout(nativeCommitTimerRef.current);
+      nativeCommitTimerRef.current = null;
+    }
+    if (nativeCommitIdleRef.current !== null) {
+      window.cancelIdleCallback?.(nativeCommitIdleRef.current);
+      nativeCommitIdleRef.current = null;
+    }
   }, []);
 
-  const flushPendingNativeStrokes = useCallback(async (): Promise<boolean> => {
+  const flushPendingNativeStrokes = useCallback(async (options?: {
+    expectedRevision?: number;
+  }): Promise<boolean> => {
     cancelNativeCommit();
     if (nativeCommitOperationRef.current) {
       return nativeCommitOperationRef.current;
     }
+    if (
+      options?.expectedRevision !== undefined &&
+      (options.expectedRevision !== editorRevisionRef.current ||
+        inkInteractionActiveRef.current ||
+        activeStrokeRef.current)
+    ) {
+      return true;
+    }
     const editor = inkEditorRef.current;
     const snapshot = pendingNativeStrokesRef.current.slice();
     if (snapshot.length === 0) return true;
-    if (!editor) return false;
+    if (!editor) {
+      setFeedback({
+        type: "error",
+        message: "Drawing tools are still loading. Try that action again in a moment.",
+      });
+      return false;
+    }
 
     const operation = (async () => {
-      pendingNativeStrokesRef.current = pendingNativeStrokesRef.current.slice(
-        snapshot.length
-      );
-      renderSavedCanvasNow();
       try {
+        for (const stroke of snapshot) {
+          if (stroke.tool === "eraser" || stroke.pathData) continue;
+          stroke.pathData = getSvgPathFromStrokeOutline(
+            getFreehandOutline({
+              points: stroke.points,
+              tool: stroke.tool,
+              width: stroke.width,
+              mode: "committed",
+            })
+          );
+        }
         await editor.commitStrokes(snapshot);
+        const committed = new Set(snapshot);
+        pendingNativeStrokesRef.current =
+          pendingNativeStrokesRef.current.filter((stroke) => !committed.has(stroke));
+        renderSavedCanvasNow();
         pendingNativeRedoRef.current = [];
         flushInkUiSync();
         return true;
       } catch (error) {
-        pendingNativeStrokesRef.current = [
-          ...snapshot,
-          ...pendingNativeStrokesRef.current,
-        ].slice(-NOTEBOOK_MAX_PENDING_NATIVE_STROKES);
-        renderSavedCanvasNow();
         console.error("Could not commit native notebook ink.", error);
         setFeedback({
           type: "error",
@@ -1386,9 +1399,20 @@ export default function NotebookEditorPage() {
 
   const scheduleNativeCommit = useCallback(() => {
     cancelNativeCommit();
+    const expectedRevision = editorRevisionRef.current;
     nativeCommitTimerRef.current = window.setTimeout(() => {
       nativeCommitTimerRef.current = null;
-      void flushPendingNativeStrokes();
+      const commit = () => {
+        nativeCommitIdleRef.current = null;
+        void flushPendingNativeStrokes({ expectedRevision });
+      };
+      if ("requestIdleCallback" in window) {
+        nativeCommitIdleRef.current = window.requestIdleCallback(commit, {
+          timeout: 250,
+        });
+      } else {
+        commit();
+      }
     }, NOTEBOOK_NATIVE_COMMIT_IDLE_MS);
   }, [cancelNativeCommit, flushPendingNativeStrokes]);
 
@@ -1451,9 +1475,10 @@ export default function NotebookEditorPage() {
       clearNotebookCanvas(liveCanvasRef.current);
 
       if (finalizedStroke) {
+        const preparedStroke: Stroke = { ...finalizedStroke };
         pendingNativeStrokesRef.current = appendPendingNotebookStroke(
           pendingNativeStrokesRef.current,
-          finalizedStroke
+          preparedStroke
         );
         pendingNativeRedoRef.current = [];
         pendingInkUiRef.current = {
@@ -1470,6 +1495,48 @@ export default function NotebookEditorPage() {
       stylusCooldownUntilRef.current = Date.now() + 180;
     },
     [markPageUnsaved, scheduleNativeCommit, scheduleSavedCanvasRender]
+  );
+
+  const flushNativeInkForAction = useCallback(async (): Promise<boolean> => {
+    if (toolTransitionRef.current) {
+      return toolTransitionRef.current;
+    }
+    finishActiveStroke();
+    toolTransitionActiveRef.current = true;
+    setToolTransitioning(true);
+    const operation = flushPendingNativeStrokes();
+    toolTransitionRef.current = operation;
+    try {
+      return await operation;
+    } finally {
+      if (toolTransitionRef.current === operation) {
+        toolTransitionRef.current = null;
+        toolTransitionActiveRef.current = false;
+        setToolTransitioning(false);
+      }
+    }
+  }, [finishActiveStroke, flushPendingNativeStrokes]);
+
+  const switchNotebookTool = useCallback(
+    async (nextTool: EditorTool): Promise<boolean> => {
+      const requestId = toolRequestIdRef.current + 1;
+      toolRequestIdRef.current = requestId;
+      if (nextTool === "pen" || nextTool === "highlighter") {
+        toolRef.current = nextTool;
+        setTool(nextTool);
+        return true;
+      }
+      if (toolTransitionRef.current) {
+        await toolTransitionRef.current;
+        if (toolRef.current === nextTool) return true;
+      }
+      const committed = await flushNativeInkForAction();
+      if (!committed || requestId !== toolRequestIdRef.current) return false;
+      toolRef.current = nextTool;
+      setTool(nextTool);
+      return true;
+    },
+    [flushNativeInkForAction]
   );
 
   const loadNotebook = useCallback(async () => {
@@ -1873,6 +1940,7 @@ export default function NotebookEditorPage() {
       const currentTool = toolRef.current;
       if (
         isNotebookTextEditingTarget(event.target) ||
+        toolTransitionActiveRef.current ||
         !fullNotebookEditingEnabledRef.current ||
         !shouldPointerDrawEvent(event, currentTool)
       ) {
@@ -1892,19 +1960,15 @@ export default function NotebookEditorPage() {
       const livePoints = sampleBatch.points;
       const points = livePoints.map(({ x, y, pressure, time }) => ({ x, y, pressure, time }));
       const strokeTool: NotebookStrokeTool =
-        currentTool === "eraser" || currentTool === "highlighter" ? currentTool : "pen";
+        currentTool === "highlighter" ? "highlighter" : "pen";
       const strokeColor =
-        strokeTool === "eraser"
-          ? "white"
-          : strokeTool === "highlighter"
-            ? highlighterColorRef.current
-            : penColorRef.current;
+        strokeTool === "highlighter"
+          ? highlighterColorRef.current
+          : penColorRef.current;
       const strokeWidth =
-        strokeTool === "eraser"
-          ? ERASER_WIDTH_VALUE[eraserWidthRef.current]
-          : strokeTool === "highlighter"
-            ? getHighlighterWidthFromPercent(highlighterThicknessPercentRef.current)
-            : getPenWidthFromPercent(penThicknessPercentRef.current);
+        strokeTool === "highlighter"
+          ? getHighlighterWidthFromPercent(highlighterThicknessPercentRef.current)
+          : getPenWidthFromPercent(penThicknessPercentRef.current);
 
       activeStrokeRef.current = {
         pointerId: event.pointerId,
@@ -2066,24 +2130,12 @@ export default function NotebookEditorPage() {
         const surface = pageSurfaceRef.current;
         if (surface) safelyReleasePointerCapture(surface, activeStroke.pointerId);
         if (finalizedStroke) {
-          currentStrokes =
-            finalizedStroke.tool === "eraser"
-              ? (applyNotebookEraser({
-                  strokes: currentStrokes,
-                  eraser: finalizedStroke,
-                  mode: eraserMode,
-                }) as Stroke[])
-              : [...currentStrokes, finalizedStroke];
-          const changed =
-            finalizedStroke.tool !== "eraser" ||
-            currentStrokes.length !== strokesRef.current.length;
-          if (changed) {
-            pushUndoAction({
-              type: "strokes",
-              previous: strokesRef.current,
-              next: currentStrokes,
-            });
-          }
+          currentStrokes = [...currentStrokes, finalizedStroke];
+          pushUndoAction({
+            type: "strokes",
+            previous: strokesRef.current,
+            next: currentStrokes,
+          });
           strokesRef.current = currentStrokes;
           setStrokes(currentStrokes);
         }
@@ -2091,7 +2143,7 @@ export default function NotebookEditorPage() {
       }
       return currentStrokes;
     },
-    [eraserMode, pushUndoAction, scheduleSavedCanvasRender]
+    [pushUndoAction, scheduleSavedCanvasRender]
   );
 
   const savePageSnapshot = useCallback(
@@ -3065,7 +3117,8 @@ export default function NotebookEditorPage() {
     }
   };
 
-  const handleUndo = useCallback(() => {
+  const handleUndo = useCallback(async () => {
+    if (!(await flushNativeInkForAction())) return;
     const pendingStroke = pendingNativeStrokesRef.current.at(-1);
     if (pendingStroke) {
       cancelNativeCommit();
@@ -3091,7 +3144,7 @@ export default function NotebookEditorPage() {
       }
       return;
     }
-    if (inkUndoDepth > 0) {
+    if ((inkEditorRef.current?.getHistoryState().undoDepth ?? 0) > 0) {
       inkEditorRef.current?.undo();
       return;
     }
@@ -3116,6 +3169,7 @@ export default function NotebookEditorPage() {
     markPageUnsaved();
   }, [
     cancelNativeCommit,
+    flushNativeInkForAction,
     inkRedoDepth,
     inkUndoDepth,
     markPageUnsaved,
@@ -3124,7 +3178,8 @@ export default function NotebookEditorPage() {
     scheduleSavedCanvasRender,
   ]);
 
-  const handleRedo = useCallback(() => {
+  const handleRedo = useCallback(async () => {
+    if (!(await flushNativeInkForAction())) return;
     const pendingStroke = pendingNativeRedoRef.current.at(-1);
     if (pendingStroke) {
       cancelNativeCommit();
@@ -3143,7 +3198,7 @@ export default function NotebookEditorPage() {
       scheduleNativeCommit();
       return;
     }
-    if (inkRedoDepth > 0) {
+    if ((inkEditorRef.current?.getHistoryState().redoDepth ?? 0) > 0) {
       inkEditorRef.current?.redo();
       return;
     }
@@ -3168,6 +3223,7 @@ export default function NotebookEditorPage() {
     markPageUnsaved();
   }, [
     cancelNativeCommit,
+    flushNativeInkForAction,
     inkRedoDepth,
     inkUndoDepth,
     markPageUnsaved,
@@ -3176,9 +3232,10 @@ export default function NotebookEditorPage() {
     scheduleSavedCanvasRender,
   ]);
 
-  const handleClearCurrentPage = () => {
+  const handleClearCurrentPage = async () => {
     const confirmed = window.confirm("Clear drawing from this page?");
     if (!confirmed) return;
+    if (!(await flushNativeInkForAction())) return;
     cancelNativeCommit();
     pendingNativeStrokesRef.current = [];
     pendingNativeRedoRef.current = [];
@@ -3204,28 +3261,32 @@ export default function NotebookEditorPage() {
       if ((event.ctrlKey || event.metaKey) && key === "z") {
         event.preventDefault();
         if (event.shiftKey) {
-          handleRedo();
+          void handleRedo();
         } else {
-          handleUndo();
+          void handleUndo();
         }
         return;
       }
 
       if (event.ctrlKey || event.metaKey || event.altKey) return;
       if (key === "t") {
-        setTool((current) => (current === "text" ? "select" : "text"));
+        void switchNotebookTool(toolRef.current === "text" ? "select" : "text");
       }
       if (key === "p") {
-        setTool((current) => (current === "pen" ? "select" : "pen"));
+        void switchNotebookTool(toolRef.current === "pen" ? "select" : "pen");
       }
       if (key === "h") {
-        setTool((current) => (current === "highlighter" ? "select" : "highlighter"));
+        void switchNotebookTool(
+          toolRef.current === "highlighter" ? "select" : "highlighter"
+        );
       }
       if (key === "e") {
-        setTool((current) => (current === "eraser" ? "select" : "eraser"));
+        void switchNotebookTool(
+          toolRef.current === "eraser" ? "select" : "eraser"
+        );
       }
       if (key === "escape") {
-        setTool("select");
+        void switchNotebookTool("select");
         setPenMenuOpen(false);
         setHighlighterMenuOpen(false);
         setEraserMenuOpen(false);
@@ -3236,7 +3297,12 @@ export default function NotebookEditorPage() {
 
     window.addEventListener("keydown", handleShortcut);
     return () => window.removeEventListener("keydown", handleShortcut);
-  }, [fullNotebookEditingEnabled, handleRedo, handleUndo]);
+  }, [
+    fullNotebookEditingEnabled,
+    handleRedo,
+    handleUndo,
+    switchNotebookTool,
+  ]);
 
   if (loading) {
     return (
@@ -3339,7 +3405,9 @@ export default function NotebookEditorPage() {
                 active={tool === "text"}
                 disabled={!fullNotebookEditingEnabled}
                 onClick={() => {
-                  setTool((current) => (current === "text" ? "select" : "text"));
+                  void switchNotebookTool(
+                    toolRef.current === "text" ? "select" : "text"
+                  );
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
@@ -3352,7 +3420,7 @@ export default function NotebookEditorPage() {
                   active={tool === "pen" || penMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    setTool("pen");
+                    void switchNotebookTool("pen");
                     setHighlighterMenuOpen(false);
                     setEraserMenuOpen(false);
                     setPenMenuOpen((value) => !value);
@@ -3371,7 +3439,7 @@ export default function NotebookEditorPage() {
                   active={tool === "highlighter" || highlighterMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    setTool("highlighter");
+                    void switchNotebookTool("highlighter");
                     setPenMenuOpen(false);
                     setEraserMenuOpen(false);
                     setHighlighterMenuOpen((value) => !value);
@@ -3392,7 +3460,7 @@ export default function NotebookEditorPage() {
                   active={tool === "eraser" || eraserMenuOpen}
                   disabled={!fullNotebookEditingEnabled}
                   onClick={() => {
-                    setTool("eraser");
+                    void switchNotebookTool("eraser");
                     setPenMenuOpen(false);
                     setHighlighterMenuOpen(false);
                     setEraserMenuOpen((value) => !value);
@@ -3426,7 +3494,7 @@ export default function NotebookEditorPage() {
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
-                  handleUndo();
+                  void handleUndo();
                 }}
               />
               <ToolbarIconButton
@@ -3437,7 +3505,7 @@ export default function NotebookEditorPage() {
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
-                  handleRedo();
+                  void handleRedo();
                 }}
               />
               <ToolbarIconButton
@@ -3448,7 +3516,7 @@ export default function NotebookEditorPage() {
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
-                  handleClearCurrentPage();
+                  void handleClearCurrentPage();
                 }}
               />
               <ToolbarIconButton
@@ -3484,11 +3552,11 @@ export default function NotebookEditorPage() {
                     getPresetColor={(color) => PEN_COLOR_HEX[color as NotebookPenColor]}
                     onPresetSelect={(color) => {
                       setPenColor(color);
-                      setTool("pen");
+                      void switchNotebookTool("pen");
                     }}
                     onCustomColorChange={(color) => {
                       setPenColor(color);
-                      setTool("pen");
+                      void switchNotebookTool("pen");
                     }}
                   />
                   <ThicknessSlider
@@ -3498,7 +3566,7 @@ export default function NotebookEditorPage() {
                     previewWidth={getPenWidthFromPercent(penThicknessPercent)}
                     onChange={(value) => {
                       setPenThicknessPercent(clampNotebookThicknessPercent(value));
-                      setTool("pen");
+                      void switchNotebookTool("pen");
                     }}
                   />
                 </div>
@@ -3514,11 +3582,11 @@ export default function NotebookEditorPage() {
                     }
                     onPresetSelect={(color) => {
                       setHighlighterColor(color);
-                      setTool("highlighter");
+                      void switchNotebookTool("highlighter");
                     }}
                     onCustomColorChange={(color) => {
                       setHighlighterColor(color);
-                      setTool("highlighter");
+                      void switchNotebookTool("highlighter");
                     }}
                   />
                   <ThicknessSlider
@@ -3528,7 +3596,7 @@ export default function NotebookEditorPage() {
                     previewWidth={getHighlighterWidthFromPercent(highlighterThicknessPercent) / 2}
                     onChange={(value) => {
                       setHighlighterThicknessPercent(clampNotebookThicknessPercent(value));
-                      setTool("highlighter");
+                      void switchNotebookTool("highlighter");
                     }}
                   />
                 </div>
@@ -3547,7 +3615,7 @@ export default function NotebookEditorPage() {
                           aria-label={`${mode} eraser mode`}
                           onClick={() => {
                             setEraserMode(mode);
-                            setTool("eraser");
+                            void switchNotebookTool("eraser");
                           }}
                           className={`min-h-11 rounded-full border px-3 py-2 text-xs font-semibold capitalize transition ${
                             eraserMode === mode ? "app-selected" : "app-chip"
@@ -3571,7 +3639,7 @@ export default function NotebookEditorPage() {
                           title={`${width[0].toUpperCase()}${width.slice(1)} eraser`}
                           onClick={() => {
                             setEraserWidth(width);
-                            setTool("eraser");
+                            void switchNotebookTool("eraser");
                           }}
                           className={`grid h-11 place-items-center rounded-full border transition ${
                             eraserWidth === width ? "app-selected" : "app-chip"
@@ -3997,6 +4065,7 @@ export default function NotebookEditorPage() {
                     pageHeight={CANVAS_HEIGHT}
                     initialSvg={selectedPageInkSvg}
                     activeTool={tool}
+                    eraserMode={eraserMode}
                     penColor={penColor}
                     penThickness={getPenWidthFromPercent(penThicknessPercent)}
                     highlighterColor={highlighterColor}
@@ -4004,7 +4073,7 @@ export default function NotebookEditorPage() {
                       highlighterThicknessPercent
                     )}
                     eraserThickness={ERASER_WIDTH_VALUE[eraserWidth]}
-                    readOnly={!fullNotebookEditingEnabled}
+                    readOnly={!fullNotebookEditingEnabled || toolTransitioning}
                     onChange={() => {
                       const current = pendingInkUiRef.current;
                       pendingInkUiRef.current = {

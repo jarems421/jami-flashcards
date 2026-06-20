@@ -75,7 +75,7 @@ export function shouldPointerDraw(
   pointerType: string,
   tool: "pen" | "eraser" | "highlighter" | "text" | "select"
 ) {
-  if (tool === "text" || tool === "select") return false;
+  if (tool !== "pen" && tool !== "highlighter") return false;
   return pointerType === "pen" || pointerType === "mouse";
 }
 

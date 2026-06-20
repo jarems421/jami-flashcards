@@ -3,6 +3,7 @@ import {
   applyNotebookEraser,
   applyPrecisionEraser,
   applyStrokeEraser,
+  getNotebookEraserModeValue,
 } from "@/lib/workspace/notebook-eraser";
 import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
 import type { NotebookStroke } from "@/lib/workspace/notebooks";
@@ -22,6 +23,11 @@ const makeEraser = (points: NotebookStroke["points"], width = 12): NotebookStrok
 });
 
 describe("notebook eraser helpers", () => {
+  it("maps toolbar modes to js-draw eraser modes", () => {
+    expect(getNotebookEraserModeValue("precision")).toBe("partial-stroke");
+    expect(getNotebookEraserModeValue("stroke")).toBe("full-stroke");
+  });
+
   it("removes whole touched strokes in stroke mode", () => {
     const touched = makeStroke([
       { x: 0, y: 0 },

@@ -2,6 +2,10 @@ import type { NotebookStroke } from "@/lib/workspace/notebooks";
 
 export type NotebookEraserMode = "stroke" | "precision";
 
+export function getNotebookEraserModeValue(mode: NotebookEraserMode) {
+  return mode === "stroke" ? "full-stroke" : "partial-stroke";
+}
+
 function pointDistanceSquared(
   first: { x: number; y: number },
   second: { x: number; y: number }

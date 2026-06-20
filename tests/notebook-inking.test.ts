@@ -346,7 +346,9 @@ describe("notebook inking helpers", () => {
 
   it("routes stylus and mouse to drawing while touch is reserved for page gestures", () => {
     expect(shouldPointerDraw("pen", "pen")).toBe(true);
-    expect(shouldPointerDraw("mouse", "eraser")).toBe(true);
+    expect(shouldPointerDraw("mouse", "highlighter")).toBe(true);
+    expect(shouldPointerDraw("pen", "eraser")).toBe(false);
+    expect(shouldPointerDraw("mouse", "eraser")).toBe(false);
     expect(shouldPointerDraw("touch", "pen")).toBe(false);
     expect(shouldPointerDraw("pen", "text")).toBe(false);
     expect(shouldPointerDrawEvent({ pointerType: "pen" }, "pen")).toBe(true);
