@@ -453,7 +453,7 @@ export default function GoalsPage() {
                     Optional. Leave both fields blank for an open-ended goal.
                   </p>
                 </div>
-                <div className="grid min-w-0 grid-cols-2 gap-3">
+                <div className="grid min-w-0 grid-cols-2 gap-2">
                   <Input
                     type="date"
                     value={deadlineDate}
@@ -463,7 +463,7 @@ export default function GoalsPage() {
                     }}
                     label="Finish by date"
                     containerClassName="min-w-0 w-full"
-                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
+                    className="min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-3 !py-2.5"
                   />
                   <Input
                     type="time"
@@ -471,12 +471,12 @@ export default function GoalsPage() {
                     onChange={(event) => setDeadlineTime(event.target.value)}
                     label="Finish by time"
                     containerClassName="min-w-0 w-full"
-                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
+                    className="min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-3 !py-2.5"
                   />
                 </div>
               </div>
             </div>
-            <div className="grid gap-4 md:col-span-2 lg:grid-cols-[minmax(0,1fr)_260px] lg:items-center">
+            <div className="grid gap-4 md:col-span-2 lg:grid-cols-[minmax(0,1fr)_230px] lg:items-center">
               <div className="flex flex-col items-start">
                 <p className="order-3 mt-4 text-sm font-medium text-text-secondary lg:order-1 lg:mb-4 lg:mt-0">
                   Complete this goal to earn this star.
@@ -502,7 +502,7 @@ export default function GoalsPage() {
                   </p>
                 ) : null}
               </div>
-              <div className="relative h-44 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-56">
+              <div className="relative h-40 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-44">
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(143,125,232,0.16),rgba(6,3,17,0.66))]" />
                 <div className="absolute inset-0 z-10">
                   <ConstellationStar star={previewStar} variant="preview" />
