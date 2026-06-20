@@ -706,6 +706,23 @@
     outline: none;
   }
 
+  .goal-deadline-input {
+    min-inline-size: 0;
+    inline-size: 100%;
+  }
+
+  .goal-deadline-input::-webkit-datetime-edit,
+  .goal-deadline-input::-webkit-date-and-time-value {
+    min-inline-size: 0;
+    padding: 0;
+  }
+
+  .goal-deadline-input::-webkit-calendar-picker-indicator {
+    flex: 0 0 auto;
+    margin: 0;
+    padding: 0;
+  }
+
   .app-subtle-panel {
     border: 1px solid var(--color-border);
     background-color: var(--color-glass-subtle);

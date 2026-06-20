@@ -186,7 +186,7 @@ export default function GoalsPage() {
     targetAccuracy: previewTargetAccuracy,
     completedGoalsCount: completedGoalsCount + 1,
     constellationId: previewConstellationId,
-    position: { x: 50, y: 52 },
+    position: { x: 50, y: 50 },
   });
 
   const formatGoalAccuracyText = (goal: Goal) => {
@@ -445,15 +445,15 @@ export default function GoalsPage() {
               label="Accuracy %"
               className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
             />
-            <div className="md:col-span-2">
-              <div className="app-subtle-panel rounded-[1.3rem] p-3.5">
+            <div className="min-w-0 md:col-span-2">
+              <div className="app-subtle-panel box-border w-full min-w-0 rounded-[1.3rem] px-3 py-3.5 sm:px-3.5">
                 <div className="mb-3">
                   <div className="text-sm font-medium text-text-primary">Deadline</div>
                   <p className="mt-1 text-xs leading-5 text-text-muted">
                     Optional. Leave both fields blank for an open-ended goal.
                   </p>
                 </div>
-                <div className="grid min-w-0 grid-cols-2 gap-2">
+                <div className="grid w-full min-w-0 grid-cols-2 gap-2">
                   <Input
                     type="date"
                     value={deadlineDate}
@@ -462,16 +462,16 @@ export default function GoalsPage() {
                       if (!event.target.value) setDeadlineTime("");
                     }}
                     label="Finish by date"
-                    containerClassName="min-w-0 w-full"
-                    className="min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-3 !py-2.5"
+                    containerClassName="w-full min-w-0 overflow-hidden"
+                    className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-2 !py-2.5 text-xs sm:!px-3 sm:text-sm"
                   />
                   <Input
                     type="time"
                     value={deadlineTime}
                     onChange={(event) => setDeadlineTime(event.target.value)}
                     label="Finish by time"
-                    containerClassName="min-w-0 w-full"
-                    className="min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-3 !py-2.5"
+                    containerClassName="w-full min-w-0 overflow-hidden"
+                    className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-2 !py-2.5 text-xs sm:!px-3 sm:text-sm"
                   />
                 </div>
               </div>
@@ -502,7 +502,7 @@ export default function GoalsPage() {
                   </p>
                 ) : null}
               </div>
-              <div className="relative h-40 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-44">
+              <div className="relative h-40 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-44 lg:-translate-x-8">
                 <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(143,125,232,0.16),rgba(6,3,17,0.66))]" />
                 <div className="absolute inset-0 z-10">
                   <ConstellationStar star={previewStar} variant="preview" />
