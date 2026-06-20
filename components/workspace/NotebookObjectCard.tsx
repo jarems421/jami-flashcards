@@ -25,7 +25,6 @@ export type NotebookObjectCardProps = {
   href?: string;
   onClick?: () => void;
   onEdit?: () => void;
-  onArchive?: () => void;
   className?: string;
   compact?: boolean;
   editorPreview?: boolean;
@@ -179,7 +178,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
     }
   };
 
-  const hasActions = Boolean(props.onEdit || props.onArchive);
+  const hasActions = Boolean(props.onEdit);
   const card = props.href ? (
     <Link
       href={props.href}
@@ -256,19 +255,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
               Edit notebook
             </button>
           ) : null}
-          {props.onArchive ? (
-            <button
-              type="button"
-              className="rounded-lg px-3 py-2 text-left text-sm font-medium text-danger-text transition hover:bg-error-muted"
-              onClick={(event) => {
-                event.currentTarget.closest("details")?.removeAttribute("open");
-                props.onArchive?.();
-              }}
-            >
-              Archive
-              </button>
-            ) : null}
-          </div>
+        </div>
       </details>
       {mobileActionsOpen
         ? createPortal(
@@ -310,19 +297,6 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
                       }}
                     >
                       Edit notebook
-                    </button>
-                  ) : null}
-                  {props.onArchive ? (
-                    <button
-                      type="button"
-                      className="min-h-12 rounded-[1rem] bg-error-muted px-4 text-left text-sm font-semibold text-danger-text"
-                      onClick={() => {
-                        suppressNextClickRef.current = false;
-                        setMobileActionsOpen(false);
-                        props.onArchive?.();
-                      }}
-                    >
-                      Archive
                     </button>
                   ) : null}
                   <button

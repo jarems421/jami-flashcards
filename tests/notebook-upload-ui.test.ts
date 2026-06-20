@@ -35,4 +35,15 @@ describe("notebook upload UI", () => {
       "Exit the shared demo to upload PDF or image pages."
     );
   });
+
+  it("keeps uploads separate from notebook editing", () => {
+    const notebookPage = readFileSync(
+      join(root, "app/dashboard/notebooks/[notebookId]/page.tsx"),
+      "utf8"
+    );
+
+    expect(notebookPage).toContain('label="Add PDF or image pages"');
+    expect(notebookPage).not.toContain('label="Notebook settings"');
+    expect(notebookPage).not.toContain("showNotebookSettings");
+  });
 });

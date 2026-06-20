@@ -5,11 +5,14 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@/lib/auth/user-context";
 import { createStudyFolder, getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
+import { getActiveTopics } from "@/services/study/topics";
+import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { getFolderNameValidationError } from "@/lib/workspace/folder-form";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import AppPage from "@/components/layout/AppPage";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
+import NotebookEditorDialog from "@/components/workspace/NotebookEditorDialog";
 import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import type { ObjectColorId, ObjectIconId } from "@/components/workspace/object-card-styles";
@@ -41,9 +44,11 @@ function formatDate(value: number) {
 }
 
 export default function PracticePage() {
-  const { user } = useUser();
+  const { user, isDemoUser } = useUser();
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [editingNotebook, setEditingNotebook] = useState<Notebook | null>(null);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [showCreateFolder, setShowCreateFolder] = useState(false);
@@ -61,12 +66,14 @@ export default function PracticePage() {
     setLoading(true);
     setFeedback(null);
     try {
-      const [nextFolders, nextNotebooks] = await Promise.all([
+      const [nextFolders, nextNotebooks, nextTopics] = await Promise.all([
         getActiveStudyFolders(user.uid),
         getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
+        getActiveTopics(user.uid).catch(() => [] as Topic[]),
       ]);
       setFolders(nextFolders);
       setNotebooks(nextNotebooks);
+      setTopics(nextTopics);
     } catch (error) {
       console.error(error);
       setFeedback({ type: "error", message: "Failed to load Practice workspace." });
@@ -133,6 +140,36 @@ export default function PracticePage() {
           type={feedback.type}
           message={feedback.message}
           onDismiss={() => setFeedback(null)}
+        />
+      ) : null}
+
+      {editingNotebook ? (
+        <NotebookEditorDialog
+          userId={user.uid}
+          notebook={editingNotebook}
+          topics={topics}
+          onTopicsChange={setTopics}
+          onClose={() => setEditingNotebook(null)}
+          onSaved={(updatedNotebook) => {
+            setNotebooks((current) =>
+              current.map((item) =>
+                item.id === updatedNotebook.id ? updatedNotebook : item
+              )
+            );
+            setEditingNotebook(null);
+            setFeedback({ type: "success", message: "Notebook updated." });
+          }}
+          onArchived={(notebookId) => {
+            const archivedTitle = editingNotebook.title;
+            setNotebooks((current) =>
+              current.filter((item) => item.id !== notebookId)
+            );
+            setEditingNotebook(null);
+            setFeedback({
+              type: "success",
+              message: `${archivedTitle} archived.`,
+            });
+          }}
         />
       ) : null}
 
@@ -230,6 +267,9 @@ export default function PracticePage() {
                       icon={notebook.icon}
                       pageColor={notebook.pageColor}
                       updatedLabel={folder?.name ?? formatDate(notebook.updatedAt)}
+                      onEdit={
+                        isDemoUser ? undefined : () => setEditingNotebook(notebook)
+                      }
                       compact
                     />
                   );

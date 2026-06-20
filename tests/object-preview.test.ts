@@ -41,6 +41,19 @@ describe("study object edit previews", () => {
     expect(html).toContain("repeating-linear-gradient");
   });
 
+  it("keeps notebook card management behind one edit action", () => {
+    const html = renderToStaticMarkup(
+      createElement(NotebookObjectCard, {
+        title: "Calculus",
+        href: "/dashboard/notebooks/calculus",
+        onEdit: () => undefined,
+      })
+    );
+
+    expect(html).toContain("Edit notebook");
+    expect(html).not.toContain(">Archive<");
+  });
+
   it("keeps deck cover previews on the shared object icon system", () => {
     const html = renderToStaticMarkup(
       createElement(DeckCoverIcon, {

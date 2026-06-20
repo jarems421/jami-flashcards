@@ -14,31 +14,20 @@ import {
   type ReactNode,
 } from "react";
 import AppPage from "@/components/layout/AppPage";
-import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
 import {
   NotebookInkEditor,
   type NotebookInkEditorHandle,
 } from "@/components/workspace/NotebookInkEditor";
 import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
-import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
-import TopicPicker from "@/components/topics/TopicPicker";
-import {
-  normalizeObjectColor,
-  normalizeObjectIcon,
-  type ObjectColorId,
-  type ObjectIconId,
-} from "@/components/workspace/object-card-styles";
 import {
   Button,
   ButtonLink,
   Card,
   EmptyState,
   FeedbackBanner,
-  Input,
   Skeleton,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
-import type { Topic } from "@/lib/practice/topics";
 import type {
   Notebook,
   NotebookFile,
@@ -108,7 +97,6 @@ import {
   getNotebookFiles,
   getNotebookPages,
   saveNotebookPageSnapshot,
-  updateNotebook,
 } from "@/services/study/notebooks";
 import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
 import { getNotebookFileDownloadUrl } from "@/services/study/notebook-files";
@@ -121,7 +109,6 @@ import {
   getNotebookPageIdFromSearch,
 } from "@/lib/workspace/notebook-navigation";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
-import { getActiveTopics } from "@/services/study/topics";
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
@@ -232,12 +219,6 @@ const HIGHLIGHTER_COLOR_HEX: Record<NotebookHighlighterColor, string> = {
 const TEXT_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "text-slate-950 placeholder:text-slate-400",
   black: "text-[#f8fafc] placeholder:text-slate-500",
-};
-const PAGE_STYLE_LABELS: Record<NotebookPageStyle, string> = {
-  plain: "Plain",
-  lined: "Lined",
-  grid: "Grid",
-  dot: "Dot",
 };
 const ERASER_WIDTH_VALUE: Record<EraserWidth, number> = {
   small: 36,
@@ -740,7 +721,6 @@ type NotebookIconName =
   | "undo"
   | "redo"
   | "clear"
-  | "settings"
   | "ai"
   | "plus"
   | "save"
@@ -800,12 +780,6 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
         <>
           <path {...common} d="M6 7h12M10 7V5h4v2M8 10v8M12 10v8M16 10v8" />
           <path {...common} d="M7 7l1 14h8l1-14" />
-        </>
-      ) : null}
-      {name === "settings" ? (
-        <>
-          <path {...common} d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5Z" />
-          <path {...common} d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.4 1a7 7 0 0 0-1.7-1L14.5 3h-5l-.3 3.1a7 7 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.5a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.4-1a7 7 0 0 0 1.7 1l.3 3.1h5l.3-3.1a7 7 0 0 0 1.7-1l2.4 1 2-3.4-2-1.5c.1-.3.1-.7.1-1Z" />
         </>
       ) : null}
       {name === "ai" ? (
@@ -1036,15 +1010,7 @@ export default function NotebookEditorPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
   const [phoneFullEditing, setPhoneFullEditing] = useState(false);
-  const [showNotebookSettings, setShowNotebookSettings] = useState(false);
-  const [notebookTitle, setNotebookTitle] = useState("");
-  const [notebookTopicIds, setNotebookTopicIds] = useState<string[]>([]);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [notebookColor, setNotebookColor] = useState<ObjectColorId>("sky");
-  const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
-  const [notebookDefaultPageStyle, setNotebookDefaultPageStyle] =
-    useState<NotebookPageStyle>("plain");
-  const [savingNotebookSettings, setSavingNotebookSettings] = useState(false);
+  const [showAddPagesDialog, setShowAddPagesDialog] = useState(false);
   const [notebookFile, setNotebookFile] = useState<File | null>(null);
   const [notebookUploadProgress, setNotebookUploadProgress] = useState<number | null>(
     null
@@ -1517,10 +1483,7 @@ export default function NotebookEditorPage() {
     editorRevisionRef.current = 0;
     latestSaveIdRef.current = 0;
     try {
-      const [nextNotebook, nextTopics] = await Promise.all([
-        getNotebookById(user.uid, notebookId),
-        getActiveTopics(user.uid).catch(() => [] as Topic[]),
-      ]);
+      const nextNotebook = await getNotebookById(user.uid, notebookId);
       let nextPages: NotebookPage[] = [];
       let nextFiles: NotebookFile[] = [];
 
@@ -1550,7 +1513,6 @@ export default function NotebookEditorPage() {
       }
 
       setNotebook(nextNotebook);
-      setTopics(nextTopics);
       setPages(nextPages);
       setFiles(nextFiles);
       const requestedPageId =
@@ -3030,93 +2992,25 @@ export default function NotebookEditorPage() {
     }
   };
 
-  const openNotebookSettings = () => {
-    if (!notebook) return;
-    setNotebookTitle(notebook.title);
-    setNotebookTopicIds(notebook.topicIds);
-    setNotebookColor(normalizeObjectColor(notebook.color));
-    setNotebookIcon(normalizeObjectIcon(notebook.icon));
-    setNotebookDefaultPageStyle(notebook.pageStyle ?? "plain");
-    setShowNotebookSettings(true);
-    if (typeof window !== "undefined") {
-      const search = new URLSearchParams(window.location.search);
-      search.set("settings", "1");
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${window.location.pathname}?${search.toString()}${window.location.hash}`
-      );
-    }
-  };
-
-  const closeNotebookSettings = () => {
-    setShowNotebookSettings(false);
+  const closeAddPagesDialog = () => {
+    if (addingNotebookFile) return;
+    setShowAddPagesDialog(false);
     setNotebookFile(null);
     setNotebookUploadProgress(null);
-    if (typeof window !== "undefined") {
-      const search = new URLSearchParams(window.location.search);
-      search.delete("settings");
-      const query = search.toString();
-      window.history.replaceState(
-        window.history.state,
-        "",
-        `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
-      );
-    }
   };
 
   useEffect(() => {
-    if (
-      notebook &&
-      typeof window !== "undefined" &&
-      new URLSearchParams(window.location.search).get("settings") === "1" &&
-      !showNotebookSettings
-    ) {
-      setNotebookTitle(notebook.title);
-      setNotebookTopicIds(notebook.topicIds);
-      setNotebookColor(normalizeObjectColor(notebook.color));
-      setNotebookIcon(normalizeObjectIcon(notebook.icon));
-      setNotebookDefaultPageStyle(notebook.pageStyle ?? "plain");
-      setShowNotebookSettings(true);
-    }
-  }, [notebook, showNotebookSettings]);
-
-  const handleSaveNotebookSettings = async () => {
-    if (!user?.uid || !notebook) return;
-    setSavingNotebookSettings(true);
-    setFeedback(null);
-    try {
-      await updateNotebook(user.uid, notebook.id, {
-        title: notebookTitle,
-        topicIds: notebookTopicIds,
-        color: notebookColor,
-        icon: notebookIcon,
-        pageStyle: notebookDefaultPageStyle,
-      });
-      setNotebook((current) =>
-        current
-          ? {
-              ...current,
-              title: notebookTitle.trim() || current.title,
-              topicIds: notebookTopicIds,
-              color: notebookColor,
-              icon: notebookIcon,
-              pageStyle: notebookDefaultPageStyle,
-              updatedAt: Date.now(),
-            }
-          : current
-      );
-      closeNotebookSettings();
-      setFeedback({ type: "success", message: "Notebook updated." });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update notebook.",
-      });
-    } finally {
-      setSavingNotebookSettings(false);
-    }
-  };
+    if (typeof window === "undefined") return;
+    const search = new URLSearchParams(window.location.search);
+    if (!search.has("settings")) return;
+    search.delete("settings");
+    const query = search.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${query ? `?${query}` : ""}${window.location.hash}`
+    );
+  }, []);
 
   const handleAddNotebookFile = async () => {
     if (!user?.uid || !notebook || !notebookFile) return;
@@ -3150,7 +3044,7 @@ export default function NotebookEditorPage() {
       setSelectedPageId(appended.pages[0]?.id ?? selectedPageId);
       setNotebookFile(null);
       setNotebookUploadProgress(null);
-      closeNotebookSettings();
+      setShowAddPagesDialog(false);
       setFeedback({
         type: "success",
         message: `${appended.pages.length} ${
@@ -3168,28 +3062,6 @@ export default function NotebookEditorPage() {
     } finally {
       setAddingNotebookFile(false);
       setNotebookUploadProgress(null);
-    }
-  };
-
-  const handleArchiveNotebook = async () => {
-    if (!user?.uid || !notebook) return;
-    const confirmed = window.confirm(
-      "Archive this notebook? This hides the notebook from the folder, but does not affect decks or sources."
-    );
-    if (!confirmed) return;
-    setSavingNotebookSettings(true);
-    try {
-      await updateNotebook(user.uid, notebook.id, { archived: true });
-      setNotebook((current) => (current ? { ...current, archived: true, updatedAt: Date.now() } : current));
-      closeNotebookSettings();
-      setFeedback({ type: "success", message: "Notebook archived." });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not archive notebook.",
-      });
-    } finally {
-      setSavingNotebookSettings(false);
     }
   };
 
@@ -3591,13 +3463,13 @@ export default function NotebookEditorPage() {
                 }}
               />
               <ToolbarIconButton
-                label="Notebook settings"
-                icon="settings"
+                label="Add PDF or image pages"
+                icon="plus"
                 onClick={() => {
                   setPenMenuOpen(false);
                   setHighlighterMenuOpen(false);
                   setEraserMenuOpen(false);
-                  openNotebookSettings();
+                  setShowAddPagesDialog(true);
                 }}
               />
           </div>
@@ -3744,167 +3616,83 @@ export default function NotebookEditorPage() {
           </div>
         ) : null}
 
-        {showNotebookSettings ? (
-          <div className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-3 backdrop-blur-sm sm:p-4">
-          <Card padding="sm" className="my-4 w-full max-w-2xl sm:my-8">
-            <div>
-              <div className="text-sm font-semibold text-text-primary">Edit notebook</div>
-              <p className="mt-0.5 text-xs text-text-muted">
-                Update the title, cover, Topics, and default page style.
-              </p>
-            </div>
-            <div className="mt-4 grid gap-3 sm:grid-cols-[minmax(0,1fr)_7rem] sm:items-start">
-              <Input
-                label="Notebook title"
-                value={notebookTitle}
-                onChange={(event) => setNotebookTitle(event.target.value)}
-              />
-              <div className="app-subtle-panel rounded-[1rem] p-2">
-                <NotebookObjectCard
-                  title={notebookTitle.trim() || "Notebook preview"}
-                  color={notebookColor}
-                  icon={notebookIcon}
-                  pageColor={notebook.pageColor}
-                  pageStyle={notebookDefaultPageStyle}
-                  updatedLabel={`${PAGE_STYLE_LABELS[notebookDefaultPageStyle]} ${notebook.pageColor}`}
-                  compact
-                  editorPreview
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <ObjectStylePicker
-                  color={notebookColor}
-                  icon={notebookIcon}
-                  onColorChange={setNotebookColor}
-                  onIconChange={setNotebookIcon}
-                  colorLabel="Cover colour"
-                  iconLabel="Cover icon"
-                  compact
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <TopicPicker
-                  userId={user.uid}
-                  topics={topics}
-                  selectedTopicIds={notebookTopicIds}
-                  onChange={setNotebookTopicIds}
-                  onTopicsChange={setTopics}
-                  disabled={savingNotebookSettings}
-                />
-              </div>
-            </div>
-            {notebook.type === "uploaded_file" ? (
-              <div className="app-chip mt-3 rounded-[1rem] px-3 py-2 text-xs leading-5">
-                Imported pages use the PDF or image as their background. Blank pages added later use white plain paper.
-              </div>
-            ) : (
-              <div className="mt-3">
-                <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">Default page style</div>
-                <div className="mt-1.5 flex flex-wrap gap-1.5">
-                  {(["plain", "lined", "grid", "dot"] as NotebookPageStyle[]).map((style) => (
-                    <button
-                      key={style}
-                      type="button"
-                      onClick={() => setNotebookDefaultPageStyle(style)}
-                      className={`min-h-[2.1rem] rounded-full border px-3 text-xs font-semibold transition ${
-                        notebookDefaultPageStyle === style ? "app-selected" : "app-chip"
-                      }`}
-                    >
-                      {PAGE_STYLE_LABELS[style]}
-                    </button>
-                  ))}
+        {showAddPagesDialog ? (
+          <div className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-3 backdrop-blur-sm sm:items-center sm:p-4">
+            <Card
+              padding="sm"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="add-notebook-pages-title"
+              aria-describedby="add-notebook-pages-description"
+              className="my-4 w-full max-w-lg"
+            >
+              <div>
+                <div
+                  id="add-notebook-pages-title"
+                  className="text-sm font-semibold text-text-primary"
+                >
+                  Add PDF or image pages
                 </div>
-              </div>
-            )}
-            <details className="group mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)]">
-              <summary className="flex min-h-10 cursor-pointer list-none items-center justify-between gap-3 px-3 py-2 text-sm font-semibold text-text-primary [&::-webkit-details-marker]:hidden">
-                <span>Add PDF or image pages</span>
-                <span className="text-xs font-medium text-text-muted group-open:hidden">Show</span>
-                <span className="hidden text-xs font-medium text-text-muted group-open:inline">Hide</span>
-              </summary>
-              <div className="border-t border-[var(--color-border)] px-3 pb-3 pt-2">
-                <p className="text-xs leading-5 text-text-muted">
+                <p
+                  id="add-notebook-pages-description"
+                  className="mt-0.5 text-xs leading-5 text-text-muted"
+                >
                   {isDemoUser
                     ? "Exit the shared demo to upload PDF or image pages."
-                    : "Add a file after the current last page."}
+                    : "The new pages will be added after the current last page."}
                 </p>
-                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-end">
-                  <label className="min-w-0 flex-1">
-                    <span className="sr-only">PDF or image</span>
-                    <input
-                      type="file"
-                      accept="application/pdf,image/jpeg,image/png,image/webp"
-                      disabled={isDemoUser || addingNotebookFile || savingNotebookSettings}
-                      onChange={(event) =>
-                        setNotebookFile(event.target.files?.[0] ?? null)
-                      }
-                      className="block min-h-[2.5rem] w-full rounded-xl border border-border bg-surface-panel-strong px-2.5 py-1.5 text-xs text-text-primary file:mr-2 file:rounded-full file:border-0 file:bg-warm-glow file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed"
-                    />
-                  </label>
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    disabled={
-                      isDemoUser || !notebookFile || addingNotebookFile || savingNotebookSettings
-                    }
-                    onClick={() => void handleAddNotebookFile()}
-                  >
-                    {addingNotebookFile
-                      ? notebookUploadProgress !== null
-                        ? `Adding ${notebookUploadProgress}%`
-                        : "Adding pages..."
-                      : "Add pages"}
-                  </Button>
-                </div>
-                {addingNotebookFile && notebookUploadProgress !== null ? (
-                  <div
-                    role="progressbar"
-                    aria-label="Notebook file upload progress"
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={notebookUploadProgress}
-                    className="mt-2 h-2 overflow-hidden rounded-full bg-white/[0.08]"
-                  >
-                    <div
-                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
-                      style={{ width: `${notebookUploadProgress}%` }}
-                    />
-                  </div>
-                ) : null}
               </div>
-            </details>
-            <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3">
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                disabled={savingNotebookSettings}
-                onClick={() => void handleArchiveNotebook()}
-              >
-                Archive notebook
-              </Button>
-              <div className="flex flex-wrap gap-2">
+              <label className="mt-4 block">
+                <span className="sr-only">PDF or image</span>
+                <input
+                  type="file"
+                  accept="application/pdf,image/jpeg,image/png,image/webp"
+                  disabled={isDemoUser || addingNotebookFile}
+                  onChange={(event) =>
+                    setNotebookFile(event.target.files?.[0] ?? null)
+                  }
+                  className="block min-h-[2.75rem] w-full rounded-xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed"
+                />
+              </label>
+              {addingNotebookFile && notebookUploadProgress !== null ? (
+                <div
+                  role="progressbar"
+                  aria-label="Notebook file upload progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={notebookUploadProgress}
+                  className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.08]"
+                >
+                  <div
+                    className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
+                    style={{ width: `${notebookUploadProgress}%` }}
+                  />
+                </div>
+              ) : null}
+              <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[var(--color-border)] pt-3">
                 <Button
                   type="button"
                   variant="ghost"
                   size="sm"
-                  disabled={savingNotebookSettings}
-                  onClick={closeNotebookSettings}
+                  disabled={addingNotebookFile}
+                  onClick={closeAddPagesDialog}
                 >
                   Cancel
                 </Button>
                 <Button
                   type="button"
                   size="sm"
-                  disabled={savingNotebookSettings || !notebookTitle.trim()}
-                  onClick={() => void handleSaveNotebookSettings()}
+                  disabled={isDemoUser || !notebookFile || addingNotebookFile}
+                  onClick={() => void handleAddNotebookFile()}
                 >
-                  {savingNotebookSettings ? "Saving..." : "Save notebook"}
+                  {addingNotebookFile
+                    ? notebookUploadProgress !== null
+                      ? `Adding ${notebookUploadProgress}%`
+                      : "Adding pages..."
+                    : "Add pages"}
                 </Button>
               </div>
-            </div>
-          </Card>
+            </Card>
           </div>
         ) : null}
 

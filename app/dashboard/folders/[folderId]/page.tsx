@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
 import DeckObjectCard from "@/components/workspace/DeckObjectCard";
+import NotebookEditorDialog from "@/components/workspace/NotebookEditorDialog";
 import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
 import TopicPicker from "@/components/topics/TopicPicker";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
@@ -45,7 +46,6 @@ import {
   createNotebook,
   createNotebookPage,
   getNotebooksForFolder,
-  updateNotebook,
 } from "@/services/study/notebooks";
 import { importUploadedNotebook } from "@/services/study/notebook-import";
 import { createSource, getActiveSources, updateSource } from "@/services/study/sources";
@@ -86,6 +86,7 @@ export default function FolderDetailPage() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [editingNotebook, setEditingNotebook] = useState<Notebook | null>(null);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -562,26 +563,6 @@ export default function FolderDetailPage() {
     setShowNotebookForm(true);
   };
 
-  const handleArchiveNotebook = async (notebook: Notebook) => {
-    if (!user?.uid) return;
-    const confirmed = window.confirm(
-      `Archive "${notebook.title}"? Its saved pages will remain available if the notebook is restored later.`
-    );
-    if (!confirmed) return;
-    try {
-      await updateNotebook(user.uid, notebook.id, { archived: true });
-      setNotebooks((current) =>
-        current.filter((item) => item.id !== notebook.id)
-      );
-      setFeedback({ type: "success", message: `${notebook.title} archived.` });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not archive notebook.",
-      });
-    }
-  };
-
   if (!featureFlags.enableFolders) {
     return (
       <AppPage title="Folder" backHref="/dashboard/folders" backLabel="Folders">
@@ -645,6 +626,36 @@ export default function FolderDetailPage() {
           />
         ) : null}
 
+        {editingNotebook && user?.uid ? (
+          <NotebookEditorDialog
+            userId={user.uid}
+            notebook={editingNotebook}
+            topics={topics}
+            onTopicsChange={setTopics}
+            onClose={() => setEditingNotebook(null)}
+            onSaved={(updatedNotebook) => {
+              setNotebooks((current) =>
+                current.map((item) =>
+                  item.id === updatedNotebook.id ? updatedNotebook : item
+                )
+              );
+              setEditingNotebook(null);
+              setFeedback({ type: "success", message: "Notebook updated." });
+            }}
+            onArchived={(notebookId) => {
+              const archivedTitle = editingNotebook.title;
+              setNotebooks((current) =>
+                current.filter((item) => item.id !== notebookId)
+              );
+              setEditingNotebook(null);
+              setFeedback({
+                type: "success",
+                message: `${archivedTitle} archived.`,
+              });
+            }}
+          />
+        ) : null}
+
         <nav aria-label="Breadcrumb" className="flex items-center gap-2 text-sm text-text-muted">
           <Link href="/dashboard/folders" className="font-medium transition hover:text-text-primary">
             Folders
@@ -671,9 +682,6 @@ export default function FolderDetailPage() {
             </div>
           </div>
           <div className="flex flex-wrap gap-2 sm:justify-end">
-            <Button type="button" onClick={openNotebookForm} disabled={isDemoUser}>
-              Create notebook
-            </Button>
             <Button type="button" variant="secondary" onClick={openEditFolder}>
               Edit folder
             </Button>
@@ -949,10 +957,9 @@ export default function FolderDetailPage() {
                     pageStyle={notebook.pageStyle}
                     previewInkSvg={notebook.previewInkSvg}
                     updatedLabel={formatEditedLabel(notebook.updatedAt)}
-                    onEdit={() =>
-                      router.push(`/dashboard/notebooks/${notebook.id}?settings=1`)
+                    onEdit={
+                      isDemoUser ? undefined : () => setEditingNotebook(notebook)
                     }
-                    onArchive={() => void handleArchiveNotebook(notebook)}
                     compact
                   />
                 ))
