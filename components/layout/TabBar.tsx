@@ -15,6 +15,7 @@ type Tab = {
   group: TabGroup;
   /** SVG path data for the icon (24x24 viewBox). */
   icon: string;
+  iconMode?: "fill" | "stroke";
 };
 
 const tabs: Tab[] = [
@@ -73,7 +74,7 @@ const tabs: Tab[] = [
     label: "Topics",
     description: "Connect study material",
     group: "support",
-    icon: "M12 2.25a8.75 8.75 0 018.75 8.75A8.75 8.75 0 0112 19.75c-.36 0-.72-.02-1.08-.07l-3.31 2.76a.75.75 0 01-1.23-.58v-3.1A8.75 8.75 0 0112 2.25zm-3.5 6.1a.75.75 0 01.75-.75h5.5a.75.75 0 010 1.5h-5.5a.75.75 0 01-.75-.75zm0 4a.75.75 0 01.75-.75h4a.75.75 0 010 1.5h-4a.75.75 0 01-.75-.75z",
+    icon: "M12 2.25c4.83 0 8.75 3.92 8.75 8.75S16.83 19.75 12 19.75c-.36 0-.72-.02-1.08-.07l-3.31 2.76a.75.75 0 01-1.23-.58v-3.1A8.72 8.72 0 013.25 11c0-4.83 3.92-8.75 8.75-8.75zm-3.5 6.1a.75.75 0 01.75-.75h5.5a.75.75 0 010 1.5h-5.5a.75.75 0 01-.75-.75zm0 4a.75.75 0 01.75-.75h4a.75.75 0 010 1.5h-4a.75.75 0 01-.75-.75z",
   },
   {
     href: "/dashboard/library",
@@ -87,7 +88,8 @@ const tabs: Tab[] = [
     label: "Goals",
     description: "Study targets",
     group: "support",
-    icon: "M10.75 3.06a9 9 0 108.19 8.19h-2.04a7 7 0 11-4.15-4.15V5.06a9.04 9.04 0 00-2-.22V3.06zM11.02 8.35a5 5 0 106.63 6.63l-1.5-1.5a3 3 0 11-5.63-1.63l1.5-1.5a5.02 5.02 0 00-1-.5v-1.5zM20.72 2.22a.75.75 0 00-1.03.03l-2.16 2.16-.28-1.68a.75.75 0 00-1.27-.4l-1.42 1.42a.75.75 0 00-.21.66l.43 2.58-4.56 4.56a1 1 0 101.42 1.42l4.56-4.56 2.58.43a.75.75 0 00.66-.21l1.42-1.42a.75.75 0 00-.4-1.27l-1.68-.28 2.16-2.16a.75.75 0 00-.22-1.28z",
+    iconMode: "stroke",
+    icon: "M18.5 13.5a8 8 0 11-8-8M15.5 13.5a5 5 0 11-5-5M12.5 13.5a2 2 0 11-2-2M10.5 13.5l8-8M18.5 2.5v3h3M18.5 5.5l3-3",
   },
   {
     href: "/dashboard/constellation",
@@ -116,10 +118,16 @@ function isActive(pathname: string, href: string) {
 }
 
 function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
+  const strokeIcon = tab.iconMode === "stroke";
+
   return (
     <svg
       viewBox="0 0 24 24"
-      fill="currentColor"
+      fill={strokeIcon ? "none" : "currentColor"}
+      stroke={strokeIcon ? "currentColor" : undefined}
+      strokeWidth={strokeIcon ? 1.9 : undefined}
+      strokeLinecap={strokeIcon ? "round" : undefined}
+      strokeLinejoin={strokeIcon ? "round" : undefined}
       aria-hidden="true"
       className={`h-5 w-5 transition duration-fast ${active ? "opacity-100" : "opacity-75"}`}
     >

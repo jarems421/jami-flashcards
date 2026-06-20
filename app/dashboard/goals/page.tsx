@@ -456,7 +456,7 @@ export default function GoalsPage() {
                     Optional. Leave both fields blank for an open-ended goal.
                   </p>
                 </div>
-                <div className="grid min-w-0 gap-3 xl:grid-cols-2">
+                <div className="grid min-w-0 grid-cols-2 gap-3">
                   <Input
                     type="date"
                     value={deadlineDate}
@@ -465,16 +465,16 @@ export default function GoalsPage() {
                       if (!event.target.value) setDeadlineTime("");
                     }}
                     label="Finish by date"
-                    containerClassName="min-w-0 overflow-hidden"
-                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
+                    containerClassName="min-w-0 w-full overflow-hidden"
+                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-3 !py-2.5"
                   />
                   <Input
                     type="time"
                     value={deadlineTime}
                     onChange={(event) => setDeadlineTime(event.target.value)}
                     label="Finish by time"
-                    containerClassName="min-w-0 overflow-hidden"
-                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5"
+                    containerClassName="min-w-0 w-full overflow-hidden"
+                    className="min-h-11 min-w-0 max-w-full !rounded-[1.15rem] !px-3 !py-2.5"
                   />
                 </div>
               </div>
