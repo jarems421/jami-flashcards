@@ -690,10 +690,31 @@ export default function FolderDetailPage() {
 
         {showNotebookForm ? (
           <Card padding="md">
-            <SectionHeader
-              eyebrow="Create notebook"
-              title="Set up your notebook."
-            />
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8.5rem] sm:items-start">
+              <div className="min-w-0">
+                <SectionHeader
+                  eyebrow="Create notebook"
+                  title="Set up your notebook."
+                />
+                <div className="mt-4 max-w-xl">
+                  <Input
+                    label="Notebook title"
+                    value={notebookTitle}
+                    onChange={(event) => setNotebookTitle(event.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="app-subtle-panel mx-auto w-full max-w-[8.5rem] rounded-[1rem] p-2 sm:mx-0">
+                <NotebookObjectCard
+                  title={notebookTitle.trim() || "Notebook preview"}
+                  color={notebookColor}
+                  icon={notebookIcon}
+                  updatedLabel="Notebook preview"
+                  compact
+                  editorPreview
+                />
+              </div>
+            </div>
             <div className="mt-5">
               <ObjectStylePicker
                 color={notebookColor}
@@ -705,12 +726,7 @@ export default function FolderDetailPage() {
               />
             </div>
             <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <Input
-                label="Notebook title"
-                value={notebookTitle}
-                onChange={(event) => setNotebookTitle(event.target.value)}
-              />
-              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 lg:col-span-2">
                 <label className="mb-1.5 block text-sm font-medium text-text-secondary">
                   Start with a PDF or image <span className="text-text-muted">(optional)</span>
                 </label>

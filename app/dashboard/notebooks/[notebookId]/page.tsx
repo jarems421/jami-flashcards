@@ -2173,6 +2173,31 @@ export default function NotebookEditorPage() {
       stopReactIfHandled(event, stopDrawingOnSurface(event, surface));
     };
 
+    // iPadOS Safari hijacks horizontal Apple Pencil movement for a native
+    // scroll/back gesture even when `touch-action: none` is set — it fires a
+    // pointercancel mid-stroke and then needs a frame to settle before the next
+    // pointerdown is delivered, which is why a stroke right after a horizontal
+    // one fails to register. touch-action is not honored for the Pencil here,
+    // but suppressing the underlying touch-event default is. We only cancel for
+    // stylus input (or while a stroke is active) and never over a text editor,
+    // so finger scroll/zoom/swipe (all JS-driven) are untouched.
+    const isStylusTouchEvent = (event: TouchEvent) => {
+      const touches = event.touches.length > 0 ? event.touches : event.changedTouches;
+      for (let index = 0; index < touches.length; index += 1) {
+        if ((touches[index] as Touch & { touchType?: string }).touchType === "stylus") {
+          return true;
+        }
+      }
+      return false;
+    };
+    const suppressStylusGesture: EventListener = (event) => {
+      if (!(event instanceof TouchEvent) || !event.cancelable) return;
+      if (isNotebookTextEditingTarget(event.target)) return;
+      if (activeStrokeRef.current || isStylusTouchEvent(event)) {
+        event.preventDefault();
+      }
+    };
+
     const listenerOptions = { passive: false, capture: true };
     const supportsRawUpdate = "onpointerrawupdate" in window;
     surface.addEventListener("pointerdown", handleNativePointerDown, listenerOptions);
@@ -2183,6 +2208,8 @@ export default function NotebookEditorPage() {
     surface.addEventListener("pointerup", handleNativePointerStop, listenerOptions);
     surface.addEventListener("pointercancel", handleNativePointerStop, listenerOptions);
     surface.addEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
+    surface.addEventListener("touchstart", suppressStylusGesture, listenerOptions);
+    surface.addEventListener("touchmove", suppressStylusGesture, listenerOptions);
     window.addEventListener("pointerup", handleWindowPointerStop, listenerOptions);
     window.addEventListener("pointercancel", handleWindowPointerStop, listenerOptions);
 
@@ -2195,6 +2222,8 @@ export default function NotebookEditorPage() {
       surface.removeEventListener("pointerup", handleNativePointerStop, listenerOptions);
       surface.removeEventListener("pointercancel", handleNativePointerStop, listenerOptions);
       surface.removeEventListener("lostpointercapture", handleNativePointerStop, listenerOptions);
+      surface.removeEventListener("touchstart", suppressStylusGesture, listenerOptions);
+      surface.removeEventListener("touchmove", suppressStylusGesture, listenerOptions);
       window.removeEventListener("pointerup", handleWindowPointerStop, listenerOptions);
       window.removeEventListener("pointercancel", handleWindowPointerStop, listenerOptions);
     };
