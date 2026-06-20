@@ -429,7 +429,6 @@ export default function FolderDetailPage() {
       const sourceId = await createSource(user.uid, {
         title: sourceTitle,
         type: sourceType,
-        subject: folder.subject,
         folderIds: [folder.id],
         topicIds: sourceTopicIds,
         contentText: sourceType === "pasted_text" || sourceType === "manual_note" ? sourceText : undefined,
@@ -442,7 +441,6 @@ export default function FolderDetailPage() {
         id: sourceId,
         title: sourceTitle.trim(),
         type: sourceType,
-        subject: folder.subject,
         folderIds: [folder.id],
         topicIds: sourceTopicIds,
         contentText: sourceType === "pasted_text" || sourceType === "manual_note" ? sourceText.trim() || undefined : undefined,

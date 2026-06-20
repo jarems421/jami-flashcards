@@ -103,6 +103,29 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const [folderSnapshots, topicSnapshots] = await Promise.all([
+      Promise.all(
+        source.folderIds.map((folderId) =>
+          adminDb.collection("users").doc(uid).collection("studyFolders").doc(folderId).get()
+        )
+      ).catch(() => []),
+      Promise.all(
+        source.topicIds.map((topicId) =>
+          adminDb.collection("users").doc(uid).collection("topics").doc(topicId).get()
+        )
+      ).catch(() => []),
+    ]);
+    const folderNames = folderSnapshots
+      .map((snapshot) => snapshot.data()?.name)
+      .filter((name): name is string => typeof name === "string" && Boolean(name.trim()));
+    const topicNames = topicSnapshots
+      .map((snapshot) => snapshot.data()?.name)
+      .filter((name): name is string => typeof name === "string" && Boolean(name.trim()));
+    const contextLines = [
+      folderNames.length > 0 ? `Folders: ${folderNames.join(", ")}` : "",
+      topicNames.length > 0 ? `Topics: ${topicNames.join(", ")}` : "",
+    ].filter(Boolean);
+
     const generated = await generateGeminiText({
       apiKey: GEMINI_API_KEY,
       timeoutMs: REQUEST_TIMEOUT_MS,
@@ -119,8 +142,7 @@ Return valid JSON only.`,
                 text: `${getPrompt(kind, count)}
 
 Source title: ${source.title}
-Subject: ${source.subject ?? "Unspecified"}
-Source text:
+${contextLines.length > 0 ? `${contextLines.join("\n")}\n` : ""}Source text:
 ${source.contentText.slice(0, 12_000)}`,
               },
             ],

@@ -75,9 +75,7 @@ export function getSourceFileTypeLabel(fileType?: string | null) {
 
 export function validateSourceFile(input: { type: string; size: number }) {
   if (!isSourceFileMimeType(input.type)) {
-    throw new Error(
-      "Upload a PDF, image, Word document, PowerPoint, or plain-text file."
-    );
+    throw new Error("This file type is not supported.");
   }
   if (input.size <= 0) {
     throw new Error("Choose a file that is not empty.");

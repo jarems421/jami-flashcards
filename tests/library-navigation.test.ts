@@ -15,7 +15,6 @@ describe("Library browser URL state", () => {
       search: "cell",
       folderId: "science",
       type: "file",
-      subject: "Biology",
       recent: true,
       status: "archived",
       sourceId: "abc",
@@ -38,6 +37,15 @@ describe("Library browser URL state", () => {
     expect(
       buildLibraryBrowserSearch(
         "?agent=1&q=old&type=file&status=all",
+        DEFAULT_LIBRARY_BROWSER_STATE
+      )
+    ).toBe("?agent=1");
+  });
+
+  it("drops legacy subject filters", () => {
+    expect(
+      buildLibraryBrowserSearch(
+        "?subject=Biology&agent=1",
         DEFAULT_LIBRARY_BROWSER_STATE
       )
     ).toBe("?agent=1");

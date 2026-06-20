@@ -46,7 +46,6 @@ export async function createSource(
   input: {
     title: string;
     type: SourceType;
-    subject?: string;
     folderIds?: string[];
     topicIds?: string[];
     contentText?: string;

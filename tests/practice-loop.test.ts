@@ -261,7 +261,6 @@ describe("Jami notebook-first learning foundations", () => {
     const payload = buildSourcePayload("user-1", {
       title: " Class notes ",
       type: "pasted_text",
-      subject: " Biology ",
       folderIds: ["folder-science"],
       topicIds: ["topic-photosynthesis"],
       contentText: " Plants use light energy to make glucose. ",
@@ -269,11 +268,11 @@ describe("Jami notebook-first learning foundations", () => {
     });
     const source = mapSourceData("source-1", payload);
 
+    expect(payload).not.toHaveProperty("subject");
     expect(source).toMatchObject({
       id: "source-1",
       title: "Class notes",
       type: "pasted_text",
-      subject: "Biology",
       folderIds: ["folder-science"],
       topicIds: ["topic-photosynthesis"],
       contentText: "Plants use light energy to make glucose.",

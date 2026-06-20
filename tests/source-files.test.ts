@@ -45,7 +45,7 @@ describe("Library source files", () => {
     expect(() => validateSourceFile({ type: "application/pdf", size: 1 })).not.toThrow();
     expect(() =>
       validateSourceFile({ type: "application/javascript", size: 10 })
-    ).toThrow("PDF, image, Word document, PowerPoint, or plain-text");
+    ).toThrow("This file type is not supported.");
     expect(() => validateSourceFile({ type: "text/plain", size: 0 })).toThrow(
       "not empty"
     );

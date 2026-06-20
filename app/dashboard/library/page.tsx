@@ -11,7 +11,11 @@ import {
 import { FirebaseError } from "firebase/app";
 import Link from "next/link";
 import { useUser } from "@/lib/auth/user-context";
-import type { Source, SourceType } from "@/lib/practice/sources";
+import {
+  MAX_SOURCE_FOLDER_IDS,
+  type Source,
+  type SourceType,
+} from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { Deck } from "@/services/study/decks";
@@ -37,12 +41,9 @@ import {
   deleteSourceFile,
   getSourceFileDownloadUrl,
   uploadSourceFile,
+  validateSourceUploadFile,
 } from "@/services/study/source-files";
-import {
-  getSourceFileKind,
-  getSourceFileTypeLabel,
-  resolveSourceFileMimeType,
-} from "@/lib/practice/source-files";
+import { getSourceFileTypeLabel } from "@/lib/practice/source-files";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import {
@@ -55,6 +56,12 @@ import {
   canRemoveSourceFromFilteredFolder,
   getLinkedSourceFolders,
 } from "@/lib/study/library-management";
+import {
+  buildSourceComposerContent,
+  clearFilenameDerivedTitle,
+  getSourceTitleFromFileName,
+  type SourceComposerKind,
+} from "@/lib/study/source-composer";
 import { askSourceTutor } from "@/services/ai/source";
 import AppPage from "@/components/layout/AppPage";
 import SourcePreview from "@/components/library/SourcePreview";
@@ -76,7 +83,6 @@ type Feedback = { type: "success" | "error"; message: string };
 type TutorMessage = { role: "user" | "model"; text: string };
 type LibraryMobileTab = "sources" | "source" | "actions";
 type SourceManagementAction = "archive" | "delete" | null;
-type SourceComposerKind = "text" | "link" | "image" | "document";
 
 function isPermissionDenied(error: unknown) {
   return error instanceof FirebaseError && error.code === "permission-denied";
@@ -95,8 +101,7 @@ const sourceComposerKinds: Array<{
 }> = [
   { value: "text", label: "Text" },
   { value: "link", label: "Link" },
-  { value: "image", label: "Image" },
-  { value: "document", label: "Document" },
+  { value: "upload", label: "Upload" },
 ];
 
 function typeLabel(type: SourceType) {
@@ -164,6 +169,86 @@ function topicNames(topicIds: string[], topics: Topic[]) {
   return topicIds
     .map((topicId) => topics.find((topic) => topic.id === topicId)?.name)
     .filter((name): name is string => Boolean(name));
+}
+
+function SourceFolderPicker({
+  folders,
+  selectedFolderIds,
+  onChange,
+}: {
+  folders: StudyFolder[];
+  selectedFolderIds: string[];
+  onChange: (folderIds: string[]) => void;
+}) {
+  const selectedFolders = folders.filter((folder) =>
+    selectedFolderIds.includes(folder.id)
+  );
+  const summary =
+    selectedFolders.length === 0
+      ? "No folders"
+      : selectedFolders.length === 1
+        ? selectedFolders[0].name
+        : `${selectedFolders.length} folders`;
+
+  return (
+    <div className="block min-w-0">
+      <span className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary">
+        Folders
+      </span>
+      {folders.length === 0 ? (
+        <div className="app-field flex min-h-[3.25rem] items-center rounded-[1.6rem] px-5 text-sm text-text-muted">
+          No folders
+        </div>
+      ) : (
+        <details className="group relative">
+          <summary className="app-field flex min-h-[3.25rem] cursor-pointer list-none items-center justify-between gap-3 rounded-[1.6rem] px-5 text-sm text-text-primary outline-none transition focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden">
+            <span className="truncate">{summary}</span>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="none"
+              className="h-4 w-4 shrink-0 text-text-secondary transition group-open:rotate-180"
+            >
+              <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </summary>
+          <div className="absolute left-0 right-0 z-40 mt-2 max-h-60 overflow-y-auto rounded-[1.2rem] border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-2 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+            {folders.map((folder) => {
+              const checked = selectedFolderIds.includes(folder.id);
+              const selectionLimitReached =
+                !checked && selectedFolderIds.length >= MAX_SOURCE_FOLDER_IDS;
+
+              return (
+                <label
+                  key={folder.id}
+                  className={`flex min-h-11 items-center gap-3 rounded-[0.85rem] px-3 text-sm transition ${
+                    selectionLimitReached
+                      ? "cursor-not-allowed text-text-muted"
+                      : "cursor-pointer text-text-primary hover:bg-[var(--color-glass-subtle)]"
+                  }`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={selectionLimitReached}
+                    onChange={() =>
+                      onChange(
+                        checked
+                          ? selectedFolderIds.filter((id) => id !== folder.id)
+                          : [...selectedFolderIds, folder.id]
+                      )
+                    }
+                    className="h-4 w-4 accent-[var(--color-accent)]"
+                  />
+                  <span className="min-w-0 truncate">{folder.name}</span>
+                </label>
+              );
+            })}
+          </div>
+        </details>
+      )}
+    </div>
+  );
 }
 
 function DraftEditor({
@@ -417,7 +502,6 @@ export default function LibraryPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [composerKind, setComposerKind] = useState<SourceComposerKind>("text");
   const [title, setTitle] = useState("");
-  const [subject, setSubject] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
   const [selectedFolderIds, setSelectedFolderIds] = useState<string[]>([]);
   const [contentText, setContentText] = useState("");
@@ -425,6 +509,7 @@ export default function LibraryPage() {
   const [fileName, setFileName] = useState("");
   const [fileType, setFileType] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
+  const filenameDerivedTitleRef = useRef("");
   const [sourceFileUrls, setSourceFileUrls] = useState<Record<string, string>>({});
   const [tutorMessage, setTutorMessage] = useState("Explain the key ideas in this source.");
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
@@ -440,7 +525,6 @@ export default function LibraryPage() {
   const [folderFilter, setFolderFilter] = useState("");
   const [typeFilter, setTypeFilter] =
     useState<LibrarySourceTypeFilter>("all");
-  const [subjectFilter, setSubjectFilter] = useState("");
   const [recentOnly, setRecentOnly] = useState(false);
   const [statusFilter, setStatusFilter] =
     useState<LibrarySourceStatusFilter>("active");
@@ -458,7 +542,6 @@ export default function LibraryPage() {
       setSearchTerm(state.search);
       setFolderFilter(state.folderId);
       setTypeFilter(state.type);
-      setSubjectFilter(state.subject);
       setRecentOnly(state.recent);
       setStatusFilter(state.status);
       setSelectedSourceId(state.sourceId || null);
@@ -476,7 +559,6 @@ export default function LibraryPage() {
       search: searchTerm,
       folderId: folderFilter,
       type: typeFilter,
-      subject: subjectFilter,
       recent: recentOnly,
       status: statusFilter,
       sourceId: selectedSourceId ?? "",
@@ -489,7 +571,6 @@ export default function LibraryPage() {
     searchTerm,
     selectedSourceId,
     statusFilter,
-    subjectFilter,
     typeFilter,
     urlStateReady,
   ]);
@@ -505,17 +586,6 @@ export default function LibraryPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [busyAction, renameOpen, showAddSource]);
 
-  const subjects = useMemo(
-    () =>
-      Array.from(
-        new Set(
-          sources
-            .map((source) => source.subject?.trim())
-            .filter((value): value is string => Boolean(value))
-        )
-      ).sort((left, right) => left.localeCompare(right)),
-    [sources]
-  );
   const sourceType: SourceType =
     composerKind === "text"
       ? "manual_note"
@@ -530,13 +600,11 @@ export default function LibraryPage() {
       if (statusFilter !== "all" && source.status !== statusFilter) return false;
       if (typeFilter !== "all" && source.type !== typeFilter) return false;
       if (folderFilter && !source.folderIds.includes(folderFilter)) return false;
-      if (subjectFilter && source.subject !== subjectFilter) return false;
       if (recentOnly && source.updatedAt < recentCutoff) return false;
       if (!normalizedSearch) return true;
 
       return [
         source.title,
-        source.subject,
         source.contentText,
         source.externalUrl,
         source.fileName,
@@ -548,7 +616,6 @@ export default function LibraryPage() {
     searchTerm,
     sources,
     statusFilter,
-    subjectFilter,
     typeFilter,
   ]);
 
@@ -715,37 +782,21 @@ export default function LibraryPage() {
         setFeedback({ type: "error", message: "Choose a file to upload." });
         return;
       }
-      if (sourceFile) {
-        const resolvedFileType = resolveSourceFileMimeType(
-          sourceFile.name,
-          sourceFile.type
-        );
-        const fileKind = getSourceFileKind(resolvedFileType);
-        if (composerKind === "image" && fileKind !== "image") {
-          setFeedback({ type: "error", message: "Choose a JPEG, PNG, or WebP image." });
-          return;
-        }
-        if (
-          composerKind === "document" &&
-          (fileKind === "image" || fileKind === null)
-        ) {
-          setFeedback({
-            type: "error",
-            message: "Choose a PDF, Word document, PowerPoint, or text file.",
-          });
-          return;
-        }
-      }
+      const validatedFileType = sourceFile
+        ? validateSourceUploadFile(sourceFile)
+        : "";
+      const modeContent = buildSourceComposerContent(composerKind, {
+        contentText,
+        externalUrl,
+        fileName: sourceFile?.name ?? fileName,
+        fileType: validatedFileType || sourceFile?.type || fileType,
+      });
       const sourceId = await createSource(user.uid, {
         title: title.trim() || sourceFile?.name || title,
         type: sourceType,
-        subject,
         topicIds: selectedTopicIds,
         folderIds: selectedFolderIds,
-        contentText,
-        externalUrl,
-        fileName: sourceType === "file" ? sourceFile?.name ?? fileName : fileName,
-        fileType: sourceType === "file" ? sourceFile?.type ?? fileType : fileType,
+        ...modeContent,
       });
       createdSourceId = sourceId;
       if (sourceType === "file" && sourceFile) {
@@ -764,7 +815,6 @@ export default function LibraryPage() {
         });
       }
       setTitle("");
-      setSubject("");
       setSelectedTopicIds([]);
       setSelectedFolderIds([]);
       setContentText("");
@@ -772,6 +822,7 @@ export default function LibraryPage() {
       setFileName("");
       setFileType("");
       setSourceFile(null);
+      filenameDerivedTitleRef.current = "";
       setShowAddSource(false);
       await loadAll();
       setSelectedSourceId(sourceId);
@@ -793,8 +844,23 @@ export default function LibraryPage() {
     }
   };
 
-  const openSourceComposer = (kind: SourceComposerKind = "text") => {
+  const changeComposerKind = (kind: SourceComposerKind) => {
+    if (kind === composerKind) return;
+
+    setTitle((current) =>
+      clearFilenameDerivedTitle(current, filenameDerivedTitleRef.current)
+    );
+    filenameDerivedTitleRef.current = "";
+    setContentText("");
+    setExternalUrl("");
+    setSourceFile(null);
+    setFileName("");
+    setFileType("");
     setComposerKind(kind);
+  };
+
+  const openSourceComposer = (kind: SourceComposerKind = "text") => {
+    changeComposerKind(kind);
     setShowAddSource(true);
   };
 
@@ -925,7 +991,6 @@ export default function LibraryPage() {
     setSearchTerm("");
     setFolderFilter("");
     setTypeFilter("all");
-    setSubjectFilter("");
     setRecentOnly(false);
     setStatusFilter("active");
   };
@@ -1073,12 +1138,7 @@ export default function LibraryPage() {
                   <button
                     key={item.value}
                     type="button"
-                    onClick={() => {
-                      setComposerKind(item.value);
-                      setSourceFile(null);
-                      setFileName("");
-                      setFileType("");
-                    }}
+                    onClick={() => changeComposerKind(item.value)}
                     className={`w-full rounded-[1.2rem] border p-4 text-left transition ${
                       composerKind === item.value
                         ? "border-warm-border bg-warm-glow text-white"
@@ -1091,8 +1151,23 @@ export default function LibraryPage() {
               </div>
               <div className="space-y-4">
                 <div className="grid gap-3 sm:grid-cols-2">
-                  <Input label="Title" value={title} onChange={(event) => setTitle(event.target.value)} />
-                  <Input label="Subject" value={subject} onChange={(event) => setSubject(event.target.value)} />
+                  <Input
+                    label="Title"
+                    value={title}
+                    onChange={(event) => {
+                      setTitle(event.target.value);
+                      if (
+                        event.target.value !== filenameDerivedTitleRef.current
+                      ) {
+                        filenameDerivedTitleRef.current = "";
+                      }
+                    }}
+                  />
+                  <SourceFolderPicker
+                    folders={folders}
+                    selectedFolderIds={selectedFolderIds}
+                    onChange={setSelectedFolderIds}
+                  />
                 </div>
                 {composerKind === "text" ? (
                   <Textarea
@@ -1105,36 +1180,40 @@ export default function LibraryPage() {
                 {composerKind === "link" ? (
                   <Input label="Source link" value={externalUrl} onChange={(event) => setExternalUrl(event.target.value)} />
                 ) : null}
-                {composerKind === "image" || composerKind === "document" ? (
+                {composerKind === "upload" ? (
                   <div className="app-subtle-panel rounded-[1.25rem] p-4">
                     <label className="block text-sm font-semibold text-text-primary" htmlFor="library-source-file">
-                      {composerKind === "image" ? "Image" : "Study document"}
+                      Upload
                     </label>
                     <input
                       id="library-source-file"
                       type="file"
-                      accept={
-                        composerKind === "image"
-                          ? "image/jpeg,image/png,image/webp"
-                          : "application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,.pdf,.docx,.pptx,.txt"
-                      }
+                      accept="application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,.pdf,.docx,.pptx,.txt"
                       onChange={(event) => {
                         const file = event.target.files?.[0] ?? null;
                         setSourceFile(file);
                         setFileName(file?.name ?? "");
                         setFileType(file?.type ?? "");
-                        if (file && !title.trim()) {
-                          setTitle(file.name.replace(/\.[^.]+$/, ""));
+                        if (
+                          file &&
+                          (!title.trim() ||
+                            title === filenameDerivedTitleRef.current)
+                        ) {
+                          const nextTitle = getSourceTitleFromFileName(file.name);
+                          filenameDerivedTitleRef.current = nextTitle;
+                          setTitle(nextTitle);
+                        } else if (!file) {
+                          setTitle((current) =>
+                            clearFilenameDerivedTitle(
+                              current,
+                              filenameDerivedTitleRef.current
+                            )
+                          );
+                          filenameDerivedTitleRef.current = "";
                         }
                       }}
                       className="mt-3 block w-full cursor-pointer rounded-[1rem] border border-[var(--color-field-border)] bg-[var(--color-field-bg)] p-3 text-sm text-[var(--color-field-text)] file:mr-3 file:rounded-full file:border-0 file:bg-[var(--button-secondary-bg)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--button-secondary-text)]"
                     />
-                    <p className="mt-2 text-xs leading-5 text-text-muted">
-                      {composerKind === "image"
-                        ? "JPEG, PNG, or WebP."
-                        : "PDF, Word, PowerPoint, or plain text."}{" "}
-                      Tutor reads it only when you select it and ask.
-                    </p>
                     {sourceFile ? (
                       <div className="mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-2 text-sm text-text-secondary">
                         {sourceFile.name} · {Math.round(sourceFile.size / 1024)} KB
@@ -1149,36 +1228,6 @@ export default function LibraryPage() {
                   onChange={setSelectedTopicIds}
                   onTopicsChange={setTopics}
                 />
-                <div>
-                  <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Folders</div>
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {folders.length === 0 ? (
-                      <span className="text-sm text-text-secondary">No folders yet.</span>
-                    ) : (
-                      folders.map((folder) => {
-                        const active = selectedFolderIds.includes(folder.id);
-                        return (
-                          <button
-                            key={folder.id}
-                            type="button"
-                            onClick={() =>
-                              setSelectedFolderIds((current) =>
-                                active ? current.filter((id) => id !== folder.id) : [...current, folder.id]
-                              )
-                            }
-                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
-                              active
-                                ? "border-warm-border bg-warm-glow text-warm-accent"
-                                : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
-                            }`}
-                          >
-                            {folder.name}
-                          </button>
-                        );
-                      })
-                    )}
-                  </div>
-                </div>
                 <Button type="button" disabled={busyAction === "create-source"} onClick={createNextSource}>
                   {busyAction === "create-source"
                     ? sourceType === "file" && uploadProgress !== null
@@ -1339,7 +1388,7 @@ export default function LibraryPage() {
 
       {sources.length > 0 ? (
         <Card padding="md">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(4,minmax(150px,0.75fr))]">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(3,minmax(150px,0.75fr))]">
             <Input
               aria-label="Search Sources"
               placeholder="Search titles and notes"
@@ -1374,21 +1423,6 @@ export default function LibraryPage() {
                 {sourceTypes.map((type) => (
                   <option key={type.value} value={type.value}>
                     {typeLabel(type.value)}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="block">
-              <span className="sr-only">Subject</span>
-              <select
-                value={subjectFilter}
-                onChange={(event) => setSubjectFilter(event.target.value)}
-                className="app-field min-h-[3.25rem] w-full rounded-[1.4rem] px-4 text-sm outline-none"
-              >
-                <option value="">All subjects</option>
-                {subjects.map((nextSubject) => (
-                  <option key={nextSubject} value={nextSubject}>
-                    {nextSubject}
                   </option>
                 ))}
               </select>
@@ -1450,15 +1484,6 @@ export default function LibraryPage() {
                 Type: {typeLabel(typeFilter)} x
               </button>
             ) : null}
-            {subjectFilter ? (
-              <button
-                type="button"
-                className="app-chip min-h-10 rounded-full px-3 text-xs font-semibold"
-                onClick={() => setSubjectFilter("")}
-              >
-                Subject: {subjectFilter} x
-              </button>
-            ) : null}
             {statusFilter !== "active" ? (
               <button
                 type="button"
@@ -1471,7 +1496,6 @@ export default function LibraryPage() {
             {searchTerm ||
             folderFilter ||
             typeFilter !== "all" ||
-            subjectFilter ||
             recentOnly ||
             statusFilter !== "active" ? (
               <Button
@@ -1634,9 +1658,6 @@ export default function LibraryPage() {
                       <SectionHeader
                         eyebrow={sourceDisplayLabel(selectedSource)}
                         title={selectedSource.title}
-                        description={
-                          selectedSource.subject || "No subject set yet."
-                        }
                       />
                     </div>
                     {selectedSource.status === "archived" ? (

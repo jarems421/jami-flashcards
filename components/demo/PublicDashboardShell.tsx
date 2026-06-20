@@ -405,7 +405,6 @@ function FoldersPanel(props: {
         id: `local-source-${Date.now()}`,
         title: newSourceTitle.trim(),
         type: "manual_note",
-        subject: selectedFolder.subject,
         folderId: selectedFolder.id,
         topicIds: selectedFolder.topicIds,
         contentText: "Local-only walkthrough source. Signed-in users save this in Sources.",

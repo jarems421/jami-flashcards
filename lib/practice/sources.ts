@@ -76,7 +76,6 @@ export function buildSourcePayload(
   input: {
     title: string;
     type: SourceType;
-    subject?: string;
     folderIds?: string[];
     topicIds?: string[];
     contentText?: string;
@@ -112,7 +111,6 @@ export function buildSourcePayload(
   return {
     title,
     type,
-    subject: input.subject?.trim().slice(0, 120) || null,
     folderIds: normalizeStringArray(input.folderIds ?? [], MAX_SOURCE_FOLDER_IDS, 160),
     topicIds: normalizeStringArray(input.topicIds ?? [], MAX_SOURCE_TOPIC_IDS, 120),
     contentText: contentText || null,

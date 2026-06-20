@@ -7,7 +7,6 @@ export type LibraryBrowserState = {
   search: string;
   folderId: string;
   type: LibrarySourceTypeFilter;
-  subject: string;
   recent: boolean;
   status: LibrarySourceStatusFilter;
   sourceId: string;
@@ -17,7 +16,6 @@ export const DEFAULT_LIBRARY_BROWSER_STATE: LibraryBrowserState = {
   search: "",
   folderId: "",
   type: "all",
-  subject: "",
   recent: false,
   status: "active",
   sourceId: "",
@@ -43,7 +41,6 @@ export function getLibraryBrowserStateFromSearch(
     search: params.get("q")?.trim() ?? "",
     folderId: params.get("folder")?.trim() ?? "",
     type: isSourceTypeFilter(type) ? type : "all",
-    subject: params.get("subject")?.trim() ?? "",
     recent: params.get("recent") === "1",
     status:
       status === "archived" || status === "all" ? status : "active",
@@ -63,7 +60,7 @@ export function buildLibraryBrowserSearch(
 
   setOptional("q", state.search.trim());
   setOptional("folder", state.folderId);
-  setOptional("subject", state.subject);
+  params.delete("subject");
   setOptional("source", state.sourceId);
 
   if (state.type === "all") params.delete("type");
