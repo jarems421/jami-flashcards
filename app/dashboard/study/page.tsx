@@ -2084,9 +2084,9 @@ export default function StudyPage() {
                       <div
                         className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
                         style={{
-                          "--study-card-text": currentDeckColor.text,
-                          background: `linear-gradient(145deg, ${currentDeckColor.paper}, ${currentDeckColor.light} 62%, ${currentDeckColor.base})`,
-                          color: currentDeckColor.text,
+                          "--study-card-border": currentDeckColor.base,
+                          "--study-card-border-back": currentDeckColor.dark,
+                          "--study-card-shadow": currentDeckColor.shadow,
                         } as React.CSSProperties}
                       >
                         <div className="flex items-center justify-between gap-3">
@@ -2118,9 +2118,9 @@ export default function StudyPage() {
                       <div
                         className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10"
                         style={{
-                          "--study-card-text": currentDeckColor.text,
-                          background: `linear-gradient(145deg, ${currentDeckColor.light}, ${currentDeckColor.paper} 58%, ${currentDeckColor.base})`,
-                          color: currentDeckColor.text,
+                          "--study-card-border": currentDeckColor.base,
+                          "--study-card-border-back": currentDeckColor.dark,
+                          "--study-card-shadow": currentDeckColor.shadow,
                         } as React.CSSProperties}
                       >
                         <div className="text-xs font-normal tracking-[0.06em] opacity-65">Answer</div>
@@ -2232,7 +2232,6 @@ export default function StudyPage() {
               ) : null}
               <div className="flex flex-wrap gap-3">
                 <Button type="button" onClick={exitSession} variant="secondary">End session</Button>
-                <Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link>
               </div>
             </div>
           ) : null}

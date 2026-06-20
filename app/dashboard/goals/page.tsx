@@ -453,7 +453,7 @@ export default function GoalsPage() {
                     Optional. Leave both fields blank for an open-ended goal.
                   </p>
                 </div>
-                <div className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
+                <div className="goal-deadline-grid grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
                   <Input
                     type="date"
                     value={deadlineDate}

@@ -723,6 +723,32 @@
     padding: 0;
   }
 
+  @media (pointer: coarse) and (min-width: 640px) and (max-width: 1024px) {
+    .goal-deadline-grid {
+      gap: 0.375rem;
+    }
+
+    .goal-deadline-input {
+      -webkit-appearance: none;
+      appearance: none;
+      overflow: hidden;
+      padding-inline: 0.5rem !important;
+      font-size: 0.8125rem !important;
+    }
+
+    .goal-deadline-input::-webkit-datetime-edit {
+      display: block;
+      max-inline-size: calc(100% - 1.25rem);
+      overflow: hidden;
+      white-space: nowrap;
+    }
+
+    .goal-deadline-input::-webkit-calendar-picker-indicator {
+      inline-size: 1rem;
+      block-size: 1rem;
+    }
+  }
+
   .app-subtle-panel {
     border: 1px solid var(--color-border);
     background-color: var(--color-glass-subtle);
@@ -919,13 +945,13 @@
   }
 
   .study-flashcard-face {
-    --study-card-text: #fff8ff;
-    --color-text-primary: var(--study-card-text);
-    --color-text-secondary: color-mix(in srgb, var(--study-card-text) 82%, transparent);
-    --color-text-muted: color-mix(in srgb, var(--study-card-text) 66%, transparent);
-    border: 1.5px solid rgba(255, 255, 255, 0.1);
-    color: var(--study-card-text);
-    box-shadow: 0 18px 44px rgba(8, 2, 26, 0.24);
+    border: 2px solid var(--study-card-border, var(--color-border-strong));
+    background-color: var(--color-surface-panel);
+    background-image: var(--gradient-card);
+    color: var(--color-text-primary);
+    box-shadow:
+      0 0 0 1px color-mix(in srgb, var(--study-card-border, var(--color-border-strong)) 20%, transparent),
+      0 18px 44px color-mix(in srgb, var(--study-card-shadow, rgba(8, 2, 26, 0.24)) 55%, transparent);
   }
 
   .study-flashcard-face .text-white,
@@ -935,24 +961,12 @@
   }
 
   .study-flashcard-face-front {
-    background:
-      linear-gradient(
-        180deg,
-        rgba(31, 22, 54, 0.96) 0%,
-        rgba(22, 15, 42, 0.97) 52%,
-        rgba(15, 10, 30, 0.96) 100%
-      );
+    border-color: var(--study-card-border, var(--color-border-strong));
   }
 
   .study-flashcard-face-back {
-    border-color: rgba(255, 255, 255, 0.12);
-    background:
-      linear-gradient(
-        180deg,
-        rgba(35, 25, 62, 0.97) 0%,
-        rgba(25, 17, 46, 0.98) 52%,
-        rgba(17, 11, 34, 0.97) 100%
-      );
+    border-color: var(--study-card-border-back, var(--study-card-border, var(--color-border-strong)));
+    background-color: var(--color-surface-panel-strong);
   }
 
   body.app-theme-paper-white .text-white {
@@ -1080,10 +1094,7 @@
   body .study-flashcard-face,
   body.app-theme-paper-white .study-flashcard-face,
   body.constellation-background-enabled .study-flashcard-face {
-    --color-text-primary: var(--study-card-text, #fff8ff);
-    --color-text-secondary: color-mix(in srgb, var(--study-card-text, #fff8ff) 82%, transparent);
-    --color-text-muted: color-mix(in srgb, var(--study-card-text, #fff8ff) 66%, transparent);
-    color: var(--study-card-text, #fff8ff) !important;
+    color: var(--color-text-primary) !important;
   }
 
   body .study-flashcard-face .text-white,
@@ -1180,30 +1191,23 @@ body.constellation-background-enabled .bg-surface-panel-strong {
 }
 
 body.constellation-background-enabled .study-flashcard-face {
-  border-color: rgba(255, 255, 255, 0.14);
-  box-shadow: 0 20px 42px rgba(5, 1, 16, 0.22);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  border-color: var(--study-card-border, rgba(255, 255, 255, 0.28));
+  background-image: none;
+  color: #fffaff !important;
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--study-card-border, #eadbff) 24%, transparent),
+    0 20px 42px rgba(5, 1, 16, 0.28);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
 }
 
 body.constellation-background-enabled .study-flashcard-face-front {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(16, 10, 32, 0.92) 0%,
-      rgba(10, 7, 23, 0.94) 55%,
-      rgba(8, 5, 18, 0.96) 100%
-    );
+  background: rgba(8, 5, 18, 0.62);
 }
 
 body.constellation-background-enabled .study-flashcard-face-back {
-  background:
-    linear-gradient(
-      180deg,
-      rgba(20, 12, 38, 0.92) 0%,
-      rgba(13, 8, 28, 0.94) 55%,
-      rgba(9, 5, 20, 0.96) 100%
-    );
+  border-color: var(--study-card-border-back, var(--study-card-border, rgba(255, 255, 255, 0.28)));
+  background: rgba(12, 7, 24, 0.66);
 }
 
 body.constellation-background-enabled .app-topbar {

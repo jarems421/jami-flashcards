@@ -7,7 +7,6 @@ import { useUser } from "@/lib/auth/user-context";
 import AppPage from "@/components/layout/AppPage";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import HowJamiWorksCard from "@/components/study/HowJamiWorksCard";
-import StudyLoopCard from "@/components/study/StudyLoopCard";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
 import { Button, Card, Input, SectionHeader } from "@/components/ui";
 import { logout, deleteAccount } from "@/services/auth";
@@ -244,8 +243,6 @@ export default function ProfilePage() {
       </Button>
 
       <HowJamiWorksCard />
-
-      <StudyLoopCard />
 
       <ThemePreferenceCard />
 

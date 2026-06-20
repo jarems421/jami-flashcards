@@ -60,6 +60,9 @@ describe("theme colour hygiene", () => {
     expect(globals).toContain("--button-secondary-text: #101827;");
     expect(globals).toContain("--button-surface-text: #101827;");
     expect(globals).toContain(".study-flashcard-face {");
+    expect(globals).toContain("border: 2px solid var(--study-card-border");
+    expect(globals).toContain("background-color: var(--color-surface-panel);");
+    expect(globals).toContain("background: rgba(8, 5, 18, 0.62);");
     expect(globals).toContain("--color-text-primary: #fff8ff;");
   });
 
