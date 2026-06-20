@@ -195,7 +195,6 @@ export default function ConstellationDashboardPage() {
         : [],
     [allStars, selectedConstellation]
   );
-  const activeProgressPercent = getConstellationProgressPercent(activeConstellation);
   const selectedProgressPercent = getConstellationProgressPercent(selectedConstellation);
   const recentStars = allStars.slice(0, 5);
 
@@ -399,17 +398,6 @@ export default function ConstellationDashboardPage() {
                 <p>
                   Constellations are your reward space. Complete goals to earn stars, then arrange the active sky so your progress feels visible.
                 </p>
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
-                    Stars come from completed goals
-                  </span>
-                  <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
-                    Active stars can be dragged
-                  </span>
-                  <span className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold">
-                    Optional app background
-                  </span>
-                </div>
               </>
             }
             action={
@@ -425,38 +413,6 @@ export default function ConstellationDashboardPage() {
               >
                 {isFinishingConstellation ? "Finishing..." : canFinishActiveConstellation ? "Finish constellation" : "Finish at 40 stars"}
               </Button>
-            }
-            aside={
-              <div className="app-subtle-panel min-w-[15rem] rounded-[1.7rem] p-4">
-                <div className="flex items-baseline justify-between gap-4">
-                  <div>
-                    <div className="text-xs text-text-muted">Stars earned</div>
-                    <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">
-                      {activeConstellation.starCount}
-                    </div>
-                  </div>
-                  <div className="app-chip rounded-full px-3 py-1 text-xs font-semibold">
-                    Active
-                  </div>
-                </div>
-                <div className="mt-4">
-                  <div className="mb-2 flex justify-between text-xs text-text-muted">
-                    <span>Constellation capacity</span>
-                    <span>{activeConstellation.starCount} / {activeConstellation.maxStars}</span>
-                  </div>
-                  <div className="h-2.5 rounded-full bg-glass-medium">
-                    <div
-                      className="h-2.5 rounded-full bg-success transition-all duration-slow"
-                      style={{ width: `${activeProgressPercent}%` }}
-                    />
-                  </div>
-                  <p className="mt-3 text-xs leading-5 text-text-muted">
-                    {canFinishActiveConstellation
-                      ? "This constellation is full and ready to finish."
-                      : "Keep completing goals to add more stars."}
-                  </p>
-                </div>
-              </div>
             }
           />
         ) : null}
@@ -507,22 +463,32 @@ export default function ConstellationDashboardPage() {
               <div className="app-subtle-panel flex flex-col gap-3 rounded-[1.5rem] p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted sm:max-w-xs">
                   Constellation
-                  <select
-                    value={selectedConstellation?.id ?? ""}
-                    onChange={(event) =>
-                      setSelectedConstellationId(event.target.value)
-                    }
-                    className="app-field mt-1 w-full truncate rounded-2xl py-3 pl-4 pr-8 text-sm font-medium normal-case tracking-normal"
-                  >
-                    {constellations.map((constellation) => (
-                      <option
-                        key={constellation.id}
-                        value={constellation.id}
-                      >
-                        {constellation.name}
-                      </option>
-                    ))}
-                  </select>
+                  <span className="relative mt-1 block">
+                    <select
+                      value={selectedConstellation?.id ?? ""}
+                      onChange={(event) =>
+                        setSelectedConstellationId(event.target.value)
+                      }
+                      className="app-field w-full appearance-none truncate rounded-2xl py-3 pl-4 pr-12 text-sm font-medium normal-case tracking-normal"
+                    >
+                      {constellations.map((constellation) => (
+                        <option
+                          key={constellation.id}
+                          value={constellation.id}
+                        >
+                          {constellation.name}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
+                    >
+                      <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
                 </label>
 
                 {selectedConstellation ? (
@@ -754,27 +720,37 @@ export default function ConstellationDashboardPage() {
               <div className="flex flex-wrap items-center gap-3">
                 <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted sm:max-w-xs">
                   Background sky
-                  <select
-                    value={backgroundConstellationId}
-                    onChange={(event) => {
-                      const nextId = event.target.value;
-                      setBackgroundConstellationId(nextId);
-                      setConstellationBackgroundConstellationId(nextId);
-                    }}
-                    className="app-field mt-1 w-full truncate rounded-[1.7rem] py-3 pl-4 pr-8 text-sm font-medium normal-case tracking-normal"
-                  >
-                    <option value="">
-                      Active or latest
-                    </option>
-                    {constellations.map((constellation) => (
-                      <option
-                        key={constellation.id}
-                        value={constellation.id}
-                      >
-                        {constellation.name}
+                  <span className="relative mt-1 block">
+                    <select
+                      value={backgroundConstellationId}
+                      onChange={(event) => {
+                        const nextId = event.target.value;
+                        setBackgroundConstellationId(nextId);
+                        setConstellationBackgroundConstellationId(nextId);
+                      }}
+                      className="app-field w-full appearance-none truncate rounded-[1.7rem] py-3 pl-4 pr-12 text-sm font-medium normal-case tracking-normal"
+                    >
+                      <option value="">
+                        Active or latest
                       </option>
-                    ))}
-                  </select>
+                      {constellations.map((constellation) => (
+                        <option
+                          key={constellation.id}
+                          value={constellation.id}
+                        >
+                          {constellation.name}
+                        </option>
+                      ))}
+                    </select>
+                    <svg
+                      aria-hidden="true"
+                      viewBox="0 0 20 20"
+                      fill="none"
+                      className="pointer-events-none absolute right-4 top-1/2 h-4 w-4 -translate-y-1/2 text-text-secondary"
+                    >
+                      <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  </span>
                 </label>
 
                 <div className="app-chip rounded-full px-3 py-2 text-xs font-medium">
