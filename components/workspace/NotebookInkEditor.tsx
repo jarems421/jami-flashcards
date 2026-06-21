@@ -67,6 +67,7 @@ type Props = {
   onChange(): void;
   onHistoryChange(undoDepth: number, redoDepth: number): void;
   onInteractionChange(active: boolean): void;
+  onReady?(): void;
   onPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void;
   onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void;
   onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void;
@@ -172,6 +173,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onChange,
       onHistoryChange,
       onInteractionChange,
+      onReady,
       onPointerCancel,
       onPointerDown,
       onPointerMove,
@@ -208,6 +210,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onChange,
       onHistoryChange,
       onInteractionChange,
+      onReady,
     });
     const [eraserCursor, setEraserCursor] = useState<EraserCursor>({
       left: 0,
@@ -221,8 +224,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         onChange,
         onHistoryChange,
         onInteractionChange,
+        onReady,
       };
-    }, [onChange, onHistoryChange, onInteractionChange]);
+    }, [onChange, onHistoryChange, onInteractionChange, onReady]);
 
     useImperativeHandle(
       forwardedRef,
@@ -431,6 +435,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               editor.history.undoStackSize,
               editor.history.redoStackSize
             );
+            // Signal that the page's ink has loaded and painted, so the page can
+            // drop the static ink underlay it shows during the swap (avoids the
+            // brief blank flash while js-draw deserializes the SVG).
+            callbacksRef.current.onReady?.();
           });
         })
         .catch((error) => {

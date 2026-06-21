@@ -675,6 +675,87 @@ function NotebookPageThumbnail({
   );
 }
 
+// Full-size, non-interactive render of a page's saved content (style, background
+// file, ink SVG, text blocks). Used as the swipe preview so the real adjacent
+// page is visible while dragging, instead of a blank placeholder that only fills
+// in after the editor remounts.
+function NotebookPageStaticContent({
+  page,
+  notebook,
+  backgroundFile,
+  backgroundUrl,
+}: {
+  page: NotebookPage;
+  notebook: Notebook | null;
+  backgroundFile: NotebookFile | null;
+  backgroundUrl?: string;
+}) {
+  const pageColor = page.pageColor ?? notebook?.pageColor ?? "white";
+  const pageStyle = page.pageStyle ?? notebook?.pageStyle ?? "plain";
+  const inkSvg =
+    page.inkData?.svg ??
+    legacyStrokesToJsDrawSvg(
+      normalizeStrokes(page.strokeData?.strokes),
+      CANVAS_WIDTH,
+      CANVAS_HEIGHT
+    );
+  const hasInk =
+    Boolean(page.inkData?.svg) || (page.strokeData?.strokes?.length ?? 0) > 0;
+  return (
+    <>
+      <div
+        aria-hidden="true"
+        className="absolute inset-0"
+        style={getPageStyleBackground(pageColor, pageStyle)}
+      />
+      {backgroundFile?.fileType.startsWith("image/") && backgroundUrl ? (
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-contain bg-center bg-no-repeat"
+          style={{ backgroundImage: `url("${backgroundUrl}")` }}
+        />
+      ) : null}
+      {backgroundFile?.fileType === "application/pdf" && backgroundFile.storagePath ? (
+        <NotebookPdfPage
+          aria-hidden="true"
+          storagePath={backgroundFile.storagePath}
+          pageIndex={page.pdfPageIndex ?? 0}
+          lazy
+          className="absolute inset-0"
+        />
+      ) : null}
+      {hasInk ? (
+        <Image
+          alt=""
+          aria-hidden="true"
+          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(inkSvg)}`}
+          fill
+          unoptimized
+          sizes="48rem"
+          className="object-fill"
+        />
+      ) : null}
+      {page.textBlocks.map((block) => (
+        <div
+          key={block.id}
+          aria-hidden="true"
+          className={`absolute overflow-hidden whitespace-pre-wrap rounded-lg p-2 text-sm font-medium leading-6 ${
+            pageColor === "black" ? "text-[#f8fafc]" : "text-slate-950"
+          }`}
+          style={{
+            left: `${(block.x / CANVAS_WIDTH) * 100}%`,
+            top: `${(block.y / CANVAS_HEIGHT) * 100}%`,
+            width: `${(block.width / CANVAS_WIDTH) * 100}%`,
+            height: `${(block.height / CANVAS_HEIGHT) * 100}%`,
+          }}
+        >
+          {block.text}
+        </div>
+      ))}
+    </>
+  );
+}
+
 function shouldAppendLiveInkPoint(
   points: LiveInkPoint[],
   point: LiveInkPoint,
@@ -1060,6 +1141,7 @@ export default function NotebookEditorPage() {
   const [createPageProgress, setCreatePageProgress] = useState(0);
   const [creatingPage, setCreatingPage] = useState(false);
   const [createPageBounce, setCreatePageBounce] = useState(false);
+  const [inkReady, setInkReady] = useState(false);
   const [activeTextGestureId, setActiveTextGestureId] = useState<string | null>(null);
   const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
@@ -1168,6 +1250,28 @@ export default function NotebookEditorPage() {
     selectedPage?.backgroundFileId,
   ]);
   const activeNotebookFileUrl = activeNotebookFile ? fileUrls[activeNotebookFile.id] : undefined;
+  // Resolve any page's background file + URL (mirrors activeNotebookFile) so the
+  // swipe preview can render the real adjacent page rather than a placeholder.
+  const resolvePageBackground = useCallback(
+    (page: NotebookPage | null | undefined) => {
+      if (!page) return { file: null as NotebookFile | null, url: undefined };
+      const backgroundFileId = resolveNotebookPageBackgroundFileId({
+        pageBackgroundFileId: page.backgroundFileId,
+        notebookUploadedFileId: notebook?.uploadedFileId,
+        firstFileId: files[0]?.id,
+        hasMappedPages: hasMappedBackgroundPages,
+      });
+      const file =
+        (backgroundFileId
+          ? files.find((entry) => entry.id === backgroundFileId)
+          : null) ??
+        files[0] ??
+        null;
+      return { file, url: file ? fileUrls[file.id] : undefined };
+    },
+    [files, fileUrls, hasMappedBackgroundPages, notebook?.uploadedFileId]
+  );
+  const swipeAdjacentBackground = resolvePageBackground(swipeAdjacentPage);
   const landscapeFitZoom = useMemo(() => {
     if (!editorViewport.isLandscape || editorViewport.height <= 0) return 1;
     const rootFontSize =
@@ -1182,6 +1286,13 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     selectedPageRef.current = selectedPage;
   }, [selectedPage]);
+
+  // Each time the page changes, the ink editor remounts and re-deserializes the
+  // SVG. Mark ink as not-yet-ready so the static ink underlay shows until the
+  // editor paints, then NotebookInkEditor's onReady clears it — no blank flash.
+  useEffect(() => {
+    setInkReady(false);
+  }, [selectedPage?.id]);
 
   useEffect(() => {
     if (typeof window === "undefined" || !selectedPage?.id) return;
@@ -4129,7 +4240,7 @@ export default function NotebookEditorPage() {
                 {createPageActive || creatingPage ? (
                   <div
                     aria-hidden="true"
-                    className="notebook-create-page-affordance pointer-events-none absolute right-3 top-1/2 z-30 -translate-y-1/2 sm:right-6"
+                    className="notebook-create-page-affordance pointer-events-none fixed right-4 top-1/2 z-40 -translate-y-1/2 sm:right-10"
                     style={{
                       opacity: creatingPage
                         ? 1
@@ -4181,7 +4292,7 @@ export default function NotebookEditorPage() {
                 {swipeAdjacentPage ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-[0.95rem] ${
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${
                       PAGE_COLOR_CLASS[swipeAdjacentPage.pageColor]
                     }`}
                     style={{
@@ -4200,22 +4311,41 @@ export default function NotebookEditorPage() {
                         : "none",
                     }}
                   >
-                    <div
-                      className="absolute inset-0"
-                      style={getPageStyleBackground(
-                        swipeAdjacentPage.pageColor,
-                        swipeAdjacentPage.pageStyle
-                      )}
+                    <NotebookPageStaticContent
+                      page={swipeAdjacentPage}
+                      notebook={notebook}
+                      backgroundFile={swipeAdjacentBackground.file}
+                      backgroundUrl={swipeAdjacentBackground.url}
                     />
-                    <div className="absolute inset-x-8 top-8 text-sm font-semibold opacity-35">
-                      Page {swipeAdjacentPage.pageNumber}
-                    </div>
+                  </div>
+                ) : null}
+                {createPageActive ? (
+                  <div
+                    aria-hidden="true"
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-[0.95rem] ${PAGE_COLOR_CLASS[pageColor]}`}
+                    style={{
+                      width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
+                      maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
+                      aspectRatio: editorViewport.isLandscape
+                        ? `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`
+                        : `${CANVAS_WIDTH} / ${Math.round(
+                            CANVAS_HEIGHT * NOTEBOOK_PAGE_PORTRAIT_STRETCH
+                          )}`,
+                      transform: `translateX(-50%) translateX(100%) translateX(${pageSwipeOffset}px)`,
+                      transition: "none",
+                    }}
+                  >
+                    <div
+                      aria-hidden="true"
+                      className="absolute inset-0"
+                      style={getPageStyleBackground(pageColor, pageStyle)}
+                    />
                   </div>
                 ) : null}
                 <div
                   ref={pageSurfaceRef}
                   data-notebook-page-surface
-                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden rounded-[0.95rem] shadow-[0_18px_48px_rgba(0,0,0,0.2)] ${PAGE_COLOR_CLASS[pageColor]} ${
+                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden ${PAGE_COLOR_CLASS[pageColor]} ${
                     pageTransitionDirection === "next"
                       ? "notebook-page-transition-next"
                       : pageTransitionDirection === "previous"
@@ -4282,6 +4412,21 @@ export default function NotebookEditorPage() {
                       </div>
                     </div>
                   ) : null}
+                  {!inkReady &&
+                  (selectedPage.inkData?.svg ||
+                    (selectedPage.strokeData?.strokes?.length ?? 0) > 0) ? (
+                    <Image
+                      alt=""
+                      aria-hidden="true"
+                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+                        selectedPageInkSvg
+                      )}`}
+                      fill
+                      unoptimized
+                      sizes="48rem"
+                      className="pointer-events-none absolute inset-0 z-[12] object-fill"
+                    />
+                  ) : null}
                   <NotebookInkEditor
                     ref={inkEditorRef}
                     key={selectedPage.id}
@@ -4289,6 +4434,7 @@ export default function NotebookEditorPage() {
                     pageWidth={CANVAS_WIDTH}
                     pageHeight={CANVAS_HEIGHT}
                     initialSvg={selectedPageInkSvg}
+                    onReady={() => setInkReady(true)}
                     activeTool={tool}
                     eraserMode={eraserMode}
                     penColor={penColor}

@@ -157,7 +157,10 @@ export function getNotebookCreatePagePull(input: {
   const pull = Math.max(0, -input.totalDx);
   const threshold = getNotebookCreatePageThreshold(input.pageWidth);
   const progress = Math.max(0, Math.min(1, pull / threshold));
-  const resistedOffset = pull > 0 ? -Math.sqrt(pull) * 5 : 0;
+  // Track the finger (with a little drag) so the incoming blank page is revealed
+  // bit by bit as you pull, capped so it never slides further than the page.
+  const resistedOffset =
+    pull > 0 ? -Math.min(pull * 0.6, Math.max(1, input.pageWidth) * 0.6) : 0;
   return { progress, resistedOffset };
 }
 
