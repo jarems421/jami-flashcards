@@ -195,6 +195,9 @@ const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 1240;
 const NOTEBOOK_PAGE_BASE_WIDTH_REM = 48;
 const NOTEBOOK_PAGE_PORTRAIT_STRETCH = 1.035;
+// Gutter kept between the current page and the page sliding in, so they stay
+// visibly separated during a swipe instead of joining edge-to-edge.
+const NOTEBOOK_PAGE_SWIPE_GAP = 28;
 const NOTEBOOK_PAGE_ASPECT_RATIO = CANVAS_HEIGHT / CANVAS_WIDTH;
 const NOTEBOOK_PAGE_LANDSCAPE_VERTICAL_GUTTER = 88;
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
@@ -2944,7 +2947,10 @@ export default function NotebookEditorPage() {
             ? pages[selectedPageIndex + 1]
             : pages[selectedPageIndex - 1];
         if (targetPage) {
-          setPageSwipeOffset(direction === "next" ? -pageWidth : pageWidth);
+          // Slide the current page fully out plus the gutter, so the incoming
+          // page (which sits a gutter past the edge) settles exactly centred.
+          const slide = pageWidth + NOTEBOOK_PAGE_SWIPE_GAP;
+          setPageSwipeOffset(direction === "next" ? -slide : slide);
           window.setTimeout(() => {
             void (async () => {
               await selectPageById(targetPage.id);
@@ -4117,13 +4123,13 @@ export default function NotebookEditorPage() {
         ) : null}
 
         {pagesDrawerOpen ? (
-          <aside className="absolute bottom-0 left-0 top-0 z-30 w-64 border-r border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]">
-            <div className="flex items-center justify-between gap-2 px-1 pb-2">
+          <aside className="absolute bottom-0 left-0 top-0 z-30 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]">
+            <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-2">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Pages
               </div>
             </div>
-            <div className="max-h-[calc(100vh-7rem)] space-y-2 overflow-y-auto pr-1">
+            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pr-1">
               {pages.length > 0 ? (
                 pages.map((page) => {
                   const selected = page.id === selectedPage?.id;
@@ -4237,62 +4243,10 @@ export default function NotebookEditorPage() {
             ) : null}
 
               <div className="notebook-page-stage relative mx-auto w-full overflow-hidden">
-                {createPageActive || creatingPage ? (
-                  <div
-                    aria-hidden="true"
-                    className="notebook-create-page-affordance pointer-events-none fixed right-4 top-1/2 z-40 -translate-y-1/2 sm:right-10"
-                    style={{
-                      opacity: creatingPage
-                        ? 1
-                        : Math.min(1, 0.2 + createPageProgress * 0.8),
-                    }}
-                  >
-                    <div
-                      className={`grid h-16 w-16 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-[0_12px_30px_rgba(0,0,0,0.2)] ${
-                        createPageBounce ? "notebook-create-page-pop" : ""
-                      }`}
-                      style={{
-                        transform: `scale(${
-                          creatingPage ? 1 : 0.72 + createPageProgress * 0.28
-                        })`,
-                      }}
-                    >
-                      <svg viewBox="0 0 48 48" className="h-11 w-11 -rotate-90">
-                        <circle
-                          cx="24"
-                          cy="24"
-                          r="20"
-                          fill="none"
-                          stroke="var(--color-border)"
-                          strokeWidth="3.5"
-                        />
-                        <circle
-                          cx="24"
-                          cy="24"
-                          r="20"
-                          fill="none"
-                          stroke="var(--color-selected-border)"
-                          strokeWidth="3.5"
-                          strokeLinecap="round"
-                          strokeDasharray={2 * Math.PI * 20}
-                          strokeDashoffset={2 * Math.PI * 20 * (1 - createPageProgress)}
-                          style={{ transition: "stroke-dashoffset 80ms linear" }}
-                        />
-                        <path
-                          d="M24 15v18M15 24h18"
-                          fill="none"
-                          stroke="var(--color-selected-border)"
-                          strokeWidth="3.5"
-                          strokeLinecap="round"
-                        />
-                      </svg>
-                    </div>
-                  </div>
-                ) : null}
                 {swipeAdjacentPage ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-lg after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-lg after:border after:border-slate-300/80 after:content-[''] ${
                       PAGE_COLOR_CLASS[swipeAdjacentPage.pageColor]
                     }`}
                     style={{
@@ -4304,7 +4258,9 @@ export default function NotebookEditorPage() {
                             CANVAS_HEIGHT * NOTEBOOK_PAGE_PORTRAIT_STRETCH
                           )}`,
                       transform: `translateX(-50%) translateX(${
-                        pageSwipeOffset < 0 ? "100%" : "-100%"
+                        pageSwipeOffset < 0
+                          ? `calc(100% + ${NOTEBOOK_PAGE_SWIPE_GAP}px)`
+                          : `calc(-100% - ${NOTEBOOK_PAGE_SWIPE_GAP}px)`
                       }) translateX(${pageSwipeOffset}px)`,
                       transition: pageSwipeSettling
                         ? "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)"
@@ -4322,7 +4278,7 @@ export default function NotebookEditorPage() {
                 {createPageActive ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-[0.95rem] ${PAGE_COLOR_CLASS[pageColor]}`}
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-lg after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-lg after:border after:border-slate-300/80 after:content-[''] ${PAGE_COLOR_CLASS[pageColor]}`}
                     style={{
                       width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
                       maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
@@ -4331,7 +4287,7 @@ export default function NotebookEditorPage() {
                         : `${CANVAS_WIDTH} / ${Math.round(
                             CANVAS_HEIGHT * NOTEBOOK_PAGE_PORTRAIT_STRETCH
                           )}`,
-                      transform: `translateX(-50%) translateX(100%) translateX(${pageSwipeOffset}px)`,
+                      transform: `translateX(-50%) translateX(calc(100% + ${NOTEBOOK_PAGE_SWIPE_GAP}px)) translateX(${pageSwipeOffset}px)`,
                       transition: "none",
                     }}
                   >
@@ -4345,7 +4301,7 @@ export default function NotebookEditorPage() {
                 <div
                   ref={pageSurfaceRef}
                   data-notebook-page-surface
-                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden ${PAGE_COLOR_CLASS[pageColor]} ${
+                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden rounded-lg after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-lg after:border after:border-slate-300/80 after:content-[''] ${PAGE_COLOR_CLASS[pageColor]} ${
                     pageTransitionDirection === "next"
                       ? "notebook-page-transition-next"
                       : pageTransitionDirection === "previous"
@@ -4670,6 +4626,58 @@ export default function NotebookEditorPage() {
                 <NotebookIcon name="chevron" />
               </span>
             </button>
+            {createPageActive || creatingPage ? (
+              <div
+                aria-hidden="true"
+                className="notebook-create-page-affordance pointer-events-none absolute right-[2.375rem] top-1/2 z-40 -translate-y-1/2 translate-x-1/2"
+                style={{
+                  opacity: creatingPage
+                    ? 1
+                    : Math.min(1, 0.2 + createPageProgress * 0.8),
+                }}
+              >
+                <div
+                  className={`grid h-16 w-16 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-[0_12px_30px_rgba(0,0,0,0.2)] ${
+                    createPageBounce ? "notebook-create-page-pop" : ""
+                  }`}
+                  style={{
+                    transform: `scale(${
+                      creatingPage ? 1 : 0.72 + createPageProgress * 0.28
+                    })`,
+                  }}
+                >
+                  <svg viewBox="0 0 48 48" className="h-11 w-11 -rotate-90">
+                    <circle
+                      cx="24"
+                      cy="24"
+                      r="20"
+                      fill="none"
+                      stroke="var(--color-border)"
+                      strokeWidth="3.5"
+                    />
+                    <circle
+                      cx="24"
+                      cy="24"
+                      r="20"
+                      fill="none"
+                      stroke="var(--color-selected-border)"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                      strokeDasharray={2 * Math.PI * 20}
+                      strokeDashoffset={2 * Math.PI * 20 * (1 - createPageProgress)}
+                      style={{ transition: "stroke-dashoffset 80ms linear" }}
+                    />
+                    <path
+                      d="M24 15v18M15 24h18"
+                      fill="none"
+                      stroke="var(--color-selected-border)"
+                      strokeWidth="3.5"
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                </div>
+              </div>
+            ) : null}
             <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
               {selectedPageIndex >= 0 ? selectedPageIndex + 1 : 0} of {pages.length || 0}
             </div>

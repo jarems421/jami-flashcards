@@ -51,4 +51,19 @@ describe("notebook upload UI", () => {
     expect(notebookPage).not.toContain('label="Notebook settings"');
     expect(notebookPage).not.toContain("showNotebookSettings");
   });
+
+  it("keeps the pages drawer list within its available height", () => {
+    const notebookPage = readFileSync(
+      join(root, "app/dashboard/notebooks/[notebookId]/page.tsx"),
+      "utf8"
+    );
+
+    expect(notebookPage).toContain(
+      "flex min-h-0 w-64 flex-col"
+    );
+    expect(notebookPage).toContain(
+      "min-h-0 flex-1 space-y-2 overflow-y-auto"
+    );
+    expect(notebookPage).not.toContain("max-h-[calc(100vh-7rem)]");
+  });
 });
