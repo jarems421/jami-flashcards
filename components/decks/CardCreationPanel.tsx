@@ -672,4 +672,4 @@ export default function CardCreationPanel({
 
     </section>
   );
-}
+} 

@@ -11,14 +11,7 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import {
-  Color4,
-  Path,
-  Stroke,
-  pathToRenderable,
-  uniteCommands,
-  type Editor as JsDrawEditor,
-} from "js-draw";
+import type { Editor as JsDrawEditor } from "js-draw";
 import type {
   NotebookStroke,
   NotebookStrokeColor,
@@ -29,16 +22,11 @@ import {
 } from "@/lib/workspace/notebook-eraser";
 import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
-import {
-  getFreehandOutline,
-  getSvgPathFromStrokeOutline,
-} from "@/lib/workspace/notebook-ink-engine";
 
 export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "text";
 
 export type NotebookInkEditorHandle = {
   clear(): void;
-  commitStrokes(strokes: PreparedNotebookStroke[]): Promise<void>;
   getHistoryState(): { undoDepth: number; redoDepth: number };
   hasInk(): boolean;
   isInteracting(): boolean;
@@ -134,6 +122,7 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
     );
     primaryPen.setPressureSensitivityEnabled(style.activeTool === "pen");
     primaryPen.setHasStabilization(false);
+    primaryPen.setEnabled(true);
   } else if (style.activeTool === "eraser") {
     erasers[0]?.setEnabled(true);
   } else if (style.activeTool === "select") {
@@ -192,7 +181,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const jsDrawRef = useRef<JsDrawModule | null>(null);
     const loadingRef = useRef(true);
     const readyRef = useRef(false);
-    const suppressedChangeEventsRef = useRef(0);
     const activePointersRef = useRef<Set<number>>(new Set());
     const pendingStyleRef = useRef(false);
     const initialSvgRef = useRef(initialSvg);
@@ -237,57 +225,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           if (!editor || !jsDraw) return;
           const components = editor.image.getAllComponents();
           if (components.length > 0) editor.dispatch(new jsDraw.Erase(components));
-        },
-        async commitStrokes(strokes) {
-          const editor = editorRef.current;
-          if (!editor || strokes.length === 0) return;
-          const commands = strokes.flatMap((stroke) => {
-            if (stroke.tool === "eraser" || stroke.points.length === 0) return [];
-            const pathData =
-              stroke.pathData ??
-              getSvgPathFromStrokeOutline(
-                getFreehandOutline({
-                  points: stroke.points,
-                  tool: stroke.tool,
-                  width: stroke.width,
-                  mode: "committed",
-                })
-              );
-            if (!pathData) return [];
-            const { color, opacity } = getNotebookInkColor(
-              stroke.color,
-              stroke.tool
-            );
-            const parsed = Color4.fromString(color);
-            const component = new Stroke([
-              pathToRenderable(Path.fromString(pathData), {
-                fill: Color4.ofRGBA(
-                  parsed.r,
-                  parsed.g,
-                  parsed.b,
-                  opacity
-                ),
-              }),
-            ]);
-            return [editor.image.addComponent(component)];
-          });
-          if (commands.length === 0) return;
-          suppressedChangeEventsRef.current += 1;
-          try {
-            await editor.dispatch(
-              uniteCommands(commands, {
-                description:
-                  commands.length === 1
-                    ? "Add notebook stroke"
-                    : "Add notebook strokes",
-              })
-            );
-          } finally {
-            suppressedChangeEventsRef.current = Math.max(
-              0,
-              suppressedChangeEventsRef.current - 1
-            );
-          }
         },
         getHistoryState() {
           const history = editorRef.current?.history;
@@ -388,10 +325,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
                 event.undoStackSize,
                 event.redoStackSize
               );
-              if (
-                !loadingRef.current &&
-                suppressedChangeEventsRef.current === 0
-              ) {
+              if (!loadingRef.current) {
                 callbacksRef.current.onChange();
               }
             }
@@ -534,17 +468,14 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       }
     }, []);
 
+    // Every non-touch tool draws directly through js-draw, so the ink the user
+    // sees while writing is the exact ink that is kept and saved. Touch always
+    // falls through to the page handlers (fingers navigate, stylus writes).
     const forwardInkPointer = (
       type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
       event: ReactPointerEvent<HTMLDivElement>
     ) => {
-      if (
-        event.pointerType === "touch" ||
-        activeTool === "text" ||
-        activeTool === "pen" ||
-        activeTool === "highlighter" ||
-        readOnly
-      ) {
+      if (event.pointerType === "touch" || activeTool === "text" || readOnly) {
         return false;
       }
       event.preventDefault();
@@ -561,12 +492,47 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         setEraserCursor((current) => ({ ...current, visible: false }));
       }
       if (!readyRef.current) return true;
+      const surface = event.currentTarget;
       if (type === "pointerdown") {
+        try {
+          if (!surface.hasPointerCapture(event.pointerId)) {
+            surface.setPointerCapture(event.pointerId);
+          }
+        } catch {
+          // Safari can reject capture on rapid stylus re-contact; keep drawing.
+        }
         activePointersRef.current.add(event.pointerId);
         callbacksRef.current.onInteractionChange(true);
       }
-      editorRef.current?.handleHTMLPointerEvent(type, event.nativeEvent);
+      const editor = editorRef.current;
+      if (editor) {
+        if (type === "pointermove") {
+          // Forward the coalesced samples so fast pen movement keeps its full
+          // input resolution instead of being downsampled to frame rate.
+          const nativeEvent = event.nativeEvent;
+          const samples =
+            typeof nativeEvent.getCoalescedEvents === "function"
+              ? nativeEvent.getCoalescedEvents()
+              : [];
+          if (samples.length > 0) {
+            for (const sample of samples) {
+              editor.handleHTMLPointerEvent("pointermove", sample);
+            }
+          } else {
+            editor.handleHTMLPointerEvent(type, nativeEvent);
+          }
+        } else {
+          editor.handleHTMLPointerEvent(type, event.nativeEvent);
+        }
+      }
       if (type === "pointerup" || type === "pointercancel") {
+        try {
+          if (surface.hasPointerCapture(event.pointerId)) {
+            surface.releasePointerCapture(event.pointerId);
+          }
+        } catch {
+          // Capture may already be gone; interaction cleanup still runs.
+        }
         finishPointerInteraction(event.pointerId);
       }
       return true;
