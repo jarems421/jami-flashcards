@@ -122,6 +122,12 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
     );
     primaryPen.setPressureSensitivityEnabled(style.activeTool === "pen");
     primaryPen.setHasStabilization(false);
+    // The default freehand builder re-fits one quadratic Bézier over the whole
+    // uncommitted tail on every sample, so the live stroke visibly reshapes
+    // ("pulls") behind the pen. The polyline builder commits each sample
+    // immediately — with coalesced pointer input the ink follows the pen
+    // faithfully, and what is drawn is exactly what is kept.
+    primaryPen.setStrokeFactory(jsDraw.makePolylineBuilder);
     primaryPen.setEnabled(true);
   } else if (style.activeTool === "eraser") {
     erasers[0]?.setEnabled(true);
