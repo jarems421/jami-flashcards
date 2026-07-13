@@ -11,7 +11,11 @@ import {
   useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type { Editor as JsDrawEditor } from "js-draw";
+import type {
+  Editor as JsDrawEditor,
+  InputEvt as JsDrawInputEvent,
+  Pointer as JsDrawPointer,
+} from "js-draw";
 import type {
   NotebookStroke,
   NotebookStrokeColor,
@@ -91,6 +95,34 @@ function loadJsDraw() {
   return jsDrawModulePromise;
 }
 
+// js-draw quantizes each incoming pointer's canvas position to a grid of
+// 10^floor(log10(1/scaleFactor)) canvas units — a whole canvas unit at this
+// notebook's typical zoom. The default Bézier fitting used to hide that grid;
+// faithful polyline strokes render it as visible stair-steps ("grainy" ink).
+// Every pointer still carries its exact screen position, so this mapper
+// re-derives the canvas position at full precision before the pen sees it.
+function makePrecisePenInputMapper(jsDraw: JsDrawModule, editor: JsDrawEditor) {
+  class PrecisePenInputMapper extends jsDraw.InputMapper {
+    onEvent(event: JsDrawInputEvent): boolean {
+      if (
+        event.kind === jsDraw.InputEvtType.PointerDownEvt ||
+        event.kind === jsDraw.InputEvtType.PointerMoveEvt ||
+        event.kind === jsDraw.InputEvtType.PointerUpEvt
+      ) {
+        const withExactPosition = (pointer: JsDrawPointer) =>
+          pointer.withScreenPosition(pointer.screenPos, editor.viewport);
+        return this.emit({
+          ...event,
+          current: withExactPosition(event.current),
+          allPointers: event.allPointers.map(withExactPosition),
+        });
+      }
+      return this.emit(event);
+    }
+  }
+  return new PrecisePenInputMapper();
+}
+
 function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModule) {
   const pens = editor.toolController.getMatchingTools(jsDraw.PenTool);
   const erasers = editor.toolController.getMatchingTools(jsDraw.EraserTool);
@@ -122,7 +154,6 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
         : style.penThickness
     );
     primaryPen.setPressureSensitivityEnabled(style.activeTool === "pen");
-    primaryPen.setHasStabilization(false);
     // The default freehand builder re-fits one quadratic Bézier over the whole
     // uncommitted tail on every sample, so the live stroke visibly reshapes
     // ("pulls") behind the pen. The polyline builder commits each sample
@@ -299,6 +330,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           });
           editorRef.current = editor;
           editor.setReadOnly(readOnlyRef.current);
+          editor.toolController
+            .getMatchingTools(jsDraw.PenTool)[0]
+            ?.setInputMapper(makePrecisePenInputMapper(jsDraw, editor));
           editor.toolController
             .getMatchingTools(jsDraw.EraserTool)
             .forEach((eraser) => {

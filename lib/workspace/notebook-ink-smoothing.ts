@@ -3,6 +3,11 @@
 // rises with pointer speed. Slow strokes (where hand tremor and sensor noise
 // dominate) are smoothed strongly; fast strokes are followed almost exactly,
 // so the ink never feels like it is being pulled behind the pen.
+//
+// Both axes share one cutoff derived from the 2D speed. Filtering each axis
+// by its own speed (the textbook formulation) over-smooths whichever axis is
+// momentarily slow, which visibly warps curves — a diagonal stroke would lag
+// vertically while tracking horizontally.
 
 export type NotebookInkSample = {
   x: number;
@@ -19,14 +24,18 @@ export type NotebookInkSmoothingOptions = {
    * lag to roughly `1 / (2π · beta)` pixels at high speed.
    */
   beta: number;
-  /** Cutoff (Hz) for the internal speed estimate. */
+  /**
+   * Cutoff (Hz) for the velocity estimate. Higher values make the filter
+   * loosen its smoothing sooner after the pen speeds up (less lag at stroke
+   * starts) at the cost of a noisier speed estimate.
+   */
   derivativeCutoff: number;
 };
 
 export const NOTEBOOK_INK_SMOOTHING: NotebookInkSmoothingOptions = {
   minCutoff: 2,
-  beta: 0.04,
-  derivativeCutoff: 1,
+  beta: 0.06,
+  derivativeCutoff: 5,
 };
 
 // Duplicate or out-of-order timestamps (common for coalesced pointer samples)
@@ -38,37 +47,22 @@ function lowPassAlpha(cutoffHz: number, deltaSeconds: number) {
   return deltaSeconds / (deltaSeconds + timeConstant);
 }
 
-class OneEuroAxis {
-  private value: number;
-  private derivative = 0;
-
-  constructor(
-    initialValue: number,
-    private readonly options: NotebookInkSmoothingOptions
-  ) {
-    this.value = initialValue;
-  }
-
-  next(rawValue: number, deltaSeconds: number) {
-    const derivativeAlpha = lowPassAlpha(this.options.derivativeCutoff, deltaSeconds);
-    const rawDerivative = (rawValue - this.value) / deltaSeconds;
-    this.derivative += derivativeAlpha * (rawDerivative - this.derivative);
-
-    const cutoff = this.options.minCutoff + this.options.beta * Math.abs(this.derivative);
-    const alpha = lowPassAlpha(cutoff, deltaSeconds);
-    this.value += alpha * (rawValue - this.value);
-    return this.value;
-  }
-}
-
 export class NotebookInkSmoother {
-  private readonly xAxis: OneEuroAxis;
-  private readonly yAxis: OneEuroAxis;
+  private x: number;
+  private y: number;
+  // Signed, low-passed velocity components. Keeping the sign lets alternating
+  // jitter cancel to ~zero speed (so jitter cannot loosen its own smoothing),
+  // while sustained motion accumulates into a real speed estimate.
+  private velocityX = 0;
+  private velocityY = 0;
   private lastTime: number;
 
-  constructor(seed: NotebookInkSample, options: NotebookInkSmoothingOptions = NOTEBOOK_INK_SMOOTHING) {
-    this.xAxis = new OneEuroAxis(seed.x, options);
-    this.yAxis = new OneEuroAxis(seed.y, options);
+  constructor(
+    seed: NotebookInkSample,
+    private readonly options: NotebookInkSmoothingOptions = NOTEBOOK_INK_SMOOTHING
+  ) {
+    this.x = seed.x;
+    this.y = seed.y;
     this.lastTime = seed.time;
   }
 
@@ -78,9 +72,16 @@ export class NotebookInkSmoother {
       (sample.time - this.lastTime) / 1000
     );
     this.lastTime = Math.max(this.lastTime, sample.time);
-    return {
-      x: this.xAxis.next(sample.x, deltaSeconds),
-      y: this.yAxis.next(sample.y, deltaSeconds),
-    };
+
+    const derivativeAlpha = lowPassAlpha(this.options.derivativeCutoff, deltaSeconds);
+    this.velocityX += derivativeAlpha * ((sample.x - this.x) / deltaSeconds - this.velocityX);
+    this.velocityY += derivativeAlpha * ((sample.y - this.y) / deltaSeconds - this.velocityY);
+    const speed = Math.hypot(this.velocityX, this.velocityY);
+
+    const cutoff = this.options.minCutoff + this.options.beta * speed;
+    const alpha = lowPassAlpha(cutoff, deltaSeconds);
+    this.x += alpha * (sample.x - this.x);
+    this.y += alpha * (sample.y - this.y);
+    return { x: this.x, y: this.y };
   }
 }

@@ -93,6 +93,23 @@ describe("notebook ink smoothing", () => {
     expect(fastLagInSteps).toBeLessThan(slowLagInSteps);
   });
 
+  it("does not warp diagonal strokes (isotropic smoothing)", () => {
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    // Constant-velocity diagonal stroke along y = x.
+    const samples = makeSamples(
+      Array.from({ length: 60 }, (_, index) => ({
+        x: (index + 1) * 2,
+        y: (index + 1) * 2,
+      }))
+    );
+
+    for (const sample of samples) {
+      const filtered = smoother.next(sample);
+      // Both axes must lag by the same amount, keeping the point on the line.
+      expect(Math.abs(filtered.y - filtered.x)).toBeLessThan(1e-9);
+    }
+  });
+
   it("survives duplicate and out-of-order timestamps", () => {
     const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 100 });
     const samples: NotebookInkSample[] = [
