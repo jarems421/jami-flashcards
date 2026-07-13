@@ -22,6 +22,7 @@ import {
 } from "@/lib/workspace/notebook-eraser";
 import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
+import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
 
 export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "text";
 
@@ -188,6 +189,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const loadingRef = useRef(true);
     const readyRef = useRef(false);
     const activePointersRef = useRef<Set<number>>(new Set());
+    const inkSmoothersRef = useRef<Map<number, NotebookInkSmoother>>(new Map());
     const pendingStyleRef = useRef(false);
     const initialSvgRef = useRef(initialSvg);
     const readOnlyRef = useRef(readOnly);
@@ -281,9 +283,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       loadingRef.current = true;
       readyRef.current = false;
       activePointersRef.current.clear();
+      inkSmoothersRef.current.clear();
       host.replaceChildren();
 
       const activePointers = activePointersRef.current;
+      const inkSmoothers = inkSmoothersRef.current;
       void loadJsDraw()
         .then(async (jsDraw) => {
           if (disposed) return;
@@ -391,6 +395,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         disposed = true;
         readyRef.current = false;
         activePointers.clear();
+        inkSmoothers.clear();
         callbacksRef.current.onInteractionChange(false);
         viewportResizeObserver?.disconnect();
         if (viewportFrame !== null) {
@@ -440,6 +445,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
 
     useEffect(() => {
       const cancelInteractions = () => {
+        inkSmoothersRef.current.clear();
         if (activePointersRef.current.size === 0) return;
         activePointersRef.current.clear();
         callbacksRef.current.onInteractionChange(false);
@@ -499,6 +505,31 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       }
       if (!readyRef.current) return true;
       const surface = event.currentTarget;
+      // Passes drawing input through a One Euro filter so slow strokes lose
+      // hand-tremor jitter while fast strokes stay glued to the pen. Filtered
+      // samples are re-issued as synthetic PointerEvents; js-draw reads only
+      // their coordinates/pressure/button fields, so this is safe.
+      const makeFilteredPointerEvent = (
+        filteredType: "pointermove" | "pointerup",
+        sample: PointerEvent
+      ): PointerEvent => {
+        const smoother = inkSmoothersRef.current.get(sample.pointerId);
+        if (!smoother) return sample;
+        const filtered = smoother.next({
+          x: sample.clientX,
+          y: sample.clientY,
+          time: sample.timeStamp,
+        });
+        return new PointerEvent(filteredType, {
+          clientX: filtered.x,
+          clientY: filtered.y,
+          pointerId: sample.pointerId,
+          pointerType: sample.pointerType,
+          pressure: sample.pressure,
+          isPrimary: sample.isPrimary,
+          buttons: sample.buttons,
+        });
+      };
       if (type === "pointerdown") {
         try {
           if (!surface.hasPointerCapture(event.pointerId)) {
@@ -508,6 +539,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           // Safari can reject capture on rapid stylus re-contact; keep drawing.
         }
         activePointersRef.current.add(event.pointerId);
+        if (
+          (activeTool === "pen" || activeTool === "highlighter") &&
+          typeof PointerEvent === "function"
+        ) {
+          inkSmoothersRef.current.set(
+            event.pointerId,
+            new NotebookInkSmoother({
+              x: event.clientX,
+              y: event.clientY,
+              time: event.nativeEvent.timeStamp,
+            })
+          );
+        }
         callbacksRef.current.onInteractionChange(true);
       }
       const editor = editorRef.current;
@@ -522,16 +566,28 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               : [];
           if (samples.length > 0) {
             for (const sample of samples) {
-              editor.handleHTMLPointerEvent("pointermove", sample);
+              editor.handleHTMLPointerEvent(
+                "pointermove",
+                makeFilteredPointerEvent("pointermove", sample)
+              );
             }
           } else {
-            editor.handleHTMLPointerEvent(type, nativeEvent);
+            editor.handleHTMLPointerEvent(
+              type,
+              makeFilteredPointerEvent("pointermove", nativeEvent)
+            );
           }
+        } else if (type === "pointerup") {
+          editor.handleHTMLPointerEvent(
+            type,
+            makeFilteredPointerEvent("pointerup", event.nativeEvent)
+          );
         } else {
           editor.handleHTMLPointerEvent(type, event.nativeEvent);
         }
       }
       if (type === "pointerup" || type === "pointercancel") {
+        inkSmoothersRef.current.delete(event.pointerId);
         try {
           if (surface.hasPointerCapture(event.pointerId)) {
             surface.releasePointerCapture(event.pointerId);
