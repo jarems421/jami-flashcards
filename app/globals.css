@@ -529,6 +529,17 @@
     padding-block: 0.75rem 3.5rem;
   }
 
+  /* Fully opaque drawer surface: the panel tokens carry alpha, so they are
+     layered over the opaque base color instead of over the page content. */
+  .notebook-drawer-surface {
+    background:
+      linear-gradient(
+        var(--color-surface-panel-strong),
+        var(--color-surface-panel-strong)
+      ),
+      var(--color-surface-base);
+  }
+
   @media (orientation: landscape), (max-height: 820px) {
     .notebook-page-stage {
       align-items: flex-start;

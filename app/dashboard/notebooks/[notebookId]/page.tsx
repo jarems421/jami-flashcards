@@ -3170,7 +3170,7 @@ export default function NotebookEditorPage() {
         ) : null}
 
         {pagesDrawerOpen ? (
-          <aside className="notebook-drawer-in absolute bottom-0 left-0 top-0 z-30 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)] backdrop-blur-xl">
+          <aside className="notebook-drawer-in notebook-drawer-surface absolute bottom-0 left-0 top-0 z-30 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]">
             <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-2">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Pages
