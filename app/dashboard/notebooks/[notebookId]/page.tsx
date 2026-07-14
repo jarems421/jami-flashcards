@@ -121,6 +121,9 @@ type TextBlockDragState = {
   pageWidth: number;
   pageHeight: number;
   previousTextBlocks: NotebookTextBlock[];
+  /** Whether the block was already selected when the pointer went down —
+   * a motionless release on an already-selected block enters text editing. */
+  wasSelected: boolean;
 };
 type TextBlockResizeState = {
   id: string;
@@ -583,7 +586,6 @@ type NotebookIconName =
   | "ai"
   | "chevron"
   | "trash"
-  | "dots"
   | "plus"
   | "check"
   | "alert"
@@ -659,13 +661,6 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
           <path {...common} d="M4.5 6.6h15M9.5 6.6V5.2a1.6 1.6 0 0 1 1.6-1.6h1.8a1.6 1.6 0 0 1 1.6 1.6v1.4" />
           <path {...common} d="m18.3 6.6-.85 12a2 2 0 0 1-2 1.85H8.55a2 2 0 0 1-2-1.85l-.85-12" />
           <path {...common} d="M10.1 10.6v5.8M13.9 10.6v5.8" />
-        </>
-      ) : null}
-      {name === "dots" ? (
-        <>
-          <circle cx="6.5" cy="12" r="1.35" fill="currentColor" />
-          <circle cx="12" cy="12" r="1.35" fill="currentColor" />
-          <circle cx="17.5" cy="12" r="1.35" fill="currentColor" />
         </>
       ) : null}
       {name === "plus" ? <path {...common} d="M12 5.5v13M5.5 12h13" /> : null}
@@ -2242,6 +2237,8 @@ export default function NotebookEditorPage() {
     setPenMenuOpen(false);
     setHighlighterMenuOpen(false);
     setEraserMenuOpen(false);
+    setSelectedTextBlockId(null);
+    setEditingTextBlockId(null);
     if (handleTouchPointerDown(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStartPageSwipe(event);
@@ -2334,12 +2331,13 @@ export default function NotebookEditorPage() {
       pageWidth: rect.width,
       pageHeight: rect.height,
       previousTextBlocks: textBlocksRef.current,
+      wasSelected: selectedTextBlockId === block.id,
     };
     pageSwipeRef.current = null;
     pinchZoomRef.current = null;
     setActiveTextGestureId(block.id);
     setSelectedTextBlockId(block.id);
-    setEditingTextBlockId((current) => (current === block.id ? null : current));
+    setEditingTextBlockId(null);
     safelySetPointerCapture(event.currentTarget, event.pointerId);
     event.preventDefault();
     event.stopPropagation();
@@ -2376,6 +2374,18 @@ export default function NotebookEditorPage() {
         (previousBlock.x !== nextBlock.x || previousBlock.y !== nextBlock.y)
       ) {
         pushUndoAction({ type: "textBlocks", previous: drag.previousTextBlocks, next });
+      }
+      // Tap-again-to-type: a motionless release on an already-selected block
+      // opens the text editor, so no separate edit button is needed.
+      const movedX = Math.abs(event.clientX - drag.startX);
+      const movedY = Math.abs(event.clientY - drag.startY);
+      if (
+        drag.wasSelected &&
+        event.type === "pointerup" &&
+        movedX < 6 &&
+        movedY < 6
+      ) {
+        setEditingTextBlockId(drag.id);
       }
     }
     textBlockDragRef.current = null;
@@ -3404,6 +3414,8 @@ export default function NotebookEditorPage() {
                         setHighlighterMenuOpen(false);
                         setEraserMenuOpen(false);
                         setPagesDrawerOpen(false);
+                        setSelectedTextBlockId(null);
+                        setEditingTextBlockId(null);
                         cancelInkUiSync();
                         if (autosaveTimerRef.current !== null) {
                           window.clearTimeout(autosaveTimerRef.current);
@@ -3428,15 +3440,17 @@ export default function NotebookEditorPage() {
                       const selected = selectedTextBlockId === block.id;
                       const editing = editingTextBlockId === block.id;
                       const gesturing = activeTextGestureId === block.id;
-                      const displayText = block.text.trim() ? block.text : selected ? "Tap dots to type" : "";
+                      const displayText = block.text.trim() ? block.text : selected ? "Tap again to type" : "";
+                      const frameBorderClass =
+                        pageColor === "black" ? "border-white/55" : "border-slate-950/40";
                       return (
                         <div
                           key={block.id}
                           className={`notebook-text-object pointer-events-auto absolute rounded-[0.45rem] border bg-transparent transition ${
                             editing
-                              ? "cursor-text border-[var(--color-selected-border)] shadow-[0_0_0_1px_var(--color-selected-border)]"
+                              ? `cursor-text ${frameBorderClass} shadow-[0_2px_12px_rgba(0,0,0,0.12)]`
                               : selected
-                                ? "cursor-grab touch-none select-none border-[var(--color-selected-border)] shadow-[0_0_0_1px_var(--color-selected-border)] active:cursor-grabbing"
+                                ? `cursor-grab touch-none select-none ${frameBorderClass} active:cursor-grabbing`
                                 : "cursor-grab touch-none select-none border-transparent active:cursor-grabbing"
                           }`}
                           style={{
@@ -3480,23 +3494,7 @@ export default function NotebookEditorPage() {
                         >
                           {selected && fullNotebookEditingEnabled && !gesturing ? (
                             <>
-                              <div className="absolute right-1.5 top-1.5 z-20 flex gap-0.5 rounded-[0.55rem] border border-black/15 bg-black/60 p-0.5 shadow-sm backdrop-blur-sm">
-                                <button
-                                  type="button"
-                                  aria-label={editing ? "Close text editor" : "Edit text block"}
-                                  title={editing ? "Close text editor" : "Edit text block"}
-                                  className="inline-grid h-6 w-6 place-items-center rounded-[0.4rem] text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] [&_svg]:h-3.5 [&_svg]:w-3.5"
-                                  onPointerDown={(event) => event.stopPropagation()}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setSelectedTextBlockId(block.id);
-                                    setEditingTextBlockId((current) =>
-                                      current === block.id ? null : block.id
-                                    );
-                                  }}
-                                >
-                                  <NotebookIcon name="dots" />
-                                </button>
+                              <div className="absolute right-1.5 top-1.5 z-20 rounded-[0.55rem] border border-black/15 bg-black/60 p-0.5 shadow-sm backdrop-blur-sm">
                                 <button
                                   type="button"
                                   aria-label="Delete text block"
@@ -3528,7 +3526,9 @@ export default function NotebookEditorPage() {
                                 >
                                   <span
                                     aria-hidden="true"
-                                    className={`rounded-full bg-[var(--color-selected-border)] shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition group-hover:scale-110 ${handle.gripClass}`}
+                                    className={`rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition group-hover:scale-110 ${
+                                      pageColor === "black" ? "bg-white/75" : "bg-slate-950/55"
+                                    } ${handle.gripClass}`}
                                   />
                                 </button>
                               ))}
@@ -3542,6 +3542,12 @@ export default function NotebookEditorPage() {
                               onPointerMove={(event) => event.stopPropagation()}
                               onPointerUp={(event) => event.stopPropagation()}
                               onClick={(event) => event.stopPropagation()}
+                              onKeyDown={(event) => {
+                                if (event.key === "Escape") {
+                                  event.stopPropagation();
+                                  setEditingTextBlockId(null);
+                                }
+                              }}
                               onFocus={() => setSelectedTextBlockId(block.id)}
                               onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
                               placeholder="Type here..."
