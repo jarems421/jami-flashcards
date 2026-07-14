@@ -170,11 +170,23 @@ const NOTEBOOK_PAGE_BASE_WIDTH_REM = 48;
 // visibly separated during a swipe instead of joining edge-to-edge.
 const NOTEBOOK_PAGE_SWIPE_GAP = 28;
 const NOTEBOOK_PAGE_ASPECT_RATIO = CANVAS_HEIGHT / CANVAS_WIDTH;
-const NOTEBOOK_PAGE_LANDSCAPE_VERTICAL_GUTTER = 88;
+// Vertical space reserved around the page in landscape fit-zoom: header plus
+// the floating pager pill at the bottom of the stage.
+const NOTEBOOK_PAGE_LANDSCAPE_VERTICAL_GUTTER = 128;
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "bg-[#f8fafc] text-slate-950",
   black: "bg-[#080a10] text-[#f8fafc]",
 };
+// Paper-sheet edge and depth, shared by the live page and the swipe previews
+// so the page reads as the same physical sheet in every state.
+const PAGE_SHEET_EDGE_CLASS: Record<NotebookPageColor, string> = {
+  white: "ring-1 ring-slate-950/[0.09]",
+  black: "ring-1 ring-white/[0.14]",
+};
+const PAGE_SHEET_CLASS =
+  "rounded-[0.75rem] shadow-[0_2px_5px_rgba(2,6,23,0.14),0_20px_48px_rgba(2,6,23,0.24)]";
+const NOTEBOOK_PAGE_SETTLE_TRANSITION =
+  "transform 260ms cubic-bezier(0.22, 1, 0.36, 1)";
 const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
   white: "#f8fafc",
   black: "#080a10",
@@ -359,7 +371,7 @@ function NotebookPageThumbnail({
 
   return (
     <div
-      className={`relative mb-2 aspect-[900/1240] overflow-hidden rounded-[0.65rem] border shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
+      className={`relative aspect-[900/1240] overflow-hidden rounded-[0.6rem] shadow-sm ${PAGE_COLOR_CLASS[pageColor]} ${PAGE_SHEET_EDGE_CLASS[pageColor]}`}
       style={getPageStyleBackground(pageColor, pageStyle)}
     >
       {backgroundUrl && backgroundFile?.fileType.startsWith("image/") ? (
@@ -438,6 +450,15 @@ function NotebookPageThumbnail({
             {block.text.trim().slice(0, 34)}
           </div>
         ))}
+      </div>
+      <div
+        className={`absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-[0.62rem] font-semibold leading-none tabular-nums backdrop-blur-sm ${
+          pageColor === "black"
+            ? "bg-white/15 text-[#f8fafc]"
+            : "bg-slate-950/55 text-white"
+        }`}
+      >
+        {page.pageNumber}
       </div>
     </div>
   );
@@ -563,7 +584,8 @@ type NotebookIconName =
   | "save"
   | "chevron"
   | "trash"
-  | "dots";
+  | "dots"
+  | "plus";
 
 function NotebookIcon({ name }: { name: NotebookIconName }) {
   const common = {
@@ -642,6 +664,7 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
           <circle cx="17.5" cy="12" r="1.35" fill="currentColor" />
         </>
       ) : null}
+      {name === "plus" ? <path {...common} d="M12 5v14M5 12h14" /> : null}
     </svg>
   );
 }
@@ -2716,9 +2739,6 @@ export default function NotebookEditorPage() {
                 </div>
               )}
             </div>
-            <div className="app-chip shrink-0 rounded-full px-3 py-1 text-xs font-semibold">
-              {selectedPage ? `${selectedPage.pageNumber} / ${pages.length}` : "No page"}
-            </div>
           </div>
           <div
             className="-mx-1 mt-1 flex max-w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto overscroll-x-contain px-1 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
@@ -3150,11 +3170,37 @@ export default function NotebookEditorPage() {
         ) : null}
 
         {pagesDrawerOpen ? (
-          <aside className="absolute bottom-0 left-0 top-0 z-30 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]">
+          <aside className="notebook-drawer-in absolute bottom-0 left-0 top-0 z-30 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)] backdrop-blur-xl">
             <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-2">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Pages
               </div>
+              <span className="app-chip rounded-full px-2 py-0.5 text-[0.68rem] font-semibold tabular-nums">
+                {pages.length}
+              </span>
+            </div>
+            <div className="grid shrink-0 grid-cols-1 gap-2 px-1 pb-3">
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="w-full gap-1.5"
+                disabled={!fullNotebookEditingEnabled || creatingPage}
+                onClick={() => void createBlankPageAtEnd()}
+              >
+                <NotebookIcon name="plus" />
+                New page
+              </Button>
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                className="w-full"
+                disabled={!fullNotebookEditingEnabled}
+                onClick={() => setShowAddPagesDialog(true)}
+              >
+                Import PDF or image
+              </Button>
             </div>
             <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pr-1">
               {pages.length > 0 ? (
@@ -3166,17 +3212,19 @@ export default function NotebookEditorPage() {
                       key={page.id}
                       className={`group relative rounded-[0.95rem] border transition ${
                         selected
-                          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]"
-                          : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary hover:border-border-strong"
+                          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-[0_0_0_3px_rgba(143,125,232,0.14)]"
+                          : "border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
                       }`}
                     >
                       <button
                         type="button"
+                        aria-label={`Open page ${page.pageNumber}`}
+                        aria-current={selected ? "page" : undefined}
                         onClick={() => {
                           setPagesDrawerOpen(false);
                           void selectPageById(page.id);
                         }}
-                        className="block w-full rounded-[0.95rem] p-2 text-left transition"
+                        className="block w-full rounded-[0.95rem] p-1.5 text-left transition"
                       >
                         <NotebookPageThumbnail
                           page={page}
@@ -3206,14 +3254,6 @@ export default function NotebookEditorPage() {
                             ]
                           }
                         />
-                        <div className="text-xs font-semibold">Page {page.pageNumber}</div>
-                        <div className="mt-0.5 truncate pr-8 text-[0.68rem] text-text-muted">
-                          {page.textBlocks.some((block) => block.text.trim())
-                            ? "Text"
-                            : page.inkData?.svg || page.strokeData?.strokes?.length
-                              ? "Ink"
-                              : "Blank"}
-                        </div>
                       </button>
                       {pages.length > 1 ? (
                         <button
@@ -3225,7 +3265,11 @@ export default function NotebookEditorPage() {
                             event.stopPropagation();
                             void handleDeletePage(page);
                           }}
-                          className="app-danger absolute bottom-2 right-2 inline-grid h-8 w-8 place-items-center rounded-full opacity-90 shadow-sm transition hover:opacity-100 disabled:cursor-not-allowed disabled:opacity-45"
+                          className={`app-danger absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full shadow-sm transition hover:!opacity-100 disabled:cursor-not-allowed disabled:opacity-45 ${
+                            selected
+                              ? "opacity-90"
+                              : "opacity-0 focus-visible:opacity-90 group-hover:opacity-90"
+                          }`}
                         >
                           {deleting ? (
                             <span className="text-[0.65rem] font-bold">...</span>
@@ -3239,7 +3283,7 @@ export default function NotebookEditorPage() {
                 })
               ) : (
                 <div className="rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 text-sm leading-6 text-text-muted">
-                  Add a page to start.
+                  Start with a fresh page using New page above.
                 </div>
               )}
             </div>
@@ -3254,28 +3298,13 @@ export default function NotebookEditorPage() {
               </Card>
             ) : null}
 
-            {false && files.length > 0 ? (
-              <Card padding="sm">
-                <div className="flex flex-wrap gap-2">
-                  {files.map((file) => (
-                    <span
-                      key={file.id}
-                      className="app-chip rounded-full px-3 py-1.5 text-xs font-semibold"
-                    >
-                      {file.fileName} · {Math.round((file.sizeBytes ?? 0) / 1024)} KB
-                    </span>
-                  ))}
-                </div>
-              </Card>
-            ) : null}
-
               <div className="notebook-page-stage relative mx-auto w-full overflow-hidden">
                 {swipeAdjacentPage ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-lg after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-lg after:border after:border-slate-300/80 after:content-[''] ${
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${PAGE_SHEET_CLASS} ${
                       PAGE_COLOR_CLASS[swipeAdjacentPage.pageColor]
-                    }`}
+                    } ${PAGE_SHEET_EDGE_CLASS[swipeAdjacentPage.pageColor]}`}
                     style={{
                       width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
                       maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
@@ -3286,7 +3315,7 @@ export default function NotebookEditorPage() {
                           : `calc(-100% - ${NOTEBOOK_PAGE_SWIPE_GAP}px)`
                       }) translateX(${pageSwipeOffset}px)`,
                       transition: pageSwipeSettling
-                        ? "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)"
+                        ? NOTEBOOK_PAGE_SETTLE_TRANSITION
                         : "none",
                     }}
                   >
@@ -3301,7 +3330,7 @@ export default function NotebookEditorPage() {
                 {createPageActive ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden rounded-lg after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-lg after:border after:border-slate-300/80 after:content-[''] ${PAGE_COLOR_CLASS[pageColor]}`}
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]} ${PAGE_SHEET_EDGE_CLASS[pageColor]}`}
                     style={{
                       width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
                       maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
@@ -3320,7 +3349,7 @@ export default function NotebookEditorPage() {
                 <div
                   ref={pageSurfaceRef}
                   data-notebook-page-surface
-                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden rounded-lg after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-lg after:border after:border-slate-300/80 after:content-[''] ${PAGE_COLOR_CLASS[pageColor]} ${
+                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden ${PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]} ${PAGE_SHEET_EDGE_CLASS[pageColor]} ${
                     pageTransitionDirection === "next"
                       ? "notebook-page-transition-next"
                       : pageTransitionDirection === "previous"
@@ -3336,7 +3365,7 @@ export default function NotebookEditorPage() {
                     aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
                     transform: `translateX(${pageSwipeOffset}px)`,
                     transition: pageSwipeSettling
-                      ? "transform 240ms cubic-bezier(0.22, 1, 0.36, 1)"
+                      ? NOTEBOOK_PAGE_SETTLE_TRANSITION
                       : "none",
                   }}
                 >
@@ -3446,6 +3475,7 @@ export default function NotebookEditorPage() {
                         setPenMenuOpen(false);
                         setHighlighterMenuOpen(false);
                         setEraserMenuOpen(false);
+                        setPagesDrawerOpen(false);
                         cancelInkUiSync();
                         if (autosaveTimerRef.current !== null) {
                           window.clearTimeout(autosaveTimerRef.current);
@@ -3606,30 +3636,6 @@ export default function NotebookEditorPage() {
               </div>
             </div>
             </div>
-            <button
-              type="button"
-              aria-label="Previous page"
-              title="Previous page"
-              disabled={selectedPageIndex <= 0}
-              onClick={() => void selectPageByOffset(-1)}
-              className="hidden md:inline-flex pointer-events-auto absolute left-4 top-1/2 z-20 h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] transition hover:bg-[var(--button-secondary-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <span className="rotate-90">
-                <NotebookIcon name="chevron" />
-              </span>
-            </button>
-            <button
-              type="button"
-              aria-label="Next page"
-              title="Next page"
-              disabled={selectedPageIndex < 0 || selectedPageIndex >= pages.length - 1}
-              onClick={() => void selectPageByOffset(1)}
-              className="hidden md:inline-flex pointer-events-auto absolute right-4 top-1/2 z-20 h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] shadow-[0_12px_26px_rgba(0,0,0,0.18)] transition hover:bg-[var(--button-secondary-bg-hover)] disabled:cursor-not-allowed disabled:opacity-45"
-            >
-              <span className="-rotate-90">
-                <NotebookIcon name="chevron" />
-              </span>
-            </button>
             {createPageActive || creatingPage ? (
               <div
                 aria-hidden="true"
@@ -3682,11 +3688,55 @@ export default function NotebookEditorPage() {
                 </div>
               </div>
             ) : null}
-            <div className="pointer-events-none absolute bottom-4 left-4 z-20 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
-              {selectedPageIndex >= 0 ? selectedPageIndex + 1 : 0} of {pages.length || 0}
+            <div
+              className="absolute bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)] left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 p-1 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+              aria-label="Page navigation"
+            >
+              <button
+                type="button"
+                aria-label="Previous page"
+                title="Previous page"
+                disabled={selectedPageIndex <= 0}
+                onClick={() => void selectPageByOffset(-1)}
+                className="inline-grid h-9 w-9 place-items-center rounded-full text-text-secondary transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-35"
+              >
+                <span className="rotate-90">
+                  <NotebookIcon name="chevron" />
+                </span>
+              </button>
+              <div className="min-w-[3.25rem] px-1 text-center text-xs font-semibold tabular-nums text-text-secondary">
+                {selectedPageIndex >= 0 ? selectedPageIndex + 1 : 0} / {pages.length || 0}
+              </div>
+              {selectedPageIndex >= 0 &&
+              selectedPageIndex >= pages.length - 1 &&
+              fullNotebookEditingEnabled ? (
+                <button
+                  type="button"
+                  aria-label="New page"
+                  title="New page"
+                  disabled={creatingPage}
+                  onClick={() => void createBlankPageAtEnd()}
+                  className="inline-grid h-9 w-9 place-items-center rounded-full text-[var(--color-selected-text)] transition hover:bg-[var(--color-selected-bg)] disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  <NotebookIcon name="plus" />
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  aria-label="Next page"
+                  title="Next page"
+                  disabled={selectedPageIndex < 0 || selectedPageIndex >= pages.length - 1}
+                  onClick={() => void selectPageByOffset(1)}
+                  className="inline-grid h-9 w-9 place-items-center rounded-full text-text-secondary transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-35"
+                >
+                  <span className="-rotate-90">
+                    <NotebookIcon name="chevron" />
+                  </span>
+                </button>
+              )}
             </div>
             {touchInkHintVisible ? (
-              <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
+              <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+4.25rem)] left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
                 Use Apple Pencil or stylus to write. Fingers move the page.
               </div>
             ) : null}

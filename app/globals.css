@@ -525,7 +525,8 @@
     display: flex;
     justify-content: center;
     min-height: calc(100dvh - 8rem);
-    padding-block: 0.75rem 1.25rem;
+    /* Bottom padding keeps the floating pager pill clear of the page sheet. */
+    padding-block: 0.75rem 3.5rem;
   }
 
   @media (orientation: landscape), (max-height: 820px) {
@@ -599,15 +600,30 @@
 
   @media (prefers-reduced-motion: no-preference) {
     .notebook-page-transition-next {
-      animation: notebook-page-slide-next 170ms ease-out;
+      animation: notebook-page-slide-next 210ms cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .notebook-page-transition-previous {
-      animation: notebook-page-slide-previous 170ms ease-out;
+      animation: notebook-page-slide-previous 210ms cubic-bezier(0.22, 1, 0.36, 1);
     }
 
     .notebook-create-page-pop {
       animation: notebook-create-page-pop 420ms cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+
+    .notebook-drawer-in {
+      animation: notebook-drawer-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+  }
+
+  @keyframes notebook-drawer-in {
+    from {
+      opacity: 0.4;
+      transform: translateX(-0.9rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
     }
   }
 
@@ -631,18 +647,22 @@
 
   @keyframes notebook-page-slide-next {
     from {
-      transform: translateX(4rem);
+      opacity: 0.35;
+      transform: translateX(2.5rem);
     }
     to {
+      opacity: 1;
       transform: translateX(0);
     }
   }
 
   @keyframes notebook-page-slide-previous {
     from {
-      transform: translateX(-4rem);
+      opacity: 0.35;
+      transform: translateX(-2.5rem);
     }
     to {
+      opacity: 1;
       transform: translateX(0);
     }
   }
