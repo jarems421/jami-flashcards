@@ -245,8 +245,6 @@ const TEXT_BLOCK_RESIZE_HANDLES: Array<{
     gripClass: "h-4 w-[3px]",
   },
 ];
-const NOTEBOOK_THICKNESS_TICKS = [25, 50, 75] as const;
-
 function isPoint(value: unknown): value is InkPoint {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   const point = value as Record<string, unknown>;
@@ -784,47 +782,50 @@ function ThicknessSlider({
 }) {
   const clampedPercent = clampNotebookThicknessPercent(percent);
   const sliderId = `${label.toLowerCase().replace(/\s+/g, "-")}-slider`;
+  const previewDot = Math.max(4, Math.min(24, previewWidth * 2));
   return (
-    <div className="mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3">
-      <div className="mb-2 flex items-center justify-between gap-3">
+    <div>
+      <div className="flex items-baseline justify-between gap-3 px-0.5">
         <label className="text-xs font-semibold text-text-secondary" htmlFor={sliderId}>
           {label}
         </label>
-        <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-2 py-0.5 text-[0.68rem] font-semibold text-text-secondary">
+        <span className="text-[0.68rem] font-semibold tabular-nums text-text-muted">
           {clampedPercent}%
         </span>
       </div>
-      <div className="relative px-1 py-3">
-        <div className="pointer-events-none absolute left-1 right-1 top-1/2 h-px -translate-y-1/2 rounded-full bg-[var(--color-border)]" />
-        {NOTEBOOK_THICKNESS_TICKS.map((tick) => (
-          <span
-            key={tick}
+      <div className="mt-1 flex items-center gap-3">
+        <div className="relative flex h-8 flex-1 items-center">
+          <div
             aria-hidden="true"
-            className="pointer-events-none absolute top-1/2 h-3 w-px -translate-y-1/2 rounded-full bg-text-muted"
-            style={{ left: `calc(${tick}% - 0.5px)` }}
+            className="pointer-events-none absolute inset-x-0 top-1/2 h-2.5 -translate-y-1/2 bg-[var(--color-border)]"
+            style={{
+              clipPath: "polygon(0 43%, 100% 12%, 100% 88%, 0 57%)",
+              borderRadius: "999px",
+            }}
           />
-        ))}
-        <input
-          id={sliderId}
-          type="range"
-          min={0}
-          max={100}
-          step={1}
-          value={clampedPercent}
-          aria-label={label}
-          onChange={(event) => onChange(Number(event.target.value))}
-          className="notebook-thickness-slider relative z-10 h-7 w-full cursor-pointer bg-transparent"
-        />
-      </div>
-      <div className="mt-1 flex h-8 items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3">
-        <span
-          aria-hidden="true"
-          className="block w-full rounded-full"
-          style={{
-            backgroundColor: color,
-            height: `${Math.max(2, Math.min(18, previewWidth))}px`,
-          }}
-        />
+          <input
+            id={sliderId}
+            type="range"
+            min={0}
+            max={100}
+            step={1}
+            value={clampedPercent}
+            aria-label={label}
+            onChange={(event) => onChange(Number(event.target.value))}
+            className="notebook-thickness-slider relative z-10 h-8 w-full cursor-pointer bg-transparent"
+          />
+        </div>
+        <span className="inline-grid h-8 w-8 shrink-0 place-items-center">
+          <span
+            aria-hidden="true"
+            className="rounded-full"
+            style={{
+              backgroundColor: color,
+              width: `${previewDot}px`,
+              height: `${previewDot}px`,
+            }}
+          />
+        </span>
       </div>
     </div>
   );
@@ -847,41 +848,44 @@ function InkColorPicker({
 }) {
   const currentColor = getNotebookStrokePaintColor(value, label === "Highlighter color" ? "highlighter" : "pen");
   const colorInputId = `${label.toLowerCase().replace(/\s+/g, "-")}-custom`;
+  const customActive = !presets.includes(value);
+  const selectedRing =
+    "ring-2 ring-[var(--color-selected-border)] ring-offset-2 ring-offset-transparent";
   return (
-    <div>
-      <div className="grid grid-cols-[1fr_auto] items-center gap-3">
-        <div className="flex flex-wrap gap-2">
-          {presets.map((color) => (
-            <button
-              key={color}
-              type="button"
-              aria-label={`${color} ${label.toLowerCase()}`}
-              onClick={() => onPresetSelect(color)}
-              className={`h-7 w-7 rounded-full border transition ${
-                value === color
-                  ? "border-[var(--color-selected-border)] ring-2 ring-[var(--color-selected-border)]/40"
-                  : "border-[var(--color-border)]"
-              }`}
-              style={{ backgroundColor: getPresetColor(color) }}
-            />
-          ))}
-        </div>
-        <label
-          htmlFor={colorInputId}
-          className="grid h-9 w-9 cursor-pointer place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-1 shadow-sm"
-          title={label}
-        >
-          <span
-            aria-hidden="true"
-            className="h-full w-full rounded-full border border-black/20"
-            style={{ backgroundColor: currentColor }}
-          />
-        </label>
-      </div>
+    <div className="flex flex-wrap items-center gap-2.5 px-0.5">
+      {presets.map((color) => (
+        <button
+          key={color}
+          type="button"
+          aria-label={`${color} ${label.toLowerCase()}`}
+          onClick={() => onPresetSelect(color)}
+          className={`h-8 w-8 rounded-full border border-black/15 transition hover:scale-105 ${
+            value === color ? selectedRing : ""
+          }`}
+          style={{ backgroundColor: getPresetColor(color) }}
+        />
+      ))}
+      <label
+        htmlFor={colorInputId}
+        title="Custom color"
+        className={`relative ml-1 grid h-8 w-8 cursor-pointer place-items-center rounded-full transition hover:scale-105 ${
+          customActive ? selectedRing : ""
+        }`}
+        style={{
+          background:
+            "conic-gradient(from 180deg, #f43f5e, #fbbf24, #22c55e, #38bdf8, #818cf8, #e879f9, #f43f5e)",
+        }}
+      >
+        <span
+          aria-hidden="true"
+          className="h-[0.95rem] w-[0.95rem] rounded-full border border-black/25"
+          style={{ backgroundColor: customActive ? currentColor : "transparent" }}
+        />
+      </label>
       <input
         id={colorInputId}
         type="color"
-        aria-label={label}
+        aria-label={`Custom ${label.toLowerCase()}`}
         value={currentColor}
         onChange={(event) => {
           onCustomColorChange(normalizeNotebookStrokeColor(event.target.value));
@@ -2809,9 +2813,9 @@ export default function NotebookEditorPage() {
           </div>
         </header>
         {penMenuOpen || highlighterMenuOpen || eraserMenuOpen ? (
-            <div className="notebook-popover-in notebook-drawer-surface absolute bottom-[calc(env(safe-area-inset-bottom,0px)+4.85rem)] left-1/2 z-50 w-[min(92vw,26rem)] -translate-x-1/2 rounded-[1.25rem] border border-[var(--color-border)] p-3 shadow-[0_18px_44px_rgba(0,0,0,0.32)]">
+            <div className="notebook-popover-in notebook-drawer-surface absolute bottom-[calc(env(safe-area-inset-bottom,0px)+4.85rem)] left-1/2 z-50 w-[min(92vw,22rem)] -translate-x-1/2 rounded-[1.25rem] border border-[var(--color-border)] p-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.32)]">
               {penMenuOpen ? (
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,0.85fr)_minmax(15rem,1.15fr)] sm:items-end">
+                <div className="space-y-3">
                   <InkColorPicker
                     label="Pen color"
                     value={penColor}
@@ -2839,7 +2843,7 @@ export default function NotebookEditorPage() {
                 </div>
               ) : null}
               {highlighterMenuOpen ? (
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,0.85fr)_minmax(15rem,1.15fr)] sm:items-end">
+                <div className="space-y-3">
                   <InkColorPicker
                     label="Highlighter color"
                     value={highlighterColor}
@@ -3635,7 +3639,8 @@ export default function NotebookEditorPage() {
                     }}
                   >
                     <span
-                      className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full border border-black/30"
+                      aria-hidden="true"
+                      className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
                       style={{ backgroundColor: getNotebookStrokePaintColor(penColor, "pen") }}
                     />
                   </ToolbarIconButton>
@@ -3657,7 +3662,8 @@ export default function NotebookEditorPage() {
                     }}
                   >
                     <span
-                      className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full border border-black/30"
+                      aria-hidden="true"
+                      className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
                       style={{
                         backgroundColor: getNotebookStrokePaintColor(highlighterColor, "highlighter"),
                       }}
@@ -3679,26 +3685,7 @@ export default function NotebookEditorPage() {
                       }
                       setEraserMenuOpen((value) => !value);
                     }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="absolute bottom-1 right-1 rounded-full border border-current bg-transparent opacity-80"
-                      style={{
-                        width:
-                          eraserWidth === "small"
-                            ? "0.45rem"
-                            : eraserWidth === "medium"
-                              ? "0.6rem"
-                              : "0.78rem",
-                        height:
-                          eraserWidth === "small"
-                            ? "0.45rem"
-                            : eraserWidth === "medium"
-                              ? "0.6rem"
-                              : "0.78rem",
-                      }}
-                    />
-                  </ToolbarIconButton>
+                  />
                 </div>
                 <ToolbarIconButton
                   label="Text box (T)"

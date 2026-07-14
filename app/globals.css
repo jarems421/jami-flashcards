@@ -575,12 +575,10 @@
     background: #ffffff;
     border: 2px solid var(--color-selected-border);
     border-radius: 999px;
-    box-shadow:
-      0 0 0 1px rgba(15, 23, 42, 0.16),
-      0 3px 9px rgba(0, 0, 0, 0.28);
-    height: 22px;
-    margin-top: -10px;
-    width: 22px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
+    height: 18px;
+    margin-top: -8px;
+    width: 18px;
   }
 
   .notebook-thickness-slider::-moz-range-track {
@@ -593,11 +591,9 @@
     background: #ffffff;
     border: 2px solid var(--color-selected-border);
     border-radius: 999px;
-    box-shadow:
-      0 0 0 1px rgba(15, 23, 42, 0.16),
-      0 3px 9px rgba(0, 0, 0, 0.28);
-    height: 22px;
-    width: 22px;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.24);
+    height: 18px;
+    width: 18px;
   }
 
   .notebook-text-editor {
