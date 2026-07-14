@@ -521,9 +521,12 @@
   }
 
   .notebook-page-stage {
-    align-items: center;
+    /* `safe` keeps the page centered normally but start-aligns it once the
+       zoomed page overflows, so the outer scroll area can reach every edge
+       (a plain `center` makes the left/top overflow unscrollable). */
+    align-items: safe center;
     display: flex;
-    justify-content: center;
+    justify-content: safe center;
     min-height: calc(100dvh - 8rem);
     /* Bottom padding keeps the floating pager pill clear of the page sheet. */
     padding-block: 0.75rem 3.5rem;

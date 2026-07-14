@@ -181,12 +181,9 @@ const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "bg-[#f8fafc] text-slate-950",
   black: "bg-[#080a10] text-[#f8fafc]",
 };
-// Paper-sheet edge and depth, shared by the live page and the swipe previews
-// so the page reads as the same physical sheet in every state.
-const PAGE_SHEET_EDGE_CLASS: Record<NotebookPageColor, string> = {
-  white: "ring-1 ring-slate-950/[0.09]",
-  black: "ring-1 ring-white/[0.14]",
-};
+// Paper-sheet depth, shared by the live page and the swipe previews so the
+// page reads as the same physical sheet in every state. The sheet is defined
+// by its shadow alone — no outline.
 const PAGE_SHEET_CLASS =
   "rounded-[0.75rem] shadow-[0_2px_5px_rgba(2,6,23,0.14),0_20px_48px_rgba(2,6,23,0.24)]";
 const NOTEBOOK_PAGE_SETTLE_TRANSITION =
@@ -377,7 +374,7 @@ function NotebookPageThumbnail({
 
   return (
     <div
-      className={`relative aspect-[900/1240] overflow-hidden rounded-[0.6rem] shadow-sm ${PAGE_COLOR_CLASS[pageColor]} ${PAGE_SHEET_EDGE_CLASS[pageColor]}`}
+      className={`relative aspect-[900/1240] overflow-hidden rounded-[0.6rem] shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
       style={getPageStyleBackground(pageColor, pageStyle)}
     >
       {backgroundUrl && backgroundFile?.fileType.startsWith("image/") ? (
@@ -3205,7 +3202,7 @@ export default function NotebookEditorPage() {
                             event.stopPropagation();
                             setConfirmDialog({ kind: "delete-page", page });
                           }}
-                          className="app-danger absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full shadow-[0_3px_10px_rgba(0,0,0,0.3)] transition hover:scale-105 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+                          className="absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full bg-error text-[var(--color-text-inverse)] shadow-[0_3px_10px_rgba(0,0,0,0.35)] transition hover:scale-105 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           {deleting ? (
                             <span className="text-[0.65rem] font-bold">...</span>
@@ -3234,13 +3231,13 @@ export default function NotebookEditorPage() {
               </Card>
             ) : null}
 
-              <div className="notebook-page-stage relative mx-auto w-full overflow-hidden">
+              <div className="notebook-page-stage relative mx-auto w-full">
                 {swipeAdjacentPage ? (
                   <div
                     aria-hidden="true"
                     className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${PAGE_SHEET_CLASS} ${
                       PAGE_COLOR_CLASS[swipeAdjacentPage.pageColor]
-                    } ${PAGE_SHEET_EDGE_CLASS[swipeAdjacentPage.pageColor]}`}
+                    }`}
                     style={{
                       width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
                       maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
@@ -3266,7 +3263,7 @@ export default function NotebookEditorPage() {
                 {createPageActive ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]} ${PAGE_SHEET_EDGE_CLASS[pageColor]}`}
+                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]}`}
                     style={{
                       width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
                       maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
@@ -3285,7 +3282,7 @@ export default function NotebookEditorPage() {
                 <div
                   ref={pageSurfaceRef}
                   data-notebook-page-surface
-                  className={`notebook-page-surface relative mx-auto w-full overflow-hidden ${PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]} ${PAGE_SHEET_EDGE_CLASS[pageColor]} ${
+                  className={`notebook-page-surface relative w-full overflow-hidden ${PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]} ${
                     pageTransitionDirection === "next"
                       ? "notebook-page-transition-next"
                       : pageTransitionDirection === "previous"
@@ -3337,15 +3334,6 @@ export default function NotebookEditorPage() {
                       ) : (
                         null
                       )}
-                    </div>
-                  ) : null}
-                  {!activeNotebookFile &&
-                  !inkHasContent &&
-                  !textBlocks.some((block) => block.text.trim()) ? (
-                    <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center px-8 text-center">
-                      <div className="max-w-xs rounded-full border border-current/10 bg-current/[0.035] px-4 py-2 text-xs font-medium opacity-45">
-                        Write with a pen or choose Text to add a note
-                      </div>
                     </div>
                   ) : null}
                   {!inkReady &&

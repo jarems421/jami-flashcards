@@ -460,7 +460,7 @@ describe("notebook inking helpers", () => {
     ).toBe(1.5);
     expect(
       getNotebookPageZoomAfterPinch({ startDistance: 100, currentDistance: 500, startZoom: 1 })
-    ).toBe(2.4);
+    ).toBe(4);
     expect(
       getNotebookPageZoomAfterPinch({ startDistance: 100, currentDistance: 20, startZoom: 1 })
     ).toBe(0.85);
