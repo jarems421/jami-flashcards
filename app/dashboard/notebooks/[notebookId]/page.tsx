@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -154,8 +155,21 @@ type PageSwipeState = {
 type PinchZoomState = {
   startDistance: number;
   startZoom: number;
+  startCenterX: number;
+  startCenterY: number;
   lastCenterX: number;
   lastCenterY: number;
+  /** Pinch anchor as a fraction of the page, so the page point under the
+   * fingers stays under the fingers while zooming. */
+  anchorFx: number;
+  anchorFy: number;
+  pendingZoom: number;
+};
+type PinchCommitState = {
+  fx: number;
+  fy: number;
+  clientX: number;
+  clientY: number;
 };
 type EditorViewportState = {
   height: number;
@@ -981,6 +995,7 @@ export default function NotebookEditorPage() {
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
   const touchPointersRef = useRef<Map<number, PointerClientSample>>(new Map());
   const pinchZoomRef = useRef<PinchZoomState | null>(null);
+  const pinchCommitRef = useRef<PinchCommitState | null>(null);
   const undoStackRef = useRef<NotebookUndoAction[]>([]);
   const redoStackRef = useRef<NotebookUndoAction[]>([]);
   const editorRevisionRef = useRef(0);
@@ -1438,7 +1453,14 @@ export default function NotebookEditorPage() {
       stylusInteractionRef.current = false;
       stylusCooldownUntilRef.current = Date.now() + 180;
       touchPointersRef.current.clear();
+      if (pinchZoomRef.current && pageSurfaceRef.current) {
+        // A pinch was interrupted (blur/app switch): drop its live transform
+        // so the page isn't left visually scaled without a committed zoom.
+        pageSurfaceRef.current.style.transform = "translateX(0px)";
+        pageSurfaceRef.current.style.transformOrigin = "";
+      }
       pinchZoomRef.current = null;
+      pinchCommitRef.current = null;
       pageSwipeRef.current = null;
       setCreatePageActive(false);
       setCreatePageProgress(0);
@@ -1479,15 +1501,47 @@ export default function NotebookEditorPage() {
   const startPinchZoom = () => {
     const [first, second] = Array.from(touchPointersRef.current.values());
     if (!first || !second) return;
+    const surface = pageSurfaceRef.current;
+    const rect = surface?.getBoundingClientRect();
+    if (!surface || !rect || rect.width <= 0 || rect.height <= 0) return;
+    const centerX = (first.clientX + second.clientX) / 2;
+    const centerY = (first.clientY + second.clientY) / 2;
     setUserAdjustedZoom(true);
     pinchZoomRef.current = {
       startDistance: getPinchDistance(first, second),
       startZoom: pageZoom,
-      lastCenterX: (first.clientX + second.clientX) / 2,
-      lastCenterY: (first.clientY + second.clientY) / 2,
+      startCenterX: centerX,
+      startCenterY: centerY,
+      lastCenterX: centerX,
+      lastCenterY: centerY,
+      anchorFx: (centerX - rect.left) / rect.width,
+      anchorFy: (centerY - rect.top) / rect.height,
+      pendingZoom: pageZoom,
     };
     pageSwipeRef.current = null;
   };
+
+  // Ends an anchored pinch: swaps the cheap live transform for the real
+  // layout size at the final zoom, then scrolls so the page point that was
+  // under the fingers stays exactly where the fingers left it.
+  const finalizePinchCommit = useCallback(() => {
+    const commit = pinchCommitRef.current;
+    const surface = pageSurfaceRef.current;
+    if (!commit || !surface) return;
+    pinchCommitRef.current = null;
+    surface.style.transform = "translateX(0px)";
+    surface.style.transformOrigin = "";
+    const rect = surface.getBoundingClientRect();
+    pageScrollRef.current?.scrollBy({
+      left: rect.left + commit.fx * rect.width - commit.clientX,
+      top: rect.top + commit.fy * rect.height - commit.clientY,
+      behavior: "auto",
+    });
+  }, []);
+
+  useLayoutEffect(() => {
+    finalizePinchCommit();
+  }, [finalizePinchCommit, pageZoom]);
 
   const handleTouchPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType !== "touch") return false;
@@ -1527,23 +1581,27 @@ export default function NotebookEditorPage() {
     if (first && second) {
       const centerX = (first.clientX + second.clientX) / 2;
       const centerY = (first.clientY + second.clientY) / 2;
-      setPageZoom(
-        getNotebookPageZoomAfterPinch({
-          startDistance: pinch.startDistance,
-          currentDistance: getPinchDistance(first, second),
-          startZoom: pinch.startZoom,
-          // Zooming out stops at "page fits the view" — never a shrunken
-          // page floating inside the frame.
-          minZoom: editorViewport.isLandscape ? landscapeFitZoom : 1,
-        })
-      );
-      pageScrollRef.current?.scrollBy({
-        left: pinch.lastCenterX - centerX,
-        top: pinch.lastCenterY - centerY,
-        behavior: "auto",
+      const nextZoom = getNotebookPageZoomAfterPinch({
+        startDistance: pinch.startDistance,
+        currentDistance: getPinchDistance(first, second),
+        startZoom: pinch.startZoom,
+        // Zooming out stops at "page fits the view" — never a shrunken
+        // page floating inside the frame.
+        minZoom: editorViewport.isLandscape ? landscapeFitZoom : 1,
       });
+      pinch.pendingZoom = nextZoom;
       pinch.lastCenterX = centerX;
       pinch.lastCenterY = centerY;
+      const surface = pageSurfaceRef.current;
+      if (surface) {
+        // Anchored live pinch: the page scales around the point the gesture
+        // started on and follows the fingers as they move — one cheap GPU
+        // transform per frame, no layout work until the gesture commits.
+        surface.style.transformOrigin = `${pinch.anchorFx * 100}% ${pinch.anchorFy * 100}%`;
+        surface.style.transform = `translate(${centerX - pinch.startCenterX}px, ${
+          centerY - pinch.startCenterY
+        }px) scale(${nextZoom / pinch.startZoom})`;
+      }
     }
     pageSwipeRef.current = null;
     event.preventDefault();
@@ -1562,6 +1620,22 @@ export default function NotebookEditorPage() {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     if (wasPinching) {
+      const pinch = pinchZoomRef.current;
+      if (pinch) {
+        pinchCommitRef.current = {
+          fx: pinch.anchorFx,
+          fy: pinch.anchorFy,
+          clientX: pinch.lastCenterX,
+          clientY: pinch.lastCenterY,
+        };
+        if (pinch.pendingZoom !== pageZoom) {
+          setPageZoom(pinch.pendingZoom);
+        } else {
+          // Zoom unchanged (pure two-finger pan): no re-render will fire the
+          // layout effect, so settle the transform into scroll right away.
+          finalizePinchCommit();
+        }
+      }
       pinchZoomRef.current = null;
       pageSwipeRef.current = null;
       event.preventDefault();
