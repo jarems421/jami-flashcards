@@ -330,6 +330,27 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           });
           editorRef.current = editor;
           editor.setReadOnly(readOnlyRef.current);
+          // js-draw's display cache re-renders busy scenes from 600px
+          // CSS-resolution bitmap blocks. On high-DPI screens those blit
+          // upscaled, so ink turns rasterized/blurry after any full re-render
+          // (eraser, undo/redo) — and polyline strokes trip the cache
+          // threshold almost immediately because it counts path segments.
+          // Raising the threshold to Infinity forces the vector fallback, so
+          // pages always re-render from geometry and stay crisp.
+          const displayCache = (
+            editor.display as unknown as {
+              getCache?: () => {
+                sharedState?: {
+                  props?: { minProportionalRenderTimeToUseCache?: number };
+                };
+              };
+            }
+          ).getCache?.();
+          const cacheProps = displayCache?.sharedState?.props;
+          if (cacheProps) {
+            cacheProps.minProportionalRenderTimeToUseCache =
+              Number.POSITIVE_INFINITY;
+          }
           editor.toolController
             .getMatchingTools(jsDraw.PenTool)[0]
             ?.setInputMapper(makePrecisePenInputMapper(jsDraw, editor));

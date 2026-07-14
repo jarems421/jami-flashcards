@@ -180,9 +180,12 @@ export function shouldCreateNotebookPageOnRelease(input: {
   );
 }
 
-export function clampNotebookPageZoom(value: number) {
+export function clampNotebookPageZoom(
+  value: number,
+  minZoom = NOTEBOOK_PAGE_MIN_ZOOM
+) {
   if (!Number.isFinite(value)) return 1;
-  return Math.max(NOTEBOOK_PAGE_MIN_ZOOM, Math.min(NOTEBOOK_PAGE_MAX_ZOOM, value));
+  return Math.max(minZoom, Math.min(NOTEBOOK_PAGE_MAX_ZOOM, value));
 }
 
 export function getPinchDistance(
@@ -198,9 +201,17 @@ export function getNotebookPageZoomAfterPinch(input: {
   startDistance: number;
   currentDistance: number;
   startZoom: number;
+  /** Zoom floor — the "page fits the view" zoom, so pinching out stops at a
+   * full-size page instead of shrinking it inside the frame. */
+  minZoom?: number;
 }) {
-  if (input.startDistance <= 0) return clampNotebookPageZoom(input.startZoom);
-  return clampNotebookPageZoom((input.currentDistance / input.startDistance) * input.startZoom);
+  if (input.startDistance <= 0) {
+    return clampNotebookPageZoom(input.startZoom, input.minZoom);
+  }
+  return clampNotebookPageZoom(
+    (input.currentDistance / input.startDistance) * input.startZoom,
+    input.minZoom
+  );
 }
 
 export function clampInkPoint(

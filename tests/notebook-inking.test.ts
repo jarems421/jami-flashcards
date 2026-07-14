@@ -464,6 +464,15 @@ describe("notebook inking helpers", () => {
     expect(
       getNotebookPageZoomAfterPinch({ startDistance: 100, currentDistance: 20, startZoom: 1 })
     ).toBe(0.85);
+    expect(
+      getNotebookPageZoomAfterPinch({
+        startDistance: 100,
+        currentDistance: 20,
+        startZoom: 1,
+        minZoom: 1,
+      })
+    ).toBe(1);
+    expect(clampNotebookPageZoom(0.9, 1)).toBe(1);
     expect(clampNotebookPageZoom(Number.NaN)).toBe(1);
   });
 });

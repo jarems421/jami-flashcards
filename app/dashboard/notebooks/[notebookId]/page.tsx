@@ -1532,6 +1532,9 @@ export default function NotebookEditorPage() {
           startDistance: pinch.startDistance,
           currentDistance: getPinchDistance(first, second),
           startZoom: pinch.startZoom,
+          // Zooming out stops at "page fits the view" — never a shrunken
+          // page floating inside the frame.
+          minZoom: editorViewport.isLandscape ? landscapeFitZoom : 1,
         })
       );
       pageScrollRef.current?.scrollBy({
@@ -1600,6 +1603,10 @@ export default function NotebookEditorPage() {
     setSelectedTextBlockId(block.id);
     setEditingTextBlockId(block.id);
     markPageUnsaved();
+    // The text tool places exactly one box per activation: hand control back
+    // to the select tool so tapping elsewhere deselects instead of dropping
+    // another box.
+    switchNotebookTool("select");
   };
 
   useEffect(() => {
@@ -2073,6 +2080,18 @@ export default function NotebookEditorPage() {
     swipe.lastY = event.clientY;
     swipe.lastTime = event.timeStamp;
 
+    // While zoomed in, one finger pans the page freely in both directions.
+    // Page swipes only come back once the page is zoomed out to fit.
+    if (pageZoom > 1.02) {
+      pageScrollRef.current?.scrollBy({
+        top: -deltaY,
+        left: -deltaX,
+        behavior: "auto",
+      });
+      event.preventDefault();
+      return;
+    }
+
     const totalDx = swipe.currentX - swipe.startX;
     const totalDy = swipe.currentY - swipe.startY;
     if (
@@ -2156,7 +2175,8 @@ export default function NotebookEditorPage() {
       canChangePage &&
       (Math.abs(deltaX) >= pageWidth * 0.22 || Math.abs(swipe.velocityX) >= 0.55);
 
-    if (Math.abs(deltaX) > 8) {
+    // A zoomed-in drag was a pan; releasing it must never turn the page.
+    if (Math.abs(deltaX) > 8 && pageZoom <= 1.02) {
       event.preventDefault();
       setPageSwipeSettling(true);
       if (shouldChangePage) {
