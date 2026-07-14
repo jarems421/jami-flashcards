@@ -625,6 +625,14 @@
     .notebook-drawer-in {
       animation: notebook-drawer-in 200ms cubic-bezier(0.22, 1, 0.36, 1);
     }
+
+    .notebook-drawer-in-right {
+      animation: notebook-drawer-in-right 200ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    .notebook-popover-in {
+      animation: notebook-popover-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
   }
 
   @keyframes notebook-drawer-in {
@@ -635,6 +643,28 @@
     to {
       opacity: 1;
       transform: translateX(0);
+    }
+  }
+
+  @keyframes notebook-drawer-in-right {
+    from {
+      opacity: 0.4;
+      transform: translateX(0.9rem);
+    }
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  @keyframes notebook-popover-in {
+    from {
+      opacity: 0.5;
+      transform: translate(-50%, 0.45rem);
+    }
+    to {
+      opacity: 1;
+      transform: translate(-50%, 0);
     }
   }
 

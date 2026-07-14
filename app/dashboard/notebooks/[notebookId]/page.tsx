@@ -24,6 +24,7 @@ import {
   Button,
   ButtonLink,
   Card,
+  ConfirmDialog,
   EmptyState,
   FeedbackBanner,
   Skeleton,
@@ -162,6 +163,9 @@ type NotebookUndoAction = {
   previous: NotebookTextBlock[];
   next: NotebookTextBlock[];
 };
+type NotebookConfirmRequest =
+  | { kind: "clear-page" }
+  | { kind: "delete-page"; page: NotebookPage };
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 1240;
@@ -579,82 +583,85 @@ type NotebookIconName =
   | "eraser"
   | "undo"
   | "redo"
-  | "clear"
   | "ai"
-  | "save"
   | "chevron"
   | "trash"
   | "dots"
-  | "plus";
+  | "plus"
+  | "check"
+  | "alert"
+  | "close";
 
+// Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
+// caps/joins, and shared optical margins, so the set reads as one family.
 function NotebookIcon({ name }: { name: NotebookIconName }) {
   const common = {
     fill: "none",
     stroke: "currentColor",
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
-    strokeWidth: 1.9,
+    strokeWidth: 1.8,
   };
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[1.125rem] w-[1.125rem]">
-      {name === "back" ? <path {...common} d="M15 18l-6-6 6-6" /> : null}
+      {name === "back" ? <path {...common} d="M14.5 17.5 9 12l5.5-5.5" /> : null}
       {name === "pages" ? (
         <>
-          <path {...common} d="M7 4h9.5A2.5 2.5 0 0 1 19 6.5V19H8.5A3.5 3.5 0 0 0 5 22V6A2 2 0 0 1 7 4Z" />
-          <path {...common} d="M8 19V6.5A2.5 2.5 0 0 1 10.5 4" />
+          <rect {...common} x="8" y="3.8" width="11.2" height="14.4" rx="2.2" />
+          <path {...common} d="M4.8 8.1v9.7a2.7 2.7 0 0 0 2.7 2.7h7.7" />
         </>
       ) : null}
       {name === "text" ? (
-        <>
-          <path {...common} d="M5 6h14M12 6v12M9 18h6" />
-          <path {...common} d="M5 9V6h14v3" />
-        </>
+        <path {...common} d="M6 7.4V5.4h12v2M12 5.4v13.2M9.5 18.6h5" />
       ) : null}
       {name === "pen" ? (
         <>
-          <path {...common} d="M4 20l4.2-1 10-10a2.2 2.2 0 0 0-3.1-3.1l-10 10L4 20Z" />
-          <path {...common} d="M13.5 7.5l3 3" />
+          <path {...common} d="m4.9 19.1 1-3.9L16 5.1a2.05 2.05 0 0 1 2.9 2.9L8.8 18.1l-3.9 1Z" />
+          <path {...common} d="m13.9 7.2 2.9 2.9" />
         </>
       ) : null}
       {name === "highlighter" ? (
         <>
-          <path {...common} d="M5 18.5 14.8 8.7l3.5 3.5-9.8 9.8H5v-3.5Z" />
-          <path {...common} d="M13.5 7.2 15.7 5a2 2 0 0 1 2.8 0l.5.5a2 2 0 0 1 0 2.8l-2.2 2.2" />
-          <path {...common} d="M4 22h10" />
+          <path {...common} d="M5.6 17.9 14.7 8.8l1.7-1.7a1.95 1.95 0 0 1 2.75 0l.35.35a1.95 1.95 0 0 1 0 2.75L17.8 11.9l-9.1 9.1H5.6v-3.1Z" />
+          <path {...common} d="M4.6 21h9.2" />
         </>
       ) : null}
       {name === "eraser" ? (
         <>
-          <path {...common} d="M4 15.5 12.5 7a2.8 2.8 0 0 1 4 0l1.5 1.5a2.8 2.8 0 0 1 0 4L11.5 19H7.5L4 15.5Z" />
-          <path {...common} d="M9 10.5l4.5 4.5M11.5 19H20" />
+          <path {...common} d="M13.6 5.7 5.5 13.8a2 2 0 0 0 0 2.85l2.15 2.15a2 2 0 0 0 1.4.6h3.25l6.1-6.1a2 2 0 0 0 0-2.85l-2.9-2.9a2 2 0 0 0-2.85 0Z" />
+          <path {...common} d="m9.3 10 4.9 4.9M12.7 19.4h6.7" />
         </>
       ) : null}
       {name === "undo" ? (
-        <path {...common} d="M9 8H5V4M5 8c2-2.6 5.6-4.1 9-2.7 4.8 2 5.8 8.1 2.1 11.4-2.5 2.2-6.2 2.4-8.8.5" />
+        <>
+          <path {...common} d="M9 13.6 4.5 9.1 9 4.6" />
+          <path {...common} d="M4.5 9.1h9.6a5.35 5.35 0 0 1 0 10.7H9.2" />
+        </>
       ) : null}
       {name === "redo" ? (
-        <path {...common} d="M15 8h4V4M19 8c-2-2.6-5.6-4.1-9-2.7-4.8 2-5.8 8.1-2.1 11.4 2.5 2.2 6.2 2.4 8.8.5" />
-      ) : null}
-      {name === "clear" ? (
         <>
-          <path {...common} d="M6 7h12M10 7V5h4v2M8 10v8M12 10v8M16 10v8" />
-          <path {...common} d="M7 7l1 14h8l1-14" />
+          <path {...common} d="M15 13.6l4.5-4.5L15 4.6" />
+          <path {...common} d="M19.5 9.1H9.9a5.35 5.35 0 0 0 0 10.7h4.9" />
         </>
       ) : null}
       {name === "ai" ? (
-        <path {...common} d="M12 3l1.6 5 5.1 1.6-5.1 1.7L12 16l-1.6-4.7-5.1-1.7 5.1-1.6L12 3ZM18 15l.7 2.1L21 18l-2.3.8L18 21l-.8-2.2L15 18l2.2-.9L18 15Z" />
-      ) : null}
-      {name === "save" ? (
         <>
-          <path {...common} d="M5 5h11l3 3v11H5V5Z" />
-          <path {...common} d="M8 5v5h7V5M8 19v-5h8v5" />
+          <path
+            {...common}
+            d="M11 5.3c.38 2.1 1.1 3.55 2.02 4.48.93.92 2.38 1.64 4.48 2.02-2.1.38-3.55 1.1-4.48 2.02-.92.93-1.64 2.38-2.02 4.48-.38-2.1-1.1-3.55-2.02-4.48-.93-.92-2.38-1.64-4.48-2.02 2.1-.38 3.55-1.1 4.48-2.02C9.9 8.85 10.62 7.4 11 5.3Z"
+          />
+          <path
+            {...common}
+            d="M18.5 14.7c.2.98.53 1.67.97 2.11.44.44 1.13.77 2.11.97-.98.2-1.67.53-2.11.97-.44.44-.77 1.13-.97 2.11-.2-.98-.53-1.67-.97-2.11-.44-.44-1.13-.77-2.11-.97.98-.2 1.67-.53 2.11-.97.44-.44.77-1.13.97-2.11Z"
+          />
         </>
       ) : null}
-      {name === "chevron" ? <path {...common} d="m7 10 5 5 5-5" /> : null}
+      {name === "chevron" ? <path {...common} d="m7 10.4 5 5 5-5" /> : null}
       {name === "trash" ? (
         <>
-          <path {...common} d="M6 7h12M10 7V5h4v2M8 10v8M12 10v8M16 10v8" />
-          <path {...common} d="M7 7l1 14h8l1-14" />
+          <path {...common} d="M4.5 6.6h15M9.5 6.6V5.2a1.6 1.6 0 0 1 1.6-1.6h1.8a1.6 1.6 0 0 1 1.6 1.6v1.4" />
+          <path {...common} d="m18.3 6.6-.85 12a2 2 0 0 1-2 1.85H8.55a2 2 0 0 1-2-1.85l-.85-12" />
+          <path {...common} d="M10.1 10.6v5.8M13.9 10.6v5.8" />
         </>
       ) : null}
       {name === "dots" ? (
@@ -664,7 +671,15 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
           <circle cx="17.5" cy="12" r="1.35" fill="currentColor" />
         </>
       ) : null}
-      {name === "plus" ? <path {...common} d="M12 5v14M5 12h14" /> : null}
+      {name === "plus" ? <path {...common} d="M12 5.5v13M5.5 12h13" /> : null}
+      {name === "check" ? <path {...common} d="m5.5 12.6 4.2 4.2 8.8-9.4" /> : null}
+      {name === "alert" ? (
+        <>
+          <circle {...common} cx="12" cy="12" r="8.25" />
+          <path {...common} d="M12 8v4.6M12 15.9h.01" />
+        </>
+      ) : null}
+      {name === "close" ? <path {...common} d="m6.5 6.5 11 11M17.5 6.5l-11 11" /> : null}
     </svg>
   );
 }
@@ -700,6 +715,58 @@ function ToolbarIconButton({
       <NotebookIcon name={icon} />
       {children}
     </button>
+  );
+}
+
+// Icon-only autosave state so the header never shifts as the status changes.
+// The failed state is the exception: it becomes an explicit retry action.
+function NotebookSaveIndicator({
+  status,
+  onRetry,
+}: {
+  status: SaveStatus;
+  onRetry: () => void;
+}) {
+  if (status === "failed") {
+    return (
+      <button
+        type="button"
+        onClick={onRetry}
+        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--color-error-text)]/40 bg-[var(--color-error-text)]/10 px-2 py-0.5 text-[0.68rem] font-semibold text-[var(--color-error-text)] transition hover:bg-[var(--color-error-text)]/20 [&_svg]:h-3.5 [&_svg]:w-3.5"
+      >
+        <NotebookIcon name="alert" />
+        Retry save
+      </button>
+    );
+  }
+
+  const label =
+    status === "saving"
+      ? "Saving..."
+      : status === "unsaved"
+        ? "Unsaved changes"
+        : "All changes saved";
+  return (
+    <span
+      role="status"
+      aria-label={label}
+      title={label}
+      className="inline-grid h-5 w-5 shrink-0 place-items-center text-text-muted [&_svg]:h-3.5 [&_svg]:w-3.5"
+    >
+      {status === "saving" ? (
+        <span
+          aria-hidden="true"
+          className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-current border-t-transparent"
+        />
+      ) : status === "unsaved" ? (
+        <span
+          aria-hidden="true"
+          className="h-2 w-2 rounded-full bg-[var(--color-selected-border)]"
+        />
+      ) : (
+        <NotebookIcon name="check" />
+      )}
+    </span>
   );
 }
 
@@ -864,6 +931,7 @@ export default function NotebookEditorPage() {
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [loading, setLoading] = useState(true);
   const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<NotebookConfirmRequest | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
   const [phoneFullEditing, setPhoneFullEditing] = useState(false);
@@ -2452,10 +2520,6 @@ export default function NotebookEditorPage() {
       setFeedback({ type: "error", message: "A notebook needs at least one page." });
       return;
     }
-    const confirmed = window.confirm(
-      `Delete Page ${page.pageNumber}? This removes the page's writing and text boxes.`
-    );
-    if (!confirmed) return;
 
     if (
       saveStatusRef.current === "unsaved" ||
@@ -2613,9 +2677,7 @@ export default function NotebookEditorPage() {
     markPageUnsaved();
   }, [markPageUnsaved]);
 
-  const handleClearCurrentPage = () => {
-    const confirmed = window.confirm("Clear drawing from this page?");
-    if (!confirmed) return;
+  const performClearCurrentPage = () => {
     inkEditorRef.current?.clear();
     setInkHasContent(false);
     markPageUnsaved();
@@ -2719,176 +2781,36 @@ export default function NotebookEditorPage() {
             >
               <NotebookIcon name="back" />
             </Link>
-            <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-1 items-center gap-2">
               <div className="truncate text-sm font-semibold text-text-primary">{notebook.title}</div>
-              {saveStatus === "failed" ? (
-                <button
-                  type="button"
-                  className="mt-0.5 text-xs font-semibold text-[var(--color-error-text)] underline decoration-current/45 underline-offset-2"
-                  onClick={handleRetryPageSave}
-                >
-                  Save failed. Retry save
-                </button>
-              ) : (
-                <div className="text-xs text-text-muted">
-                  {saveStatus === "saving"
-                    ? "Saving..."
-                    : saveStatus === "unsaved"
-                      ? "Unsaved changes"
-                      : "Autosaved just now"}
-                </div>
-              )}
+              <NotebookSaveIndicator status={saveStatus} onRetry={handleRetryPageSave} />
             </div>
+            <ToolbarIconButton
+              label="Pages"
+              icon="pages"
+              active={pagesDrawerOpen}
+              onClick={() => {
+                setPenMenuOpen(false);
+                setHighlighterMenuOpen(false);
+                setEraserMenuOpen(false);
+                setPagesDrawerOpen((value) => !value);
+              }}
+            />
+            <ToolbarIconButton
+              label="Jami Tutor"
+              icon="ai"
+              active={aiPlaceholderOpen}
+              onClick={() => {
+                setPenMenuOpen(false);
+                setHighlighterMenuOpen(false);
+                setEraserMenuOpen(false);
+                setAiPlaceholderOpen((value) => !value);
+              }}
+            />
           </div>
-          <div
-            className="-mx-1 mt-1 flex max-w-[calc(100%+0.5rem)] items-center gap-1.5 overflow-x-auto overscroll-x-contain px-1 py-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            aria-label="Notebook tools"
-          >
-              <ToolbarIconButton
-                label="Pages"
-                icon="pages"
-                active={pagesDrawerOpen}
-                onClick={() => {
-                  setPenMenuOpen(false);
-                  setHighlighterMenuOpen(false);
-                  setEraserMenuOpen(false);
-                  setPagesDrawerOpen((value) => !value);
-                }}
-              />
-              <ToolbarIconButton
-                label="Text box (T)"
-                icon="text"
-                active={tool === "text"}
-                disabled={!fullNotebookEditingEnabled}
-                onClick={() => {
-                  switchNotebookTool(
-                    toolRef.current === "text" ? "select" : "text"
-                  );
-                  setPenMenuOpen(false);
-                  setHighlighterMenuOpen(false);
-                  setEraserMenuOpen(false);
-                }}
-              />
-              <div className="relative">
-                <ToolbarIconButton
-                  label="Pen (P)"
-                  icon="pen"
-                  active={tool === "pen" || penMenuOpen}
-                  disabled={!fullNotebookEditingEnabled}
-                  onClick={() => {
-                    switchNotebookTool("pen");
-                    setHighlighterMenuOpen(false);
-                    setEraserMenuOpen(false);
-                    setPenMenuOpen((value) => !value);
-                  }}
-                >
-                  <span
-                    className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full border border-black/30"
-                    style={{ backgroundColor: getNotebookStrokePaintColor(penColor, "pen") }}
-                  />
-                </ToolbarIconButton>
-              </div>
-              <div className="relative">
-                <ToolbarIconButton
-                  label="Highlighter (H)"
-                  icon="highlighter"
-                  active={tool === "highlighter" || highlighterMenuOpen}
-                  disabled={!fullNotebookEditingEnabled}
-                  onClick={() => {
-                    switchNotebookTool("highlighter");
-                    setPenMenuOpen(false);
-                    setEraserMenuOpen(false);
-                    setHighlighterMenuOpen((value) => !value);
-                  }}
-                >
-                  <span
-                    className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full border border-black/30"
-                    style={{
-                      backgroundColor: getNotebookStrokePaintColor(highlighterColor, "highlighter"),
-                    }}
-                  />
-                </ToolbarIconButton>
-              </div>
-              <div className="relative">
-                <ToolbarIconButton
-                  label="Eraser (E)"
-                  icon="eraser"
-                  active={tool === "eraser" || eraserMenuOpen}
-                  disabled={!fullNotebookEditingEnabled}
-                  onClick={() => {
-                    switchNotebookTool("eraser");
-                    setPenMenuOpen(false);
-                    setHighlighterMenuOpen(false);
-                    setEraserMenuOpen((value) => !value);
-                  }}
-                >
-                  <span
-                    aria-hidden="true"
-                    className="absolute bottom-1 right-1 rounded-full border border-current bg-transparent opacity-80"
-                    style={{
-                      width:
-                        eraserWidth === "small"
-                          ? "0.45rem"
-                          : eraserWidth === "medium"
-                            ? "0.6rem"
-                            : "0.78rem",
-                      height:
-                        eraserWidth === "small"
-                          ? "0.45rem"
-                          : eraserWidth === "medium"
-                            ? "0.6rem"
-                            : "0.78rem",
-                    }}
-                  />
-                </ToolbarIconButton>
-              </div>
-              <ToolbarIconButton
-                label="Undo (Ctrl+Z)"
-                icon="undo"
-                disabled={!fullNotebookEditingEnabled || (undoDepth === 0 && inkUndoDepth === 0)}
-                onClick={() => {
-                  setPenMenuOpen(false);
-                  setHighlighterMenuOpen(false);
-                  setEraserMenuOpen(false);
-                  handleUndo();
-                }}
-              />
-              <ToolbarIconButton
-                label="Redo (Ctrl+Shift+Z)"
-                icon="redo"
-                disabled={!fullNotebookEditingEnabled || (redoDepth === 0 && inkRedoDepth === 0)}
-                onClick={() => {
-                  setPenMenuOpen(false);
-                  setHighlighterMenuOpen(false);
-                  setEraserMenuOpen(false);
-                  handleRedo();
-                }}
-              />
-              <ToolbarIconButton
-                label="Clear drawing"
-                icon="clear"
-                disabled={!fullNotebookEditingEnabled || !inkHasContent}
-                onClick={() => {
-                  setPenMenuOpen(false);
-                  setHighlighterMenuOpen(false);
-                  setEraserMenuOpen(false);
-                  handleClearCurrentPage();
-                }}
-              />
-              <ToolbarIconButton
-                label="Jami Tutor"
-                icon="ai"
-                active={aiPlaceholderOpen}
-                onClick={() => {
-                  setPenMenuOpen(false);
-                  setHighlighterMenuOpen(false);
-                  setEraserMenuOpen(false);
-                  setAiPlaceholderOpen((value) => !value);
-                }}
-              />
-          </div>
-          {penMenuOpen || highlighterMenuOpen || eraserMenuOpen ? (
-            <div className="mx-auto mt-2 w-full max-w-2xl rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3 shadow-[0_12px_30px_rgba(0,0,0,0.18)]">
+        </header>
+        {penMenuOpen || highlighterMenuOpen || eraserMenuOpen ? (
+            <div className="notebook-popover-in notebook-drawer-surface absolute bottom-[calc(env(safe-area-inset-bottom,0px)+4.85rem)] left-1/2 z-50 w-[min(92vw,26rem)] -translate-x-1/2 rounded-[1.25rem] border border-[var(--color-border)] p-3 shadow-[0_18px_44px_rgba(0,0,0,0.32)]">
               {penMenuOpen ? (
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,0.85fr)_minmax(15rem,1.15fr)] sm:items-end">
                   <InkColorPicker
@@ -2948,7 +2870,7 @@ export default function NotebookEditorPage() {
                 </div>
               ) : null}
               {eraserMenuOpen ? (
-                <div className="grid gap-4 sm:grid-cols-2">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <div className="text-xs font-semibold text-text-secondary">
                       Eraser mode
@@ -3013,11 +2935,24 @@ export default function NotebookEditorPage() {
                       ))}
                     </div>
                   </div>
+                  <div className="border-t border-[var(--color-border)] pt-2 sm:col-span-2">
+                    <button
+                      type="button"
+                      disabled={!inkHasContent}
+                      onClick={() => {
+                        setEraserMenuOpen(false);
+                        setConfirmDialog({ kind: "clear-page" });
+                      }}
+                      className="inline-flex min-h-[2.25rem] w-full items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold text-[var(--color-error-text)] transition hover:bg-[var(--color-error-text)]/10 disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <NotebookIcon name="trash" />
+                      Clear ink from this page
+                    </button>
+                  </div>
                 </div>
               ) : null}
             </div>
           ) : null}
-        </header>
 
         <div className="relative min-h-0 flex-1 overflow-hidden">
         {feedback ? (
@@ -3144,28 +3079,31 @@ export default function NotebookEditorPage() {
         ) : null}
 
         {aiPlaceholderOpen ? (
-          <aside className="absolute bottom-0 right-0 top-0 z-30 w-full max-w-sm border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-4 shadow-[-20px_0_44px_rgba(0,0,0,0.22)]">
+          <aside className="notebook-drawer-in-right notebook-drawer-surface absolute bottom-0 right-0 top-0 z-30 flex w-full max-w-sm flex-col border-l border-[var(--color-border)] p-4 shadow-[-20px_0_44px_rgba(0,0,0,0.22)]">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <div className="text-sm font-semibold text-text-primary">Jami Tutor</div>
-                <div className="text-xs text-text-muted">Placeholder</div>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--color-selected-border)]/40 bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]">
+                  <NotebookIcon name="ai" />
+                </span>
+                <div className="min-w-0">
+                  <div className="truncate text-sm font-semibold text-text-primary">Jami Tutor</div>
+                  <div className="text-xs text-text-muted">Coming soon</div>
+                </div>
               </div>
               <button
                 type="button"
-                className="app-chip rounded-full px-3 py-1 text-xs font-semibold"
+                aria-label="Close Jami Tutor"
+                title="Close Jami Tutor"
+                className="app-chip inline-grid h-9 w-9 shrink-0 place-items-center rounded-full"
                 onClick={() => setAiPlaceholderOpen(false)}
               >
-                Close
+                <NotebookIcon name="close" />
               </button>
             </div>
             <p className="mt-4 text-sm leading-6 text-text-secondary">
-              Tutor will use this notebook page later. No page content is sent yet.
+              Tutor will be able to look at this notebook page and help when you
+              ask. Nothing from your pages is sent anywhere yet.
             </p>
-            <div className="mt-5 flex min-h-[2.75rem] items-center gap-2 rounded-full border border-[var(--color-field-border)] bg-[var(--color-field-bg)] px-3 text-sm text-[var(--color-field-placeholder)]">
-              Ask Jami Tutor...
-              <span className="ml-auto text-xs">mic</span>
-              <span className="text-xs">send</span>
-            </div>
           </aside>
         ) : null}
 
@@ -3263,7 +3201,7 @@ export default function NotebookEditorPage() {
                           disabled={Boolean(deletingPageId) || !fullNotebookEditingEnabled}
                           onClick={(event) => {
                             event.stopPropagation();
-                            void handleDeletePage(page);
+                            setConfirmDialog({ kind: "delete-page", page });
                           }}
                           className={`app-danger absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full shadow-sm transition hover:!opacity-100 disabled:cursor-not-allowed disabled:opacity-45 ${
                             selected
@@ -3688,8 +3626,138 @@ export default function NotebookEditorPage() {
                 </div>
               </div>
             ) : null}
+            {fullNotebookEditingEnabled ? (
+              <div
+                className="absolute bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+                aria-label="Drawing tools"
+              >
+                <div className="relative">
+                  <ToolbarIconButton
+                    label="Pen (P)"
+                    icon="pen"
+                    active={tool === "pen" || penMenuOpen}
+                    onClick={() => {
+                      setHighlighterMenuOpen(false);
+                      setEraserMenuOpen(false);
+                      if (tool !== "pen") {
+                        switchNotebookTool("pen");
+                        setPenMenuOpen(false);
+                        return;
+                      }
+                      setPenMenuOpen((value) => !value);
+                    }}
+                  >
+                    <span
+                      className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full border border-black/30"
+                      style={{ backgroundColor: getNotebookStrokePaintColor(penColor, "pen") }}
+                    />
+                  </ToolbarIconButton>
+                </div>
+                <div className="relative">
+                  <ToolbarIconButton
+                    label="Highlighter (H)"
+                    icon="highlighter"
+                    active={tool === "highlighter" || highlighterMenuOpen}
+                    onClick={() => {
+                      setPenMenuOpen(false);
+                      setEraserMenuOpen(false);
+                      if (tool !== "highlighter") {
+                        switchNotebookTool("highlighter");
+                        setHighlighterMenuOpen(false);
+                        return;
+                      }
+                      setHighlighterMenuOpen((value) => !value);
+                    }}
+                  >
+                    <span
+                      className="absolute bottom-1 right-1 h-2.5 w-2.5 rounded-full border border-black/30"
+                      style={{
+                        backgroundColor: getNotebookStrokePaintColor(highlighterColor, "highlighter"),
+                      }}
+                    />
+                  </ToolbarIconButton>
+                </div>
+                <div className="relative">
+                  <ToolbarIconButton
+                    label="Eraser (E)"
+                    icon="eraser"
+                    active={tool === "eraser" || eraserMenuOpen}
+                    onClick={() => {
+                      setPenMenuOpen(false);
+                      setHighlighterMenuOpen(false);
+                      if (tool !== "eraser") {
+                        switchNotebookTool("eraser");
+                        setEraserMenuOpen(false);
+                        return;
+                      }
+                      setEraserMenuOpen((value) => !value);
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="absolute bottom-1 right-1 rounded-full border border-current bg-transparent opacity-80"
+                      style={{
+                        width:
+                          eraserWidth === "small"
+                            ? "0.45rem"
+                            : eraserWidth === "medium"
+                              ? "0.6rem"
+                              : "0.78rem",
+                        height:
+                          eraserWidth === "small"
+                            ? "0.45rem"
+                            : eraserWidth === "medium"
+                              ? "0.6rem"
+                              : "0.78rem",
+                      }}
+                    />
+                  </ToolbarIconButton>
+                </div>
+                <ToolbarIconButton
+                  label="Text box (T)"
+                  icon="text"
+                  active={tool === "text"}
+                  onClick={() => {
+                    setPenMenuOpen(false);
+                    setHighlighterMenuOpen(false);
+                    setEraserMenuOpen(false);
+                    switchNotebookTool(toolRef.current === "text" ? "select" : "text");
+                  }}
+                />
+                <span
+                  aria-hidden="true"
+                  className="mx-0.5 h-6 w-px shrink-0 rounded-full bg-[var(--color-border)]"
+                />
+                <ToolbarIconButton
+                  label="Undo (Ctrl+Z)"
+                  icon="undo"
+                  disabled={undoDepth === 0 && inkUndoDepth === 0}
+                  onClick={() => {
+                    setPenMenuOpen(false);
+                    setHighlighterMenuOpen(false);
+                    setEraserMenuOpen(false);
+                    handleUndo();
+                  }}
+                />
+                <ToolbarIconButton
+                  label="Redo (Ctrl+Shift+Z)"
+                  icon="redo"
+                  disabled={redoDepth === 0 && inkRedoDepth === 0}
+                  onClick={() => {
+                    setPenMenuOpen(false);
+                    setHighlighterMenuOpen(false);
+                    setEraserMenuOpen(false);
+                    handleRedo();
+                  }}
+                />
+              </div>
+            ) : null}
             <div
-              className="absolute bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)] left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 p-1 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+              className={`absolute right-3 z-20 flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl md:right-4 ${
+                fullNotebookEditingEnabled
+                  ? "bottom-[calc(env(safe-area-inset-bottom,0px)+4.85rem)] md:bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)]"
+                  : "bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)]"
+              }`}
               aria-label="Page navigation"
             >
               <button
@@ -3736,12 +3804,41 @@ export default function NotebookEditorPage() {
               )}
             </div>
             {touchInkHintVisible ? (
-              <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+4.25rem)] left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
+              <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+7.25rem)] left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
                 Use Apple Pencil or stylus to write. Fingers move the page.
               </div>
             ) : null}
         </div>
       </div>
+      <ConfirmDialog
+        open={confirmDialog !== null}
+        title={
+          confirmDialog?.kind === "delete-page"
+            ? `Delete page ${confirmDialog.page.pageNumber}?`
+            : "Clear ink from this page?"
+        }
+        description={
+          confirmDialog?.kind === "delete-page"
+            ? "This removes the page's writing and text boxes. The other pages are renumbered."
+            : "All handwriting and highlights on this page will be removed. Text boxes stay."
+        }
+        confirmLabel={
+          confirmDialog?.kind === "delete-page" ? "Delete page" : "Clear ink"
+        }
+        busy={Boolean(deletingPageId)}
+        onConfirm={() => {
+          if (!confirmDialog) return;
+          if (confirmDialog.kind === "delete-page") {
+            const { page } = confirmDialog;
+            setConfirmDialog(null);
+            void handleDeletePage(page);
+            return;
+          }
+          performClearCurrentPage();
+          setConfirmDialog(null);
+        }}
+        onClose={() => setConfirmDialog(null)}
+      />
     </main>
   );
 }
