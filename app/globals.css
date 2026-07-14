@@ -503,7 +503,6 @@
   }
 
   .notebook-page-swipe-preview {
-    top: 0.75rem;
     pointer-events: none;
     will-change: transform;
   }
@@ -520,18 +519,6 @@
     display: none;
   }
 
-  .notebook-page-stage {
-    /* `safe` keeps the page centered normally but start-aligns it once the
-       zoomed page overflows, so the outer scroll area can reach every edge
-       (a plain `center` makes the left/top overflow unscrollable). */
-    align-items: safe center;
-    display: flex;
-    justify-content: safe center;
-    min-height: calc(100dvh - 8rem);
-    /* Bottom padding keeps the floating pager pill clear of the page sheet. */
-    padding-block: 0.75rem 3.5rem;
-  }
-
   /* Fully opaque drawer surface: the panel tokens carry alpha, so they are
      layered over the opaque base color instead of over the page content. */
   .notebook-drawer-surface {
@@ -541,13 +528,6 @@
         var(--color-surface-panel-strong)
       ),
       var(--color-surface-base);
-  }
-
-  @media (orientation: landscape), (max-height: 820px) {
-    .notebook-page-stage {
-      align-items: flex-start;
-      min-height: 100%;
-    }
   }
 
   .notebook-ink-surface {

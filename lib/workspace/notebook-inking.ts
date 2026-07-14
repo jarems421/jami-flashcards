@@ -188,6 +188,28 @@ export function clampNotebookPageZoom(
   return Math.max(minZoom, Math.min(NOTEBOOK_PAGE_MAX_ZOOM, value));
 }
 
+export type NotebookPagePan = { x: number; y: number };
+
+// Position of the zoomed page inside its fixed frame: centered while the page
+// fits, otherwise clamped so the frame is always fully covered by page.
+export function clampNotebookPagePan(input: {
+  pan: NotebookPagePan;
+  pageWidth: number;
+  pageHeight: number;
+  frameWidth: number;
+  frameHeight: number;
+}): NotebookPagePan {
+  const clampAxis = (value: number, pageSize: number, frameSize: number) => {
+    if (!Number.isFinite(value)) return Math.max(0, (frameSize - pageSize) / 2);
+    if (pageSize <= frameSize) return (frameSize - pageSize) / 2;
+    return Math.min(0, Math.max(frameSize - pageSize, value));
+  };
+  return {
+    x: clampAxis(input.pan.x, input.pageWidth, input.frameWidth),
+    y: clampAxis(input.pan.y, input.pageHeight, input.frameHeight),
+  };
+}
+
 export function getPinchDistance(
   first: PointerClientSample,
   second: PointerClientSample

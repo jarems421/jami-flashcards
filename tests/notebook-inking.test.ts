@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   appendInkPoints,
   appendPendingNotebookStroke,
+  clampNotebookPagePan,
   clampNotebookPageZoom,
   clampNotebookThicknessPercent,
   finalizeInkStroke,
@@ -474,5 +475,37 @@ describe("notebook inking helpers", () => {
     ).toBe(1);
     expect(clampNotebookPageZoom(0.9, 1)).toBe(1);
     expect(clampNotebookPageZoom(Number.NaN)).toBe(1);
+  });
+
+  it("clamps page pan inside a fixed frame", () => {
+    // Page smaller than the frame: centered on both axes.
+    expect(
+      clampNotebookPagePan({
+        pan: { x: 40, y: -80 },
+        pageWidth: 300,
+        pageHeight: 400,
+        frameWidth: 500,
+        frameHeight: 600,
+      })
+    ).toEqual({ x: 100, y: 100 });
+    // Page larger than the frame: pan clamped so the frame stays covered.
+    expect(
+      clampNotebookPagePan({
+        pan: { x: 50, y: -900 },
+        pageWidth: 1000,
+        pageHeight: 1400,
+        frameWidth: 500,
+        frameHeight: 600,
+      })
+    ).toEqual({ x: 0, y: -800 });
+    expect(
+      clampNotebookPagePan({
+        pan: { x: -700, y: -100 },
+        pageWidth: 1000,
+        pageHeight: 1400,
+        frameWidth: 500,
+        frameHeight: 600,
+      })
+    ).toEqual({ x: -500, y: -100 });
   });
 });

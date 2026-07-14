@@ -6,7 +6,6 @@ import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -67,8 +66,10 @@ import {
   shouldNotebookSaveUpdateLivePage,
 } from "@/lib/workspace/notebook-autosave";
 import {
+  clampNotebookPagePan,
   clampNotebookPageZoom,
   clampNotebookThicknessPercent,
+  type NotebookPagePan,
   getHighlighterWidthFromPercent,
   getNotebookCreatePagePull,
   getNotebookPageIndexAfterSwipe,
@@ -163,18 +164,12 @@ type PinchZoomState = {
    * fingers stays under the fingers while zooming. */
   anchorFx: number;
   anchorFy: number;
+  /** Committed pan at gesture start; the live transform builds on top of it. */
+  basePanX: number;
+  basePanY: number;
   pendingZoom: number;
 };
-type PinchCommitState = {
-  fx: number;
-  fy: number;
-  clientX: number;
-  clientY: number;
-};
-type EditorViewportState = {
-  height: number;
-  isLandscape: boolean;
-};
+type PageFrameSize = { width: number; height: number };
 type NotebookUndoAction = {
   type: "textBlocks";
   previous: NotebookTextBlock[];
@@ -186,23 +181,16 @@ type NotebookConfirmRequest =
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 1240;
-const NOTEBOOK_PAGE_BASE_WIDTH_REM = 48;
 // Gutter kept between the current page and the page sliding in, so they stay
 // visibly separated during a swipe instead of joining edge-to-edge.
 const NOTEBOOK_PAGE_SWIPE_GAP = 28;
-const NOTEBOOK_PAGE_ASPECT_RATIO = CANVAS_HEIGHT / CANVAS_WIDTH;
-// Vertical space reserved around the page in landscape fit-zoom: header plus
-// the floating pager pill at the bottom of the stage.
-const NOTEBOOK_PAGE_LANDSCAPE_VERTICAL_GUTTER = 128;
+// Breathing room around the page at fit zoom inside its fixed frame. Zoomed-in
+// panning may still cover the full frame edge-to-edge.
+const NOTEBOOK_PAGE_FRAME_INSET = 12;
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "bg-[#f8fafc] text-slate-950",
   black: "bg-[#080a10] text-[#f8fafc]",
 };
-// Paper-sheet depth, shared by the live page and the swipe previews so the
-// page reads as the same physical sheet in every state. The sheet is defined
-// by its shadow alone — no outline.
-const PAGE_SHEET_CLASS =
-  "rounded-[0.75rem] shadow-[0_2px_5px_rgba(2,6,23,0.14),0_20px_48px_rgba(2,6,23,0.24)]";
 const NOTEBOOK_PAGE_SETTLE_TRANSITION =
   "transform 260ms cubic-bezier(0.22, 1, 0.36, 1)";
 const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
@@ -934,11 +922,8 @@ export default function NotebookEditorPage() {
   const [inkRedoDepth, setInkRedoDepth] = useState(0);
   const [inkHasContent, setInkHasContent] = useState(false);
   const [pageZoom, setPageZoom] = useState(1);
-  const [userAdjustedZoom, setUserAdjustedZoom] = useState(false);
-  const [editorViewport, setEditorViewport] = useState<EditorViewportState>({
-    height: 0,
-    isLandscape: false,
-  });
+  const [pagePan, setPagePan] = useState<NotebookPagePan>({ x: 0, y: 0 });
+  const [frameSize, setFrameSize] = useState<PageFrameSize>({ width: 0, height: 0 });
   const [tool, setTool] = useState<EditorTool>("pen");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [loading, setLoading] = useState(true);
@@ -971,8 +956,9 @@ export default function NotebookEditorPage() {
   const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
   const textBlockResizeRef = useRef<TextBlockResizeState | null>(null);
-  const pageScrollRef = useRef<HTMLDivElement | null>(null);
+  const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const pagePanLiveRef = useRef<NotebookPagePan>({ x: 0, y: 0 });
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
@@ -995,7 +981,6 @@ export default function NotebookEditorPage() {
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
   const touchPointersRef = useRef<Map<number, PointerClientSample>>(new Map());
   const pinchZoomRef = useRef<PinchZoomState | null>(null);
-  const pinchCommitRef = useRef<PinchCommitState | null>(null);
   const undoStackRef = useRef<NotebookUndoAction[]>([]);
   const redoStackRef = useRef<NotebookUndoAction[]>([]);
   const editorRevisionRef = useRef(0);
@@ -1077,16 +1062,21 @@ export default function NotebookEditorPage() {
     [files, fileUrls, hasMappedBackgroundPages, notebook?.uploadedFileId]
   );
   const swipeAdjacentBackground = resolvePageBackground(swipeAdjacentPage);
-  const landscapeFitZoom = useMemo(() => {
-    if (!editorViewport.isLandscape || editorViewport.height <= 0) return 1;
-    const rootFontSize =
-      typeof window === "undefined"
-        ? 16
-        : Number.parseFloat(window.getComputedStyle(document.documentElement).fontSize) || 16;
-    const basePageHeight = NOTEBOOK_PAGE_BASE_WIDTH_REM * rootFontSize * NOTEBOOK_PAGE_ASPECT_RATIO;
-    const availableHeight = Math.max(320, editorViewport.height - NOTEBOOK_PAGE_LANDSCAPE_VERTICAL_GUTTER);
-    return clampNotebookPageZoom(Math.min(1, availableHeight / basePageHeight));
-  }, [editorViewport.height, editorViewport.isLandscape]);
+  // The page lives inside a fixed frame. At zoom 1 the whole page fits the
+  // frame ("full size"); zooming magnifies inside the frame instead of
+  // changing the page's footprint on screen.
+  const pageFit = useMemo(() => {
+    const availableWidth = frameSize.width - NOTEBOOK_PAGE_FRAME_INSET * 2;
+    const availableHeight = frameSize.height - NOTEBOOK_PAGE_FRAME_INSET * 2;
+    if (availableWidth <= 0 || availableHeight <= 0) return { width: 0, height: 0 };
+    const width = Math.min(
+      availableWidth,
+      (availableHeight * CANVAS_WIDTH) / CANVAS_HEIGHT
+    );
+    return { width, height: (width * CANVAS_HEIGHT) / CANVAS_WIDTH };
+  }, [frameSize]);
+  const pageWidthPx = pageFit.width * clampNotebookPageZoom(pageZoom, 1);
+  const pageHeightPx = pageFit.height * clampNotebookPageZoom(pageZoom, 1);
 
   useEffect(() => {
     selectedPageRef.current = selectedPage;
@@ -1161,37 +1151,43 @@ export default function NotebookEditorPage() {
   }, [eraserMode]);
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
+    const frame = pageFrameRef.current;
+    if (!frame || typeof window === "undefined") return;
 
-    const landscapeQuery = window.matchMedia("(orientation: landscape) and (min-width: 768px)");
-    const updateViewport = () => {
-      setEditorViewport({
-        height: window.innerHeight,
-        isLandscape: landscapeQuery.matches,
+    const updateFrameSize = () => {
+      const rect = frame.getBoundingClientRect();
+      setFrameSize((previous) =>
+        Math.abs(previous.width - rect.width) < 0.5 &&
+        Math.abs(previous.height - rect.height) < 0.5
+          ? previous
+          : { width: rect.width, height: rect.height }
+      );
+    };
+
+    updateFrameSize();
+    const observer = new ResizeObserver(updateFrameSize);
+    observer.observe(frame);
+    return () => observer.disconnect();
+  }, [loading, notebook?.id]);
+
+  // Keep the committed pan valid whenever the zoom or frame changes: centered
+  // while the page fits, clamped to the frame edges while zoomed in.
+  useEffect(() => {
+    setPagePan((previous) => {
+      const next = clampNotebookPagePan({
+        pan: previous,
+        pageWidth: pageWidthPx,
+        pageHeight: pageHeightPx,
+        frameWidth: frameSize.width,
+        frameHeight: frameSize.height,
       });
-    };
-
-    updateViewport();
-    window.addEventListener("resize", updateViewport);
-    window.addEventListener("orientationchange", updateViewport);
-    landscapeQuery.addEventListener("change", updateViewport);
-    return () => {
-      window.removeEventListener("resize", updateViewport);
-      window.removeEventListener("orientationchange", updateViewport);
-      landscapeQuery.removeEventListener("change", updateViewport);
-    };
-  }, []);
+      return next.x === previous.x && next.y === previous.y ? previous : next;
+    });
+  }, [frameSize, pageHeightPx, pageWidthPx]);
 
   useEffect(() => {
-    if (editorViewport.isLandscape) {
-      setUserAdjustedZoom(false);
-    }
-  }, [editorViewport.isLandscape]);
-
-  useEffect(() => {
-    if (!editorViewport.isLandscape || userAdjustedZoom) return;
-    setPageZoom(landscapeFitZoom);
-  }, [editorViewport.isLandscape, landscapeFitZoom, userAdjustedZoom]);
+    pagePanLiveRef.current = pagePan;
+  }, [pagePan]);
 
   const pushUndoAction = useCallback((action: NotebookUndoAction) => {
     undoStackRef.current = [...undoStackRef.current.slice(-39), action];
@@ -1455,12 +1451,12 @@ export default function NotebookEditorPage() {
       touchPointersRef.current.clear();
       if (pinchZoomRef.current && pageSurfaceRef.current) {
         // A pinch was interrupted (blur/app switch): drop its live transform
-        // so the page isn't left visually scaled without a committed zoom.
-        pageSurfaceRef.current.style.transform = "translateX(0px)";
+        // back to the last committed pan.
+        pageSurfaceRef.current.style.transform = `translate(${pagePanLiveRef.current.x}px, ${pagePanLiveRef.current.y}px)`;
         pageSurfaceRef.current.style.transformOrigin = "";
       }
       pinchZoomRef.current = null;
-      pinchCommitRef.current = null;
+      setPagePan(pagePanLiveRef.current);
       pageSwipeRef.current = null;
       setCreatePageActive(false);
       setCreatePageProgress(0);
@@ -1506,7 +1502,6 @@ export default function NotebookEditorPage() {
     if (!surface || !rect || rect.width <= 0 || rect.height <= 0) return;
     const centerX = (first.clientX + second.clientX) / 2;
     const centerY = (first.clientY + second.clientY) / 2;
-    setUserAdjustedZoom(true);
     pinchZoomRef.current = {
       startDistance: getPinchDistance(first, second),
       startZoom: pageZoom,
@@ -1516,32 +1511,42 @@ export default function NotebookEditorPage() {
       lastCenterY: centerY,
       anchorFx: (centerX - rect.left) / rect.width,
       anchorFy: (centerY - rect.top) / rect.height,
+      basePanX: pagePanLiveRef.current.x,
+      basePanY: pagePanLiveRef.current.y,
       pendingZoom: pageZoom,
     };
     pageSwipeRef.current = null;
   };
 
-  // Ends an anchored pinch: swaps the cheap live transform for the real
-  // layout size at the final zoom, then scrolls so the page point that was
-  // under the fingers stays exactly where the fingers left it.
-  const finalizePinchCommit = useCallback(() => {
-    const commit = pinchCommitRef.current;
+  // Ends an anchored pinch: commits the final zoom to layout and computes the
+  // pan that keeps the page point that was under the fingers exactly where
+  // the fingers left it, clamped to the frame.
+  const finalizePinchCommit = (pinch: PinchZoomState) => {
+    const frameRect = pageFrameRef.current?.getBoundingClientRect();
     const surface = pageSurfaceRef.current;
-    if (!commit || !surface) return;
-    pinchCommitRef.current = null;
-    surface.style.transform = "translateX(0px)";
-    surface.style.transformOrigin = "";
-    const rect = surface.getBoundingClientRect();
-    pageScrollRef.current?.scrollBy({
-      left: rect.left + commit.fx * rect.width - commit.clientX,
-      top: rect.top + commit.fy * rect.height - commit.clientY,
-      behavior: "auto",
+    if (!frameRect || !surface) return;
+    const nextZoom = pinch.pendingZoom;
+    const nextWidth = pageFit.width * nextZoom;
+    const nextHeight = pageFit.height * nextZoom;
+    const nextPan = clampNotebookPagePan({
+      pan: {
+        x: pinch.lastCenterX - frameRect.left - pinch.anchorFx * nextWidth,
+        y: pinch.lastCenterY - frameRect.top - pinch.anchorFy * nextHeight,
+      },
+      pageWidth: nextWidth,
+      pageHeight: nextHeight,
+      frameWidth: frameSize.width,
+      frameHeight: frameSize.height,
     });
-  }, []);
-
-  useLayoutEffect(() => {
-    finalizePinchCommit();
-  }, [finalizePinchCommit, pageZoom]);
+    pagePanLiveRef.current = nextPan;
+    // Reset the manual gesture transform to the value React will render next;
+    // React skips style writes it did not see change, so this must not be
+    // left stale.
+    surface.style.transformOrigin = "";
+    surface.style.transform = `translate(${nextPan.x}px, ${nextPan.y}px)`;
+    setPageZoom(nextZoom);
+    setPagePan(nextPan);
+  };
 
   const handleTouchPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType !== "touch") return false;
@@ -1585,9 +1590,9 @@ export default function NotebookEditorPage() {
         startDistance: pinch.startDistance,
         currentDistance: getPinchDistance(first, second),
         startZoom: pinch.startZoom,
-        // Zooming out stops at "page fits the view" — never a shrunken
-        // page floating inside the frame.
-        minZoom: editorViewport.isLandscape ? landscapeFitZoom : 1,
+        // Zooming out stops at "page fits the frame" — never a shrunken
+        // page floating inside it.
+        minZoom: 1,
       });
       pinch.pendingZoom = nextZoom;
       pinch.lastCenterX = centerX;
@@ -1598,9 +1603,11 @@ export default function NotebookEditorPage() {
         // started on and follows the fingers as they move — one cheap GPU
         // transform per frame, no layout work until the gesture commits.
         surface.style.transformOrigin = `${pinch.anchorFx * 100}% ${pinch.anchorFy * 100}%`;
-        surface.style.transform = `translate(${centerX - pinch.startCenterX}px, ${
-          centerY - pinch.startCenterY
-        }px) scale(${nextZoom / pinch.startZoom})`;
+        surface.style.transform = `translate(${
+          pinch.basePanX + centerX - pinch.startCenterX
+        }px, ${pinch.basePanY + centerY - pinch.startCenterY}px) scale(${
+          nextZoom / pinch.startZoom
+        })`;
       }
     }
     pageSwipeRef.current = null;
@@ -1622,19 +1629,7 @@ export default function NotebookEditorPage() {
     if (wasPinching) {
       const pinch = pinchZoomRef.current;
       if (pinch) {
-        pinchCommitRef.current = {
-          fx: pinch.anchorFx,
-          fy: pinch.anchorFy,
-          clientX: pinch.lastCenterX,
-          clientY: pinch.lastCenterY,
-        };
-        if (pinch.pendingZoom !== pageZoom) {
-          setPageZoom(pinch.pendingZoom);
-        } else {
-          // Zoom unchanged (pure two-finger pan): no re-render will fire the
-          // layout effect, so settle the transform into scroll right away.
-          finalizePinchCommit();
-        }
+        finalizePinchCommit(pinch);
       }
       pinchZoomRef.current = null;
       pageSwipeRef.current = null;
@@ -2157,27 +2152,30 @@ export default function NotebookEditorPage() {
     // While zoomed in, one finger pans the page freely in both directions.
     // Page swipes only come back once the page is zoomed out to fit.
     if (pageZoom > 1.02) {
-      pageScrollRef.current?.scrollBy({
-        top: -deltaY,
-        left: -deltaX,
-        behavior: "auto",
+      const nextPan = clampNotebookPagePan({
+        pan: {
+          x: pagePanLiveRef.current.x + deltaX,
+          y: pagePanLiveRef.current.y + deltaY,
+        },
+        pageWidth: pageWidthPx,
+        pageHeight: pageHeightPx,
+        frameWidth: frameSize.width,
+        frameHeight: frameSize.height,
       });
+      pagePanLiveRef.current = nextPan;
+      const surface = pageSurfaceRef.current;
+      if (surface) {
+        surface.style.transform = `translate(${nextPan.x}px, ${nextPan.y}px)`;
+      }
       event.preventDefault();
       return;
     }
 
     const totalDx = swipe.currentX - swipe.startX;
     const totalDy = swipe.currentY - swipe.startY;
-    if (
-      Math.abs(totalDy) > 10 &&
-      Math.abs(totalDy) > Math.abs(totalDx) * 1.15 &&
-      pageScrollRef.current
-    ) {
-      pageScrollRef.current.scrollBy({
-        top: -deltaY,
-        left: pageZoom > 1 ? -deltaX : 0,
-        behavior: "auto",
-      });
+    // At fit zoom the whole page is already visible; a vertically-dominant
+    // drag is neither a pan nor a page swipe.
+    if (Math.abs(totalDy) > 10 && Math.abs(totalDy) > Math.abs(totalDx) * 1.15) {
       event.preventDefault();
       return;
     }
@@ -2218,6 +2216,11 @@ export default function NotebookEditorPage() {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
     pageSwipeRef.current = null;
+
+    // A zoomed-in drag was a pan: commit its final position to state.
+    if (pageZoom > 1.02) {
+      setPagePan(pagePanLiveRef.current);
+    }
 
     const pageWidth = pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
     const deltaX = event.clientX - swipe.startX;
@@ -3331,30 +3334,32 @@ export default function NotebookEditorPage() {
           </aside>
         ) : null}
 
-          <div ref={pageScrollRef} className="h-full min-w-0 overflow-auto px-4 py-3 sm:px-6 sm:py-4">
-            <div className="mx-auto flex min-h-full w-full max-w-[60rem] flex-col gap-3">
+          <div ref={pageFrameRef} className="absolute inset-0 overflow-hidden">
             {selectedPage?.questionPrompt ? (
-              <Card tone="warm" padding="sm">
-                <p className="text-sm leading-6 text-text-primary">{selectedPage.questionPrompt}</p>
-              </Card>
+              <div className="absolute left-1/2 top-3 z-20 w-[min(92vw,36rem)] -translate-x-1/2">
+                <Card tone="warm" padding="sm">
+                  <p className="text-sm leading-6 text-text-primary">{selectedPage.questionPrompt}</p>
+                </Card>
+              </div>
             ) : null}
-
-              <div className="notebook-page-stage relative mx-auto w-full">
+            {selectedPage && pageFit.width > 0 ? (
+              <>
                 {swipeAdjacentPage ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${PAGE_SHEET_CLASS} ${
+                    className={`notebook-page-swipe-preview absolute left-0 top-0 overflow-hidden ${
                       PAGE_COLOR_CLASS[swipeAdjacentPage.pageColor]
                     }`}
                     style={{
-                      width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
-                      maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
-                      aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
-                      transform: `translateX(-50%) translateX(${
-                        pageSwipeOffset < 0
-                          ? `calc(100% + ${NOTEBOOK_PAGE_SWIPE_GAP}px)`
-                          : `calc(-100% - ${NOTEBOOK_PAGE_SWIPE_GAP}px)`
-                      }) translateX(${pageSwipeOffset}px)`,
+                      width: `${pageWidthPx}px`,
+                      height: `${pageHeightPx}px`,
+                      transform: `translate(${
+                        pagePan.x +
+                        (pageSwipeOffset < 0
+                          ? pageWidthPx + NOTEBOOK_PAGE_SWIPE_GAP
+                          : -(pageWidthPx + NOTEBOOK_PAGE_SWIPE_GAP)) +
+                        pageSwipeOffset
+                      }px, ${pagePan.y}px)`,
                       transition: pageSwipeSettling
                         ? NOTEBOOK_PAGE_SETTLE_TRANSITION
                         : "none",
@@ -3371,12 +3376,13 @@ export default function NotebookEditorPage() {
                 {createPageActive ? (
                   <div
                     aria-hidden="true"
-                    className={`notebook-page-swipe-preview absolute left-1/2 overflow-hidden ${PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]}`}
+                    className={`notebook-page-swipe-preview absolute left-0 top-0 overflow-hidden ${PAGE_COLOR_CLASS[pageColor]}`}
                     style={{
-                      width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
-                      maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
-                      aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
-                      transform: `translateX(-50%) translateX(calc(100% + ${NOTEBOOK_PAGE_SWIPE_GAP}px)) translateX(${pageSwipeOffset}px)`,
+                      width: `${pageWidthPx}px`,
+                      height: `${pageHeightPx}px`,
+                      transform: `translate(${
+                        pagePan.x + pageWidthPx + NOTEBOOK_PAGE_SWIPE_GAP + pageSwipeOffset
+                      }px, ${pagePan.y}px)`,
                       transition: "none",
                     }}
                   >
@@ -3390,7 +3396,7 @@ export default function NotebookEditorPage() {
                 <div
                   ref={pageSurfaceRef}
                   data-notebook-page-surface
-                  className={`notebook-page-surface relative w-full overflow-hidden ${PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]} ${
+                  className={`notebook-page-surface absolute left-0 top-0 overflow-hidden ${PAGE_COLOR_CLASS[pageColor]} ${
                     pageTransitionDirection === "next"
                       ? "notebook-page-transition-next"
                       : pageTransitionDirection === "previous"
@@ -3401,10 +3407,9 @@ export default function NotebookEditorPage() {
                   onPointerUp={handlePageSurfaceTextGestureStop}
                   onPointerCancel={handlePageSurfaceTextGestureStop}
                   style={{
-                    width: `${Math.round(clampNotebookPageZoom(pageZoom) * 100)}%`,
-                    maxWidth: `${NOTEBOOK_PAGE_BASE_WIDTH_REM * clampNotebookPageZoom(pageZoom)}rem`,
-                    aspectRatio: `${CANVAS_WIDTH} / ${CANVAS_HEIGHT}`,
-                    transform: `translateX(${pageSwipeOffset}px)`,
+                    width: `${pageWidthPx}px`,
+                    height: `${pageHeightPx}px`,
+                    transform: `translate(${pagePan.x + pageSwipeOffset}px, ${pagePan.y}px)`,
                     transition: pageSwipeSettling
                       ? NOTEBOOK_PAGE_SETTLE_TRANSITION
                       : "none",
@@ -3662,9 +3667,9 @@ export default function NotebookEditorPage() {
                     })}
                   </div>
                 </div>
-              </div>
-            </div>
-            </div>
+              </>
+            ) : null}
+          </div>
             {createPageActive || creatingPage ? (
               <div
                 aria-hidden="true"
