@@ -215,35 +215,37 @@ const ERASER_WIDTH_VALUE: Record<EraserWidth, number> = {
   medium: 56,
   large: 76,
 };
+// Each edge keeps a generous 32px invisible hit area, but the visible
+// affordance is a slim grip bar sitting on the border, not a bubble.
 const TEXT_BLOCK_RESIZE_HANDLES: Array<{
   edge: NotebookTextBlockResizeEdge;
   label: string;
   positionClass: string;
-  arrowClass: string;
+  gripClass: string;
 }> = [
   {
     edge: "top",
     label: "Resize text box from top edge",
     positionClass: "left-1/2 top-0 h-8 w-8 -translate-x-1/2 -translate-y-1/2",
-    arrowClass: "rotate-180",
+    gripClass: "h-[3px] w-4",
   },
   {
     edge: "right",
     label: "Resize text box from right edge",
     positionClass: "right-0 top-1/2 h-8 w-8 -translate-y-1/2 translate-x-1/2",
-    arrowClass: "-rotate-90",
+    gripClass: "h-4 w-[3px]",
   },
   {
     edge: "bottom",
     label: "Resize text box from bottom edge",
     positionClass: "bottom-0 left-1/2 h-8 w-8 -translate-x-1/2 translate-y-1/2",
-    arrowClass: "rotate-0",
+    gripClass: "h-[3px] w-4",
   },
   {
     edge: "left",
     label: "Resize text box from left edge",
     positionClass: "left-0 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2",
-    arrowClass: "rotate-90",
+    gripClass: "h-4 w-[3px]",
   },
 ];
 const NOTEBOOK_THICKNESS_TICKS = [25, 50, 75] as const;
@@ -3203,11 +3205,7 @@ export default function NotebookEditorPage() {
                             event.stopPropagation();
                             setConfirmDialog({ kind: "delete-page", page });
                           }}
-                          className={`app-danger absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full shadow-sm transition hover:!opacity-100 disabled:cursor-not-allowed disabled:opacity-45 ${
-                            selected
-                              ? "opacity-90"
-                              : "opacity-0 focus-visible:opacity-90 group-hover:opacity-90"
-                          }`}
+                          className="app-danger absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full shadow-[0_3px_10px_rgba(0,0,0,0.3)] transition hover:scale-105 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
                         >
                           {deleting ? (
                             <span className="text-[0.65rem] font-bold">...</span>
@@ -3442,11 +3440,11 @@ export default function NotebookEditorPage() {
                       return (
                         <div
                           key={block.id}
-                          className={`notebook-text-object pointer-events-auto absolute rounded-lg border bg-transparent transition ${
+                          className={`notebook-text-object pointer-events-auto absolute rounded-[0.45rem] border bg-transparent transition ${
                             editing
-                              ? "cursor-text border-[var(--color-selected-border)] shadow-[0_0_0_3px_rgba(183,124,255,0.16)]"
+                              ? "cursor-text border-[var(--color-selected-border)] shadow-[0_0_0_1px_var(--color-selected-border)]"
                               : selected
-                                ? "cursor-grab touch-none select-none border-[var(--color-selected-border)] shadow-[0_0_0_3px_rgba(183,124,255,0.14)] active:cursor-grabbing"
+                                ? "cursor-grab touch-none select-none border-[var(--color-selected-border)] shadow-[0_0_0_1px_var(--color-selected-border)] active:cursor-grabbing"
                                 : "cursor-grab touch-none select-none border-transparent active:cursor-grabbing"
                           }`}
                           style={{
@@ -3490,12 +3488,12 @@ export default function NotebookEditorPage() {
                         >
                           {selected && fullNotebookEditingEnabled && !gesturing ? (
                             <>
-                              <div className="absolute right-1 top-1 z-20 flex gap-1 rounded-full border border-black/10 bg-black/60 p-1 shadow-sm backdrop-blur">
+                              <div className="absolute right-1.5 top-1.5 z-20 flex gap-0.5 rounded-[0.55rem] border border-black/15 bg-black/60 p-0.5 shadow-sm backdrop-blur-sm">
                                 <button
                                   type="button"
                                   aria-label={editing ? "Close text editor" : "Edit text block"}
                                   title={editing ? "Close text editor" : "Edit text block"}
-                                  className="inline-grid h-7 w-7 place-items-center rounded-full text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
+                                  className="inline-grid h-6 w-6 place-items-center rounded-[0.4rem] text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] [&_svg]:h-3.5 [&_svg]:w-3.5"
                                   onPointerDown={(event) => event.stopPropagation()}
                                   onClick={(event) => {
                                     event.stopPropagation();
@@ -3511,7 +3509,7 @@ export default function NotebookEditorPage() {
                                   type="button"
                                   aria-label="Delete text block"
                                   title="Delete text block"
-                                  className="inline-grid h-7 w-7 place-items-center rounded-full text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc]"
+                                  className="inline-grid h-6 w-6 place-items-center rounded-[0.4rem] text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] [&_svg]:h-3.5 [&_svg]:w-3.5"
                                   onPointerDown={(event) => event.stopPropagation()}
                                   onClick={(event) => {
                                     event.stopPropagation();
@@ -3528,7 +3526,7 @@ export default function NotebookEditorPage() {
                                   data-text-resize-handle="true"
                                   aria-label={handle.label}
                                   title={handle.label}
-                                  className={`group absolute z-20 inline-grid touch-none place-items-center rounded-full text-[#f8fafc] transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] ${handle.positionClass}`}
+                                  className={`group absolute z-20 inline-grid touch-none place-items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${handle.positionClass}`}
                                   onPointerDown={(event) =>
                                     startTextBlockResize(block, handle.edge, event)
                                   }
@@ -3536,9 +3534,10 @@ export default function NotebookEditorPage() {
                                   onPointerUp={stopTextBlockResize}
                                   onPointerCancel={stopTextBlockResize}
                                 >
-                                  <span className={`inline-grid h-5 w-5 place-items-center rounded-full border border-black/10 bg-black/55 shadow-sm backdrop-blur transition group-hover:bg-black/70 [&_svg]:h-3 [&_svg]:w-3 ${handle.arrowClass}`}>
-                                    <NotebookIcon name="chevron" />
-                                  </span>
+                                  <span
+                                    aria-hidden="true"
+                                    className={`rounded-full bg-[var(--color-selected-border)] shadow-[0_1px_3px_rgba(0,0,0,0.35)] transition group-hover:scale-110 ${handle.gripClass}`}
+                                  />
                                 </button>
                               ))}
                             </>
@@ -3555,11 +3554,11 @@ export default function NotebookEditorPage() {
                               onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
                               placeholder="Type here..."
                               data-notebook-text-editor="true"
-                              className={`notebook-text-editor h-full w-full resize-none rounded-lg bg-transparent p-2 pb-8 pr-20 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+                              className={`notebook-text-editor h-full w-full resize-none rounded-[0.45rem] bg-transparent p-2 pr-16 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
                             />
                           ) : (
                             <div
-                              className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-lg p-2 pb-8 pr-10 text-sm font-medium leading-6 ${
+                              className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-[0.45rem] p-2 pr-10 text-sm font-medium leading-6 ${
                                 pageColor === "black" ? "text-[#f8fafc]" : "text-slate-950"
                               } ${block.text.trim() ? "" : "opacity-60"}`}
                             >
