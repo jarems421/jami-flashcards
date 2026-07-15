@@ -297,10 +297,10 @@ function DraftEditor({
   }, [draft]);
 
   return (
-    <div className="rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-4">
+    <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-white">
+          <div className="text-sm font-semibold text-text-primary">
             {isFlashcard ? "Flashcard draft" : "Notebook question draft"}
           </div>
           <div className="mt-1 text-xs text-text-muted">
@@ -356,7 +356,7 @@ function DraftEditor({
               <select
                 value={selectedDeckId}
                 onChange={(event) => onDeckChange(event.target.value)}
-                className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-white/[0.1] bg-surface-panel-strong px-3 text-sm text-white outline-none focus:border-warm-accent"
+                className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-[var(--color-border)] bg-surface-panel-strong px-3 text-sm text-text-primary outline-none focus:border-warm-accent"
               >
                 {decks.map((deck) => (
                   <option key={deck.id} value={deck.id}>
@@ -367,7 +367,7 @@ function DraftEditor({
             </label>
           ) : (
             <div className="rounded-[1.15rem] border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
-              <div className="font-semibold text-white">
+              <div className="font-semibold text-text-primary">
                 Create a deck before adding this flashcard.
               </div>
               <p className="mt-1">
@@ -375,7 +375,7 @@ function DraftEditor({
               </p>
               <Link
                 href="/dashboard/decks"
-                className="mt-3 inline-flex min-h-[2.4rem] items-center justify-center rounded-full border border-warm-border bg-white/[0.06] px-3 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.1]"
+                className="mt-3 inline-flex min-h-[2.4rem] items-center justify-center rounded-full border border-warm-border bg-[var(--color-glass-subtle)] px-3 text-xs font-semibold text-warm-accent transition hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
               >
                 Create deck
               </Link>
@@ -390,7 +390,7 @@ function DraftEditor({
               <select
                 value={selectedNotebookId}
                 onChange={(event) => onNotebookChange(event.target.value)}
-                className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-white/[0.1] bg-surface-panel-strong px-3 text-sm text-white outline-none focus:border-warm-accent"
+                className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-[var(--color-border)] bg-surface-panel-strong px-3 text-sm text-text-primary outline-none focus:border-warm-accent"
               >
                 {notebooks.map((notebook) => (
                   <option key={notebook.id} value={notebook.id}>
@@ -401,7 +401,7 @@ function DraftEditor({
             </label>
           ) : (
             <div className="rounded-[1.15rem] border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
-              <div className="font-semibold text-white">
+              <div className="font-semibold text-text-primary">
                 Create a notebook before approving this question draft.
               </div>
               <p className="mt-1">
@@ -409,7 +409,7 @@ function DraftEditor({
               </p>
               <Link
                 href="/dashboard/folders"
-                className="mt-3 inline-flex min-h-[2.4rem] items-center justify-center rounded-full border border-warm-border bg-white/[0.06] px-3 text-xs font-semibold text-warm-accent transition hover:bg-white/[0.1]"
+                className="mt-3 inline-flex min-h-[2.4rem] items-center justify-center rounded-full border border-warm-border bg-[var(--color-glass-subtle)] px-3 text-xs font-semibold text-warm-accent transition hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
               >
                 Open folders
               </Link>
@@ -1121,7 +1121,7 @@ export default function LibraryPage() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="add-library-source-title"
-            className="relative max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[1.6rem] border border-white/[0.12] bg-surface-panel-strong p-5 shadow-[0_24px_70px_rgba(0,0,0,0.42)]"
+            className="relative max-h-[92vh] w-full max-w-4xl overflow-y-auto rounded-[1.6rem] border border-[var(--color-border)] bg-surface-panel-strong p-5 shadow-[0_24px_70px_rgba(0,0,0,0.42)]"
           >
             <div className="flex flex-wrap items-start justify-between gap-3">
               <SectionHeader
@@ -1141,8 +1141,8 @@ export default function LibraryPage() {
                     onClick={() => changeComposerKind(item.value)}
                     className={`w-full rounded-[1.2rem] border p-4 text-left transition ${
                       composerKind === item.value
-                        ? "border-warm-border bg-warm-glow text-white"
-                        : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                        ? "border-warm-border bg-warm-glow text-text-primary"
+                        : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary hover:border-[var(--color-border)]"
                     }`}
                   >
                     <div className="font-semibold">{item.label}</div>
@@ -1244,7 +1244,7 @@ export default function LibraryPage() {
                     aria-valuemin={0}
                     aria-valuemax={100}
                     aria-valuenow={uploadProgress}
-                    className="h-2 overflow-hidden rounded-full bg-white/[0.08]"
+                    className="h-2 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
                   >
                     <div
                       className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
@@ -1452,7 +1452,7 @@ export default function LibraryPage() {
               className={`min-h-10 rounded-full border px-3 text-xs font-semibold transition ${
                 recentOnly
                   ? "app-selected"
-                  : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
+                  : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary"
               }`}
             >
               Added or updated recently
@@ -1550,7 +1550,7 @@ export default function LibraryPage() {
         />
       ) : (
         <>
-        <div className="grid grid-cols-3 gap-2 rounded-[1.15rem] border border-white/[0.08] bg-white/[0.035] p-1.5 lg:hidden">
+        <div className="grid grid-cols-3 gap-2 rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1.5 lg:hidden">
           {mobileTabs.map((tab) => (
             <button
               key={tab.value}
@@ -1559,7 +1559,7 @@ export default function LibraryPage() {
               className={`min-h-[2.4rem] rounded-[0.9rem] px-3 text-xs font-semibold transition ${
                 mobileTab === tab.value
                   ? "bg-warm-glow text-warm-accent"
-                  : "text-text-muted hover:bg-white/[0.05] hover:text-white"
+                  : "text-text-muted hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))] hover:text-text-primary"
               }`}
             >
               {tab.label}
@@ -1592,8 +1592,8 @@ export default function LibraryPage() {
                       }}
                       className={`w-full cursor-pointer rounded-[1.2rem] border p-4 pr-12 text-left transition hover:-translate-y-px ${
                         active
-                          ? "border-warm-border bg-warm-glow text-white"
-                          : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                          ? "border-warm-border bg-warm-glow text-text-primary"
+                          : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary hover:border-[var(--color-border)]"
                       }`}
                     >
                       <span className="flex items-start gap-3">
@@ -1698,7 +1698,7 @@ export default function LibraryPage() {
                   </div>
                   <div
                     id="selected-source-preview"
-                    className="mt-5 scroll-mt-24 overflow-hidden rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-4"
+                    className="mt-5 scroll-mt-24 overflow-hidden rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4"
                   >
                     <SourcePreview
                       source={selectedSource}
@@ -1729,7 +1729,7 @@ export default function LibraryPage() {
                       ) : null}
                     </div>
                   ) : null}
-                  <div className="mt-5 flex flex-wrap gap-2 border-t border-white/[0.08] pt-4">
+                  <div className="mt-5 flex flex-wrap gap-2 border-t border-[var(--color-border)] pt-4">
                     <Button type="button" onClick={openSelectedSource}>
                       Open
                     </Button>
@@ -1855,10 +1855,10 @@ export default function LibraryPage() {
                   />
                   <div className="mt-5 space-y-3">
                       <>
-                        <div className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.035] p-3">
+                        <div className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
-                              <div className="text-sm font-semibold text-white">
+                              <div className="text-sm font-semibold text-text-primary">
                                 Draft queue: {sourceDrafts.length}
                               </div>
                               <p className="mt-1 text-xs leading-5 text-text-muted">
@@ -1879,14 +1879,14 @@ export default function LibraryPage() {
                                   onClick={() => setSelectedDraftId(draft.id)}
                                   className={`min-w-[13rem] rounded-[1rem] border p-3 text-left transition ${
                                     active
-                                      ? "border-warm-border bg-warm-glow text-white"
-                                      : "border-white/[0.09] bg-white/[0.04] text-text-secondary hover:border-white/[0.16]"
+                                      ? "border-warm-border bg-warm-glow text-text-primary"
+                                      : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary hover:border-[var(--color-border)]"
                                   }`}
                                 >
                                   <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
                                     Draft {index + 1}
                                   </div>
-                                  <div className="mt-1 line-clamp-2 text-sm font-semibold text-white">
+                                  <div className="mt-1 line-clamp-2 text-sm font-semibold text-text-primary">
                                     {draft.kind === "flashcard"
                                       ? draft.front ?? "Flashcard draft"
                                       : draft.questionText ?? "Practice question draft"}
@@ -2032,7 +2032,7 @@ export default function LibraryPage() {
                         className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${
                           active
                             ? "border-warm-border bg-warm-glow text-warm-accent"
-                            : "border-white/[0.1] bg-white/[0.04] text-text-secondary"
+                            : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary"
                         }`}
                       >
                         {folder.name}
@@ -2065,7 +2065,7 @@ export default function LibraryPage() {
               {showTutorTranscript ? (
                 <div className="mt-5 max-h-80 space-y-3 overflow-y-auto pr-1">
                   {tutorMessages.length === 0 ? (
-                    <p className="rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+                    <p className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm leading-6 text-text-secondary">
                       No Tutor messages yet.
                     </p>
                   ) : (
@@ -2074,8 +2074,8 @@ export default function LibraryPage() {
                         key={`${message.role}-${index}`}
                         className={`rounded-[1.1rem] border p-4 text-sm leading-6 ${
                           message.role === "model"
-                            ? "border-warm-border bg-warm-glow text-white"
-                            : "border-white/[0.09] bg-white/[0.04] text-text-secondary"
+                            ? "border-warm-border bg-warm-glow text-text-primary"
+                            : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary"
                         }`}
                       >
                         <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
@@ -2087,7 +2087,7 @@ export default function LibraryPage() {
                   )}
                 </div>
               ) : (
-                <p className="mt-4 rounded-[1.2rem] border border-white/[0.09] bg-white/[0.035] p-4 text-sm leading-6 text-text-secondary">
+                <p className="mt-4 rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm leading-6 text-text-secondary">
                   Transcript collapsed. Source Tutor has {tutorMessages.length} message{tutorMessages.length === 1 ? "" : "s"} in this session.
                 </p>
               )}
@@ -2097,7 +2097,7 @@ export default function LibraryPage() {
         </>
       )}
       <div className="text-sm text-text-muted">
-        Need cards instead? <Link className="text-warm-accent hover:text-white" href="/dashboard/cards">Open Cards</Link>.
+        Need cards instead? <Link className="text-warm-accent hover:text-text-primary" href="/dashboard/cards">Open Cards</Link>.
       </div>
     </AppPage>
   );

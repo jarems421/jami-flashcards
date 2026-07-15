@@ -103,14 +103,14 @@ function AgentLink({
     <Link
       href={href}
       data-agent-route={href}
-      className="group rounded-[1.25rem] border border-white/[0.09] bg-white/[0.04] p-4 text-left transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-white/[0.065]"
+      className="group rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-left transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-sm font-semibold text-white">{label}</div>
+          <div className="text-sm font-semibold text-text-primary">{label}</div>
           <p className="mt-2 text-sm leading-6 text-text-secondary">{purpose}</p>
         </div>
-        <span className="rounded-full border border-white/[0.10] bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-text-muted group-hover:text-warm-accent">
+        <span className="rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1 text-xs font-semibold text-text-muted group-hover:text-warm-accent">
           Open
         </span>
       </div>
@@ -141,7 +141,7 @@ export default function AgentPage() {
         secondaryAction={
           <a
             href="/llms.txt"
-            className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/14 bg-white/[0.05] px-5 py-3 text-base font-medium text-white transition duration-fast hover:border-white/22 hover:bg-white/[0.08]"
+            className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-5 py-3 text-base font-medium text-text-primary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
           >
             Plain-text route map
           </a>
@@ -159,8 +159,8 @@ export default function AgentPage() {
             ["Local-only actions", "Seeded notebooks, drafts, and approvals do not write to Firebase."],
             ["Real auth preserved", "Private dashboards and persistent writes still require a signed-in account."],
           ].map(([title, detail]) => (
-            <div key={title} className="rounded-[1.15rem] border border-white/[0.09] bg-white/[0.04] p-4">
-              <div className="text-sm font-semibold text-white">{title}</div>
+            <div key={title} className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+              <div className="text-sm font-semibold text-text-primary">{title}</div>
               <p className="mt-2 text-sm leading-6 text-text-secondary">{detail}</p>
             </div>
           ))}
@@ -188,7 +188,7 @@ export default function AgentPage() {
           {testFlow.map((step, index) => (
             <li
               key={step}
-              className="flex gap-3 rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-3 text-sm leading-6 text-text-secondary"
+              className="flex gap-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-3 text-sm leading-6 text-text-secondary"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-xs font-semibold text-warm-accent">
                 {index + 1}
@@ -208,7 +208,7 @@ export default function AgentPage() {
           {phase6TestFlow.map((step, index) => (
             <li
               key={step}
-              className="flex gap-3 rounded-[1rem] border border-white/[0.08] bg-white/[0.035] px-3 py-3 text-sm leading-6 text-text-secondary"
+              className="flex gap-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-3 text-sm leading-6 text-text-secondary"
             >
               <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-warm-border bg-warm-glow text-xs font-semibold text-warm-accent">
                 {index + 1}

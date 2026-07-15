@@ -97,7 +97,7 @@ export function StreakPredictionPanel({
             title="Streak check-in"
             description={`${prediction.explanation} This view uses today's study, your last 7 active days, and the current due load.`}
           />
-          <div className="mt-4 text-lg font-semibold text-white">{prediction.headline}</div>
+          <div className="mt-4 text-lg font-semibold text-text-primary">{prediction.headline}</div>
           <p className="mt-2 text-sm leading-6 text-text-secondary">
             {prediction.actionLabel}
           </p>
@@ -126,9 +126,9 @@ export function StreakPredictionPanel({
         ].map((item) => (
           <div
             key={item.label}
-            className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] px-3 py-3 text-center"
+            className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-3 text-center"
           >
-            <div className="text-lg font-semibold tabular-nums text-white">{item.value}</div>
+            <div className="text-lg font-semibold tabular-nums text-text-primary">{item.value}</div>
             <div className="mt-1 text-[0.68rem] uppercase tracking-[0.12em] text-text-muted">
               {item.label}
             </div>
@@ -229,10 +229,10 @@ export function RecentChangesPanel({ analytics }: { analytics: SpacedRepetitionA
         ].map((item) => (
           <div
             key={item.label}
-            className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] p-4"
+            className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4"
           >
             <div className="text-xs uppercase tracking-[0.16em] text-text-muted">{item.label}</div>
-            <div className="mt-3 text-xl font-semibold text-white">{item.value}</div>
+            <div className="mt-3 text-xl font-semibold text-text-primary">{item.value}</div>
             <div className="mt-2 text-sm text-text-secondary">{item.detail}</div>
           </div>
         ))}
@@ -258,11 +258,11 @@ export function WeakAreasPanel({
           analytics.weakestAreas.map((area) => (
             <div
               key={`${area.kind}-${area.name}`}
-              className="rounded-[1.2rem] border border-white/[0.08] bg-white/[0.045] p-4"
+              className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4"
             >
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <div className="text-sm font-semibold text-white">{area.name}</div>
+                  <div className="text-sm font-semibold text-text-primary">{area.name}</div>
                   <div className="mt-1 text-xs text-text-muted">
                     {area.kind === "deck" ? "Deck" : "Tag"} - {area.cardCount} reviewed card{area.cardCount === 1 ? "" : "s"}
                   </div>

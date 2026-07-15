@@ -9,7 +9,6 @@ import {
   getSubjectPrompt,
 } from "@/lib/ai/card-autocomplete";
 import { featureFlags } from "@/lib/app/feature-flags";
-import { hasDemoClaim } from "@/lib/demo/token";
 
 export const runtime = "nodejs";
 
@@ -94,9 +93,6 @@ export async function POST(request: NextRequest) {
   try {
     const adminAuth = getAdminAuth();
     const decoded = await adminAuth.verifyIdToken(token);
-    if (hasDemoClaim(decoded)) {
-      return Response.json({ error: "AI is disabled in the shared demo account." }, { status: 403 });
-    }
     uid = decoded.uid;
   } catch {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

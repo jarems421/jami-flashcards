@@ -78,7 +78,7 @@ function formatEditedLabel(updatedAt: number) {
 }
 
 export default function FolderDetailPage() {
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
   const router = useRouter();
   const params = useParams<{ folderId?: string | string[] }>();
   const folderId = Array.isArray(params.folderId) ? params.folderId[0] : params.folderId;
@@ -553,13 +553,6 @@ export default function FolderDetailPage() {
   };
 
   const openNotebookForm = () => {
-    if (isDemoUser) {
-      setFeedback({
-        type: "error",
-        message: "Exit the shared demo to create notebooks or upload PDF and image files.",
-      });
-      return;
-    }
     setShowNotebookForm(true);
   };
 
@@ -826,7 +819,7 @@ export default function FolderDetailPage() {
                 aria-valuemin={0}
                 aria-valuemax={100}
                 aria-valuenow={notebookUploadProgress}
-                className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.08]"
+                className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
               >
                 <div
                   className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
@@ -919,7 +912,7 @@ export default function FolderDetailPage() {
                 onClick={() => selectFolderTab(value as FolderWorkspaceTab)}
                 className={`min-h-[2.4rem] rounded-full px-4 text-sm font-semibold transition ${
                   selected
-                    ? "bg-accent text-white shadow-[var(--shadow-accent)]"
+                    ? "bg-accent text-[var(--color-text-inverse)] shadow-[var(--shadow-accent)]"
                     : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                 }`}
               >
@@ -931,15 +924,10 @@ export default function FolderDetailPage() {
 
         {activeTab === "notebooks" ? (
           <section className="space-y-4">
-            {isDemoUser ? (
-              <div className="app-warning rounded-[1.2rem] px-4 py-3 text-sm leading-6">
-                Exit the shared demo to create notebooks or upload PDF and image files.
-              </div>
-            ) : null}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeader eyebrow="Notebooks" title="Workbooks" />
               <div className="flex flex-wrap gap-2">
-                <Button type="button" size="sm" onClick={openNotebookForm} disabled={isDemoUser}>
+                <Button type="button" size="sm" onClick={openNotebookForm}>
                   Create notebook
                 </Button>
               </div>
@@ -958,9 +946,7 @@ export default function FolderDetailPage() {
                     pageStyle={notebook.pageStyle}
                     previewInkSvg={notebook.previewInkSvg}
                     updatedLabel={formatEditedLabel(notebook.updatedAt)}
-                    onEdit={
-                      isDemoUser ? undefined : () => setEditingNotebook(notebook)
-                    }
+                    onEdit={() => setEditingNotebook(notebook)}
                     compact
                   />
                 ))
@@ -971,7 +957,7 @@ export default function FolderDetailPage() {
                     title="No notebooks yet"
                     description="Create a notebook to start working in this folder."
                     action={
-                      <Button type="button" onClick={openNotebookForm} disabled={isDemoUser}>
+                      <Button type="button" onClick={openNotebookForm}>
                         Create notebook
                       </Button>
                     }
@@ -1025,7 +1011,7 @@ export default function FolderDetailPage() {
                           }
                           className={`rounded-[1rem] border px-3 py-3 text-left text-sm transition ${
                             selected
-                              ? "border-warm-border bg-warm-glow text-white"
+                              ? "border-warm-border bg-warm-glow text-text-primary"
                               : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary"
                           }`}
                         >
@@ -1108,7 +1094,7 @@ export default function FolderDetailPage() {
                           }
                           className={`rounded-[1rem] border px-3 py-3 text-left text-sm transition ${
                             selected
-                              ? "border-warm-border bg-warm-glow text-white"
+                              ? "border-warm-border bg-warm-glow text-text-primary"
                               : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary"
                           }`}
                         >

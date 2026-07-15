@@ -10,12 +10,9 @@ import {
 import { useRouter } from "next/navigation";
 import { User } from "firebase/auth";
 import { listenToAuth } from "@/lib/auth/auth-listener";
-import type { DemoViewerMode } from "@/lib/demo/shared";
 
 type UserContextValue = {
   user: User;
-  demoMode: Exclude<DemoViewerMode, "demo-readonly">;
-  isDemoUser: boolean;
 };
 
 const UserContext = createContext<UserContextValue | null>(null);
@@ -30,33 +27,14 @@ export default function UserProvider({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [user, setUser] = useState<User | null>(null);
   const [checked, setChecked] = useState(false);
-  const [demoMode, setDemoMode] = useState<Exclude<DemoViewerMode, "demo-readonly">>("private");
 
   useEffect(() => {
     const unsubscribe = listenToAuth((nextUser) => {
-      if (!nextUser) {
-        setUser(null);
-        setDemoMode("private");
-        setChecked(true);
-        return;
-      }
-
-      void nextUser
-        .getIdTokenResult()
-        .then((tokenResult) => {
-          setUser(nextUser);
-          setDemoMode(tokenResult.claims.demo === true ? "demo-test" : "private");
-          setChecked(true);
-        })
-        .catch((error) => {
-          console.error(error);
-          setUser(nextUser);
-          setDemoMode("private");
-          setChecked(true);
-        });
+      setUser(nextUser);
+      setChecked(true);
     });
     return () => unsubscribe();
-  }, [router]);
+  }, []);
 
   useEffect(() => {
     if (checked && !user) {
@@ -68,13 +46,13 @@ export default function UserProvider({ children }: { children: ReactNode }) {
   if (!checked || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-white/10 border-t-accent" />
+        <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--color-border)] border-t-accent" />
       </div>
     );
   }
 
   return (
-    <UserContext.Provider value={{ user, demoMode, isDemoUser: demoMode === "demo-test" }}>
+    <UserContext.Provider value={{ user }}>
       {children}
     </UserContext.Provider>
   );

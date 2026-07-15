@@ -29,7 +29,7 @@ function isPermissionDenied(error: unknown) {
 }
 
 export default function DecksPage() {
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
   const [decks, setDecks] = useState<Deck[]>([]);
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [deckCounts, setDeckCounts] = useState<DeckCounts>({});
@@ -132,11 +132,6 @@ export default function DecksPage() {
   };
 
   const handleCreate = async () => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Deck creation is disabled in the shared demo account." });
-      return;
-    }
-
     const deckName = name.trim();
     if (!deckName) return;
     setIsCreatingDeck(true);
@@ -156,11 +151,6 @@ export default function DecksPage() {
   };
 
   const handleDeckRename = async (deck: Deck) => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Deck editing is disabled in the shared demo account." });
-      return;
-    }
-
     setSavingDeckId(deck.id);
     setFeedback(null);
     try {
@@ -182,11 +172,6 @@ export default function DecksPage() {
   };
 
   const handleDeckDelete = async (deck: Deck) => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Deck deletion is disabled in the shared demo account." });
-      return;
-    }
-
     setDeletingDeckId(deck.id);
     setFeedback(null);
     try {
@@ -269,7 +254,7 @@ export default function DecksPage() {
                   </label>
                 </div>
                 <Button
-                  disabled={isDemoUser || isCreatingDeck || !name.trim()}
+                  disabled={isCreatingDeck || !name.trim()}
                   onClick={() => void handleCreate()}
                   className="min-h-[2.9rem] w-full sm:w-auto sm:min-w-[10rem]"
                 >
@@ -284,12 +269,6 @@ export default function DecksPage() {
             <StatTile label="All cards" value="Open" detail="Search and edit cards across every deck." href="/dashboard/cards" />
           </div>
         </div>
-
-        {isDemoUser ? (
-          <div className="app-subtle-panel rounded-[1.6rem] p-4 text-sm">
-            <div className="font-semibold text-text-primary">Deck editing is locked in the shared demo</div>
-          </div>
-        ) : null}
 
         {isLoadingDecks ? (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -381,7 +360,6 @@ export default function DecksPage() {
                               type="button"
                               variant="danger"
                               disabled={
-                                isDemoUser ||
                                 savingDeckId === deck.id ||
                                 deletingDeckId === deck.id
                               }
@@ -393,7 +371,7 @@ export default function DecksPage() {
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <Button
                                 type="button"
-                                disabled={isDemoUser || savingDeckId === deck.id}
+                                disabled={savingDeckId === deck.id}
                                 onClick={resetDeckEditing}
                                 variant="ghost"
                                 className="w-full sm:w-auto"
@@ -402,7 +380,7 @@ export default function DecksPage() {
                               </Button>
                               <Button
                                 type="button"
-                                disabled={isDemoUser || savingDeckId === deck.id || !editingDeckName.trim()}
+                                disabled={savingDeckId === deck.id || !editingDeckName.trim()}
                                 onClick={() => void handleDeckRename(deck)}
                                 className="w-full sm:w-auto"
                               >
@@ -440,7 +418,7 @@ export default function DecksPage() {
                         >
                           Add card
                         </Link>
-                        <Button type="button" disabled={isDemoUser || deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setEditingDeckFolderId(deck.folderIds[0] ?? ""); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
+                        <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setEditingDeckFolderId(deck.folderIds[0] ?? ""); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
                           Edit
                         </Button>
                       </div>

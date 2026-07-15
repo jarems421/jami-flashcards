@@ -31,7 +31,7 @@ export default function AppTopBar({
                 <span className="hidden sm:inline">Jami learning loop</span>
                 <span className="sm:hidden">Jami</span>
               </div>
-              <h1 className="mt-1 truncate text-[1.05rem] font-semibold leading-tight text-white sm:text-[1.25rem]">
+              <h1 className="mt-1 truncate text-[1.05rem] font-semibold leading-tight text-text-primary sm:text-[1.25rem]">
                 {title}
               </h1>
             </div>
@@ -41,7 +41,7 @@ export default function AppTopBar({
             {backHref && backLabel ? (
               <Link
                 href={backHref}
-                className="inline-flex min-h-[2.45rem] items-center gap-2 rounded-full border border-white/14 bg-white/[0.045] px-3 py-2 text-xs font-semibold text-text-secondary transition duration-fast hover:border-white/22 hover:bg-white/[0.08] hover:text-white sm:text-sm"
+                className="inline-flex min-h-[2.45rem] items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-xs font-semibold text-text-secondary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))] hover:text-text-primary sm:text-sm"
               >
                 <span aria-hidden="true">&larr;</span>
                 <span className="truncate">{backLabel}</span>

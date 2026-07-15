@@ -44,7 +44,7 @@ function formatDate(value: number) {
 }
 
 export default function PracticePage() {
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -267,9 +267,7 @@ export default function PracticePage() {
                       icon={notebook.icon}
                       pageColor={notebook.pageColor}
                       updatedLabel={folder?.name ?? formatDate(notebook.updatedAt)}
-                      onEdit={
-                        isDemoUser ? undefined : () => setEditingNotebook(notebook)
-                      }
+                      onEdit={() => setEditingNotebook(notebook)}
                       compact
                     />
                   );

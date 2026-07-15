@@ -2,8 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
-import PublicDashboardShell from "@/components/demo/PublicDashboardShell";
-import DemoAccountNotice from "@/components/layout/DemoAccountNotice";
+import { useRouter } from "next/navigation";
 import InAppNotice from "@/components/layout/InAppNotice";
 import TabBar from "@/components/layout/TabBar";
 import TopicMigrationGate from "@/components/topics/TopicMigrationGate";
@@ -17,7 +16,7 @@ import {
 function DashboardSpinner() {
   return (
     <div className="flex min-h-screen items-center justify-center">
-      <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-white/10 border-t-accent" />
+      <div className="h-10 w-10 animate-spin rounded-full border-[3px] border-[var(--color-border)] border-t-accent" />
     </div>
   );
 }
@@ -32,7 +31,6 @@ function AuthenticatedDashboard({ children }: { children: ReactNode }) {
 
   return (
     <UserProvider>
-      <DemoAccountNotice />
       <div
         data-dashboard-content
         className={`pb-32 transition-[padding] duration-300 md:pb-0 ${
@@ -51,6 +49,7 @@ function AuthenticatedDashboard({ children }: { children: ReactNode }) {
 }
 
 export default function DashboardAccessGate({ children }: { children: ReactNode }) {
+  const router = useRouter();
   const [checked, setChecked] = useState(false);
   const [hasUser, setHasUser] = useState(false);
 
@@ -65,7 +64,7 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
         setChecked(true);
       });
     } catch (error) {
-      console.error("Dashboard auth gate failed; showing public walkthrough.", error);
+      console.error("Dashboard auth gate failed; redirecting to sign in.", error);
       queueMicrotask(() => {
         if (!active) return;
         setHasUser(false);
@@ -79,12 +78,14 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
     };
   }, []);
 
-  if (!checked) {
-    return <DashboardSpinner />;
-  }
+  useEffect(() => {
+    if (checked && !hasUser) {
+      router.replace("/");
+    }
+  }, [checked, hasUser, router]);
 
-  if (!hasUser) {
-    return <PublicDashboardShell />;
+  if (!checked || !hasUser) {
+    return <DashboardSpinner />;
   }
 
   return <AuthenticatedDashboard>{children}</AuthenticatedDashboard>;

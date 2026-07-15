@@ -74,7 +74,7 @@ function ThemePreferenceCard() {
 }
 
 export default function ProfilePage() {
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
   const router = useRouter();
 
   const [isDeleting, setIsDeleting] = useState(false);
@@ -123,11 +123,6 @@ export default function ProfilePage() {
   };
 
   const handleDeleteAccount = async () => {
-    if (isDemoUser) {
-      setError("The shared demo account cannot be deleted.");
-      return;
-    }
-
     setIsDeleting(true);
     setError(null);
     try {
@@ -147,11 +142,6 @@ export default function ProfilePage() {
   };
 
   const handleSaveUsername = async () => {
-    if (isDemoUser) {
-      setUsernameError("Name changes are disabled in the shared demo.");
-      return;
-    }
-
     setSavingUsername(true);
     setUsernameError(null);
     setUsernameSaved(false);
@@ -172,17 +162,11 @@ export default function ProfilePage() {
     <AppPage title="Account" backHref="/dashboard" backLabel="Today" width="xl" contentClassName="space-y-4 sm:space-y-6">
       <Card tone="warm" className="sm:p-6" padding="md">
         <div className="flex flex-col items-center gap-5">
-          {isDemoUser ? (
-            <div className="flex h-32 w-32 items-center justify-center rounded-full bg-gradient-to-br from-warm-accent to-accent text-3xl font-bold text-surface-base shadow-[var(--shadow-accent)]">
-              {displayName.charAt(0).toUpperCase()}
-            </div>
-          ) : (
-            <ProfilePhotoEditor
-              userId={user.uid}
-              displayName={displayName}
-              fallbackPhotoURL={user.photoURL}
-            />
-          )}
+          <ProfilePhotoEditor
+            userId={user.uid}
+            displayName={displayName}
+            fallbackPhotoURL={user.photoURL}
+          />
           <div className="min-w-0 text-center">
             <div className="truncate text-xl font-medium">{displayName}</div>
             {user.email ? (
@@ -209,11 +193,6 @@ export default function ProfilePage() {
             <p className="text-xs text-text-muted">
               This is how your name appears around the app. Your sign-in details stay the same.
             </p>
-            {isDemoUser ? (
-              <p className="text-xs text-text-muted">
-                Shared demo mode keeps profile editing and notifications locked.
-              </p>
-            ) : null}
             {usernameError ? (
               <p className="text-xs text-rose-200">{usernameError}</p>
             ) : null}
@@ -224,7 +203,7 @@ export default function ProfilePage() {
               type="button"
               variant="secondary"
               onClick={() => void handleSaveUsername()}
-              disabled={isDemoUser || loadingUsername || savingUsername}
+              disabled={loadingUsername || savingUsername}
               className="w-full justify-center sm:w-auto"
             >
               {savingUsername ? "Saving..." : "Save name"}
@@ -246,18 +225,9 @@ export default function ProfilePage() {
 
       <ThemePreferenceCard />
 
-      {isDemoUser ? (
-        <Card padding="md" className="sm:p-6">
-          <SectionHeader
-            title="Notifications stay off in the shared demo"
-            description="The shared demo cannot subscribe devices or change notification preferences."
-          />
-        </Card>
-      ) : (
-        <div className="space-y-4">
-          <NotificationSettingsCard userId={user.uid} />
-        </div>
-      )}
+      <div className="space-y-4">
+        <NotificationSettingsCard userId={user.uid} />
+      </div>
 
       <Card tone="subtle" className="border-error-muted bg-error-muted/20 sm:p-6" padding="md">
         <SectionHeader
@@ -273,7 +243,6 @@ export default function ProfilePage() {
           <Button
             onClick={() => setShowDeleteConfirm(true)}
             variant="danger"
-            disabled={isDemoUser}
             className="mt-4"
           >
             Delete Account

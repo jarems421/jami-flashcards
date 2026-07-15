@@ -21,7 +21,7 @@ describe("notebook upload UI", () => {
     expect(folderPage).not.toContain("The PDF or image stays locked");
   });
 
-  it("blocks demo notebook uploads with clear copy", () => {
+  it("keeps notebook creation free of demo-mode gating", () => {
     const folderPage = readFileSync(
       join(root, "app/dashboard/folders/[folderId]/page.tsx"),
       "utf8"
@@ -31,12 +31,8 @@ describe("notebook upload UI", () => {
       "utf8"
     );
 
-    expect(folderPage).toContain(
-      "Exit the shared demo to create notebooks or upload PDF and image files."
-    );
-    expect(notebookPage).toContain(
-      "Exit the shared demo to upload PDF or image pages."
-    );
+    expect(folderPage).not.toContain("isDemoUser");
+    expect(notebookPage).not.toContain("isDemoUser");
   });
 
   it("keeps notebook settings and duplicate add-page controls out of the toolbar", () => {

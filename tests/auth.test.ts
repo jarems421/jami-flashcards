@@ -19,6 +19,9 @@ describe("createRetryableInitializer", () => {
     vi.clearAllMocks();
   });
 
+  // The first test pays the cold import of "@/services/auth" (which pulls the
+  // whole firebase/firestore package); under parallel suite load that alone
+  // can pass five seconds, so give it explicit room.
   it("retries after an initialization failure", async () => {
     let callCount = 0;
 
@@ -36,7 +39,7 @@ describe("createRetryableInitializer", () => {
     await expect(init()).resolves.toBeUndefined();
 
     expect(initialize).toHaveBeenCalledTimes(2);
-  });
+  }, 30_000);
 
   it("memoizes successful initialization", async () => {
     const initialize = vi.fn(async () => undefined);

@@ -5,19 +5,11 @@ import { useUser } from "@/lib/auth/user-context";
 import { migrateCardTagsToTopics } from "@/services/study/topics";
 
 export default function TopicMigrationGate({ children }: { children: ReactNode }) {
-  const { user, isDemoUser } = useUser();
-  const [ready, setReady] = useState(isDemoUser);
+  const { user } = useUser();
+  const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let active = true;
-    if (isDemoUser) {
-      queueMicrotask(() => {
-        if (active) setReady(true);
-      });
-      return () => {
-        active = false;
-      };
-    }
 
     queueMicrotask(() => {
       if (active) setReady(false);
@@ -33,12 +25,12 @@ export default function TopicMigrationGate({ children }: { children: ReactNode }
     return () => {
       active = false;
     };
-  }, [isDemoUser, user.uid]);
+  }, [user.uid]);
 
   if (!ready) {
     return (
       <div className="flex min-h-screen items-center justify-center" aria-label="Preparing Topics">
-        <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-white/10 border-t-accent" />
+        <div className="h-9 w-9 animate-spin rounded-full border-[3px] border-[var(--color-border)] border-t-accent" />
       </div>
     );
   }

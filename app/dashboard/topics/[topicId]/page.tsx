@@ -48,7 +48,7 @@ function addOrRemoveTopic(topicIds: string[], topicId: string, linked: boolean) 
 export default function TopicDetailPage() {
   const params = useParams<{ topicId: string }>();
   const router = useRouter();
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
   const topicId = params.topicId;
   const [topics, setTopics] = useState<Topic[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
@@ -120,7 +120,7 @@ export default function TopicDetailPage() {
   );
 
   const saveName = async () => {
-    if (!topic || !renameValue.trim() || isDemoUser) return;
+    if (!topic || !renameValue.trim()) return;
     setBusyId("rename");
     try {
       await updateTopic(user.uid, topic.id, { name: renameValue });
@@ -234,7 +234,7 @@ export default function TopicDetailPage() {
   };
 
   const deleteTopic = async () => {
-    if (!topic || isDemoUser) return;
+    if (!topic) return;
     setBusyId("delete");
     try {
       await deleteTopicEverywhere(user.uid, topic.id);
@@ -378,7 +378,7 @@ export default function TopicDetailPage() {
               </h1>
             )}
           </div>
-          {!isDemoUser ? (
+          {true ? (
             <details className="relative">
               <summary className="app-button-secondary inline-flex min-h-11 cursor-pointer list-none items-center rounded-full px-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
                 Manage
@@ -488,7 +488,7 @@ export default function TopicDetailPage() {
                     </div>
                     <div className="mt-1 text-xs text-text-muted">{item.detail}</div>
                   </Link>
-                  {!isDemoUser ? (
+                  {true ? (
                     <Button
                       type="button"
                       size="sm"

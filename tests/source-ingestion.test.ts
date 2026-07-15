@@ -15,10 +15,12 @@ let prepareSourceForTutor: (
   inputBytes: number;
 }>;
 
+// The module pulls in officeparser, mammoth, and cheerio — a cold import can
+// take well over ten seconds on a slow disk, so give the hook extra room.
 beforeAll(async () => {
   ({ isBlockedSourceAddress, normalizeSourceTutorIds, prepareSourceForTutor } =
     await import("@/lib/ai/source-ingestion"));
-});
+}, 45_000);
 
 describe("source Tutor network protection", () => {
   it("blocks private and loopback addresses", () => {

@@ -8,7 +8,6 @@ import {
   normalizeSourceTutorIds,
   prepareSourceForTutor,
 } from "@/lib/ai/source-ingestion";
-import { hasDemoClaim } from "@/lib/demo/token";
 import { mapSourceData } from "@/lib/practice/sources";
 import { getAdminStorageBucket } from "@/services/firebase/admin";
 
@@ -34,9 +33,6 @@ export async function POST(request: NextRequest) {
   let uid: string;
   try {
     const decoded = await getAdminAuth().verifyIdToken(token);
-    if (hasDemoClaim(decoded)) {
-      return Response.json({ error: "AI is disabled in the shared demo account." }, { status: 403 });
-    }
     uid = decoded.uid;
   } catch {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

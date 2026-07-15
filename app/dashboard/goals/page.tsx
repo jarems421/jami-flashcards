@@ -61,7 +61,7 @@ function parseTargetAccuracyInput(value: string) {
 }
 
 export default function GoalsPage() {
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
 
   const [goals, setGoals] = useState<Goal[]>([]);
   const [showGoalHistory, setShowGoalHistory] = useState(false);
@@ -209,11 +209,9 @@ export default function GoalsPage() {
     parsedGoalTargetCards !== null &&
     parsedGoalTargetAccuracy !== null &&
     deadlineIsValid &&
-    !isDemoUser &&
     !isCreatingGoal;
-  const disabledReason = isDemoUser
-    ? "Goal editing is disabled in the shared demo."
-    : parsedGoalTargetCards === null
+  const disabledReason =
+    parsedGoalTargetCards === null
       ? null
       : parsedGoalTargetAccuracy === null
         ? "Enter an accuracy target from 0 to 100%."
@@ -275,11 +273,6 @@ export default function GoalsPage() {
   };
 
   const handleSaveGoal = async () => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Goal creation is disabled in the shared demo account." });
-      return;
-    }
-
     const nextTargetCards = parseTargetCardsInput(targetCards);
     const nextTargetAccuracy = parseTargetAccuracyInput(targetAccuracy);
     const parsedDeadline = deadlineDate
@@ -348,7 +341,6 @@ export default function GoalsPage() {
 
   const handleCancelGoal = async (goal: Goal) => {
     if (
-      isDemoUser ||
       !window.confirm(
         `Cancel this ${goal.targetCards}-card goal? Its progress will stay in goal history.`
       )
@@ -411,11 +403,6 @@ export default function GoalsPage() {
               ) : null
             }
           />
-          {isDemoUser ? (
-            <p className="mt-3 text-sm leading-6 text-text-secondary">
-              Goal creation is locked in the shared demo.
-            </p>
-          ) : null}
           <div className="mt-5">
             <div className="mb-4 flex flex-wrap gap-2" aria-label="Goal presets">
               <Button type="button" size="sm" variant="secondary" onClick={() => applyPreset("today-10")}>
@@ -574,7 +561,7 @@ export default function GoalsPage() {
                           type="button"
                           size="sm"
                           variant="secondary"
-                          disabled={isDemoUser || cancellingGoalId === goal.id}
+                          disabled={cancellingGoalId === goal.id}
                           onClick={() => startEditingGoal(goal)}
                         >
                           Edit
@@ -583,7 +570,7 @@ export default function GoalsPage() {
                           type="button"
                           size="sm"
                           variant="danger"
-                          disabled={isDemoUser || cancellingGoalId === goal.id}
+                          disabled={cancellingGoalId === goal.id}
                           onClick={() => void handleCancelGoal(goal)}
                         >
                           {cancellingGoalId === goal.id ? "Cancelling..." : "Cancel goal"}

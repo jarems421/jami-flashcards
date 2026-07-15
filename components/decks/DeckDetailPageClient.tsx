@@ -67,7 +67,7 @@ export default function DeckDetailPageClient() {
   const params = useParams();
   const rawId = params?.id;
   const deckId = Array.isArray(rawId) ? (rawId[0] ?? "") : (rawId ?? "");
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
 
   const [deck, setDeck] = useState<Deck | null>(null);
   const [cards, setCards] = useState<Card[]>([]);
@@ -245,14 +245,6 @@ export default function DeckDetailPageClient() {
   };
 
   const handleSaveCard = async (cardId: string) => {
-    if (isDemoUser) {
-      setFeedback({
-        type: "error",
-        message: "Card editing is disabled in the shared demo account.",
-      });
-      return;
-    }
-
     const nextFront = normalizeCardContentInput(editingFront);
     const nextBack = normalizeCardContentInput(editingBack);
 
@@ -317,14 +309,6 @@ export default function DeckDetailPageClient() {
   };
 
   const handleDeleteCard = async (cardId: string) => {
-    if (isDemoUser) {
-      setFeedback({
-        type: "error",
-        message: "Card deletion is disabled in the shared demo account.",
-      });
-      return;
-    }
-
     setDeletingCardId(cardId);
     setFeedback(null);
 
@@ -378,7 +362,7 @@ export default function DeckDetailPageClient() {
     visibleCardIds,
     selectedCardIds,
     setSelectedCardIds,
-    disabled: isDemoUser,
+    disabled: false,
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
   const selectedCards = useMemo(() => {
@@ -510,13 +494,13 @@ export default function DeckDetailPageClient() {
               <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
                 <Link
                   href={getDeckStudyHref(deck.id)}
-                  className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
+                  className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-[var(--color-text-inverse)] shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
                 >
                   Study this deck
                 </Link>
                 <Link
                   href="/dashboard/decks"
-                  className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl border border-border bg-white/[0.04] px-5 py-3 text-sm font-medium text-white transition duration-fast hover:border-border-strong hover:bg-white/[0.07]"
+                  className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl border border-border bg-[var(--color-glass-subtle)] px-5 py-3 text-sm font-medium text-text-primary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
                 >
                   Back to decks
                 </Link>
@@ -584,14 +568,7 @@ export default function DeckDetailPageClient() {
             </SurfaceCard>
           </div>
 
-          {isDemoUser ? (
-            <div className="rounded-[1.6rem] border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-text-secondary">
-              <div className="font-semibold text-white">Card editing is locked in the shared demo</div>
-              <p className="mt-1 leading-6">
-                You can inspect the seeded cards in this deck, but creating, editing, and bulk Topic changes are reserved for private accounts.
-              </p>
-            </div>
-          ) : (
+          {(
             <CardCreationPanel
               userId={user.uid}
               decks={[deck]}
@@ -611,7 +588,7 @@ export default function DeckDetailPageClient() {
           eyebrow="Deck unavailable"
           title="This deck is not available"
           description="It may have been deleted or moved. Go back to your deck list to keep organising cards."
-          action={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Back to decks</Link>}
+          action={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-[var(--color-text-inverse)] shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Back to decks</Link>}
         />
       ) : null}
 
@@ -636,7 +613,7 @@ export default function DeckDetailPageClient() {
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
-          {!isDemoUser ? (
+          {true ? (
             <BulkTopicToolbar
               userId={user.uid}
               selectedCount={selectedCardIds.length}
@@ -676,7 +653,7 @@ export default function DeckDetailPageClient() {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between gap-3">
                         <CardDifficultyBadge card={card} compact />
-                        {!isDemoUser ? (
+                        {true ? (
                           <label className="flex h-10 w-10 cursor-pointer items-center justify-center" title="Select card">
                             <span className="sr-only">Select card</span>
                             <input
@@ -763,7 +740,7 @@ export default function DeckDetailPageClient() {
                           />
                         </div>
                         <div className="flex shrink-0 items-center gap-0.5">
-                          {!isDemoUser ? (
+                          {true ? (
                             <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
                               <span className="sr-only">Select card</span>
                               <input
@@ -778,7 +755,7 @@ export default function DeckDetailPageClient() {
                           ) : null}
                           <CardActionsMenu
                             deleting={deletingCardId === card.id}
-                            disabled={isDemoUser || deletingCardId === card.id}
+                            disabled={deletingCardId === card.id}
                             onEdit={() => startEditingCard(card)}
                             onDelete={() => setCardPendingDeleteId(card.id)}
                           />
@@ -852,7 +829,7 @@ export default function DeckDetailPageClient() {
                 );
               })}
             </div>
-            {!isDemoUser ? (
+            {true ? (
               <div className="mt-5 flex justify-end">
                 <Button
                   type="button"

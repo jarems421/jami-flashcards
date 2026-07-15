@@ -323,10 +323,17 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         .then(async (jsDraw) => {
           if (disposed) return;
           jsDrawRef.current = jsDraw;
+          // js-draw REJECTS any viewport transform outside [minZoom, maxZoom]
+          // (it resets the transform on every ViewportChanged event). The page
+          // viewport scale is displaySize/pageSize — roughly 0.5 at fit and up
+          // to ~4 zoomed in — so the limits must be wide or the ink silently
+          // renders at identity scale, anchored to the page's top-left corner.
+          // User zooming inside js-draw itself stays disabled separately (no
+          // wheel events, and touch never reaches js-draw's pan-zoom tools).
           editor = new jsDraw.Editor(host, {
             wheelEventsEnabled: false,
-            minZoom: 1,
-            maxZoom: 1,
+            minZoom: 0.05,
+            maxZoom: 50,
           });
           editorRef.current = editor;
           editor.setReadOnly(readOnlyRef.current);

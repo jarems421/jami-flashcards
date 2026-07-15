@@ -105,7 +105,7 @@ function TopicActionsMenu({
 
 export default function TopicsPage() {
   const router = useRouter();
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
   const [topics, setTopics] = useState<Topic[]>([]);
   const [cards, setCards] = useState<StudyCard[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
@@ -190,7 +190,7 @@ export default function TopicsPage() {
   }, [topics.length]);
 
   const createTopic = async () => {
-    if (!newTopicName.trim() || isDemoUser) return;
+    if (!newTopicName.trim()) return;
     setCreating(true);
     setFeedback(null);
     try {
@@ -226,7 +226,7 @@ export default function TopicsPage() {
 
   const saveTopicName = async (topic: Topic) => {
     const nextName = renameValue.trim();
-    if (!nextName || isDemoUser) return;
+    if (!nextName) return;
     setSavingTopicId(topic.id);
     setFeedback(null);
     try {
@@ -257,7 +257,7 @@ export default function TopicsPage() {
   };
 
   const deleteTopic = async () => {
-    if (!topicPendingDelete || isDemoUser) return;
+    if (!topicPendingDelete) return;
     const topic = topicPendingDelete;
     setDeletingTopicId(topic.id);
     setFeedback(null);
@@ -323,7 +323,7 @@ export default function TopicsPage() {
               Topics bring related cards, notebooks, sources, and drafts together.
             </p>
           </div>
-          {!isDemoUser ? (
+          {true ? (
             <div className="flex w-full max-w-lg gap-2">
               <Input
                 aria-label="New Topic name"
@@ -468,7 +468,7 @@ export default function TopicsPage() {
                           </div>
                         ) : null}
                       </Link>
-                      {!isDemoUser ? (
+                      {true ? (
                         <TopicActionsMenu
                           topic={summary.topic}
                           onRename={() => startRenaming(summary.topic)}

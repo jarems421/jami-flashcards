@@ -11,16 +11,15 @@ export type AiBudgetAction =
 type AiBudgetConfig = {
   dailyRequestLimit: number;
   tokenCap: number;
-  demoDailyRequestLimit: number;
 };
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
-  chat: { dailyRequestLimit: 50, tokenCap: 8_000, demoDailyRequestLimit: 4 },
-  sourceTutorExplain: { dailyRequestLimit: 20, tokenCap: 10_000, demoDailyRequestLimit: 2 },
-  sourceFlashcardDrafts: { dailyRequestLimit: 10, tokenCap: 12_000, demoDailyRequestLimit: 1 },
-  sourcePracticeDrafts: { dailyRequestLimit: 10, tokenCap: 12_000, demoDailyRequestLimit: 1 },
+  chat: { dailyRequestLimit: 50, tokenCap: 8_000 },
+  sourceTutorExplain: { dailyRequestLimit: 20, tokenCap: 10_000 },
+  sourceFlashcardDrafts: { dailyRequestLimit: 10, tokenCap: 12_000 },
+  sourcePracticeDrafts: { dailyRequestLimit: 10, tokenCap: 12_000 },
 };
 
 function getBudgetDayKey(now = Date.now()) {
@@ -34,12 +33,11 @@ export function getAiTokenCap(action: AiBudgetAction) {
 export async function checkAiBudget(input: {
   uid: string;
   action: AiBudgetAction;
-  demo?: boolean;
   now?: number;
 }) {
   const now = input.now ?? Date.now();
   const config = AI_BUDGETS[input.action];
-  const maxRequests = input.demo ? config.demoDailyRequestLimit : config.dailyRequestLimit;
+  const maxRequests = config.dailyRequestLimit;
   const db = getAdminDb();
   const dayKey = getBudgetDayKey(now);
   const docRef = db.collection("aiBudgets").doc(`${input.uid}:${input.action}:${dayKey}`);

@@ -61,7 +61,7 @@ function isPermissionDenied(error: unknown) {
 }
 
 export default function CardsSearchPage() {
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
 
   const [cards, setCards] = useState<Card[]>([]);
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -327,7 +327,7 @@ export default function CardsSearchPage() {
     visibleCardIds,
     selectedCardIds,
     setSelectedCardIds,
-    disabled: isDemoUser,
+    disabled: false,
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
   const selectedCards = useMemo(() => {
@@ -366,11 +366,6 @@ export default function CardsSearchPage() {
   };
 
   const handleSaveCard = async (cardId: string) => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Card editing is disabled in the shared demo account." });
-      return;
-    }
-
     const nextFront = normalizeCardContentInput(editingFront);
     const nextBack = normalizeCardContentInput(editingBack);
 
@@ -421,11 +416,6 @@ export default function CardsSearchPage() {
   };
 
   const handleDeleteCard = async (cardId: string) => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Card deletion is disabled in the shared demo account." });
-      return;
-    }
-
     setDeletingCardId(cardId);
     setFeedback(null);
 
@@ -633,34 +623,34 @@ export default function CardsSearchPage() {
         onConfirm={() => void handleDeleteSelectedCards()}
       />
 
-      {!loading && !isDemoUser && (decks.length === 0 || cards.length === 0 || topics.length === 0) ? (
-        <section className="grid gap-3 rounded-[1.5rem] border border-white/[0.08] bg-white/[0.035] p-4 sm:grid-cols-3">
-          <div className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] p-3">
+      {!loading && (decks.length === 0 || cards.length === 0 || topics.length === 0) ? (
+        <section className="grid gap-3 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:grid-cols-3">
+          <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">1. Decks</div>
-            <div className="mt-2 text-sm font-medium text-white">
+            <div className="mt-2 text-sm font-medium text-text-primary">
               {decks.length > 0 ? `${decks.length} ready` : "Create a deck"}
             </div>
             <p className="mt-1 text-xs leading-5 text-text-muted">
               Decks group your cards by subject or exam.
             </p>
             {decks.length === 0 ? (
-              <Link href="/dashboard/decks" className="mt-3 inline-flex text-xs font-semibold text-accent hover:text-white">
+              <Link href="/dashboard/decks" className="mt-3 inline-flex text-xs font-semibold text-accent hover:text-text-primary">
                 Open decks
               </Link>
             ) : null}
           </div>
-          <div className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] p-3">
+          <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">2. Cards</div>
-            <div className="mt-2 text-sm font-medium text-white">
+            <div className="mt-2 text-sm font-medium text-text-primary">
               {cards.length > 0 ? `${cards.length} ready` : "Add your first cards"}
             </div>
             <p className="mt-1 text-xs leading-5 text-text-muted">
               Single card and paste-list import live just below.
             </p>
           </div>
-          <div className="rounded-[1.1rem] border border-white/[0.08] bg-white/[0.03] p-3">
+          <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
             <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">3. Topics</div>
-            <div className="mt-2 text-sm font-medium text-white">
+            <div className="mt-2 text-sm font-medium text-text-primary">
               {topics.length > 0 ? `${topics.length} ready` : "Add Topics when useful"}
             </div>
             <p className="mt-1 text-xs leading-5 text-text-muted">
@@ -670,24 +660,15 @@ export default function CardsSearchPage() {
         </section>
       ) : null}
 
-      {isDemoUser ? (
-        <div className="rounded-[1.6rem] border border-white/[0.08] bg-white/[0.04] p-4 text-sm text-text-secondary">
-          <div className="font-semibold text-white">Card editing is locked in the shared demo</div>
-          <p className="mt-1 leading-6">
-            You can search the seeded cards here, but new cards, edits, deletes, and Topic changes are reserved for private accounts.
-          </p>
-        </div>
-      ) : (
-        <CardCreationPanel
-          userId={user.uid}
-          decks={decks}
-          existingCards={cards}
-          topics={topics}
-          onTopicsChange={setTopics}
-          onCardsCreated={handleCardsCreated}
-          onFeedback={setFeedback}
-        />
-      )}
+      <CardCreationPanel
+        userId={user.uid}
+        decks={decks}
+        existingCards={cards}
+        topics={topics}
+        onTopicsChange={setTopics}
+        onCardsCreated={handleCardsCreated}
+        onFeedback={setFeedback}
+      />
 
       <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -840,7 +821,7 @@ export default function CardsSearchPage() {
           title="No cards yet"
           description="Create a card to start review."
           helperText={decks.length === 0 ? "Create a deck first." : undefined}
-          action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-white shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
+          action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-[var(--color-text-inverse)] shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
         />
       ) : shouldShowCardResults && filtered.length === 0 ? (
         <EmptyState
@@ -857,8 +838,7 @@ export default function CardsSearchPage() {
         />
       ) : (
         <>
-          {!isDemoUser ? (
-            <>
+          <>
               <BulkTopicToolbar
                 userId={user.uid}
                 selectedCount={selectedCardIds.length}
@@ -911,8 +891,7 @@ export default function CardsSearchPage() {
                   </Button>
                 </div>
               ) : null}
-            </>
-          ) : null}
+          </>
 
           <div
             id={!shouldShowCardResults ? "recent-cards-grid" : undefined}
@@ -935,7 +914,7 @@ export default function CardsSearchPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between gap-3">
                       <CardDifficultyBadge card={card} compact />
-                      {!isDemoUser ? (
+                      {true ? (
                         <label className="flex h-10 w-10 cursor-pointer items-center justify-center" title="Select card">
                           <span className="sr-only">Select card</span>
                           <input
@@ -1022,7 +1001,7 @@ export default function CardsSearchPage() {
                         />
                       </div>
                       <div className="flex shrink-0 items-center gap-0.5">
-                        {!isDemoUser ? (
+                        {true ? (
                           <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
                             <span className="sr-only">Select card</span>
                             <input
@@ -1037,7 +1016,7 @@ export default function CardsSearchPage() {
                         ) : null}
                         <CardActionsMenu
                           deleting={deletingCardId === card.id}
-                          disabled={isDemoUser || deletingCardId === card.id}
+                          disabled={deletingCardId === card.id}
                           onEdit={() => startEditing(card)}
                           onDelete={() => setCardPendingDeleteId(card.id)}
                         />
@@ -1153,7 +1132,7 @@ export default function CardsSearchPage() {
                 </span>
               ))}
             </div>
-            {!isDemoUser ? (
+            {true ? (
               <div className="mt-5 flex justify-end">
                 <Button
                   type="button"

@@ -184,9 +184,8 @@ const CANVAS_HEIGHT = 1240;
 // Gutter kept between the current page and the page sliding in, so they stay
 // visibly separated during a swipe instead of joining edge-to-edge.
 const NOTEBOOK_PAGE_SWIPE_GAP = 28;
-// Breathing room around the page at fit zoom inside its fixed frame. Zoomed-in
-// panning may still cover the full frame edge-to-edge.
-const NOTEBOOK_PAGE_FRAME_INSET = 12;
+// The page sits flush inside its fixed frame at fit zoom — no border band.
+const NOTEBOOK_PAGE_FRAME_INSET = 0;
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "bg-[#f8fafc] text-slate-950",
   black: "bg-[#080a10] text-[#f8fafc]",
@@ -894,7 +893,7 @@ function InkColorPicker({
 }
 
 export default function NotebookEditorPage() {
-  const { user, isDemoUser } = useUser();
+  const { user } = useUser();
   const router = useRouter();
   const params = useParams<{ notebookId?: string | string[] }>();
   const notebookId = Array.isArray(params.notebookId)
@@ -2064,11 +2063,6 @@ export default function NotebookEditorPage() {
   };
 
   const createBlankPageAtEnd = async () => {
-    if (isDemoUser) {
-      setFeedback({ type: "error", message: "Sign in to add pages to a notebook." });
-      settleCreatePageBack();
-      return;
-    }
     if (!user?.uid || !notebook) {
       settleCreatePageBack();
       return;
@@ -3096,9 +3090,7 @@ export default function NotebookEditorPage() {
                   id="add-notebook-pages-description"
                   className="mt-0.5 text-xs leading-5 text-text-muted"
                 >
-                  {isDemoUser
-                    ? "Exit the shared demo to upload PDF or image pages."
-                    : "The new pages will be added after the current last page."}
+                  The new pages will be added after the current last page.
                 </p>
               </div>
               <label className="mt-4 block">
@@ -3106,7 +3098,7 @@ export default function NotebookEditorPage() {
                 <input
                   type="file"
                   accept="application/pdf,image/jpeg,image/png,image/webp"
-                  disabled={isDemoUser || addingNotebookFile}
+                  disabled={addingNotebookFile}
                   onChange={(event) =>
                     setNotebookFile(event.target.files?.[0] ?? null)
                   }
@@ -3120,7 +3112,7 @@ export default function NotebookEditorPage() {
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-valuenow={notebookUploadProgress}
-                  className="mt-3 h-2 overflow-hidden rounded-full bg-white/[0.08]"
+                  className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
                 >
                   <div
                     className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
@@ -3141,7 +3133,7 @@ export default function NotebookEditorPage() {
                 <Button
                   type="button"
                   size="sm"
-                  disabled={isDemoUser || !notebookFile || addingNotebookFile}
+                  disabled={!notebookFile || addingNotebookFile}
                   onClick={() => void handleAddNotebookFile()}
                 >
                   {addingNotebookFile

@@ -25,6 +25,18 @@ const auditedFiles = [
   "app/dashboard/goals/page.tsx",
   "app/dashboard/decks/page.tsx",
   "app/dashboard/profile/page.tsx",
+  "app/dashboard/page.tsx",
+  "app/dashboard/study/page.tsx",
+  "app/dashboard/cards/page.tsx",
+  "app/dashboard/library/page.tsx",
+  "app/dashboard/folders/page.tsx",
+  "app/dashboard/folders/[folderId]/page.tsx",
+  "app/dashboard/topics/page.tsx",
+  "app/dashboard/progress/page.tsx",
+  "app/dashboard/practise/page.tsx",
+  "components/stats/AnalyticsPanels.tsx",
+  "components/layout/AppTopBar.tsx",
+  "components/decks/DeckDetailPageClient.tsx",
 ];
 
 const unsafePatterns = [
@@ -70,7 +82,6 @@ describe("theme colour hygiene", () => {
     const home = readFileSync(join(root, "app/page.tsx"), "utf8");
     const constellation = readFileSync(join(root, "app/dashboard/constellation/page.tsx"), "utf8");
     const button = readFileSync(join(root, "components/ui/Button.tsx"), "utf8");
-    const publicShell = readFileSync(join(root, "components/demo/PublicDashboardShell.tsx"), "utf8");
 
     expect(home).toContain('variant="primary"');
     expect(home).toContain("Continue with Google");
@@ -80,8 +91,5 @@ describe("theme colour hygiene", () => {
     expect(button).not.toContain("disabled:opacity-50");
     expect(button).toContain("disabled:!bg-[var(--button-disabled-bg)]");
     expect(button).toContain("disabled:saturate-[0.82]");
-    expect(publicShell).toContain('Demo data stays on this device');
-    expect(publicShell).toContain('surface === "goals"');
-    expect(publicShell).toContain('surface === "stars"');
   });
 });

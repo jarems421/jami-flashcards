@@ -17,7 +17,7 @@ export default function AppError({ error, unstable_retry }: AppErrorProps) {
       className="flex min-h-screen items-center justify-center px-6"
       data-app-surface="true"
     >
-      <section className="w-full max-w-md rounded-2xl border border-border bg-glass-subtle p-6 text-white shadow-glass backdrop-blur-md">
+      <section className="w-full max-w-md rounded-2xl border border-border bg-glass-subtle p-6 text-text-primary shadow-glass backdrop-blur-md">
         <h1 className="text-xl font-bold">Something went wrong</h1>
         <p className="mt-2 text-sm text-text-secondary">
           We hit an unexpected error while loading this view.
@@ -25,7 +25,7 @@ export default function AppError({ error, unstable_retry }: AppErrorProps) {
         <button
           type="button"
           onClick={unstable_retry}
-          className="mt-4 rounded-xl bg-white px-4 py-2 text-sm font-medium text-black transition duration-fast hover:bg-gray-200"
+          className="mt-4 rounded-xl bg-accent px-4 py-2 text-sm font-medium text-[var(--color-text-inverse)] transition duration-fast hover:bg-accent-hover"
         >
           Try again
         </button>
