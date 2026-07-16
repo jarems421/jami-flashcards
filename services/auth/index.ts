@@ -138,13 +138,12 @@ export const initAuth = async () => {
   await ensureAuthInitialized();
 };
 
-// Google sign-in — try popup first, fall back to redirect
+// Google sign-in — use the popup flow everywhere. Redirect auth relies on
+// cross-origin helper storage unless it is proxied through the app's origin,
+// which is not available in the installed PWA.
 export const signInWithGoogle = async () => {
   await initAuth();
-  if (isStandaloneAppWindow()) {
-    await signInWithRedirect(auth, provider);
-    return null;
-  }
+  const standalone = isStandaloneAppWindow();
   try {
     const result = await withAuthTimeout(signInWithPopup(auth, provider));
     return result.user;
@@ -152,7 +151,7 @@ export const signInWithGoogle = async () => {
     const code = (popupError as { code?: string }).code;
     // Redirect only when the browser cannot open a popup. User cancellation
     // should return control to the current page instead of starting a redirect.
-    if (shouldFallbackToGoogleRedirect(code)) {
+    if (!standalone && shouldFallbackToGoogleRedirect(code)) {
       await signInWithRedirect(auth, provider);
       return null; // page will reload via redirect
     }
