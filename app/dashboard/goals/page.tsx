@@ -26,7 +26,7 @@ import {
 } from "@/lib/constellation/stars";
 import { getDeadlineDisplay } from "@/lib/study/time";
 import AppPage from "@/components/layout/AppPage";
-import { Button, ButtonLink, Card, EmptyState, FeedbackBanner, Input, PageHero, ProgressBar, SectionHeader, Skeleton } from "@/components/ui";
+import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, SectionHeader, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
@@ -64,7 +64,6 @@ export default function GoalsPage() {
   const { user } = useUser();
 
   const [goals, setGoals] = useState<Goal[]>([]);
-  const [showGoalComposer, setShowGoalComposer] = useState(false);
   const [showGoalHistory, setShowGoalHistory] = useState(false);
   const [targetCards, setTargetCards] = useState("");
   const [targetAccuracy, setTargetAccuracy] = useState("");
@@ -249,7 +248,6 @@ export default function GoalsPage() {
   };
 
   const startEditingGoal = (goal: Goal) => {
-    setShowGoalComposer(true);
     setEditingGoalId(goal.id);
     setTargetCards(String(goal.targetCards));
     setTargetAccuracy(String(Math.round(goal.targetAccuracy * 100)));
@@ -330,7 +328,6 @@ export default function GoalsPage() {
       }
 
       resetGoalForm();
-      setShowGoalComposer(false);
     } catch (error) {
       console.error(error);
       setFeedback({
@@ -362,10 +359,7 @@ export default function GoalsPage() {
           item.id === goal.id ? { ...item, status: "cancelled" } : item
         )
       );
-      if (editingGoalId === goal.id) {
-        resetGoalForm();
-        setShowGoalComposer(false);
-      }
+      if (editingGoalId === goal.id) resetGoalForm();
       setFeedback({ type: "success", message: "Goal moved to history." });
     } catch (error) {
       console.error(error);
@@ -382,26 +376,14 @@ export default function GoalsPage() {
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
         title="Goals"
-        backHref="/dashboard/progress"
-        backLabel="Progress"
+        backHref="/dashboard"
+        backLabel="Today"
         width="2xl"
         action={
-          <div className="flex items-center gap-2">
-            <Button
-              type="button"
-              size="sm"
-              onClick={() => {
-                resetGoalForm();
-                setShowGoalComposer(true);
-              }}
-            >
-              New goal
-            </Button>
-            <RefreshIconButton
-              refreshing={refreshing}
-              onClick={() => void handleRefresh()}
-            />
-          </div>
+          <RefreshIconButton
+            refreshing={refreshing}
+            onClick={() => void handleRefresh()}
+          />
         }
         contentClassName="space-y-4 sm:space-y-6"
       >
@@ -409,58 +391,16 @@ export default function GoalsPage() {
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        <PageHero
-          compact
-          eyebrow="Progress"
-          title="Turn a study plan into a visible win."
-          description="Goals are optional, concrete targets. Complete one and its reward becomes part of your constellation."
-          aside={
-            <div className="grid min-w-0 grid-cols-2 gap-2 sm:min-w-64">
-              <div className="app-chip rounded-[1rem] px-3 py-3 text-center">
-                <div className="text-xl font-semibold tabular-nums text-text-primary">
-                  {isLoadingGoals ? "..." : activeGoals.length}
-                </div>
-                <div className="mt-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
-                  Active
-                </div>
-              </div>
-              <div className="app-chip rounded-[1rem] px-3 py-3 text-center">
-                <div className="text-xl font-semibold tabular-nums text-text-primary">
-                  {isLoadingGoals ? "..." : completedGoalsCount}
-                </div>
-                <div className="mt-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
-                  Completed
-                </div>
-              </div>
-            </div>
-          }
-        />
-
-        <div className="flex flex-wrap gap-2">
-          <ButtonLink href="/dashboard/progress" size="sm" variant="secondary">
-            Progress overview
-          </ButtonLink>
-          <ButtonLink href="/dashboard/constellation" size="sm" variant="ghost">
-            View constellation
-          </ButtonLink>
-        </div>
-
-        {showGoalComposer ? (
         <Card id="new-goal" tone="warm" padding="lg">
           <SectionHeader
             eyebrow={editingGoalId ? "Edit goal" : "New goal"}
             title={editingGoalId ? "Adjust this target." : "Set a clear target."}
             action={
-              <Button
-                type="button"
-                variant="ghost"
-                onClick={() => {
-                  resetGoalForm();
-                  setShowGoalComposer(false);
-                }}
-              >
-                Close
-              </Button>
+              editingGoalId ? (
+                <Button type="button" variant="ghost" onClick={resetGoalForm}>
+                  Cancel edit
+                </Button>
+              ) : null
             }
           />
           <div className="mt-5">
@@ -558,7 +498,6 @@ export default function GoalsPage() {
             </div>
           </div>
         </Card>
-        ) : null}
 
         {isLoadingGoals ? (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -569,20 +508,17 @@ export default function GoalsPage() {
           <>
             {activeGoals.length === 0 ? (
               <EmptyState
-                emoji="🎯"
+                emoji="Goal"
                 eyebrow="No active goals"
                 title="No active goals"
                 description="Create a goal to earn stars."
                 action={
-                  <Button
-                    type="button"
-                    onClick={() => {
-                      resetGoalForm();
-                      setShowGoalComposer(true);
-                    }}
+                  <a
+                    href="#new-goal"
+                    className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
                   >
                     Create your first goal
-                  </Button>
+                  </a>
                 }
               />
             ) : (
@@ -657,7 +593,7 @@ export default function GoalsPage() {
             {showGoalHistory ? (
               historicalGoals.length === 0 ? (
                 <EmptyState
-                  emoji="🕘"
+                  emoji="History"
                   eyebrow="Goal history"
                   title="No past goals yet"
                   description="Completed and expired goals will appear here once you have run a few targets."

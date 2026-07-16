@@ -7,16 +7,14 @@ import { useRouter } from "next/navigation";
 import AppPage from "@/components/layout/AppPage";
 import {
   Button,
-  ButtonLink,
+  Card,
   ConfirmDialog,
   EmptyState,
   FeedbackBanner,
   Input,
-  PageHero,
   Skeleton,
 } from "@/components/ui";
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
-import WorkspaceActionDialog from "@/components/workspace/WorkspaceActionDialog";
 import { useUser } from "@/lib/auth/user-context";
 import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
@@ -119,7 +117,6 @@ export default function TopicsPage() {
     TOPIC_BROWSE_PAGE_SIZE
   );
   const [newTopicName, setNewTopicName] = useState("");
-  const [showCreateTopic, setShowCreateTopic] = useState(false);
   const [creating, setCreating] = useState(false);
   const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
   const [renameValue, setRenameValue] = useState("");
@@ -204,7 +201,6 @@ export default function TopicsPage() {
           : [...current, topic]
       );
       setNewTopicName("");
-      setShowCreateTopic(false);
       setFeedback({ type: "success", message: `${topic.name} is ready.` });
       router.push(`/dashboard/topics/${encodeURIComponent(topic.id)}`);
     } catch (error) {
@@ -285,73 +281,18 @@ export default function TopicsPage() {
   return (
     <AppPage
       title="Topics"
-      backHref="/dashboard/study"
-      backLabel="Learn"
+      backHref="/dashboard"
+      backLabel="Today"
       width="3xl"
       contentClassName="space-y-4 sm:space-y-6"
     >
-      {!showCreateTopic && feedback ? (
+      {feedback ? (
         <FeedbackBanner
           type={feedback.type}
           message={feedback.message}
           onDismiss={() => setFeedback(null)}
         />
       ) : null}
-      <WorkspaceActionDialog
-        open={showCreateTopic}
-        title="Create a topic"
-        description="Use a short concept or subtopic name. You can attach material from its existing editor."
-        busy={creating}
-        onClose={() => {
-          if (creating) return;
-          setShowCreateTopic(false);
-          setNewTopicName("");
-        }}
-      >
-        <div className="space-y-5">
-          {feedback ? (
-            <FeedbackBanner
-              type={feedback.type}
-              message={feedback.message}
-              onDismiss={() => setFeedback(null)}
-            />
-          ) : null}
-          <Input
-            data-dialog-autofocus="true"
-            label="Topic name"
-            placeholder="e.g. Enzyme inhibition"
-            value={newTopicName}
-            onChange={(event) => setNewTopicName(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && newTopicName.trim()) {
-                event.preventDefault();
-                void createTopic();
-              }
-            }}
-            disabled={creating}
-          />
-          <div className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] pt-4 sm:flex-row sm:justify-end">
-            <Button
-              type="button"
-              variant="ghost"
-              disabled={creating}
-              onClick={() => {
-                setShowCreateTopic(false);
-                setNewTopicName("");
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={creating || !newTopicName.trim()}
-              onClick={() => void createTopic()}
-            >
-              {creating ? "Creating..." : "Create topic"}
-            </Button>
-          </div>
-        </div>
-      </WorkspaceActionDialog>
       <ConfirmDialog
         open={topicPendingDelete !== null}
         title={
@@ -369,29 +310,39 @@ export default function TopicsPage() {
         onConfirm={() => void deleteTopic()}
       />
 
-      <PageHero
-        eyebrow="Learn organisation"
-        title="Keep related study material easy to find."
-        description="Topics are lightweight concept labels across cards, notebooks, sources, and drafts."
-        action={
-          <Button
-            type="button"
-            onClick={() => {
-              setFeedback(null);
-              setShowCreateTopic(true);
-            }}
-          >
-            <span aria-hidden="true">+</span> New topic
-          </Button>
-        }
-        secondaryAction={
-          <ButtonLink href="/dashboard/cards" variant="secondary">
-            Browse cards
-          </ButtonLink>
-        }
-        tone="default"
-        compact
-      />
+      <Card tone="warm" padding="lg">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Topics
+            </div>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-text-primary">
+              Connect your study material
+            </h1>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-text-muted">
+              Topics bring related cards, notebooks, sources, and drafts together.
+            </p>
+          </div>
+          {true ? (
+            <div className="flex w-full max-w-lg gap-2">
+              <Input
+                aria-label="New Topic name"
+                placeholder="New Topic"
+                value={newTopicName}
+                onChange={(event) => setNewTopicName(event.target.value)}
+                containerClassName="min-w-0 flex-1"
+              />
+              <Button
+                type="button"
+                disabled={creating || !newTopicName.trim()}
+                onClick={() => void createTopic()}
+              >
+                {creating ? "Creating..." : "Create"}
+              </Button>
+            </div>
+          ) : null}
+        </div>
+      </Card>
 
       {topics.length > 0 ? (
         <div className="space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3">
@@ -551,20 +502,15 @@ export default function TopicsPage() {
         </>
       ) : topics.length > 0 && hasSearchQuery ? (
         <EmptyState
-          emoji="🔎"
+          emoji="Search"
           title="No Topics match"
           description="Try a shorter Topic name."
         />
       ) : (
         <EmptyState
-          emoji="🏷️"
+          emoji="Topics"
           title="Create your first Topic"
           description="Topics connect related cards, notebooks, sources, and drafts."
-          action={
-            <Button type="button" onClick={() => setShowCreateTopic(true)}>
-              Create a topic
-            </Button>
-          }
         />
       )}
     </AppPage>

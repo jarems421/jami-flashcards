@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { type ReactNode } from "react";
-import { BrandMark, ButtonLink } from "@/components/ui";
+import { BrandMark } from "@/components/ui";
 
 type AppTopBarProps = {
   title: string;
@@ -51,27 +51,9 @@ export default function AppTopBar({
             )}
             {action ? (
               <div className="min-w-0 shrink-0">{action}</div>
-            ) : null}
-            <ButtonLink
-              href="/dashboard/profile"
-              variant="surface"
-              size="icon"
-              aria-label="Account"
-              title="Account"
-              data-agent-nav="Account"
-              data-agent-route="/dashboard/profile"
-              className="ml-auto shrink-0"
-            >
-              <svg
-                viewBox="0 0 24 24"
-                fill="currentColor"
-                aria-hidden="true"
-                className="h-5 w-5"
-              >
-                <path d="M7.5 6.5C7.5 4.015 9.515 2 12 2s4.5 2.015 4.5 4.5S14.485 11 12 11 7.5 8.985 7.5 6.5zM3.751 20.105a8.25 8.25 0 0116.498 0 .75.75 0 01-.437.695A18.683 18.683 0 0112 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 01-.437-.695z" />
-              </svg>
-              <span className="sr-only">Account</span>
-            </ButtonLink>
+            ) : (
+              <div className="h-10 w-10 shrink-0" aria-hidden="true" />
+            )}
           </div>
         </div>
       </div>

@@ -158,46 +158,6 @@ export default function PracticeWorkspace() {
         />
       ) : null}
 
-      <header className="relative overflow-hidden rounded-[1.7rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-5 py-6 shadow-bubble sm:px-8 sm:py-8">
-        <div
-          aria-hidden="true"
-          className="pointer-events-none absolute -right-20 -top-24 h-56 w-56 rounded-full bg-[var(--color-accent-muted)] blur-3xl"
-        />
-        <div className="relative flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-secondary">
-              Practice workspace
-            </p>
-            <h1 className="mt-2 max-w-2xl text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
-              Pick up where you left off
-            </h1>
-            <p className="mt-3 max-w-xl text-sm leading-6 text-text-muted sm:text-base">
-              Continue a notebook or open a subject folder to start something new.
-            </p>
-          </div>
-          {recentNotebooks[0] ? (
-            <ButtonLink
-              href={`/dashboard/notebooks/${encodeURIComponent(recentNotebooks[0].id)}`}
-              className="shrink-0"
-            >
-              Continue notebook
-            </ButtonLink>
-          ) : firstFolderHref ? (
-            <ButtonLink href={firstFolderHref} className="shrink-0">
-              Open a folder
-            </ButtonLink>
-          ) : (
-            <Button
-              type="button"
-              className="shrink-0"
-              onClick={() => setCreateFolderOpen(true)}
-            >
-              Create first folder
-            </Button>
-          )}
-        </div>
-      </header>
-
       {loading ? (
         <div className="space-y-7 sm:space-y-9" aria-label="Loading Practice workspace">
           <section className="space-y-4">
