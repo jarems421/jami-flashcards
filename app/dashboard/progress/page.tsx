@@ -92,6 +92,7 @@ export default function ProgressPage() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [starCount, setStarCount] = useState(0);
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [range, setRange] = useState<ProgressTimeRange>("30d");
   const [loading, setLoading] = useState(true);
@@ -119,6 +120,7 @@ export default function ProgressPage() {
           nextTopics,
           nextStudyActivity,
           goalsSnapshot,
+          starsSnapshot,
         ] = await Promise.all([
           loadUserCards(user.uid),
           getGeneratedContentDrafts(user.uid).catch(() => [] as GeneratedContentDraft[]),
@@ -128,6 +130,7 @@ export default function ProgressPage() {
           getActiveTopics(user.uid).catch(() => [] as Topic[]),
           loadStudyActivity(user.uid).catch(() => [] as DailyStudyActivity[]),
           getDocs(collection(db, "users", user.uid, "goals")).catch(() => null),
+          getDocs(collection(db, "users", user.uid, "stars")).catch(() => null),
         ]);
 
         if (!cancelled) {
@@ -145,6 +148,7 @@ export default function ProgressPage() {
                 )
               : []
           );
+          setStarCount(starsSnapshot?.size ?? 0);
         }
       } catch (error) {
         console.error(error);
@@ -275,12 +279,29 @@ export default function ProgressPage() {
   const cardsDue = cards.filter(
     (card) => typeof card.dueDate === "number" && card.dueDate <= Date.now()
   ).length;
+  const activeGoals = goals.filter((goal) => goal.status === "active");
+  const completedGoals = goals.filter((goal) => goal.status === "completed");
+  const nextGoal = [...activeGoals].sort((left, right) => {
+    const leftDeadline =
+      left.deadline > 0 ? left.deadline : Number.POSITIVE_INFINITY;
+    const rightDeadline =
+      right.deadline > 0 ? right.deadline : Number.POSITIVE_INFINITY;
+    return leftDeadline - rightDeadline || right.createdAt - left.createdAt;
+  })[0];
+  const nextGoalProgress = nextGoal
+    ? Math.min(
+        100,
+        Math.round(
+          (nextGoal.progress.cardsCompleted / Math.max(nextGoal.targetCards, 1)) * 100
+        )
+      )
+    : 0;
 
   if (!featureFlags.enableMasteryProgress) {
     return (
       <AppPage title="Progress" backHref="/dashboard" backLabel="Today">
         <EmptyState
-          emoji="Progress"
+          emoji="📈"
           eyebrow="Not enabled"
           title="Progress is behind a feature flag"
           description="Enable mastery progress after topics and notebooks are ready."
@@ -325,6 +346,77 @@ export default function ProgressPage() {
           </div>
         }
       />
+
+      <Card padding="md" tone="warm">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.35fr)_minmax(18rem,0.65fr)] lg:items-center">
+          <div className="min-w-0">
+            <SectionHeader
+              eyebrow="Goals & rewards"
+              title={
+                loading
+                  ? "Loading goals and rewards."
+                  : nextGoal
+                  ? `${nextGoal.progress.cardsCompleted} of ${nextGoal.targetCards} cards toward your next goal`
+                  : completedGoals.length > 0
+                    ? "Your completed goals are building a visible record."
+                    : "Set a small target for your next study run."
+              }
+              description={
+                loading
+                  ? "Bringing your current targets and earned stars into the Progress view."
+                  : nextGoal
+                  ? "Goal progress updates as you review. Complete it to earn a star for your constellation."
+                  : "Goals are optional: use one when a concrete target would help you get started."
+              }
+            />
+            {nextGoal ? (
+              <div className="mt-4">
+                <div className="mb-2 flex items-center justify-between gap-3 text-xs">
+                  <span className="text-text-muted">Next goal</span>
+                  <span className="font-semibold tabular-nums text-text-primary">
+                    {nextGoalProgress}%
+                  </span>
+                </div>
+                <div
+                  className="h-2 overflow-hidden rounded-full bg-glass-medium"
+                  role="progressbar"
+                  aria-label="Next goal progress"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={nextGoalProgress}
+                >
+                  <div
+                    className="h-full rounded-full bg-warm-accent transition-all duration-slow"
+                    style={{ width: `${nextGoalProgress}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {!loading ? (
+              <div className="mt-5 flex flex-wrap gap-2">
+                <ButtonLink href="/dashboard/goals" size="sm">
+                  {activeGoals.length > 0 ? "Manage goals" : "Create a goal"}
+                </ButtonLink>
+                <ButtonLink
+                  href="/dashboard/constellation"
+                  size="sm"
+                  variant="secondary"
+                >
+                  Open constellation
+                </ButtonLink>
+              </div>
+            ) : null}
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <HeroMetric label="Active" value={loading ? "..." : activeGoals.length} />
+            <HeroMetric
+              label="Completed"
+              value={loading ? "..." : completedGoals.length}
+            />
+            <HeroMetric label="Stars" value={loading ? "..." : starCount} />
+          </div>
+        </div>
+      </Card>
 
       {loading ? (
         <div className="space-y-4">
@@ -403,7 +495,7 @@ export default function ProgressPage() {
                       <div className="flex h-full items-center justify-center">
                         <EmptyState
                           variant="plain"
-                          emoji="Stats"
+                          emoji="📊"
                           title="No reviews in this range"
                           description="Accuracy will appear after you review some cards."
                         />
@@ -438,7 +530,7 @@ export default function ProgressPage() {
                       <div className="flex h-full items-center justify-center">
                         <EmptyState
                           variant="plain"
-                          emoji="Time"
+                          emoji="⏱️"
                           title="No study time in this range"
                           description="Completed sessions will build this chart."
                         />
@@ -559,7 +651,7 @@ export default function ProgressPage() {
                 ) : (
                   <EmptyState
                     variant="plain"
-                    emoji="Decks"
+                    emoji="🗂️"
                     title="No deck health data yet"
                     description="Add cards to a deck and start reviewing to see how it is doing."
                   />
@@ -596,12 +688,12 @@ export default function ProgressPage() {
                 ))}
               </div>
               <ButtonLink
-                href="/dashboard/folders"
+                href="/dashboard/practise"
                 size="sm"
                 variant="ghost"
                 className="shrink-0"
               >
-                Open workspace
+                Open Practice
               </ButtonLink>
             </div>
           </Card>

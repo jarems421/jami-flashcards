@@ -1086,7 +1086,7 @@ export default function LibraryPage() {
 
   if (loading) {
     return (
-      <AppPage title="Sources" backHref="/dashboard" backLabel="Today">
+      <AppPage title="Library" backHref="/dashboard" backLabel="Today">
         <div className="space-y-4">
           <Skeleton className="h-16" />
           <Skeleton className="h-80" />
@@ -1097,7 +1097,7 @@ export default function LibraryPage() {
 
   return (
     <AppPage
-      title="Sources"
+      title="Library"
       backHref="/dashboard"
       backLabel="Today"
       width="study"
@@ -1388,7 +1388,17 @@ export default function LibraryPage() {
 
       {sources.length > 0 ? (
         <Card padding="md">
-          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(3,minmax(150px,0.75fr))]">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <SectionHeader
+              eyebrow="Library"
+              title="Find study material"
+              description="Search saved sources or narrow the list by folder, type, and status."
+            />
+            <span className="app-chip self-start rounded-full px-3 py-1.5 text-xs font-semibold text-text-secondary sm:self-auto">
+              {filteredSources.length} of {sources.length}
+            </span>
+          </div>
+          <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-[minmax(240px,1.35fr)_repeat(3,minmax(150px,0.75fr))]">
             <Input
               aria-label="Search Sources"
               placeholder="Search titles and notes"
@@ -1463,7 +1473,7 @@ export default function LibraryPage() {
                 className="app-chip min-h-10 rounded-full px-3 text-xs font-semibold"
                 onClick={() => setSearchTerm("")}
               >
-                Search: {searchTerm} x
+              Search: {searchTerm} <span aria-hidden="true">×</span>
               </button>
             ) : null}
             {folderFilter ? (
@@ -1472,7 +1482,7 @@ export default function LibraryPage() {
                 className="app-chip min-h-10 rounded-full px-3 text-xs font-semibold"
                 onClick={() => setFolderFilter("")}
               >
-                Folder: {folders.find((folder) => folder.id === folderFilter)?.name ?? "Selected"} x
+              Folder: {folders.find((folder) => folder.id === folderFilter)?.name ?? "Selected"} <span aria-hidden="true">×</span>
               </button>
             ) : null}
             {typeFilter !== "all" ? (
@@ -1481,7 +1491,7 @@ export default function LibraryPage() {
                 className="app-chip min-h-10 rounded-full px-3 text-xs font-semibold"
                 onClick={() => setTypeFilter("all")}
               >
-                Type: {typeLabel(typeFilter)} x
+              Type: {typeLabel(typeFilter)} <span aria-hidden="true">×</span>
               </button>
             ) : null}
             {statusFilter !== "active" ? (
@@ -1490,7 +1500,7 @@ export default function LibraryPage() {
                 className="app-chip min-h-10 rounded-full px-3 text-xs font-semibold"
                 onClick={() => setStatusFilter("active")}
               >
-                Status: {statusFilter} x
+                Status: {statusFilter} <span aria-hidden="true">×</span>
               </button>
             ) : null}
             {searchTerm ||
@@ -1513,7 +1523,7 @@ export default function LibraryPage() {
 
       {sources.length === 0 ? (
         <EmptyState
-          emoji="Sources"
+          emoji="📚"
           eyebrow="No sources yet"
           title="Build your study material hub."
           description="Save text, links, images, and study documents in one place."
@@ -1525,7 +1535,7 @@ export default function LibraryPage() {
         />
       ) : filteredSources.length === 0 ? (
         <EmptyState
-          emoji="Search"
+          emoji="🔎"
           eyebrow="No matching sources"
           title={
             searchTerm
@@ -2097,7 +2107,7 @@ export default function LibraryPage() {
         </>
       )}
       <div className="text-sm text-text-muted">
-        Need cards instead? <Link className="text-warm-accent hover:text-text-primary" href="/dashboard/cards">Open Cards</Link>.
+        Ready to review? <Link className="text-warm-accent hover:text-text-primary" href="/dashboard/study">Open Learn</Link>.
       </div>
     </AppPage>
   );

@@ -14,9 +14,10 @@ import {
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
+import WorkspaceActionDialog from "@/components/workspace/WorkspaceActionDialog";
 import { db } from "@/services/firebase/client";
 import AppPage from "@/components/layout/AppPage";
-import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
+import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
@@ -35,6 +36,7 @@ export default function DecksPage() {
   const [deckCounts, setDeckCounts] = useState<DeckCounts>({});
   const [name, setName] = useState("");
   const [createFolderId, setCreateFolderId] = useState("");
+  const [showCreateDeck, setShowCreateDeck] = useState(false);
   const [isLoadingDecks, setIsLoadingDecks] = useState(true);
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
@@ -47,7 +49,6 @@ export default function DecksPage() {
   const [deckPendingDelete, setDeckPendingDelete] = useState<Deck | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const nameInputRef = useRef<HTMLInputElement>(null);
   const lastForegroundRefreshAtRef = useRef(0);
 
   const loadAll = useCallback(async () => {
@@ -141,6 +142,7 @@ export default function DecksPage() {
       setName("");
       setCreateFolderId("");
       await loadAll();
+      setShowCreateDeck(false);
       setFeedback({ type: "success", message: `Created deck ${deckName}` });
     } catch (error) {
       console.error(error);
@@ -148,6 +150,13 @@ export default function DecksPage() {
     } finally {
       setIsCreatingDeck(false);
     }
+  };
+
+  const closeDeckCreator = () => {
+    if (isCreatingDeck) return;
+    setShowCreateDeck(false);
+    setName("");
+    setCreateFolderId("");
   };
 
   const handleDeckRename = async (deck: Deck) => {
@@ -191,13 +200,72 @@ export default function DecksPage() {
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
         title="Decks"
-        backHref="/dashboard"
-        backLabel="Today"
+        backHref="/dashboard/study"
+        backLabel="Learn"
         width="2xl"
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
         contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
+        <WorkspaceActionDialog
+          open={showCreateDeck}
+          title="Create a new deck"
+          description="Give this card set a clear name. You can place it in a folder now or organise it later."
+          busy={isCreatingDeck}
+          onClose={closeDeckCreator}
+        >
+          <div className="space-y-5">
+            <Input
+              data-dialog-autofocus="true"
+              label="Deck name"
+              placeholder="e.g. Cell biology"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && name.trim()) {
+                  event.preventDefault();
+                  void handleCreate();
+                }
+              }}
+              disabled={isCreatingDeck}
+            />
+            <label className="block">
+              <span className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary">
+                Folder <span className="font-normal text-text-muted">(optional)</span>
+              </span>
+              <select
+                value={createFolderId}
+                onChange={(event) => setCreateFolderId(event.target.value)}
+                disabled={isCreatingDeck}
+                className="app-field min-h-[3rem] w-full appearance-none rounded-[1.6rem] px-4 text-sm outline-none"
+              >
+                <option value="">No folder</option>
+                {folders.map((folder) => (
+                  <option key={folder.id} value={folder.id}>
+                    {folder.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] pt-4 sm:flex-row sm:justify-end">
+              <Button
+                type="button"
+                variant="ghost"
+                disabled={isCreatingDeck}
+                onClick={closeDeckCreator}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                disabled={isCreatingDeck || !name.trim()}
+                onClick={() => void handleCreate()}
+              >
+                {isCreatingDeck ? "Creating..." : "Create deck"}
+              </Button>
+            </div>
+          </div>
+        </WorkspaceActionDialog>
         <ConfirmDialog
           open={deckPendingDelete !== null}
           title={`Delete ${deckPendingDelete?.name ?? "this deck"}?`}
@@ -212,63 +280,22 @@ export default function DecksPage() {
             if (deckPendingDelete) void handleDeckDelete(deckPendingDelete);
           }}
         />
-
-        <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
-          <PageHero
-            eyebrow="Flashcards"
-            title="Decks"
-            action={
-              <div className="w-full min-w-0 max-w-[32rem] space-y-3">
-                <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(8.5rem,11.5rem)]">
-                  <Input
-                    ref={nameInputRef}
-                    label="Name"
-                    placeholder="Deck name"
-                    value={name}
-                    onChange={(event) => setName(event.target.value)}
-                    onKeyDown={(event) => {
-                      if (event.key === "Enter" && name.trim()) {
-                        event.preventDefault();
-                        void handleCreate();
-                      }
-                    }}
-                    containerClassName="min-w-0"
-                    className="min-h-[2.9rem] px-4 py-3 text-base leading-6"
-                  />
-                  <label className="block min-w-0 overflow-visible">
-                    <span className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary">
-                      Folder
-                    </span>
-                    <select
-                      value={createFolderId}
-                      onChange={(event) => setCreateFolderId(event.target.value)}
-                      className="app-field min-h-[2.9rem] w-full min-w-0 appearance-none truncate rounded-[1.6rem] px-3 py-3 text-sm leading-6 outline-none"
-                    >
-                      <option value="">No folder</option>
-                      {folders.map((folder) => (
-                        <option key={folder.id} value={folder.id}>
-                          {folder.name}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <Button
-                  disabled={isCreatingDeck || !name.trim()}
-                  onClick={() => void handleCreate()}
-                  className="min-h-[2.9rem] w-full sm:w-auto sm:min-w-[10rem]"
-                >
-                  {isCreatingDeck ? "Creating..." : "Create deck"}
-                </Button>
-              </div>
-            }
-          />
-
-          <div className="grid gap-4">
-            <StatTile label="Decks" value={decks.length} detail="Card sets ready to study." />
-            <StatTile label="All cards" value="Open" detail="Search and edit cards across every deck." href="/dashboard/cards" />
-          </div>
-        </div>
+        <PageHero
+          eyebrow="Learn library"
+          title="Pick up a deck and keep moving."
+          description="Study what is due, add new material, or tidy a deck without leaving your learning flow."
+          action={
+            <Button type="button" onClick={() => setShowCreateDeck(true)}>
+              <span aria-hidden="true">+</span> New deck
+            </Button>
+          }
+          secondaryAction={
+            <ButtonLink href="/dashboard/cards" variant="secondary">
+              Browse all cards
+            </ButtonLink>
+          }
+          compact
+        />
 
         {isLoadingDecks ? (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -278,11 +305,11 @@ export default function DecksPage() {
           </div>
         ) : decks.length === 0 ? (
           <EmptyState
-            emoji="Deck"
+            emoji="🗂️"
             eyebrow="Start here"
             title="Create your first deck"
             description="Create a deck to hold cards."
-            action={<Button type="button" onClick={() => nameInputRef.current?.focus()} variant="warm">Name a deck</Button>}
+            action={<Button type="button" onClick={() => setShowCreateDeck(true)} variant="warm">Create a deck</Button>}
           />
         ) : (
           <div className="grid animate-slide-up gap-3 sm:gap-4 lg:grid-cols-2">

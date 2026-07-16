@@ -373,8 +373,8 @@ export default function ConstellationDashboardPage() {
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
         title="Stars"
-        backHref="/dashboard"
-        backLabel="Today"
+        backHref="/dashboard/progress"
+        backLabel="Progress"
         width="3xl"
         action={
           <RefreshIconButton

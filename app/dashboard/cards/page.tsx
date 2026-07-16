@@ -49,7 +49,8 @@ import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
-import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
+import WorkspaceActionDialog from "@/components/workspace/WorkspaceActionDialog";
+import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import Link from "next/link";
 
 const CARD_RESULT_PAGE_SIZE = 50;
@@ -97,6 +98,7 @@ export default function CardsSearchPage() {
   );
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const [showCardCreator, setShowCardCreator] = useState(false);
   const [feedback, setFeedback] = useState<{
     type: "success" | "error";
     message: string;
@@ -164,6 +166,18 @@ export default function CardsSearchPage() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewCardId]);
+
+  useEffect(() => {
+    const openCreatorFromHash = () => {
+      if (window.location.hash === "#add-card") {
+        setShowCardCreator(true);
+      }
+    };
+
+    openCreatorFromHash();
+    window.addEventListener("hashchange", openCreatorFromHash);
+    return () => window.removeEventListener("hashchange", openCreatorFromHash);
+  }, []);
 
   // Load all user cards + decks
   useEffect(() => {
@@ -349,6 +363,22 @@ export default function CardsSearchPage() {
     setStatusFilter("all");
   };
 
+  const openCardCreator = () => {
+    setFeedback(null);
+    setShowCardCreator(true);
+  };
+
+  const closeCardCreator = () => {
+    setShowCardCreator(false);
+    if (window.location.hash === "#add-card") {
+      window.history.replaceState(
+        null,
+        "",
+        `${window.location.pathname}${window.location.search}`
+      );
+    }
+  };
+
   const startEditing = (card: Card) => {
     setExpandedCardId(card.id);
     setEditingFront(card.front);
@@ -441,6 +471,8 @@ export default function CardsSearchPage() {
     if (createdCards.length === 0) {
       return;
     }
+
+    closeCardCreator();
 
     setCards((prev) => {
       const existingIds = new Set(prev.map((card) => card.id));
@@ -589,14 +621,45 @@ export default function CardsSearchPage() {
   return (
     <AppPage
       title="Cards"
-      backHref="/dashboard"
-      backLabel="Today"
+      backHref="/dashboard/study"
+      backLabel="Learn"
       width="2xl"
+      action={
+        <Button type="button" size="sm" onClick={openCardCreator}>
+          <span aria-hidden="true">+</span> Add cards
+        </Button>
+      }
       contentClassName="space-y-4 sm:space-y-6"
     >
-      {feedback ? (
+      {!showCardCreator && feedback ? (
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
       ) : null}
+      <WorkspaceActionDialog
+        open={showCardCreator}
+        title="Add cards"
+        description="Create one focused flashcard or import a prepared list into a deck."
+        maxWidth="xl"
+        onClose={closeCardCreator}
+      >
+        {feedback ? (
+          <div className="mb-3">
+            <FeedbackBanner
+              type={feedback.type}
+              message={feedback.message}
+              onDismiss={() => setFeedback(null)}
+            />
+          </div>
+        ) : null}
+        <CardCreationPanel
+          userId={user.uid}
+          decks={decks}
+          existingCards={cards}
+          topics={topics}
+          onTopicsChange={setTopics}
+          onCardsCreated={handleCardsCreated}
+          onFeedback={setFeedback}
+        />
+      </WorkspaceActionDialog>
       <ConfirmDialog
         open={cardPendingDeleteId !== null}
         title="Delete this card?"
@@ -621,53 +684,6 @@ export default function CardsSearchPage() {
         busy={applyingBulkAction === "delete"}
         onClose={() => setBulkDeletePending(false)}
         onConfirm={() => void handleDeleteSelectedCards()}
-      />
-
-      {!loading && (decks.length === 0 || cards.length === 0 || topics.length === 0) ? (
-        <section className="grid gap-3 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:grid-cols-3">
-          <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">1. Decks</div>
-            <div className="mt-2 text-sm font-medium text-text-primary">
-              {decks.length > 0 ? `${decks.length} ready` : "Create a deck"}
-            </div>
-            <p className="mt-1 text-xs leading-5 text-text-muted">
-              Decks group your cards by subject or exam.
-            </p>
-            {decks.length === 0 ? (
-              <Link href="/dashboard/decks" className="mt-3 inline-flex text-xs font-semibold text-accent hover:text-text-primary">
-                Open decks
-              </Link>
-            ) : null}
-          </div>
-          <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">2. Cards</div>
-            <div className="mt-2 text-sm font-medium text-text-primary">
-              {cards.length > 0 ? `${cards.length} ready` : "Add your first cards"}
-            </div>
-            <p className="mt-1 text-xs leading-5 text-text-muted">
-              Single card and paste-list import live just below.
-            </p>
-          </div>
-          <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
-            <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">3. Topics</div>
-            <div className="mt-2 text-sm font-medium text-text-primary">
-              {topics.length > 0 ? `${topics.length} ready` : "Add Topics when useful"}
-            </div>
-            <p className="mt-1 text-xs leading-5 text-text-muted">
-              Topics connect cards to the rest of your study material.
-            </p>
-          </div>
-        </section>
-      ) : null}
-
-      <CardCreationPanel
-        userId={user.uid}
-        decks={decks}
-        existingCards={cards}
-        topics={topics}
-        onTopicsChange={setTopics}
-        onCardsCreated={handleCardsCreated}
-        onFeedback={setFeedback}
       />
 
       <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
@@ -816,16 +832,24 @@ export default function CardsSearchPage() {
         </div>
       ) : cards.length === 0 ? (
         <EmptyState
-          emoji="Cards"
+          emoji="🗃️"
           eyebrow="No cards yet"
           title="No cards yet"
           description="Create a card to start review."
           helperText={decks.length === 0 ? "Create a deck first." : undefined}
-          action={decks.length === 0 ? <Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-medium text-[var(--color-text-inverse)] shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Create a deck</Link> : undefined}
+          action={
+            decks.length === 0 ? (
+              <ButtonLink href="/dashboard/decks">Create a deck</ButtonLink>
+            ) : (
+              <Button type="button" onClick={openCardCreator}>
+                Add your first card
+              </Button>
+            )
+          }
         />
       ) : shouldShowCardResults && filtered.length === 0 ? (
         <EmptyState
-          emoji="Search"
+          emoji="🔎"
           eyebrow="No match"
           title="No cards match"
           description={
@@ -834,7 +858,7 @@ export default function CardsSearchPage() {
               : "No cards match the selected filters."
           }
           action={<Button type="button" variant="secondary" onClick={clearAllFilters}>Clear all filters</Button>}
-          secondaryAction={<a href="#add-card" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)]">Add a card</a>}
+          secondaryAction={<Button type="button" onClick={openCardCreator}>Add a card</Button>}
         />
       ) : (
         <>
