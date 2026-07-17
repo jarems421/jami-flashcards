@@ -29,6 +29,7 @@ import {
 import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
+import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
 
 export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "text";
 
@@ -266,7 +267,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const jsDrawRef = useRef<JsDrawModule | null>(null);
     const loadingRef = useRef(true);
     const readyRef = useRef(false);
-    const activePointersRef = useRef<Set<number>>(new Set());
+    const pointerLifecycleRef = useRef<NotebookInkPointerLifecycle | null>(null);
+    pointerLifecycleRef.current ??= new NotebookInkPointerLifecycle();
     const inkSmoothersRef = useRef<Map<number, NotebookInkSmoother>>(new Map());
     const pendingStyleRef = useRef(false);
     const initialSvgRef = useRef(initialSvg);
@@ -331,18 +333,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           return (editorRef.current?.image.getAllComponents().length ?? 0) > 0;
         },
         isInteracting() {
-          return activePointersRef.current.size > 0;
+          return pointerLifecycleRef.current?.isInteracting ?? false;
         },
         redo() {
           void editorRef.current?.history.redo();
         },
         async serializeAsync() {
           const editor = editorRef.current;
-          if (!editor || activePointersRef.current.size > 0 || !readyRef.current) {
+          const pointerLifecycle = pointerLifecycleRef.current;
+          if (!editor || pointerLifecycle?.isInteracting || !readyRef.current) {
             return null;
           }
           const svg = await editor.toSVGAsync({ pauseAfterCount: 24 });
-          return activePointersRef.current.size > 0 ? null : svg.outerHTML;
+          return pointerLifecycle?.isInteracting ? null : svg.outerHTML;
         },
         setEraserMode(mode) {
           desiredStyleRef.current = { ...desiredStyleRef.current, eraserMode: mode };
@@ -376,11 +379,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       let viewportFrame: number | null = null;
       loadingRef.current = true;
       readyRef.current = false;
-      activePointersRef.current.clear();
+      pointerLifecycleRef.current?.reset();
       inkSmoothersRef.current.clear();
       host.replaceChildren();
 
-      const activePointers = activePointersRef.current;
+      const pointerLifecycle = pointerLifecycleRef.current;
       const inkSmoothers = inkSmoothersRef.current;
       void loadJsDraw()
         .then(async (jsDraw) => {
@@ -531,7 +534,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       return () => {
         disposed = true;
         readyRef.current = false;
-        activePointers.clear();
+        pointerLifecycle?.reset();
         inkSmoothers.clear();
         callbacksRef.current.onInteractionChange(false);
         viewportResizeObserver?.disconnect();
@@ -557,7 +560,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         penThickness,
       };
       if (!editor) return;
-      if (activePointersRef.current.size > 0) {
+      if (pointerLifecycleRef.current?.isInteracting) {
         pendingStyleRef.current = true;
         return;
       }
@@ -593,8 +596,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     useEffect(() => {
       const cancelInteractions = () => {
         cancelEditorGesture();
-        if (activePointersRef.current.size === 0) return;
-        activePointersRef.current.clear();
+        const pointerLifecycle = pointerLifecycleRef.current;
+        const wasInteracting = pointerLifecycle?.isInteracting ?? false;
+        pointerLifecycle?.reset();
+        if (!wasInteracting) return;
         callbacksRef.current.onInteractionChange(false);
         setEraserCursor((current) =>
           current.visible ? { ...current, visible: false } : current
@@ -613,9 +618,18 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       };
     }, [cancelEditorGesture]);
 
-    const finishPointerInteraction = useCallback((pointerId: number) => {
-      if (!activePointersRef.current.delete(pointerId)) return;
-      if (activePointersRef.current.size > 0) return;
+    const finishPointerInteraction = useCallback((input: {
+      pointerId: number;
+      expectCaptureLoss?: boolean;
+      timeStamp: number;
+    }) => {
+      const endedInteraction =
+        pointerLifecycleRef.current?.finish({
+          pointerId: input.pointerId,
+          expectCaptureLoss: input.expectCaptureLoss ?? false,
+          timeStamp: input.timeStamp,
+        }) ?? false;
+      if (!endedInteraction) return;
       callbacksRef.current.onInteractionChange(false);
       if (pendingStyleRef.current && editorRef.current && jsDrawRef.current) {
         pendingStyleRef.current = false;
@@ -660,15 +674,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       const editor = editorRef.current;
       if (type === "pointerdown") {
         const jsDraw = jsDrawRef.current;
-        if (
-          editor &&
-          jsDraw &&
-          (activePointersRef.current.size === 0 ||
-            activePointersRef.current.has(event.pointerId))
-        ) {
-          // A fresh down is an authoritative gesture boundary. Cancel any
-          // js-draw tool left active by an interrupted release, then re-apply
-          // the app's selected tool before this event reaches the engine.
+        if (editor && jsDraw) {
+          // A clean pointerdown can go straight to js-draw. Only cancel when a
+          // previous contact is genuinely stranded; cancelling every new
+          // stroke creates a race with rapid Pencil re-contact on Safari.
           const pointerStyle: InkStyle = {
             activeTool,
             eraserMode,
@@ -679,8 +688,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             penThickness,
           };
           desiredStyleRef.current = pointerStyle;
-          activePointersRef.current.clear();
-          cancelEditorGesture();
+          const pointerStart =
+            pointerLifecycleRef.current?.begin(event.pointerId);
+          if (pointerStart?.shouldCancelStaleGesture) {
+            cancelEditorGesture();
+          }
           pendingStyleRef.current = false;
           applyInkStyle(editor, pointerStyle, jsDraw);
         }
@@ -691,7 +703,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         } catch {
           // Safari can reject capture on rapid stylus re-contact; keep drawing.
         }
-        activePointersRef.current.add(event.pointerId);
         callbacksRef.current.onInteractionChange(true);
       }
       if (editor) {
@@ -716,14 +727,26 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       }
       if (type === "pointerup" || type === "pointercancel") {
         inkSmoothersRef.current.delete(event.pointerId);
+        let hadPointerCapture = false;
         try {
-          if (surface.hasPointerCapture(event.pointerId)) {
+          hadPointerCapture = surface.hasPointerCapture(event.pointerId);
+        } catch {
+          // Capture state may be unavailable after a browser cancellation.
+        }
+        // Mark a normal release before releasing capture. Safari can dispatch
+        // the resulting lostpointercapture after the next contact has begun.
+        finishPointerInteraction({
+          pointerId: event.pointerId,
+          expectCaptureLoss: type === "pointerup" && hadPointerCapture,
+          timeStamp: event.timeStamp,
+        });
+        try {
+          if (hadPointerCapture) {
             surface.releasePointerCapture(event.pointerId);
           }
         } catch {
           // Capture may already be gone; interaction cleanup still runs.
         }
-        finishPointerInteraction(event.pointerId);
       }
       return true;
     };
@@ -754,24 +777,28 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             if (!forwardInkPointer("pointercancel", event)) onPointerCancel(event);
           }}
           onLostPointerCapture={(event) => {
-            const pointerId = event.pointerId;
-            if (!activePointersRef.current.has(pointerId)) {
+            if (event.pointerType === "touch") {
               onPointerCancel(event);
               return;
             }
-            const surface = event.currentTarget;
-            queueMicrotask(() => {
-              // Normal pointerup removes the pointer before this microtask.
-              // A rapid re-contact may already own capture again. Only a truly
-              // stranded gesture should reset js-draw's active tool.
-              if (!activePointersRef.current.has(pointerId)) return;
-              try {
-                if (surface.hasPointerCapture(pointerId)) return;
-              } catch {
-                // Treat an unavailable capture state as a lost interaction.
-              }
-              cancelEditorGesture();
-              finishPointerInteraction(pointerId);
+            const pointerId = event.pointerId;
+            const decision = pointerLifecycleRef.current?.handleLostCapture(
+              pointerId,
+              event.timeStamp
+            );
+            if (decision?.kind !== "cancel-active") return;
+            if (
+              !pointerLifecycleRef.current?.isCurrent(
+                pointerId,
+                decision.generation
+              )
+            ) {
+              return;
+            }
+            cancelEditorGesture();
+            finishPointerInteraction({
+              pointerId,
+              timeStamp: event.timeStamp,
             });
           }}
           onPointerLeave={() => {
