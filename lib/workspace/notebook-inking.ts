@@ -21,13 +21,19 @@ export const NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER = 5;
 export const NOTEBOOK_NATIVE_COMMIT_IDLE_MS = 750;
 export const NOTEBOOK_MAX_PENDING_NATIVE_STROKES = 120;
 export const NOTEBOOK_PAGE_SWIPE_THRESHOLD = 64;
+export const NOTEBOOK_PAGE_SWIPE_COMMIT_RATIO = 0.22;
+export const NOTEBOOK_PAGE_SWIPE_FLICK_VELOCITY = 0.55;
+export const NOTEBOOK_PAGE_SWIPE_VELOCITY_WINDOW_MS = 100;
 // Pulling forward past the last page far enough to fill this fraction of the page
 // width (with a px floor) creates a new page. A fast forward flick can shortcut it.
 export const NOTEBOOK_CREATE_PAGE_THRESHOLD_RATIO = 0.32;
 export const NOTEBOOK_CREATE_PAGE_MIN_THRESHOLD = 96;
 export const NOTEBOOK_CREATE_PAGE_FLICK_VELOCITY = 0.6;
-export const NOTEBOOK_PAGE_MIN_ZOOM = 0.85;
+export const NOTEBOOK_PAGE_MIN_ZOOM = 0.92;
 export const NOTEBOOK_PAGE_MAX_ZOOM = 4;
+export const NOTEBOOK_PAGE_COMPACT_FRAME_MAX_WIDTH = 767;
+export const NOTEBOOK_PAGE_COMPACT_FIT_INSET = 12;
+export const NOTEBOOK_PAGE_FIT_INSET = 16;
 export const NOTEBOOK_DEFAULT_THICKNESS_PERCENT = 50;
 export const NOTEBOOK_PEN_MIN_WIDTH = 2;
 export const NOTEBOOK_PEN_MAX_WIDTH = 10;
@@ -139,6 +145,95 @@ export function getNotebookPageIndexAfterSwipe(input: {
   return Math.max(0, Math.min(input.pageCount - 1, input.currentIndex + offset));
 }
 
+export type NotebookSwipeSample = { x: number; time: number };
+
+export function getNotebookSwipeVelocity(
+  samples: readonly NotebookSwipeSample[],
+  windowMs = NOTEBOOK_PAGE_SWIPE_VELOCITY_WINDOW_MS
+) {
+  const validSamples = samples.filter(
+    (sample) => Number.isFinite(sample.x) && Number.isFinite(sample.time)
+  );
+  const latest = validSamples[validSamples.length - 1];
+  if (!latest) return 0;
+  const cutoff = latest.time - Math.max(0, windowMs);
+  const windowSamples = validSamples.filter(
+    (sample) => sample.time >= cutoff && sample.time <= latest.time
+  );
+  const first = windowSamples[0];
+  if (!first || first === latest) return 0;
+  const elapsed = latest.time - first.time;
+  return elapsed > 0 ? (latest.x - first.x) / elapsed : 0;
+}
+
+export function getNotebookSwipeReleaseDecision(input: {
+  totalDx: number;
+  pageWidth: number;
+  velocityX: number;
+  currentIndex: number;
+  pageCount: number;
+}) {
+  const distanceDirection = input.totalDx < 0 ? "next" : "previous";
+  const flickDirection = input.velocityX < 0 ? "next" : "previous";
+  const distanceQualifies =
+    Math.abs(input.totalDx) >= Math.max(1, input.pageWidth) * NOTEBOOK_PAGE_SWIPE_COMMIT_RATIO;
+  const flickQualifies =
+    Math.abs(input.velocityX) >= NOTEBOOK_PAGE_SWIPE_FLICK_VELOCITY;
+  const direction = distanceQualifies
+    ? distanceDirection
+    : flickQualifies
+      ? flickDirection
+      : null;
+  if (!direction) {
+    return { direction: null, targetIndex: input.currentIndex, shouldCommit: false } as const;
+  }
+  const targetIndex = getNotebookPageIndexAfterSwipe({
+    currentIndex: input.currentIndex,
+    pageCount: input.pageCount,
+    direction,
+  });
+  return {
+    direction,
+    targetIndex,
+    shouldCommit: targetIndex !== input.currentIndex,
+  } as const;
+}
+
+export function getNotebookSwipeDragOffset(input: {
+  totalDx: number;
+  currentIndex: number;
+  pageCount: number;
+}) {
+  const canMoveNext = input.totalDx < 0 && input.currentIndex < input.pageCount - 1;
+  const canMovePrevious = input.totalDx > 0 && input.currentIndex > 0;
+  if (canMoveNext || canMovePrevious || input.totalDx === 0) return input.totalDx;
+  return Math.sign(input.totalDx) * Math.sqrt(Math.abs(input.totalDx)) * 5;
+}
+
+export function getNotebookSwipeSettleDuration(input: {
+  currentOffset: number;
+  targetOffset: number;
+  travelDistance: number;
+  velocityX: number;
+  reducedMotion?: boolean;
+}) {
+  if (input.reducedMotion) return 0;
+  if (Math.abs(input.targetOffset - input.currentOffset) < 0.5) return 0;
+  const remainingProgress = Math.max(
+    0,
+    Math.min(
+      1,
+      Math.abs(input.targetOffset - input.currentOffset) /
+        Math.max(1, Math.abs(input.travelDistance))
+    )
+  );
+  const duration =
+    140 +
+    160 * remainingProgress -
+    Math.min(80, Math.abs(input.velocityX) * 40);
+  return Math.round(Math.max(140, Math.min(300, duration)));
+}
+
 export function getNotebookCreatePageThreshold(pageWidth: number) {
   return Math.max(
     NOTEBOOK_CREATE_PAGE_MIN_THRESHOLD,
@@ -190,6 +285,33 @@ export function clampNotebookPageZoom(
 
 export type NotebookPagePan = { x: number; y: number };
 
+export function getNotebookPageFit(input: {
+  frameWidth: number;
+  frameHeight: number;
+  pageWidth: number;
+  pageHeight: number;
+}) {
+  const inset =
+    input.frameWidth <= NOTEBOOK_PAGE_COMPACT_FRAME_MAX_WIDTH
+      ? NOTEBOOK_PAGE_COMPACT_FIT_INSET
+      : NOTEBOOK_PAGE_FIT_INSET;
+  const availableWidth = input.frameWidth - inset * 2;
+  const availableHeight = input.frameHeight - inset * 2;
+  if (
+    availableWidth <= 0 ||
+    availableHeight <= 0 ||
+    input.pageWidth <= 0 ||
+    input.pageHeight <= 0
+  ) {
+    return { width: 0, height: 0 };
+  }
+  const width = Math.min(
+    availableWidth,
+    (availableHeight * input.pageWidth) / input.pageHeight
+  );
+  return { width, height: (width * input.pageHeight) / input.pageWidth };
+}
+
 // Position of the zoomed page inside its fixed frame: centered while the page
 // fits, otherwise clamped so the frame is always fully covered by page.
 export function clampNotebookPagePan(input: {
@@ -210,6 +332,30 @@ export function clampNotebookPagePan(input: {
   };
 }
 
+export function getNotebookPagePanAfterPinch(input: {
+  pinchCenterX: number;
+  pinchCenterY: number;
+  frameLeft: number;
+  frameTop: number;
+  anchorFx: number;
+  anchorFy: number;
+  pageWidth: number;
+  pageHeight: number;
+  frameWidth: number;
+  frameHeight: number;
+}) {
+  return clampNotebookPagePan({
+    pan: {
+      x: input.pinchCenterX - input.frameLeft - input.anchorFx * input.pageWidth,
+      y: input.pinchCenterY - input.frameTop - input.anchorFy * input.pageHeight,
+    },
+    pageWidth: input.pageWidth,
+    pageHeight: input.pageHeight,
+    frameWidth: input.frameWidth,
+    frameHeight: input.frameHeight,
+  });
+}
+
 export function getPinchDistance(
   first: PointerClientSample,
   second: PointerClientSample
@@ -223,8 +369,7 @@ export function getNotebookPageZoomAfterPinch(input: {
   startDistance: number;
   currentDistance: number;
   startZoom: number;
-  /** Zoom floor — the "page fits the view" zoom, so pinching out stops at a
-   * full-size page instead of shrinking it inside the frame. */
+  /** Zoom floor relative to the fitted page size. */
   minZoom?: number;
 }) {
   if (input.startDistance <= 0) {

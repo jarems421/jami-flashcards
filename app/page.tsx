@@ -91,15 +91,6 @@ export default function Home() {
       data-app-surface="true"
       className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-[var(--app-background)] px-5 py-10 text-text-primary"
     >
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute left-1/2 top-[-14rem] h-[30rem] w-[42rem] -translate-x-1/2 rounded-full bg-[var(--color-accent)] opacity-[0.14] blur-[130px]"
-      />
-      <div
-        aria-hidden="true"
-        className="pointer-events-none absolute bottom-[-16rem] right-[-8rem] h-[26rem] w-[30rem] rounded-full bg-warm-accent opacity-[0.1] blur-[120px]"
-      />
-
       <div className="relative flex w-full max-w-md flex-col items-center text-center">
         <BrandMark size="lg" />
         <h1 className="mt-6 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">

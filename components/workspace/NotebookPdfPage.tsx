@@ -30,19 +30,26 @@ type NotebookPdfPageProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
   pageIndex: number;
   lazy?: boolean;
   maxPixelRatio?: number;
+  fadeIn?: boolean;
+  onRenderStateChange?: (state: NotebookPdfRenderState) => void;
 };
+
+export type NotebookPdfRenderState = "loading" | "ready" | "error";
 
 export default function NotebookPdfPage({
   storagePath,
   pageIndex,
   lazy = false,
   maxPixelRatio = 2,
+  fadeIn = true,
+  onRenderStateChange,
   className = "",
   ...props
 }: NotebookPdfPageProps) {
   const hostRef = useRef<HTMLDivElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hostSizeRef = useRef({ width: 0, height: 0 });
+  const onRenderStateChangeRef = useRef(onRenderStateChange);
   const [sizeRevision, setSizeRevision] = useState(0);
   const [retryRevision, setRetryRevision] = useState(0);
   const [visible, setVisible] = useState(!lazy);
@@ -54,6 +61,14 @@ export default function NotebookPdfPage({
   } | null>(null);
   const status =
     renderState?.key === renderKey ? renderState.status : "loading";
+
+  useEffect(() => {
+    onRenderStateChangeRef.current = onRenderStateChange;
+  }, [onRenderStateChange]);
+
+  useEffect(() => {
+    onRenderStateChangeRef.current?.(status);
+  }, [status]);
 
   useEffect(() => {
     const host = hostRef.current;
@@ -190,7 +205,9 @@ export default function NotebookPdfPage({
       <canvas
         ref={canvasRef}
         aria-hidden="true"
-        className={`block max-h-full max-w-full transition-opacity ${
+        className={`block max-h-full max-w-full ${
+          fadeIn ? "transition-opacity" : ""
+        } ${
           status === "ready" ? "opacity-100" : "opacity-0"
         }`}
       />

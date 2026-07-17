@@ -61,6 +61,7 @@ type Props = {
   onHistoryChange(undoDepth: number, redoDepth: number): void;
   onInteractionChange(active: boolean): void;
   onReady?(): void;
+  onReadyError?(error: unknown): void;
   onPointerCancel(event: ReactPointerEvent<HTMLDivElement>): void;
   onPointerDown(event: ReactPointerEvent<HTMLDivElement>): void;
   onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void;
@@ -100,8 +101,14 @@ function loadJsDraw() {
 // notebook's typical zoom. The default Bézier fitting used to hide that grid;
 // faithful polyline strokes render it as visible stair-steps ("grainy" ink).
 // Every pointer still carries its exact screen position, so this mapper
-// re-derives the canvas position at full precision before the pen sees it.
-function makePrecisePenInputMapper(jsDraw: JsDrawModule, editor: JsDrawEditor) {
+// re-derives the canvas position at full precision before the pen sees it. It
+// also smooths the js-draw pointer directly, keeping the browser's original
+// PointerEvent lifecycle intact (notably capture/release on rapid pen contact).
+function makePrecisePenInputMapper(
+  jsDraw: JsDrawModule,
+  editor: JsDrawEditor,
+  inkSmoothers: Map<number, NotebookInkSmoother>
+) {
   class PrecisePenInputMapper extends jsDraw.InputMapper {
     onEvent(event: JsDrawInputEvent): boolean {
       if (
@@ -111,11 +118,43 @@ function makePrecisePenInputMapper(jsDraw: JsDrawModule, editor: JsDrawEditor) {
       ) {
         const withExactPosition = (pointer: JsDrawPointer) =>
           pointer.withScreenPosition(pointer.screenPos, editor.viewport);
-        return this.emit({
+        let current = withExactPosition(event.current);
+
+        if (event.kind === jsDraw.InputEvtType.PointerDownEvt) {
+          inkSmoothers.set(
+            current.id,
+            new NotebookInkSmoother({
+              x: current.screenPos.x,
+              y: current.screenPos.y,
+              time: current.timeStamp,
+            })
+          );
+        } else {
+          const smoother = inkSmoothers.get(current.id);
+          if (smoother) {
+            const filtered = smoother.next({
+              x: current.screenPos.x,
+              y: current.screenPos.y,
+              time: current.timeStamp,
+            });
+            current = current.withScreenPosition(
+              jsDraw.Vec2.of(filtered.x, filtered.y),
+              editor.viewport
+            );
+          }
+        }
+
+        const handled = this.emit({
           ...event,
-          current: withExactPosition(event.current),
-          allPointers: event.allPointers.map(withExactPosition),
+          current,
+          allPointers: event.allPointers.map((pointer) =>
+            pointer.id === current.id ? current : withExactPosition(pointer)
+          ),
         });
+        if (event.kind === jsDraw.InputEvtType.PointerUpEvt) {
+          inkSmoothers.delete(current.id);
+        }
+        return handled;
       }
       return this.emit(event);
     }
@@ -201,6 +240,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onHistoryChange,
       onInteractionChange,
       onReady,
+      onReadyError,
       onPointerCancel,
       onPointerDown,
       onPointerMove,
@@ -238,6 +278,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onHistoryChange,
       onInteractionChange,
       onReady,
+      onReadyError,
     });
     const [eraserCursor, setEraserCursor] = useState<EraserCursor>({
       left: 0,
@@ -252,8 +293,15 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         onHistoryChange,
         onInteractionChange,
         onReady,
+        onReadyError,
       };
-    }, [onChange, onHistoryChange, onInteractionChange, onReady]);
+    }, [
+      onChange,
+      onHistoryChange,
+      onInteractionChange,
+      onReady,
+      onReadyError,
+    ]);
 
     useImperativeHandle(
       forwardedRef,
@@ -358,9 +406,20 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             cacheProps.minProportionalRenderTimeToUseCache =
               Number.POSITIVE_INFINITY;
           }
+          // The notebook toolbar owns tool switching. Disable js-draw's numeric
+          // and select-all shortcuts so an iPad keyboard/Scribble event cannot
+          // silently activate its purple selection tool behind the app's state.
+          editor.toolController
+            .getMatchingTools(jsDraw.ToolSwitcherShortcut)
+            .forEach((shortcut) => shortcut.setEnabled(false));
+          editor.toolController
+            .getMatchingTools(jsDraw.SelectAllShortcutHandler)
+            .forEach((shortcut) => shortcut.setEnabled(false));
           editor.toolController
             .getMatchingTools(jsDraw.PenTool)[0]
-            ?.setInputMapper(makePrecisePenInputMapper(jsDraw, editor));
+            ?.setInputMapper(
+              makePrecisePenInputMapper(jsDraw, editor, inkSmoothersRef.current)
+            );
           editor.toolController
             .getMatchingTools(jsDraw.EraserTool)
             .forEach((eraser) => {
@@ -450,6 +509,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         .catch((error) => {
           if (!disposed) {
             console.error("Notebook ink editor failed to initialize.", error);
+            callbacksRef.current.onReadyError?.(error);
           }
         });
 
@@ -505,9 +565,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       editorRef.current?.setReadOnly(readOnly);
     }, [readOnly]);
 
+    const cancelEditorGesture = useCallback(() => {
+      inkSmoothersRef.current.clear();
+      const editor = editorRef.current;
+      const jsDraw = jsDrawRef.current;
+      if (!editor || !jsDraw) return;
+      editor.toolController.dispatchInputEvent({
+        kind: jsDraw.InputEvtType.GestureCancelEvt,
+      });
+    }, []);
+
     useEffect(() => {
       const cancelInteractions = () => {
-        inkSmoothersRef.current.clear();
+        cancelEditorGesture();
         if (activePointersRef.current.size === 0) return;
         activePointersRef.current.clear();
         callbacksRef.current.onInteractionChange(false);
@@ -526,7 +596,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         window.removeEventListener("pagehide", cancelInteractions);
         document.removeEventListener("visibilitychange", handleVisibilityChange);
       };
-    }, []);
+    }, [cancelEditorGesture]);
 
     const finishPointerInteraction = useCallback((pointerId: number) => {
       if (!activePointersRef.current.delete(pointerId)) return;
@@ -567,32 +637,33 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       }
       if (!readyRef.current) return true;
       const surface = event.currentTarget;
-      // Passes drawing input through a One Euro filter so slow strokes lose
-      // hand-tremor jitter while fast strokes stay glued to the pen. Filtered
-      // samples are re-issued as synthetic PointerEvents; js-draw reads only
-      // their coordinates/pressure/button fields, so this is safe.
-      const makeFilteredPointerEvent = (
-        filteredType: "pointermove" | "pointerup",
-        sample: PointerEvent
-      ): PointerEvent => {
-        const smoother = inkSmoothersRef.current.get(sample.pointerId);
-        if (!smoother) return sample;
-        const filtered = smoother.next({
-          x: sample.clientX,
-          y: sample.clientY,
-          time: sample.timeStamp,
-        });
-        return new PointerEvent(filteredType, {
-          clientX: filtered.x,
-          clientY: filtered.y,
-          pointerId: sample.pointerId,
-          pointerType: sample.pointerType,
-          pressure: sample.pressure,
-          isPrimary: sample.isPrimary,
-          buttons: sample.buttons,
-        });
-      };
+      const editor = editorRef.current;
       if (type === "pointerdown") {
+        const jsDraw = jsDrawRef.current;
+        if (
+          editor &&
+          jsDraw &&
+          (activePointersRef.current.size === 0 ||
+            activePointersRef.current.has(event.pointerId))
+        ) {
+          // A fresh down is an authoritative gesture boundary. Cancel any
+          // js-draw tool left active by an interrupted release, then re-apply
+          // the app's selected tool before this event reaches the engine.
+          const pointerStyle: InkStyle = {
+            activeTool,
+            eraserMode,
+            eraserThickness,
+            highlighterColor,
+            highlighterThickness,
+            penColor,
+            penThickness,
+          };
+          desiredStyleRef.current = pointerStyle;
+          activePointersRef.current.clear();
+          cancelEditorGesture();
+          pendingStyleRef.current = false;
+          applyInkStyle(editor, pointerStyle, jsDraw);
+        }
         try {
           if (!surface.hasPointerCapture(event.pointerId)) {
             surface.setPointerCapture(event.pointerId);
@@ -601,22 +672,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           // Safari can reject capture on rapid stylus re-contact; keep drawing.
         }
         activePointersRef.current.add(event.pointerId);
-        if (
-          (activeTool === "pen" || activeTool === "highlighter") &&
-          typeof PointerEvent === "function"
-        ) {
-          inkSmoothersRef.current.set(
-            event.pointerId,
-            new NotebookInkSmoother({
-              x: event.clientX,
-              y: event.clientY,
-              time: event.nativeEvent.timeStamp,
-            })
-          );
-        }
         callbacksRef.current.onInteractionChange(true);
       }
-      const editor = editorRef.current;
       if (editor) {
         if (type === "pointermove") {
           // Forward the coalesced samples so fast pen movement keeps its full
@@ -628,22 +685,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               : [];
           if (samples.length > 0) {
             for (const sample of samples) {
-              editor.handleHTMLPointerEvent(
-                "pointermove",
-                makeFilteredPointerEvent("pointermove", sample)
-              );
+              editor.handleHTMLPointerEvent("pointermove", sample);
             }
           } else {
-            editor.handleHTMLPointerEvent(
-              type,
-              makeFilteredPointerEvent("pointermove", nativeEvent)
-            );
+            editor.handleHTMLPointerEvent(type, nativeEvent);
           }
-        } else if (type === "pointerup") {
-          editor.handleHTMLPointerEvent(
-            type,
-            makeFilteredPointerEvent("pointerup", event.nativeEvent)
-          );
         } else {
           editor.handleHTMLPointerEvent(type, event.nativeEvent);
         }
@@ -688,8 +734,25 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             if (!forwardInkPointer("pointercancel", event)) onPointerCancel(event);
           }}
           onLostPointerCapture={(event) => {
-            finishPointerInteraction(event.pointerId);
-            onPointerCancel(event);
+            const pointerId = event.pointerId;
+            if (!activePointersRef.current.has(pointerId)) {
+              onPointerCancel(event);
+              return;
+            }
+            const surface = event.currentTarget;
+            queueMicrotask(() => {
+              // Normal pointerup removes the pointer before this microtask.
+              // A rapid re-contact may already own capture again. Only a truly
+              // stranded gesture should reset js-draw's active tool.
+              if (!activePointersRef.current.has(pointerId)) return;
+              try {
+                if (surface.hasPointerCapture(pointerId)) return;
+              } catch {
+                // Treat an unavailable capture state as a lost interaction.
+              }
+              cancelEditorGesture();
+              finishPointerInteraction(pointerId);
+            });
           }}
           onPointerLeave={() => {
             setEraserCursor((current) =>

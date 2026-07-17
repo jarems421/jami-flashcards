@@ -10,9 +10,15 @@ import {
   interpolateInkSampleGaps,
   getNotebookCreatePagePull,
   getNotebookCreatePageThreshold,
+  getNotebookPageFit,
   getNotebookPageIndexAfterSwipe,
+  getNotebookPagePanAfterPinch,
   getNotebookPageZoomAfterPinch,
+  getNotebookSwipeDragOffset,
   getNotebookSwipeDirection,
+  getNotebookSwipeReleaseDecision,
+  getNotebookSwipeSettleDuration,
+  getNotebookSwipeVelocity,
   shouldCreateNotebookPageOnRelease,
   getPenWidthFromPercent,
   getPinchDistance,
@@ -405,6 +411,155 @@ describe("notebook inking helpers", () => {
     ).toBe(-1);
   });
 
+  it("calculates swipe velocity from the trailing 100ms", () => {
+    expect(
+      getNotebookSwipeVelocity([
+        { x: 0, time: 0 },
+        { x: 20, time: 80 },
+        { x: 80, time: 140 },
+      ])
+    ).toBe(1);
+    expect(
+      getNotebookSwipeVelocity([
+        { x: 100, time: 20 },
+        { x: 70, time: 70 },
+        { x: 40, time: 120 },
+      ])
+    ).toBe(-0.6);
+    expect(
+      getNotebookSwipeVelocity([
+        { x: 0, time: 0 },
+        { x: 80, time: 40 },
+        { x: 80, time: 200 },
+      ])
+    ).toBe(0);
+    expect(
+      getNotebookSwipeVelocity([
+        { x: 10, time: 100 },
+        { x: 20, time: 100 },
+      ])
+    ).toBe(0);
+  });
+
+  it("decides swipe release using distance, signed velocity, and page bounds", () => {
+    expect(
+      getNotebookSwipeReleaseDecision({
+        totalDx: -220,
+        pageWidth: 1000,
+        velocityX: 0,
+        currentIndex: 1,
+        pageCount: 3,
+      })
+    ).toEqual({ direction: "next", targetIndex: 2, shouldCommit: true });
+    expect(
+      getNotebookSwipeReleaseDecision({
+        totalDx: -80,
+        pageWidth: 1000,
+        velocityX: 0.55,
+        currentIndex: 1,
+        pageCount: 3,
+      })
+    ).toEqual({ direction: "previous", targetIndex: 0, shouldCommit: true });
+    expect(
+      getNotebookSwipeReleaseDecision({
+        totalDx: 80,
+        pageWidth: 1000,
+        velocityX: -0.8,
+        currentIndex: 1,
+        pageCount: 3,
+      })
+    ).toEqual({ direction: "next", targetIndex: 2, shouldCommit: true });
+    expect(
+      getNotebookSwipeReleaseDecision({
+        totalDx: -219,
+        pageWidth: 1000,
+        velocityX: -0.54,
+        currentIndex: 1,
+        pageCount: 3,
+      })
+    ).toEqual({ direction: null, targetIndex: 1, shouldCommit: false });
+    expect(
+      getNotebookSwipeReleaseDecision({
+        totalDx: -300,
+        pageWidth: 1000,
+        velocityX: -1,
+        currentIndex: 2,
+        pageCount: 3,
+      })
+    ).toEqual({ direction: "next", targetIndex: 2, shouldCommit: false });
+  });
+
+  it("tracks available pages directly and resists unavailable edges", () => {
+    expect(getNotebookSwipeDragOffset({ totalDx: -120, currentIndex: 0, pageCount: 3 })).toBe(
+      -120
+    );
+    expect(getNotebookSwipeDragOffset({ totalDx: 100, currentIndex: 0, pageCount: 3 })).toBe(50);
+    expect(getNotebookSwipeDragOffset({ totalDx: -100, currentIndex: 2, pageCount: 3 })).toBe(
+      -50
+    );
+    expect(getNotebookSwipeDragOffset({ totalDx: 0, currentIndex: 0, pageCount: 3 })).toBe(0);
+  });
+
+  it("calculates bounded velocity-aware swipe settle durations", () => {
+    expect(
+      getNotebookSwipeSettleDuration({
+        currentOffset: 0,
+        targetOffset: 0,
+        travelDistance: 1000,
+        velocityX: 0,
+      })
+    ).toBe(0);
+    expect(
+      getNotebookSwipeSettleDuration({
+        currentOffset: 0,
+        targetOffset: 1000,
+        travelDistance: 1000,
+        velocityX: 0,
+      })
+    ).toBe(300);
+    expect(
+      getNotebookSwipeSettleDuration({
+        currentOffset: 500,
+        targetOffset: 1000,
+        travelDistance: 1000,
+        velocityX: 0,
+      })
+    ).toBe(220);
+    expect(
+      getNotebookSwipeSettleDuration({
+        currentOffset: 0,
+        targetOffset: -1000,
+        travelDistance: 1000,
+        velocityX: 2,
+      })
+    ).toBe(220);
+    expect(
+      getNotebookSwipeSettleDuration({
+        currentOffset: -500,
+        targetOffset: 0,
+        travelDistance: 1000,
+        velocityX: 1,
+      })
+    ).toBe(180);
+    expect(
+      getNotebookSwipeSettleDuration({
+        currentOffset: 0,
+        targetOffset: 1000,
+        travelDistance: 1000,
+        velocityX: 20,
+      })
+    ).toBe(220);
+    expect(
+      getNotebookSwipeSettleDuration({
+        currentOffset: 0,
+        targetOffset: 1000,
+        travelDistance: 1000,
+        velocityX: 0,
+        reducedMotion: true,
+      })
+    ).toBe(0);
+  });
+
   it("describes the create-page pull progress and rubber-band offset", () => {
     const pageWidth = 1000;
     const threshold = getNotebookCreatePageThreshold(pageWidth);
@@ -464,7 +619,7 @@ describe("notebook inking helpers", () => {
     ).toBe(4);
     expect(
       getNotebookPageZoomAfterPinch({ startDistance: 100, currentDistance: 20, startZoom: 1 })
-    ).toBe(0.85);
+    ).toBe(0.92);
     expect(
       getNotebookPageZoomAfterPinch({
         startDistance: 100,
@@ -474,7 +629,27 @@ describe("notebook inking helpers", () => {
       })
     ).toBe(1);
     expect(clampNotebookPageZoom(0.9, 1)).toBe(1);
+    expect(clampNotebookPageZoom(0.91)).toBe(0.92);
     expect(clampNotebookPageZoom(Number.NaN)).toBe(1);
+  });
+
+  it("fits notebook pages inside responsive workspace margins", () => {
+    expect(
+      getNotebookPageFit({
+        frameWidth: 768,
+        frameHeight: 956,
+        pageWidth: 900,
+        pageHeight: 1240,
+      })
+    ).toEqual({ width: 670.6451612903226, height: 924 });
+    expect(
+      getNotebookPageFit({
+        frameWidth: 390,
+        frameHeight: 776,
+        pageWidth: 900,
+        pageHeight: 1240,
+      })
+    ).toEqual({ width: 366, height: 504.26666666666665 });
   });
 
   it("clamps page pan inside a fixed frame", () => {
@@ -507,5 +682,37 @@ describe("notebook inking helpers", () => {
         frameHeight: 600,
       })
     ).toEqual({ x: -500, y: -100 });
+  });
+
+  it("keeps the pinched page anchor under the fingers and clamps the result", () => {
+    expect(
+      getNotebookPagePanAfterPinch({
+        pinchCenterX: 350,
+        pinchCenterY: 430,
+        frameLeft: 10,
+        frameTop: 20,
+        anchorFx: 0.25,
+        anchorFy: 0.5,
+        pageWidth: 1000,
+        pageHeight: 1400,
+        frameWidth: 500,
+        frameHeight: 600,
+      })
+    ).toEqual({ x: 0, y: -290 });
+
+    expect(
+      getNotebookPagePanAfterPinch({
+        pinchCenterX: 250,
+        pinchCenterY: 300,
+        frameLeft: 0,
+        frameTop: 0,
+        anchorFx: 0.5,
+        anchorFy: 0.5,
+        pageWidth: 300,
+        pageHeight: 400,
+        frameWidth: 500,
+        frameHeight: 600,
+      })
+    ).toEqual({ x: 100, y: 100 });
   });
 });
