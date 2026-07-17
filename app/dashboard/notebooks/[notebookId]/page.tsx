@@ -233,27 +233,25 @@ const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
 const NOTEBOOK_PAGE_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const NOTEBOOK_TOOLBAR_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const NOTEBOOK_TOOLBAR_DOCK_CLASS: Record<NotebookToolbarDock, string> = {
-  top:
-    "left-1/2 top-[calc(0.9rem+var(--notebook-control-y-offset))] -translate-x-1/2",
+  top: "left-1/2 top-[0.9rem] -translate-x-1/2",
   right:
-    "right-[calc(env(safe-area-inset-right,0px)+0.9rem)] top-[calc(50%+var(--notebook-control-y-offset))] -translate-y-1/2",
+    "right-[calc(env(safe-area-inset-right,0px)+0.9rem)] top-1/2 -translate-y-1/2",
   bottom:
     "bottom-[var(--notebook-control-bottom-inset)] left-1/2 -translate-x-1/2",
   left:
-    "left-[calc(env(safe-area-inset-left,0px)+0.9rem)] top-[calc(50%+var(--notebook-control-y-offset))] -translate-y-1/2",
+    "left-[calc(env(safe-area-inset-left,0px)+0.9rem)] top-1/2 -translate-y-1/2",
 };
 const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
   NotebookToolbarDock,
   string
 > = {
-  top:
-    "left-1/2 top-[calc(4.85rem+var(--notebook-control-y-offset))] -translate-x-1/2",
+  top: "left-1/2 top-[4.85rem] -translate-x-1/2",
   right:
-    "right-[calc(env(safe-area-inset-right,0px)+4.85rem)] top-[calc(50%+var(--notebook-control-y-offset))] -translate-y-1/2",
+    "right-[calc(env(safe-area-inset-right,0px)+4.85rem)] top-1/2 -translate-y-1/2",
   bottom:
     "bottom-[calc(var(--notebook-control-bottom-inset)+3.95rem)] left-1/2 -translate-x-1/2",
   left:
-    "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-[calc(50%+var(--notebook-control-y-offset))] -translate-y-1/2",
+    "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-1/2 -translate-y-1/2",
 };
 const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
   white: "#f8fafc",
@@ -4271,7 +4269,8 @@ export default function NotebookEditorPage() {
 
           <div
             ref={pageFrameRef}
-            className="absolute inset-0 translate-y-[var(--notebook-page-y-offset)] overflow-hidden"
+            data-notebook-page-frame
+            className="absolute inset-0 overflow-hidden"
           >
             {selectedPage?.questionPrompt ? (
               <div

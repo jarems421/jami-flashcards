@@ -63,7 +63,7 @@ describe("notebook upload UI", () => {
     expect(notebookPage).not.toContain("max-h-[calc(100vh-7rem)]");
   });
 
-  it("keeps bottom notebook controls compositing-safe and vertically aligned", () => {
+  it("keeps bottom controls compositing-safe without reserving a page lane", () => {
     const notebookPage = readFileSync(
       join(root, "app/dashboard/notebooks/[notebookId]/page.tsx"),
       "utf8"
@@ -77,13 +77,14 @@ describe("notebook upload UI", () => {
     expect(notebookPage).not.toContain(
       "shadow-[0_14px_34px_rgba(0,0,0,0.28)]"
     );
-    expect(notebookPage).toContain(
-      "translate-y-[var(--notebook-page-y-offset)]"
-    );
+    expect(notebookPage).toContain("data-notebook-page-frame");
+    expect(notebookPage).toContain('className="absolute inset-0 overflow-hidden"');
+    expect(notebookPage).not.toContain("notebook-page-y-offset");
+    expect(notebookPage).not.toContain("notebook-control-y-offset");
     expect(globalStyles).toContain(".notebook-floating-control");
     expect(globalStyles).toContain("-webkit-backdrop-filter: none");
     expect(globalStyles).toContain("box-shadow: none");
-    expect(globalStyles).toContain("--notebook-control-y-offset: 0.375rem");
-    expect(globalStyles).toContain("--notebook-page-y-offset: 0.75rem");
+    expect(globalStyles).not.toContain("--notebook-control-y-offset");
+    expect(globalStyles).not.toContain("--notebook-page-y-offset");
   });
 });

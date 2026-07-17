@@ -652,6 +652,26 @@ describe("notebook inking helpers", () => {
     ).toEqual({ width: 366, height: 504.26666666666665 });
   });
 
+  it("centres a fitted page with equal space above and below", () => {
+    const frameWidth = 768;
+    const frameHeight = 956;
+    const fit = getNotebookPageFit({
+      frameWidth,
+      frameHeight,
+      pageWidth: 900,
+      pageHeight: 1240,
+    });
+    const pan = clampNotebookPagePan({
+      pan: { x: 0, y: 0 },
+      pageWidth: fit.width,
+      pageHeight: fit.height,
+      frameWidth,
+      frameHeight,
+    });
+
+    expect(pan.y).toBeCloseTo(frameHeight - fit.height - pan.y);
+  });
+
   it("clamps page pan inside a fixed frame", () => {
     // Page smaller than the frame: centered on both axes.
     expect(
