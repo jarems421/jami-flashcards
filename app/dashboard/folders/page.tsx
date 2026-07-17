@@ -6,7 +6,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 export default function FoldersPage() {
   if (!featureFlags.enableFolders) {
     return (
-      <AppPage title="Practice">
+      <AppPage title="Folders">
         <EmptyState
           emoji="📁"
           title="Folders are not enabled yet"

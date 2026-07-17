@@ -68,7 +68,7 @@ export default function PracticeWorkspace() {
       console.error(error);
       setFeedback({
         type: "error",
-        message: "Failed to load your Practice workspace.",
+        message: "Failed to load your folders and notebooks.",
       });
     } finally {
       setLoading(false);
@@ -93,7 +93,7 @@ export default function PracticeWorkspace() {
 
   return (
     <AppPage
-      title="Practice"
+      title="Folders"
       backHref="/dashboard"
       backLabel="Today"
       width="3xl"
@@ -159,7 +159,7 @@ export default function PracticeWorkspace() {
       ) : null}
 
       {loading ? (
-        <div className="space-y-7 sm:space-y-9" aria-label="Loading Practice workspace">
+        <div className="space-y-7 sm:space-y-9" aria-label="Loading folders and notebooks">
           <section className="space-y-4">
             <Skeleton className="h-7 w-48 rounded-full" />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
