@@ -471,6 +471,15 @@
     user-select: none !important;
   }
 
+  body.jami-notebook-editor-active {
+    overflow: hidden !important;
+    background: var(--color-surface-base) !important;
+  }
+
+  body.jami-notebook-editor-active::before {
+    display: none !important;
+  }
+
   body.jami-notebook-editor-active .notebook-text-editor {
     -webkit-touch-callout: default !important;
     -webkit-user-select: text !important;
@@ -495,6 +504,15 @@
     -webkit-user-drag: none;
     overscroll-behavior: contain;
     user-select: none;
+  }
+
+  .notebook-editor-shell {
+    --notebook-control-bottom-inset: max(
+      0.35rem,
+      calc(env(safe-area-inset-bottom, 0px) - 0.25rem)
+    );
+
+    min-height: 100dvh;
   }
 
   .notebook-page-surface {
@@ -742,20 +760,29 @@
   }
 
   .goal-deadline-input {
+    box-sizing: border-box;
+    display: block;
     min-inline-size: 0;
     inline-size: 100%;
     max-inline-size: 100%;
+    overflow: hidden;
   }
 
   .goal-deadline-field {
     min-inline-size: 0;
     max-inline-size: 100%;
+    overflow: hidden;
+    border-radius: 1.15rem;
   }
 
   .goal-deadline-input::-webkit-datetime-edit,
   .goal-deadline-input::-webkit-date-and-time-value {
     min-inline-size: 0;
+    max-inline-size: 100%;
+    overflow: hidden;
     padding: 0;
+    text-align: start;
+    white-space: nowrap;
   }
 
   .goal-deadline-input::-webkit-calendar-picker-indicator {
@@ -765,16 +792,6 @@
   }
 
   @media (pointer: coarse) and (min-width: 640px) and (max-width: 1024px) {
-    .goal-deadline-grid {
-      grid-template-columns: repeat(2, calc((100% - 0.375rem) / 2));
-      gap: 0.375rem;
-    }
-
-    .goal-deadline-field {
-      overflow: hidden;
-      border-radius: 1.15rem;
-    }
-
     .goal-deadline-input {
       -webkit-appearance: none;
       appearance: none;
@@ -782,15 +799,15 @@
       min-inline-size: 0 !important;
       max-inline-size: 100% !important;
       overflow: hidden;
-      padding-inline: 0.4375rem !important;
-      font-size: 0.75rem !important;
+      padding-inline: 1rem !important;
+      font-size: 0.875rem !important;
     }
 
     .goal-deadline-input::-webkit-datetime-edit,
     .goal-deadline-input::-webkit-date-and-time-value {
-      display: flex;
+      display: inline-flex;
       min-inline-size: 0;
-      max-inline-size: calc(100% - 1.125rem);
+      max-inline-size: calc(100% - 1.25rem);
       overflow: hidden;
       white-space: nowrap;
     }

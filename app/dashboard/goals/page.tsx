@@ -448,16 +448,16 @@ export default function GoalsPage() {
                 if (!event.target.value) setDeadlineTime("");
               }}
               label="Finish by date"
-              containerClassName="min-w-0"
-              className="box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5 text-sm"
+              containerClassName="goal-deadline-field min-w-0"
+              className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5 text-sm"
             />
             <Input
               type="time"
               value={deadlineTime}
               onChange={(event) => setDeadlineTime(event.target.value)}
               label="Finish by time"
-              containerClassName="min-w-0"
-              className="box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5 text-sm"
+              containerClassName="goal-deadline-field min-w-0"
+              className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5 text-sm"
             />
             <div className="grid gap-4 md:col-span-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center">
               <div className="flex flex-col items-start">

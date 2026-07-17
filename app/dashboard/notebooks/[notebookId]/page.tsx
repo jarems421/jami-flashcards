@@ -237,7 +237,7 @@ const NOTEBOOK_TOOLBAR_DOCK_CLASS: Record<NotebookToolbarDock, string> = {
   right:
     "right-[calc(env(safe-area-inset-right,0px)+0.9rem)] top-1/2 -translate-y-1/2",
   bottom:
-    "bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)] left-1/2 -translate-x-1/2",
+    "bottom-[var(--notebook-control-bottom-inset)] left-1/2 -translate-x-1/2",
   left:
     "left-[calc(env(safe-area-inset-left,0px)+0.9rem)] top-1/2 -translate-y-1/2",
 };
@@ -249,7 +249,7 @@ const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
   right:
     "right-[calc(env(safe-area-inset-right,0px)+4.85rem)] top-1/2 -translate-y-1/2",
   bottom:
-    "bottom-[calc(env(safe-area-inset-bottom,0px)+4.85rem)] left-1/2 -translate-x-1/2",
+    "bottom-[calc(var(--notebook-control-bottom-inset)+3.95rem)] left-1/2 -translate-x-1/2",
   left:
     "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-1/2 -translate-y-1/2",
 };
@@ -1701,6 +1701,24 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     if (typeof document === "undefined") return;
 
+    const root = document.documentElement;
+    const themeColorMeta = document.querySelector<HTMLMetaElement>(
+      'meta[name="theme-color"]'
+    );
+    const previousRootBackground = root.style.background;
+    const previousBodyBackground = document.body.style.background;
+    const previousThemeColor = themeColorMeta?.content;
+    const notebookSurfaceColor =
+      window
+        .getComputedStyle(root)
+        .getPropertyValue("--color-surface-base")
+        .trim() || "#0d1018";
+
+    root.style.background = notebookSurfaceColor;
+    document.body.style.background = notebookSurfaceColor;
+    if (themeColorMeta) {
+      themeColorMeta.content = notebookSurfaceColor;
+    }
     document.body.classList.add(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
 
     const preventIfOutsideTextEditor = (event: Event) => {
@@ -1723,6 +1741,11 @@ export default function NotebookEditorPage() {
 
     return () => {
       document.body.classList.remove(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
+      root.style.background = previousRootBackground;
+      document.body.style.background = previousBodyBackground;
+      if (themeColorMeta && previousThemeColor !== undefined) {
+        themeColorMeta.content = previousThemeColor;
+      }
       document.removeEventListener("selectstart", preventIfOutsideTextEditor, true);
       document.removeEventListener("contextmenu", preventIfOutsideTextEditor, true);
       document.removeEventListener("dragstart", preventIfOutsideTextEditor, true);
@@ -3799,7 +3822,7 @@ export default function NotebookEditorPage() {
   return (
     <main
       data-app-surface="true"
-      className="notebook-editor-shell fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
+      className="notebook-editor-shell fixed inset-x-0 top-0 z-[70] flex h-[100dvh] min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
         <header className="z-40 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_8px_20px_rgba(0,0,0,0.14)] backdrop-blur-xl">
@@ -4244,7 +4267,10 @@ export default function NotebookEditorPage() {
           </aside>
         ) : null}
 
-          <div ref={pageFrameRef} className="absolute inset-0 overflow-hidden">
+          <div
+            ref={pageFrameRef}
+            className="absolute inset-0 translate-y-1.5 overflow-hidden"
+          >
             {selectedPage?.questionPrompt ? (
               <div
                 className={`absolute left-1/2 z-20 w-[min(92vw,36rem)] -translate-x-1/2 ${
@@ -4842,8 +4868,8 @@ export default function NotebookEditorPage() {
             <div
               className={`absolute right-3 z-20 flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl md:right-4 ${
                 fullNotebookEditingEnabled
-                  ? "bottom-[calc(env(safe-area-inset-bottom,0px)+4.85rem)] md:bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)]"
-                  : "bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)]"
+                  ? "bottom-[calc(var(--notebook-control-bottom-inset)+3.95rem)] md:bottom-[var(--notebook-control-bottom-inset)]"
+                  : "bottom-[var(--notebook-control-bottom-inset)]"
               }`}
               aria-label="Page navigation"
             >
@@ -4898,8 +4924,8 @@ export default function NotebookEditorPage() {
               <div
                 className={`pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)] ${
                   toolbarDock === "bottom"
-                    ? "bottom-[calc(env(safe-area-inset-bottom,0px)+7.25rem)]"
-                    : "bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)]"
+                    ? "bottom-[calc(var(--notebook-control-bottom-inset)+6.35rem)]"
+                    : "bottom-[var(--notebook-control-bottom-inset)]"
                 }`}
               >
                 Use Apple Pencil or stylus to write. Fingers move the page.
