@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useRef, useState } from "react";
 import {
   addDoc,
   collection,
@@ -58,6 +58,102 @@ function parseTargetAccuracyInput(value: string) {
   if (!Number.isFinite(nextValue)) return null;
   const normalizedValue = nextValue > 1 ? nextValue / 100 : nextValue;
   return normalizedValue >= 0 && normalizedValue <= 1 ? normalizedValue : null;
+}
+
+type GoalDeadlineFieldProps = {
+  type: "date" | "time";
+  label: string;
+  value: string;
+  placeholder: string;
+  onValueChange: (value: string) => void;
+};
+
+function formatGoalDeadlineValue(type: "date" | "time", value: string) {
+  if (!value) return "";
+  if (type === "time") return value;
+
+  const [year, month, day] = value.split("-");
+  if (!year || !month || !day) return value;
+  return `${day}/${month}/${year}`;
+}
+
+function GoalDeadlineIcon({ type }: { type: "date" | "time" }) {
+  if (type === "time") {
+    return (
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 24 24"
+        className="size-[1.125rem]"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+      >
+        <circle cx="12" cy="12" r="8.25" />
+        <path strokeLinecap="round" strokeLinejoin="round" d="M12 7.75v4.7l3.1 1.8" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="size-[1.125rem]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+    >
+      <rect x="4" y="5.5" width="16" height="14" rx="2.25" />
+      <path strokeLinecap="round" d="M8 3.75v3.5M16 3.75v3.5M4 9.25h16" />
+    </svg>
+  );
+}
+
+function GoalDeadlineField({
+  type,
+  label,
+  value,
+  placeholder,
+  onValueChange,
+}: GoalDeadlineFieldProps) {
+  const id = useId();
+  const displayValue = formatGoalDeadlineValue(type, value);
+
+  return (
+    <div className="goal-deadline-field min-w-0">
+      <label
+        htmlFor={id}
+        className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary"
+      >
+        {label}
+      </label>
+      <div className="app-field relative flex min-h-11 min-w-0 items-center gap-3 overflow-hidden rounded-[1.15rem] px-4 py-2.5">
+        <span
+          aria-hidden="true"
+          className={`min-w-0 flex-1 truncate text-sm ${
+            value
+              ? "text-[var(--color-field-text)]"
+              : "text-[var(--color-field-placeholder)]"
+          }`}
+        >
+          {displayValue || placeholder}
+        </span>
+        <span
+          aria-hidden="true"
+          className="pointer-events-none flex shrink-0 text-[var(--color-field-placeholder)]"
+        >
+          <GoalDeadlineIcon type={type} />
+        </span>
+        <input
+          id={id}
+          type={type}
+          value={value}
+          onChange={(event) => onValueChange(event.target.value)}
+          className="goal-deadline-native absolute inset-0 z-10 h-full w-full cursor-pointer opacity-[0.001]"
+        />
+      </div>
+    </div>
+  );
 }
 
 export default function GoalsPage() {
@@ -413,82 +509,82 @@ export default function GoalsPage() {
               </Button>
             </div>
           </div>
-          <div className="grid min-w-0 gap-3 sm:gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-            <Input
-              type="number"
-              min="1"
-              value={targetCards}
-              onChange={(event) => setTargetCards(event.target.value)}
-              label="Target cards"
-              containerClassName="min-w-0"
-              className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
-            />
-            <Input
-              type="number"
-              min="0"
-              max="100"
-              step="1"
-              value={targetAccuracy}
-              onChange={(event) => setTargetAccuracy(event.target.value)}
-              label="Accuracy %"
-              containerClassName="min-w-0"
-              className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
-            />
-            <div className="min-w-0 border-t border-[var(--color-border)] pt-4 md:col-span-2">
-              <div className="text-sm font-medium text-text-primary">Deadline</div>
-              <p className="mt-1 text-xs leading-5 text-text-muted">
-                Optional. Leave both fields blank for an open-ended goal.
-              </p>
-            </div>
-            <Input
-              type="date"
-              value={deadlineDate}
-              onChange={(event) => {
-                setDeadlineDate(event.target.value);
-                if (!event.target.value) setDeadlineTime("");
-              }}
-              label="Finish by date"
-              containerClassName="goal-deadline-field min-w-0"
-              className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5 text-sm"
-            />
-            <Input
-              type="time"
-              value={deadlineTime}
-              onChange={(event) => setDeadlineTime(event.target.value)}
-              label="Finish by time"
-              containerClassName="goal-deadline-field min-w-0"
-              className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5 text-sm"
-            />
-            <div className="grid gap-4 md:col-span-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center">
-              <div className="flex flex-col items-start">
-                <p className="order-3 mt-4 text-sm font-medium text-text-secondary lg:order-1 lg:mb-4 lg:mt-0">
-                  Complete this goal to earn this star.
+          <div className="goal-form-layout min-w-0">
+            <div className="goal-form-grid grid min-w-0 gap-3 sm:gap-4">
+              <Input
+                type="number"
+                min="1"
+                value={targetCards}
+                onChange={(event) => setTargetCards(event.target.value)}
+                label="Target cards"
+                containerClassName="min-w-0"
+                className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
+              />
+              <Input
+                type="number"
+                min="0"
+                max="100"
+                step="1"
+                value={targetAccuracy}
+                onChange={(event) => setTargetAccuracy(event.target.value)}
+                label="Accuracy %"
+                containerClassName="min-w-0"
+                className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
+              />
+              <div className="goal-form-span-all min-w-0 border-t border-[var(--color-border)] pt-4">
+                <div className="text-sm font-medium text-text-primary">Deadline</div>
+                <p className="mt-1 text-xs leading-5 text-text-muted">
+                  Optional. Leave both fields blank for an open-ended goal.
                 </p>
-                <Button
-                  disabled={!canSaveGoal}
-                  onClick={() => void handleSaveGoal()}
-                  variant="warm"
-                  size="lg"
-                  className="order-1 w-full md:w-auto lg:order-2"
-                >
-                  {isCreatingGoal
-                    ? editingGoalId
-                      ? "Saving..."
-                      : "Creating..."
-                    : editingGoalId
-                      ? "Save goal"
-                      : "Create goal"}
-                </Button>
-                {disabledReason ? (
-                  <p className="order-2 mt-2 text-xs leading-5 text-text-muted lg:order-3">
-                    {disabledReason}
-                  </p>
-                ) : null}
               </div>
-              <div className="relative h-40 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-44 lg:w-[230px] lg:max-w-full lg:justify-self-start lg:-translate-x-2">
-                <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(143,125,232,0.16),rgba(6,3,17,0.66))]" />
-                <div className="absolute inset-0 z-10">
-                  <ConstellationStar star={previewStar} variant="preview" />
+              <GoalDeadlineField
+                type="date"
+                value={deadlineDate}
+                onValueChange={(value) => {
+                  setDeadlineDate(value);
+                  if (!value) setDeadlineTime("");
+                }}
+                label="Finish by date"
+                placeholder="Choose a date"
+              />
+              <GoalDeadlineField
+                type="time"
+                value={deadlineTime}
+                onValueChange={setDeadlineTime}
+                label="Finish by time"
+                placeholder="Choose a time"
+              />
+              <div className="goal-form-span-all grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center">
+                <div className="flex flex-col items-start">
+                  <p className="order-3 mt-4 text-sm font-medium text-text-secondary lg:order-1 lg:mb-4 lg:mt-0">
+                    Complete this goal to earn this star.
+                  </p>
+                  <Button
+                    disabled={!canSaveGoal}
+                    onClick={() => void handleSaveGoal()}
+                    variant="warm"
+                    size="lg"
+                    className="order-1 w-full md:w-auto lg:order-2"
+                  >
+                    {isCreatingGoal
+                      ? editingGoalId
+                        ? "Saving..."
+                        : "Creating..."
+                      : editingGoalId
+                        ? "Save goal"
+                        : "Create goal"}
+                  </Button>
+                  {disabledReason ? (
+                    <p className="order-2 mt-2 text-xs leading-5 text-text-muted lg:order-3">
+                      {disabledReason}
+                    </p>
+                  ) : null}
+                </div>
+                <div className="relative h-40 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-44 lg:w-[230px] lg:max-w-full lg:justify-self-start lg:-translate-x-2">
+                  <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(143,125,232,0.16),rgba(6,3,17,0.66))]" />
+                  <div className="absolute inset-0 z-10">
+                    <ConstellationStar star={previewStar} variant="preview" />
+                  </div>
                 </div>
               </div>
             </div>
