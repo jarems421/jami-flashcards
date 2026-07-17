@@ -21,7 +21,9 @@ import type {
   NotebookStrokeColor,
 } from "@/lib/workspace/notebooks";
 import {
+  getNotebookEraserCursorDiameter,
   getNotebookEraserModeValue,
+  getNotebookEraserToolThickness,
   type NotebookEraserMode,
 } from "@/lib/workspace/notebook-eraser";
 import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
@@ -179,7 +181,12 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
   // to FullStroke, so configuring it unconditionally ensures the selected
   // precision/stroke mode is already correct the moment the eraser is enabled.
   applyNotebookEraserMode(editor, style.eraserMode, jsDraw);
-  erasers[0]?.setThickness(style.eraserThickness);
+  erasers[0]?.setThickness(
+    getNotebookEraserToolThickness(
+      style.eraserMode,
+      style.eraserThickness
+    )
+  );
 
   if (style.activeTool === "pen" || style.activeTool === "highlighter") {
     const selectedColor =
@@ -343,6 +350,14 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           const jsDraw = jsDrawRef.current;
           if (!editor || !jsDraw) return;
           applyNotebookEraserMode(editor, mode, jsDraw);
+          editor.toolController
+            .getMatchingTools(jsDraw.EraserTool)[0]
+            ?.setThickness(
+              getNotebookEraserToolThickness(
+                mode,
+                desiredStyleRef.current.eraserThickness
+              )
+            );
         },
         undo() {
           void editorRef.current?.history.undo();
@@ -625,7 +640,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       event.preventDefault();
       if (activeTool === "eraser") {
         const rect = event.currentTarget.getBoundingClientRect();
-        const diameter = Math.max(12, (eraserThickness / pageWidth) * rect.width);
+        // js-draw measures eraser thickness in screen pixels. Keep the DOM ring
+        // in the same coordinate space so the visible boundary is authoritative.
+        const diameter = getNotebookEraserCursorDiameter(
+          eraserMode,
+          eraserThickness
+        );
         setEraserCursor({
           left: event.clientX - rect.left,
           top: event.clientY - rect.top,

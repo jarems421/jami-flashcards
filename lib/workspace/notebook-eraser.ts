@@ -2,8 +2,47 @@ import type { NotebookStroke } from "@/lib/workspace/notebooks";
 
 export type NotebookEraserMode = "stroke" | "precision";
 
+const NOTEBOOK_PRECISION_ERASER_CURSOR_SCALE = 0.4;
+const NOTEBOOK_PRECISION_ERASER_MIN_CURSOR_DIAMETER = 12;
+
 export function getNotebookEraserModeValue(mode: NotebookEraserMode) {
   return mode === "stroke" ? "full-stroke" : "partial-stroke";
+}
+
+function normalizeNotebookEraserThickness(thickness: number) {
+  if (!Number.isFinite(thickness)) return 1;
+  return Math.max(1, Math.min(200, thickness));
+}
+
+/**
+ * The precision cursor is intentionally smaller than the broad stroke eraser.
+ * This keeps each pass gradual instead of making the two modes feel alike.
+ */
+export function getNotebookEraserCursorDiameter(
+  mode: NotebookEraserMode,
+  thickness: number
+) {
+  const normalized = normalizeNotebookEraserThickness(thickness);
+  return mode === "precision"
+    ? Math.max(
+        NOTEBOOK_PRECISION_ERASER_MIN_CURSOR_DIAMETER,
+        normalized * NOTEBOOK_PRECISION_ERASER_CURSOR_SCALE
+      )
+    : normalized;
+}
+
+/**
+ * js-draw's eraser tip is square. Inscribing the precision tip inside the
+ * circular cursor guarantees its corners cannot erase beyond the visible ring.
+ */
+export function getNotebookEraserToolThickness(
+  mode: NotebookEraserMode,
+  thickness: number
+) {
+  const cursorDiameter = getNotebookEraserCursorDiameter(mode, thickness);
+  return mode === "precision"
+    ? cursorDiameter / Math.SQRT2
+    : cursorDiameter;
 }
 
 function pointDistanceSquared(

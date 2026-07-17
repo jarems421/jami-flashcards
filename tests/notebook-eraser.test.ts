@@ -3,7 +3,9 @@ import {
   applyNotebookEraser,
   applyPrecisionEraser,
   applyStrokeEraser,
+  getNotebookEraserCursorDiameter,
   getNotebookEraserModeValue,
+  getNotebookEraserToolThickness,
 } from "@/lib/workspace/notebook-eraser";
 import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
 import type { NotebookStroke } from "@/lib/workspace/notebooks";
@@ -26,6 +28,25 @@ describe("notebook eraser helpers", () => {
   it("maps toolbar modes to js-draw eraser modes", () => {
     expect(getNotebookEraserModeValue("precision")).toBe("partial-stroke");
     expect(getNotebookEraserModeValue("stroke")).toBe("full-stroke");
+  });
+
+  it("makes precision passes gradual while preserving stroke eraser size", () => {
+    expect(getNotebookEraserCursorDiameter("precision", 36)).toBeCloseTo(14.4);
+    expect(getNotebookEraserCursorDiameter("precision", 56)).toBeCloseTo(22.4);
+    expect(getNotebookEraserCursorDiameter("precision", 76)).toBeCloseTo(30.4);
+    expect(getNotebookEraserCursorDiameter("stroke", 56)).toBe(56);
+  });
+
+  it("keeps the precision footprint inside the visible circular cursor", () => {
+    const cursorDiameter = getNotebookEraserCursorDiameter("precision", 56);
+    const squareTipSide = getNotebookEraserToolThickness("precision", 56);
+    const squareCornerRadius = Math.hypot(
+      squareTipSide / 2,
+      squareTipSide / 2
+    );
+
+    expect(squareCornerRadius).toBeCloseTo(cursorDiameter / 2);
+    expect(getNotebookEraserToolThickness("stroke", 56)).toBe(56);
   });
 
   it("removes whole touched strokes in stroke mode", () => {
