@@ -508,9 +508,11 @@
 
   .notebook-editor-shell {
     --notebook-control-bottom-inset: max(
-      0.35rem,
-      calc(env(safe-area-inset-bottom, 0px) - 0.25rem)
+      0rem,
+      calc(env(safe-area-inset-bottom, 0px) - 0.75rem)
     );
+    --notebook-control-y-offset: 0.375rem;
+    --notebook-page-y-offset: 0.75rem;
 
     min-height: 100dvh;
   }
@@ -535,6 +537,24 @@
     -webkit-touch-callout: none;
     touch-action: none;
     user-select: none;
+  }
+
+  /*
+   * Keep floating notebook controls on one opaque, shadowless layer. Safari can
+   * flatten blurred shadows against an overflow-clipped viewport and render the
+   * result as a full-width light strip at the bottom of the editor.
+   */
+  .notebook-floating-control {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    background:
+      linear-gradient(
+        var(--color-surface-panel-strong),
+        var(--color-surface-panel-strong)
+      ),
+      var(--color-surface-base);
+    box-shadow: none;
+    isolation: isolate;
   }
 
   .notebook-js-draw-host,

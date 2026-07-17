@@ -233,25 +233,27 @@ const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
 const NOTEBOOK_PAGE_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const NOTEBOOK_TOOLBAR_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const NOTEBOOK_TOOLBAR_DOCK_CLASS: Record<NotebookToolbarDock, string> = {
-  top: "left-1/2 top-[0.9rem] -translate-x-1/2",
+  top:
+    "left-1/2 top-[calc(0.9rem+var(--notebook-control-y-offset))] -translate-x-1/2",
   right:
-    "right-[calc(env(safe-area-inset-right,0px)+0.9rem)] top-1/2 -translate-y-1/2",
+    "right-[calc(env(safe-area-inset-right,0px)+0.9rem)] top-[calc(50%+var(--notebook-control-y-offset))] -translate-y-1/2",
   bottom:
     "bottom-[var(--notebook-control-bottom-inset)] left-1/2 -translate-x-1/2",
   left:
-    "left-[calc(env(safe-area-inset-left,0px)+0.9rem)] top-1/2 -translate-y-1/2",
+    "left-[calc(env(safe-area-inset-left,0px)+0.9rem)] top-[calc(50%+var(--notebook-control-y-offset))] -translate-y-1/2",
 };
 const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
   NotebookToolbarDock,
   string
 > = {
-  top: "left-1/2 top-[4.85rem] -translate-x-1/2",
+  top:
+    "left-1/2 top-[calc(4.85rem+var(--notebook-control-y-offset))] -translate-x-1/2",
   right:
-    "right-[calc(env(safe-area-inset-right,0px)+4.85rem)] top-1/2 -translate-y-1/2",
+    "right-[calc(env(safe-area-inset-right,0px)+4.85rem)] top-[calc(50%+var(--notebook-control-y-offset))] -translate-y-1/2",
   bottom:
     "bottom-[calc(var(--notebook-control-bottom-inset)+3.95rem)] left-1/2 -translate-x-1/2",
   left:
-    "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-1/2 -translate-y-1/2",
+    "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-[calc(50%+var(--notebook-control-y-offset))] -translate-y-1/2",
 };
 const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
   white: "#f8fafc",
@@ -4269,7 +4271,7 @@ export default function NotebookEditorPage() {
 
           <div
             ref={pageFrameRef}
-            className="absolute inset-0 translate-y-1.5 overflow-hidden"
+            className="absolute inset-0 translate-y-[var(--notebook-page-y-offset)] overflow-hidden"
           >
             {selectedPage?.questionPrompt ? (
               <div
@@ -4747,13 +4749,13 @@ export default function NotebookEditorPage() {
                 onClickCapture={handleToolbarClickCapture}
                 onTransitionEnd={handleToolbarTransitionEnd}
                 onDragStart={(event) => event.preventDefault()}
-                className={`notebook-dockable-toolbar absolute z-40 flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl ${
+                className={`notebook-dockable-toolbar notebook-floating-control absolute z-40 flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1.5 ${
                   isNotebookToolbarSideDock(toolbarDock)
                     ? "flex-col"
                     : "flex-row"
                 } ${
                   toolbarDragging
-                    ? "cursor-grabbing shadow-[0_20px_46px_rgba(0,0,0,0.34)]"
+                    ? "cursor-grabbing border-[var(--color-border-strong)]"
                     : "cursor-grab"
                 } ${NOTEBOOK_TOOLBAR_DOCK_CLASS[toolbarDock]}`}
               >
@@ -4866,7 +4868,7 @@ export default function NotebookEditorPage() {
               </div>
             ) : null}
             <div
-              className={`absolute right-3 z-20 flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl md:right-4 ${
+              className={`notebook-floating-control absolute right-3 z-20 flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1 md:right-4 ${
                 fullNotebookEditingEnabled
                   ? "bottom-[calc(var(--notebook-control-bottom-inset)+3.95rem)] md:bottom-[var(--notebook-control-bottom-inset)]"
                   : "bottom-[var(--notebook-control-bottom-inset)]"
@@ -4922,7 +4924,7 @@ export default function NotebookEditorPage() {
             </div>
             {touchInkHintVisible ? (
               <div
-                className={`pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)] ${
+                className={`notebook-floating-control pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-text-secondary ${
                   toolbarDock === "bottom"
                     ? "bottom-[calc(var(--notebook-control-bottom-inset)+6.35rem)]"
                     : "bottom-[var(--notebook-control-bottom-inset)]"

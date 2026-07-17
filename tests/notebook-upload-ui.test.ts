@@ -62,4 +62,28 @@ describe("notebook upload UI", () => {
     );
     expect(notebookPage).not.toContain("max-h-[calc(100vh-7rem)]");
   });
+
+  it("keeps bottom notebook controls compositing-safe and vertically aligned", () => {
+    const notebookPage = readFileSync(
+      join(root, "app/dashboard/notebooks/[notebookId]/page.tsx"),
+      "utf8"
+    );
+    const globalStyles = readFileSync(
+      join(root, "app/globals.css"),
+      "utf8"
+    );
+
+    expect(notebookPage.match(/notebook-floating-control/g)?.length).toBe(3);
+    expect(notebookPage).not.toContain(
+      "shadow-[0_14px_34px_rgba(0,0,0,0.28)]"
+    );
+    expect(notebookPage).toContain(
+      "translate-y-[var(--notebook-page-y-offset)]"
+    );
+    expect(globalStyles).toContain(".notebook-floating-control");
+    expect(globalStyles).toContain("-webkit-backdrop-filter: none");
+    expect(globalStyles).toContain("box-shadow: none");
+    expect(globalStyles).toContain("--notebook-control-y-offset: 0.375rem");
+    expect(globalStyles).toContain("--notebook-page-y-offset: 0.75rem");
+  });
 });
