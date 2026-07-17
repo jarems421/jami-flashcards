@@ -413,13 +413,14 @@ export default function GoalsPage() {
               </Button>
             </div>
           </div>
-          <div className="grid gap-3 sm:gap-4 md:grid-cols-2">
+          <div className="grid min-w-0 gap-3 sm:gap-4 md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
             <Input
               type="number"
               min="1"
               value={targetCards}
               onChange={(event) => setTargetCards(event.target.value)}
               label="Target cards"
+              containerClassName="min-w-0"
               className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
             />
             <Input
@@ -430,39 +431,34 @@ export default function GoalsPage() {
               value={targetAccuracy}
               onChange={(event) => setTargetAccuracy(event.target.value)}
               label="Accuracy %"
+              containerClassName="min-w-0"
               className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
             />
-            <div className="min-w-0 md:col-span-2">
-              <div className="app-subtle-panel box-border w-full min-w-0 rounded-[1.3rem] px-3 py-3.5 sm:px-3.5">
-                <div className="mb-3">
-                  <div className="text-sm font-medium text-text-primary">Deadline</div>
-                  <p className="mt-1 text-xs leading-5 text-text-muted">
-                    Optional. Leave both fields blank for an open-ended goal.
-                  </p>
-                </div>
-                <div className="goal-deadline-grid grid w-full min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] gap-2">
-                  <Input
-                    type="date"
-                    value={deadlineDate}
-                    onChange={(event) => {
-                      setDeadlineDate(event.target.value);
-                      if (!event.target.value) setDeadlineTime("");
-                    }}
-                    label="Finish by date"
-                    containerClassName="goal-deadline-field box-border w-full min-w-0"
-                    className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-2 !py-2.5 text-xs sm:!px-3 sm:text-sm"
-                  />
-                  <Input
-                    type="time"
-                    value={deadlineTime}
-                    onChange={(event) => setDeadlineTime(event.target.value)}
-                    label="Finish by time"
-                    containerClassName="goal-deadline-field box-border w-full min-w-0"
-                    className="goal-deadline-input box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-2 !py-2.5 text-xs sm:!px-3 sm:text-sm"
-                  />
-                </div>
-              </div>
+            <div className="min-w-0 border-t border-[var(--color-border)] pt-4 md:col-span-2">
+              <div className="text-sm font-medium text-text-primary">Deadline</div>
+              <p className="mt-1 text-xs leading-5 text-text-muted">
+                Optional. Leave both fields blank for an open-ended goal.
+              </p>
             </div>
+            <Input
+              type="date"
+              value={deadlineDate}
+              onChange={(event) => {
+                setDeadlineDate(event.target.value);
+                if (!event.target.value) setDeadlineTime("");
+              }}
+              label="Finish by date"
+              containerClassName="min-w-0"
+              className="box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5 text-sm"
+            />
+            <Input
+              type="time"
+              value={deadlineTime}
+              onChange={(event) => setDeadlineTime(event.target.value)}
+              label="Finish by time"
+              containerClassName="min-w-0"
+              className="box-border block min-h-11 !w-full min-w-0 max-w-full !rounded-[1.15rem] !px-4 !py-2.5 text-sm"
+            />
             <div className="grid gap-4 md:col-span-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] lg:items-center">
               <div className="flex flex-col items-start">
                 <p className="order-3 mt-4 text-sm font-medium text-text-secondary lg:order-1 lg:mb-4 lg:mt-0">

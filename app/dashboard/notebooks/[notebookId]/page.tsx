@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -110,6 +111,15 @@ import {
   getNotebookPageIdFromSearch,
 } from "@/lib/workspace/notebook-navigation";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
+import {
+  clampNotebookToolbarDragOffset,
+  getNearestNotebookToolbarDock,
+  hasNotebookToolbarDragStarted,
+  isNotebookToolbarSideDock,
+  readNotebookToolbarDockPreference,
+  saveNotebookToolbarDockPreference,
+  type NotebookToolbarDock,
+} from "@/lib/workspace/notebook-toolbar";
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
@@ -184,6 +194,21 @@ type PinchZoomState = {
   pendingZoom: number;
 };
 type PageFrameSize = { width: number; height: number };
+type NotebookToolbarDragState = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  lastX: number;
+  lastY: number;
+  originLeft: number;
+  originTop: number;
+  toolbarWidth: number;
+  toolbarHeight: number;
+  frameWidth: number;
+  frameHeight: number;
+  originDock: NotebookToolbarDock;
+  started: boolean;
+};
 type NotebookUndoAction = {
   type: "textBlocks";
   previous: NotebookTextBlock[];
@@ -206,6 +231,28 @@ const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   black: "bg-[#080a10] text-[#f8fafc]",
 };
 const NOTEBOOK_PAGE_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+const NOTEBOOK_TOOLBAR_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
+const NOTEBOOK_TOOLBAR_DOCK_CLASS: Record<NotebookToolbarDock, string> = {
+  top: "left-1/2 top-[0.9rem] -translate-x-1/2",
+  right:
+    "right-[calc(env(safe-area-inset-right,0px)+0.9rem)] top-1/2 -translate-y-1/2",
+  bottom:
+    "bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)] left-1/2 -translate-x-1/2",
+  left:
+    "left-[calc(env(safe-area-inset-left,0px)+0.9rem)] top-1/2 -translate-y-1/2",
+};
+const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
+  NotebookToolbarDock,
+  string
+> = {
+  top: "left-1/2 top-[4.85rem] -translate-x-1/2",
+  right:
+    "right-[calc(env(safe-area-inset-right,0px)+4.85rem)] top-1/2 -translate-y-1/2",
+  bottom:
+    "bottom-[calc(env(safe-area-inset-bottom,0px)+4.85rem)] left-1/2 -translate-x-1/2",
+  left:
+    "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-1/2 -translate-y-1/2",
+};
 const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
   white: "#f8fafc",
   black: "#080a10",
@@ -718,7 +765,7 @@ function ToolbarIconButton({
       title={label}
       disabled={disabled}
       onClick={onClick}
-      className={`relative inline-flex h-11 min-w-11 items-center justify-center rounded-full border text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
+      className={`relative inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-full border text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
         active
           ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)] shadow-[0_0_0_3px_rgba(143,125,232,0.18),0_8px_18px_rgba(0,0,0,0.16)]"
           : "border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:-translate-y-0.5 hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)] active:translate-y-0 active:scale-95"
@@ -945,6 +992,10 @@ export default function NotebookEditorPage() {
   const [pageZoom, setPageZoom] = useState(1);
   const [pagePan, setPagePan] = useState<NotebookPagePan>({ x: 0, y: 0 });
   const [frameSize, setFrameSize] = useState<PageFrameSize>({ width: 0, height: 0 });
+  const [toolbarDock, setToolbarDock] =
+    useState<NotebookToolbarDock>("bottom");
+  const [toolbarDragging, setToolbarDragging] = useState(false);
+  const [toolbarSnapRevision, setToolbarSnapRevision] = useState(0);
   const [tool, setTool] = useState<EditorTool>("pen");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [loading, setLoading] = useState(true);
@@ -976,6 +1027,13 @@ export default function NotebookEditorPage() {
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
   const textBlockResizeRef = useRef<TextBlockResizeState | null>(null);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
+  const drawingToolbarRef = useRef<HTMLDivElement | null>(null);
+  const toolbarDockRef = useRef<NotebookToolbarDock>("bottom");
+  const toolbarDragRef = useRef<NotebookToolbarDragState | null>(null);
+  const toolbarPendingSnapRectRef = useRef<DOMRect | null>(null);
+  const toolbarSnapAnimationFrameRef = useRef<number | null>(null);
+  const toolbarClickResetTimerRef = useRef<number | null>(null);
+  const suppressToolbarClickRef = useRef(false);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
   const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
@@ -1554,6 +1612,24 @@ export default function NotebookEditorPage() {
     mediaQuery.addEventListener("change", update);
     return () => mediaQuery.removeEventListener("change", update);
   }, []);
+
+  useEffect(() => {
+    const savedDock = readNotebookToolbarDockPreference();
+    toolbarDockRef.current = savedDock;
+    setToolbarDock(savedDock);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (toolbarSnapAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
+      }
+      if (toolbarClickResetTimerRef.current !== null) {
+        window.clearTimeout(toolbarClickResetTimerRef.current);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     if (!selectedPage) {
@@ -3477,6 +3553,221 @@ export default function NotebookEditorPage() {
     switchNotebookTool,
   ]);
 
+  const closeDrawingToolMenus = useCallback(() => {
+    setPenMenuOpen(false);
+    setHighlighterMenuOpen(false);
+    setEraserMenuOpen(false);
+  }, []);
+
+  const requestToolbarDockSnap = useCallback(
+    (dock: NotebookToolbarDock, persist: boolean) => {
+      const toolbar = drawingToolbarRef.current;
+      if (toolbar) {
+        toolbarPendingSnapRectRef.current = toolbar.getBoundingClientRect();
+      }
+      toolbarDockRef.current = dock;
+      setToolbarDock(dock);
+      setToolbarSnapRevision((revision) => revision + 1);
+      if (persist) {
+        saveNotebookToolbarDockPreference(dock);
+      }
+    },
+    []
+  );
+
+  useLayoutEffect(() => {
+    const toolbar = drawingToolbarRef.current;
+    const draggedRect = toolbarPendingSnapRectRef.current;
+    if (!toolbar || !draggedRect) return;
+
+    toolbarPendingSnapRectRef.current = null;
+    if (toolbarSnapAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
+      toolbarSnapAnimationFrameRef.current = null;
+    }
+
+    toolbar.style.transition = "none";
+    toolbar.style.translate = "none";
+    const dockedRect = toolbar.getBoundingClientRect();
+    const deltaX =
+      draggedRect.left +
+      draggedRect.width / 2 -
+      (dockedRect.left + dockedRect.width / 2);
+    const deltaY =
+      draggedRect.top +
+      draggedRect.height / 2 -
+      (dockedRect.top + dockedRect.height / 2);
+
+    if (prefersReducedNotebookMotion()) {
+      toolbar.style.translate = "none";
+      toolbar.style.transition = "";
+      return;
+    }
+
+    toolbar.style.translate = `${deltaX}px ${deltaY}px`;
+    void toolbar.offsetWidth;
+    toolbarSnapAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      toolbarSnapAnimationFrameRef.current = null;
+      toolbar.style.transition = `translate 200ms ${NOTEBOOK_TOOLBAR_SETTLE_EASING}`;
+      toolbar.style.translate = "0px 0px";
+    });
+  }, [
+    prefersReducedNotebookMotion,
+    toolbarDock,
+    toolbarSnapRevision,
+  ]);
+
+  const handleToolbarPointerDown = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    if (
+      !event.isPrimary ||
+      (event.pointerType === "mouse" && event.button !== 0) ||
+      toolbarDragRef.current
+    ) {
+      return;
+    }
+
+    const frame = pageFrameRef.current;
+    const toolbar = drawingToolbarRef.current;
+    if (!frame || !toolbar) return;
+
+    const frameRect = frame.getBoundingClientRect();
+    const toolbarRect = toolbar.getBoundingClientRect();
+    toolbarDragRef.current = {
+      pointerId: event.pointerId,
+      startX: event.clientX,
+      startY: event.clientY,
+      lastX: event.clientX,
+      lastY: event.clientY,
+      originLeft: toolbarRect.left - frameRect.left,
+      originTop: toolbarRect.top - frameRect.top,
+      toolbarWidth: toolbarRect.width,
+      toolbarHeight: toolbarRect.height,
+      frameWidth: frameRect.width,
+      frameHeight: frameRect.height,
+      originDock: toolbarDockRef.current,
+      started: false,
+    };
+    toolbar.style.transition = "none";
+    safelySetPointerCapture(toolbar, event.pointerId);
+  };
+
+  const handleToolbarPointerMove = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    const drag = toolbarDragRef.current;
+    const toolbar = drawingToolbarRef.current;
+    if (!drag || !toolbar || drag.pointerId !== event.pointerId) return;
+
+    drag.lastX = event.clientX;
+    drag.lastY = event.clientY;
+    const deltaX = event.clientX - drag.startX;
+    const deltaY = event.clientY - drag.startY;
+    if (
+      !drag.started &&
+      !hasNotebookToolbarDragStarted({ deltaX, deltaY })
+    ) {
+      return;
+    }
+
+    if (!drag.started) {
+      drag.started = true;
+      setToolbarDragging(true);
+      closeDrawingToolMenus();
+      clearNotebookNativeSelection(document);
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    const offset = clampNotebookToolbarDragOffset({
+      deltaX,
+      deltaY,
+      originLeft: drag.originLeft,
+      originTop: drag.originTop,
+      toolbarWidth: drag.toolbarWidth,
+      toolbarHeight: drag.toolbarHeight,
+      frameWidth: drag.frameWidth,
+      frameHeight: drag.frameHeight,
+    });
+    toolbar.style.translate = `${offset.x}px ${offset.y}px`;
+  };
+
+  const finishToolbarPointer = (
+    event: ReactPointerEvent<HTMLDivElement>,
+    cancelled: boolean
+  ) => {
+    const drag = toolbarDragRef.current;
+    const toolbar = drawingToolbarRef.current;
+    if (!drag || !toolbar || drag.pointerId !== event.pointerId) return;
+
+    toolbarDragRef.current = null;
+    safelyReleasePointerCapture(toolbar, event.pointerId);
+    if (!drag.started) {
+      toolbar.style.transition = "";
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    setToolbarDragging(false);
+    suppressToolbarClickRef.current = true;
+    if (toolbarClickResetTimerRef.current !== null) {
+      window.clearTimeout(toolbarClickResetTimerRef.current);
+    }
+    toolbarClickResetTimerRef.current = window.setTimeout(() => {
+      suppressToolbarClickRef.current = false;
+      toolbarClickResetTimerRef.current = null;
+    }, 0);
+
+    const frame = pageFrameRef.current?.getBoundingClientRect();
+    const nextDock =
+      cancelled || !frame
+        ? drag.originDock
+        : getNearestNotebookToolbarDock({
+            x: drag.lastX - frame.left,
+            y: drag.lastY - frame.top,
+            frameWidth: frame.width,
+            frameHeight: frame.height,
+            currentDock: drag.originDock,
+          });
+    requestToolbarDockSnap(nextDock, !cancelled);
+  };
+
+  const handleToolbarClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
+    if (!suppressToolbarClickRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    suppressToolbarClickRef.current = false;
+  };
+
+  const handleToolbarTransitionEnd = (
+    event: ReactTransitionEvent<HTMLDivElement>
+  ) => {
+    if (
+      event.currentTarget !== event.target ||
+      event.propertyName !== "translate"
+    ) {
+      return;
+    }
+    event.currentTarget.style.transition = "";
+    event.currentTarget.style.translate = "none";
+  };
+
+  useEffect(() => {
+    const drag = toolbarDragRef.current;
+    if (!drag?.started) return;
+
+    toolbarDragRef.current = null;
+    setToolbarDragging(false);
+    suppressToolbarClickRef.current = true;
+    requestToolbarDockSnap(drag.originDock, false);
+  }, [
+    frameSize.height,
+    frameSize.width,
+    requestToolbarDockSnap,
+  ]);
+
   if (loading) {
     return (
       <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="3xl">
@@ -3550,8 +3841,11 @@ export default function NotebookEditorPage() {
             />
           </div>
         </header>
+        <div className="relative min-h-0 flex-1 overflow-hidden">
         {penMenuOpen || highlighterMenuOpen || eraserMenuOpen ? (
-            <div className="notebook-popover-in notebook-drawer-surface absolute bottom-[calc(env(safe-area-inset-bottom,0px)+4.85rem)] left-1/2 z-50 w-[min(92vw,22rem)] -translate-x-1/2 rounded-[1.25rem] border border-[var(--color-border)] p-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.32)]">
+            <div
+              className={`notebook-toolbar-popover-in notebook-drawer-surface absolute z-50 w-[min(92vw,22rem)] rounded-[1.25rem] border border-[var(--color-border)] p-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.32)] ${NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS[toolbarDock]}`}
+            >
               {penMenuOpen ? (
                 <div className="space-y-3">
                   <InkColorPicker
@@ -3695,7 +3989,6 @@ export default function NotebookEditorPage() {
             </div>
           ) : null}
 
-        <div className="relative min-h-0 flex-1 overflow-hidden">
         {feedback ? (
           <div className="absolute left-3 right-3 top-3 z-50 mx-auto max-w-2xl">
             <FeedbackBanner
@@ -3818,7 +4111,7 @@ export default function NotebookEditorPage() {
         ) : null}
 
         {aiPlaceholderOpen ? (
-          <aside className="notebook-drawer-in-right notebook-drawer-surface absolute bottom-0 right-0 top-0 z-30 flex w-full max-w-sm flex-col border-l border-[var(--color-border)] p-4 shadow-[-20px_0_44px_rgba(0,0,0,0.22)]">
+          <aside className="notebook-drawer-in-right notebook-drawer-surface absolute bottom-0 right-0 top-0 z-50 flex w-full max-w-sm flex-col border-l border-[var(--color-border)] p-4 shadow-[-20px_0_44px_rgba(0,0,0,0.22)]">
             <div className="flex items-center justify-between gap-3">
               <div className="flex min-w-0 items-center gap-2.5">
                 <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--color-selected-border)]/40 bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]">
@@ -3847,7 +4140,7 @@ export default function NotebookEditorPage() {
         ) : null}
 
         {pagesDrawerOpen ? (
-          <aside className="notebook-drawer-in notebook-drawer-surface absolute bottom-0 left-0 top-0 z-30 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]">
+          <aside className="notebook-drawer-in notebook-drawer-surface absolute bottom-0 left-0 top-0 z-50 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]">
             <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-2">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Pages
@@ -3953,7 +4246,11 @@ export default function NotebookEditorPage() {
 
           <div ref={pageFrameRef} className="absolute inset-0 overflow-hidden">
             {selectedPage?.questionPrompt ? (
-              <div className="absolute left-1/2 top-3 z-20 w-[min(92vw,36rem)] -translate-x-1/2">
+              <div
+                className={`absolute left-1/2 z-20 w-[min(92vw,36rem)] -translate-x-1/2 ${
+                  toolbarDock === "top" ? "top-[5rem]" : "top-3"
+                }`}
+              >
                 <Card tone="warm" padding="sm">
                   <p className="text-sm leading-6 text-text-primary">{selectedPage.questionPrompt}</p>
                 </Card>
@@ -4403,8 +4700,36 @@ export default function NotebookEditorPage() {
             ) : null}
             {fullNotebookEditingEnabled ? (
               <div
-                className="absolute bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)] left-1/2 z-40 flex -translate-x-1/2 items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl"
+                ref={drawingToolbarRef}
+                role="toolbar"
                 aria-label="Drawing tools"
+                aria-orientation={
+                  isNotebookToolbarSideDock(toolbarDock)
+                    ? "vertical"
+                    : "horizontal"
+                }
+                title="Drag the toolbar to dock it to another edge"
+                data-toolbar-dock={toolbarDock}
+                data-toolbar-dragging={toolbarDragging ? "true" : "false"}
+                onPointerDown={handleToolbarPointerDown}
+                onPointerMove={handleToolbarPointerMove}
+                onPointerUp={(event) => finishToolbarPointer(event, false)}
+                onPointerCancel={(event) => finishToolbarPointer(event, true)}
+                onLostPointerCapture={(event) =>
+                  finishToolbarPointer(event, true)
+                }
+                onClickCapture={handleToolbarClickCapture}
+                onTransitionEnd={handleToolbarTransitionEnd}
+                onDragStart={(event) => event.preventDefault()}
+                className={`notebook-dockable-toolbar absolute z-40 flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_14px_34px_rgba(0,0,0,0.28)] backdrop-blur-xl ${
+                  isNotebookToolbarSideDock(toolbarDock)
+                    ? "flex-col"
+                    : "flex-row"
+                } ${
+                  toolbarDragging
+                    ? "cursor-grabbing shadow-[0_20px_46px_rgba(0,0,0,0.34)]"
+                    : "cursor-grab"
+                } ${NOTEBOOK_TOOLBAR_DOCK_CLASS[toolbarDock]}`}
               >
                 <div className="relative">
                   <ToolbarIconButton
@@ -4484,7 +4809,11 @@ export default function NotebookEditorPage() {
                 />
                 <span
                   aria-hidden="true"
-                  className="mx-0.5 h-6 w-px shrink-0 rounded-full bg-[var(--color-border)]"
+                  className={`shrink-0 rounded-full bg-[var(--color-border)] ${
+                    isNotebookToolbarSideDock(toolbarDock)
+                      ? "my-0.5 h-px w-6"
+                      : "mx-0.5 h-6 w-px"
+                  }`}
                 />
                 <ToolbarIconButton
                   label="Undo (Ctrl+Z)"
@@ -4566,7 +4895,13 @@ export default function NotebookEditorPage() {
               )}
             </div>
             {touchInkHintVisible ? (
-              <div className="pointer-events-none absolute bottom-[calc(env(safe-area-inset-bottom,0px)+7.25rem)] left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)]">
+              <div
+                className={`pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-3 py-1.5 text-xs font-semibold text-text-secondary shadow-[0_12px_26px_rgba(0,0,0,0.24)] ${
+                  toolbarDock === "bottom"
+                    ? "bottom-[calc(env(safe-area-inset-bottom,0px)+7.25rem)]"
+                    : "bottom-[calc(env(safe-area-inset-bottom,0px)+0.9rem)]"
+                }`}
+              >
                 Use Apple Pencil or stylus to write. Fingers move the page.
               </div>
             ) : null}
