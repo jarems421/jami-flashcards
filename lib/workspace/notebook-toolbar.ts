@@ -1,6 +1,7 @@
 export const NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY = "jami:notebook-toolbar-dock";
-export const NOTEBOOK_TOOLBAR_DRAG_THRESHOLD = 8;
+export const NOTEBOOK_TOOLBAR_DRAG_THRESHOLD = 4;
 export const NOTEBOOK_TOOLBAR_DOCK_HYSTERESIS = 24;
+export const NOTEBOOK_TOOLBAR_VELOCITY_WINDOW_MS = 100;
 
 export const NOTEBOOK_TOOLBAR_DOCKS = [
   "top",
@@ -10,6 +11,11 @@ export const NOTEBOOK_TOOLBAR_DOCKS = [
 ] as const;
 
 export type NotebookToolbarDock = (typeof NOTEBOOK_TOOLBAR_DOCKS)[number];
+export type NotebookToolbarPointerSample = {
+  x: number;
+  y: number;
+  timeStamp: number;
+};
 
 export function isNotebookToolbarDock(
   value: unknown
@@ -57,6 +63,33 @@ export function hasNotebookToolbarDragStarted(input: {
     input.threshold ?? NOTEBOOK_TOOLBAR_DRAG_THRESHOLD
   );
   return Math.hypot(input.deltaX, input.deltaY) >= threshold;
+}
+
+export function getNotebookToolbarDragVelocity(
+  samples: readonly NotebookToolbarPointerSample[],
+  windowMs = NOTEBOOK_TOOLBAR_VELOCITY_WINDOW_MS
+) {
+  if (samples.length < 2) return 0;
+
+  const last = samples[samples.length - 1];
+  const cutoff = last.timeStamp - Math.max(0, windowMs);
+  const first =
+    samples.find((sample) => sample.timeStamp >= cutoff) ?? samples[0];
+  const elapsed = last.timeStamp - first.timeStamp;
+  if (elapsed <= 0) return 0;
+
+  return Math.hypot(last.x - first.x, last.y - first.y) / elapsed;
+}
+
+export function getNotebookToolbarSettleDuration(input: {
+  distance: number;
+  velocity: number;
+}) {
+  const distance = Math.max(0, input.distance);
+  const velocity = Math.max(0, input.velocity);
+  const duration =
+    110 + Math.min(130, distance * 0.18) - Math.min(70, velocity * 30);
+  return Math.round(Math.min(240, Math.max(120, duration)));
 }
 
 export function clampNotebookToolbarDragOffset(input: {

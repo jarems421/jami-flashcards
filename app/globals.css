@@ -537,6 +537,11 @@
     user-select: none;
   }
 
+  .notebook-dockable-toolbar {
+    backface-visibility: hidden;
+    will-change: translate;
+  }
+
   /*
    * Keep floating notebook controls on one opaque, shadowless layer. Safari can
    * flatten blurred shadows against an overflow-clipped viewport and render the

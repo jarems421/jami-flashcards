@@ -1,6 +1,8 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clampNotebookToolbarDragOffset,
+  getNotebookToolbarDragVelocity,
+  getNotebookToolbarSettleDuration,
   getNearestNotebookToolbarDock,
   hasNotebookToolbarDragStarted,
   isNotebookToolbarDock,
@@ -25,8 +27,34 @@ describe("notebook toolbar docking", () => {
   });
 
   it("uses a movement threshold so taps do not become drags", () => {
-    expect(hasNotebookToolbarDragStarted({ deltaX: 4, deltaY: 5 })).toBe(false);
-    expect(hasNotebookToolbarDragStarted({ deltaX: 8, deltaY: 0 })).toBe(true);
+    expect(hasNotebookToolbarDragStarted({ deltaX: 2, deltaY: 3 })).toBe(false);
+    expect(hasNotebookToolbarDragStarted({ deltaX: 4, deltaY: 0 })).toBe(true);
+  });
+
+  it("measures release velocity from only the latest 100ms of movement", () => {
+    expect(
+      getNotebookToolbarDragVelocity([
+        { x: 0, y: 0, timeStamp: 0 },
+        { x: 100, y: 0, timeStamp: 100 },
+        { x: 100, y: 0, timeStamp: 150 },
+        { x: 150, y: 0, timeStamp: 200 },
+      ])
+    ).toBe(0.5);
+  });
+
+  it("settles nearby or fast releases more quickly within safe bounds", () => {
+    expect(
+      getNotebookToolbarSettleDuration({ distance: 20, velocity: 0 })
+    ).toBe(120);
+    expect(
+      getNotebookToolbarSettleDuration({ distance: 600, velocity: 0 })
+    ).toBe(218);
+    expect(
+      getNotebookToolbarSettleDuration({ distance: 600, velocity: 4 })
+    ).toBe(148);
+    expect(
+      getNotebookToolbarSettleDuration({ distance: 4000, velocity: 0 })
+    ).toBe(240);
   });
 
   it("clamps the toolbar inside the notebook workspace while dragging", () => {

@@ -113,11 +113,14 @@ import {
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 import {
   clampNotebookToolbarDragOffset,
+  getNotebookToolbarDragVelocity,
+  getNotebookToolbarSettleDuration,
   getNearestNotebookToolbarDock,
   hasNotebookToolbarDragStarted,
   isNotebookToolbarSideDock,
   readNotebookToolbarDockPreference,
   saveNotebookToolbarDockPreference,
+  type NotebookToolbarPointerSample,
   type NotebookToolbarDock,
 } from "@/lib/workspace/notebook-toolbar";
 
@@ -207,6 +210,7 @@ type NotebookToolbarDragState = {
   frameWidth: number;
   frameHeight: number;
   originDock: NotebookToolbarDock;
+  samples: NotebookToolbarPointerSample[];
   started: boolean;
 };
 type NotebookUndoAction = {
@@ -994,7 +998,6 @@ export default function NotebookEditorPage() {
   const [frameSize, setFrameSize] = useState<PageFrameSize>({ width: 0, height: 0 });
   const [toolbarDock, setToolbarDock] =
     useState<NotebookToolbarDock>("bottom");
-  const [toolbarDragging, setToolbarDragging] = useState(false);
   const [toolbarSnapRevision, setToolbarSnapRevision] = useState(0);
   const [tool, setTool] = useState<EditorTool>("pen");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
@@ -1031,6 +1034,8 @@ export default function NotebookEditorPage() {
   const toolbarDockRef = useRef<NotebookToolbarDock>("bottom");
   const toolbarDragRef = useRef<NotebookToolbarDragState | null>(null);
   const toolbarPendingSnapRectRef = useRef<DOMRect | null>(null);
+  const toolbarPendingSnapVelocityRef = useRef(0);
+  const toolbarDragAnimationFrameRef = useRef<number | null>(null);
   const toolbarSnapAnimationFrameRef = useRef<number | null>(null);
   const toolbarClickResetTimerRef = useRef<number | null>(null);
   const suppressToolbarClickRef = useRef(false);
@@ -1621,6 +1626,9 @@ export default function NotebookEditorPage() {
 
   useEffect(
     () => () => {
+      if (toolbarDragAnimationFrameRef.current !== null) {
+        window.cancelAnimationFrame(toolbarDragAnimationFrameRef.current);
+      }
       if (toolbarSnapAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
       }
@@ -3583,11 +3591,16 @@ export default function NotebookEditorPage() {
   }, []);
 
   const requestToolbarDockSnap = useCallback(
-    (dock: NotebookToolbarDock, persist: boolean) => {
+    (
+      dock: NotebookToolbarDock,
+      persist: boolean,
+      releaseVelocity = 0
+    ) => {
       const toolbar = drawingToolbarRef.current;
       if (toolbar) {
         toolbarPendingSnapRectRef.current = toolbar.getBoundingClientRect();
       }
+      toolbarPendingSnapVelocityRef.current = releaseVelocity;
       toolbarDockRef.current = dock;
       setToolbarDock(dock);
       setToolbarSnapRevision((revision) => revision + 1);
@@ -3604,6 +3617,8 @@ export default function NotebookEditorPage() {
     if (!toolbar || !draggedRect) return;
 
     toolbarPendingSnapRectRef.current = null;
+    const releaseVelocity = toolbarPendingSnapVelocityRef.current;
+    toolbarPendingSnapVelocityRef.current = 0;
     if (toolbarSnapAnimationFrameRef.current !== null) {
       window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
       toolbarSnapAnimationFrameRef.current = null;
@@ -3620,6 +3635,10 @@ export default function NotebookEditorPage() {
       draggedRect.top +
       draggedRect.height / 2 -
       (dockedRect.top + dockedRect.height / 2);
+    const settleDuration = getNotebookToolbarSettleDuration({
+      distance: Math.hypot(deltaX, deltaY),
+      velocity: releaseVelocity,
+    });
 
     if (prefersReducedNotebookMotion()) {
       toolbar.style.translate = "none";
@@ -3631,7 +3650,7 @@ export default function NotebookEditorPage() {
     void toolbar.offsetWidth;
     toolbarSnapAnimationFrameRef.current = window.requestAnimationFrame(() => {
       toolbarSnapAnimationFrameRef.current = null;
-      toolbar.style.transition = `translate 200ms ${NOTEBOOK_TOOLBAR_SETTLE_EASING}`;
+      toolbar.style.transition = `translate ${settleDuration}ms ${NOTEBOOK_TOOLBAR_SETTLE_EASING}`;
       toolbar.style.translate = "0px 0px";
     });
   }, [
@@ -3639,6 +3658,35 @@ export default function NotebookEditorPage() {
     toolbarDock,
     toolbarSnapRevision,
   ]);
+
+  const applyToolbarDragPosition = (
+    drag: NotebookToolbarDragState,
+    toolbar: HTMLDivElement
+  ) => {
+    const offset = clampNotebookToolbarDragOffset({
+      deltaX: drag.lastX - drag.startX,
+      deltaY: drag.lastY - drag.startY,
+      originLeft: drag.originLeft,
+      originTop: drag.originTop,
+      toolbarWidth: drag.toolbarWidth,
+      toolbarHeight: drag.toolbarHeight,
+      frameWidth: drag.frameWidth,
+      frameHeight: drag.frameHeight,
+    });
+    toolbar.style.translate = `${offset.x}px ${offset.y}px`;
+  };
+
+  const scheduleToolbarDragFrame = () => {
+    if (toolbarDragAnimationFrameRef.current !== null) return;
+
+    toolbarDragAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      toolbarDragAnimationFrameRef.current = null;
+      const drag = toolbarDragRef.current;
+      const toolbar = drawingToolbarRef.current;
+      if (!drag?.started || !toolbar) return;
+      applyToolbarDragPosition(drag, toolbar);
+    });
+  };
 
   const handleToolbarPointerDown = (
     event: ReactPointerEvent<HTMLDivElement>
@@ -3655,6 +3703,16 @@ export default function NotebookEditorPage() {
     const toolbar = drawingToolbarRef.current;
     if (!frame || !toolbar) return;
 
+    if (toolbarSnapAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
+      toolbarSnapAnimationFrameRef.current = null;
+    }
+    const liveTranslate = window.getComputedStyle(toolbar).translate;
+    toolbar.style.transition = "none";
+    if (liveTranslate && liveTranslate !== "none") {
+      toolbar.style.translate = liveTranslate;
+    }
+
     const frameRect = frame.getBoundingClientRect();
     const toolbarRect = toolbar.getBoundingClientRect();
     toolbarDragRef.current = {
@@ -3670,9 +3728,15 @@ export default function NotebookEditorPage() {
       frameWidth: frameRect.width,
       frameHeight: frameRect.height,
       originDock: toolbarDockRef.current,
+      samples: [
+        {
+          x: event.clientX,
+          y: event.clientY,
+          timeStamp: event.timeStamp,
+        },
+      ],
       started: false,
     };
-    toolbar.style.transition = "none";
     safelySetPointerCapture(toolbar, event.pointerId);
   };
 
@@ -3683,10 +3747,31 @@ export default function NotebookEditorPage() {
     const toolbar = drawingToolbarRef.current;
     if (!drag || !toolbar || drag.pointerId !== event.pointerId) return;
 
-    drag.lastX = event.clientX;
-    drag.lastY = event.clientY;
-    const deltaX = event.clientX - drag.startX;
-    const deltaY = event.clientY - drag.startY;
+    const nativeEvent = event.nativeEvent;
+    const coalescedEvents =
+      typeof nativeEvent.getCoalescedEvents === "function"
+        ? nativeEvent.getCoalescedEvents()
+        : [];
+    const inputEvents =
+      coalescedEvents.length > 0 ? coalescedEvents : [nativeEvent];
+    for (const inputEvent of inputEvents) {
+      drag.samples.push({
+        x: inputEvent.clientX,
+        y: inputEvent.clientY,
+        timeStamp: inputEvent.timeStamp,
+      });
+    }
+    const latestInput = inputEvents[inputEvents.length - 1];
+    drag.lastX = latestInput.clientX;
+    drag.lastY = latestInput.clientY;
+    const sampleCutoff = latestInput.timeStamp - 100;
+    drag.samples = drag.samples.filter(
+      (sample, index) =>
+        sample.timeStamp >= sampleCutoff || index === drag.samples.length - 1
+    );
+
+    const deltaX = drag.lastX - drag.startX;
+    const deltaY = drag.lastY - drag.startY;
     if (
       !drag.started &&
       !hasNotebookToolbarDragStarted({ deltaX, deltaY })
@@ -3696,24 +3781,14 @@ export default function NotebookEditorPage() {
 
     if (!drag.started) {
       drag.started = true;
-      setToolbarDragging(true);
+      toolbar.dataset.toolbarDragging = "true";
       closeDrawingToolMenus();
       clearNotebookNativeSelection(document);
     }
 
     event.preventDefault();
     event.stopPropagation();
-    const offset = clampNotebookToolbarDragOffset({
-      deltaX,
-      deltaY,
-      originLeft: drag.originLeft,
-      originTop: drag.originTop,
-      toolbarWidth: drag.toolbarWidth,
-      toolbarHeight: drag.toolbarHeight,
-      frameWidth: drag.frameWidth,
-      frameHeight: drag.frameHeight,
-    });
-    toolbar.style.translate = `${offset.x}px ${offset.y}px`;
+    scheduleToolbarDragFrame();
   };
 
   const finishToolbarPointer = (
@@ -3724,8 +3799,16 @@ export default function NotebookEditorPage() {
     const toolbar = drawingToolbarRef.current;
     if (!drag || !toolbar || drag.pointerId !== event.pointerId) return;
 
+    if (toolbarDragAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(toolbarDragAnimationFrameRef.current);
+      toolbarDragAnimationFrameRef.current = null;
+    }
+    if (drag.started) {
+      applyToolbarDragPosition(drag, toolbar);
+    }
     toolbarDragRef.current = null;
     safelyReleasePointerCapture(toolbar, event.pointerId);
+    delete toolbar.dataset.toolbarDragging;
     if (!drag.started) {
       toolbar.style.transition = "";
       return;
@@ -3733,7 +3816,6 @@ export default function NotebookEditorPage() {
 
     event.preventDefault();
     event.stopPropagation();
-    setToolbarDragging(false);
     suppressToolbarClickRef.current = true;
     if (toolbarClickResetTimerRef.current !== null) {
       window.clearTimeout(toolbarClickResetTimerRef.current);
@@ -3744,6 +3826,7 @@ export default function NotebookEditorPage() {
     }, 0);
 
     const frame = pageFrameRef.current?.getBoundingClientRect();
+    const releaseVelocity = getNotebookToolbarDragVelocity(drag.samples);
     const nextDock =
       cancelled || !frame
         ? drag.originDock
@@ -3754,7 +3837,11 @@ export default function NotebookEditorPage() {
             frameHeight: frame.height,
             currentDock: drag.originDock,
           });
-    requestToolbarDockSnap(nextDock, !cancelled);
+    requestToolbarDockSnap(
+      nextDock,
+      !cancelled,
+      cancelled ? 0 : releaseVelocity
+    );
   };
 
   const handleToolbarClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
@@ -3781,8 +3868,13 @@ export default function NotebookEditorPage() {
     const drag = toolbarDragRef.current;
     if (!drag?.started) return;
 
+    if (toolbarDragAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(toolbarDragAnimationFrameRef.current);
+      toolbarDragAnimationFrameRef.current = null;
+    }
+    const toolbar = drawingToolbarRef.current;
+    if (toolbar) delete toolbar.dataset.toolbarDragging;
     toolbarDragRef.current = null;
-    setToolbarDragging(false);
     suppressToolbarClickRef.current = true;
     requestToolbarDockSnap(drag.originDock, false);
   }, [
@@ -4737,7 +4829,6 @@ export default function NotebookEditorPage() {
                 }
                 title="Drag the toolbar to dock it to another edge"
                 data-toolbar-dock={toolbarDock}
-                data-toolbar-dragging={toolbarDragging ? "true" : "false"}
                 onPointerDown={handleToolbarPointerDown}
                 onPointerMove={handleToolbarPointerMove}
                 onPointerUp={(event) => finishToolbarPointer(event, false)}
@@ -4752,11 +4843,7 @@ export default function NotebookEditorPage() {
                   isNotebookToolbarSideDock(toolbarDock)
                     ? "flex-col"
                     : "flex-row"
-                } ${
-                  toolbarDragging
-                    ? "cursor-grabbing border-[var(--color-border-strong)]"
-                    : "cursor-grab"
-                } ${NOTEBOOK_TOOLBAR_DOCK_CLASS[toolbarDock]}`}
+                } cursor-grab data-[toolbar-dragging=true]:cursor-grabbing data-[toolbar-dragging=true]:border-[var(--color-border-strong)] ${NOTEBOOK_TOOLBAR_DOCK_CLASS[toolbarDock]}`}
               >
                 <div className="relative">
                   <ToolbarIconButton
