@@ -225,7 +225,7 @@ const CANVAS_HEIGHT = 1240;
 const NOTEBOOK_PAGE_SWIPE_GAP = 16;
 // The page sits flush inside its fixed frame at fit zoom — no border band.
 const NOTEBOOK_PAGE_SHEET_CLASS =
-  "rounded-[0.625rem] shadow-[0_2px_6px_rgba(2,6,23,0.12),0_16px_38px_rgba(2,6,23,0.16)]";
+  "rounded-[0.625rem] shadow-none";
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "bg-[#f8fafc] text-slate-950",
   black: "bg-[#080a10] text-[#f8fafc]",
