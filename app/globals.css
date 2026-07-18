@@ -539,7 +539,8 @@
 
   .notebook-dockable-toolbar {
     backface-visibility: hidden;
-    will-change: translate;
+    transform: translate3d(0, 0, 0);
+    will-change: transform;
   }
 
   /*

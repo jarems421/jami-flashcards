@@ -3625,7 +3625,7 @@ export default function NotebookEditorPage() {
     }
 
     toolbar.style.transition = "none";
-    toolbar.style.translate = "none";
+    toolbar.style.transform = "translate3d(0, 0, 0)";
     const dockedRect = toolbar.getBoundingClientRect();
     const deltaX =
       draggedRect.left +
@@ -3641,17 +3641,17 @@ export default function NotebookEditorPage() {
     });
 
     if (prefersReducedNotebookMotion()) {
-      toolbar.style.translate = "none";
+      toolbar.style.transform = "translate3d(0, 0, 0)";
       toolbar.style.transition = "";
       return;
     }
 
-    toolbar.style.translate = `${deltaX}px ${deltaY}px`;
+    toolbar.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`;
     void toolbar.offsetWidth;
     toolbarSnapAnimationFrameRef.current = window.requestAnimationFrame(() => {
       toolbarSnapAnimationFrameRef.current = null;
-      toolbar.style.transition = `translate ${settleDuration}ms ${NOTEBOOK_TOOLBAR_SETTLE_EASING}`;
-      toolbar.style.translate = "0px 0px";
+      toolbar.style.transition = `transform ${settleDuration}ms ${NOTEBOOK_TOOLBAR_SETTLE_EASING}`;
+      toolbar.style.transform = "translate3d(0, 0, 0)";
     });
   }, [
     prefersReducedNotebookMotion,
@@ -3673,7 +3673,7 @@ export default function NotebookEditorPage() {
       frameWidth: drag.frameWidth,
       frameHeight: drag.frameHeight,
     });
-    toolbar.style.translate = `${offset.x}px ${offset.y}px`;
+    toolbar.style.transform = `translate3d(${offset.x}px, ${offset.y}px, 0)`;
   };
 
   const scheduleToolbarDragFrame = () => {
@@ -3707,10 +3707,10 @@ export default function NotebookEditorPage() {
       window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
       toolbarSnapAnimationFrameRef.current = null;
     }
-    const liveTranslate = window.getComputedStyle(toolbar).translate;
+    const liveTransform = window.getComputedStyle(toolbar).transform;
     toolbar.style.transition = "none";
-    if (liveTranslate && liveTranslate !== "none") {
-      toolbar.style.translate = liveTranslate;
+    if (liveTransform && liveTransform !== "none") {
+      toolbar.style.transform = liveTransform;
     }
 
     const frameRect = frame.getBoundingClientRect();
@@ -3752,23 +3752,22 @@ export default function NotebookEditorPage() {
       typeof nativeEvent.getCoalescedEvents === "function"
         ? nativeEvent.getCoalescedEvents()
         : [];
-    const inputEvents =
-      coalescedEvents.length > 0 ? coalescedEvents : [nativeEvent];
-    for (const inputEvent of inputEvents) {
-      drag.samples.push({
-        x: inputEvent.clientX,
-        y: inputEvent.clientY,
-        timeStamp: inputEvent.timeStamp,
-      });
-    }
-    const latestInput = inputEvents[inputEvents.length - 1];
+    const latestInput =
+      coalescedEvents[coalescedEvents.length - 1] ?? nativeEvent;
     drag.lastX = latestInput.clientX;
     drag.lastY = latestInput.clientY;
+    drag.samples.push({
+      x: latestInput.clientX,
+      y: latestInput.clientY,
+      timeStamp: latestInput.timeStamp,
+    });
     const sampleCutoff = latestInput.timeStamp - 100;
-    drag.samples = drag.samples.filter(
-      (sample, index) =>
-        sample.timeStamp >= sampleCutoff || index === drag.samples.length - 1
-    );
+    while (
+      drag.samples.length > 2 &&
+      drag.samples[1].timeStamp < sampleCutoff
+    ) {
+      drag.samples.shift();
+    }
 
     const deltaX = drag.lastX - drag.startX;
     const deltaY = drag.lastY - drag.startY;
@@ -3856,12 +3855,12 @@ export default function NotebookEditorPage() {
   ) => {
     if (
       event.currentTarget !== event.target ||
-      event.propertyName !== "translate"
+      event.propertyName !== "transform"
     ) {
       return;
     }
     event.currentTarget.style.transition = "";
-    event.currentTarget.style.translate = "none";
+    event.currentTarget.style.transform = "";
   };
 
   useEffect(() => {
@@ -4819,138 +4818,154 @@ export default function NotebookEditorPage() {
             ) : null}
             {fullNotebookEditingEnabled ? (
               <div
-                ref={drawingToolbarRef}
-                role="toolbar"
-                aria-label="Drawing tools"
-                aria-orientation={
-                  isNotebookToolbarSideDock(toolbarDock)
-                    ? "vertical"
-                    : "horizontal"
-                }
-                title="Drag the toolbar to dock it to another edge"
-                data-toolbar-dock={toolbarDock}
-                onPointerDown={handleToolbarPointerDown}
-                onPointerMove={handleToolbarPointerMove}
-                onPointerUp={(event) => finishToolbarPointer(event, false)}
-                onPointerCancel={(event) => finishToolbarPointer(event, true)}
-                onLostPointerCapture={(event) =>
-                  finishToolbarPointer(event, true)
-                }
-                onClickCapture={handleToolbarClickCapture}
-                onTransitionEnd={handleToolbarTransitionEnd}
-                onDragStart={(event) => event.preventDefault()}
-                className={`notebook-dockable-toolbar notebook-floating-control absolute z-40 flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1.5 ${
-                  isNotebookToolbarSideDock(toolbarDock)
-                    ? "flex-col"
-                    : "flex-row"
-                } cursor-grab data-[toolbar-dragging=true]:cursor-grabbing data-[toolbar-dragging=true]:border-[var(--color-border-strong)] ${NOTEBOOK_TOOLBAR_DOCK_CLASS[toolbarDock]}`}
+                className={`pointer-events-none absolute z-40 ${NOTEBOOK_TOOLBAR_DOCK_CLASS[toolbarDock]}`}
               >
-                <div className="relative">
-                  <ToolbarIconButton
-                    label="Pen (P)"
-                    icon="pen"
-                    active={tool === "pen" || penMenuOpen}
-                    onClick={() => {
-                      setHighlighterMenuOpen(false);
-                      setEraserMenuOpen(false);
-                      if (tool !== "pen") {
-                        switchNotebookTool("pen");
-                        setPenMenuOpen(false);
-                        return;
-                      }
-                      setPenMenuOpen((value) => !value);
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
-                      style={{ backgroundColor: getNotebookStrokePaintColor(penColor, "pen") }}
-                    />
-                  </ToolbarIconButton>
-                </div>
-                <div className="relative">
-                  <ToolbarIconButton
-                    label="Highlighter (H)"
-                    icon="highlighter"
-                    active={tool === "highlighter" || highlighterMenuOpen}
-                    onClick={() => {
-                      setPenMenuOpen(false);
-                      setEraserMenuOpen(false);
-                      if (tool !== "highlighter") {
-                        switchNotebookTool("highlighter");
+                <div
+                  ref={drawingToolbarRef}
+                  role="toolbar"
+                  aria-label="Drawing tools"
+                  aria-orientation={
+                    isNotebookToolbarSideDock(toolbarDock)
+                      ? "vertical"
+                      : "horizontal"
+                  }
+                  title="Drag the toolbar to dock it to another edge"
+                  data-toolbar-dock={toolbarDock}
+                  onPointerDown={handleToolbarPointerDown}
+                  onPointerMove={handleToolbarPointerMove}
+                  onPointerUp={(event) => finishToolbarPointer(event, false)}
+                  onPointerCancel={(event) =>
+                    finishToolbarPointer(event, true)
+                  }
+                  onLostPointerCapture={(event) =>
+                    finishToolbarPointer(event, true)
+                  }
+                  onClickCapture={handleToolbarClickCapture}
+                  onTransitionEnd={handleToolbarTransitionEnd}
+                  onDragStart={(event) => event.preventDefault()}
+                  className={`notebook-dockable-toolbar notebook-floating-control pointer-events-auto flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1.5 ${
+                    isNotebookToolbarSideDock(toolbarDock)
+                      ? "flex-col"
+                      : "flex-row"
+                  } cursor-grab data-[toolbar-dragging=true]:cursor-grabbing data-[toolbar-dragging=true]:border-[var(--color-border-strong)]`}
+                >
+                  <div className="relative">
+                    <ToolbarIconButton
+                      label="Pen (P)"
+                      icon="pen"
+                      active={tool === "pen" || penMenuOpen}
+                      onClick={() => {
                         setHighlighterMenuOpen(false);
-                        return;
-                      }
-                      setHighlighterMenuOpen((value) => !value);
-                    }}
-                  >
-                    <span
-                      aria-hidden="true"
-                      className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
-                      style={{
-                        backgroundColor: getNotebookStrokePaintColor(highlighterColor, "highlighter"),
+                        setEraserMenuOpen(false);
+                        if (tool !== "pen") {
+                          switchNotebookTool("pen");
+                          setPenMenuOpen(false);
+                          return;
+                        }
+                        setPenMenuOpen((value) => !value);
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
+                        style={{
+                          backgroundColor: getNotebookStrokePaintColor(
+                            penColor,
+                            "pen"
+                          ),
+                        }}
+                      />
+                    </ToolbarIconButton>
+                  </div>
+                  <div className="relative">
+                    <ToolbarIconButton
+                      label="Highlighter (H)"
+                      icon="highlighter"
+                      active={tool === "highlighter" || highlighterMenuOpen}
+                      onClick={() => {
+                        setPenMenuOpen(false);
+                        setEraserMenuOpen(false);
+                        if (tool !== "highlighter") {
+                          switchNotebookTool("highlighter");
+                          setHighlighterMenuOpen(false);
+                          return;
+                        }
+                        setHighlighterMenuOpen((value) => !value);
+                      }}
+                    >
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
+                        style={{
+                          backgroundColor: getNotebookStrokePaintColor(
+                            highlighterColor,
+                            "highlighter"
+                          ),
+                        }}
+                      />
+                    </ToolbarIconButton>
+                  </div>
+                  <div className="relative">
+                    <ToolbarIconButton
+                      label="Eraser (E)"
+                      icon="eraser"
+                      active={tool === "eraser" || eraserMenuOpen}
+                      onClick={() => {
+                        setPenMenuOpen(false);
+                        setHighlighterMenuOpen(false);
+                        if (tool !== "eraser") {
+                          switchNotebookTool("eraser");
+                          setEraserMenuOpen(false);
+                          return;
+                        }
+                        setEraserMenuOpen((value) => !value);
                       }}
                     />
-                  </ToolbarIconButton>
-                </div>
-                <div className="relative">
+                  </div>
                   <ToolbarIconButton
-                    label="Eraser (E)"
-                    icon="eraser"
-                    active={tool === "eraser" || eraserMenuOpen}
+                    label="Text box (T)"
+                    icon="text"
+                    active={tool === "text"}
                     onClick={() => {
                       setPenMenuOpen(false);
                       setHighlighterMenuOpen(false);
-                      if (tool !== "eraser") {
-                        switchNotebookTool("eraser");
-                        setEraserMenuOpen(false);
-                        return;
-                      }
-                      setEraserMenuOpen((value) => !value);
+                      setEraserMenuOpen(false);
+                      switchNotebookTool(
+                        toolRef.current === "text" ? "select" : "text"
+                      );
+                    }}
+                  />
+                  <span
+                    aria-hidden="true"
+                    className={`shrink-0 rounded-full bg-[var(--color-border)] ${
+                      isNotebookToolbarSideDock(toolbarDock)
+                        ? "my-0.5 h-px w-6"
+                        : "mx-0.5 h-6 w-px"
+                    }`}
+                  />
+                  <ToolbarIconButton
+                    label="Undo (Ctrl+Z)"
+                    icon="undo"
+                    disabled={undoDepth === 0 && inkUndoDepth === 0}
+                    onClick={() => {
+                      setPenMenuOpen(false);
+                      setHighlighterMenuOpen(false);
+                      setEraserMenuOpen(false);
+                      handleUndo();
+                    }}
+                  />
+                  <ToolbarIconButton
+                    label="Redo (Ctrl+Shift+Z)"
+                    icon="redo"
+                    disabled={redoDepth === 0 && inkRedoDepth === 0}
+                    onClick={() => {
+                      setPenMenuOpen(false);
+                      setHighlighterMenuOpen(false);
+                      setEraserMenuOpen(false);
+                      handleRedo();
                     }}
                   />
                 </div>
-                <ToolbarIconButton
-                  label="Text box (T)"
-                  icon="text"
-                  active={tool === "text"}
-                  onClick={() => {
-                    setPenMenuOpen(false);
-                    setHighlighterMenuOpen(false);
-                    setEraserMenuOpen(false);
-                    switchNotebookTool(toolRef.current === "text" ? "select" : "text");
-                  }}
-                />
-                <span
-                  aria-hidden="true"
-                  className={`shrink-0 rounded-full bg-[var(--color-border)] ${
-                    isNotebookToolbarSideDock(toolbarDock)
-                      ? "my-0.5 h-px w-6"
-                      : "mx-0.5 h-6 w-px"
-                  }`}
-                />
-                <ToolbarIconButton
-                  label="Undo (Ctrl+Z)"
-                  icon="undo"
-                  disabled={undoDepth === 0 && inkUndoDepth === 0}
-                  onClick={() => {
-                    setPenMenuOpen(false);
-                    setHighlighterMenuOpen(false);
-                    setEraserMenuOpen(false);
-                    handleUndo();
-                  }}
-                />
-                <ToolbarIconButton
-                  label="Redo (Ctrl+Shift+Z)"
-                  icon="redo"
-                  disabled={redoDepth === 0 && inkRedoDepth === 0}
-                  onClick={() => {
-                    setPenMenuOpen(false);
-                    setHighlighterMenuOpen(false);
-                    setEraserMenuOpen(false);
-                    handleRedo();
-                  }}
-                />
               </div>
             ) : null}
             <div
