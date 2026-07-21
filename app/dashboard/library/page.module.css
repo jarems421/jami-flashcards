@@ -1,0 +1,62 @@
+.workspaceFrame {
+  container-name: sources-workspace;
+  container-type: inline-size;
+}
+
+.workspaceLayout {
+  display: block;
+  min-height: 34rem;
+}
+
+.sourceRail,
+.readerPane {
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sourceRail,
+.readerPane,
+.sourceList,
+.previewScroll {
+  min-height: 0;
+}
+
+.drawerPanel {
+  animation: sources-drawer-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@container sources-workspace (min-width: 38rem) {
+  .workspaceLayout {
+    display: grid;
+    grid-template-columns: minmax(13.5rem, 16rem) minmax(0, 1fr);
+    height: clamp(34rem, calc(100dvh - 11rem), 52rem);
+  }
+
+  .sourceRail,
+  .readerPane {
+    display: flex !important;
+  }
+
+  .sourceList,
+  .previewScroll {
+    overflow-y: auto;
+    overscroll-behavior: contain;
+  }
+
+  .mobileOnly {
+    display: none !important;
+  }
+}
+
+@keyframes sources-drawer-in {
+  from {
+    opacity: 0;
+    transform: translate3d(1.5rem, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawerPanel {
+    animation: none;
+  }
+}
