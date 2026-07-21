@@ -73,6 +73,26 @@ describe("notebook ink smoothing", () => {
     expect(lag).toBeLessThan(maxExpectedLag);
   });
 
+  it.each([8, 16])(
+    "responds quickly at a %dms stylus sample interval",
+    (sampleIntervalMs) => {
+      const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+      const step = (1500 * sampleIntervalMs) / 1000;
+      const first = smoother.next({ x: step, y: 0, time: sampleIntervalMs });
+      let latest = first;
+      for (let index = 2; index <= 30; index += 1) {
+        latest = smoother.next({
+          x: index * step,
+          y: 0,
+          time: index * sampleIntervalMs,
+        });
+      }
+
+      expect(step - first.x).toBeLessThan(3);
+      expect(30 * step - latest.x).toBeLessThan(1.5);
+    }
+  );
+
   it("smooths slow strokes more strongly than fast strokes", () => {
     const measureFirstStepResponse = (speedPxPerSecond: number) => {
       const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });

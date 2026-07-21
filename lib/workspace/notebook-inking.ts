@@ -59,7 +59,7 @@ export const NOTEBOOK_PEN_MIN_WIDTH = 2;
 export const NOTEBOOK_PEN_MAX_WIDTH = 10;
 export const NOTEBOOK_HIGHLIGHTER_MIN_WIDTH = 10;
 export const NOTEBOOK_HIGHLIGHTER_MAX_WIDTH = 30;
-export const NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT = 2;
+export const NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT = 3;
 
 const NOTEBOOK_LIVE_CURVE_DEVIATION_PX = 0.75;
 const NOTEBOOK_LIVE_PRESSURE_DEVIATION = 0.08;
@@ -379,6 +379,8 @@ export function getNotebookLivePinchTransform(input: {
   basePanY: number;
   currentCenterX: number;
   currentCenterY: number;
+  frameHeight: number;
+  frameWidth: number;
   nextZoom: number;
   startCenterX: number;
   startCenterY: number;
@@ -394,18 +396,27 @@ export function getNotebookLivePinchTransform(input: {
       : 1;
   const nextPageWidth = input.startPageWidth * scaleRatio;
   const nextPageHeight = input.startPageHeight * scaleRatio;
+  const pan = clampNotebookPagePan({
+    pan: {
+      x:
+        input.basePanX +
+        input.currentCenterX -
+        input.startCenterX +
+        input.anchorFx * (input.startPageWidth - nextPageWidth),
+      y:
+        input.basePanY +
+        input.currentCenterY -
+        input.startCenterY +
+        input.anchorFy * (input.startPageHeight - nextPageHeight),
+    },
+    pageWidth: nextPageWidth,
+    pageHeight: nextPageHeight,
+    frameWidth: input.frameWidth,
+    frameHeight: input.frameHeight,
+  });
 
   return {
-    x:
-      input.basePanX +
-      input.currentCenterX -
-      input.startCenterX +
-      input.anchorFx * (input.startPageWidth - nextPageWidth),
-    y:
-      input.basePanY +
-      input.currentCenterY -
-      input.startCenterY +
-      input.anchorFy * (input.startPageHeight - nextPageHeight),
+    ...pan,
     scaleRatio,
   };
 }
@@ -488,26 +499,26 @@ export function getBoundedLivePointerSamples<T extends LivePointerSample>(
       : [];
   if (!previous || coalescedSamples.length === 0) return [event];
 
-  const segmentX = event.clientX - previous.clientX;
-  const segmentY = event.clientY - previous.clientY;
-  const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
-  const timeSpan = event.timeStamp - previous.timeStamp;
-  const startPressure = normalizePointerPressure(previous.pressure);
-  const endPressure = normalizePointerPressure(event.pressure);
-  let significantSample: T | null = null;
-  let strongestScore = 1;
+  const candidates = coalescedSamples.filter(
+    (sample) =>
+      !(
+        sample.clientX === event.clientX &&
+        sample.clientY === event.clientY &&
+        sample.timeStamp === event.timeStamp
+      )
+  );
+  if (candidates.length === 0) return [event];
 
-  for (const sample of coalescedSamples) {
-    if (
-      sample.clientX === event.clientX &&
-      sample.clientY === event.clientY &&
-      sample.timeStamp === event.timeStamp
-    ) {
-      continue;
-    }
-
-    const offsetX = sample.clientX - previous.clientX;
-    const offsetY = sample.clientY - previous.clientY;
+  const getDeviationScore = (
+    sample: LivePointerSample,
+    start: LivePointerSample,
+    end: LivePointerSample
+  ) => {
+    const segmentX = end.clientX - start.clientX;
+    const segmentY = end.clientY - start.clientY;
+    const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+    const offsetX = sample.clientX - start.clientX;
+    const offsetY = sample.clientY - start.clientY;
     const geometricProgress =
       segmentLengthSquared > 0
         ? Math.max(
@@ -519,36 +530,88 @@ export function getBoundedLivePointerSamples<T extends LivePointerSample>(
             )
           )
         : 0;
-    const projectedX = previous.clientX + geometricProgress * segmentX;
-    const projectedY = previous.clientY + geometricProgress * segmentY;
+    const projectedX = start.clientX + geometricProgress * segmentX;
+    const projectedY = start.clientY + geometricProgress * segmentY;
     const curveDeviation = Math.hypot(
       sample.clientX - projectedX,
       sample.clientY - projectedY
     );
+    const timeSpan = end.timeStamp - start.timeStamp;
     const pressureProgress =
       Number.isFinite(timeSpan) && timeSpan > 0
         ? Math.max(
             0,
-            Math.min(1, (sample.timeStamp - previous.timeStamp) / timeSpan)
+            Math.min(1, (sample.timeStamp - start.timeStamp) / timeSpan)
           )
         : geometricProgress;
+    const startPressure = normalizePointerPressure(start.pressure);
     const expectedPressure =
-      startPressure + (endPressure - startPressure) * pressureProgress;
+      startPressure +
+      (normalizePointerPressure(end.pressure) - startPressure) * pressureProgress;
     const pressureDeviation = Math.abs(
       normalizePointerPressure(sample.pressure) - expectedPressure
     );
-    const score = Math.max(
+    return Math.max(
       curveDeviation / NOTEBOOK_LIVE_CURVE_DEVIATION_PX,
       pressureDeviation / NOTEBOOK_LIVE_PRESSURE_DEVIATION
     );
+  };
 
-    if (score > strongestScore) {
-      strongestScore = score;
-      significantSample = sample;
+  const findStrongest = (
+    indexes: readonly number[],
+    start: LivePointerSample,
+    end: LivePointerSample
+  ) => {
+    let strongestIndex = -1;
+    let strongestScore = 1;
+    for (const index of indexes) {
+      const score = getDeviationScore(candidates[index], start, end);
+      if (score > strongestScore) {
+        strongestScore = score;
+        strongestIndex = index;
+      }
     }
-  }
+    return strongestIndex;
+  };
 
-  return significantSample ? [significantSample, event] : [event];
+  const allIndexes = candidates.map((_, index) => index);
+  const firstIndex = findStrongest(allIndexes, previous, event);
+  if (firstIndex < 0) return [event];
+
+  const selectedIndexes = [firstIndex];
+  const beforeIndexes = allIndexes.filter((index) => index < firstIndex);
+  const afterIndexes = allIndexes.filter((index) => index > firstIndex);
+  const beforeIndex = findStrongest(
+    beforeIndexes,
+    previous,
+    candidates[firstIndex]
+  );
+  const afterIndex = findStrongest(
+    afterIndexes,
+    candidates[firstIndex],
+    event
+  );
+  const secondIndex = [beforeIndex, afterIndex]
+    .filter((index) => index >= 0)
+    .sort(
+      (left, right) =>
+        getDeviationScore(
+          candidates[right],
+          right < firstIndex ? previous : candidates[firstIndex],
+          right < firstIndex ? candidates[firstIndex] : event
+        ) -
+        getDeviationScore(
+          candidates[left],
+          left < firstIndex ? previous : candidates[firstIndex],
+          left < firstIndex ? candidates[firstIndex] : event
+        )
+    )[0];
+  if (secondIndex !== undefined) selectedIndexes.push(secondIndex);
+
+  return selectedIndexes
+    .sort((left, right) => left - right)
+    .map((index) => candidates[index])
+    .concat(event);
 }
 
 export function shouldAppendInkPoint(

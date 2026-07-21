@@ -9,7 +9,6 @@ import {
   useImperativeHandle,
   useLayoutEffect,
   useRef,
-  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import type {
@@ -22,14 +21,22 @@ import type {
   NotebookStrokeColor,
 } from "@/lib/workspace/notebooks";
 import {
+  getContinuousNotebookEraserSamples,
   getNotebookEraserCursorDiameter,
   getNotebookEraserModeValue,
   getNotebookEraserToolThickness,
+  getSpatiallySimplifiedNotebookEraserSamples,
+  type NotebookEraserPointerSample,
   type NotebookEraserMode,
 } from "@/lib/workspace/notebook-eraser";
+import { NotebookPrecisionEraserGesture } from "@/lib/workspace/notebook-precision-eraser";
 import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
+import {
+  installFrameGatedNotebookPenPreview,
+  type NotebookFrameGatedPen,
+} from "@/lib/workspace/notebook-pen-preview";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
 import { shouldSuppressNotebookNativeInkPointer } from "@/lib/workspace/notebook-interaction-lock";
 import { getBoundedLivePointerSamples } from "@/lib/workspace/notebook-inking";
@@ -87,14 +94,16 @@ type InkStyle = Pick<
   | "penThickness"
 >;
 
-type EraserCursor = {
-  left: number;
-  top: number;
-  diameter: number;
-  visible: boolean;
-};
-
 type JsDrawModule = typeof import("js-draw");
+
+type ActivePrecisionEraserGesture = {
+  cursorDiameter: number;
+  gesture: NotebookPrecisionEraserGesture;
+  lastSample: NotebookEraserPointerSample;
+  pointerId: number;
+  surfaceLeft: number;
+  surfaceTop: number;
+};
 
 let jsDrawModulePromise: Promise<JsDrawModule> | null = null;
 
@@ -136,7 +145,7 @@ function makePrecisePenInputMapper(
               time: current.timeStamp,
             })
           );
-        } else {
+        } else if (event.kind === jsDraw.InputEvtType.PointerMoveEvt) {
           const smoother = inkSmoothers.get(current.id);
           if (smoother) {
             const filtered = smoother.next({
@@ -176,47 +185,70 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
   const primaryPen = pens[0];
   if (!primaryPen) return;
 
-  editor.toolController.getPrimaryTools().forEach((editorTool) => {
-    editorTool.setEnabled(false);
-  });
-  pens.slice(1).forEach((pen) => pen.setEnabled(false));
-
   // Keep the eraser's mode and thickness in sync on every style application,
   // not only while the eraser is the active tool. js-draw defaults the eraser
   // to FullStroke, so configuring it unconditionally ensures the selected
   // precision/stroke mode is already correct the moment the eraser is enabled.
   applyNotebookEraserMode(editor, style.eraserMode, jsDraw);
-  erasers[0]?.setThickness(
-    getNotebookEraserToolThickness(
-      style.eraserMode,
-      style.eraserThickness
-    )
+  const eraserThickness = getNotebookEraserToolThickness(
+    style.eraserMode,
+    style.eraserThickness
   );
+  if (erasers[0] && erasers[0].getThickness() !== eraserThickness) {
+    erasers[0].setThickness(eraserThickness);
+  }
+
+  const requestedPrimaryTool =
+    style.activeTool === "pen" || style.activeTool === "highlighter"
+      ? primaryPen
+      : style.activeTool === "eraser"
+        ? erasers[0]
+        : style.activeTool === "select"
+          ? selections[0]
+          : null;
+  editor.toolController.getPrimaryTools().forEach((editorTool) => {
+    const shouldEnable = editorTool === requestedPrimaryTool;
+    if (editorTool.isEnabled() !== shouldEnable) {
+      editorTool.setEnabled(shouldEnable);
+    }
+  });
 
   if (style.activeTool === "pen" || style.activeTool === "highlighter") {
     const selectedColor =
       style.activeTool === "highlighter" ? style.highlighterColor : style.penColor;
     const { color, opacity } = getNotebookInkColor(selectedColor, style.activeTool);
     const parsed = jsDraw.Color4.fromString(color);
-    primaryPen.setColor(jsDraw.Color4.ofRGBA(parsed.r, parsed.g, parsed.b, opacity));
-    primaryPen.setThickness(
+    const parsedColor = jsDraw.Color4.ofRGBA(parsed.r, parsed.g, parsed.b, opacity);
+    const thickness =
       style.activeTool === "highlighter"
         ? style.highlighterThickness
-        : style.penThickness
-    );
-    primaryPen.setPressureSensitivityEnabled(style.activeTool === "pen");
+        : style.penThickness;
+    const pressureEnabled = style.activeTool === "pen";
+    if (!primaryPen.getColor().eq(parsedColor)) primaryPen.setColor(parsedColor);
+    if (primaryPen.getThickness() !== thickness) {
+      primaryPen.setThickness(thickness);
+    }
+    if (primaryPen.getPressureSensitivityEnabled() !== pressureEnabled) {
+      primaryPen.setPressureSensitivityEnabled(pressureEnabled);
+    }
     // The default freehand builder re-fits one quadratic Bézier over the whole
     // uncommitted tail on every sample, so the live stroke visibly reshapes
     // ("pulls") behind the pen. The polyline builder commits each sample
     // immediately — with coalesced pointer input the ink follows the pen
     // faithfully, and what is drawn is exactly what is kept.
-    primaryPen.setStrokeFactory(jsDraw.makePolylineBuilder);
-    primaryPen.setEnabled(true);
-  } else if (style.activeTool === "eraser") {
-    erasers[0]?.setEnabled(true);
-  } else if (style.activeTool === "select") {
-    selections[0]?.setEnabled(true);
   }
+}
+
+function areInkStylesEqual(left: InkStyle | null, right: InkStyle) {
+  return (
+    left?.activeTool === right.activeTool &&
+    left.eraserMode === right.eraserMode &&
+    left.eraserThickness === right.eraserThickness &&
+    left.highlighterColor === right.highlighterColor &&
+    left.highlighterThickness === right.highlighterThickness &&
+    left.penColor === right.penColor &&
+    left.penThickness === right.penThickness
+  );
 }
 
 // Pushes the precision/stroke selection straight to js-draw's eraser. Kept
@@ -230,13 +262,12 @@ function applyNotebookEraserMode(
   jsDraw: JsDrawModule
 ) {
   const eraser = editor.toolController.getMatchingTools(jsDraw.EraserTool)[0];
-  eraser
-    ?.getModeValue()
-    .set(
-      getNotebookEraserModeValue(mode) === "full-stroke"
-        ? jsDraw.EraserMode.FullStroke
-        : jsDraw.EraserMode.PartialStroke
-    );
+  const nextMode =
+    getNotebookEraserModeValue(mode) === "full-stroke"
+      ? jsDraw.EraserMode.FullStroke
+      : jsDraw.EraserMode.PartialStroke;
+  const modeValue = eraser?.getModeValue();
+  if (modeValue && modeValue.get() !== nextMode) modeValue.set(nextMode);
 }
 
 export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
@@ -268,6 +299,14 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
   ) {
     const hostRef = useRef<HTMLDivElement | null>(null);
     const inkSurfaceRef = useRef<HTMLDivElement | null>(null);
+    const eraserCursorRef = useRef<HTMLDivElement | null>(null);
+    const eraserSurfaceOffsetRef = useRef<{
+      left: number;
+      top: number;
+    } | null>(null);
+    const eraserCursorDiameterRef = useRef(
+      getNotebookEraserCursorDiameter(eraserMode, eraserThickness)
+    );
     const editorRef = useRef<JsDrawEditor | null>(null);
     const jsDrawRef = useRef<JsDrawModule | null>(null);
     const loadingRef = useRef(true);
@@ -278,7 +317,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const lastForwardedPointerSampleRef = useRef<Map<number, PointerEvent>>(
       new Map()
     );
+    const precisionEraserGestureRef =
+      useRef<ActivePrecisionEraserGesture | null>(null);
     const pendingStyleRef = useRef(false);
+    const appliedStyleRef = useRef<InkStyle | null>(null);
     const initialSvgRef = useRef(initialSvg);
     const readOnlyRef = useRef(readOnly);
     const desiredStyleRef = useRef<InkStyle>({
@@ -297,13 +339,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onReady,
       onReadyError,
     });
-    const [eraserCursor, setEraserCursor] = useState<EraserCursor>({
-      left: 0,
-      top: 0,
-      diameter: 0,
-      visible: false,
-    });
-
     useEffect(() => {
       callbacksRef.current = {
         onChange,
@@ -338,7 +373,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           };
         },
         hasInk() {
-          return (editorRef.current?.image.getAllComponents().length ?? 0) > 0;
+          return (editorRef.current?.image.estimateNumElements() ?? 0) > 0;
         },
         isInteracting() {
           return pointerLifecycleRef.current?.isInteracting ?? false;
@@ -392,10 +427,14 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       let disposed = false;
       let editor: JsDrawEditor | null = null;
       let historyListener: { remove(): void } | null = null;
+      let disposePenPreview: (() => void) | null = null;
+      let viewportResizeObserver: ResizeObserver | null = null;
+      let removeViewportResizeFallback: (() => void) | null = null;
       loadingRef.current = true;
       readyRef.current = false;
       pointerLifecycleRef.current?.reset();
       inkSmoothersRef.current.clear();
+      appliedStyleRef.current = null;
       host.replaceChildren();
 
       const pointerLifecycle = pointerLifecycleRef.current;
@@ -428,10 +467,18 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           // observer from painting one frame with the previous zoom in the
           // page's top-left corner.
           const rerenderWithoutExportBounds = editor.rerender.bind(editor);
+          const initialDisplayRect = host.getBoundingClientRect();
+          let measuredDisplaySize = {
+            width: initialDisplayRect.width,
+            height: initialDisplayRect.height,
+          };
           const syncViewport = () => {
             if (disposed || !editor) return;
-            const displayWidth = editorRoot.clientWidth;
-            const displayHeight = editorRoot.clientHeight;
+            // ResizeObserver supplies this geometry. Keeping it cached avoids
+            // a forced DOM layout read whenever js-draw repaints between rapid
+            // Pencil strokes.
+            const displayWidth = measuredDisplaySize.width;
+            const displayHeight = measuredDisplaySize.height;
             const scale = getNotebookInkViewportScale({
               displayWidth,
               displayHeight,
@@ -485,11 +532,19 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           editor.toolController
             .getMatchingTools(jsDraw.SelectAllShortcutHandler)
             .forEach((shortcut) => shortcut.setEnabled(false));
-          editor.toolController
-            .getMatchingTools(jsDraw.PenTool)[0]
-            ?.setInputMapper(
+          const primaryPen = editor.toolController.getMatchingTools(jsDraw.PenTool)[0];
+          if (primaryPen) {
+            primaryPen.setInputMapper(
               makePrecisePenInputMapper(jsDraw, editor, inkSmoothersRef.current)
             );
+            // Polyline geometry follows the Pencil without reshaping the tail.
+            // Gate its whole-stroke wet preview to the display frame while
+            // retaining an exact synchronous final paint on pointer-up.
+            primaryPen.setStrokeFactory(jsDraw.makePolylineBuilder);
+            disposePenPreview = installFrameGatedNotebookPenPreview(
+              primaryPen as unknown as NotebookFrameGatedPen
+            );
+          }
           editor.toolController
             .getMatchingTools(jsDraw.EraserTool)
             .forEach((eraser) => {
@@ -502,17 +557,45 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
                 drawPreviewAt?: () => void;
                 clearPreview?: () => void;
               };
-              previewable.drawPreviewAt = function suppressedDrawPreviewAt() {
-                previewable.clearPreview?.();
-              };
+              previewable.drawPreviewAt = function suppressedDrawPreviewAt() {};
             });
           applyInkStyle(editor, desiredStyleRef.current, jsDraw);
+          appliedStyleRef.current = { ...desiredStyleRef.current };
           editorRoot.style.width = "100%";
           editorRoot.style.height = "100%";
           editorRoot.style.minWidth = "0";
           editorRoot.style.minHeight = "0";
           editorRoot.style.background = "transparent";
           editorRoot.style.pointerEvents = "none";
+          const updateMeasuredDisplaySize = (width: number, height: number) => {
+            if (width <= 0 || height <= 0) return;
+            if (
+              measuredDisplaySize.width === width &&
+              measuredDisplaySize.height === height
+            ) {
+              return;
+            }
+            measuredDisplaySize = { width, height };
+            syncViewport();
+          };
+          if (typeof ResizeObserver !== "undefined") {
+            viewportResizeObserver = new ResizeObserver(([entry]) => {
+              if (!entry) return;
+              updateMeasuredDisplaySize(
+                entry.contentRect.width,
+                entry.contentRect.height
+              );
+            });
+            viewportResizeObserver.observe(host);
+          } else {
+            const handleViewportResize = () => {
+              const rect = host.getBoundingClientRect();
+              updateMeasuredDisplaySize(rect.width, rect.height);
+            };
+            window.addEventListener("resize", handleViewportResize);
+            removeViewportResizeFallback = () =>
+              window.removeEventListener("resize", handleViewportResize);
+          }
           editor.dispatchNoAnnounce(
             editor.image.setImportExportRect(
               new jsDraw.Rect2(0, 0, pageWidth, pageHeight)
@@ -542,6 +625,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             if (disposed || !editor) return;
             syncViewport();
             applyInkStyle(editor, desiredStyleRef.current, jsDraw);
+            appliedStyleRef.current = { ...desiredStyleRef.current };
             loadingRef.current = false;
             readyRef.current = true;
             callbacksRef.current.onHistoryChange(
@@ -567,6 +651,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         pointerLifecycle?.reset();
         inkSmoothers.clear();
         lastForwardedPointerSamples.clear();
+        viewportResizeObserver?.disconnect();
+        removeViewportResizeFallback?.();
+        disposePenPreview?.();
+        precisionEraserGestureRef.current?.gesture.cancel();
+        precisionEraserGestureRef.current = null;
+        eraserSurfaceOffsetRef.current = null;
         callbacksRef.current.onInteractionChange(false);
         historyListener?.remove();
         editor?.remove();
@@ -595,6 +685,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       if (!jsDraw) return;
       pendingStyleRef.current = false;
       applyInkStyle(editor, desiredStyleRef.current, jsDraw);
+      appliedStyleRef.current = { ...desiredStyleRef.current };
     }, [
       activeTool,
       eraserMode,
@@ -659,6 +750,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const cancelEditorGesture = useCallback(() => {
       inkSmoothersRef.current.clear();
       lastForwardedPointerSampleRef.current.clear();
+      precisionEraserGestureRef.current?.gesture.cancel();
+      precisionEraserGestureRef.current = null;
+      eraserSurfaceOffsetRef.current = null;
+      if (eraserCursorRef.current) {
+        eraserCursorRef.current.style.opacity = "0";
+      }
       const editor = editorRef.current;
       const jsDraw = jsDrawRef.current;
       if (!editor || !jsDraw) return;
@@ -675,9 +772,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         pointerLifecycle?.reset();
         if (!wasInteracting) return;
         callbacksRef.current.onInteractionChange(false);
-        setEraserCursor((current) =>
-          current.visible ? { ...current, visible: false } : current
-        );
+        if (eraserCursorRef.current) {
+          eraserCursorRef.current.style.opacity = "0";
+        }
       };
       const handleVisibilityChange = () => {
         if (document.visibilityState !== "visible") cancelInteractions();
@@ -712,6 +809,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           desiredStyleRef.current,
           jsDrawRef.current
         );
+        appliedStyleRef.current = { ...desiredStyleRef.current };
       }
     }, []);
 
@@ -722,26 +820,93 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       type: "pointerdown" | "pointermove" | "pointerup" | "pointercancel",
       event: ReactPointerEvent<HTMLDivElement>
     ) => {
-      if (event.pointerType === "touch" || activeTool === "text" || readOnly) {
+      const existingPrecisionGesture = precisionEraserGestureRef.current;
+      const continuesPrecisionGesture =
+        type !== "pointerdown" &&
+        existingPrecisionGesture?.pointerId === event.pointerId;
+      // A gesture owns its pointer until release/cancellation. Props can change
+      // while Pencil is still down (for example via a finger toolbar tap), but
+      // its provisional split must still be finished or restored.
+      if (
+        type === "pointerdown" &&
+        existingPrecisionGesture &&
+        event.pointerType !== "touch" &&
+        (activeTool === "text" || readOnly)
+      ) {
+        const strandedPointerId = existingPrecisionGesture.pointerId;
+        cancelEditorGesture();
+        finishPointerInteraction({
+          pointerId: strandedPointerId,
+          timeStamp: event.timeStamp,
+        });
+        try {
+          if (event.currentTarget.hasPointerCapture(strandedPointerId)) {
+            event.currentTarget.releasePointerCapture(strandedPointerId);
+          }
+        } catch {
+          // Safari may already have discarded the stranded capture.
+        }
+      }
+      if (
+        !continuesPrecisionGesture &&
+        (event.pointerType === "touch" || activeTool === "text" || readOnly)
+      ) {
         return false;
       }
       event.preventDefault();
+      const precisionEraserSelected =
+        activeTool === "eraser" && eraserMode === "precision";
+      const precisionEraserActive =
+        continuesPrecisionGesture || precisionEraserSelected;
+      let eraserSurfaceOffset: { left: number; top: number } | null = null;
       if (activeTool === "eraser") {
-        const rect = event.currentTarget.getBoundingClientRect();
+        const activePrecisionGesture = precisionEraserGestureRef.current;
+        if (type === "pointerdown") {
+          // Refresh once at contact in case the page moved or the viewport
+          // changed since Pencil hover entered the surface.
+          const rect = event.currentTarget.getBoundingClientRect();
+          eraserSurfaceOffset = { left: rect.left, top: rect.top };
+          eraserSurfaceOffsetRef.current = eraserSurfaceOffset;
+        } else if (
+          activePrecisionGesture?.pointerId === event.pointerId
+        ) {
+          eraserSurfaceOffset = {
+            left: activePrecisionGesture.surfaceLeft,
+            top: activePrecisionGesture.surfaceTop,
+          };
+        } else {
+          eraserSurfaceOffset = eraserSurfaceOffsetRef.current;
+        }
+        // Pointer enter normally primes the cache. Keep this one-read fallback
+        // for browsers that begin a captured Pencil stream without hover.
+        if (!eraserSurfaceOffset) {
+          const rect = event.currentTarget.getBoundingClientRect();
+          eraserSurfaceOffset = { left: rect.left, top: rect.top };
+          eraserSurfaceOffsetRef.current = eraserSurfaceOffset;
+        }
         // js-draw measures eraser thickness in screen pixels. Keep the DOM ring
         // in the same coordinate space so the visible boundary is authoritative.
         const diameter = getNotebookEraserCursorDiameter(
           eraserMode,
           eraserThickness
         );
-        setEraserCursor({
-          left: event.clientX - rect.left,
-          top: event.clientY - rect.top,
-          diameter,
-          visible: true,
-        });
-      } else if (eraserCursor.visible) {
-        setEraserCursor((current) => ({ ...current, visible: false }));
+        const cursorDiameter = continuesPrecisionGesture && existingPrecisionGesture
+          ? existingPrecisionGesture.cursorDiameter
+          : diameter;
+        const cursor = eraserCursorRef.current;
+        if (cursor) {
+          if (eraserCursorDiameterRef.current !== cursorDiameter) {
+            eraserCursorDiameterRef.current = cursorDiameter;
+            cursor.style.width = `${cursorDiameter}px`;
+            cursor.style.height = `${cursorDiameter}px`;
+          }
+          const left =
+            event.clientX - eraserSurfaceOffset.left - cursorDiameter / 2;
+          const top =
+            event.clientY - eraserSurfaceOffset.top - cursorDiameter / 2;
+          cursor.style.transform = `translate3d(${left}px, ${top}px, 0)`;
+          cursor.style.opacity = "1";
+        }
       }
       if (!readyRef.current) return true;
       const surface = event.currentTarget;
@@ -766,14 +931,33 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             pointerLifecycleRef.current?.begin(event.pointerId);
           if (pointerStart?.shouldCancelStaleGesture) {
             cancelEditorGesture();
+            eraserSurfaceOffsetRef.current = eraserSurfaceOffset;
+            if (eraserCursorRef.current && activeTool === "eraser") {
+              eraserCursorRef.current.style.opacity = "1";
+            }
           }
           pendingStyleRef.current = false;
-          applyInkStyle(editor, pointerStyle, jsDraw);
+          if (!areInkStylesEqual(appliedStyleRef.current, pointerStyle)) {
+            applyInkStyle(editor, pointerStyle, jsDraw);
+            appliedStyleRef.current = { ...pointerStyle };
+          }
+          // Reassert mutable eraser state at contact time. Precision routing no
+          // longer trusts js-draw's mode, but Stroke mode still uses its tool.
+          if (activeTool === "eraser") {
+            applyNotebookEraserMode(editor, eraserMode, jsDraw);
+            editor.toolController
+              .getMatchingTools(jsDraw.EraserTool)[0]
+              ?.setThickness(
+                getNotebookEraserToolThickness(eraserMode, eraserThickness)
+              );
+          }
         }
-        lastForwardedPointerSampleRef.current.set(
-          event.pointerId,
-          event.nativeEvent
-        );
+        if (!precisionEraserSelected) {
+          lastForwardedPointerSampleRef.current.set(
+            event.pointerId,
+            event.nativeEvent
+          );
+        }
         try {
           if (!surface.hasPointerCapture(event.pointerId)) {
             surface.setPointerCapture(event.pointerId);
@@ -784,11 +968,86 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         callbacksRef.current.onInteractionChange(true);
       }
       if (editor) {
-        if (type === "pointermove") {
-          // js-draw clears and redraws the complete wet polyline for every
-          // forwarded sample. Keep each dense Apple Pencil packet to the
-          // current endpoint plus, at most, one meaningful bend or pressure
-          // sample. This bounds redraw work without flattening tight curves.
+        if (precisionEraserActive) {
+          if (
+            type === "pointerdown" &&
+            eraserSurfaceOffset &&
+            jsDrawRef.current
+          ) {
+            const sample = {
+              clientX: event.clientX,
+              clientY: event.clientY,
+              timeStamp: event.timeStamp,
+            };
+            const cursorDiameter = getNotebookEraserCursorDiameter(
+              eraserMode,
+              eraserThickness
+            );
+            const gesture = new NotebookPrecisionEraserGesture(
+              editor,
+              jsDrawRef.current,
+              cursorDiameter
+            );
+            precisionEraserGestureRef.current = {
+              cursorDiameter,
+              gesture,
+              lastSample: sample,
+              pointerId: event.pointerId,
+              surfaceLeft: eraserSurfaceOffset.left,
+              surfaceTop: eraserSurfaceOffset.top,
+            };
+            gesture.begin({
+              x: sample.clientX - eraserSurfaceOffset.left,
+              y: sample.clientY - eraserSurfaceOffset.top,
+            });
+          } else {
+            const activeGesture = precisionEraserGestureRef.current;
+            if (
+              activeGesture &&
+              activeGesture.pointerId === event.pointerId
+            ) {
+              if (type === "pointercancel") {
+                activeGesture.gesture.cancel();
+                precisionEraserGestureRef.current = null;
+              } else {
+                const samples = getContinuousNotebookEraserSamples(
+                  event.nativeEvent,
+                  activeGesture.lastSample
+                );
+                const spatialSamples =
+                  getSpatiallySimplifiedNotebookEraserSamples(
+                    samples,
+                    activeGesture.lastSample
+                  );
+                activeGesture.gesture.moveBatch(
+                  spatialSamples.map((sample) => ({
+                    x: sample.clientX - activeGesture.surfaceLeft,
+                    y: sample.clientY - activeGesture.surfaceTop,
+                  }))
+                );
+                const latestSample = samples[samples.length - 1];
+                if (latestSample) activeGesture.lastSample = latestSample;
+                if (type === "pointerup") {
+                  activeGesture.gesture.finish();
+                  precisionEraserGestureRef.current = null;
+                  const selectedDiameter = getNotebookEraserCursorDiameter(
+                    eraserMode,
+                    eraserThickness
+                  );
+                  eraserCursorDiameterRef.current = selectedDiameter;
+                  const cursor = eraserCursorRef.current;
+                  if (cursor) {
+                    cursor.style.width = `${selectedDiameter}px`;
+                    cursor.style.height = `${selectedDiameter}px`;
+                  }
+                }
+              }
+            }
+          }
+        } else if (type === "pointermove") {
+          // Preserve up to two meaningful bends/pressure extrema plus the
+          // current endpoint. Preview painting is frame-gated, so this richer
+          // geometry does not cause multiple full wet-canvas paints per packet.
           const liveSamples = getBoundedLivePointerSamples(
             event.nativeEvent,
             lastForwardedPointerSampleRef.current.get(event.pointerId)
@@ -839,6 +1098,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       return true;
     };
 
+    const renderedEraserCursorDiameter =
+      precisionEraserGestureRef.current?.cursorDiameter ??
+      getNotebookEraserCursorDiameter(eraserMode, eraserThickness);
+
     return (
       <div className="absolute inset-0 z-20">
         <div
@@ -864,6 +1127,14 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           }}
           onPointerCancel={(event) => {
             if (!forwardInkPointer("pointercancel", event)) onPointerCancel(event);
+          }}
+          onPointerEnter={(event) => {
+            if (activeTool !== "eraser") return;
+            const rect = event.currentTarget.getBoundingClientRect();
+            eraserSurfaceOffsetRef.current = {
+              left: rect.left,
+              top: rect.top,
+            };
           }}
           onLostPointerCapture={(event) => {
             if (event.pointerType === "touch") {
@@ -891,21 +1162,23 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             });
           }}
           onPointerLeave={() => {
-            setEraserCursor((current) =>
-              current.visible ? { ...current, visible: false } : current
-            );
+            if (eraserCursorRef.current) {
+              eraserCursorRef.current.style.opacity = "0";
+            }
+            if (!pointerLifecycleRef.current?.isInteracting) {
+              eraserSurfaceOffsetRef.current = null;
+            }
           }}
         />
-        {activeTool === "eraser" && eraserCursor.visible ? (
+        {activeTool === "eraser" ? (
           <div
+            ref={eraserCursorRef}
             aria-hidden="true"
             data-testid="notebook-eraser-cursor"
-            className="pointer-events-none absolute z-30 box-border aspect-square -translate-x-1/2 -translate-y-1/2 rounded-full border-2 border-slate-950/60 bg-transparent shadow-none"
+            className="pointer-events-none absolute left-0 top-0 z-30 box-border aspect-square rounded-full border-2 border-slate-950/60 bg-transparent opacity-0 shadow-none will-change-transform"
             style={{
-              left: eraserCursor.left,
-              top: eraserCursor.top,
-              width: eraserCursor.diameter,
-              height: eraserCursor.diameter,
+              width: renderedEraserCursorDiameter,
+              height: renderedEraserCursorDiameter,
             }}
           />
         ) : null}

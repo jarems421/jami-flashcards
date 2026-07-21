@@ -1,34 +1,86 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   clearNotebookNativeSelection,
+  isNotebookStylusActionTarget,
   NOTEBOOK_TEXT_EDITOR_SELECTOR,
+  NOTEBOOK_STYLUS_ACTION_SELECTOR,
+  NOTEBOOK_STYLUS_GESTURE_CONTROL_SELECTOR,
   isNotebookTextEditingTarget,
   shouldSuppressNotebookNativeEvent,
   shouldSuppressNotebookNativeInkPointer,
+  shouldSuppressNotebookStylusTouch,
 } from "@/lib/workspace/notebook-interaction-lock";
 
-function makeTarget(match: boolean) {
+function makeTarget(...matchingSelectors: string[]) {
+  const matches = new Set(matchingSelectors);
   return {
-    closest: vi.fn((selector: string) =>
-      selector === NOTEBOOK_TEXT_EDITOR_SELECTOR && match ? {} : null
-    ),
+    closest: vi.fn((selector: string) => (matches.has(selector) ? {} : null)),
   } as unknown as EventTarget;
 }
 
 describe("notebook interaction lock", () => {
   it("allows native selection events inside the active text editor", () => {
-    const target = makeTarget(true);
+    const target = makeTarget(NOTEBOOK_TEXT_EDITOR_SELECTOR);
 
     expect(isNotebookTextEditingTarget(target)).toBe(true);
     expect(shouldSuppressNotebookNativeEvent(target)).toBe(false);
   });
 
   it("suppresses native selection events outside text editing", () => {
-    const target = makeTarget(false);
+    const target = makeTarget();
 
     expect(isNotebookTextEditingTarget(target)).toBe(false);
     expect(shouldSuppressNotebookNativeEvent(target)).toBe(true);
     expect(shouldSuppressNotebookNativeEvent(null)).toBe(true);
+  });
+
+  it("allows Pencil taps on notebook actions but keeps resize handles guarded", () => {
+    const action = makeTarget(NOTEBOOK_STYLUS_ACTION_SELECTOR);
+    const resizeHandle = makeTarget(
+      NOTEBOOK_STYLUS_ACTION_SELECTOR,
+      NOTEBOOK_STYLUS_GESTURE_CONTROL_SELECTOR
+    );
+
+    expect(isNotebookStylusActionTarget(action)).toBe(true);
+    expect(isNotebookStylusActionTarget(resizeHandle)).toBe(false);
+  });
+
+  it("suppresses stylus touch gestures only on non-action page targets", () => {
+    expect(
+      shouldSuppressNotebookStylusTouch({
+        inkInteractionActive: false,
+        stylusTouch: true,
+        target: makeTarget(NOTEBOOK_STYLUS_ACTION_SELECTOR),
+      })
+    ).toBe(false);
+    expect(
+      shouldSuppressNotebookStylusTouch({
+        inkInteractionActive: true,
+        stylusTouch: true,
+        target: makeTarget(NOTEBOOK_TEXT_EDITOR_SELECTOR),
+      })
+    ).toBe(false);
+    expect(
+      shouldSuppressNotebookStylusTouch({
+        inkInteractionActive: false,
+        stylusTouch: true,
+        target: makeTarget(),
+      })
+    ).toBe(true);
+    expect(
+      shouldSuppressNotebookStylusTouch({
+        inkInteractionActive: true,
+        stylusTouch: false,
+        target: makeTarget(),
+      })
+    ).toBe(true);
+    expect(
+      shouldSuppressNotebookStylusTouch({
+        inkInteractionActive: false,
+        stylusTouch: false,
+        target: makeTarget(),
+      })
+    ).toBe(false);
   });
 
   it("suppresses native browser gestures for editable Pencil ink", () => {

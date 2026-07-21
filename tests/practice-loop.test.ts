@@ -488,8 +488,24 @@ describe("Jami notebook-first learning foundations", () => {
       folderId: "folder-1",
       pageNumber: 1,
       textBlocks: [
-        { id: "block-1", x: 10, y: 20, width: 240, height: 80, text: "First idea" },
-        { id: "block-2", x: 80, y: 140, width: 300, height: 90, text: "Second idea" },
+        {
+          id: "block-1",
+          x: 10,
+          y: 20,
+          width: 240,
+          height: 80,
+          text: "First idea",
+          outlineVisible: true,
+        },
+        {
+          id: "block-2",
+          x: 80,
+          y: 140,
+          width: 300,
+          height: 90,
+          text: "Second idea",
+          outlineVisible: true,
+        },
       ],
     });
     const page = mapNotebookPageData("page-1", payload);
@@ -526,6 +542,7 @@ describe("Jami notebook-first learning foundations", () => {
       width: 300,
       height: 160,
       text: "Resize me",
+      outlineVisible: true,
     };
 
     expect(

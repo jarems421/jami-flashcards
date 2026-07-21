@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clampNotebookToolbarDragOffset,
+  getNotebookToolbarDragThreshold,
   getNotebookToolbarDragVelocity,
   getNotebookToolbarSettleDuration,
   getNearestNotebookToolbarDock,
@@ -29,6 +30,47 @@ describe("notebook toolbar docking", () => {
   it("uses a movement threshold so taps do not become drags", () => {
     expect(hasNotebookToolbarDragStarted({ deltaX: 2, deltaY: 3 })).toBe(false);
     expect(hasNotebookToolbarDragStarted({ deltaX: 4, deltaY: 0 })).toBe(true);
+  });
+
+  it("gives Pencil action taps more movement tolerance before dragging", () => {
+    expect(
+      getNotebookToolbarDragThreshold({
+        pointerType: "pen",
+        startedOnAction: true,
+      })
+    ).toBe(8);
+    expect(
+      getNotebookToolbarDragThreshold({
+        pointerType: "touch",
+        startedOnAction: true,
+      })
+    ).toBe(8);
+    expect(
+      getNotebookToolbarDragThreshold({
+        pointerType: "mouse",
+        startedOnAction: true,
+      })
+    ).toBe(4);
+    expect(
+      getNotebookToolbarDragThreshold({
+        pointerType: "pen",
+        startedOnAction: false,
+      })
+    ).toBe(4);
+    expect(
+      hasNotebookToolbarDragStarted({
+        deltaX: 6,
+        deltaY: 0,
+        threshold: 8,
+      })
+    ).toBe(false);
+    expect(
+      hasNotebookToolbarDragStarted({
+        deltaX: 8,
+        deltaY: 0,
+        threshold: 8,
+      })
+    ).toBe(true);
   });
 
   it("measures release velocity from only the latest 100ms of movement", () => {

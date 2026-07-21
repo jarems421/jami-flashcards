@@ -176,7 +176,7 @@ describe("notebook inking helpers", () => {
     };
 
     const samples = getBoundedLivePointerSamples(event, previous);
-    expect(NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT).toBe(2);
+    expect(NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT).toBe(3);
     expect(samples).toEqual([event]);
     expect(samples).toHaveLength(1);
     expect(getBoundedLivePointerSamples(eventWithoutHistory, previous)).toEqual([
@@ -234,10 +234,46 @@ describe("notebook inking helpers", () => {
       timeStamp: 0,
     });
 
-    expect(samples).toEqual([pressurePeak, event]);
+    expect(samples).toEqual([
+      pressurePeak,
+      { clientX: 8, clientY: 0, pressure: 0.2, timeStamp: 8 },
+      event,
+    ]);
     expect(samples.length).toBeLessThanOrEqual(
       NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT
     );
+  });
+
+  it("retains two opposite bends in chronological order", () => {
+    const firstBend = {
+      clientX: 3,
+      clientY: 8,
+      pressure: 0.5,
+      timeStamp: 3,
+    };
+    const secondBend = {
+      clientX: 7,
+      clientY: -8,
+      pressure: 0.5,
+      timeStamp: 7,
+    };
+    const event = {
+      clientX: 10,
+      clientY: 0,
+      pressure: 0.5,
+      timeStamp: 10,
+      getCoalescedEvents: () => [firstBend, secondBend],
+    };
+
+    const samples = getBoundedLivePointerSamples(event, {
+      clientX: 0,
+      clientY: 0,
+      pressure: 0.5,
+      timeStamp: 0,
+    });
+
+    expect(samples).toEqual([firstBend, secondBend, event]);
+    expect(samples).toHaveLength(NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT);
   });
 
   it("normalizes missing or zero pressure and timing to useful ink fallbacks", () => {
@@ -888,19 +924,21 @@ describe("notebook inking helpers", () => {
       anchorFx: 0.25,
       anchorFy: 0.5,
       basePanX: 50,
-      basePanY: 20,
-      currentCenterX: 220,
-      currentCenterY: 310,
+      basePanY: 100,
+      currentCenterX: 120,
+      currentCenterY: 330,
+      frameWidth: 500,
+      frameHeight: 700,
       nextZoom: 1.5,
-      startCenterX: 200,
-      startCenterY: 300,
-      startPageHeight: 600,
+      startCenterX: 150,
+      startCenterY: 350,
+      startPageHeight: 500,
       startPageWidth: 400,
       startZoom: 1,
     });
 
-    expect(transform).toEqual({ x: 20, y: -120, scaleRatio: 1.5 });
-    expect(transform.x + 0.25 * 400 * transform.scaleRatio).toBe(170);
-    expect(transform.y + 0.5 * 600 * transform.scaleRatio).toBe(330);
+    expect(transform).toEqual({ x: -30, y: -45, scaleRatio: 1.5 });
+    expect(transform.x + 0.25 * 400 * transform.scaleRatio).toBe(120);
+    expect(transform.y + 0.5 * 500 * transform.scaleRatio).toBe(330);
   });
 });

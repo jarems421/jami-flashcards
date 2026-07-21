@@ -74,6 +74,7 @@ export type NotebookTextBlock = {
   width: number;
   height: number;
   text: string;
+  outlineVisible: boolean;
 };
 
 export type Notebook = {
@@ -386,8 +387,8 @@ function normalizeTextBlock(value: unknown): NotebookTextBlock | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const block = value as Record<string, unknown>;
   const id = normalizeOptionalString(block.id, 160);
-  const text = normalizeOptionalString(block.text, MAX_NOTEBOOK_TEXT_BLOCK_TEXT);
-  if (!id || !text) return null;
+  if (!id || typeof block.text !== "string") return null;
+  const text = normalizeOptionalString(block.text, MAX_NOTEBOOK_TEXT_BLOCK_TEXT) ?? "";
 
   const width = clampTextBlockNumber(
     block.width,
@@ -409,6 +410,8 @@ function normalizeTextBlock(value: unknown): NotebookTextBlock | null {
     width,
     height,
     text,
+    outlineVisible:
+      typeof block.outlineVisible === "boolean" ? block.outlineVisible : true,
   };
 }
 
@@ -435,6 +438,7 @@ export function createNotebookTextBlocksFromTypedContent(
       width: 520,
       height: 180,
       text,
+      outlineVisible: true,
     },
   ];
 }

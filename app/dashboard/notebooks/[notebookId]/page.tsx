@@ -7,9 +7,11 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  memo,
   useMemo,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
@@ -57,12 +59,17 @@ import {
   resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
 import { getNotebookViewportLayout } from "@/lib/workspace/notebook-viewport";
-import type { NotebookEraserMode } from "@/lib/workspace/notebook-eraser";
+import {
+  NOTEBOOK_ERASER_THICKNESS_BY_SIZE,
+  type NotebookEraserMode,
+  type NotebookEraserSize,
+} from "@/lib/workspace/notebook-eraser";
 import { normalizeTimedInkPoint } from "@/lib/workspace/notebook-ink-engine";
 import {
   clearNotebookNativeSelection,
   isNotebookTextEditingTarget,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
+  shouldSuppressNotebookStylusTouch,
   shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
 import {
@@ -82,7 +89,6 @@ import {
   getNotebookPageDragIntent,
   getNotebookPageIndexAfterSwipe,
   getNotebookLivePinchTransform,
-  getNotebookPagePanAfterPinch,
   getNotebookSwipeDragOffset,
   getNotebookSwipeDirection,
   getNotebookSwipeReleaseDecision,
@@ -120,6 +126,7 @@ import {
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 import {
   clampNotebookToolbarDragOffset,
+  getNotebookToolbarDragThreshold,
   getNotebookToolbarDragVelocity,
   getNotebookToolbarSettleDuration,
   getNearestNotebookToolbarDock,
@@ -139,7 +146,6 @@ type Stroke = PreparedNotebookStroke & {
 };
 type SaveStatus = "saved" | "unsaved" | "saving" | "failed";
 type EditorTool = NotebookStrokeTool | "text" | "select";
-type EraserWidth = "small" | "medium" | "large";
 type TextBlockDragState = {
   id: string;
   startX: number;
@@ -203,6 +209,8 @@ type PinchZoomState = {
   /** Committed pan at gesture start; the live transform builds on top of it. */
   basePanX: number;
   basePanY: number;
+  frameHeight: number;
+  frameWidth: number;
   pendingZoom: number;
   startPageHeight: number;
   startPageWidth: number;
@@ -221,8 +229,10 @@ type NotebookToolbarDragState = {
   frameWidth: number;
   frameHeight: number;
   originDock: NotebookToolbarDock;
+  pointerType: string;
   samples: NotebookToolbarPointerSample[];
   started: boolean;
+  startedOnAction: boolean;
 };
 type NotebookUndoAction = {
   type: "textBlocks";
@@ -282,11 +292,6 @@ const HIGHLIGHTER_COLOR_HEX: Record<NotebookHighlighterColor, string> = {
 const TEXT_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "text-slate-950 placeholder:text-slate-400",
   black: "text-[#f8fafc] placeholder:text-slate-500",
-};
-const ERASER_WIDTH_VALUE: Record<EraserWidth, number> = {
-  small: 36,
-  medium: 56,
-  large: 76,
 };
 // Each edge keeps a generous 32px invisible hit area, but the visible
 // affordance is a slim grip bar sitting on the border, not a bubble.
@@ -383,6 +388,10 @@ function normalizeStrokes(value: unknown): Stroke[] {
 
 function makeTextBlockId() {
   return `text-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function getTextBlockOptionsElementId(blockId: string, element: "menu" | "trigger") {
+  return `notebook-text-box-options-${encodeURIComponent(blockId)}-${element}`;
 }
 
 function clampTextBlock(block: NotebookTextBlock): NotebookTextBlock {
@@ -514,8 +523,14 @@ function NotebookPageThumbnail({
         {textBlocks.map((block) => (
           <div
             key={`${page.id}-${block.id}`}
-            className={`absolute overflow-hidden rounded-sm px-1 text-[0.34rem] font-semibold leading-tight ${
+            className={`absolute overflow-hidden rounded-sm border-[0.5px] px-1 text-[0.34rem] font-semibold leading-tight ${
               pageColor === "black" ? "text-[#f8fafc]/80" : "text-slate-950/75"
+            } ${
+              block.outlineVisible
+                ? pageColor === "black"
+                  ? "border-white/25"
+                  : "border-slate-950/20"
+                : "border-transparent"
             }`}
             style={{
               left: `${(block.x / CANVAS_WIDTH) * 100}%`,
@@ -545,7 +560,7 @@ function NotebookPageThumbnail({
 // file, ink SVG, text blocks). Used as the swipe preview so the real adjacent
 // page is visible while dragging, instead of a blank placeholder that only fills
 // in after the editor remounts.
-function NotebookPageStaticContent({
+const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
   page,
   notebook,
   backgroundFile,
@@ -606,7 +621,13 @@ function NotebookPageStaticContent({
         <div
           key={block.id}
           aria-hidden="true"
-          className="absolute overflow-hidden rounded-[0.45rem] border border-transparent bg-transparent"
+          className={`absolute overflow-hidden rounded-[0.45rem] border bg-transparent ${
+            block.outlineVisible
+              ? pageColor === "black"
+                ? "border-white/30"
+                : "border-slate-950/25"
+              : "border-transparent"
+          }`}
           style={{
             left: `${(block.x / CANVAS_WIDTH) * 100}%`,
             top: `${(block.y / CANVAS_HEIGHT) * 100}%`,
@@ -625,7 +646,7 @@ function NotebookPageStaticContent({
       ))}
     </>
   );
-}
+});
 
 function safelySetPointerCapture(element: HTMLElement, pointerId: number) {
   try {
@@ -663,6 +684,7 @@ type NotebookIconName =
   | "redo"
   | "ai"
   | "chevron"
+  | "options"
   | "trash"
   | "plus"
   | "check"
@@ -734,6 +756,13 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
         </>
       ) : null}
       {name === "chevron" ? <path {...common} d="m7 10.4 5 5 5-5" /> : null}
+      {name === "options" ? (
+        <>
+          <circle cx="5" cy="12" r="1.35" fill="currentColor" />
+          <circle cx="12" cy="12" r="1.35" fill="currentColor" />
+          <circle cx="19" cy="12" r="1.35" fill="currentColor" />
+        </>
+      ) : null}
       {name === "trash" ? (
         <>
           <path {...common} d="M4.5 6.6h15M9.5 6.6V5.2a1.6 1.6 0 0 1 1.6-1.6h1.8a1.6 1.6 0 0 1 1.6 1.6v1.4" />
@@ -775,6 +804,7 @@ function ToolbarIconButton({
       aria-label={label}
       title={label}
       disabled={disabled}
+      data-notebook-toolbar-action="true"
       onClick={onClick}
       className={`relative inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-full border text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
         active
@@ -986,6 +1016,9 @@ export default function NotebookEditorPage() {
   const [textBlocks, setTextBlocks] = useState<NotebookTextBlock[]>([]);
   const [selectedTextBlockId, setSelectedTextBlockId] = useState<string | null>(null);
   const [editingTextBlockId, setEditingTextBlockId] = useState<string | null>(null);
+  const [openTextBlockOptionsId, setOpenTextBlockOptionsId] = useState<string | null>(
+    null
+  );
   const [pageColor, setPageColor] = useState<NotebookPageColor>("white");
   const [pageStyle, setPageStyle] = useState<NotebookPageStyle>("plain");
   const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
@@ -993,7 +1026,7 @@ export default function NotebookEditorPage() {
   const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>("yellow");
   const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
   const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
-  const [eraserWidth, setEraserWidth] = useState<EraserWidth>("medium");
+  const [eraserWidth, setEraserWidth] = useState<NotebookEraserSize>("medium");
   const [undoDepth, setUndoDepth] = useState(0);
   const [redoDepth, setRedoDepth] = useState(0);
   const [inkUndoDepth, setInkUndoDepth] = useState(0);
@@ -1052,6 +1085,7 @@ export default function NotebookEditorPage() {
   const pageTrackPendingOffsetRef = useRef(0);
   const pageTrackAnimationFrameRef = useRef<number | null>(null);
   const pinchZoomAnimationFrameRef = useRef<number | null>(null);
+  const pinchCommitPendingRef = useRef(false);
   const pageTrackTransitionResolverRef = useRef<(() => void) | null>(null);
   const pageNavigationTokenRef = useRef(0);
   const pageNavigationLockedRef = useRef(false);
@@ -1211,7 +1245,7 @@ export default function NotebookEditorPage() {
 
   const writeLivePinchTransform = useCallback((pinch: PinchZoomState) => {
     const surface = pageSurfaceRef.current;
-    if (!surface) return;
+    if (!surface) return null;
     const liveTransform = getNotebookLivePinchTransform({
       anchorFx: pinch.anchorFx,
       anchorFy: pinch.anchorFy,
@@ -1219,6 +1253,8 @@ export default function NotebookEditorPage() {
       basePanY: pinch.basePanY,
       currentCenterX: pinch.lastCenterX,
       currentCenterY: pinch.lastCenterY,
+      frameHeight: pinch.frameHeight,
+      frameWidth: pinch.frameWidth,
       nextZoom: pinch.pendingZoom,
       startCenterX: pinch.startCenterX,
       startCenterY: pinch.startCenterY,
@@ -1230,6 +1266,7 @@ export default function NotebookEditorPage() {
     surface.style.transform = `translate3d(${liveTransform.x}px, ${
       liveTransform.y
     }px, 0) scale(${liveTransform.scaleRatio})`;
+    return liveTransform;
   }, []);
 
   const queueLivePinchTransform = useCallback(() => {
@@ -1242,6 +1279,7 @@ export default function NotebookEditorPage() {
   }, [writeLivePinchTransform]);
 
   const resetPageSurfaceTransform = useCallback(() => {
+    pinchCommitPendingRef.current = false;
     const surface = pageSurfaceRef.current;
     if (!surface) return;
     surface.style.transformOrigin = "0 0";
@@ -1250,6 +1288,14 @@ export default function NotebookEditorPage() {
     }px, 0)`;
     surface.style.willChange = "";
   }, []);
+
+  // Keep the last compositor pinch matrix in place until React has committed
+  // the matching page dimensions. Resetting the scale before that commit
+  // briefly renders the old-sized sheet at the new origin on iPad.
+  useLayoutEffect(() => {
+    if (!pinchCommitPendingRef.current) return;
+    resetPageSurfaceTransform();
+  }, [pagePan, pageZoom, resetPageSurfaceTransform]);
 
   const updatePageSwipeMotion = useCallback((next: PageSwipeMotion | null) => {
     pageSwipeMotionRef.current = next;
@@ -1716,10 +1762,48 @@ export default function NotebookEditorPage() {
   );
 
   useEffect(() => {
+    if (
+      openTextBlockOptionsId &&
+      openTextBlockOptionsId !== selectedTextBlockId
+    ) {
+      setOpenTextBlockOptionsId(null);
+    }
+  }, [openTextBlockOptionsId, selectedTextBlockId]);
+
+  useEffect(() => {
+    if (!openTextBlockOptionsId || typeof window === "undefined") return;
+
+    const focusFrame = window.requestAnimationFrame(() => {
+      const menu = document.getElementById(
+        getTextBlockOptionsElementId(openTextBlockOptionsId, "menu")
+      );
+      menu
+        ?.querySelector<HTMLElement>('[role="menuitemcheckbox"]')
+        ?.focus({ preventScroll: true });
+    });
+    const handleOutsidePointerDown = (event: PointerEvent) => {
+      if (
+        event.target instanceof Element &&
+        event.target.closest("[data-text-block-options-root]")
+      ) {
+        return;
+      }
+      setOpenTextBlockOptionsId(null);
+    };
+
+    document.addEventListener("pointerdown", handleOutsidePointerDown, true);
+    return () => {
+      window.cancelAnimationFrame(focusFrame);
+      document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
+    };
+  }, [openTextBlockOptionsId]);
+
+  useEffect(() => {
     if (!selectedPage) {
       setTextBlocks([]);
       setSelectedTextBlockId(null);
       setEditingTextBlockId(null);
+      setOpenTextBlockOptionsId(null);
       undoStackRef.current = [];
       redoStackRef.current = [];
       setUndoDepth(0);
@@ -1742,6 +1826,7 @@ export default function NotebookEditorPage() {
     setTextBlocks(selectedPage.textBlocks);
     setSelectedTextBlockId(null);
     setEditingTextBlockId(null);
+    setOpenTextBlockOptionsId(null);
     undoStackRef.current = [];
     redoStackRef.current = [];
     setUndoDepth(0);
@@ -1905,7 +1990,6 @@ export default function NotebookEditorPage() {
         touchInkHintTimeoutRef.current = null;
       }
       cancelPinchZoomAnimationFrame();
-      document.body.classList.remove("jami-inking-active");
     };
   }, [
     cancelPinchZoomAnimationFrame,
@@ -1972,6 +2056,8 @@ export default function NotebookEditorPage() {
       // the first live pinch frame jump after rotation or viewport resizing.
       basePanX: rect.left - frameRect.left,
       basePanY: rect.top - frameRect.top,
+      frameHeight: frameRect.height,
+      frameWidth: frameRect.width,
       pendingZoom: viewportLayout.zoom,
       startPageHeight: rect.height,
       startPageWidth: rect.width,
@@ -1983,38 +2069,17 @@ export default function NotebookEditorPage() {
   // the fingers left it, clamped to the frame.
   const finalizePinchCommit = (pinch: PinchZoomState) => {
     cancelPinchZoomAnimationFrame();
-    const frameRect = pageFrameRef.current?.getBoundingClientRect();
     const surface = pageSurfaceRef.current;
-    if (!frameRect || !surface) return;
+    if (!surface) return;
     const nextZoom = pinch.pendingZoom;
-    // Pinch completion must use the frame that is actually on screen. The
-    // ResizeObserver-backed state may still describe the pre-rotation frame.
-    const committedLayout = getNotebookViewportLayout({
-      frameWidth: frameRect.width,
-      frameHeight: frameRect.height,
-      pageWidth: CANVAS_WIDTH,
-      pageHeight: CANVAS_HEIGHT,
-      zoom: nextZoom,
-    });
-    const nextPan = getNotebookPagePanAfterPinch({
-      pinchCenterX: pinch.lastCenterX,
-      pinchCenterY: pinch.lastCenterY,
-      frameLeft: frameRect.left,
-      frameTop: frameRect.top,
-      anchorFx: pinch.anchorFx,
-      anchorFy: pinch.anchorFy,
-      pageWidth: committedLayout.pageSize.width,
-      pageHeight: committedLayout.pageSize.height,
-      frameWidth: frameRect.width,
-      frameHeight: frameRect.height,
-    });
+    // Flush the newest touch sample and commit that exact bounded transform.
+    // Live and settled geometry must be identical or the page visibly shifts
+    // as soon as the second finger lifts.
+    const finalTransform = writeLivePinchTransform(pinch);
+    if (!finalTransform) return;
+    const nextPan = { x: finalTransform.x, y: finalTransform.y };
     pagePanLiveRef.current = nextPan;
-    // Reset the manual gesture transform to the value React will render next;
-    // React skips style writes it did not see change, so this must not be
-    // left stale.
-    surface.style.transformOrigin = "0 0";
-    surface.style.transform = `translate3d(${nextPan.x}px, ${nextPan.y}px, 0)`;
-    surface.style.willChange = "";
+    pinchCommitPendingRef.current = true;
     setPageZoom(nextZoom);
     setPagePan(nextPan);
   };
@@ -2127,6 +2192,7 @@ export default function NotebookEditorPage() {
       width: 300,
       height: 96,
       text: "",
+      outlineVisible: true,
     });
     setTextBlocks((current) => {
       const next = [...current, block];
@@ -2135,6 +2201,7 @@ export default function NotebookEditorPage() {
     });
     setSelectedTextBlockId(block.id);
     setEditingTextBlockId(block.id);
+    setOpenTextBlockOptionsId(null);
     markPageUnsaved();
     // The text tool places exactly one box per activation: hand control back
     // to the select tool so tapping elsewhere deselects instead of dropping
@@ -2161,8 +2228,9 @@ export default function NotebookEditorPage() {
     // pointerdown is delivered, which is why a stroke right after a horizontal
     // one fails to register. touch-action is not honored for the Pencil here,
     // but suppressing the underlying touch-event default is. We only cancel for
-    // stylus input (or while ink is being drawn) and never over a text editor,
-    // so finger scroll/zoom/swipe (all JS-driven) are untouched.
+    // stylus input (or while ink is being drawn) and never over a text editor
+    // or an interactive control, so Pencil taps and finger navigation remain
+    // native while bare-page ink still blocks Safari navigation gestures.
     const isStylusTouchEvent = (event: TouchEvent) => {
       const touches = event.touches.length > 0 ? event.touches : event.changedTouches;
       for (let index = 0; index < touches.length; index += 1) {
@@ -2174,8 +2242,13 @@ export default function NotebookEditorPage() {
     };
     const suppressStylusGesture: EventListener = (event) => {
       if (!(event instanceof TouchEvent) || !event.cancelable) return;
-      if (isNotebookTextEditingTarget(event.target)) return;
-      if (inkInteractionActiveRef.current || isStylusTouchEvent(event)) {
+      if (
+        shouldSuppressNotebookStylusTouch({
+          inkInteractionActive: inkInteractionActiveRef.current,
+          stylusTouch: isStylusTouchEvent(event),
+          target: event.target,
+        })
+      ) {
         event.preventDefault();
       }
     };
@@ -3260,6 +3333,7 @@ export default function NotebookEditorPage() {
     setPenMenuOpen(false);
     setHighlighterMenuOpen(false);
     setEraserMenuOpen(false);
+    setOpenTextBlockOptionsId(null);
     setSelectedTextBlockId(null);
     setEditingTextBlockId(null);
     if (handleTouchPointerDown(event)) return;
@@ -3323,6 +3397,21 @@ export default function NotebookEditorPage() {
     markPageUnsaved();
   };
 
+  const toggleTextBlockOutline = (blockId: string) => {
+    setTextBlocks((current) => {
+      const next = current.map((block) =>
+        block.id === blockId
+          ? { ...block, outlineVisible: !block.outlineVisible }
+          : block
+      );
+      if (next.some((block, index) => block !== current[index])) {
+        pushUndoAction({ type: "textBlocks", previous: current, next });
+      }
+      return next;
+    });
+    markPageUnsaved();
+  };
+
   const deleteTextBlock = (blockId: string) => {
     setTextBlocks((current) => {
       const next = current.filter((block) => block.id !== blockId);
@@ -3333,7 +3422,55 @@ export default function NotebookEditorPage() {
     });
     setSelectedTextBlockId((current) => (current === blockId ? null : current));
     setEditingTextBlockId((current) => (current === blockId ? null : current));
+    setOpenTextBlockOptionsId((current) => (current === blockId ? null : current));
     markPageUnsaved();
+  };
+
+  const handleTextBlockOptionsKeyDown = (
+    blockId: string,
+    event: ReactKeyboardEvent<HTMLDivElement>
+  ) => {
+    if (event.key === "Tab") {
+      setOpenTextBlockOptionsId(null);
+      return;
+    }
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      setOpenTextBlockOptionsId(null);
+      window.requestAnimationFrame(() => {
+        document
+          .getElementById(getTextBlockOptionsElementId(blockId, "trigger"))
+          ?.focus({ preventScroll: true });
+      });
+      return;
+    }
+    if (
+      event.key !== "ArrowDown" &&
+      event.key !== "ArrowUp" &&
+      event.key !== "Home" &&
+      event.key !== "End"
+    ) {
+      return;
+    }
+
+    const menuItems = Array.from(
+      event.currentTarget.querySelectorAll<HTMLButtonElement>(
+        '[role="menuitemcheckbox"], [role="menuitem"]'
+      )
+    );
+    if (menuItems.length === 0) return;
+    event.preventDefault();
+    const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
+    const nextIndex =
+      event.key === "Home"
+        ? 0
+        : event.key === "End"
+          ? menuItems.length - 1
+          : event.key === "ArrowUp"
+            ? (currentIndex - 1 + menuItems.length) % menuItems.length
+            : (currentIndex + 1) % menuItems.length;
+    menuItems[nextIndex]?.focus({ preventScroll: true });
   };
 
   const startTextBlockDrag = (
@@ -3342,6 +3479,7 @@ export default function NotebookEditorPage() {
   ) => {
     if (!fullNotebookEditingEnabled || pageNavigationLockedRef.current) return;
     if (isTextResizeHandleTarget(event.target)) return;
+    setOpenTextBlockOptionsId(null);
     const pageElement = event.currentTarget.closest<HTMLElement>("[data-notebook-page-surface]");
     if (!pageElement) return;
     const rect = pageElement.getBoundingClientRect();
@@ -3426,6 +3564,7 @@ export default function NotebookEditorPage() {
     event: ReactPointerEvent<HTMLElement>
   ) => {
     if (!fullNotebookEditingEnabled || pageNavigationLockedRef.current) return;
+    setOpenTextBlockOptionsId(null);
     const pageElement = event.currentTarget.closest<HTMLElement>("[data-notebook-page-surface]");
     if (!pageElement) return;
     const rect = pageElement.getBoundingClientRect();
@@ -3474,6 +3613,7 @@ export default function NotebookEditorPage() {
         width: resize.originWidth,
         height: resize.originHeight,
         text: currentBlock?.text ?? resize.originText,
+        outlineVisible: currentBlock?.outlineVisible ?? true,
       },
       edge: resize.edge,
       deltaX: dx,
@@ -3766,6 +3906,7 @@ export default function NotebookEditorPage() {
         setPenMenuOpen(false);
         setHighlighterMenuOpen(false);
         setEraserMenuOpen(false);
+        setOpenTextBlockOptionsId(null);
         setSelectedTextBlockId(null);
         setEditingTextBlockId(null);
       }
@@ -3911,6 +4052,15 @@ export default function NotebookEditorPage() {
 
     const frameRect = frame.getBoundingClientRect();
     const toolbarRect = toolbar.getBoundingClientRect();
+    const toolbarAction =
+      event.target instanceof Element
+        ? event.target.closest<HTMLElement>(
+            "[data-notebook-toolbar-action='true']"
+          )
+        : null;
+    const startedOnAction = Boolean(
+      toolbarAction && toolbar.contains(toolbarAction)
+    );
     toolbarDragRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -3924,6 +4074,7 @@ export default function NotebookEditorPage() {
       frameWidth: frameRect.width,
       frameHeight: frameRect.height,
       originDock: toolbarDockRef.current,
+      pointerType: event.pointerType,
       samples: [
         {
           x: event.clientX,
@@ -3932,8 +4083,12 @@ export default function NotebookEditorPage() {
         },
       ],
       started: false,
+      startedOnAction,
     };
-    safelySetPointerCapture(toolbar, event.pointerId);
+    // Keep a control tap under the native button until movement proves this is
+    // a drag. Capturing it on the toolbar immediately can retarget Pencil-up
+    // and suppress Safari's click. Blank toolbar space can capture at once.
+    if (!startedOnAction) safelySetPointerCapture(toolbar, event.pointerId);
   };
 
   const handleToolbarPointerMove = (
@@ -3969,13 +4124,21 @@ export default function NotebookEditorPage() {
     const deltaY = drag.lastY - drag.startY;
     if (
       !drag.started &&
-      !hasNotebookToolbarDragStarted({ deltaX, deltaY })
+      !hasNotebookToolbarDragStarted({
+        deltaX,
+        deltaY,
+        threshold: getNotebookToolbarDragThreshold({
+          pointerType: drag.pointerType,
+          startedOnAction: drag.startedOnAction,
+        }),
+      })
     ) {
       return;
     }
 
     if (!drag.started) {
       drag.started = true;
+      safelySetPointerCapture(toolbar, event.pointerId);
       toolbar.dataset.toolbarDragging = "true";
       closeDrawingToolMenus();
       clearNotebookNativeSelection(document);
@@ -3984,6 +4147,28 @@ export default function NotebookEditorPage() {
     event.preventDefault();
     event.stopPropagation();
     scheduleToolbarDragFrame();
+  };
+
+  const handleToolbarPointerLeave = (
+    event: ReactPointerEvent<HTMLDivElement>
+  ) => {
+    const drag = toolbarDragRef.current;
+    const toolbar = drawingToolbarRef.current;
+    if (
+      !drag ||
+      !toolbar ||
+      drag.pointerId !== event.pointerId ||
+      drag.started ||
+      !drag.startedOnAction
+    ) {
+      return;
+    }
+
+    // An action candidate is intentionally not captured before the drag
+    // threshold. Clear it if the Pencil leaves the toolbar so a missed
+    // pointer-up cannot block the next interaction.
+    toolbarDragRef.current = null;
+    toolbar.style.transition = "";
   };
 
   const finishToolbarPointer = (
@@ -4309,7 +4494,7 @@ export default function NotebookEditorPage() {
                       Eraser size
                     </div>
                     <div className="mt-2 grid grid-cols-3 gap-2">
-                      {(["small", "medium", "large"] as EraserWidth[]).map((width) => (
+                      {(["small", "medium", "large"] as NotebookEraserSize[]).map((width) => (
                         <button
                           key={width}
                           type="button"
@@ -4745,7 +4930,9 @@ export default function NotebookEditorPage() {
                     highlighterThickness={getHighlighterWidthFromPercent(
                       highlighterThicknessPercent
                     )}
-                    eraserThickness={ERASER_WIDTH_VALUE[eraserWidth]}
+                    eraserThickness={
+                      NOTEBOOK_ERASER_THICKNESS_BY_SIZE[eraserWidth]
+                    }
                     readOnly={
                       !fullNotebookEditingEnabled || Boolean(pageSwipeMotion)
                     }
@@ -4774,7 +4961,6 @@ export default function NotebookEditorPage() {
                       stylusCooldownUntilRef.current = active
                         ? Number.POSITIVE_INFINITY
                         : Date.now() + 180;
-                      document.body.classList.toggle("jami-inking-active", active);
                       if (active) {
                         setPenMenuOpen(false);
                         setHighlighterMenuOpen(false);
@@ -4809,15 +4995,29 @@ export default function NotebookEditorPage() {
                       const displayText = block.text.trim() ? block.text : selected ? "Tap again to type" : "";
                       const frameBorderClass =
                         pageColor === "black" ? "border-white/55" : "border-slate-950/40";
+                      const idleBorderClass = block.outlineVisible
+                        ? pageColor === "black"
+                          ? "border-white/30"
+                          : "border-slate-950/25"
+                        : "border-transparent";
+                      const optionsOpen = openTextBlockOptionsId === block.id;
+                      const optionsMenuId = getTextBlockOptionsElementId(block.id, "menu");
+                      const optionsTriggerId = getTextBlockOptionsElementId(
+                        block.id,
+                        "trigger"
+                      );
+                      const optionsOpenAbove =
+                        block.y + block.height / 2 > CANVAS_HEIGHT / 2;
+                      const optionsAlignFromLeft = block.x + block.width < 420;
                       return (
                         <div
                           key={block.id}
-                          className={`notebook-text-object pointer-events-auto absolute rounded-[0.45rem] border bg-transparent transition ${
+                          className={`notebook-text-object pointer-events-auto absolute rounded-[0.45rem] border bg-transparent transition-[border-color,box-shadow] duration-150 ${
                             editing
                               ? `cursor-text ${frameBorderClass} shadow-[0_2px_12px_rgba(0,0,0,0.12)]`
                               : selected
                                 ? `cursor-grab touch-none select-none ${frameBorderClass} active:cursor-grabbing`
-                                : "cursor-grab touch-none select-none border-transparent active:cursor-grabbing"
+                                : `cursor-grab touch-none select-none ${idleBorderClass} active:cursor-grabbing`
                           }`}
                           style={{
                             left: `${(block.x / CANVAS_WIDTH) * 100}%`,
@@ -4860,20 +5060,93 @@ export default function NotebookEditorPage() {
                         >
                           {selected && fullNotebookEditingEnabled && !gesturing ? (
                             <>
-                              <div className="absolute right-1.5 top-1.5 z-20 rounded-[0.55rem] border border-black/15 bg-black/60 p-0.5 shadow-sm backdrop-blur-sm">
+                              <div
+                                data-text-block-options-root
+                                className="absolute right-1.5 top-1.5 z-30"
+                              >
                                 <button
+                                  id={optionsTriggerId}
                                   type="button"
-                                  aria-label="Delete text block"
-                                  title="Delete text block"
-                                  className="inline-grid h-6 w-6 place-items-center rounded-[0.4rem] text-[#f8fafc] transition hover:bg-white/15 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] [&_svg]:h-3.5 [&_svg]:w-3.5"
+                                  aria-label="Text box options"
+                                  title="Text box options"
+                                  aria-haspopup="menu"
+                                  aria-expanded={optionsOpen}
+                                  aria-controls={optionsMenuId}
+                                  data-notebook-stylus-action="true"
+                                  data-text-block-options-trigger="true"
+                                  className="inline-grid h-7 w-7 place-items-center rounded-[0.55rem] border border-black/15 bg-black/60 text-[#f8fafc] shadow-sm backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] [&_svg]:h-4 [&_svg]:w-4"
                                   onPointerDown={(event) => event.stopPropagation()}
                                   onClick={(event) => {
                                     event.stopPropagation();
-                                    deleteTextBlock(block.id);
+                                    setOpenTextBlockOptionsId((current) =>
+                                      current === block.id ? null : block.id
+                                    );
                                   }}
                                 >
-                                  <NotebookIcon name="trash" />
+                                  <NotebookIcon name="options" />
                                 </button>
+                                {optionsOpen ? (
+                                  <div
+                                    id={optionsMenuId}
+                                    role="menu"
+                                    aria-label="Text box options"
+                                    className={`absolute z-40 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${
+                                      optionsOpenAbove ? "bottom-9" : "top-9"
+                                    } ${optionsAlignFromLeft ? "left-0" : "right-0"}`}
+                                    onPointerDown={(event) => event.stopPropagation()}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onKeyDown={(event) =>
+                                      handleTextBlockOptionsKeyDown(block.id, event)
+                                    }
+                                  >
+                                    <button
+                                      type="button"
+                                      role="menuitemcheckbox"
+                                      aria-checked={block.outlineVisible}
+                                      data-notebook-stylus-action="true"
+                                      data-text-block-outline-toggle="true"
+                                      className="flex w-full items-center justify-between gap-4 rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                      onPointerDown={(event) => event.stopPropagation()}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        toggleTextBlockOutline(block.id);
+                                      }}
+                                    >
+                                      <span>Show outline</span>
+                                      <span
+                                        aria-hidden="true"
+                                        className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
+                                          block.outlineVisible
+                                            ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)]"
+                                            : "border-[var(--color-border-strong)] bg-[var(--color-glass-medium)]"
+                                        }`}
+                                      >
+                                        <span
+                                          className={`absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full shadow-sm transition-transform ${
+                                            block.outlineVisible
+                                              ? "translate-x-[1.05rem] bg-[var(--color-selected-text)]"
+                                              : "translate-x-0.5 bg-text-muted"
+                                          }`}
+                                        />
+                                      </span>
+                                    </button>
+                                    <button
+                                      type="button"
+                                      role="menuitem"
+                                      data-notebook-stylus-action="true"
+                                      data-text-block-delete="true"
+                                      className="mt-0.5 flex w-full items-center gap-2.5 rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error [&_svg]:h-4 [&_svg]:w-4"
+                                      onPointerDown={(event) => event.stopPropagation()}
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        deleteTextBlock(block.id);
+                                      }}
+                                    >
+                                      <NotebookIcon name="trash" />
+                                      <span>Delete text box</span>
+                                    </button>
+                                  </div>
+                                ) : null}
                               </div>
                               {TEXT_BLOCK_RESIZE_HANDLES.map((handle) => (
                                 <button
@@ -5009,6 +5282,7 @@ export default function NotebookEditorPage() {
                   data-toolbar-dock={toolbarDock}
                   onPointerDown={handleToolbarPointerDown}
                   onPointerMove={handleToolbarPointerMove}
+                  onPointerLeave={handleToolbarPointerLeave}
                   onPointerUp={(event) => finishToolbarPointer(event, false)}
                   onPointerCancel={(event) =>
                     finishToolbarPointer(event, true)

@@ -1,5 +1,6 @@
 export const NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY = "jami:notebook-toolbar-dock";
 export const NOTEBOOK_TOOLBAR_DRAG_THRESHOLD = 4;
+export const NOTEBOOK_TOOLBAR_ACTION_DRAG_THRESHOLD = 8;
 export const NOTEBOOK_TOOLBAR_DOCK_HYSTERESIS = 24;
 export const NOTEBOOK_TOOLBAR_VELOCITY_WINDOW_MS = 100;
 
@@ -63,6 +64,15 @@ export function hasNotebookToolbarDragStarted(input: {
     input.threshold ?? NOTEBOOK_TOOLBAR_DRAG_THRESHOLD
   );
   return Math.hypot(input.deltaX, input.deltaY) >= threshold;
+}
+
+export function getNotebookToolbarDragThreshold(input: {
+  pointerType: string;
+  startedOnAction: boolean;
+}) {
+  return input.startedOnAction && input.pointerType !== "mouse"
+    ? NOTEBOOK_TOOLBAR_ACTION_DRAG_THRESHOLD
+    : NOTEBOOK_TOOLBAR_DRAG_THRESHOLD;
 }
 
 export function getNotebookToolbarDragVelocity(

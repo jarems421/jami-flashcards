@@ -36,6 +36,10 @@ describe("notebook ink viewport integration", () => {
     expect(updateScreen).toBeGreaterThanOrEqual(0);
     expect(resetTransform).toBeGreaterThan(updateScreen);
     expect(repaint).toBeGreaterThan(resetTransform);
+    expect(syncSource).toContain("measuredDisplaySize.width");
+    expect(syncSource).toContain("measuredDisplaySize.height");
+    expect(syncSource).not.toContain("clientWidth");
+    expect(syncSource).not.toContain("clientHeight");
   });
 
   it("installs native ink guards before the first writable page is painted", () => {
@@ -79,6 +83,59 @@ describe("notebook ink viewport integration", () => {
     expect(notebookPageSource.slice(guardStart, guardEnd)).toContain(
       'surface.addEventListener("touchmove"'
     );
+    expect(notebookPageSource.slice(guardStart, guardEnd)).toContain(
+      "shouldSuppressNotebookStylusTouch({"
+    );
+  });
+
+  it("keeps Pencil taps native until toolbar movement becomes a drag", () => {
+    const pointerDownStart = notebookPageSource.indexOf(
+      "const handleToolbarPointerDown ="
+    );
+    const pointerMoveStart = notebookPageSource.indexOf(
+      "const handleToolbarPointerMove =",
+      pointerDownStart
+    );
+    const pointerLeaveStart = notebookPageSource.indexOf(
+      "const handleToolbarPointerLeave =",
+      pointerMoveStart
+    );
+    const finishStart = notebookPageSource.indexOf(
+      "const finishToolbarPointer =",
+      pointerLeaveStart
+    );
+    const pointerDownSource = notebookPageSource.slice(
+      pointerDownStart,
+      pointerMoveStart
+    );
+    const pointerMoveSource = notebookPageSource.slice(
+      pointerMoveStart,
+      pointerLeaveStart
+    );
+
+    expect(pointerDownStart).toBeGreaterThanOrEqual(0);
+    expect(pointerMoveStart).toBeGreaterThan(pointerDownStart);
+    expect(pointerLeaveStart).toBeGreaterThan(pointerMoveStart);
+    expect(finishStart).toBeGreaterThan(pointerLeaveStart);
+    expect(notebookPageSource).toContain(
+      'data-notebook-toolbar-action="true"'
+    );
+    expect(notebookPageSource).toContain(
+      'data-notebook-stylus-action="true"'
+    );
+    expect(pointerDownSource).toContain(
+      "if (!startedOnAction) safelySetPointerCapture(toolbar, event.pointerId)"
+    );
+    expect(pointerMoveSource).toContain("getNotebookToolbarDragThreshold({");
+    expect(pointerMoveSource).toContain(
+      "safelySetPointerCapture(toolbar, event.pointerId)"
+    );
+    expect(notebookPageSource.slice(pointerLeaveStart, finishStart)).toContain(
+      "toolbarDragRef.current = null"
+    );
+    expect(notebookPageSource).toContain(
+      "onPointerLeave={handleToolbarPointerLeave}"
+    );
   });
 
   it("expects capture loss after pointer cancellation before rapid re-contact", () => {
@@ -90,10 +147,83 @@ describe("notebook ink viewport integration", () => {
     );
   });
 
-  it("uses the bounded live Pencil sampler instead of unbounded replay", () => {
+  it("frame-gates bounded live Pencil preview work", () => {
     expect(editorSource).toContain(
       "getBoundedLivePointerSamples("
     );
-    expect(editorSource).not.toContain("for (const sample of samples)");
+    expect(editorSource).toContain("installFrameGatedNotebookPenPreview(");
+    expect(editorSource).toContain("event.kind === jsDraw.InputEvtType.PointerMoveEvt");
+  });
+
+  it("routes precision erasing through the circular live gesture only", () => {
+    const precisionBranchStart = editorSource.indexOf(
+      "if (precisionEraserActive) {"
+    );
+    const stockMoveBranch = editorSource.indexOf(
+      '} else if (type === "pointermove") {',
+      precisionBranchStart
+    );
+    const precisionSource = editorSource.slice(
+      precisionBranchStart,
+      stockMoveBranch
+    );
+
+    expect(precisionBranchStart).toBeGreaterThanOrEqual(0);
+    expect(stockMoveBranch).toBeGreaterThan(precisionBranchStart);
+    expect(precisionSource).toContain("new NotebookPrecisionEraserGesture(");
+    expect(precisionSource).toContain("gesture.begin({");
+    expect(precisionSource).toContain("getContinuousNotebookEraserSamples(");
+    expect(precisionSource).toContain("activeGesture.gesture.finish()");
+    expect(precisionSource).toContain("activeGesture.gesture.cancel()");
+    expect(precisionSource).not.toContain("editor.handleHTMLPointerEvent");
+  });
+
+  it("keeps an active precision gesture routed after tool or mode props change", () => {
+    expect(editorSource).toContain("const continuesPrecisionGesture =");
+    expect(editorSource).toContain(
+      "continuesPrecisionGesture || precisionEraserSelected"
+    );
+    expect(editorSource.indexOf("const continuesPrecisionGesture =")).toBeLessThan(
+      editorSource.indexOf('activeTool === "text" || readOnly')
+    );
+    expect(editorSource).toContain(
+      "precisionEraserGestureRef.current?.gesture.cancel()"
+    );
+    expect(editorSource).toContain(
+      "precisionEraserGestureRef.current?.cursorDiameter ??"
+    );
+    expect(editorSource).toContain(
+      "type === \"pointerdown\" &&\n        existingPrecisionGesture"
+    );
+  });
+
+  it("moves the circular eraser cursor without React rerenders or wet-canvas clears", () => {
+    expect(editorSource).toContain("eraserCursorRef.current");
+    expect(editorSource).toContain("const eraserSurfaceOffsetRef = useRef");
+    expect(editorSource).toContain(
+      "eraserSurfaceOffset = eraserSurfaceOffsetRef.current"
+    );
+    expect(editorSource).toContain(
+      "cursor.style.transform = `translate3d(${left}px, ${top}px, 0)`"
+    );
+    expect(editorSource).toContain(
+      "eraserCursorDiameterRef.current !== cursorDiameter"
+    );
+    expect(editorSource).toContain("cursor.style.width = `${cursorDiameter}px`");
+    expect(editorSource).toContain("cursor.style.height = `${cursorDiameter}px`");
+    expect(editorSource).not.toContain("setEraserCursor(");
+    expect(editorSource).toContain(
+      "previewable.drawPreviewAt = function suppressedDrawPreviewAt() {}"
+    );
+    expect(editorSource).not.toContain(
+      "previewable.clearPreview?.();"
+    );
+  });
+
+  it("uses the shared small, medium, and large eraser size map", () => {
+    expect(notebookPageSource).toContain(
+      "NOTEBOOK_ERASER_THICKNESS_BY_SIZE[eraserWidth]"
+    );
+    expect(notebookPageSource).not.toContain("const ERASER_WIDTH_VALUE");
   });
 });
