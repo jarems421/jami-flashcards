@@ -30,6 +30,7 @@ import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
+import { shouldSuppressNotebookNativeInkPointer } from "@/lib/workspace/notebook-interaction-lock";
 
 export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "text";
 
@@ -263,6 +264,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     forwardedRef
   ) {
     const hostRef = useRef<HTMLDivElement | null>(null);
+    const inkSurfaceRef = useRef<HTMLDivElement | null>(null);
     const editorRef = useRef<JsDrawEditor | null>(null);
     const jsDrawRef = useRef<JsDrawModule | null>(null);
     const loadingRef = useRef(true);
@@ -583,6 +585,52 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       editorRef.current?.setReadOnly(readOnly);
     }, [readOnly]);
 
+    useEffect(() => {
+      const surface = inkSurfaceRef.current;
+      if (!surface) return;
+
+      // WebKit can decide that a fast horizontal Pencil stroke is a native
+      // navigation gesture before React's delegated pointer handler runs. An
+      // active, non-passive capture listener on the real ink target closes
+      // that timing gap without affecting finger page navigation.
+      const suppressNativePenGesture = (event: PointerEvent) => {
+        if (
+          event.cancelable &&
+          shouldSuppressNotebookNativeInkPointer({
+            activeTool,
+            pointerType: event.pointerType,
+            readOnly,
+          })
+        ) {
+          event.preventDefault();
+        }
+      };
+      const listenerOptions = { capture: true, passive: false };
+      surface.addEventListener(
+        "pointerdown",
+        suppressNativePenGesture,
+        listenerOptions
+      );
+      surface.addEventListener(
+        "pointermove",
+        suppressNativePenGesture,
+        listenerOptions
+      );
+
+      return () => {
+        surface.removeEventListener(
+          "pointerdown",
+          suppressNativePenGesture,
+          listenerOptions
+        );
+        surface.removeEventListener(
+          "pointermove",
+          suppressNativePenGesture,
+          listenerOptions
+        );
+      };
+    }, [activeTool, readOnly]);
+
     const cancelEditorGesture = useCallback(() => {
       inkSmoothersRef.current.clear();
       const editor = editorRef.current;
@@ -725,6 +773,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           editor.handleHTMLPointerEvent(type, event.nativeEvent);
         }
       }
+      if (type === "pointercancel") {
+        // js-draw normalizes pointercancel to pointerup. Explicitly cancel its
+        // gesture too so an iPadOS navigation cancellation cannot leave an
+        // input filter active and delay the next Pencil stroke.
+        cancelEditorGesture();
+      }
       if (type === "pointerup" || type === "pointercancel") {
         inkSmoothersRef.current.delete(event.pointerId);
         let hadPointerCapture = false;
@@ -759,6 +813,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           className="notebook-js-draw-host pointer-events-none absolute inset-0"
         />
         <div
+          ref={inkSurfaceRef}
           role="img"
           aria-label="Notebook drawing page"
           className={`notebook-ink-surface absolute inset-0 touch-none select-none ${

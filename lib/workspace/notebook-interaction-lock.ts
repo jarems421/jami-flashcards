@@ -24,6 +24,18 @@ export function shouldSuppressNotebookNativeEvent(target: EventTarget | null) {
   return !isNotebookTextEditingTarget(target);
 }
 
+export function shouldSuppressNotebookNativeInkPointer(input: {
+  activeTool: string;
+  pointerType: string;
+  readOnly: boolean;
+}) {
+  return (
+    !input.readOnly &&
+    input.activeTool !== "text" &&
+    input.pointerType === "pen"
+  );
+}
+
 export function clearNotebookNativeSelection(documentRef: {
   getSelection: () => { rangeCount: number; removeAllRanges: () => void } | null;
 }) {

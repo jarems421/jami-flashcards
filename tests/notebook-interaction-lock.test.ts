@@ -4,6 +4,7 @@ import {
   NOTEBOOK_TEXT_EDITOR_SELECTOR,
   isNotebookTextEditingTarget,
   shouldSuppressNotebookNativeEvent,
+  shouldSuppressNotebookNativeInkPointer,
 } from "@/lib/workspace/notebook-interaction-lock";
 
 function makeTarget(match: boolean) {
@@ -28,6 +29,47 @@ describe("notebook interaction lock", () => {
     expect(isNotebookTextEditingTarget(target)).toBe(false);
     expect(shouldSuppressNotebookNativeEvent(target)).toBe(true);
     expect(shouldSuppressNotebookNativeEvent(null)).toBe(true);
+  });
+
+  it("suppresses native browser gestures for editable Pencil ink", () => {
+    expect(
+      shouldSuppressNotebookNativeInkPointer({
+        activeTool: "pen",
+        pointerType: "pen",
+        readOnly: false,
+      })
+    ).toBe(true);
+    expect(
+      shouldSuppressNotebookNativeInkPointer({
+        activeTool: "eraser",
+        pointerType: "pen",
+        readOnly: false,
+      })
+    ).toBe(true);
+  });
+
+  it("leaves finger navigation, text editing, and read-only pages alone", () => {
+    expect(
+      shouldSuppressNotebookNativeInkPointer({
+        activeTool: "pen",
+        pointerType: "touch",
+        readOnly: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldSuppressNotebookNativeInkPointer({
+        activeTool: "text",
+        pointerType: "pen",
+        readOnly: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldSuppressNotebookNativeInkPointer({
+        activeTool: "pen",
+        pointerType: "pen",
+        readOnly: true,
+      })
+    ).toBe(false);
   });
 
   it("clears accidental notebook selections", () => {

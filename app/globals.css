@@ -473,6 +473,7 @@
 
   body.jami-notebook-editor-active {
     overflow: hidden !important;
+    overscroll-behavior: none;
     background: var(--color-surface-base) !important;
   }
 
@@ -587,7 +588,7 @@
   .notebook-ink-surface {
     -webkit-touch-callout: none;
     -webkit-user-drag: none;
-    overscroll-behavior: contain;
+    overscroll-behavior: none;
     touch-action: none;
     user-select: none;
   }
