@@ -517,7 +517,6 @@
 
   .notebook-page-surface {
     touch-action: none;
-    will-change: transform;
   }
 
   .notebook-page-track {
@@ -744,6 +743,88 @@
 }
 
 @layer components {
+  .login-brand-halo {
+    display: grid;
+    height: 2.75rem;
+    isolation: isolate;
+    place-items: center;
+    position: relative;
+    width: 2.75rem;
+  }
+
+  .login-brand-halo::before {
+    background: radial-gradient(
+      circle,
+      rgba(255, 239, 170, 0.22) 0%,
+      color-mix(in srgb, var(--color-warm-accent) 15%, transparent) 42%,
+      transparent 72%
+    );
+    border-radius: 999px;
+    content: "";
+    filter: blur(5px);
+    inset: -1.05rem;
+    position: absolute;
+    z-index: -1;
+  }
+
+  .login-brand-spark {
+    --login-brand-spark-opacity: 1;
+
+    background: #fff8c9;
+    clip-path: polygon(
+      50% 0%,
+      59% 41%,
+      100% 50%,
+      59% 59%,
+      50% 100%,
+      41% 59%,
+      0% 50%,
+      41% 41%
+    );
+    filter: drop-shadow(0 0 3px rgba(255, 223, 115, 0.62));
+    opacity: var(--login-brand-spark-opacity);
+    position: absolute;
+  }
+
+  .login-brand-spark-one {
+    height: 0.55rem;
+    right: -0.7rem;
+    top: -0.55rem;
+    width: 0.55rem;
+  }
+
+  .login-brand-spark-two {
+    --login-brand-spark-opacity: 0.82;
+
+    bottom: -0.6rem;
+    height: 0.32rem;
+    left: -0.6rem;
+    width: 0.32rem;
+  }
+
+  .login-brand-spark-three {
+    --login-brand-spark-opacity: 0.66;
+
+    height: 0.22rem;
+    left: -0.45rem;
+    top: -0.35rem;
+    width: 0.22rem;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .login-brand-spark {
+      animation: login-brand-twinkle 3.8s ease-in-out infinite;
+    }
+
+    .login-brand-spark-two {
+      animation-delay: -1.4s;
+    }
+
+    .login-brand-spark-three {
+      animation-delay: -2.6s;
+    }
+  }
+
   .app-panel {
     position: relative;
     overflow: hidden;
@@ -1180,6 +1261,19 @@
   body .study-flashcard-face .text-text-muted,
   body .study-flashcard-face [class*="text-text-muted"] {
     color: var(--color-text-muted) !important;
+  }
+}
+
+@keyframes login-brand-twinkle {
+  0%,
+  100% {
+    opacity: calc(var(--login-brand-spark-opacity) * 0.58);
+    transform: scale(0.82);
+  }
+
+  48% {
+    opacity: var(--login-brand-spark-opacity);
+    transform: scale(1);
   }
 }
 

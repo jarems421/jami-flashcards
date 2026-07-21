@@ -10,9 +10,11 @@ import {
   interpolateInkSampleGaps,
   getNotebookCreatePagePull,
   getNotebookCreatePageThreshold,
+  getBoundedLivePointerSamples,
   getNotebookPageDragIntent,
   getNotebookPageFit,
   getNotebookPageIndexAfterSwipe,
+  getNotebookLivePinchTransform,
   getNotebookPagePanAfterPinch,
   getNotebookPageZoomAfterPinch,
   getNotebookSwipeDragOffset,
@@ -27,6 +29,7 @@ import {
   mapClientPointToNotebookPage,
   normalizePointerPressure,
   NOTEBOOK_MAX_PENDING_NATIVE_STROKES,
+  NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT,
   NOTEBOOK_NATIVE_COMMIT_IDLE_MS,
   shouldAppendInkPoint,
   shouldPointerDraw,
@@ -135,6 +138,106 @@ describe("notebook inking helpers", () => {
     expect(getPointerClientSamples(event)).toEqual([
       { clientX: 10, clientY: 20, pressure: 0.5, time: 13 },
     ]);
+  });
+
+  it("bounds each live Pencil packet while preserving its current endpoint", () => {
+    type PointerSample = {
+      clientX: number;
+      clientY: number;
+      getCoalescedEvents?: () => readonly PointerSample[];
+      pressure: number;
+      timeStamp: number;
+    };
+    const event: PointerSample = {
+      clientX: 80,
+      clientY: 0,
+      pressure: 0.5,
+      timeStamp: 8,
+      getCoalescedEvents: () =>
+        Array.from({ length: 8 }, (_, index) => ({
+          clientX: (index + 1) * 10,
+          clientY: 0,
+          pressure: 0.5,
+          timeStamp: index + 1,
+        })),
+    };
+    const eventWithoutHistory: PointerSample = {
+      clientX: 10,
+      clientY: 10,
+      pressure: 0.4,
+      timeStamp: 10,
+      getCoalescedEvents: () => [],
+    };
+    const previous = {
+      clientX: 0,
+      clientY: 0,
+      pressure: 0.5,
+      timeStamp: 0,
+    };
+
+    const samples = getBoundedLivePointerSamples(event, previous);
+    expect(NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT).toBe(2);
+    expect(samples).toEqual([event]);
+    expect(samples).toHaveLength(1);
+    expect(getBoundedLivePointerSamples(eventWithoutHistory, previous)).toEqual([
+      eventWithoutHistory,
+    ]);
+  });
+
+  it("retains one meaningful bend from a dense Pencil packet", () => {
+    const bend = {
+      clientX: 5,
+      clientY: 8,
+      pressure: 0.5,
+      timeStamp: 5,
+    };
+    const event = {
+      clientX: 10,
+      clientY: 0,
+      pressure: 0.5,
+      timeStamp: 10,
+      getCoalescedEvents: () => [bend],
+    };
+
+    expect(
+      getBoundedLivePointerSamples(event, {
+        clientX: 0,
+        clientY: 0,
+        pressure: 0.5,
+        timeStamp: 0,
+      })
+    ).toEqual([bend, event]);
+  });
+
+  it("retains a pressure peak without exceeding the live render budget", () => {
+    const pressurePeak = {
+      clientX: 5,
+      clientY: 0,
+      pressure: 0.9,
+      timeStamp: 5,
+    };
+    const event = {
+      clientX: 10,
+      clientY: 0,
+      pressure: 0.2,
+      timeStamp: 10,
+      getCoalescedEvents: () => [
+        { clientX: 2, clientY: 0, pressure: 0.2, timeStamp: 2 },
+        pressurePeak,
+        { clientX: 8, clientY: 0, pressure: 0.2, timeStamp: 8 },
+      ],
+    };
+    const samples = getBoundedLivePointerSamples(event, {
+      clientX: 0,
+      clientY: 0,
+      pressure: 0.2,
+      timeStamp: 0,
+    });
+
+    expect(samples).toEqual([pressurePeak, event]);
+    expect(samples.length).toBeLessThanOrEqual(
+      NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT
+    );
   });
 
   it("normalizes missing or zero pressure and timing to useful ink fallbacks", () => {
@@ -397,12 +500,13 @@ describe("notebook inking helpers", () => {
     ).toBeNull();
   });
 
-  it("keeps landscape page swipes horizontal while vertical overflow pans", () => {
+  it("swipes fitted pages but never changes page during zoomed panning", () => {
     expect(
       getNotebookPageDragIntent({
         axis: "horizontal",
         canPanHorizontally: false,
         canPanVertically: true,
+        zoom: 1,
       })
     ).toBe("page");
     expect(
@@ -410,13 +514,23 @@ describe("notebook inking helpers", () => {
         axis: "vertical",
         canPanHorizontally: false,
         canPanVertically: true,
+        zoom: 1.2,
       })
     ).toBe("pan");
     expect(
       getNotebookPageDragIntent({
         axis: "horizontal",
+        canPanHorizontally: false,
+        canPanVertically: true,
+        zoom: 1.2,
+      })
+    ).toBe("none");
+    expect(
+      getNotebookPageDragIntent({
+        axis: "horizontal",
         canPanHorizontally: true,
         canPanVertically: true,
+        zoom: 1.2,
       })
     ).toBe("pan");
     expect(
@@ -424,6 +538,7 @@ describe("notebook inking helpers", () => {
         axis: "vertical",
         canPanHorizontally: false,
         canPanVertically: false,
+        zoom: 1,
       })
     ).toBe("none");
   });
@@ -766,5 +881,26 @@ describe("notebook inking helpers", () => {
         frameHeight: 600,
       })
     ).toEqual({ x: 100, y: 100 });
+  });
+
+  it("keeps the live pinch anchor under moving fingers", () => {
+    const transform = getNotebookLivePinchTransform({
+      anchorFx: 0.25,
+      anchorFy: 0.5,
+      basePanX: 50,
+      basePanY: 20,
+      currentCenterX: 220,
+      currentCenterY: 310,
+      nextZoom: 1.5,
+      startCenterX: 200,
+      startCenterY: 300,
+      startPageHeight: 600,
+      startPageWidth: 400,
+      startZoom: 1,
+    });
+
+    expect(transform).toEqual({ x: 20, y: -120, scaleRatio: 1.5 });
+    expect(transform.x + 0.25 * 400 * transform.scaleRatio).toBe(170);
+    expect(transform.y + 0.5 * 600 * transform.scaleRatio).toBe(330);
   });
 });

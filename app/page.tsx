@@ -92,7 +92,12 @@ export default function Home() {
       className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-[var(--app-background)] px-5 py-10 text-text-primary"
     >
       <div className="relative flex w-full max-w-md flex-col items-center text-center">
-        <BrandMark size="lg" />
+        <div className="login-brand-halo" aria-hidden="true">
+          <span className="login-brand-spark login-brand-spark-one" />
+          <span className="login-brand-spark login-brand-spark-two" />
+          <span className="login-brand-spark login-brand-spark-three" />
+          <BrandMark size="lg" />
+        </div>
         <h1 className="mt-6 text-3xl font-semibold tracking-tight text-text-primary sm:text-4xl">
           Study that stays with you.
         </h1>

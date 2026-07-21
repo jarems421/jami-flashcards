@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import {
   useCallback,
   useEffect,
@@ -56,11 +56,7 @@ import {
   normalizeNotebookStrokeColor,
   resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
-import {
-  getNotebookViewportLayout,
-  getNotebookViewportPreferredZoom,
-  getNotebookViewportZoomAfterPreferredSizeChange,
-} from "@/lib/workspace/notebook-viewport";
+import { getNotebookViewportLayout } from "@/lib/workspace/notebook-viewport";
 import type { NotebookEraserMode } from "@/lib/workspace/notebook-eraser";
 import { normalizeTimedInkPoint } from "@/lib/workspace/notebook-ink-engine";
 import {
@@ -85,6 +81,7 @@ import {
   getNotebookCreatePagePull,
   getNotebookPageDragIntent,
   getNotebookPageIndexAfterSwipe,
+  getNotebookLivePinchTransform,
   getNotebookPagePanAfterPinch,
   getNotebookSwipeDragOffset,
   getNotebookSwipeDirection,
@@ -207,6 +204,8 @@ type PinchZoomState = {
   basePanX: number;
   basePanY: number;
   pendingZoom: number;
+  startPageHeight: number;
+  startPageWidth: number;
 };
 type PageFrameSize = { width: number; height: number };
 type NotebookToolbarDragState = {
@@ -972,7 +971,6 @@ function InkColorPicker({
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
-  const router = useRouter();
   const params = useParams<{ notebookId?: string | string[] }>();
   const notebookId = Array.isArray(params.notebookId)
     ? params.notebookId[0]
@@ -1053,6 +1051,7 @@ export default function NotebookEditorPage() {
   const pageTrackOffsetRef = useRef(0);
   const pageTrackPendingOffsetRef = useRef(0);
   const pageTrackAnimationFrameRef = useRef<number | null>(null);
+  const pinchZoomAnimationFrameRef = useRef<number | null>(null);
   const pageTrackTransitionResolverRef = useRef<(() => void) | null>(null);
   const pageNavigationTokenRef = useRef(0);
   const pageNavigationLockedRef = useRef(false);
@@ -1067,7 +1066,6 @@ export default function NotebookEditorPage() {
   const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
   const pagePanLiveRef = useRef<NotebookPagePan>({ x: 0, y: 0 });
-  const preferredPageZoomRef = useRef(1);
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
@@ -1184,16 +1182,6 @@ export default function NotebookEditorPage() {
   );
   const trackPreviousBackground = resolvePageBackground(trackPreviousPage);
   const trackNextBackground = resolvePageBackground(trackNextPage);
-  const preferredPageZoom = useMemo(
-    () =>
-      getNotebookViewportPreferredZoom({
-        frameWidth: frameSize.width,
-        frameHeight: frameSize.height,
-        pageWidth: CANVAS_WIDTH,
-        pageHeight: CANVAS_HEIGHT,
-      }),
-    [frameSize.height, frameSize.width]
-  );
   const viewportLayout = useMemo(
     () =>
       getNotebookViewportLayout({
@@ -1215,27 +1203,53 @@ export default function NotebookEditorPage() {
   const pageCanPanVertically =
     viewportLayout.panBounds.maxY - viewportLayout.panBounds.minY > 0.5;
 
-  useLayoutEffect(() => {
-    const previousPreferredZoom = preferredPageZoomRef.current;
-    if (Math.abs(previousPreferredZoom - preferredPageZoom) < 0.0001) return;
+  const cancelPinchZoomAnimationFrame = useCallback(() => {
+    if (pinchZoomAnimationFrameRef.current === null) return;
+    window.cancelAnimationFrame(pinchZoomAnimationFrameRef.current);
+    pinchZoomAnimationFrameRef.current = null;
+  }, []);
 
-    const nextZoom = getNotebookViewportZoomAfterPreferredSizeChange({
-      zoom: pageZoom,
-      previousPreferredZoom,
-      nextPreferredZoom: preferredPageZoom,
+  const writeLivePinchTransform = useCallback((pinch: PinchZoomState) => {
+    const surface = pageSurfaceRef.current;
+    if (!surface) return;
+    const liveTransform = getNotebookLivePinchTransform({
+      anchorFx: pinch.anchorFx,
+      anchorFy: pinch.anchorFy,
+      basePanX: pinch.basePanX,
+      basePanY: pinch.basePanY,
+      currentCenterX: pinch.lastCenterX,
+      currentCenterY: pinch.lastCenterY,
+      nextZoom: pinch.pendingZoom,
+      startCenterX: pinch.startCenterX,
+      startCenterY: pinch.startCenterY,
+      startPageHeight: pinch.startPageHeight,
+      startPageWidth: pinch.startPageWidth,
+      startZoom: pinch.startZoom,
     });
-    const nextLayout = getNotebookViewportLayout({
-      frameWidth: frameSize.width,
-      frameHeight: frameSize.height,
-      pageWidth: CANVAS_WIDTH,
-      pageHeight: CANVAS_HEIGHT,
-      zoom: nextZoom,
+    surface.style.transformOrigin = "0 0";
+    surface.style.transform = `translate3d(${liveTransform.x}px, ${
+      liveTransform.y
+    }px, 0) scale(${liveTransform.scaleRatio})`;
+  }, []);
+
+  const queueLivePinchTransform = useCallback(() => {
+    if (pinchZoomAnimationFrameRef.current !== null) return;
+    pinchZoomAnimationFrameRef.current = window.requestAnimationFrame(() => {
+      pinchZoomAnimationFrameRef.current = null;
+      const pinch = pinchZoomRef.current;
+      if (pinch) writeLivePinchTransform(pinch);
     });
-    preferredPageZoomRef.current = preferredPageZoom;
-    pagePanLiveRef.current = nextLayout.pageOrigin;
-    setPageZoom(nextZoom);
-    setPagePan(nextLayout.pageOrigin);
-  }, [frameSize.height, frameSize.width, pageZoom, preferredPageZoom]);
+  }, [writeLivePinchTransform]);
+
+  const resetPageSurfaceTransform = useCallback(() => {
+    const surface = pageSurfaceRef.current;
+    if (!surface) return;
+    surface.style.transformOrigin = "0 0";
+    surface.style.transform = `translate3d(${pagePanLiveRef.current.x}px, ${
+      pagePanLiveRef.current.y
+    }px, 0)`;
+    surface.style.willChange = "";
+  }, []);
 
   const updatePageSwipeMotion = useCallback((next: PageSwipeMotion | null) => {
     pageSwipeMotionRef.current = next;
@@ -1604,6 +1618,12 @@ export default function NotebookEditorPage() {
     }
 
     setLoading(true);
+    cancelPinchZoomAnimationFrame();
+    pinchZoomRef.current = null;
+    touchPointersRef.current.clear();
+    pagePanLiveRef.current = { x: 0, y: 0 };
+    setPageZoom(1);
+    setPagePan({ x: 0, y: 0 });
     hydratedPageIdRef.current = null;
     editorRevisionRef.current = 0;
     latestSaveIdRef.current = 0;
@@ -1658,7 +1678,7 @@ export default function NotebookEditorPage() {
     } finally {
       setLoading(false);
     }
-  }, [notebookId, user?.uid]);
+  }, [cancelPinchZoomAnimationFrame, notebookId, user?.uid]);
 
   useEffect(() => {
     void loadNotebook();
@@ -1825,11 +1845,11 @@ export default function NotebookEditorPage() {
       stylusInteractionRef.current = false;
       stylusCooldownUntilRef.current = Date.now() + 180;
       touchPointersRef.current.clear();
-      if (pinchZoomRef.current && pageSurfaceRef.current) {
+      if (pinchZoomRef.current) {
         // A pinch was interrupted (blur/app switch): drop its live transform
         // back to the last committed pan.
-        pageSurfaceRef.current.style.transform = `translate3d(${pagePanLiveRef.current.x}px, ${pagePanLiveRef.current.y}px, 0)`;
-        pageSurfaceRef.current.style.transformOrigin = "";
+        cancelPinchZoomAnimationFrame();
+        resetPageSurfaceTransform();
       }
       pinchZoomRef.current = null;
       setPagePan(pagePanLiveRef.current);
@@ -1884,9 +1904,12 @@ export default function NotebookEditorPage() {
         window.clearTimeout(touchInkHintTimeoutRef.current);
         touchInkHintTimeoutRef.current = null;
       }
+      cancelPinchZoomAnimationFrame();
       document.body.classList.remove("jami-inking-active");
     };
   }, [
+    cancelPinchZoomAnimationFrame,
+    resetPageSurfaceTransform,
     resolvePageTrackTransition,
     setPagePreviewVisibility,
     updatePageSwipeMotion,
@@ -1905,6 +1928,7 @@ export default function NotebookEditorPage() {
   const startPinchZoom = () => {
     const [first, second] = Array.from(touchPointersRef.current.values());
     if (!first || !second) return;
+    cancelPinchZoomAnimationFrame();
     if (pageSwipeRef.current) {
       if (pageTrackAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(pageTrackAnimationFrameRef.current);
@@ -1933,6 +1957,8 @@ export default function NotebookEditorPage() {
     }
     const centerX = (first.clientX + second.clientX) / 2;
     const centerY = (first.clientY + second.clientY) / 2;
+    surface.style.willChange = "transform";
+    surface.style.transformOrigin = "0 0";
     pinchZoomRef.current = {
       startDistance: getPinchDistance(first, second),
       startZoom: viewportLayout.zoom,
@@ -1947,6 +1973,8 @@ export default function NotebookEditorPage() {
       basePanX: rect.left - frameRect.left,
       basePanY: rect.top - frameRect.top,
       pendingZoom: viewportLayout.zoom,
+      startPageHeight: rect.height,
+      startPageWidth: rect.width,
     };
   };
 
@@ -1954,6 +1982,7 @@ export default function NotebookEditorPage() {
   // pan that keeps the page point that was under the fingers exactly where
   // the fingers left it, clamped to the frame.
   const finalizePinchCommit = (pinch: PinchZoomState) => {
+    cancelPinchZoomAnimationFrame();
     const frameRect = pageFrameRef.current?.getBoundingClientRect();
     const surface = pageSurfaceRef.current;
     if (!frameRect || !surface) return;
@@ -1983,8 +2012,9 @@ export default function NotebookEditorPage() {
     // Reset the manual gesture transform to the value React will render next;
     // React skips style writes it did not see change, so this must not be
     // left stale.
-    surface.style.transformOrigin = "";
+    surface.style.transformOrigin = "0 0";
     surface.style.transform = `translate3d(${nextPan.x}px, ${nextPan.y}px, 0)`;
+    surface.style.willChange = "";
     setPageZoom(nextZoom);
     setPagePan(nextPan);
   };
@@ -2040,18 +2070,9 @@ export default function NotebookEditorPage() {
       pinch.pendingZoom = nextZoom;
       pinch.lastCenterX = centerX;
       pinch.lastCenterY = centerY;
-      const surface = pageSurfaceRef.current;
-      if (surface) {
-        // Anchored live pinch: the page scales around the point the gesture
-        // started on and follows the fingers as they move — one cheap GPU
-        // transform per frame, no layout work until the gesture commits.
-        surface.style.transformOrigin = `${pinch.anchorFx * 100}% ${pinch.anchorFy * 100}%`;
-        surface.style.transform = `translate3d(${
-          pinch.basePanX + centerX - pinch.startCenterX
-        }px, ${pinch.basePanY + centerY - pinch.startCenterY}px, 0) scale(${
-          nextZoom / pinch.startZoom
-        })`;
-      }
+      // Pointer events can outpace iPad paint. Keep only the latest two-finger
+      // sample and write one anchored compositor transform per animation frame.
+      queueLivePinchTransform();
     }
     pageSwipeRef.current = null;
     event.preventDefault();
@@ -2121,9 +2142,18 @@ export default function NotebookEditorPage() {
     switchNotebookTool("select");
   };
 
-  useEffect(() => {
+  const pageSurfaceReady = Boolean(selectedPage?.id && pageFit.width > 0);
+
+  useLayoutEffect(() => {
     const surface = pageSurfaceRef.current;
-    if (!surface || !selectedPage?.id || typeof window === "undefined") return;
+    if (
+      !surface ||
+      !selectedPage?.id ||
+      !pageSurfaceReady ||
+      typeof window === "undefined"
+    ) {
+      return;
+    }
 
     // iPadOS Safari hijacks horizontal Apple Pencil movement for a native
     // scroll/back gesture even when `touch-action: none` is set — it fires a
@@ -2158,7 +2188,7 @@ export default function NotebookEditorPage() {
       surface.removeEventListener("touchstart", suppressStylusGesture, listenerOptions);
       surface.removeEventListener("touchmove", suppressStylusGesture, listenerOptions);
     };
-  }, [selectedPage?.id]);
+  }, [pageSurfaceReady, selectedPage?.id]);
 
   const savePageSnapshot = useCallback(
     async (input: {
@@ -2376,6 +2406,77 @@ export default function NotebookEditorPage() {
     [savePageSnapshot, selectedPageInkSvg, user?.uid]
   );
 
+  const queueCurrentPageSaveForExit = useCallback(() => {
+    const page = selectedPageRef.current;
+    const inkEditor = inkEditorRef.current;
+    if (
+      !page ||
+      !user?.uid ||
+      inkInteractionActiveRef.current ||
+      inkEditor?.isInteracting()
+    ) {
+      return false;
+    }
+
+    // Capture the editor before the route unmounts it. The synchronous export
+    // only covers local serialization; the slower Firebase acknowledgement is
+    // deliberately allowed to finish after the Link starts navigating.
+    const saveRevision = editorRevisionRef.current;
+    let inkSvg: string | null;
+    try {
+      inkSvg = inkEditor ? inkEditor.serialize() : selectedPageInkSvg;
+    } catch {
+      return false;
+    }
+    if (
+      shouldDiscardNotebookInkExport({
+        svgAvailable: inkSvg !== null,
+        inkInteractionActive:
+          Boolean(inkEditorRef.current?.isInteracting()) ||
+          inkInteractionActiveRef.current,
+        saveRevision,
+        currentRevision: editorRevisionRef.current,
+      }) ||
+      inkSvg === null
+    ) {
+      return false;
+    }
+
+    const saveId = latestSaveIdRef.current + 1;
+    latestSaveIdRef.current = saveId;
+    const snapshot = {
+      page,
+      textBlocks: textBlocksRef.current,
+      inkSvg,
+      hasInk: inkEditor?.hasInk() ?? false,
+      pageColor: pageColorRef.current,
+      pageStyle: pageStyleRef.current,
+      saveId,
+      saveRevision,
+    };
+    const precedingSave = saveOperationRef.current;
+    const operation = (async () => {
+      if (precedingSave) {
+        try {
+          await precedingSave;
+        } catch {
+          // The final captured snapshot still needs a chance to save even if
+          // an older serialization or write failed.
+        }
+      }
+      return savePageSnapshot(snapshot);
+    })();
+
+    saveOperationRef.current = operation;
+    const clearCompletedExitSave = () => {
+      if (saveOperationRef.current === operation) {
+        saveOperationRef.current = null;
+      }
+    };
+    void operation.then(clearCompletedExitSave, clearCompletedExitSave);
+    return true;
+  }, [savePageSnapshot, selectedPageInkSvg, user?.uid]);
+
   useEffect(() => {
     saveCurrentPageRef.current = saveCurrentPage;
     return () => {
@@ -2458,11 +2559,8 @@ export default function NotebookEditorPage() {
 
   useEffect(() => {
     if (pinchZoomRef.current) {
-      const surface = pageSurfaceRef.current;
-      if (surface) {
-        surface.style.transformOrigin = "";
-        surface.style.transform = `translate3d(${pagePanLiveRef.current.x}px, ${pagePanLiveRef.current.y}px, 0)`;
-      }
+      cancelPinchZoomAnimationFrame();
+      resetPageSurfaceTransform();
       pinchZoomRef.current = null;
       touchPointersRef.current.clear();
       setPagePan(pagePanLiveRef.current);
@@ -2488,10 +2586,12 @@ export default function NotebookEditorPage() {
     }
     clearPageTrackMotion();
   }, [
+    cancelPinchZoomAnimationFrame,
     clearPageTrackMotion,
     frameSize.height,
     frameSize.width,
     pageTrackTravelDistance,
+    resetPageSurfaceTransform,
     updatePageSwipeMotion,
     writePageTrackOffset,
   ]);
@@ -2734,22 +2834,20 @@ export default function NotebookEditorPage() {
     };
   }, [saveCurrentPage]);
 
-  const handleExitNotebook = async (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    event.preventDefault();
+  const handleExitNotebook = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     if (
       saveStatusRef.current === "unsaved" ||
       saveStatusRef.current === "failed"
     ) {
-      const saved = await saveCurrentPage({ flush: true });
-      if (!saved) {
+      const saveQueued = queueCurrentPageSaveForExit();
+      if (!saveQueued) {
+        event.preventDefault();
         setFeedback({
           type: "error",
           message: "Could not autosave before leaving the notebook.",
         });
-        return;
       }
     }
-    router.push(`/dashboard/folders/${notebook?.folderId ?? ""}`);
   };
 
   const handleRetryPageSave = () => {
@@ -2929,6 +3027,7 @@ export default function NotebookEditorPage() {
           axis: swipe.axis,
           canPanHorizontally: pageCanPanHorizontally,
           canPanVertically: pageCanPanVertically,
+          zoom: viewportLayout.zoom,
         });
         if (swipe.intent === "page") {
           setPagePreviewVisibility(true);
@@ -3258,6 +3357,10 @@ export default function NotebookEditorPage() {
       wasSelected: selectedTextBlockId === block.id,
     };
     pageSwipeRef.current = null;
+    if (pinchZoomRef.current) {
+      cancelPinchZoomAnimationFrame();
+      resetPageSurfaceTransform();
+    }
     pinchZoomRef.current = null;
     setActiveTextGestureId(block.id);
     setSelectedTextBlockId(block.id);
@@ -3341,6 +3444,10 @@ export default function NotebookEditorPage() {
       previousTextBlocks: textBlocksRef.current,
     };
     pageSwipeRef.current = null;
+    if (pinchZoomRef.current) {
+      cancelPinchZoomAnimationFrame();
+      resetPageSurfaceTransform();
+    }
     pinchZoomRef.current = null;
     textBlockDragRef.current = null;
     setActiveTextGestureId(block.id);
@@ -3999,8 +4106,9 @@ export default function NotebookEditorPage() {
     );
   }
 
+  const pageSwipePreviewEnabled = viewportLayout.zoom <= 1.0001;
   const previousViewportPreview: NotebookViewportPreview | null =
-    trackPreviousPage
+    pageSwipePreviewEnabled && trackPreviousPage
       ? {
           key: trackPreviousPage.id,
           className:
@@ -4018,13 +4126,15 @@ export default function NotebookEditorPage() {
         }
       : null;
   const shouldShowNewPagePreview =
+    pageSwipePreviewEnabled &&
     !trackNextPage &&
     (createPageActive ||
       creatingPage ||
       pageSwipeMotion?.kind === "create" ||
       (fullNotebookEditingEnabled &&
         selectedPageIndex === pages.length - 1));
-  const nextViewportPreview: NotebookViewportPreview | null = trackNextPage
+  const nextViewportPreview: NotebookViewportPreview | null =
+    pageSwipePreviewEnabled && trackNextPage
     ? {
         key: trackNextPage.id,
         className:

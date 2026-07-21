@@ -4,8 +4,6 @@ import {
   getNotebookInkViewportScale,
   getNotebookViewportLayout,
   getNotebookViewportPanBounds,
-  getNotebookViewportPreferredZoom,
-  getNotebookViewportZoomAfterPreferredSizeChange,
   NOTEBOOK_VIEWPORT_MAX_ZOOM,
   NOTEBOOK_VIEWPORT_MIN_ZOOM,
 } from "@/lib/workspace/notebook-viewport";
@@ -29,59 +27,43 @@ describe("notebook viewport layout", () => {
     expect(layout.swipeTravel).toBeCloseTo(layout.pageSize.width + 16);
   });
 
-  it("keeps the true full-page fit while enlarging the preferred iPad landscape view", () => {
-    const preferredZoom = getNotebookViewportPreferredZoom({
-      frameWidth: 1024,
-      frameHeight: 700,
-    });
+  it("opens iPad landscape at a true proportional full-page fit", () => {
     const layout = getNotebookViewportLayout({
       frameWidth: 1024,
       frameHeight: 700,
-      zoom: preferredZoom,
     });
 
-    expect(layout.inset).toBe(16);
-    expect(layout.fitSize.width).toBeCloseTo((668 * 900) / 1240);
-    expect(layout.fitSize.height).toBe(668);
-    expect(preferredZoom).toBeCloseTo(1240 / 900);
-    expect(layout.pageSize.width).toBeCloseTo(668);
-    expect(layout.pageSize.height).toBeCloseTo((668 * 1240) / 900);
-    expect(layout.pageOrigin.x).toBeCloseTo(
-      (1024 - layout.pageSize.width) / 2
-    );
-    expect(layout.pageOrigin.y).toBeCloseTo(
-      (700 - layout.pageSize.height) / 2
-    );
+    expect(layout.inset).toBe(8);
+    expect(layout.availableSize).toEqual({ width: 1008, height: 684 });
+    expect(layout.fitSize.width).toBeCloseTo((684 * 900) / 1240);
+    expect(layout.fitSize.height).toBe(684);
+    expect(layout.zoom).toBe(1);
+    expect(layout.pageSize).toEqual(layout.fitSize);
+    expect(layout.pageOrigin).toEqual(layout.fitOrigin);
+    expect(layout.pageOrigin.y).toBe(8);
     expect(layout.pageSize.width / layout.pageSize.height).toBeCloseTo(
       900 / 1240
     );
   });
 
-  it("keeps portrait framing unchanged and preserves relative zoom across rotation", () => {
-    const portraitPreferredZoom = getNotebookViewportPreferredZoom({
+  it("keeps user zoom relative to fit instead of rewriting it on rotation", () => {
+    const portrait = getNotebookViewportLayout({
       frameWidth: 768,
       frameHeight: 956,
+      zoom: 1.6,
     });
-    const landscapePreferredZoom = getNotebookViewportPreferredZoom({
+    const landscape = getNotebookViewportLayout({
       frameWidth: 1024,
       frameHeight: 700,
+      zoom: 1.6,
     });
 
-    expect(portraitPreferredZoom).toBe(1);
-    expect(
-      getNotebookViewportZoomAfterPreferredSizeChange({
-        zoom: 1,
-        previousPreferredZoom: portraitPreferredZoom,
-        nextPreferredZoom: landscapePreferredZoom,
-      })
-    ).toBeCloseTo(landscapePreferredZoom);
-    expect(
-      getNotebookViewportZoomAfterPreferredSizeChange({
-        zoom: landscapePreferredZoom,
-        previousPreferredZoom: landscapePreferredZoom,
-        nextPreferredZoom: portraitPreferredZoom,
-      })
-    ).toBe(1);
+    expect(portrait.zoom).toBe(1.6);
+    expect(landscape.zoom).toBe(1.6);
+    expect(portrait.pageSize.width).toBeCloseTo(portrait.fitSize.width * 1.6);
+    expect(landscape.pageSize.width).toBeCloseTo(
+      landscape.fitSize.width * 1.6
+    );
   });
 
   it("still allows the complete landscape page at fit and minimum zoom", () => {
@@ -97,7 +79,7 @@ describe("notebook viewport layout", () => {
     });
 
     expect(fitted.pageSize).toEqual(fitted.fitSize);
-    expect(fitted.fitOrigin.y).toBe(16);
+    expect(fitted.fitOrigin.y).toBe(8);
     expect(minimum.pageSize.width).toBeLessThan(fitted.pageSize.width);
     expect(minimum.pageSize.height).toBeLessThan(fitted.pageSize.height);
   });

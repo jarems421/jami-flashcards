@@ -1,7 +1,17 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { createElement, createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import NotebookViewport from "@/components/workspace/NotebookViewport";
+
+const notebookEditorSource = readFileSync(
+  join(
+    process.cwd(),
+    "app/dashboard/notebooks/[notebookId]/page.tsx"
+  ),
+  "utf8"
+);
 
 describe("NotebookViewport", () => {
   it("renders every carousel slot through the same sheet treatment", () => {
@@ -47,6 +57,22 @@ describe("NotebookViewport", () => {
     expect(html).toContain("translate3d(566px, 16px, 0)");
     expect(html.match(/after:border-black/g)).toHaveLength(3);
     expect(html).not.toContain("box-border");
+  });
+
+  it("keeps fit zoom neutral and coalesces live pinch rendering", () => {
+    expect(notebookEditorSource).not.toContain(
+      "getNotebookViewportPreferredZoom"
+    );
+    expect(notebookEditorSource).not.toContain(
+      "getNotebookViewportZoomAfterPreferredSizeChange"
+    );
+    expect(notebookEditorSource).toContain(
+      "pinchZoomAnimationFrameRef"
+    );
+    expect(notebookEditorSource).toContain("queueLivePinchTransform()");
+    expect(notebookEditorSource).toContain(
+      "pageSwipePreviewEnabled = viewportLayout.zoom <= 1.0001"
+    );
   });
 
   it("keeps the measurable frame mounted before a page is ready", () => {

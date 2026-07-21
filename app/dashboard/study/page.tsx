@@ -62,11 +62,21 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
 import StudyAssistant from "@/components/study/StudyAssistant";
 import AppPage from "@/components/layout/AppPage";
-import { Button, Card as SurfaceCard, EmptyState, FeedbackBanner, IconBubble, Input, PageHero, ProgressBar, Skeleton, StudyText } from "@/components/ui";
+import {
+  Button,
+  Card as SurfaceCard,
+  EmptyState,
+  FeedbackBanner,
+  Input,
+  ProgressBar,
+  Skeleton,
+  StudyText,
+} from "@/components/ui";
 
 type SessionKind = StudySessionKind;
 type SessionStats = StudySessionStats;
 type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
+type FocusedFilterKind = "decks" | "topics";
 const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
 type AnswerFeedback = { tone: "error" | "warm" | "good" | "calm"; message: string };
 type FocusedReviewRecents = {
@@ -177,33 +187,23 @@ function parseIdsParam(value: string | null) {
   return Array.from(new Set(value.split(",").map((entry) => entry.trim()).filter(Boolean)));
 }
 
-function formatCountdown(ms: number) {
-  if (ms <= 0) return "00:00:00";
-  const totalSeconds = Math.floor(ms / 1000);
-  const hours = Math.floor(totalSeconds / 3600).toString().padStart(2, "0");
-  const minutes = Math.floor((totalSeconds % 3600) / 60).toString().padStart(2, "0");
-  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
-  return `${hours}:${minutes}:${seconds}`;
+function formatResetCountdown(ms: number) {
+  if (ms <= 0) return "now";
+  const totalMinutes = Math.max(1, Math.ceil(ms / 60_000));
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  if (hours <= 0) return `${minutes}m`;
+  if (minutes === 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
 }
 
-function StepLabel({ step, children }: { step: number; children: string }) {
+function StudyHomeStat({ value, label }: { value: number; label: string }) {
   return (
-    <div className="inline-flex items-center gap-2 text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
-      <IconBubble size="xs" shape="circle" className="app-chip font-semibold">
-        {step}
-      </IconBubble>
-      <span>{children}</span>
-    </div>
-  );
-}
-
-function CountPill({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="app-chip flex min-w-[7rem] flex-1 items-center justify-between gap-3 rounded-[1.2rem] px-3 py-2 sm:flex-none">
-      <span className="text-xs leading-5 text-text-muted">{label}</span>
-      <IconBubble size="sm" shape="circle" className="app-chip font-semibold text-text-primary">
+    <div className="min-w-[5.25rem]">
+      <div className="text-xl font-semibold leading-none tabular-nums text-text-primary sm:text-2xl">
         {value}
-      </IconBubble>
+      </div>
+      <div className="mt-1.5 text-xs font-medium text-text-muted">{label}</div>
     </div>
   );
 }
@@ -291,6 +291,11 @@ export default function StudyPage() {
   const requestedDeckIds = useMemo(() => parseIdsParam(rawDecksParam), [rawDecksParam]);
   const requestedTopicIds = useMemo(() => parseIdsParam(rawTopicsParam), [rawTopicsParam]);
   const requestedLegacyTags = useMemo(() => parseIdsParam(rawTagsParam), [rawTagsParam]);
+  const hasIncomingFocusedIntent =
+    requestedMode === "custom" ||
+    requestedDeckIds.length > 0 ||
+    requestedTopicIds.length > 0 ||
+    requestedLegacyTags.length > 0;
   const [decks, setDecks] = useState<Deck[]>([]);
   const [cards, setCards] = useState<Card[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
@@ -299,6 +304,16 @@ export default function StudyPage() {
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>(requestedTopicIds);
   const [deckSearch, setDeckSearch] = useState("");
   const [topicSearch, setTopicSearch] = useState("");
+  const [focusedReviewOpen, setFocusedReviewOpen] = useState(
+    hasIncomingFocusedIntent
+  );
+  const [focusedFilterKind, setFocusedFilterKind] =
+    useState<FocusedFilterKind>(
+      (requestedTopicIds.length > 0 || requestedLegacyTags.length > 0) &&
+        requestedDeckIds.length === 0
+        ? "topics"
+        : "decks"
+    );
   const [focusedReviewRecents, setFocusedReviewRecents] = useState<FocusedReviewRecents>(EMPTY_FOCUSED_REVIEW_RECENTS);
   const [sessionKind, setSessionKind] = useState<SessionKind | null>(null);
   const [sessionCards, setSessionCards] = useState<Card[]>([]);
@@ -326,11 +341,19 @@ export default function StudyPage() {
   const loadRequestIdRef = useRef(0);
   const lastForegroundRefreshAtRef = useRef(0);
   const remoteCloseKeyRef = useRef<string | null>(null);
+  const focusedReviewToggleRef = useRef<HTMLButtonElement>(null);
   const flashcardAiEnabled = featureFlags.enableFlashcardAi;
 
   useEffect(() => {
     setSelectedDeckIds(requestedDeckIds);
     setSelectedTopicIds(requestedTopicIds);
+    setFocusedReviewOpen(hasIncomingFocusedIntent);
+    setFocusedFilterKind(
+      (requestedTopicIds.length > 0 || requestedLegacyTags.length > 0) &&
+        requestedDeckIds.length === 0
+        ? "topics"
+        : "decks"
+    );
     setSessionKind(null);
     setSessionCards([]);
     setIndex(0);
@@ -347,7 +370,13 @@ export default function StudyPage() {
     latestPersistedSessionRef.current = null;
     remoteCloseKeyRef.current = null;
     setSessionRestoreReady(false);
-  }, [requestedDeckIds, requestedMode, requestedTopicIds]);
+  }, [
+    hasIncomingFocusedIntent,
+    requestedDeckIds,
+    requestedLegacyTags,
+    requestedMode,
+    requestedTopicIds,
+  ]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -386,7 +415,10 @@ export default function StudyPage() {
   );
 
   useEffect(() => {
-    const interval = setInterval(() => setCountdownMs(getMsUntilNextStudyBoundary()), 1000);
+    const interval = setInterval(
+      () => setCountdownMs(getMsUntilNextStudyBoundary()),
+      30_000
+    );
     return () => clearInterval(interval);
   }, []);
 
@@ -696,6 +728,13 @@ export default function StudyPage() {
   const simpleStudyQueue = useMemo(() => buildSimpleStudyQueue(cards), [cards]);
   const hasCustomFilters = selectedDeckIds.length > 0 || selectedTopicIds.length > 0;
   const customSelectionEmpty = hasCards && customPreviewCards.length === 0;
+
+  useEffect(() => {
+    if (sessionKind === null && hasCustomFilters) {
+      setFocusedReviewOpen(true);
+    }
+  }, [hasCustomFilters, sessionKind]);
+
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
     [decks]
@@ -734,10 +773,6 @@ export default function StudyPage() {
       .filter((topic) => getTopicNameKey(topic.name).includes(query))
       .slice(0, 8);
   }, [topicSearch, topics]);
-  const simpleStudyStatusText =
-    simpleStudyQueue.cards.length > 0
-      ? `${simpleStudyQueue.newCount} new · ${simpleStudyQueue.wrongCount} missed`
-      : "All clear";
   const recentDecks = useMemo(() => {
     const decksById = new Map(decks.map((deck) => [deck.id, deck]));
     return focusedReviewRecents.deckIds
@@ -855,6 +890,11 @@ export default function StudyPage() {
     setSelectedDeckIds([]);
     setSelectedTopicIds([]);
     setFeedback(null);
+  }, []);
+
+  const closeFocusedReviewBuilder = useCallback(() => {
+    setFocusedReviewOpen(false);
+    window.requestAnimationFrame(() => focusedReviewToggleRef.current?.focus());
   }, []);
 
   useEffect(() => {
@@ -1564,7 +1604,13 @@ export default function StudyPage() {
   };
 
   return (
-    <AppPage title="Study" backHref="/dashboard" backLabel="Today" width="study" contentClassName="space-y-4 sm:space-y-6">
+    <AppPage
+      title="Learn"
+      backHref="/dashboard"
+      backLabel="Today"
+      width={sessionKind === null ? "2xl" : "study"}
+      contentClassName="space-y-4 sm:space-y-6"
+    >
       {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
       {offlineMode || pendingOfflineReviews > 0 ? (
         <div className="rounded-[1.5rem] border border-warm-border bg-warm-glow p-4 text-sm text-text-secondary">
@@ -1598,35 +1644,6 @@ export default function StudyPage() {
         <>
           {sessionKind === null ? (
             <>
-              <PageHero
-                eyebrow="Study"
-                title={
-                  hasCarryoverRequiredCards
-                    ? "Finish yesterday's review first."
-                    : remainingRequiredCards.length > 0
-                    ? "Your next review is ready."
-                    : hasCards
-                      ? "Choose how you want to study."
-                      : "Start with your first cards."
-                }
-                description={
-                  hasCarryoverRequiredCards
-                    ? "Finish unfinished priority cards or start today's fresh set."
-                    : remainingRequiredCards.length > 0
-                    ? "Daily Review has priority cards ready."
-                    : hasCards
-                      ? "Daily Review is clear for now."
-                      : "Add cards to start studying."
-                }
-                aside={
-                  <div className="rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-center text-sm text-text-secondary">
-                    <div className="text-xs text-text-muted">Next reset</div>
-                    <div className="mt-1 flex min-h-6 items-center justify-center text-base font-medium leading-none tabular-nums text-text-primary">
-                      {formatCountdown(countdownMs)}
-                    </div>
-                  </div>
-                }
-              />
               {!hasCards ? (
                 <EmptyState
                   emoji="Cards"
@@ -1638,300 +1655,514 @@ export default function StudyPage() {
                 />
               ) : null}
               {hasCards ? (
-                <div className="grid gap-3">
-                  <SurfaceCard padding="md" className="space-y-4">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="min-w-0">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <StepLabel step={1}>Daily Review</StepLabel>
-                          {remainingRequiredCards.length + remainingOptionalCards.length === 0 ? (
-                            <span className="app-success rounded-full px-2.5 py-1 text-xs font-medium">
-                              All clear
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-text-secondary">
-                          Review priority cards first, then choose optional easy extras.
-                        </p>
-                        {hasCarryoverRequiredCards ? (
-                          <div className="mt-2 text-sm font-medium text-warm-accent">
-                            Unfinished from last Daily Review: {remainingCarryoverRequiredCards.length}
-                          </div>
-                        ) : null}
+                <SurfaceCard tone="warm" padding="lg">
+                  <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="min-w-0 max-w-2xl">
+                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-secondary">
+                        Daily Review
                       </div>
-                      <div className="flex w-full flex-wrap gap-2 sm:w-auto sm:justify-end">
-                        {hasCarryoverRequiredCards ? (
-                          <CountPill value={remainingCarryoverRequiredCards.length} label="Unfinished" />
-                        ) : null}
-                        <CountPill value={remainingFreshRequiredCards.length} label={hasCarryoverRequiredCards ? "Today" : "Needs attention"} />
-                        <CountPill value={remainingOptionalCards.length} label="Easy extras" />
-                      </div>
-                    </div>
-                    <div className={`grid gap-3 ${hasCarryoverRequiredCards ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
-                      {hasCarryoverRequiredCards ? (
-                        <div className="space-y-1.5">
-                          <Button type="button" onClick={() => startSession("daily-required", "carryover")} variant="warm" size="md" className="w-full justify-center">
-                            Finish unfinished cards
-                          </Button>
-                          <div className="text-center text-xs leading-5 text-text-muted">Carried over from last Daily Review</div>
-                        </div>
-                      ) : null}
-                      <div className="space-y-1.5">
-                        <Button type="button" onClick={() => startSession("daily-required", hasCarryoverRequiredCards ? "fresh" : "all")} disabled={(hasCarryoverRequiredCards ? remainingFreshRequiredCards.length : remainingRequiredCards.length) === 0} variant={hasCarryoverRequiredCards ? "secondary" : "warm"} size="md" className="w-full justify-center">
-                          {hasCarryoverRequiredCards
-                            ? remainingFreshRequiredCards.length > 0
-                              ? "Start today's priority cards"
-                              : "No fresh priority cards"
-                            : remainingRequiredCards.length > 0
-                              ? "Review priority cards"
-                              : "No priority cards"}
-                        </Button>
-                        <div className="text-center text-xs leading-5 text-text-muted">Most likely to slip today</div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Button type="button" onClick={() => startSession("daily-optional")} disabled={remainingOptionalCards.length === 0} variant="secondary" size="md" className="w-full justify-center">
-                          {remainingOptionalCards.length > 0 ? "Review easy extras" : "No easy extras"}
-                        </Button>
-                        <div className="text-center text-xs leading-5 text-text-muted">Lighter reps if you want more today</div>
-                      </div>
-                    </div>
-                  </SurfaceCard>
-                </div>
-              ) : null}
-              {hasCards ? (
-                <SurfaceCard padding="lg" className="relative space-y-5">
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="max-w-2xl">
-                      <StepLabel step={2}>Focused Review</StepLabel>
-                      <h3 className="mt-2 text-lg font-semibold tracking-tight text-text-primary sm:text-xl">
-                        Build a focused session
-                      </h3>
-                      <p className="mt-2 text-sm leading-7 text-text-secondary sm:text-base">
-                        Choose decks or Topics.
+                      <h2 className="mt-2 text-[1.55rem] font-semibold leading-tight tracking-tight text-text-primary sm:text-[2rem]">
+                        {hasCarryoverRequiredCards
+                          ? "Finish yesterday's review first."
+                          : remainingRequiredCards.length > 0
+                            ? "Your next review is ready."
+                            : "You're clear for today."}
+                      </h2>
+                      <p className="mt-3 max-w-xl text-sm leading-6 text-text-secondary sm:text-base">
+                        {hasCarryoverRequiredCards
+                          ? "Continue the unfinished cards, then move into today's set when you're ready."
+                          : remainingRequiredCards.length > 0
+                            ? "Start with the cards most likely to slip from memory."
+                            : remainingOptionalCards.length > 0
+                              ? "Your priority cards are done. Easy extras are available if you want another pass."
+                              : "There is nothing you need to review right now."}
                       </p>
                     </div>
-                    <Button type="button" onClick={handleCustomReviewClick} disabled={customPreviewCards.length === 0} size="lg" className="w-full sm:w-auto">
-                      Start Focused Review
+                    <div className="shrink-0 text-sm text-text-muted sm:text-right">
+                      <span>Next reset in </span>
+                      <span className="font-semibold tabular-nums text-text-secondary">
+                        {formatResetCountdown(countdownMs)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-x-8 gap-y-5 border-y border-[var(--color-border)] py-5">
+                    {hasCarryoverRequiredCards ? (
+                      <StudyHomeStat
+                        value={remainingCarryoverRequiredCards.length}
+                        label="Unfinished"
+                      />
+                    ) : null}
+                    <StudyHomeStat
+                      value={remainingFreshRequiredCards.length}
+                      label={hasCarryoverRequiredCards ? "Today" : "Needs attention"}
+                    />
+                    <StudyHomeStat
+                      value={remainingOptionalCards.length}
+                      label="Easy extras"
+                    />
+                  </div>
+
+                  <div className="mt-6 flex flex-col gap-2.5 sm:flex-row sm:flex-wrap sm:items-center">
+                    {hasCarryoverRequiredCards ? (
+                      <Button
+                        type="button"
+                        onClick={() =>
+                          startSession("daily-required", "carryover")
+                        }
+                        variant="warm"
+                        size="lg"
+                        className="w-full sm:w-auto"
+                      >
+                        Continue unfinished review
+                      </Button>
+                    ) : remainingRequiredCards.length > 0 ? (
+                      <Button
+                        type="button"
+                        onClick={() => startSession("daily-required", "all")}
+                        variant="warm"
+                        size="lg"
+                        className="w-full sm:w-auto"
+                      >
+                        Start Daily Review
+                      </Button>
+                    ) : remainingOptionalCards.length === 0 ? (
+                      <span className="app-success inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold">
+                        All clear
+                      </span>
+                    ) : null}
+
+                    {hasCarryoverRequiredCards &&
+                    remainingFreshRequiredCards.length > 0 ? (
+                      <Button
+                        type="button"
+                        onClick={() => startSession("daily-required", "fresh")}
+                        variant="secondary"
+                        size="md"
+                        className="w-full sm:w-auto"
+                      >
+                        Start today&apos;s cards
+                      </Button>
+                    ) : null}
+
+                    {remainingOptionalCards.length > 0 ? (
+                      <Button
+                        type="button"
+                        onClick={() => startSession("daily-optional")}
+                        variant={
+                          remainingRequiredCards.length === 0
+                            ? "secondary"
+                            : "ghost"
+                        }
+                        size="md"
+                        className="w-full sm:w-auto"
+                      >
+                        Review easy extras
+                      </Button>
+                    ) : null}
+                  </div>
+                </SurfaceCard>
+              ) : null}
+              {hasCards ? (
+                <section
+                  aria-labelledby="other-study-heading"
+                  className="space-y-3"
+                >
+                  <div>
+                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                      Your choice
+                    </div>
+                    <h2
+                      id="other-study-heading"
+                      className="mt-1 text-xl font-semibold tracking-tight text-text-primary"
+                    >
+                      Other ways to study
+                    </h2>
+                  </div>
+
+                  <div className="grid gap-4 xl:grid-cols-2">
+                    <SurfaceCard
+                      padding="md"
+                      className="flex h-full flex-col"
+                    >
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                        Focused Review
+                      </div>
+                      <h3 className="mt-2 text-lg font-semibold text-text-primary">
+                        Choose exactly what to practise
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-text-secondary">
+                        Pick decks or Topics for a targeted session.
+                      </p>
+                      <div
+                        className="mt-4 text-sm font-medium text-text-muted"
+                        aria-live="polite"
+                      >
+                        {hasCustomFilters
+                          ? `${selectedDeckIds.length + selectedTopicIds.length} selected · ${customPreviewCards.length} cards`
+                          : `${customPreviewCards.length} cards available`}
+                      </div>
+                      <div className="mt-auto flex flex-col gap-2 pt-5 sm:flex-row sm:flex-wrap">
+                        <Button
+                          ref={focusedReviewToggleRef}
+                          type="button"
+                          variant="secondary"
+                          aria-expanded={focusedReviewOpen}
+                          aria-controls="focused-review-builder"
+                          onClick={() =>
+                            setFocusedReviewOpen((currentOpen) => !currentOpen)
+                          }
+                          className="w-full sm:w-auto"
+                        >
+                          {focusedReviewOpen
+                            ? "Hide choices"
+                            : hasCustomFilters
+                              ? "Edit selection"
+                              : "Choose decks or Topics"}
+                        </Button>
+                        {customPreviewCards.length > 0 ? (
+                          <Button
+                            type="button"
+                            onClick={handleCustomReviewClick}
+                            className="w-full sm:w-auto"
+                          >
+                            Start Focused Review
+                          </Button>
+                        ) : null}
+                      </div>
+                    </SurfaceCard>
+
+                    <SurfaceCard
+                      padding="md"
+                      className="flex h-full flex-col"
+                    >
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                        Simple Study
+                      </div>
+                      <h3 className="mt-2 text-lg font-semibold text-text-primary">
+                        Make one quick pass
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-text-secondary">
+                        Clear new and missed cards with a simple correct-or-wrong choice.
+                      </p>
+                      <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-sm text-text-muted">
+                        <span>
+                          <strong className="font-semibold tabular-nums text-text-primary">
+                            {simpleStudyQueue.newCount}
+                          </strong>{" "}
+                          new
+                        </span>
+                        <span>
+                          <strong className="font-semibold tabular-nums text-text-primary">
+                            {simpleStudyQueue.wrongCount}
+                          </strong>{" "}
+                          missed
+                        </span>
+                      </div>
+                      <div className="mt-auto pt-5">
+                        {simpleStudyQueue.cards.length > 0 ? (
+                          <Button
+                            type="button"
+                            onClick={() => startSession("simple")}
+                            variant="secondary"
+                            className="w-full sm:w-auto"
+                          >
+                            Start Simple Study
+                          </Button>
+                        ) : (
+                          <span className="app-success inline-flex min-h-11 items-center rounded-full px-4 text-sm font-semibold">
+                            All clear
+                          </span>
+                        )}
+                      </div>
+                    </SurfaceCard>
+                  </div>
+                </section>
+              ) : null}
+              {hasCards && focusedReviewOpen ? (
+                <SurfaceCard
+                  id="focused-review-builder"
+                  padding="lg"
+                  className="relative space-y-5"
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                    <div className="max-w-2xl">
+                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                        Focused Review setup
+                      </div>
+                      <h3 className="mt-2 text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
+                        Build a focused session
+                      </h3>
+                      <p className="mt-2 text-sm leading-6 text-text-secondary">
+                        Choose any combination of decks and Topics. With nothing selected, every card is included.
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={closeFocusedReviewBuilder}
+                      className="w-full sm:w-auto"
+                    >
+                      Close setup
                     </Button>
                   </div>
                   {hasCustomFilters ? (
-                    <div className="grid gap-3 rounded-[1.25rem] border border-accent/20 bg-accent/10 p-3 md:grid-cols-2">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                        Selected decks
-                      </div>
-                      <div className="flex flex-wrap gap-2 md:col-start-1">
-                        {selectedDeckIds.length > 0 ? (
-                          selectedDeckIds.map((deckId) => (
-                            <button
-                              key={deckId}
-                              type="button"
-                              onClick={() => toggleDeckFilter(deckId)}
-                              className="app-selected rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
-                            >
-                              {deckNamesById[deckId] ?? "Deck"} · {deckCardCounts.get(deckId) ?? 0} cards x
-                            </button>
-                          ))
-                        ) : (
-                          <span className="text-xs leading-5 text-text-muted">No deck filter selected.</span>
-                        )}
-                      </div>
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted md:col-start-2 md:row-start-1">
-                        Selected Topics
-                      </div>
-                      <div className="flex flex-wrap gap-2 md:col-start-2">
-                        {selectedTopicIds.length > 0 ? (
-                          selectedTopicIds.map((topicId) => (
-                            <button
-                              key={topicId}
-                              type="button"
-                              onClick={() => toggleTopicFilter(topicId)}
-                              className="app-selected rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
-                            >
-                              {topicNamesById[topicId] ?? "Topic"} · {topicCardCounts.get(topicId) ?? 0} cards x
-                            </button>
-                          ))
-                        ) : (
-                          <span className="text-xs leading-5 text-text-muted">No Topic filter selected.</span>
-                        )}
+                    <div className="border-y border-[var(--color-border)] py-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
+                            Selected
+                          </div>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedDeckIds.map((deckId) => {
+                              const deckName = deckNamesById[deckId] ?? "Deck";
+                              return (
+                                <button
+                                  key={deckId}
+                                  type="button"
+                                  aria-label={`Remove deck ${deckName}`}
+                                  onClick={() => toggleDeckFilter(deckId)}
+                                  className="app-selected inline-flex min-h-10 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
+                                >
+                                  <span>{deckName}</span>
+                                  <span aria-hidden="true">×</span>
+                                </button>
+                              );
+                            })}
+                            {selectedTopicIds.map((topicId) => {
+                              const topicName = topicNamesById[topicId] ?? "Topic";
+                              return (
+                                <button
+                                  key={topicId}
+                                  type="button"
+                                  aria-label={`Remove Topic ${topicName}`}
+                                  onClick={() => toggleTopicFilter(topicId)}
+                                  className="app-selected inline-flex min-h-10 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
+                                >
+                                  <span>{topicName}</span>
+                                  <span aria-hidden="true">×</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          onClick={clearCustomFilters}
+                          className="w-full shrink-0 sm:w-auto"
+                        >
+                          Clear selection
+                        </Button>
                       </div>
                     </div>
                   ) : null}
 
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-                      <Input
-                        label="Search decks"
-                        placeholder="Type a deck name"
-                        value={deckSearch}
-                        onChange={(event) => setDeckSearch(event.target.value)}
-                      />
-                      <div className="mt-3 min-h-12 space-y-2">
-                        {deckSearch.trim() ? (
+                  <div className="space-y-4">
+                    <div
+                      role="group"
+                      aria-label="Focused Review filter type"
+                      className="app-subtle-panel inline-flex w-full rounded-full p-1 sm:w-auto"
+                    >
+                      {(["decks", "topics"] as FocusedFilterKind[]).map(
+                        (kind) => {
+                          const selected = focusedFilterKind === kind;
+                          return (
+                            <button
+                              key={kind}
+                              type="button"
+                              aria-pressed={selected}
+                              onClick={() => setFocusedFilterKind(kind)}
+                              className={`min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition sm:flex-none ${
+                                selected
+                                  ? "bg-[var(--color-selected-bg)] text-[var(--color-selected-text)] shadow-sm"
+                                  : "text-text-muted hover:text-text-primary"
+                              }`}
+                            >
+                              {kind === "decks" ? "Decks" : "Topics"}
+                            </button>
+                          );
+                        }
+                      )}
+                    </div>
+
+                    <div id="focused-review-options" className="space-y-4">
+                      {focusedFilterKind === "decks" ? (
+                        <Input
+                          label="Search decks"
+                          placeholder="Type a deck name"
+                          value={deckSearch}
+                          onChange={(event) => setDeckSearch(event.target.value)}
+                        />
+                      ) : (
+                        <Input
+                          label="Search Topics"
+                          placeholder="Type a Topic name"
+                          value={topicSearch}
+                          onChange={(event) => setTopicSearch(event.target.value)}
+                        />
+                      )}
+
+                      {focusedFilterKind === "decks" ? (
+                        deckSearch.trim() ? (
                           deckSearchResults.length > 0 ? (
-                            deckSearchResults.map((deck) => {
-                              const selected = selectedDeckIds.includes(deck.id);
-                              return (
-                                <button
-                                  key={deck.id}
-                                  type="button"
-                                  onClick={() => toggleDeckFilter(deck.id)}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
-                                >
-                                  <span className="min-w-0">
-                                    <span className="block truncate">{deck.name}</span>
-                                    <span className="mt-0.5 block text-xs text-text-muted">{deckCardCounts.get(deck.id) ?? 0} cards</span>
-                                  </span>
-                                  <span className="shrink-0 text-xs text-text-muted">{selected ? "Selected" : "Add"}</span>
-                                </button>
-                              );
-                            })
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {deckSearchResults.map((deck) => {
+                                const selected = selectedDeckIds.includes(deck.id);
+                                return (
+                                  <button
+                                    key={deck.id}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() => toggleDeckFilter(deck.id)}
+                                    className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
+                                  >
+                                    <span className="min-w-0">
+                                      <span className="block truncate">{deck.name}</span>
+                                      <span className="mt-0.5 block text-xs text-text-muted">
+                                        {deckCardCounts.get(deck.id) ?? 0} cards
+                                      </span>
+                                    </span>
+                                    <span className="shrink-0 text-xs text-text-muted">
+                                      {selected ? "Selected" : "Add"}
+                                    </span>
+                                  </button>
+                                );
+                              })}
+                            </div>
                           ) : (
-                            <p className="rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-sm text-text-muted">
+                            <p className="text-sm text-text-muted">
                               No decks match that search.
                             </p>
                           )
                         ) : (
-                          <p className="rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-sm text-text-muted">
-                            Start typing to find a deck.
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-                      <Input
-                        label="Search Topics"
-                        placeholder="Type a Topic name"
-                        value={topicSearch}
-                        onChange={(event) => setTopicSearch(event.target.value)}
-                      />
-                      <div className="mt-3 min-h-12 space-y-2">
-                        {topicSearch.trim() ? (
-                          topicSearchResults.length > 0 ? (
-                            topicSearchResults.map((topic) => {
+                          <div>
+                            <div className="text-sm font-medium text-text-primary">
+                              Recent decks
+                            </div>
+                            {recentDecks.length > 0 ? (
+                              <div className="mt-2 flex flex-wrap gap-2">
+                                {recentDecks.map((deck) => {
+                                  const selected = selectedDeckIds.includes(deck.id);
+                                  return (
+                                    <button
+                                      key={deck.id}
+                                      type="button"
+                                      aria-pressed={selected}
+                                      onClick={() => toggleDeckFilter(deck.id)}
+                                      className={`min-h-10 rounded-full px-3.5 py-2 text-sm font-medium transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
+                                    >
+                                      {deck.name} · {deckCardCounts.get(deck.id) ?? 0}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            ) : (
+                              <p className="mt-2 text-sm leading-6 text-text-muted">
+                                Search for a deck to build your first focused session.
+                              </p>
+                            )}
+                          </div>
+                        )
+                      ) : topicSearch.trim() ? (
+                        topicSearchResults.length > 0 ? (
+                          <div className="grid gap-2 sm:grid-cols-2">
+                            {topicSearchResults.map((topic) => {
                               const selected = selectedTopicIds.includes(topic.id);
                               return (
                                 <button
                                   key={topic.id}
                                   type="button"
+                                  aria-pressed={selected}
                                   onClick={() => toggleTopicFilter(topic.id)}
-                                  className={`flex w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
+                                  className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
                                 >
                                   <span className="min-w-0">
                                     <span className="block truncate">{topic.name}</span>
-                                    <span className="mt-0.5 block text-xs text-text-muted">{topicCardCounts.get(topic.id) ?? 0} cards</span>
+                                    <span className="mt-0.5 block text-xs text-text-muted">
+                                      {topicCardCounts.get(topic.id) ?? 0} cards
+                                    </span>
                                   </span>
-                                  <span className="shrink-0 text-xs text-text-muted">{selected ? "Selected" : "Add"}</span>
+                                  <span className="shrink-0 text-xs text-text-muted">
+                                    {selected ? "Selected" : "Add"}
+                                  </span>
                                 </button>
                               );
-                            })
-                          ) : (
-                            <p className="rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-sm text-text-muted">
-                              No Topics match that search.
-                            </p>
-                          )
+                            })}
+                          </div>
                         ) : (
-                          <p className="rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-sm text-text-muted">
-                            Start typing to find a Topic.
+                          <p className="text-sm text-text-muted">
+                            No Topics match that search.
                           </p>
-                        )}
-                      </div>
+                        )
+                      ) : (
+                        <div>
+                          <div className="text-sm font-medium text-text-primary">
+                            Recent Topics
+                          </div>
+                          {recentTopics.length > 0 ? (
+                            <div className="mt-2 flex flex-wrap gap-2">
+                              {recentTopics.map((topic) => {
+                                const selected = selectedTopicIds.includes(topic.id);
+                                return (
+                                  <button
+                                    key={topic.id}
+                                    type="button"
+                                    aria-pressed={selected}
+                                    onClick={() => toggleTopicFilter(topic.id)}
+                                    className={`min-h-10 rounded-full px-3.5 py-2 text-sm font-medium transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
+                                  >
+                                    {topic.name} · {topicCardCounts.get(topic.id) ?? 0}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="mt-2 text-sm leading-6 text-text-muted">
+                              Search for a Topic to narrow this session.
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 
-                  <div className="grid gap-4 lg:grid-cols-2">
-                    <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-                      <div className="mb-3 text-sm font-medium text-text-primary">Recent decks</div>
-                      {recentDecks.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {recentDecks.map((deck) => {
-                            const selected = selectedDeckIds.includes(deck.id);
-                            return (
-                              <button
-                                key={deck.id}
-                                type="button"
-                                onClick={() => toggleDeckFilter(deck.id)}
-                                className={`min-h-11 rounded-full px-4 py-2 text-left text-sm font-medium shadow-[var(--shadow-shell)] transition duration-fast hover:-translate-y-[1px] hover:border-border-strong active:translate-y-0 active:scale-[0.98] ${selected ? "app-button-primary" : "app-selected"}`}
-                                aria-pressed={selected}
-                              >
-                                {deck.name} · {deckCardCounts.get(deck.id) ?? 0} cards
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-sm leading-6 text-text-muted">
-                          Start a focused session and your recent decks will appear here.
-                        </p>
-                      )}
-                    </div>
-                    <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-                      <div className="mb-3 text-sm font-medium text-text-primary">Recent Topics</div>
-                      {recentTopics.length > 0 ? (
-                        <div className="flex flex-wrap gap-2">
-                          {recentTopics.map((topic) => {
-                            const selected = selectedTopicIds.includes(topic.id);
-                            return (
-                              <button
-                                key={topic.id}
-                                type="button"
-                                onClick={() => toggleTopicFilter(topic.id)}
-                                className={`min-h-11 rounded-full px-4 py-2 text-left text-sm font-medium shadow-[var(--shadow-shell)] transition duration-fast hover:-translate-y-[1px] hover:border-border-strong active:translate-y-0 active:scale-[0.98] ${selected ? "app-button-primary" : "app-selected"}`}
-                                aria-pressed={selected}
-                              >
-                                {topic.name} · {topicCardCounts.get(topic.id) ?? 0} cards
-                              </button>
-                            );
-                          })}
-                        </div>
-                      ) : (
-                        <p className="text-sm leading-6 text-text-muted">
-                          Topics from focused sessions will collect here.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-                  {customSelectionEmpty ? (
-                    <EmptyState
-                      variant="compact"
-                      align="left"
-                      emoji="Search"
-                      title="No cards match these filters"
-                      description={hasCustomFilters ? "Your selected decks and Topics do not currently match any cards. Clear them or try a different combination." : "There are no cards available for Focused Review yet."}
-                      action={hasCustomFilters ? <Button type="button" variant="secondary" onClick={clearCustomFilters}>Clear filters</Button> : undefined}
-                      secondaryAction={<Link href="/dashboard/cards" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]">Edit cards</Link>}
-                    />
-                  ) : null}
-                </SurfaceCard>
-              ) : null}
-              {hasCards ? (
-                <SurfaceCard padding="md" className="space-y-4">
-                  <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <StepLabel step={3}>Simple Study</StepLabel>
-                        <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${simpleStudyQueue.cards.length > 0 ? "app-chip" : "app-success"}`}>
-                          {simpleStudyStatusText}
-                        </span>
+                  <div className="flex flex-col gap-4 border-t border-[var(--color-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
+                    <div aria-live="polite">
+                      <div className="text-base font-semibold text-text-primary">
+                        {customSelectionEmpty
+                          ? "No cards match this selection"
+                          : `${customPreviewCards.length} ${customPreviewCards.length === 1 ? "card" : "cards"} ready`}
                       </div>
-                      <p className="mt-3 text-sm leading-6 text-text-secondary">
-                        Clear new and missed cards with a quick correct-or-wrong pass.
+                      <p className="mt-1 text-sm leading-6 text-text-muted">
+                        {customSelectionEmpty
+                          ? "Clear a filter or choose something different."
+                          : hasCustomFilters
+                            ? "Your selected decks and Topics will be mixed into one session."
+                            : "No filters are selected, so this session will use every card."}
                       </p>
                     </div>
-                    <Button
-                      type="button"
-                      onClick={() => startSession("simple")}
-                      disabled={simpleStudyQueue.cards.length === 0}
-                      variant="secondary"
-                      size="md"
-                      className="w-full justify-center lg:w-auto"
-                    >
-                      {simpleStudyQueue.cards.length > 0 ? "Start Simple Study" : "No Simple Study cards"}
-                    </Button>
-                  </div>
-                  <div className="grid grid-cols-2 gap-2">
-                    <CountPill value={simpleStudyQueue.newCount} label="New" />
-                    <CountPill value={simpleStudyQueue.wrongCount} label="Missed" />
+                    <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
+                      {customSelectionEmpty ? (
+                        <Link
+                          href="/dashboard/cards"
+                          className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]"
+                        >
+                          Edit cards
+                        </Link>
+                      ) : (
+                        <Button
+                          type="button"
+                          onClick={handleCustomReviewClick}
+                          size="lg"
+                          className="w-full sm:w-auto"
+                        >
+                          Start Focused Review
+                        </Button>
+                      )}
+                    </div>
                   </div>
                 </SurfaceCard>
               ) : null}

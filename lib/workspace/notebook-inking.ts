@@ -26,6 +26,13 @@ export type PointerClientSample = {
   time: number;
 };
 
+export type LivePointerSample = {
+  clientX: number;
+  clientY: number;
+  pressure: number;
+  timeStamp: number;
+};
+
 const DEFAULT_MIN_POINT_DISTANCE = 1.35;
 const DEFAULT_MAX_INTERPOLATED_POINT_DISTANCE = 4.75;
 export const NOTEBOOK_INITIAL_POINTS_WITHOUT_DISTANCE_FILTER = 5;
@@ -52,6 +59,10 @@ export const NOTEBOOK_PEN_MIN_WIDTH = 2;
 export const NOTEBOOK_PEN_MAX_WIDTH = 10;
 export const NOTEBOOK_HIGHLIGHTER_MIN_WIDTH = 10;
 export const NOTEBOOK_HIGHLIGHTER_MAX_WIDTH = 30;
+export const NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT = 2;
+
+const NOTEBOOK_LIVE_CURVE_DEVIATION_PX = 0.75;
+const NOTEBOOK_LIVE_PRESSURE_DEVIATION = 0.08;
 
 export function appendPendingNotebookStroke(
   pending: NotebookStroke[],
@@ -129,9 +140,11 @@ export function getNotebookPageDragIntent(input: {
   axis: "horizontal" | "vertical";
   canPanHorizontally: boolean;
   canPanVertically: boolean;
+  zoom?: number;
 }): NotebookPageDragIntent {
   if (input.axis === "horizontal") {
-    return input.canPanHorizontally ? "pan" : "page";
+    if (input.canPanHorizontally) return "pan";
+    return (input.zoom ?? 1) > 1.0001 ? "none" : "page";
   }
   return input.canPanVertically ? "pan" : "none";
 }
@@ -359,6 +372,44 @@ export function getNotebookPagePanAfterPinch(input: {
   });
 }
 
+export function getNotebookLivePinchTransform(input: {
+  anchorFx: number;
+  anchorFy: number;
+  basePanX: number;
+  basePanY: number;
+  currentCenterX: number;
+  currentCenterY: number;
+  nextZoom: number;
+  startCenterX: number;
+  startCenterY: number;
+  startPageHeight: number;
+  startPageWidth: number;
+  startZoom: number;
+}) {
+  const scaleRatio =
+    Number.isFinite(input.startZoom) &&
+    input.startZoom > 0 &&
+    Number.isFinite(input.nextZoom)
+      ? input.nextZoom / input.startZoom
+      : 1;
+  const nextPageWidth = input.startPageWidth * scaleRatio;
+  const nextPageHeight = input.startPageHeight * scaleRatio;
+
+  return {
+    x:
+      input.basePanX +
+      input.currentCenterX -
+      input.startCenterX +
+      input.anchorFx * (input.startPageWidth - nextPageWidth),
+    y:
+      input.basePanY +
+      input.currentCenterY -
+      input.startCenterY +
+      input.anchorFy * (input.startPageHeight - nextPageHeight),
+    scaleRatio,
+  };
+}
+
 export function getPinchDistance(
   first: PointerClientSample,
   second: PointerClientSample
@@ -425,6 +476,79 @@ export function getPointerClientSamples(event: PointerEvent): PointerClientSampl
     pressure: normalizePointerPressure(sample.pressure),
     time: normalizeInkTime(sample.timeStamp, fallbackTime),
   }));
+}
+
+export function getBoundedLivePointerSamples<T extends LivePointerSample>(
+  event: T & { getCoalescedEvents?: () => readonly T[] },
+  previous?: LivePointerSample
+): T[] {
+  const coalescedSamples =
+    typeof event.getCoalescedEvents === "function"
+      ? event.getCoalescedEvents()
+      : [];
+  if (!previous || coalescedSamples.length === 0) return [event];
+
+  const segmentX = event.clientX - previous.clientX;
+  const segmentY = event.clientY - previous.clientY;
+  const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
+  const timeSpan = event.timeStamp - previous.timeStamp;
+  const startPressure = normalizePointerPressure(previous.pressure);
+  const endPressure = normalizePointerPressure(event.pressure);
+  let significantSample: T | null = null;
+  let strongestScore = 1;
+
+  for (const sample of coalescedSamples) {
+    if (
+      sample.clientX === event.clientX &&
+      sample.clientY === event.clientY &&
+      sample.timeStamp === event.timeStamp
+    ) {
+      continue;
+    }
+
+    const offsetX = sample.clientX - previous.clientX;
+    const offsetY = sample.clientY - previous.clientY;
+    const geometricProgress =
+      segmentLengthSquared > 0
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              (offsetX * segmentX + offsetY * segmentY) /
+                segmentLengthSquared
+            )
+          )
+        : 0;
+    const projectedX = previous.clientX + geometricProgress * segmentX;
+    const projectedY = previous.clientY + geometricProgress * segmentY;
+    const curveDeviation = Math.hypot(
+      sample.clientX - projectedX,
+      sample.clientY - projectedY
+    );
+    const pressureProgress =
+      Number.isFinite(timeSpan) && timeSpan > 0
+        ? Math.max(
+            0,
+            Math.min(1, (sample.timeStamp - previous.timeStamp) / timeSpan)
+          )
+        : geometricProgress;
+    const expectedPressure =
+      startPressure + (endPressure - startPressure) * pressureProgress;
+    const pressureDeviation = Math.abs(
+      normalizePointerPressure(sample.pressure) - expectedPressure
+    );
+    const score = Math.max(
+      curveDeviation / NOTEBOOK_LIVE_CURVE_DEVIATION_PX,
+      pressureDeviation / NOTEBOOK_LIVE_PRESSURE_DEVIATION
+    );
+
+    if (score > strongestScore) {
+      strongestScore = score;
+      significantSample = sample;
+    }
+  }
+
+  return significantSample ? [significantSample, event] : [event];
 }
 
 export function shouldAppendInkPoint(

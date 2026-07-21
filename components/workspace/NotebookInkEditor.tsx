@@ -7,6 +7,7 @@ import {
   useCallback,
   useEffect,
   useImperativeHandle,
+  useLayoutEffect,
   useRef,
   useState,
   type PointerEvent as ReactPointerEvent,
@@ -31,6 +32,7 @@ import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
 import { shouldSuppressNotebookNativeInkPointer } from "@/lib/workspace/notebook-interaction-lock";
+import { getBoundedLivePointerSamples } from "@/lib/workspace/notebook-inking";
 
 export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "text";
 
@@ -40,6 +42,7 @@ export type NotebookInkEditorHandle = {
   hasInk(): boolean;
   isInteracting(): boolean;
   redo(): void;
+  serialize(): string | null;
   serializeAsync(): Promise<string | null>;
   setEraserMode(mode: NotebookEraserMode): void;
   undo(): void;
@@ -272,6 +275,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const pointerLifecycleRef = useRef<NotebookInkPointerLifecycle | null>(null);
     pointerLifecycleRef.current ??= new NotebookInkPointerLifecycle();
     const inkSmoothersRef = useRef<Map<number, NotebookInkSmoother>>(new Map());
+    const lastForwardedPointerSampleRef = useRef<Map<number, PointerEvent>>(
+      new Map()
+    );
     const pendingStyleRef = useRef(false);
     const initialSvgRef = useRef(initialSvg);
     const readOnlyRef = useRef(readOnly);
@@ -340,6 +346,15 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         redo() {
           void editorRef.current?.history.redo();
         },
+        serialize() {
+          const editor = editorRef.current;
+          const pointerLifecycle = pointerLifecycleRef.current;
+          if (!editor || pointerLifecycle?.isInteracting || !readyRef.current) {
+            return null;
+          }
+          const svg = editor.toSVG();
+          return pointerLifecycle?.isInteracting ? null : svg.outerHTML;
+        },
         async serializeAsync() {
           const editor = editorRef.current;
           const pointerLifecycle = pointerLifecycleRef.current;
@@ -385,6 +400,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
 
       const pointerLifecycle = pointerLifecycleRef.current;
       const inkSmoothers = inkSmoothersRef.current;
+      const lastForwardedPointerSamples =
+        lastForwardedPointerSampleRef.current;
+      lastForwardedPointerSamples.clear();
       void loadJsDraw()
         .then(async (jsDraw) => {
           if (disposed) return;
@@ -548,6 +566,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         readyRef.current = false;
         pointerLifecycle?.reset();
         inkSmoothers.clear();
+        lastForwardedPointerSamples.clear();
         callbacksRef.current.onInteractionChange(false);
         historyListener?.remove();
         editor?.remove();
@@ -591,7 +610,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       editorRef.current?.setReadOnly(readOnly);
     }, [readOnly]);
 
-    useEffect(() => {
+    useLayoutEffect(() => {
       const surface = inkSurfaceRef.current;
       if (!surface) return;
 
@@ -639,6 +658,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
 
     const cancelEditorGesture = useCallback(() => {
       inkSmoothersRef.current.clear();
+      lastForwardedPointerSampleRef.current.clear();
       const editor = editorRef.current;
       const jsDraw = jsDrawRef.current;
       if (!editor || !jsDraw) return;
@@ -750,6 +770,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           pendingStyleRef.current = false;
           applyInkStyle(editor, pointerStyle, jsDraw);
         }
+        lastForwardedPointerSampleRef.current.set(
+          event.pointerId,
+          event.nativeEvent
+        );
         try {
           if (!surface.hasPointerCapture(event.pointerId)) {
             surface.setPointerCapture(event.pointerId);
@@ -761,20 +785,21 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       }
       if (editor) {
         if (type === "pointermove") {
-          // Forward the coalesced samples so fast pen movement keeps its full
-          // input resolution instead of being downsampled to frame rate.
-          const nativeEvent = event.nativeEvent;
-          const samples =
-            typeof nativeEvent.getCoalescedEvents === "function"
-              ? nativeEvent.getCoalescedEvents()
-              : [];
-          if (samples.length > 0) {
-            for (const sample of samples) {
-              editor.handleHTMLPointerEvent("pointermove", sample);
-            }
-          } else {
-            editor.handleHTMLPointerEvent(type, nativeEvent);
+          // js-draw clears and redraws the complete wet polyline for every
+          // forwarded sample. Keep each dense Apple Pencil packet to the
+          // current endpoint plus, at most, one meaningful bend or pressure
+          // sample. This bounds redraw work without flattening tight curves.
+          const liveSamples = getBoundedLivePointerSamples(
+            event.nativeEvent,
+            lastForwardedPointerSampleRef.current.get(event.pointerId)
+          );
+          for (const sample of liveSamples) {
+            editor.handleHTMLPointerEvent("pointermove", sample);
           }
+          lastForwardedPointerSampleRef.current.set(
+            event.pointerId,
+            event.nativeEvent
+          );
         } else {
           editor.handleHTMLPointerEvent(type, event.nativeEvent);
         }
@@ -787,17 +812,20 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       }
       if (type === "pointerup" || type === "pointercancel") {
         inkSmoothersRef.current.delete(event.pointerId);
+        lastForwardedPointerSampleRef.current.delete(event.pointerId);
         let hadPointerCapture = false;
         try {
           hadPointerCapture = surface.hasPointerCapture(event.pointerId);
         } catch {
           // Capture state may be unavailable after a browser cancellation.
         }
-        // Mark a normal release before releasing capture. Safari can dispatch
-        // the resulting lostpointercapture after the next contact has begun.
+        // Mark the release before capture is dropped. Safari can dispatch the
+        // resulting lostpointercapture after the next contact has begun. A
+        // pointercancel also ends implicit capture, even when Safari has
+        // already stopped reporting it through hasPointerCapture().
         finishPointerInteraction({
           pointerId: event.pointerId,
-          expectCaptureLoss: type === "pointerup" && hadPointerCapture,
+          expectCaptureLoss: hadPointerCapture || type === "pointercancel",
           timeStamp: event.timeStamp,
         });
         try {

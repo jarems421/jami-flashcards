@@ -45,6 +45,25 @@ describe("notebook ink pointer lifecycle", () => {
     });
   });
 
+  it("keeps rapid re-contact active after a cancelled captured stroke", () => {
+    const lifecycle = new NotebookInkPointerLifecycle();
+    const pointerId = 11;
+
+    lifecycle.begin(pointerId);
+    lifecycle.finish({
+      pointerId,
+      expectCaptureLoss: true,
+      timeStamp: 10,
+    });
+
+    const next = lifecycle.begin(pointerId);
+    expect(lifecycle.handleLostCapture(pointerId, 18)).toEqual({
+      kind: "ignore-intentional",
+    });
+    expect(lifecycle.isCurrent(pointerId, next.generation)).toBe(true);
+    expect(lifecycle.isInteracting).toBe(true);
+  });
+
   it("still cancels a genuinely stranded active pointer", () => {
     const lifecycle = new NotebookInkPointerLifecycle();
     const start = lifecycle.begin(4);
