@@ -56,7 +56,11 @@ import {
   normalizeNotebookStrokeColor,
   resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
-import { getNotebookViewportLayout } from "@/lib/workspace/notebook-viewport";
+import {
+  getNotebookViewportLayout,
+  getNotebookViewportPreferredZoom,
+  getNotebookViewportZoomAfterPreferredSizeChange,
+} from "@/lib/workspace/notebook-viewport";
 import type { NotebookEraserMode } from "@/lib/workspace/notebook-eraser";
 import { normalizeTimedInkPoint } from "@/lib/workspace/notebook-ink-engine";
 import {
@@ -79,6 +83,7 @@ import {
   type NotebookPagePan,
   getHighlighterWidthFromPercent,
   getNotebookCreatePagePull,
+  getNotebookPageDragIntent,
   getNotebookPageIndexAfterSwipe,
   getNotebookPagePanAfterPinch,
   getNotebookSwipeDragOffset,
@@ -93,6 +98,7 @@ import {
   mapClientPointToNotebookPage,
   shouldPointerSwipePages,
   shouldSuppressTouchAfterStylus,
+  type NotebookPageDragIntent,
   type PointerClientSample,
 } from "@/lib/workspace/notebook-inking";
 import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
@@ -172,8 +178,10 @@ type PageSwipeState = {
   currentY: number;
   lastX: number;
   lastY: number;
+  startPan: NotebookPagePan;
   samples: Array<{ x: number; time: number }>;
   axis: "horizontal" | "vertical" | null;
+  intent: NotebookPageDragIntent | null;
   completed: boolean;
 };
 type PageSwipeMotion = {
@@ -1059,6 +1067,7 @@ export default function NotebookEditorPage() {
   const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
   const pagePanLiveRef = useRef<NotebookPagePan>({ x: 0, y: 0 });
+  const preferredPageZoomRef = useRef(1);
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
@@ -1175,6 +1184,16 @@ export default function NotebookEditorPage() {
   );
   const trackPreviousBackground = resolvePageBackground(trackPreviousPage);
   const trackNextBackground = resolvePageBackground(trackNextPage);
+  const preferredPageZoom = useMemo(
+    () =>
+      getNotebookViewportPreferredZoom({
+        frameWidth: frameSize.width,
+        frameHeight: frameSize.height,
+        pageWidth: CANVAS_WIDTH,
+        pageHeight: CANVAS_HEIGHT,
+      }),
+    [frameSize.height, frameSize.width]
+  );
   const viewportLayout = useMemo(
     () =>
       getNotebookViewportLayout({
@@ -1191,6 +1210,32 @@ export default function NotebookEditorPage() {
   const pageWidthPx = viewportLayout.pageSize.width;
   const pageHeightPx = viewportLayout.pageSize.height;
   const pageTrackTravelDistance = viewportLayout.swipeTravel;
+  const pageCanPanHorizontally =
+    viewportLayout.panBounds.maxX - viewportLayout.panBounds.minX > 0.5;
+  const pageCanPanVertically =
+    viewportLayout.panBounds.maxY - viewportLayout.panBounds.minY > 0.5;
+
+  useLayoutEffect(() => {
+    const previousPreferredZoom = preferredPageZoomRef.current;
+    if (Math.abs(previousPreferredZoom - preferredPageZoom) < 0.0001) return;
+
+    const nextZoom = getNotebookViewportZoomAfterPreferredSizeChange({
+      zoom: pageZoom,
+      previousPreferredZoom,
+      nextPreferredZoom: preferredPageZoom,
+    });
+    const nextLayout = getNotebookViewportLayout({
+      frameWidth: frameSize.width,
+      frameHeight: frameSize.height,
+      pageWidth: CANVAS_WIDTH,
+      pageHeight: CANVAS_HEIGHT,
+      zoom: nextZoom,
+    });
+    preferredPageZoomRef.current = preferredPageZoom;
+    pagePanLiveRef.current = nextLayout.pageOrigin;
+    setPageZoom(nextZoom);
+    setPagePan(nextLayout.pageOrigin);
+  }, [frameSize.height, frameSize.width, pageZoom, preferredPageZoom]);
 
   const updatePageSwipeMotion = useCallback((next: PageSwipeMotion | null) => {
     pageSwipeMotionRef.current = next;
@@ -1890,7 +1935,7 @@ export default function NotebookEditorPage() {
     const centerY = (first.clientY + second.clientY) / 2;
     pinchZoomRef.current = {
       startDistance: getPinchDistance(first, second),
-      startZoom: pageZoom,
+      startZoom: viewportLayout.zoom,
       startCenterX: centerX,
       startCenterY: centerY,
       lastCenterX: centerX,
@@ -1901,7 +1946,7 @@ export default function NotebookEditorPage() {
       // the first live pinch frame jump after rotation or viewport resizing.
       basePanX: rect.left - frameRect.left,
       basePanY: rect.top - frameRect.top,
-      pendingZoom: pageZoom,
+      pendingZoom: viewportLayout.zoom,
     };
   };
 
@@ -2837,6 +2882,8 @@ export default function NotebookEditorPage() {
     ) {
       return;
     }
+    const startPan = { ...viewportLayout.pageOrigin };
+    pagePanLiveRef.current = startPan;
     pageSwipeRef.current = {
       pointerId: event.pointerId,
       startX: event.clientX,
@@ -2845,8 +2892,10 @@ export default function NotebookEditorPage() {
       currentY: event.clientY,
       lastX: event.clientX,
       lastY: event.clientY,
+      startPan,
       samples: [{ x: event.clientX, time: event.timeStamp }],
       axis: null,
+      intent: null,
       completed: false,
     };
     safelySetPointerCapture(event.currentTarget, event.pointerId);
@@ -2856,8 +2905,6 @@ export default function NotebookEditorPage() {
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId || swipe.completed) return;
 
-    const deltaX = event.clientX - swipe.lastX;
-    const deltaY = event.clientY - swipe.lastY;
     swipe.currentX = event.clientX;
     swipe.currentY = event.clientY;
     swipe.lastX = event.clientX;
@@ -2869,13 +2916,34 @@ export default function NotebookEditorPage() {
       .filter((sample) => event.timeStamp - sample.time <= 120)
       .slice(-24);
 
-    // While zoomed in, one finger pans the page freely in both directions.
-    // Page swipes only come back once the page is zoomed out to fit.
-    if (pageZoom > 1.02) {
+    const totalDx = swipe.currentX - swipe.startX;
+    const totalDy = swipe.currentY - swipe.startY;
+    if (swipe.axis === null && Math.max(Math.abs(totalDx), Math.abs(totalDy)) >= 8) {
+      if (Math.abs(totalDx) > Math.abs(totalDy) * 1.05) {
+        swipe.axis = "horizontal";
+      } else if (Math.abs(totalDy) > Math.abs(totalDx) * 1.15) {
+        swipe.axis = "vertical";
+      }
+      if (swipe.axis) {
+        swipe.intent = getNotebookPageDragIntent({
+          axis: swipe.axis,
+          canPanHorizontally: pageCanPanHorizontally,
+          canPanVertically: pageCanPanVertically,
+        });
+        if (swipe.intent === "page") {
+          setPagePreviewVisibility(true);
+        }
+      }
+    }
+
+    // A landscape page can be taller than the frame while still being
+    // narrower than it. In that state vertical drags pan the sheet, while
+    // horizontal drags retain the physical page-swipe interaction.
+    if (swipe.intent === "pan") {
       const nextPan = clampNotebookPagePan({
         pan: {
-          x: pagePanLiveRef.current.x + deltaX,
-          y: pagePanLiveRef.current.y + deltaY,
+          x: swipe.startPan.x + totalDx,
+          y: swipe.startPan.y + totalDy,
         },
         pageWidth: pageWidthPx,
         pageHeight: pageHeightPx,
@@ -2891,25 +2959,12 @@ export default function NotebookEditorPage() {
       return;
     }
 
-    const totalDx = swipe.currentX - swipe.startX;
-    const totalDy = swipe.currentY - swipe.startY;
-    if (swipe.axis === null && Math.max(Math.abs(totalDx), Math.abs(totalDy)) >= 8) {
-      if (Math.abs(totalDx) > Math.abs(totalDy) * 1.05) {
-        swipe.axis = "horizontal";
-        setPagePreviewVisibility(true);
-      } else if (Math.abs(totalDy) > Math.abs(totalDx) * 1.15) {
-        swipe.axis = "vertical";
-      }
-    }
-
-    // At fit zoom the whole page is already visible; a vertically-dominant
-    // drag is neither a pan nor a page swipe.
-    if (swipe.axis === "vertical") {
+    if (swipe.intent === "none") {
       event.preventDefault();
       return;
     }
 
-    if (swipe.axis !== "horizontal") return;
+    if (swipe.intent !== "page") return;
 
     // Forward pull past the last page → engage the "create new page" affordance.
     if (selectedPageIndex === pages.length - 1 && totalDx < 0) {
@@ -2953,12 +3008,14 @@ export default function NotebookEditorPage() {
     const deltaX = event.clientX - swipe.startX;
     const deltaY = event.clientY - swipe.startY;
 
-    // A zoomed-in drag was a pan: commit its final position to state.
-    if (pageZoom > 1.02) {
+    // A resolved pan commits its final position; horizontal page swipes remain
+    // available whenever the sheet has no horizontal pan range.
+    if (swipe.intent === "pan") {
       setPagePan(pagePanLiveRef.current);
       if (
         !options.cancelled &&
         Math.abs(deltaX) <= 8 &&
+        Math.abs(deltaY) <= 8 &&
         tool === "text" &&
         options.allowTextTap
       ) {
@@ -2974,8 +3031,9 @@ export default function NotebookEditorPage() {
       { x: event.clientX, time: event.timeStamp },
     ]);
     const horizontalGesture =
-      swipe.axis === "horizontal" ||
-      (swipe.axis === null &&
+      swipe.intent === "page" ||
+      (swipe.intent === null &&
+        !pageCanPanHorizontally &&
         Math.abs(deltaX) > 8 &&
         Math.abs(deltaX) > Math.abs(deltaY) * 1.05);
 
@@ -3051,6 +3109,7 @@ export default function NotebookEditorPage() {
       !swipe.completed &&
       !options.cancelled &&
       Math.abs(deltaX) <= 8 &&
+      Math.abs(deltaY) <= 8 &&
       tool === "text" &&
       options.allowTextTap &&
         event.currentTarget instanceof HTMLElement
@@ -3074,6 +3133,7 @@ export default function NotebookEditorPage() {
       tool === "text" ||
       !fullNotebookEditingEnabled ||
       pageSwipeRef.current?.completed ||
+      pageSwipeRef.current?.intent === "pan" ||
       pinchZoomRef.current
     ) {
       return;

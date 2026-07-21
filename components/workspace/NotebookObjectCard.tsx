@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
+import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
 import ObjectIcon from "@/components/workspace/ObjectIcon";
 import { getObjectColorPreset } from "@/components/workspace/object-card-styles";
 
@@ -25,6 +26,8 @@ export type NotebookObjectCardProps = {
   href?: string;
   onClick?: () => void;
   onEdit?: () => void;
+  onDelete?: () => void;
+  deleting?: boolean;
   className?: string;
   compact?: boolean;
   editorPreview?: boolean;
@@ -68,7 +71,7 @@ function NotebookCardInner({
   return (
     <div
       className={cx(
-        "group/notebook mx-auto flex h-full w-full max-w-[8.35rem] cursor-pointer flex-col items-center rounded-[1.05rem] border border-transparent bg-transparent px-2 py-2.5 text-center transition duration-200 hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)] active:scale-[0.985]",
+        "group/notebook mx-auto flex h-full w-full max-w-[8.35rem] cursor-pointer flex-col items-center rounded-[1.05rem] border border-transparent bg-transparent px-2 py-2.5 text-center transition duration-200 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]",
         editorPreview ? "min-h-[7rem] max-w-[6rem] px-1.5 py-2" : compact ? "min-h-[9.6rem]" : "min-h-[10.9rem]",
       )}
     >
@@ -117,6 +120,7 @@ function NotebookCardInner({
 export function NotebookObjectCard(props: NotebookObjectCardProps) {
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
   const mobileActionsTitleId = useId();
+  const { handleToggle, menuPositionClass } = useAdaptiveMenuPlacement(112);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const suppressNextClickRef = useRef(false);
@@ -178,17 +182,28 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
     }
   };
 
-  const hasActions = Boolean(props.onEdit);
+  const hasActions = Boolean(props.onEdit || props.onDelete);
+  const standaloneInteractionClass = hasActions
+    ? undefined
+    : "transition duration-200 hover:-translate-y-0.5 active:scale-[0.985]";
   const card = props.href ? (
     <Link
       href={props.href}
       prefetch={false}
-      className={cx("block h-full", props.className)}
+      className={cx("block h-full", standaloneInteractionClass, props.className)}
     >
       <NotebookCardInner {...props} />
     </Link>
   ) : props.onClick ? (
-    <button type="button" onClick={props.onClick} className={cx("block h-full w-full", props.className)}>
+    <button
+      type="button"
+      onClick={props.onClick}
+      className={cx(
+        "block h-full w-full",
+        standaloneInteractionClass,
+        props.className
+      )}
+    >
       <NotebookCardInner {...props} />
     </button>
   ) : (
@@ -200,7 +215,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
   if (!hasActions) return card;
   return (
     <div
-      className="relative h-full select-none md:select-auto"
+      className="relative h-full select-none transition duration-200 hover:-translate-y-0.5 md:grid md:grid-cols-[minmax(0,1fr)_2.5rem] md:items-start md:select-auto"
       style={{ WebkitTouchCallout: "none" }}
       onPointerDown={handlePointerDown}
       onPointerMove={handlePointerMove}
@@ -234,25 +249,56 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
       >
         Open notebook actions for {props.title}
       </button>
-      <details className="group/actions absolute right-1 top-1 z-20 hidden md:block">
+      <details
+        className="group/actions relative z-20 hidden h-10 w-10 items-center justify-center md:flex"
+        onToggle={handleToggle}
+      >
         <summary
           aria-label={`Notebook actions for ${props.title}`}
           title="Notebook actions"
-          className="grid h-8 w-8 cursor-pointer list-none place-items-center rounded-full border border-[var(--button-secondary-border)] bg-[var(--color-surface-panel-strong)] text-sm font-bold tracking-[0.08em] text-text-secondary shadow-sm transition hover:text-text-primary [&::-webkit-details-marker]:hidden"
+          className="flex h-[1.875rem] w-[1.875rem] cursor-pointer list-none items-center justify-center rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-muted transition hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden"
         >
-          ···
+          <svg
+            viewBox="0 0 20 20"
+            fill="currentColor"
+            aria-hidden="true"
+            className="h-4 w-4"
+          >
+            <circle cx="4" cy="10" r="1.35" />
+            <circle cx="10" cy="10" r="1.35" />
+            <circle cx="16" cy="10" r="1.35" />
+          </svg>
         </summary>
-        <div className="absolute right-0 top-9 grid min-w-36 gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-[0_16px_38px_rgba(0,0,0,0.28)]">
+        <div
+          className={cx(
+            "absolute right-0 z-30 grid min-w-44 gap-1 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-[0_18px_46px_rgba(0,0,0,0.28)]",
+            menuPositionClass
+          )}
+        >
           {props.onEdit ? (
             <button
               type="button"
-              className="rounded-lg px-3 py-2 text-left text-sm font-medium text-text-secondary transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+              disabled={props.deleting}
+              className="rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
               onClick={(event) => {
                 event.currentTarget.closest("details")?.removeAttribute("open");
                 props.onEdit?.();
               }}
             >
               Edit notebook
+            </button>
+          ) : null}
+          {props.onDelete ? (
+            <button
+              type="button"
+              disabled={props.deleting}
+              className="rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
+              onClick={(event) => {
+                event.currentTarget.closest("details")?.removeAttribute("open");
+                props.onDelete?.();
+              }}
+            >
+              {props.deleting ? "Deleting..." : "Delete notebook"}
             </button>
           ) : null}
         </div>
@@ -289,7 +335,8 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
                   {props.onEdit ? (
                     <button
                       type="button"
-                      className="min-h-12 rounded-[1rem] bg-[var(--color-glass-subtle)] px-4 text-left text-sm font-semibold text-text-primary"
+                      disabled={props.deleting}
+                      className="min-h-12 rounded-[1rem] bg-[var(--color-glass-subtle)] px-4 text-left text-sm font-semibold text-text-primary disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
                       onClick={() => {
                         suppressNextClickRef.current = false;
                         setMobileActionsOpen(false);
@@ -297,6 +344,20 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
                       }}
                     >
                       Edit notebook
+                    </button>
+                  ) : null}
+                  {props.onDelete ? (
+                    <button
+                      type="button"
+                      disabled={props.deleting}
+                      className="min-h-12 rounded-[1rem] bg-[var(--color-error-muted)] px-4 text-left text-sm font-semibold text-error disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
+                      onClick={() => {
+                        suppressNextClickRef.current = false;
+                        setMobileActionsOpen(false);
+                        props.onDelete?.();
+                      }}
+                    >
+                      {props.deleting ? "Deleting..." : "Delete notebook"}
                     </button>
                   ) : null}
                   <button

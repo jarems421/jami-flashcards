@@ -20,6 +20,7 @@ import {
 import {
   Button,
   Card,
+  ConfirmDialog,
   EmptyState,
   FeedbackBanner,
   Input,
@@ -46,6 +47,7 @@ import {
   createNotebook,
   createNotebookPage,
   getNotebooksForFolder,
+  updateNotebook,
 } from "@/services/study/notebooks";
 import { importUploadedNotebook } from "@/services/study/notebook-import";
 import { createSource, getActiveSources, updateSource } from "@/services/study/sources";
@@ -87,6 +89,11 @@ export default function FolderDetailPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [editingNotebook, setEditingNotebook] = useState<Notebook | null>(null);
+  const [notebookPendingDelete, setNotebookPendingDelete] =
+    useState<Notebook | null>(null);
+  const [deletingNotebookId, setDeletingNotebookId] = useState<string | null>(
+    null
+  );
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
@@ -307,6 +314,34 @@ export default function FolderDetailPage() {
       });
     } finally {
       setBusyAssetId(null);
+    }
+  };
+
+  const handleDeleteNotebook = async () => {
+    if (!user?.uid || !notebookPendingDelete) return;
+    const notebook = notebookPendingDelete;
+    setDeletingNotebookId(notebook.id);
+    setFeedback(null);
+    try {
+      await updateNotebook(user.uid, notebook.id, { archived: true });
+      setNotebooks((current) =>
+        current.filter((item) => item.id !== notebook.id)
+      );
+      setNotebookPendingDelete(null);
+      setFeedback({
+        type: "success",
+        message: `${notebook.title} deleted.`,
+      });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not delete notebook.",
+      });
+    } finally {
+      setDeletingNotebookId(null);
     }
   };
 
@@ -618,6 +653,19 @@ export default function FolderDetailPage() {
             onDismiss={() => setFeedback(null)}
           />
         ) : null}
+
+        <ConfirmDialog
+          open={notebookPendingDelete !== null}
+          title={`Delete ${notebookPendingDelete?.title ?? "this notebook"}?`}
+          description="This removes the notebook from your workspace. Its saved pages are retained so it can be recovered later."
+          confirmLabel="Delete notebook"
+          busy={
+            notebookPendingDelete !== null &&
+            deletingNotebookId === notebookPendingDelete.id
+          }
+          onConfirm={() => void handleDeleteNotebook()}
+          onClose={() => setNotebookPendingDelete(null)}
+        />
 
         {editingNotebook && user?.uid ? (
           <NotebookEditorDialog
@@ -947,6 +995,8 @@ export default function FolderDetailPage() {
                     previewInkSvg={notebook.previewInkSvg}
                     updatedLabel={formatEditedLabel(notebook.updatedAt)}
                     onEdit={() => setEditingNotebook(notebook)}
+                    onDelete={() => setNotebookPendingDelete(notebook)}
+                    deleting={deletingNotebookId === notebook.id}
                     compact
                   />
                 ))

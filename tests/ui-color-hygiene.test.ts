@@ -62,6 +62,10 @@ describe("theme colour hygiene", () => {
 
   it("keeps same-family accent pairings guarded by global contrast overrides", () => {
     const globals = readFileSync(join(root, "app/globals.css"), "utf8");
+    const studyPage = readFileSync(
+      join(root, "app/dashboard/study/page.tsx"),
+      "utf8"
+    );
 
     expect(globals).toContain('body [class*="bg-accent/"] .text-accent');
     expect(globals).toContain('body [class*="bg-warm-glow"] .text-warm-accent');
@@ -72,9 +76,19 @@ describe("theme colour hygiene", () => {
     expect(globals).toContain("--button-secondary-text: #101827;");
     expect(globals).toContain("--button-surface-text: #101827;");
     expect(globals).toContain(".study-flashcard-face {");
-    expect(globals).toContain("border: 2px solid var(--study-card-border");
+    expect(globals).toContain(
+      "var(--study-card-border, var(--color-border-strong)) 14%"
+    );
+    expect(globals).toContain("var(--shadow-card);");
+    expect(globals).not.toContain(
+      "0 0 0 1px color-mix(in srgb, var(--study-card-border"
+    );
     expect(globals).toContain("background-color: var(--color-surface-panel);");
-    expect(globals).toContain("background: rgba(8, 5, 18, 0.62);");
+    expect(globals).toContain("background: rgba(8, 5, 18, 0.92);");
+    expect(studyPage).toContain("study-session-stage");
+    expect(studyPage).toContain("study-flashcard-shell");
+    expect(studyPage).not.toContain('SurfaceCard padding="lg" className="overflow-hidden"');
+    expect(studyPage).not.toContain("--study-card-shadow");
     expect(globals).toContain("--color-text-primary: #fff8ff;");
   });
 

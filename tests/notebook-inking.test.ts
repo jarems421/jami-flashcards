@@ -10,6 +10,7 @@ import {
   interpolateInkSampleGaps,
   getNotebookCreatePagePull,
   getNotebookCreatePageThreshold,
+  getNotebookPageDragIntent,
   getNotebookPageFit,
   getNotebookPageIndexAfterSwipe,
   getNotebookPagePanAfterPinch,
@@ -394,6 +395,37 @@ describe("notebook inking helpers", () => {
     expect(
       getNotebookSwipeDirection({ startX: 120, startY: 100, currentX: 200, currentY: 190 })
     ).toBeNull();
+  });
+
+  it("keeps landscape page swipes horizontal while vertical overflow pans", () => {
+    expect(
+      getNotebookPageDragIntent({
+        axis: "horizontal",
+        canPanHorizontally: false,
+        canPanVertically: true,
+      })
+    ).toBe("page");
+    expect(
+      getNotebookPageDragIntent({
+        axis: "vertical",
+        canPanHorizontally: false,
+        canPanVertically: true,
+      })
+    ).toBe("pan");
+    expect(
+      getNotebookPageDragIntent({
+        axis: "horizontal",
+        canPanHorizontally: true,
+        canPanVertically: true,
+      })
+    ).toBe("pan");
+    expect(
+      getNotebookPageDragIntent({
+        axis: "vertical",
+        canPanHorizontally: false,
+        canPanVertically: false,
+      })
+    ).toBe("none");
   });
 
   it("keeps page swipe navigation inside available page bounds", () => {

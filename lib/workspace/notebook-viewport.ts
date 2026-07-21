@@ -101,6 +101,85 @@ export function getNotebookViewportFit(input: {
   };
 }
 
+/**
+ * Keeps the notebook at roughly the same physical size when a screen rotates.
+ * Portrait already has the desired framing, so it returns 1 there. In
+ * landscape it compares the true contain-fit with the fit the same viewport
+ * would have in portrait orientation. The fitted page remains available at
+ * zoom 1 (and with extra workspace at the 0.92 floor).
+ */
+export function getNotebookViewportPreferredZoom(input: {
+  frameWidth: number;
+  frameHeight: number;
+  pageWidth?: number;
+  pageHeight?: number;
+  inset?: number;
+}) {
+  const frameWidth = finiteNonNegative(input.frameWidth);
+  const frameHeight = finiteNonNegative(input.frameHeight);
+  const pageWidth = finiteNonNegative(
+    input.pageWidth ?? NOTEBOOK_PAGE_COORDINATE_WIDTH
+  );
+  const pageHeight = finiteNonNegative(
+    input.pageHeight ?? NOTEBOOK_PAGE_COORDINATE_HEIGHT
+  );
+  if (
+    frameWidth === 0 ||
+    frameHeight === 0 ||
+    pageWidth === 0 ||
+    pageHeight === 0 ||
+    frameWidth <= frameHeight
+  ) {
+    return 1;
+  }
+
+  const inset = finiteNonNegative(
+    input.inset ?? getNotebookViewportInset(frameWidth)
+  );
+  const fitSize = getNotebookViewportFit({
+    frameWidth,
+    frameHeight,
+    pageWidth,
+    pageHeight,
+    inset,
+  });
+  const portraitEquivalentFit = getNotebookViewportFit({
+    frameWidth: Math.min(frameWidth, frameHeight),
+    frameHeight: Math.max(frameWidth, frameHeight),
+    pageWidth,
+    pageHeight,
+    inset,
+  });
+  const fitScale = fitSize.width / pageWidth;
+  const preferredScale = portraitEquivalentFit.width / pageWidth;
+  if (fitScale <= 0 || preferredScale <= 0) return 1;
+
+  return clampNotebookViewportZoom(Math.max(1, preferredScale / fitScale));
+}
+
+export function getNotebookViewportZoomAfterPreferredSizeChange(input: {
+  zoom: number;
+  previousPreferredZoom: number;
+  nextPreferredZoom: number;
+}) {
+  const previousPreferredZoom =
+    Number.isFinite(input.previousPreferredZoom) &&
+    input.previousPreferredZoom > 0
+      ? input.previousPreferredZoom
+      : 1;
+  const nextPreferredZoom =
+    Number.isFinite(input.nextPreferredZoom) && input.nextPreferredZoom > 0
+      ? input.nextPreferredZoom
+      : 1;
+  const zoom = Number.isFinite(input.zoom)
+    ? input.zoom
+    : previousPreferredZoom;
+
+  return clampNotebookViewportZoom(
+    (zoom / previousPreferredZoom) * nextPreferredZoom
+  );
+}
+
 export function getNotebookViewportPanBounds(input: {
   pageWidth: number;
   pageHeight: number;

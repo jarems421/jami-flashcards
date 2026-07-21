@@ -5,6 +5,7 @@ import AppPage from "@/components/layout/AppPage";
 import {
   Button,
   ButtonLink,
+  ConfirmDialog,
   EmptyState,
   FeedbackBanner,
   SectionHeader,
@@ -15,7 +16,7 @@ import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getActiveStudyFolders } from "@/services/study/folders";
-import { getActiveNotebooks } from "@/services/study/notebooks";
+import { getActiveNotebooks, updateNotebook } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
 import CreateFolderDialog from "./CreateFolderDialog";
 import FolderObjectCard from "./FolderObjectCard";
@@ -48,6 +49,11 @@ export default function PracticeWorkspace() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [editingNotebook, setEditingNotebook] = useState<Notebook | null>(null);
+  const [notebookPendingDelete, setNotebookPendingDelete] =
+    useState<Notebook | null>(null);
+  const [deletingNotebookId, setDeletingNotebookId] = useState<string | null>(
+    null
+  );
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -91,6 +97,34 @@ export default function PracticeWorkspace() {
     ? `/dashboard/folders/${encodeURIComponent(folders[0].id)}`
     : null;
 
+  const handleDeleteNotebook = async () => {
+    if (!notebookPendingDelete) return;
+    const notebook = notebookPendingDelete;
+    setDeletingNotebookId(notebook.id);
+    setFeedback(null);
+    try {
+      await updateNotebook(user.uid, notebook.id, { archived: true });
+      setNotebooks((current) =>
+        current.filter((item) => item.id !== notebook.id)
+      );
+      setNotebookPendingDelete(null);
+      setFeedback({
+        type: "success",
+        message: `${notebook.title} deleted.`,
+      });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Could not delete notebook.",
+      });
+    } finally {
+      setDeletingNotebookId(null);
+    }
+  };
+
   return (
     <AppPage
       title="Folders"
@@ -118,6 +152,19 @@ export default function PracticeWorkspace() {
             message: `“${folder.name}” is ready. Open it to add a notebook.`,
           });
         }}
+      />
+
+      <ConfirmDialog
+        open={notebookPendingDelete !== null}
+        title={`Delete ${notebookPendingDelete?.title ?? "this notebook"}?`}
+        description="This removes the notebook from your workspace. Its saved pages are retained so it can be recovered later."
+        confirmLabel="Delete notebook"
+        busy={
+          notebookPendingDelete !== null &&
+          deletingNotebookId === notebookPendingDelete.id
+        }
+        onConfirm={() => void handleDeleteNotebook()}
+        onClose={() => setNotebookPendingDelete(null)}
       />
 
       {editingNotebook ? (
@@ -198,6 +245,8 @@ export default function PracticeWorkspace() {
                       pageColor={notebook.pageColor}
                       updatedLabel={folder?.name ?? formatDate(notebook.updatedAt)}
                       onEdit={() => setEditingNotebook(notebook)}
+                      onDelete={() => setNotebookPendingDelete(notebook)}
+                      deleting={deletingNotebookId === notebook.id}
                       compact
                     />
                   );

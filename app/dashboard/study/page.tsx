@@ -2050,8 +2050,7 @@ export default function StudyPage() {
           ) : current ? (
             <div key={current.id} className="animate-slide-up space-y-4 sm:space-y-5">
               <InlineStudyFeedback feedback={answerFeedback} />
-              <SurfaceCard padding="lg" className="overflow-hidden">
-                <div className="space-y-5">
+              <section className="study-session-stage space-y-5 px-1 py-2 sm:px-2 sm:py-3">
                   <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
                     <div className="min-w-0">
                       <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">{getSessionLabel(sessionKind)}</div>
@@ -2070,19 +2069,24 @@ export default function StudyPage() {
                       <ProgressBar progress={progressPercent} />
                     </div>
                   </div>
-                  <div className="mx-auto w-full max-w-[62rem] cursor-pointer perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
+                  <div className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-[2rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
                     <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
                       <div
                         className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
                         style={{
                           "--study-card-border": currentDeckColor.base,
-                          "--study-card-border-back": currentDeckColor.dark,
-                          "--study-card-shadow": currentDeckColor.shadow,
                         } as React.CSSProperties}
                       >
                         <div className="flex items-center justify-between gap-3">
-                          <div className="min-w-0 text-xs font-medium opacity-65">
-                            {deckNamesById[current.deckId] ?? "Flashcard"}
+                          <div className="flex min-w-0 items-center gap-2 text-xs font-medium opacity-65">
+                            <span
+                              aria-hidden="true"
+                              className="h-2 w-2 shrink-0 rounded-full"
+                              style={{ backgroundColor: currentDeckColor.base }}
+                            />
+                            <span className="truncate">
+                              {deckNamesById[current.deckId] ?? "Flashcard"}
+                            </span>
                           </div>
                           {(current.topicIds?.length ?? 0) > 0 ? (
                             <div className="flex max-w-[60%] flex-wrap justify-end gap-1.5">
@@ -2110,11 +2114,16 @@ export default function StudyPage() {
                         className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10"
                         style={{
                           "--study-card-border": currentDeckColor.base,
-                          "--study-card-border-back": currentDeckColor.dark,
-                          "--study-card-shadow": currentDeckColor.shadow,
                         } as React.CSSProperties}
                       >
-                        <div className="text-xs font-normal tracking-[0.06em] opacity-65">Answer</div>
+                        <div className="flex items-center gap-2 text-xs font-normal tracking-[0.06em] opacity-65">
+                          <span
+                            aria-hidden="true"
+                            className="h-2 w-2 shrink-0 rounded-full"
+                            style={{ backgroundColor: currentDeckColor.base }}
+                          />
+                          <span>Answer</span>
+                        </div>
                         <div className="flex flex-1 items-center justify-center py-6">
                           <StudyText
                             as="p"
@@ -2126,8 +2135,7 @@ export default function StudyPage() {
                       </div>
                     </div>
                   </div>
-                </div>
-              </SurfaceCard>
+              </section>
               {!flipped ? (
                 <div className="animate-fade-in space-y-3">
                   {flashcardAiEnabled ? (

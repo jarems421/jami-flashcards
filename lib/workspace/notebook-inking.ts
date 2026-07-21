@@ -123,6 +123,19 @@ export function shouldPointerSwipePages(pointerType: string) {
   return pointerType === "touch";
 }
 
+export type NotebookPageDragIntent = "page" | "pan" | "none";
+
+export function getNotebookPageDragIntent(input: {
+  axis: "horizontal" | "vertical";
+  canPanHorizontally: boolean;
+  canPanVertically: boolean;
+}): NotebookPageDragIntent {
+  if (input.axis === "horizontal") {
+    return input.canPanHorizontally ? "pan" : "page";
+  }
+  return input.canPanVertically ? "pan" : "none";
+}
+
 export function shouldSuppressTouchAfterStylus(input: {
   stylusActive: boolean;
   cooldownUntil: number;

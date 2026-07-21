@@ -41,17 +41,26 @@ describe("study object edit previews", () => {
     expect(html).toContain("repeating-linear-gradient");
   });
 
-  it("keeps notebook card management behind one edit action", () => {
+  it("keeps notebook edit and delete actions in a clean ordered menu", () => {
     const html = renderToStaticMarkup(
       createElement(NotebookObjectCard, {
         title: "Calculus",
         href: "/dashboard/notebooks/calculus",
         onEdit: () => undefined,
+        onDelete: () => undefined,
       })
     );
 
+    const editIndex = html.indexOf("Edit notebook");
+    const deleteIndex = html.indexOf("Delete notebook");
+
+    expect(html).toContain('aria-label="Notebook actions for Calculus"');
+    expect(html).toContain('<circle cx="4" cy="10" r="1.35"></circle>');
     expect(html).toContain("Edit notebook");
-    expect(html).not.toContain(">Archive<");
+    expect(html).toContain("Delete notebook");
+    expect(editIndex).toBeGreaterThan(-1);
+    expect(deleteIndex).toBeGreaterThan(editIndex);
+    expect(html).not.toContain("···");
   });
 
   it("keeps deck cover previews on the shared object icon system", () => {

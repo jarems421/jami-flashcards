@@ -377,8 +377,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       let disposed = false;
       let editor: JsDrawEditor | null = null;
       let historyListener: { remove(): void } | null = null;
-      let viewportResizeObserver: ResizeObserver | null = null;
-      let viewportFrame: number | null = null;
       loadingRef.current = true;
       readyRef.current = false;
       pointerLifecycleRef.current?.reset();
@@ -403,6 +401,40 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             minZoom: 0.05,
             maxZoom: 50,
           });
+          const editorRoot = editor.getRootElement();
+          // js-draw normally paints its fixed import/export rectangle as a
+          // translucent grey editor aid on every rerender. The notebook sheet
+          // already owns the page edge, so keep the fixed export coordinates
+          // while suppressing that extra canvas-drawn frame. Synchronizing the
+          // viewport inside the same render also prevents js-draw's resize
+          // observer from painting one frame with the previous zoom in the
+          // page's top-left corner.
+          const rerenderWithoutExportBounds = editor.rerender.bind(editor);
+          const syncViewport = () => {
+            if (disposed || !editor) return;
+            const displayWidth = editorRoot.clientWidth;
+            const displayHeight = editorRoot.clientHeight;
+            const scale = getNotebookInkViewportScale({
+              displayWidth,
+              displayHeight,
+              pageWidth,
+              pageHeight,
+            });
+            if (scale.x > 0 && scale.y > 0) {
+              const screenSize = jsDraw.Vec2.of(displayWidth, displayHeight);
+              const transform = jsDraw.Mat33.scaling2D(
+                jsDraw.Vec2.of(scale.x, scale.y)
+              );
+              if (!editor.viewport.getScreenRectSize().eq(screenSize)) {
+                editor.viewport.updateScreenSize(screenSize);
+              }
+              if (!editor.viewport.canvasToScreenTransform.eq(transform)) {
+                editor.viewport.resetTransform(transform);
+              }
+            }
+            rerenderWithoutExportBounds(false);
+          };
+          editor.rerender = syncViewport;
           editorRef.current = editor;
           editor.setReadOnly(readOnlyRef.current);
           // js-draw's display cache re-renders busy scenes from 600px
@@ -457,10 +489,12 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               };
             });
           applyInkStyle(editor, desiredStyleRef.current, jsDraw);
-          editor.getRootElement().style.height = "100%";
-          editor.getRootElement().style.minHeight = "0";
-          editor.getRootElement().style.background = "transparent";
-          editor.getRootElement().style.pointerEvents = "none";
+          editorRoot.style.width = "100%";
+          editorRoot.style.height = "100%";
+          editorRoot.style.minWidth = "0";
+          editorRoot.style.minHeight = "0";
+          editorRoot.style.background = "transparent";
+          editorRoot.style.pointerEvents = "none";
           editor.dispatchNoAnnounce(
             editor.image.setImportExportRect(
               new jsDraw.Rect2(0, 0, pageWidth, pageHeight)
@@ -486,30 +520,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           const pageRect = new jsDraw.Rect2(0, 0, pageWidth, pageHeight);
           editor.dispatchNoAnnounce(editor.image.setImportExportRect(pageRect), false);
 
-          const syncViewport = () => {
-            if (disposed || !editor) return;
-            const scale = getNotebookInkViewportScale({
-              displayWidth: editor.display.width,
-              displayHeight: editor.display.height,
-              pageWidth,
-              pageHeight,
-            });
-            if (scale.x <= 0 || scale.y <= 0) return;
-            editor.viewport.resetTransform(
-              jsDraw.Mat33.scaling2D(jsDraw.Vec2.of(scale.x, scale.y))
-            );
-          };
-          const scheduleViewportSync = () => {
-            if (viewportFrame !== null) return;
-            viewportFrame = window.requestAnimationFrame(() => {
-              viewportFrame = null;
-              syncViewport();
-            });
-          };
-
-          viewportResizeObserver = new ResizeObserver(scheduleViewportSync);
-          viewportResizeObserver.observe(host);
-          viewportResizeObserver.observe(editor.getRootElement());
           window.requestAnimationFrame(() => {
             if (disposed || !editor) return;
             syncViewport();
@@ -539,10 +549,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         pointerLifecycle?.reset();
         inkSmoothers.clear();
         callbacksRef.current.onInteractionChange(false);
-        viewportResizeObserver?.disconnect();
-        if (viewportFrame !== null) {
-          window.cancelAnimationFrame(viewportFrame);
-        }
         historyListener?.remove();
         editor?.remove();
         editorRef.current = null;
