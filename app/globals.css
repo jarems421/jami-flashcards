@@ -509,11 +509,10 @@
 
   .notebook-editor-shell {
     --notebook-control-bottom-inset: max(
-      0rem,
-      calc(env(safe-area-inset-bottom, 0px) - 0.75rem)
+      0.75rem,
+      calc(env(safe-area-inset-bottom, 0px) + 0.25rem)
     );
 
-    min-height: 100dvh;
   }
 
   .notebook-page-surface {
@@ -523,12 +522,18 @@
 
   .notebook-page-track {
     transform: translate3d(0, 0, 0);
+  }
+
+  .notebook-page-track[data-swipe-active="true"] {
     will-change: transform;
   }
 
   .notebook-page-swipe-preview {
     pointer-events: none;
-    will-change: transform;
+  }
+
+  [data-notebook-page-frame] {
+    contain: layout paint;
   }
 
   .notebook-dockable-toolbar,

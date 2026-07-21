@@ -22,6 +22,9 @@ import {
   type PreparedNotebookStroke,
 } from "@/components/workspace/NotebookInkEditor";
 import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
+import NotebookViewport, {
+  type NotebookViewportPreview,
+} from "@/components/workspace/NotebookViewport";
 import {
   Button,
   ButtonLink,
@@ -48,9 +51,12 @@ import type {
 } from "@/lib/workspace/notebooks";
 import {
   buildTypedContentFromTextBlocks,
+  NOTEBOOK_PAGE_COORDINATE_HEIGHT,
+  NOTEBOOK_PAGE_COORDINATE_WIDTH,
   normalizeNotebookStrokeColor,
   resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
+import { getNotebookViewportLayout } from "@/lib/workspace/notebook-viewport";
 import type { NotebookEraserMode } from "@/lib/workspace/notebook-eraser";
 import { normalizeTimedInkPoint } from "@/lib/workspace/notebook-ink-engine";
 import {
@@ -69,12 +75,10 @@ import {
 } from "@/lib/workspace/notebook-autosave";
 import {
   clampNotebookPagePan,
-  clampNotebookPageZoom,
   clampNotebookThicknessPercent,
   type NotebookPagePan,
   getHighlighterWidthFromPercent,
   getNotebookCreatePagePull,
-  getNotebookPageFit,
   getNotebookPageIndexAfterSwipe,
   getNotebookPagePanAfterPinch,
   getNotebookSwipeDragOffset,
@@ -222,16 +226,12 @@ type NotebookConfirmRequest =
   | { kind: "clear-page" }
   | { kind: "delete-page"; page: NotebookPage };
 
-const CANVAS_WIDTH = 900;
-const CANVAS_HEIGHT = 1240;
-// Gutter kept between the current page and the page sliding in, so they stay
-// visibly separated during a swipe instead of joining edge-to-edge.
-const NOTEBOOK_PAGE_SWIPE_GAP = 16;
-// The page sits flush inside its fixed frame at fit zoom — no border band.
-const NOTEBOOK_PAGE_SHEET_CLASS =
-  "rounded-[0.625rem] shadow-none";
+const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
+const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
+// The shared viewport supplies the sheet edge; page content only supplies its
+// paper colour and ruling.
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
-  white: "bg-[#f8fafc] text-slate-950",
+  white: "bg-white text-slate-950",
   black: "bg-[#080a10] text-[#f8fafc]",
 };
 const NOTEBOOK_PAGE_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
@@ -258,7 +258,7 @@ const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
     "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-1/2 -translate-y-1/2",
 };
 const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
-  white: "#f8fafc",
+  white: "#ffffff",
   black: "#080a10",
 };
 const PEN_COLOR_HEX: Record<NotebookPenColor, string> = {
@@ -1175,19 +1175,22 @@ export default function NotebookEditorPage() {
   );
   const trackPreviousBackground = resolvePageBackground(trackPreviousPage);
   const trackNextBackground = resolvePageBackground(trackNextPage);
-  const pageFit = useMemo(
+  const viewportLayout = useMemo(
     () =>
-      getNotebookPageFit({
+      getNotebookViewportLayout({
         frameWidth: frameSize.width,
         frameHeight: frameSize.height,
         pageWidth: CANVAS_WIDTH,
         pageHeight: CANVAS_HEIGHT,
+        zoom: pageZoom,
+        pan: pagePan,
       }),
-    [frameSize]
+    [frameSize, pagePan, pageZoom]
   );
-  const pageWidthPx = pageFit.width * clampNotebookPageZoom(pageZoom);
-  const pageHeightPx = pageFit.height * clampNotebookPageZoom(pageZoom);
-  const pageTrackTravelDistance = pageWidthPx + NOTEBOOK_PAGE_SWIPE_GAP;
+  const pageFit = viewportLayout.fitSize;
+  const pageWidthPx = viewportLayout.pageSize.width;
+  const pageHeightPx = viewportLayout.pageSize.height;
+  const pageTrackTravelDistance = viewportLayout.swipeTravel;
 
   const updatePageSwipeMotion = useCallback((next: PageSwipeMotion | null) => {
     pageSwipeMotionRef.current = next;
@@ -1197,6 +1200,14 @@ export default function NotebookEditorPage() {
   const setPagePreviewVisibility = useCallback((visible: boolean) => {
     const layer = pagePreviewLayerRef.current;
     if (layer) layer.style.visibility = visible ? "visible" : "hidden";
+    const track = pageTrackRef.current;
+    if (track) {
+      if (visible) {
+        track.dataset.swipeActive = "true";
+      } else {
+        delete track.dataset.swipeActive;
+      }
+    }
   }, []);
 
   const writePageTrackOffset = useCallback((offset: number) => {
@@ -1772,7 +1783,7 @@ export default function NotebookEditorPage() {
       if (pinchZoomRef.current && pageSurfaceRef.current) {
         // A pinch was interrupted (blur/app switch): drop its live transform
         // back to the last committed pan.
-        pageSurfaceRef.current.style.transform = `translate(${pagePanLiveRef.current.x}px, ${pagePanLiveRef.current.y}px)`;
+        pageSurfaceRef.current.style.transform = `translate3d(${pagePanLiveRef.current.x}px, ${pagePanLiveRef.current.y}px, 0)`;
         pageSurfaceRef.current.style.transformOrigin = "";
       }
       pinchZoomRef.current = null;
@@ -1864,8 +1875,17 @@ export default function NotebookEditorPage() {
       pageSwipeRef.current = null;
     }
     const surface = pageSurfaceRef.current;
+    const frameRect = pageFrameRef.current?.getBoundingClientRect();
     const rect = surface?.getBoundingClientRect();
-    if (!surface || !rect || rect.width <= 0 || rect.height <= 0) return;
+    if (
+      !surface ||
+      !frameRect ||
+      !rect ||
+      rect.width <= 0 ||
+      rect.height <= 0
+    ) {
+      return;
+    }
     const centerX = (first.clientX + second.clientX) / 2;
     const centerY = (first.clientY + second.clientY) / 2;
     pinchZoomRef.current = {
@@ -1877,8 +1897,10 @@ export default function NotebookEditorPage() {
       lastCenterY: centerY,
       anchorFx: (centerX - rect.left) / rect.width,
       anchorFy: (centerY - rect.top) / rect.height,
-      basePanX: pagePanLiveRef.current.x,
-      basePanY: pagePanLiveRef.current.y,
+      // Read the rendered origin so a ResizeObserver/state update cannot make
+      // the first live pinch frame jump after rotation or viewport resizing.
+      basePanX: rect.left - frameRect.left,
+      basePanY: rect.top - frameRect.top,
       pendingZoom: pageZoom,
     };
   };
@@ -1891,8 +1913,15 @@ export default function NotebookEditorPage() {
     const surface = pageSurfaceRef.current;
     if (!frameRect || !surface) return;
     const nextZoom = pinch.pendingZoom;
-    const nextWidth = pageFit.width * nextZoom;
-    const nextHeight = pageFit.height * nextZoom;
+    // Pinch completion must use the frame that is actually on screen. The
+    // ResizeObserver-backed state may still describe the pre-rotation frame.
+    const committedLayout = getNotebookViewportLayout({
+      frameWidth: frameRect.width,
+      frameHeight: frameRect.height,
+      pageWidth: CANVAS_WIDTH,
+      pageHeight: CANVAS_HEIGHT,
+      zoom: nextZoom,
+    });
     const nextPan = getNotebookPagePanAfterPinch({
       pinchCenterX: pinch.lastCenterX,
       pinchCenterY: pinch.lastCenterY,
@@ -1900,17 +1929,17 @@ export default function NotebookEditorPage() {
       frameTop: frameRect.top,
       anchorFx: pinch.anchorFx,
       anchorFy: pinch.anchorFy,
-      pageWidth: nextWidth,
-      pageHeight: nextHeight,
-      frameWidth: frameSize.width,
-      frameHeight: frameSize.height,
+      pageWidth: committedLayout.pageSize.width,
+      pageHeight: committedLayout.pageSize.height,
+      frameWidth: frameRect.width,
+      frameHeight: frameRect.height,
     });
     pagePanLiveRef.current = nextPan;
     // Reset the manual gesture transform to the value React will render next;
     // React skips style writes it did not see change, so this must not be
     // left stale.
     surface.style.transformOrigin = "";
-    surface.style.transform = `translate(${nextPan.x}px, ${nextPan.y}px)`;
+    surface.style.transform = `translate3d(${nextPan.x}px, ${nextPan.y}px, 0)`;
     setPageZoom(nextZoom);
     setPagePan(nextPan);
   };
@@ -1972,9 +2001,9 @@ export default function NotebookEditorPage() {
         // started on and follows the fingers as they move — one cheap GPU
         // transform per frame, no layout work until the gesture commits.
         surface.style.transformOrigin = `${pinch.anchorFx * 100}% ${pinch.anchorFy * 100}%`;
-        surface.style.transform = `translate(${
+        surface.style.transform = `translate3d(${
           pinch.basePanX + centerX - pinch.startCenterX
-        }px, ${pinch.basePanY + centerY - pinch.startCenterY}px) scale(${
+        }px, ${pinch.basePanY + centerY - pinch.startCenterY}px, 0) scale(${
           nextZoom / pinch.startZoom
         })`;
       }
@@ -2387,7 +2416,7 @@ export default function NotebookEditorPage() {
       const surface = pageSurfaceRef.current;
       if (surface) {
         surface.style.transformOrigin = "";
-        surface.style.transform = `translate(${pagePanLiveRef.current.x}px, ${pagePanLiveRef.current.y}px)`;
+        surface.style.transform = `translate3d(${pagePanLiveRef.current.x}px, ${pagePanLiveRef.current.y}px, 0)`;
       }
       pinchZoomRef.current = null;
       touchPointersRef.current.clear();
@@ -2856,7 +2885,7 @@ export default function NotebookEditorPage() {
       pagePanLiveRef.current = nextPan;
       const surface = pageSurfaceRef.current;
       if (surface) {
-        surface.style.transform = `translate(${nextPan.x}px, ${nextPan.y}px)`;
+        surface.style.transform = `translate3d(${nextPan.x}px, ${nextPan.y}px, 0)`;
       }
       event.preventDefault();
       return;
@@ -3910,13 +3939,75 @@ export default function NotebookEditorPage() {
     );
   }
 
+  const previousViewportPreview: NotebookViewportPreview | null =
+    trackPreviousPage
+      ? {
+          key: trackPreviousPage.id,
+          className:
+            PAGE_COLOR_CLASS[
+              trackPreviousPage.pageColor ?? notebook.pageColor ?? "white"
+            ],
+          content: (
+            <NotebookPageStaticContent
+              page={trackPreviousPage}
+              notebook={notebook}
+              backgroundFile={trackPreviousBackground.file}
+              backgroundUrl={trackPreviousBackground.url}
+            />
+          ),
+        }
+      : null;
+  const shouldShowNewPagePreview =
+    !trackNextPage &&
+    (createPageActive ||
+      creatingPage ||
+      pageSwipeMotion?.kind === "create" ||
+      (fullNotebookEditingEnabled &&
+        selectedPageIndex === pages.length - 1));
+  const nextViewportPreview: NotebookViewportPreview | null = trackNextPage
+    ? {
+        key: trackNextPage.id,
+        className:
+          PAGE_COLOR_CLASS[
+            trackNextPage.pageColor ?? notebook.pageColor ?? "white"
+          ],
+        content: (
+          <NotebookPageStaticContent
+            page={trackNextPage}
+            notebook={notebook}
+            backgroundFile={trackNextBackground.file}
+            backgroundUrl={trackNextBackground.url}
+          />
+        ),
+      }
+    : shouldShowNewPagePreview
+      ? {
+          key: "new-page-preview",
+          className: PAGE_COLOR_CLASS[pageColor],
+          content: (
+            <div
+              aria-hidden="true"
+              className="absolute inset-0"
+              style={getPageStyleBackground(pageColor, pageStyle)}
+            />
+          ),
+        }
+      : null;
+  const notebookViewportGeometry = {
+    pageWidth: pageWidthPx,
+    pageHeight: pageHeightPx,
+    pageX: viewportLayout.pageOrigin.x,
+    pageY: viewportLayout.pageOrigin.y,
+    swipeTravel: pageTrackTravelDistance,
+  };
+
   return (
     <main
       data-app-surface="true"
-      className="notebook-editor-shell fixed inset-x-0 top-0 z-[70] flex h-[100dvh] min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
+      className="notebook-editor-shell fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
-        <header className="z-40 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_8px_20px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+        <header className="z-40 shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_8px_20px_rgba(0,0,0,0.14)] backdrop-blur-xl">
           <div className="flex min-w-0 items-center gap-2">
             <Link
               href={`/dashboard/folders/${notebook.folderId}`}
@@ -3955,7 +4046,7 @@ export default function NotebookEditorPage() {
             />
           </div>
         </header>
-        <div className="relative min-h-0 flex-1 overflow-hidden">
+        <div className="relative isolate min-h-0 flex-1 overflow-hidden">
         {penMenuOpen || highlighterMenuOpen || eraserMenuOpen ? (
             <div
               className={`notebook-toolbar-popover-in notebook-drawer-surface absolute z-50 w-[min(92vw,22rem)] rounded-[1.25rem] border border-[var(--color-border)] p-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.32)] ${NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS[toolbarDock]}`}
@@ -4358,122 +4449,38 @@ export default function NotebookEditorPage() {
           </aside>
         ) : null}
 
-          <div
-            ref={pageFrameRef}
-            data-notebook-page-frame
-            className="absolute inset-0 overflow-hidden"
-          >
-            {selectedPage?.questionPrompt ? (
-              <div
-                className={`absolute left-1/2 z-20 w-[min(92vw,36rem)] -translate-x-1/2 ${
-                  toolbarDock === "top" ? "top-[5rem]" : "top-3"
-                }`}
-              >
-                <Card tone="warm" padding="sm">
-                  <p className="text-sm leading-6 text-text-primary">{selectedPage.questionPrompt}</p>
-                </Card>
-              </div>
-            ) : null}
-            {selectedPage && pageFit.width > 0 ? (
-              <>
+          <NotebookViewport
+            frameRef={pageFrameRef}
+            trackRef={pageTrackRef}
+            previewLayerRef={pagePreviewLayerRef}
+            activeRef={pageSurfaceRef}
+            geometry={notebookViewportGeometry}
+            previousPreview={previousViewportPreview}
+            nextPreview={nextViewportPreview}
+            activeClassName={PAGE_COLOR_CLASS[pageColor]}
+            onTrackTransitionEnd={handlePageTrackTransitionEnd}
+            onTrackTransitionCancel={handlePageTrackTransitionEnd}
+            onActivePointerMove={handlePageSurfaceTextGestureMove}
+            onActivePointerUp={handlePageSurfaceTextGestureStop}
+            onActivePointerCancel={handlePageSurfaceTextGestureStop}
+            overlay={
+              selectedPage?.questionPrompt ? (
                 <div
-                  ref={pageTrackRef}
-                  className="notebook-page-track absolute inset-0"
-                  onTransitionEnd={handlePageTrackTransitionEnd}
-                  onTransitionCancel={handlePageTrackTransitionEnd}
+                  className={`absolute left-1/2 z-20 w-[min(92vw,36rem)] -translate-x-1/2 ${
+                    toolbarDock === "top" ? "top-[5rem]" : "top-3"
+                  }`}
                 >
-                  <div
-                    ref={pagePreviewLayerRef}
-                    aria-hidden="true"
-                    className="invisible pointer-events-none absolute inset-0"
-                  >
-                    {trackPreviousPage ? (
-                      <div
-                        className={`notebook-page-swipe-preview absolute left-0 top-0 overflow-hidden ${NOTEBOOK_PAGE_SHEET_CLASS} ${
-                          PAGE_COLOR_CLASS[
-                            trackPreviousPage.pageColor ??
-                              notebook?.pageColor ??
-                              "white"
-                          ]
-                        }`}
-                        style={{
-                          width: `${pageWidthPx}px`,
-                          height: `${pageHeightPx}px`,
-                          transform: `translate(${
-                            pagePan.x - pageTrackTravelDistance
-                          }px, ${pagePan.y}px)`,
-                        }}
-                      >
-                        <NotebookPageStaticContent
-                          page={trackPreviousPage}
-                          notebook={notebook}
-                          backgroundFile={trackPreviousBackground.file}
-                          backgroundUrl={trackPreviousBackground.url}
-                        />
-                      </div>
-                    ) : null}
-                    {trackNextPage ? (
-                      <div
-                        className={`notebook-page-swipe-preview absolute left-0 top-0 overflow-hidden ${NOTEBOOK_PAGE_SHEET_CLASS} ${
-                          PAGE_COLOR_CLASS[
-                            trackNextPage.pageColor ??
-                              notebook?.pageColor ??
-                              "white"
-                          ]
-                        }`}
-                        style={{
-                          width: `${pageWidthPx}px`,
-                          height: `${pageHeightPx}px`,
-                          transform: `translate(${
-                            pagePan.x + pageTrackTravelDistance
-                          }px, ${pagePan.y}px)`,
-                        }}
-                      >
-                        <NotebookPageStaticContent
-                          page={trackNextPage}
-                          notebook={notebook}
-                          backgroundFile={trackNextBackground.file}
-                          backgroundUrl={trackNextBackground.url}
-                        />
-                      </div>
-                    ) : null}
-                    {!trackNextPage &&
-                    (createPageActive ||
-                      creatingPage ||
-                      pageSwipeMotion?.kind === "create" ||
-                      (fullNotebookEditingEnabled &&
-                        selectedPageIndex === pages.length - 1)) ? (
-                      <div
-                        className={`notebook-page-swipe-preview absolute left-0 top-0 overflow-hidden ${NOTEBOOK_PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]}`}
-                        style={{
-                          width: `${pageWidthPx}px`,
-                          height: `${pageHeightPx}px`,
-                          transform: `translate(${
-                            pagePan.x + pageTrackTravelDistance
-                          }px, ${pagePan.y}px)`,
-                        }}
-                      >
-                        <div
-                          aria-hidden="true"
-                          className="absolute inset-0"
-                          style={getPageStyleBackground(pageColor, pageStyle)}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                <div
-                  ref={pageSurfaceRef}
-                  data-notebook-page-surface
-                  className={`notebook-page-surface absolute left-0 top-0 overflow-hidden ${NOTEBOOK_PAGE_SHEET_CLASS} ${PAGE_COLOR_CLASS[pageColor]}`}
-                  onPointerMove={handlePageSurfaceTextGestureMove}
-                  onPointerUp={handlePageSurfaceTextGestureStop}
-                  onPointerCancel={handlePageSurfaceTextGestureStop}
-                  style={{
-                    width: `${pageWidthPx}px`,
-                    height: `${pageHeightPx}px`,
-                    transform: `translate(${pagePan.x}px, ${pagePan.y}px)`,
-                  }}
-                >
+                  <Card tone="warm" padding="sm">
+                    <p className="text-sm leading-6 text-text-primary">
+                      {selectedPage.questionPrompt}
+                    </p>
+                  </Card>
+                </div>
+              ) : null
+            }
+            activeContent={
+              selectedPage && pageFit.width > 0 ? (
+                <>
                   <div
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-0 z-0"
@@ -4756,11 +4763,10 @@ export default function NotebookEditorPage() {
                       );
                     })}
                   </div>
-                </div>
-                </div>
-              </>
-            ) : null}
-          </div>
+                </>
+              ) : null
+            }
+          />
             {createPageActive || creatingPage ? (
               <div
                 ref={createPageAffordanceRef}

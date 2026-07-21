@@ -77,6 +77,7 @@ export default function ConstellationBackgroundShell({
   const shouldShowBackground =
     isEnabled &&
     !isCrashMarked &&
+    !pathname.startsWith("/dashboard/notebooks/") &&
     pathname !== "/dashboard/constellation";
 
   useEffect(() => {

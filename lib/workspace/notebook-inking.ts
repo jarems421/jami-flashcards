@@ -1,5 +1,16 @@
 import type { NotebookStroke } from "@/lib/workspace/notebooks";
 import { normalizeInkPressure, normalizeInkTime } from "@/lib/workspace/notebook-ink-engine";
+import {
+  clampNotebookViewportOrigin,
+  getNotebookViewportFit,
+  getNotebookViewportPanBounds,
+  NOTEBOOK_VIEWPORT_COMPACT_INSET,
+  NOTEBOOK_VIEWPORT_COMPACT_MAX_WIDTH,
+  NOTEBOOK_VIEWPORT_MAX_ZOOM,
+  NOTEBOOK_VIEWPORT_MIN_ZOOM,
+  NOTEBOOK_VIEWPORT_REGULAR_INSET,
+  type NotebookViewportPoint,
+} from "@/lib/workspace/notebook-viewport";
 
 export type NotebookInkPoint = {
   x: number;
@@ -29,11 +40,13 @@ export const NOTEBOOK_PAGE_SWIPE_VELOCITY_WINDOW_MS = 100;
 export const NOTEBOOK_CREATE_PAGE_THRESHOLD_RATIO = 0.32;
 export const NOTEBOOK_CREATE_PAGE_MIN_THRESHOLD = 96;
 export const NOTEBOOK_CREATE_PAGE_FLICK_VELOCITY = 0.6;
-export const NOTEBOOK_PAGE_MIN_ZOOM = 0.92;
-export const NOTEBOOK_PAGE_MAX_ZOOM = 4;
-export const NOTEBOOK_PAGE_COMPACT_FRAME_MAX_WIDTH = 767;
-export const NOTEBOOK_PAGE_COMPACT_FIT_INSET = 12;
-export const NOTEBOOK_PAGE_FIT_INSET = 16;
+export const NOTEBOOK_PAGE_MIN_ZOOM = NOTEBOOK_VIEWPORT_MIN_ZOOM;
+export const NOTEBOOK_PAGE_MAX_ZOOM = NOTEBOOK_VIEWPORT_MAX_ZOOM;
+export const NOTEBOOK_PAGE_COMPACT_FRAME_MAX_WIDTH =
+  NOTEBOOK_VIEWPORT_COMPACT_MAX_WIDTH;
+export const NOTEBOOK_PAGE_COMPACT_FIT_INSET =
+  NOTEBOOK_VIEWPORT_COMPACT_INSET;
+export const NOTEBOOK_PAGE_FIT_INSET = NOTEBOOK_VIEWPORT_REGULAR_INSET;
 export const NOTEBOOK_DEFAULT_THICKNESS_PERCENT = 50;
 export const NOTEBOOK_PEN_MIN_WIDTH = 2;
 export const NOTEBOOK_PEN_MAX_WIDTH = 10;
@@ -283,7 +296,7 @@ export function clampNotebookPageZoom(
   return Math.max(minZoom, Math.min(NOTEBOOK_PAGE_MAX_ZOOM, value));
 }
 
-export type NotebookPagePan = { x: number; y: number };
+export type NotebookPagePan = NotebookViewportPoint;
 
 export function getNotebookPageFit(input: {
   frameWidth: number;
@@ -291,25 +304,7 @@ export function getNotebookPageFit(input: {
   pageWidth: number;
   pageHeight: number;
 }) {
-  const inset =
-    input.frameWidth <= NOTEBOOK_PAGE_COMPACT_FRAME_MAX_WIDTH
-      ? NOTEBOOK_PAGE_COMPACT_FIT_INSET
-      : NOTEBOOK_PAGE_FIT_INSET;
-  const availableWidth = input.frameWidth - inset * 2;
-  const availableHeight = input.frameHeight - inset * 2;
-  if (
-    availableWidth <= 0 ||
-    availableHeight <= 0 ||
-    input.pageWidth <= 0 ||
-    input.pageHeight <= 0
-  ) {
-    return { width: 0, height: 0 };
-  }
-  const width = Math.min(
-    availableWidth,
-    (availableHeight * input.pageWidth) / input.pageHeight
-  );
-  return { width, height: (width * input.pageHeight) / input.pageWidth };
+  return getNotebookViewportFit(input);
 }
 
 // Position of the zoomed page inside its fixed frame: centered while the page
@@ -321,15 +316,10 @@ export function clampNotebookPagePan(input: {
   frameWidth: number;
   frameHeight: number;
 }): NotebookPagePan {
-  const clampAxis = (value: number, pageSize: number, frameSize: number) => {
-    if (!Number.isFinite(value)) return Math.max(0, (frameSize - pageSize) / 2);
-    if (pageSize <= frameSize) return (frameSize - pageSize) / 2;
-    return Math.min(0, Math.max(frameSize - pageSize, value));
-  };
-  return {
-    x: clampAxis(input.pan.x, input.pageWidth, input.frameWidth),
-    y: clampAxis(input.pan.y, input.pageHeight, input.frameHeight),
-  };
+  return clampNotebookViewportOrigin({
+    origin: input.pan,
+    bounds: getNotebookViewportPanBounds(input),
+  });
 }
 
 export function getNotebookPagePanAfterPinch(input: {

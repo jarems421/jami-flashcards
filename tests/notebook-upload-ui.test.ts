@@ -30,7 +30,6 @@ describe("notebook upload UI", () => {
       join(root, "app/dashboard/notebooks/[notebookId]/page.tsx"),
       "utf8"
     );
-
     expect(folderPage).not.toContain("isDemoUser");
     expect(notebookPage).not.toContain("isDemoUser");
   });
@@ -68,6 +67,10 @@ describe("notebook upload UI", () => {
       join(root, "app/dashboard/notebooks/[notebookId]/page.tsx"),
       "utf8"
     );
+    const notebookViewport = readFileSync(
+      join(root, "components/workspace/NotebookViewport.tsx"),
+      "utf8"
+    );
     const globalStyles = readFileSync(
       join(root, "app/globals.css"),
       "utf8"
@@ -77,8 +80,14 @@ describe("notebook upload UI", () => {
     expect(notebookPage).not.toContain(
       "shadow-[0_14px_34px_rgba(0,0,0,0.28)]"
     );
-    expect(notebookPage).toContain("data-notebook-page-frame");
-    expect(notebookPage).toContain('className="absolute inset-0 overflow-hidden"');
+    expect(notebookPage).toContain("<NotebookViewport");
+    expect(notebookViewport).toContain("data-notebook-page-frame");
+    expect(notebookViewport).toContain(
+      "bottom-[env(safe-area-inset-bottom,0px)]"
+    );
+    expect(notebookViewport).toContain(
+      "top-[env(safe-area-inset-bottom,0px)]"
+    );
     expect(notebookPage).not.toContain("notebook-page-y-offset");
     expect(notebookPage).not.toContain("notebook-control-y-offset");
     expect(globalStyles).toContain(".notebook-floating-control");
