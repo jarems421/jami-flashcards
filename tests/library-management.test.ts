@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
 import {
   canRemoveSourceFromFilteredFolder,
+  focusTutorSourceSelection,
+  getAdditionalTutorSources,
   getLinkedSourceFolders,
   reconcileTutorSourceSelection,
+  shouldResetTutorConversation,
   toggleTutorSourceSelection,
 } from "@/lib/study/library-management";
 
@@ -36,6 +39,41 @@ describe("Library source management", () => {
         ["source-1", "source-2"]
       )
     ).toEqual(["source-2"]);
+  });
+
+  it("starts Tutor with only the source the student chose", () => {
+    expect(
+      focusTutorSourceSelection(["source-a", "source-c"], "source-b")
+    ).toEqual(["source-b"]);
+  });
+
+  it("offers only other sources as optional Tutor context", () => {
+    const sources = [
+      { id: "source-a", title: "A" },
+      { id: "source-b", title: "B" },
+      { id: "source-c", title: "C" },
+    ];
+
+    expect(getAdditionalTutorSources(sources, "source-b")).toEqual([
+      sources[0],
+      sources[2],
+    ]);
+  });
+
+  it("clears Tutor history when hidden context would change", () => {
+    expect(
+      shouldResetTutorConversation(
+        ["source-b", "source-c"],
+        "source-b",
+        "source-b"
+      )
+    ).toBe(true);
+    expect(
+      shouldResetTutorConversation(["source-b"], "source-b", "source-b")
+    ).toBe(false);
+    expect(
+      shouldResetTutorConversation(["source-a"], "source-a", "source-b")
+    ).toBe(true);
   });
 
   it("adds and removes Tutor sources without exceeding five", () => {

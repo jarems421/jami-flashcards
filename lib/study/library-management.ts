@@ -15,6 +15,39 @@ export function canRemoveSourceFromFilteredFolder(
 
 export const MAX_TUTOR_SOURCE_SELECTION = 5;
 
+export function focusTutorSourceSelection(
+  selectedSourceIds: readonly string[],
+  currentSourceId: string
+) {
+  if (
+    selectedSourceIds.length === 1 &&
+    selectedSourceIds[0] === currentSourceId
+  ) {
+    return [...selectedSourceIds];
+  }
+
+  return currentSourceId ? [currentSourceId] : [];
+}
+
+export function getAdditionalTutorSources<T extends { id: string }>(
+  sources: readonly T[],
+  currentSourceId: string
+) {
+  return sources.filter((source) => source.id !== currentSourceId);
+}
+
+export function shouldResetTutorConversation(
+  selectedSourceIds: readonly string[],
+  primarySourceId: string | null,
+  currentSourceId: string
+) {
+  return (
+    primarySourceId !== currentSourceId ||
+    selectedSourceIds.length !== 1 ||
+    selectedSourceIds[0] !== currentSourceId
+  );
+}
+
 export function reconcileTutorSourceSelection(
   selectedSourceIds: readonly string[],
   availableSourceIds: readonly string[],

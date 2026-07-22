@@ -53,8 +53,11 @@ import {
   type LibrarySourceTypeFilter,
 } from "@/lib/study/library-navigation";
 import {
+  focusTutorSourceSelection,
+  getAdditionalTutorSources,
   MAX_TUTOR_SOURCE_SELECTION,
   reconcileTutorSourceSelection,
+  shouldResetTutorConversation,
   toggleTutorSourceSelection,
 } from "@/lib/study/library-management";
 import {
@@ -87,9 +90,6 @@ type SourceWorkspacePanel = "tutor" | "details" | "drafts" | null;
 type SourceActionIconName =
   | "arrow-left"
   | "close"
-  | "details"
-  | "drafts"
-  | "external"
   | "filter"
   | "more"
   | "sparkles";
@@ -190,26 +190,6 @@ function SourceActionIcon({
         <path d="M17 7 7 17" />
       </>
     ),
-    details: (
-      <>
-        <circle cx="12" cy="12" r="9" />
-        <path d="M12 11v5" />
-        <path d="M12 8h.01" />
-      </>
-    ),
-    drafts: (
-      <>
-        <path d="M7 4h10v16H7z" />
-        <path d="M10 8h4M10 12h4M10 16h3" />
-      </>
-    ),
-    external: (
-      <>
-        <path d="M14 5h5v5" />
-        <path d="m19 5-8 8" />
-        <path d="M17 13v6H5V7h6" />
-      </>
-    ),
     filter: (
       <>
         <path d="M4 7h16" />
@@ -249,12 +229,21 @@ function SourceActionIcon({
   );
 }
 
+function closeDisclosureAndFocusTrigger(target: EventTarget | null) {
+  if (!(target instanceof HTMLElement)) return;
+  const disclosure = target.closest("details");
+  const trigger = disclosure?.querySelector<HTMLElement>("summary");
+  disclosure?.removeAttribute("open");
+  trigger?.focus();
+}
+
 function SourceWorkspaceDrawer({
   open,
   eyebrow,
   title,
   wide = false,
   onClose,
+  footer,
   children,
 }: {
   open: boolean;
@@ -262,6 +251,7 @@ function SourceWorkspaceDrawer({
   title: string;
   wide?: boolean;
   onClose: () => void;
+  footer?: ReactNode;
   children: ReactNode;
 }) {
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -310,7 +300,7 @@ function SourceWorkspaceDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby={`source-drawer-${eyebrow.toLowerCase().replaceAll(" ", "-")}`}
-        className={`${styles.drawerPanel} relative flex h-full w-full flex-col border-l border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] shadow-[-24px_0_70px_rgba(0,0,0,0.34)] ${
+        className={`${styles.drawerPanel} relative flex h-[100dvh] max-h-[100dvh] w-full flex-col border-l border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)] ${
           wide ? "max-w-3xl" : "max-w-lg"
         }`}
         onKeyDown={(event) => {
@@ -319,7 +309,11 @@ function SourceWorkspaceDrawer({
             drawerRef.current?.querySelectorAll<HTMLElement>(
               'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
             ) ?? []
-          ).filter((element) => !element.hasAttribute("hidden"));
+          ).filter(
+            (element) =>
+              !element.hasAttribute("hidden") &&
+              element.getClientRects().length > 0
+          );
           if (focusable.length === 0) return;
           const first = focusable[0];
           const last = focusable[focusable.length - 1];
@@ -334,7 +328,7 @@ function SourceWorkspaceDrawer({
       >
         <header className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-5 sm:px-7 sm:py-6">
           <div className="min-w-0">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-warm-accent">
+            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
               {eyebrow}
             </div>
             <h2
@@ -355,9 +349,20 @@ function SourceWorkspaceDrawer({
             <SourceActionIcon name="close" className="h-5 w-5" />
           </Button>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
+        <div
+          className={`min-h-0 flex-1 overflow-y-auto px-5 pt-5 sm:px-7 sm:pt-6 ${
+            footer
+              ? "pb-5 sm:pb-6"
+              : "pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]"
+          }`}
+        >
           {children}
         </div>
+        {footer ? (
+          <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pt-5">
+            {footer}
+          </footer>
+        ) : null}
       </div>
     </div>
   );
@@ -702,16 +707,23 @@ export default function LibraryPage() {
   const [fileType, setFileType] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const filenameDerivedTitleRef = useRef("");
+  const filterDisclosureRef = useRef<HTMLDetailsElement>(null);
+  const sourceActionsDisclosureRef = useRef<HTMLDetailsElement>(null);
+  const tutorRequestIdRef = useRef(0);
   const [sourceFileUrls, setSourceFileUrls] = useState<Record<string, string>>({});
   const [tutorMessage, setTutorMessage] = useState("Explain the key ideas in this source.");
   const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
   const [tutorSourceIds, setTutorSourceIds] = useState<string[]>([]);
+  const [tutorPrimarySourceId, setTutorPrimarySourceId] = useState<string | null>(
+    null
+  );
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [deckIdByDraft, setDeckIdByDraft] = useState<Record<string, string>>({});
   const [notebookIdByDraft, setNotebookIdByDraft] = useState<Record<string, string>>({});
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<LibraryMobileTab>("sources");
   const [activePanel, setActivePanel] = useState<SourceWorkspacePanel>(null);
+  const [showTutorSourcePicker, setShowTutorSourcePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [folderFilter, setFolderFilter] = useState("");
   const [typeFilter, setTypeFilter] =
@@ -724,7 +736,28 @@ export default function LibraryPage() {
   const [managementAction, setManagementAction] =
     useState<SourceManagementAction>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const closeWorkspacePanel = useCallback(() => setActivePanel(null), []);
+  const closeWorkspacePanel = useCallback(() => {
+    setActivePanel(null);
+    setShowTutorSourcePicker(false);
+  }, []);
+
+  useEffect(() => {
+    const closeMenusOnOutsidePointer = (event: PointerEvent) => {
+      if (!(event.target instanceof Node)) return;
+      for (const disclosure of [
+        filterDisclosureRef.current,
+        sourceActionsDisclosureRef.current,
+      ]) {
+        if (disclosure?.open && !disclosure.contains(event.target)) {
+          disclosure.removeAttribute("open");
+        }
+      }
+    };
+
+    document.addEventListener("pointerdown", closeMenusOnOutsidePointer);
+    return () =>
+      document.removeEventListener("pointerdown", closeMenusOnOutsidePointer);
+  }, []);
 
   useEffect(() => {
     const applyUrlState = () => {
@@ -1141,9 +1174,32 @@ export default function LibraryPage() {
     }
   };
 
-  const openWorkspacePanel = (panel: Exclude<SourceWorkspacePanel, null>) => {
+  const openWorkspacePanel = (
+    panel: Exclude<SourceWorkspacePanel, null | "tutor">
+  ) => {
     setFeedback(null);
     setActivePanel(panel);
+  };
+
+  const openTutorForSelectedSource = () => {
+    if (!selectedSource) return;
+    setFeedback(null);
+    const tutorContextChanged = shouldResetTutorConversation(
+      tutorSourceIds,
+      tutorPrimarySourceId,
+      selectedSource.id
+    );
+    setTutorSourceIds((current) =>
+      focusTutorSourceSelection(current, selectedSource.id)
+    );
+    if (tutorContextChanged) {
+      tutorRequestIdRef.current += 1;
+      setTutorMessages([]);
+      if (busyAction === "source-tutor") setBusyAction(null);
+    }
+    setTutorPrimarySourceId(selectedSource.id);
+    setShowTutorSourcePicker(false);
+    setActivePanel("tutor");
   };
 
   const clearFilters = () => {
@@ -1171,14 +1227,23 @@ export default function LibraryPage() {
       setFeedback({ type: "error", message: "Select at least one source for Tutor." });
       return;
     }
+    const requestId = tutorRequestIdRef.current + 1;
+    tutorRequestIdRef.current = requestId;
+    const submittedSourceIds = [...tutorSourceIds];
+    const submittedMessage = tutorMessage;
     setBusyAction("source-tutor");
     setFeedback(null);
-    setTutorMessages((current) => [...current, { role: "user", text: tutorMessage }]);
+    setShowTutorSourcePicker(false);
+    setTutorMessages((current) => [
+      ...current,
+      { role: "user", text: submittedMessage },
+    ]);
     try {
       const response = await askSourceTutor({
-        sourceIds: tutorSourceIds,
-        message: tutorMessage,
+        sourceIds: submittedSourceIds,
+        message: submittedMessage,
       });
+      if (tutorRequestIdRef.current !== requestId) return;
       setTutorMessages((current) => [...current, { role: "model", text: response.reply }]);
       setFeedback({
         type: "success",
@@ -1188,9 +1253,10 @@ export default function LibraryPage() {
             : `Tutor used ${response.sourcesUsed.length} selected source${response.sourcesUsed.length === 1 ? "" : "s"}.`,
       });
     } catch (error) {
+      if (tutorRequestIdRef.current !== requestId) return;
       setFeedback({ type: "error", message: error instanceof Error ? error.message : "Source Tutor failed." });
     } finally {
-      setBusyAction(null);
+      if (tutorRequestIdRef.current === requestId) setBusyAction(null);
     }
   };
 
@@ -1256,11 +1322,13 @@ export default function LibraryPage() {
     Number(Boolean(folderFilter)) +
     Number(typeFilter !== "all") +
     Number(statusFilter !== "active");
-  const selectedSourceFolders = selectedSource
-    ? selectedSource.folderIds
-        .map((folderId) => folders.find((folder) => folder.id === folderId))
-        .filter((folder): folder is StudyFolder => Boolean(folder))
-    : [];
+  const tutorSelectedSources = tutorSourceIds
+    .map((sourceId) => sources.find((source) => source.id === sourceId))
+    .filter((source): source is Source => Boolean(source));
+  const tutorAdditionalSources = getAdditionalTutorSources(
+    sources,
+    tutorPrimarySourceId ?? selectedSource?.id ?? ""
+  );
   const canOpenSelectedSource = Boolean(
     selectedSource &&
       ((selectedSource.type === "link" && selectedSource.externalUrl) ||
@@ -1579,9 +1647,34 @@ export default function LibraryPage() {
 
       <SourceWorkspaceDrawer
         open={activePanel === "tutor"}
-        eyebrow="Ask Jami"
-        title="Tutor from your sources"
+        eyebrow="Jami Tutor"
+        title={`Ask about ${tutorSelectedSources[0]?.title ?? "this source"}`}
         onClose={closeWorkspacePanel}
+        footer={
+          <div className="space-y-3">
+            <Textarea
+              label="Question"
+              placeholder="What would you like help with?"
+              rows={4}
+              value={tutorMessage}
+              data-drawer-autofocus="true"
+              onChange={(event) => setTutorMessage(event.target.value)}
+            />
+            <Button
+              type="button"
+              className="min-h-11 w-full"
+              disabled={
+                busyAction === "source-tutor" ||
+                tutorSourceIds.length === 0 ||
+                !tutorMessage.trim()
+              }
+              onClick={() => void runSourceTutor()}
+            >
+              <SourceActionIcon name="sparkles" className="mr-2 h-4 w-4" />
+              {busyAction === "source-tutor" ? "Reading..." : "Ask Jami"}
+            </Button>
+          </div>
+        }
       >
         <div className="space-y-6">
           {feedback ? (
@@ -1593,108 +1686,103 @@ export default function LibraryPage() {
             />
           ) : null}
 
-          <section>
-            <div className="flex items-end justify-between gap-3">
-              <div>
-                <h3 className="text-sm font-semibold text-text-primary">
-                  Choose source context
-                </h3>
+          <section className="app-subtle-panel rounded-[1.15rem] p-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
+              <div className="min-w-0">
+                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
+                  Using for this request
+                </div>
+                <div className="mt-1 truncate text-sm font-semibold text-text-primary">
+                  {tutorSelectedSources[0]?.title ?? "No source selected"}
+                  {tutorSelectedSources.length > 1
+                    ? ` +${tutorSelectedSources.length - 1} more`
+                    : ""}
+                </div>
                 <p className="mt-1 text-xs leading-5 text-text-muted">
-                  Jami only reads the sources you deliberately choose for this request.
+                  Jami reads only these sources when you press Ask.
                 </p>
               </div>
-              <span className="shrink-0 text-xs font-semibold text-text-muted">
-                {tutorSourceIds.length}/{MAX_TUTOR_SOURCE_SELECTION}
-              </span>
+              {tutorAdditionalSources.length > 0 ? (
+                <button
+                  type="button"
+                  aria-expanded={showTutorSourcePicker}
+                  aria-controls="tutor-extra-source-picker"
+                  disabled={busyAction === "source-tutor"}
+                  onClick={() => setShowTutorSourcePicker((current) => !current)}
+                  className="min-h-11 self-start rounded-full px-3 text-xs font-semibold text-text-secondary transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 sm:shrink-0 sm:self-auto"
+                >
+                  {showTutorSourcePicker
+                    ? "Done"
+                    : tutorSelectedSources.length > 1
+                      ? "Change sources"
+                      : "Add another source"}
+                </button>
+              ) : null}
             </div>
 
-            {selectedSource &&
-            !tutorSourceIds.includes(selectedSource.id) &&
-            tutorSourceIds.length < MAX_TUTOR_SOURCE_SELECTION ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-3"
-                onClick={() => toggleTutorSource(selectedSource.id)}
+            {showTutorSourcePicker ? (
+              <div
+                id="tutor-extra-source-picker"
+                className="mt-4 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)]"
               >
-                Use current source
-              </Button>
+                <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2 text-xs text-text-muted">
+                  <span>Additional sources</span>
+                  <span>
+                    {tutorSourceIds.length}/{MAX_TUTOR_SOURCE_SELECTION}
+                  </span>
+                </div>
+                <div className="max-h-72 overflow-y-auto">
+                  {tutorAdditionalSources.map((source) => {
+                    const checked = tutorSourceIds.includes(source.id);
+                    const limitReached =
+                      !checked &&
+                      tutorSourceIds.length >= MAX_TUTOR_SOURCE_SELECTION;
+                    const selectionLocked = busyAction === "source-tutor";
+                    return (
+                      <label
+                        key={source.id}
+                        className={
+                          "flex min-h-12 items-center gap-3 border-b border-[var(--color-border)] px-3 text-sm last:border-b-0 " +
+                          (limitReached || selectionLocked
+                            ? "cursor-not-allowed text-text-muted"
+                            : "cursor-pointer text-text-primary hover:bg-[var(--color-glass-subtle)]")
+                        }
+                      >
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={limitReached || selectionLocked}
+                          onChange={() => toggleTutorSource(source.id)}
+                          className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
+                        />
+                        <SourceTypeIcon
+                          type={source.type}
+                          className="h-4 w-4 shrink-0 text-text-muted"
+                        />
+                        <span className="min-w-0 flex-1 truncate">
+                          {source.title}
+                        </span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             ) : null}
-
-            <div className="mt-4 overflow-hidden rounded-[1rem] border border-[var(--color-border)]">
-              {sources.map((source) => {
-                const checked = tutorSourceIds.includes(source.id);
-                const limitReached =
-                  !checked &&
-                  tutorSourceIds.length >= MAX_TUTOR_SOURCE_SELECTION;
-                return (
-                  <label
-                    key={source.id}
-                    className={
-                      "flex min-h-12 items-center gap-3 border-b border-[var(--color-border)] px-3 text-sm last:border-b-0 " +
-                      (limitReached
-                        ? "cursor-not-allowed text-text-muted"
-                        : "cursor-pointer text-text-primary hover:bg-[var(--color-glass-subtle)]")
-                    }
-                  >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      disabled={limitReached}
-                      onChange={() => toggleTutorSource(source.id)}
-                      className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                    />
-                    <SourceTypeIcon
-                      type={source.type}
-                      className="h-4 w-4 shrink-0 text-text-muted"
-                    />
-                    <span className="min-w-0 flex-1 truncate">{source.title}</span>
-                  </label>
-                );
-              })}
-            </div>
           </section>
 
-          <Textarea
-            label="What would you like help with?"
-            rows={5}
-            value={tutorMessage}
-            data-drawer-autofocus="true"
-            onChange={(event) => setTutorMessage(event.target.value)}
-          />
-          <Button
-            type="button"
-            className="w-full"
-            disabled={
-              busyAction === "source-tutor" ||
-              tutorSourceIds.length === 0 ||
-              !tutorMessage.trim()
-            }
-            onClick={() => void runSourceTutor()}
-          >
-            <SourceActionIcon name="sparkles" className="mr-2 h-4 w-4" />
-            {busyAction === "source-tutor"
-              ? "Reading selected sources..."
-              : "Ask Jami"}
-          </Button>
-
-          <section className="border-t border-[var(--color-border)] pt-6">
-            <h3 className="text-sm font-semibold text-text-primary">
-              Conversation
-            </h3>
+          <section aria-label="Tutor conversation">
             {tutorMessages.length === 0 ? (
-              <p className="mt-3 text-sm leading-6 text-text-muted">
-                Your response will appear here, directly beneath the request.
+              <p className="text-sm leading-6 text-text-muted">
+                Ask for an explanation, summary, or comparison.
               </p>
             ) : (
-              <div className="mt-4 space-y-3">
+              <div className="space-y-3">
                 {tutorMessages.map((message, index) => (
                   <div
                     key={message.role + "-" + index}
                     className={
                       message.role === "model"
-                        ? "rounded-[1.1rem] border border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] p-4 text-sm leading-6 text-text-primary"
+                        ? "border-l-2 border-[var(--color-border-strong)] py-1 pl-4 text-sm leading-6 text-text-primary"
                         : "rounded-[1.1rem] bg-[var(--color-glass-subtle)] p-4 text-sm leading-6 text-text-secondary"
                     }
                   >
@@ -1707,6 +1795,7 @@ export default function LibraryPage() {
               </div>
             )}
           </section>
+
         </div>
       </SourceWorkspaceDrawer>
 
@@ -1927,6 +2016,10 @@ export default function LibraryPage() {
         </div>
       </SourceWorkspaceDrawer>
 
+      <p className="px-1 text-sm leading-6 text-text-muted">
+        Save references, read them here, and ask Jami when you need help.
+      </p>
+
       {sources.length === 0 ? (
         <EmptyState
           emoji="Sources"
@@ -1956,21 +2049,41 @@ export default function LibraryPage() {
               ].join(" ")}
             >
               <div className="relative shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-3.5">
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <h2 className="text-sm font-semibold text-text-primary">
-                      Library
-                    </h2>
-                    <p className="mt-0.5 text-xs text-text-muted">
-                      {filteredSources.length} of {sources.length}
-                    </p>
-                  </div>
-                  <details className="group relative">
-                    <summary className="app-button-secondary inline-flex min-h-10 cursor-pointer list-none items-center gap-2 rounded-full px-3 text-xs font-semibold [&::-webkit-details-marker]:hidden">
+                <div className="flex items-center gap-2">
+                  <Input
+                    type="search"
+                    aria-label="Search Sources"
+                    placeholder="Search sources"
+                    value={searchTerm}
+                    onChange={(event) => setSearchTerm(event.target.value)}
+                    containerClassName="min-w-0 flex-1"
+                    className="!rounded-[1.1rem] !px-4 !py-3"
+                  />
+                  <details
+                    ref={filterDisclosureRef}
+                    className="group relative shrink-0"
+                    onKeyDown={(event) => {
+                      if (event.key !== "Escape") return;
+                      event.preventDefault();
+                      event.currentTarget.removeAttribute("open");
+                      event.currentTarget
+                        .querySelector<HTMLElement>("summary")
+                        ?.focus();
+                    }}
+                  >
+                    <summary
+                      aria-label={
+                        activeFilterCount > 0
+                          ? `Filter sources, ${activeFilterCount} active ${
+                              activeFilterCount === 1 ? "filter" : "filters"
+                            }`
+                          : "Filter sources"
+                      }
+                      className="app-button-secondary relative grid h-11 w-11 cursor-pointer list-none place-items-center rounded-full [&::-webkit-details-marker]:hidden"
+                    >
                       <SourceActionIcon name="filter" />
-                      <span>Filters</span>
                       {activeFilterCount > 0 ? (
-                        <span className="grid h-5 min-w-5 place-items-center rounded-full bg-[var(--color-selected-bg)] px-1 text-[0.65rem] text-[var(--color-selected-text)]">
+                        <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border border-[var(--color-surface-panel-strong)] bg-[var(--color-accent)] px-1 text-[0.62rem] font-semibold text-[var(--color-text-inverse)]">
                           {activeFilterCount}
                         </span>
                       ) : null}
@@ -2042,9 +2155,7 @@ export default function LibraryPage() {
                           className="mt-3 w-full"
                           onClick={(event) => {
                             clearFilters();
-                            event.currentTarget
-                              .closest("details")
-                              ?.removeAttribute("open");
+                            closeDisclosureAndFocusTrigger(event.currentTarget);
                           }}
                         >
                           Clear filters
@@ -2053,14 +2164,12 @@ export default function LibraryPage() {
                     </div>
                   </details>
                 </div>
-                <Input
-                  type="search"
-                  aria-label="Search Sources"
-                  placeholder="Search sources"
-                  value={searchTerm}
-                  onChange={(event) => setSearchTerm(event.target.value)}
-                  className="!rounded-[1.1rem] !px-4 !py-3"
-                />
+                {searchTerm || activeFilterCount > 0 ? (
+                  <p className="mt-2 px-1 text-xs text-text-muted" aria-live="polite">
+                    {filteredSources.length} result
+                    {filteredSources.length === 1 ? "" : "s"}
+                  </p>
+                ) : null}
               </div>
 
               <nav
@@ -2104,7 +2213,7 @@ export default function LibraryPage() {
                           setMobileTab("source");
                         }}
                         className={
-                          "group relative flex min-h-[4.75rem] w-full items-center gap-3 border-b border-[var(--color-border)] px-3.5 py-3 text-left transition " +
+                          "group relative flex min-h-[4.25rem] w-full items-center gap-2.5 border-b border-[var(--color-border)] px-4 py-2.5 text-left transition " +
                           (active
                             ? "bg-[var(--color-selected-bg)] text-text-primary"
                             : "text-text-secondary hover:bg-[var(--color-glass-subtle)]")
@@ -2113,22 +2222,13 @@ export default function LibraryPage() {
                         {active ? (
                           <span
                             aria-hidden="true"
-                            className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[var(--color-accent)] shadow-[0_0_14px_color-mix(in_srgb,var(--color-accent)_55%,transparent)]"
+                            className="absolute inset-y-2 left-0 w-[3px] rounded-r-full bg-[var(--color-accent)]"
                           />
                         ) : null}
-                        <span
-                          className={
-                            "grid h-10 w-10 shrink-0 place-items-center rounded-[0.9rem] border " +
-                            (active
-                              ? "border-[var(--color-selected-border)] bg-[var(--color-surface-panel)]"
-                              : "border-[var(--color-border)] bg-[var(--color-glass-subtle)]")
-                          }
-                        >
-                          <SourceTypeIcon
-                            type={source.type}
-                            className="h-5 w-5"
-                          />
-                        </span>
+                        <SourceTypeIcon
+                          type={source.type}
+                          className="h-4 w-4 shrink-0 text-text-muted"
+                        />
                         <span className="min-w-0 flex-1">
                           <span className="block truncate text-sm font-semibold text-text-primary">
                             {source.title}
@@ -2154,15 +2254,15 @@ export default function LibraryPage() {
             >
               {selectedSource ? (
                 <>
-                  <header className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]">
-                    <div className="flex min-w-0 items-start gap-3 px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+                  <header className="shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-4 pb-3 pt-4 sm:px-5 sm:pt-5">
+                    <div className="flex min-w-0 items-start gap-3">
                       <button
                         type="button"
                         aria-label="Back to all sources"
                         onClick={() => setMobileTab("sources")}
                         className={[
                           styles.mobileOnly,
-                          "grid h-10 w-10 shrink-0 place-items-center rounded-full text-text-muted transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary",
+                          "grid h-11 w-11 shrink-0 place-items-center rounded-full text-text-muted transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary",
                         ].join(" ")}
                       >
                         <SourceActionIcon
@@ -2170,108 +2270,70 @@ export default function LibraryPage() {
                           className="h-5 w-5"
                         />
                       </button>
-                      <span className="app-chip grid h-11 w-11 shrink-0 place-items-center rounded-[1rem]">
-                        <SourceTypeIcon
-                          type={selectedSource.type}
-                          className="h-5 w-5"
-                        />
-                      </span>
                       <div className="min-w-0 flex-1">
                         <h2 className="break-words text-lg font-semibold leading-6 text-text-primary sm:text-xl">
                           {selectedSource.title}
                         </h2>
                         <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-text-muted">
                           <span>{sourceDisplayLabel(selectedSource)}</span>
-                          <span aria-hidden="true">·</span>
-                          <span>
-                            {selectedSource.createdAt > 0
-                              ? new Intl.DateTimeFormat("en", {
-                                  day: "numeric",
-                                  month: "short",
-                                  year: "numeric",
-                                }).format(selectedSource.createdAt)
-                              : "Saved source"}
-                          </span>
-                          {selectedSourceFolders[0] ? (
-                            <>
-                              <span aria-hidden="true">·</span>
-                              <span>
-                                {selectedSourceFolders[0].name}
-                                {selectedSourceFolders.length > 1
-                                  ? " +" + (selectedSourceFolders.length - 1)
-                                  : ""}
-                              </span>
-                            </>
-                          ) : null}
                           {selectedSource.status === "archived" ? (
                             <>
                               <span aria-hidden="true">·</span>
-                              <span className="font-semibold text-warm-accent">
+                              <span className="font-semibold text-text-secondary">
                                 Archived
                               </span>
+                            </>
+                          ) : null}
+                          {sourceDrafts.length > 0 ? (
+                            <>
+                              <span aria-hidden="true">·</span>
+                              <button
+                                type="button"
+                                aria-label={`Review ${sourceDrafts.length} ${
+                                  sourceDrafts.length === 1 ? "draft" : "drafts"
+                                } from this source`}
+                                className="font-semibold text-text-secondary underline-offset-4 hover:text-text-primary hover:underline"
+                                onClick={() => openWorkspacePanel("drafts")}
+                              >
+                                {sourceDrafts.length} draft
+                                {sourceDrafts.length === 1 ? "" : "s"}
+                              </button>
                             </>
                           ) : null}
                         </div>
                       </div>
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] px-4 py-2.5 sm:px-5">
-                      {canOpenSelectedSource ? (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={openSelectedSource}
-                        >
-                          <SourceActionIcon
-                            name="external"
-                            className="mr-2 h-4 w-4"
-                          />
-                          Open original
-                        </Button>
-                      ) : null}
+                    <div className="mt-3 flex items-center gap-2">
                       <Button
                         type="button"
                         size="sm"
-                        onClick={() => openWorkspacePanel("tutor")}
+                        className="min-h-11"
+                        onClick={openTutorForSelectedSource}
                       >
                         <SourceActionIcon
                           name="sparkles"
                           className="mr-2 h-4 w-4"
                         />
-                        Ask Jami
+                        Ask Jami about this
                       </Button>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => openWorkspacePanel("details")}
-                      >
-                        <SourceActionIcon
-                          name="details"
-                          className="mr-2 h-4 w-4"
-                        />
-                        Details
-                      </Button>
-                      {sourceDrafts.length > 0 ? (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => openWorkspacePanel("drafts")}
-                        >
-                          <SourceActionIcon
-                            name="drafts"
-                            className="mr-2 h-4 w-4"
-                          />
-                          Drafts ({sourceDrafts.length})
-                        </Button>
-                      ) : null}
 
-                      <details className="group relative ml-auto">
+                      <details
+                        key={selectedSource.id}
+                        ref={sourceActionsDisclosureRef}
+                        className="group relative ml-auto"
+                        onKeyDown={(event) => {
+                          if (event.key !== "Escape") return;
+                          event.preventDefault();
+                          event.currentTarget.removeAttribute("open");
+                          event.currentTarget
+                            .querySelector<HTMLElement>("summary")
+                            ?.focus();
+                        }}
+                      >
                         <summary
                           aria-label="More source actions"
-                          className="grid h-10 w-10 cursor-pointer list-none place-items-center rounded-full text-text-muted transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary [&::-webkit-details-marker]:hidden"
+                          className="grid h-11 w-11 cursor-pointer list-none place-items-center rounded-full text-text-muted transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary [&::-webkit-details-marker]:hidden"
                         >
                           <SourceActionIcon
                             name="more"
@@ -2279,13 +2341,46 @@ export default function LibraryPage() {
                           />
                         </summary>
                         <div className="absolute right-0 top-[calc(100%+0.4rem)] z-40 grid min-w-48 gap-1 rounded-[1rem] border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[var(--shadow-shell)]">
+                          {canOpenSelectedSource ? (
+                            <button
+                              type="button"
+                              className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                              onClick={(event) => {
+                                closeDisclosureAndFocusTrigger(event.currentTarget);
+                                openSelectedSource();
+                              }}
+                            >
+                              Open original
+                              <span className="sr-only"> in a new tab</span>
+                            </button>
+                          ) : null}
                           <button
                             type="button"
-                            className="min-h-10 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                            className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                             onClick={(event) => {
-                              event.currentTarget
-                                .closest("details")
-                                ?.removeAttribute("open");
+                              closeDisclosureAndFocusTrigger(event.currentTarget);
+                              openWorkspacePanel("details");
+                            }}
+                          >
+                            Details and organisation
+                          </button>
+                          {sourceDrafts.length > 0 ? (
+                            <button
+                              type="button"
+                              className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                              onClick={(event) => {
+                                closeDisclosureAndFocusTrigger(event.currentTarget);
+                                openWorkspacePanel("drafts");
+                              }}
+                            >
+                              Drafts ({sourceDrafts.length})
+                            </button>
+                          ) : null}
+                          <button
+                            type="button"
+                            className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                            onClick={(event) => {
+                              closeDisclosureAndFocusTrigger(event.currentTarget);
                               setFeedback(null);
                               setRenameTitle(selectedSource.title);
                               setRenameOpen(true);
@@ -2293,14 +2388,16 @@ export default function LibraryPage() {
                           >
                             Rename
                           </button>
+                          <div
+                            aria-hidden="true"
+                            className="my-1 h-px bg-[var(--color-border)]"
+                          />
                           <button
                             type="button"
                             disabled={busyAction === "restore-source"}
-                            className="min-h-10 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:opacity-50"
+                            className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:opacity-50"
                             onClick={(event) => {
-                              event.currentTarget
-                                .closest("details")
-                                ?.removeAttribute("open");
+                              closeDisclosureAndFocusTrigger(event.currentTarget);
                               if (selectedSource.status === "active") {
                                 setManagementAction("archive");
                               } else {
@@ -2314,11 +2411,9 @@ export default function LibraryPage() {
                           </button>
                           <button
                             type="button"
-                            className="min-h-10 rounded-[0.75rem] px-3 text-left text-sm font-semibold text-[var(--color-error-text)] hover:bg-[var(--color-error-muted)]"
+                            className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-semibold text-[var(--color-error-text)] hover:bg-[var(--color-error-muted)]"
                             onClick={(event) => {
-                              event.currentTarget
-                                .closest("details")
-                                ?.removeAttribute("open");
+                              closeDisclosureAndFocusTrigger(event.currentTarget);
                               setManagementAction("delete");
                             }}
                           >
@@ -2333,15 +2428,13 @@ export default function LibraryPage() {
                     id="selected-source-preview"
                     className={[
                       styles.previewScroll,
-                      "min-h-0 flex-1 bg-[var(--color-surface-base)] p-3 sm:p-5",
+                      "min-h-0 flex-1 bg-[var(--color-surface-panel-strong)]",
                     ].join(" ")}
                   >
-                    <div className="overflow-hidden rounded-[1.2rem] bg-[var(--color-surface-panel-strong)]">
-                      <SourcePreview
-                        source={selectedSource}
-                        fileUrl={selectedSourceFileUrl}
-                      />
-                    </div>
+                    <SourcePreview
+                      source={selectedSource}
+                      fileUrl={selectedSourceFileUrl}
+                    />
                   </div>
                 </>
               ) : (

@@ -96,7 +96,7 @@ export default function SourcePreview({ source, fileUrl }: SourcePreviewProps) {
         role="document"
         aria-label={`${source.title} text preview`}
         tabIndex={0}
-        className={`${readerCanvasClass} ${readerMinHeightClass} max-h-[min(72vh,48rem)] overflow-y-auto overscroll-contain px-5 py-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-selected-border)] sm:px-8 sm:py-9`}
+        className={`${readerMinHeightClass} min-h-full w-full bg-[var(--color-surface-panel-strong)] px-5 py-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-selected-border)] sm:px-8 sm:py-9`}
       >
         <div className="mx-auto max-w-[46rem] whitespace-pre-wrap break-words text-[0.95rem] leading-[1.8] text-text-secondary sm:text-base">
           {source.contentText}
@@ -109,27 +109,10 @@ export default function SourcePreview({ source, fileUrl }: SourcePreviewProps) {
     return (
       <div
         aria-label={`${source.title} link preview`}
-        className={`${readerCanvasClass} ${readerMinHeightClass} flex items-center justify-center px-6 py-10 sm:px-10`}
+        className={`${readerMinHeightClass} min-h-full w-full bg-[var(--color-surface-panel-strong)] px-5 py-7 sm:px-8 sm:py-9`}
       >
-        <div className="w-full max-w-2xl text-center">
-          <svg
-            aria-hidden="true"
-            viewBox="0 0 24 24"
-            fill="none"
-            className="mx-auto h-8 w-8 text-text-muted"
-            stroke="currentColor"
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <path d="m9.5 14.5 5-5" />
-            <path d="m7.25 16.75-1 1a3 3 0 0 0 4.25 4.25l3-3a3 3 0 0 0 0-4.25" />
-            <path d="m16.75 7.25 1-1A3 3 0 0 0 13.5 2l-3 3a3 3 0 0 0 0 4.25" />
-          </svg>
-          <div className="mt-5 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
-            Saved link
-          </div>
-          <div className="mt-3 break-all text-base leading-7 text-text-primary sm:text-lg">
+        <div className="mx-auto w-full max-w-[46rem]">
+          <div className="break-all text-[0.95rem] leading-[1.8] text-text-secondary sm:text-base">
             {source.externalUrl}
           </div>
         </div>
@@ -207,7 +190,7 @@ export default function SourcePreview({ source, fileUrl }: SourcePreviewProps) {
 
   if (fileKind === "pdf" && fileUrl) {
     return (
-      <div className={`${readerCanvasClass} ${mediaViewportClass} relative`}>
+      <div className={`${readerCanvasClass} min-h-[22rem] relative`}>
         {previewStatus !== "ready" ? (
           <div
             role="status"

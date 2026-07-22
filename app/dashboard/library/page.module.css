@@ -29,7 +29,8 @@
   .workspaceLayout {
     display: grid;
     grid-template-columns: minmax(13.5rem, 16rem) minmax(0, 1fr);
-    height: clamp(34rem, calc(100dvh - 11rem), 52rem);
+    height: calc(100dvh - 11rem);
+    min-height: min(34rem, calc(100dvh - 11rem));
   }
 
   .sourceRail,
