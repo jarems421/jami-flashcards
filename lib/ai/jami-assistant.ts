@@ -164,7 +164,7 @@ export function getJamiAssistantResponseGuidance(input: {
   return {
     depth,
     maxOutputTokens:
-      depth === "brief" ? 250 : depth === "standard" ? 500 : 1_200,
+      depth === "brief" ? 1_500 : depth === "standard" ? 3_000 : 6_000,
     instruction: `${modeInstruction} ${surfaceInstruction} Start with the answer. Do not restate the question, add a generic introduction, repeat the conclusion, or use unnecessary headings.`.trim(),
     followUps: followUps.slice(0, 2),
   };

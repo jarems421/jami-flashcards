@@ -15,6 +15,15 @@ type GeminiRetryInfo = {
   nextModelName: string;
 };
 
+export type GeminiResponseDiagnostics = {
+  modelName: string;
+  finishReason?: string;
+  finishMessage?: string;
+  promptTokenCount?: number;
+  candidatesTokenCount?: number;
+  totalTokenCount?: number;
+};
+
 type GenerateGeminiTextInput = {
   apiKey: string;
   request: GenerateContentRequest;
@@ -22,6 +31,7 @@ type GenerateGeminiTextInput = {
   generationConfig?: GenerationConfig;
   modelNames?: readonly string[];
   onRetry?: (info: GeminiRetryInfo) => void;
+  onResponse?: (info: GeminiResponseDiagnostics) => void;
 };
 
 function getErrorStatus(error: unknown) {
@@ -70,6 +80,7 @@ export async function generateGeminiText({
   generationConfig,
   modelNames = DEFAULT_MODEL_NAMES,
   onRetry,
+  onResponse,
 }: GenerateGeminiTextInput) {
   const genAI = new GoogleGenerativeAI(apiKey);
   let lastError: unknown = null;
@@ -87,7 +98,26 @@ export async function generateGeminiText({
         (signal) => model.generateContent(request, { signal }),
         timeoutMs
       );
-      return result.response.text();
+      const text = result.response.text();
+      const candidate = result.response.candidates?.[0];
+      const usage = result.response.usageMetadata;
+      onResponse?.({
+        modelName,
+        ...(candidate?.finishReason
+          ? { finishReason: candidate.finishReason }
+          : {}),
+        ...(candidate?.finishMessage
+          ? { finishMessage: candidate.finishMessage }
+          : {}),
+        ...(usage
+          ? {
+              promptTokenCount: usage.promptTokenCount,
+              candidatesTokenCount: usage.candidatesTokenCount,
+              totalTokenCount: usage.totalTokenCount,
+            }
+          : {}),
+      });
+      return text;
     } catch (error) {
       lastError = error;
 

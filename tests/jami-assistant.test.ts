@@ -191,7 +191,7 @@ describe("Jami assistant response length guidance", () => {
 
     expect(guidance).toMatchObject({
       depth: "brief",
-      maxOutputTokens: 250,
+      maxOutputTokens: 1_500,
       followUps: [{ label: "Explain more" }],
     });
     expect(guidance.instruction).toContain("1-3 sentences");
@@ -209,7 +209,7 @@ describe("Jami assistant response length guidance", () => {
 
     expect(guidance).toMatchObject({
       depth: "detailed",
-      maxOutputTokens: 1_200,
+      maxOutputTokens: 6_000,
       followUps: [],
     });
   });

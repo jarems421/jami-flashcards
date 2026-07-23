@@ -147,7 +147,18 @@ describe("universal Jami assistant route", () => {
     });
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        generationConfig: expect.objectContaining({ maxOutputTokens: 250 }),
+        modelNames: ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
+        generationConfig: expect.objectContaining({
+          maxOutputTokens: 1_500,
+          responseSchema: expect.objectContaining({
+            required: [
+              "answer",
+              "sourceRefs",
+              "usedCurrentContext",
+              "usedGeneralKnowledge",
+            ],
+          }),
+        }),
         request: expect.objectContaining({
           systemInstruction: expect.stringContaining("BRIEF mode"),
         }),
@@ -166,7 +177,8 @@ describe("universal Jami assistant route", () => {
 
     expect(mocks.generateText).toHaveBeenCalledWith(
       expect.objectContaining({
-        generationConfig: expect.objectContaining({ maxOutputTokens: 1_200 }),
+        modelNames: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+        generationConfig: expect.objectContaining({ maxOutputTokens: 6_000 }),
         request: expect.objectContaining({
           systemInstruction: expect.stringContaining("DETAILED mode"),
         }),
@@ -197,19 +209,42 @@ describe("universal Jami assistant route", () => {
   });
 
   it("rejects invented source references from the provider", async () => {
-    mocks.generateText.mockResolvedValueOnce(
-      JSON.stringify({
-        answer: "Unsupported answer.",
-        sourceRefs: ["S9"],
-        usedCurrentContext: false,
-        usedGeneralKnowledge: true,
-      })
-    );
+    const invalidAnswer = JSON.stringify({
+      answer: "Unsupported answer.",
+      sourceRefs: ["S9"],
+      usedCurrentContext: false,
+      usedGeneralKnowledge: true,
+    });
+    mocks.generateText
+      .mockResolvedValueOnce(invalidAnswer)
+      .mockResolvedValueOnce(invalidAnswer);
     const response = await postAssistant(request(validBody()));
     expect(response.status).toBe(502);
     expect(await response.json()).toMatchObject({
       code: "invalid_provider_response",
     });
+    expect(mocks.generateText).toHaveBeenCalledTimes(2);
+  });
+
+  it("retries one malformed structured response with the alternate model", async () => {
+    mocks.generateText.mockResolvedValueOnce('{"answer":"Incomplete');
+
+    const response = await postAssistant(request(validBody()));
+
+    expect(response.status).toBe(200);
+    expect(mocks.generateText).toHaveBeenCalledTimes(2);
+    expect(mocks.generateText).toHaveBeenNthCalledWith(
+      2,
+      expect.objectContaining({
+        modelNames: ["gemini-2.5-flash"],
+        generationConfig: expect.objectContaining({ maxOutputTokens: 8_000 }),
+        request: expect.objectContaining({
+          systemInstruction: expect.stringContaining(
+            "This is a structured-output retry"
+          ),
+        }),
+      })
+    );
   });
 
   it("can answer from general knowledge when a related source is unreadable", async () => {
