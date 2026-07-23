@@ -38,6 +38,11 @@ describe("Jami assistant client service", () => {
           { kind: "current-context", id: "card-1", label: "Current card" },
           { kind: "general-knowledge", label: "general knowledge" },
         ],
+        followUps: [
+          { label: "Explain more", prompt: "Explain that in more detail." },
+          { label: "", prompt: "Invalid" },
+          { label: "Ignored third", prompt: "Only keep two valid actions." },
+        ],
       })
     );
     vi.stubGlobal("fetch", fetchMock);
@@ -47,6 +52,10 @@ describe("Jami assistant client service", () => {
       used: [
         { kind: "current-context", id: "card-1", label: "Current card" },
         { kind: "general-knowledge", label: "general knowledge" },
+      ],
+      followUps: [
+        { label: "Explain more", prompt: "Explain that in more detail." },
+        { label: "Ignored third", prompt: "Only keep two valid actions." },
       ],
     });
     expect(fetchMock).toHaveBeenCalledWith(

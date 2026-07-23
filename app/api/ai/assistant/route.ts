@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import {
   buildJamiAssistantReferenceParts,
+  getJamiAssistantResponseGuidance,
   parseJamiAssistantModelAnswer,
   parseJamiAssistantRequest,
   type JamiAssistantSourceFailure,
@@ -62,6 +63,11 @@ export async function POST(request: NextRequest) {
   if (!parsedRequest) {
     return failureResponse("Invalid assistant request", 400, "invalid_request");
   }
+
+  const responseGuidance = getJamiAssistantResponseGuidance({
+    message: parsedRequest.message,
+    context: parsedRequest.context,
+  });
 
   let resolved;
   try {
@@ -154,7 +160,10 @@ export async function POST(request: NextRequest) {
       generationConfig: {
         temperature: 0.2,
         topP: 0.85,
-        maxOutputTokens: Math.min(getAiTokenCap("assistant"), 1_500),
+        maxOutputTokens: Math.min(
+          getAiTokenCap("assistant"),
+          responseGuidance.maxOutputTokens
+        ),
         responseMimeType: "application/json",
       },
       request: {
@@ -167,7 +176,8 @@ If handwriting, notation, or the student's intention is materially ambiguous, as
 Return JSON only with exactly these fields:
 {"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true}
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
-Be concise, specific, supportive, and focused on helping the student understand.`,
+Be specific, supportive, and focused on helping the student understand.
+${responseGuidance.instruction}`,
         contents: [
           ...parsedRequest.history.map((historyMessage) => ({
             role: historyMessage.role,
@@ -258,6 +268,9 @@ Be concise, specific, supportive, and focused on helping the student understand.
   return Response.json({
     reply,
     used,
+    ...(responseGuidance.followUps.length > 0
+      ? { followUps: responseGuidance.followUps }
+      : {}),
     ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
   });
 }

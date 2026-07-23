@@ -59,10 +59,25 @@ export type JamiAssistantSourceFailure = {
   reason: string;
 };
 
+export type JamiAssistantFollowUp = {
+  label: string;
+  prompt: string;
+};
+
 export type JamiAssistantResponse = {
   reply: string;
   used: JamiAssistantUsedContext[];
+  followUps?: JamiAssistantFollowUp[];
   sourceFailures?: JamiAssistantSourceFailure[];
+};
+
+export type JamiAssistantResponseDepth = "brief" | "standard" | "detailed";
+
+export type JamiAssistantResponseGuidance = {
+  depth: JamiAssistantResponseDepth;
+  maxOutputTokens: number;
+  instruction: string;
+  followUps: JamiAssistantFollowUp[];
 };
 
 export type ParsedJamiAssistantModelAnswer = {
@@ -78,6 +93,82 @@ type ModelAnswerPayload = {
   usedCurrentContext?: unknown;
   usedGeneralKnowledge?: unknown;
 };
+
+const DETAILED_REQUEST_PATTERN =
+  /\b(?:in detail|detailed|deep dive|thorough(?:ly)?|comprehensive|full explanation|show (?:me )?all (?:the )?steps|step[- ]by[- ]step|walk me through|complete derivation)\b/i;
+const STANDARD_REQUEST_PATTERN =
+  /\b(?:explain|analyse|analyze|evaluate|compare|contrast|summari[sz]e|check (?:my|this)|review (?:my|this)|show (?:me )?(?:the )?steps|why|how does|how do|how can)\b/i;
+const HINT_REQUEST_PATTERN = /\b(?:hint|clue|nudge)\b/i;
+const WORKED_STEPS_PATTERN =
+  /\b(?:solve|equation|calculation|calculate|proof|derive|working|steps?)\b/i;
+
+/**
+ * Keeps everyday tutor replies compact while allowing students to explicitly
+ * opt into depth. This controls generation rather than truncating completed
+ * answers, so explanations never end mid-sentence.
+ */
+export function getJamiAssistantResponseGuidance(input: {
+  message: string;
+  context: JamiAssistantContext;
+}): JamiAssistantResponseGuidance {
+  const message = input.message.trim();
+  const asksForDetail = DETAILED_REQUEST_PATTERN.test(message);
+  const asksForHint = HINT_REQUEST_PATTERN.test(message);
+  const checksNotebookWork =
+    input.context.surface === "notebook" &&
+    /\b(?:check|mark|review|correct|feedback)\b/i.test(message);
+
+  let depth: JamiAssistantResponseDepth;
+  if (asksForDetail) {
+    depth = "detailed";
+  } else if (
+    asksForHint ||
+    (message.length <= 120 && !STANDARD_REQUEST_PATTERN.test(message))
+  ) {
+    depth = "brief";
+  } else {
+    depth = "standard";
+  }
+
+  const surfaceInstruction =
+    input.context.surface === "learn" &&
+    input.context.phase === "question" &&
+    asksForHint
+      ? "Give exactly one short hint that advances recall without revealing the answer."
+      : checksNotebookWork
+        ? "For checking work: give the verdict first, identify at most three concrete issues, then give one next step. Omit any empty section."
+        : input.context.surface === "sources"
+          ? "Answer the question first. Add source support only where it improves the answer."
+          : "";
+
+  const modeInstruction =
+    depth === "brief"
+      ? "BRIEF mode: answer in 1-3 sentences, normally under 70 words."
+      : depth === "standard"
+        ? "STANDARD mode: answer directly in roughly 80-150 words. Use a short list only when it makes the answer easier to scan."
+        : "DETAILED mode: provide the requested depth, but keep every paragraph necessary and focused.";
+
+  const followUps: JamiAssistantFollowUp[] = [];
+  if (depth !== "detailed") {
+    followUps.push({ label: "Explain more", prompt: "Explain that in more detail." });
+  }
+  if (asksForHint && input.context.surface === "learn") {
+    followUps.push({
+      label: "Another hint",
+      prompt: "Give me one more short hint without revealing the answer.",
+    });
+  } else if (depth !== "detailed" && WORKED_STEPS_PATTERN.test(message)) {
+    followUps.push({ label: "Show steps", prompt: "Show me the steps." });
+  }
+
+  return {
+    depth,
+    maxOutputTokens:
+      depth === "brief" ? 250 : depth === "standard" ? 500 : 1_200,
+    instruction: `${modeInstruction} ${surfaceInstruction} Start with the answer. Do not restate the question, add a generic introduction, repeat the conclusion, or use unnecessary headings.`.trim(),
+    followUps: followUps.slice(0, 2),
+  };
+}
 
 function normalizeId(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 160) : "";

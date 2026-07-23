@@ -1,4 +1,5 @@
 import type {
+  JamiAssistantFollowUp,
   JamiAssistantRequest,
   JamiAssistantResponse,
   JamiAssistantSourceFailure,
@@ -58,6 +59,21 @@ function normalizeSourceFailures(value: unknown): JamiAssistantSourceFailure[] {
   return normalized;
 }
 
+function normalizeFollowUps(value: unknown): JamiAssistantFollowUp[] {
+  if (!Array.isArray(value)) return [];
+  const normalized: JamiAssistantFollowUp[] = [];
+  for (const candidate of value) {
+    if (!candidate || typeof candidate !== "object") continue;
+    const item = candidate as Record<string, unknown>;
+    const label =
+      typeof item.label === "string" ? item.label.trim().slice(0, 40) : "";
+    const prompt =
+      typeof item.prompt === "string" ? item.prompt.trim().slice(0, 240) : "";
+    if (label && prompt) normalized.push({ label, prompt });
+  }
+  return normalized.slice(0, 2);
+}
+
 export async function sendJamiAssistantMessage(
   input: JamiAssistantRequest
 ): Promise<JamiAssistantResponse> {
@@ -93,9 +109,11 @@ export async function sendJamiAssistantMessage(
   }
 
   const sourceFailures = normalizeSourceFailures(data?.sourceFailures);
+  const followUps = normalizeFollowUps(data?.followUps);
   return {
     reply,
     used,
+    ...(followUps.length > 0 ? { followUps } : {}),
     ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
   };
 }

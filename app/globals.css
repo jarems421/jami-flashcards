@@ -457,7 +457,7 @@
   body.jami-notebook-editor-active,
   body.jami-notebook-editor-active .notebook-editor-shell,
   body.jami-notebook-editor-active .notebook-page-surface,
-  body.jami-notebook-editor-active .notebook-page-surface *:not(.notebook-text-editor) {
+  body.jami-notebook-editor-active .notebook-page-surface *:not(.notebook-text-editor):not([data-notebook-text-editor="true"]) {
     -webkit-touch-callout: none !important;
     -webkit-user-drag: none !important;
     -webkit-user-select: none !important;
@@ -474,7 +474,8 @@
     display: none !important;
   }
 
-  body.jami-notebook-editor-active .notebook-text-editor {
+  body.jami-notebook-editor-active .notebook-text-editor,
+  body.jami-notebook-editor-active [data-notebook-text-editor="true"] {
     -webkit-touch-callout: default !important;
     -webkit-user-select: text !important;
     user-select: text !important;

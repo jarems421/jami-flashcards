@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildJamiAssistantReferenceParts,
   formatJamiAssistantUsedContext,
+  getJamiAssistantResponseGuidance,
   JAMI_ASSISTANT_MAX_HISTORY_MESSAGES,
   normalizeJamiAssistantHistory,
   parseJamiAssistantModelAnswer,
@@ -178,6 +179,62 @@ describe("Jami assistant model and receipt contract", () => {
         { kind: "general-knowledge", label: "general knowledge" },
       ])
     ).toBe("Used: Current page, Respiration.pdf and general knowledge");
+  });
+});
+
+describe("Jami assistant response length guidance", () => {
+  it("keeps simple requests brief without truncating the eventual answer", () => {
+    const guidance = getJamiAssistantResponseGuidance({
+      message: "What is mitosis?",
+      context: { surface: "learn", cardId: "card-1", phase: "answer" },
+    });
+
+    expect(guidance).toMatchObject({
+      depth: "brief",
+      maxOutputTokens: 250,
+      followUps: [{ label: "Explain more" }],
+    });
+    expect(guidance.instruction).toContain("1-3 sentences");
+  });
+
+  it("only expands fully when the student explicitly asks for depth", () => {
+    const guidance = getJamiAssistantResponseGuidance({
+      message: "Walk me through this derivation step by step.",
+      context: {
+        surface: "notebook",
+        notebookId: "notebook-1",
+        pageId: "page-1",
+      },
+    });
+
+    expect(guidance).toMatchObject({
+      depth: "detailed",
+      maxOutputTokens: 1_200,
+      followUps: [],
+    });
+  });
+
+  it("gives Learn hints and notebook checks compact surface-specific shapes", () => {
+    const hint = getJamiAssistantResponseGuidance({
+      message: "Give me a hint",
+      context: { surface: "learn", cardId: "card-1", phase: "question" },
+    });
+    const notebookCheck = getJamiAssistantResponseGuidance({
+      message: "Can you check my working and explain what is wrong?",
+      context: {
+        surface: "notebook",
+        notebookId: "notebook-1",
+        pageId: "page-1",
+      },
+    });
+
+    expect(hint.instruction).toContain("exactly one short hint");
+    expect(hint.followUps.map((item) => item.label)).toEqual([
+      "Explain more",
+      "Another hint",
+    ]);
+    expect(notebookCheck.depth).toBe("standard");
+    expect(notebookCheck.instruction).toContain("at most three concrete issues");
   });
 });
 

@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import {
   formatJamiAssistantUsedContext,
   type JamiAssistantContext,
+  type JamiAssistantFollowUp,
   type JamiAssistantUsedContext,
 } from "@/lib/ai/jami-assistant";
 import { sendJamiAssistantMessage } from "@/services/ai/jami-assistant";
@@ -36,6 +37,7 @@ type DrawerMessage = {
   role: "user" | "assistant";
   text: string;
   used?: JamiAssistantUsedContext[];
+  followUps?: JamiAssistantFollowUp[];
 };
 
 function CloseIcon() {
@@ -151,6 +153,7 @@ export default function JamiAssistantDrawer({
             role: "assistant",
             text: response.reply,
             used: response.used,
+            followUps: response.followUps,
           },
         ]);
       } catch (requestError) {
@@ -291,11 +294,29 @@ export default function JamiAssistantDrawer({
                       <StudyText text={message.text} className="whitespace-pre-wrap" />
                     </div>
                     {message.role === "assistant" ? (
-                      <div className="mt-1.5 px-1 text-[0.68rem] leading-relaxed text-text-muted">
-                        {message.used && message.used.length > 0
-                          ? formatJamiAssistantUsedContext(message.used)
-                          : "Used: General knowledge"}
-                      </div>
+                      <>
+                        <div className="mt-1.5 px-1 text-[0.68rem] leading-relaxed text-text-muted">
+                          {message.used && message.used.length > 0
+                            ? formatJamiAssistantUsedContext(message.used)
+                            : "Used: General knowledge"}
+                        </div>
+                        {index === messages.length - 1 &&
+                        !loading &&
+                        message.followUps?.length ? (
+                          <div className="mt-2 flex flex-wrap gap-1.5 px-1">
+                            {message.followUps.map((followUp) => (
+                              <button
+                                key={`${followUp.label}:${followUp.prompt}`}
+                                type="button"
+                                className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-[0.7rem] font-medium text-text-muted transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                                onClick={() => void sendMessage(followUp.prompt)}
+                              >
+                                {followUp.label}
+                              </button>
+                            ))}
+                          </div>
+                        ) : null}
+                      </>
                     ) : null}
                   </div>
                 </div>
@@ -339,11 +360,12 @@ export default function JamiAssistantDrawer({
             <textarea
               ref={inputRef}
               id="jami-assistant-message"
+              data-notebook-text-editor="true"
               rows={2}
               value={input}
               disabled={loading}
               placeholder="Ask Jami..."
-              className="min-h-[3.5rem] w-full resize-none bg-transparent py-3 pl-4 pr-14 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:saturate-[0.82]"
+              className="min-h-[3.5rem] w-full resize-none bg-transparent py-3 pl-4 pr-14 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]"
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
             />

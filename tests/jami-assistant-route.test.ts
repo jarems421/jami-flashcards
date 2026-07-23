@@ -135,6 +135,9 @@ describe("universal Jami assistant route", () => {
         { kind: "source", id: "source-1", label: "Biology notes" },
         { kind: "general-knowledge", label: "general knowledge" },
       ],
+      followUps: [
+        { label: "Explain more", prompt: "Explain that in more detail." },
+      ],
     });
     expect(mocks.resolveContext).toHaveBeenCalledWith({
       uid: "user-1",
@@ -142,6 +145,33 @@ describe("universal Jami assistant route", () => {
       context: { surface: "learn", cardId: "card-1", phase: "answer" },
       useRelatedSources: true,
     });
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generationConfig: expect.objectContaining({ maxOutputTokens: 250 }),
+        request: expect.objectContaining({
+          systemInstruction: expect.stringContaining("BRIEF mode"),
+        }),
+      })
+    );
+  });
+
+  it("uses the larger response budget only for an explicit depth request", async () => {
+    await postAssistant(
+      request(
+        validBody({
+          message: "Walk me through this in detail, step by step.",
+        })
+      )
+    );
+
+    expect(mocks.generateText).toHaveBeenCalledWith(
+      expect.objectContaining({
+        generationConfig: expect.objectContaining({ maxOutputTokens: 1_200 }),
+        request: expect.objectContaining({
+          systemInstruction: expect.stringContaining("DETAILED mode"),
+        }),
+      })
+    );
   });
 
   it("rejects unauthenticated and invalid surface requests before generation", async () => {
@@ -197,6 +227,9 @@ describe("universal Jami assistant route", () => {
     expect(await response.json()).toEqual({
       reply: "A general explanation.",
       used: [{ kind: "general-knowledge", label: "general knowledge" }],
+      followUps: [
+        { label: "Explain more", prompt: "Explain that in more detail." },
+      ],
       sourceFailures: [
         {
           id: "source-1",
