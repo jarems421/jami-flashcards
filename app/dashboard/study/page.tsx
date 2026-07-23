@@ -68,6 +68,7 @@ import {
   EmptyState,
   FeedbackBanner,
   Input,
+  JamiSparklesIcon,
   ProgressBar,
   Skeleton,
   StudyText,
@@ -2349,14 +2350,7 @@ export default function StudyPage() {
                         aria-expanded={jamiAssistantOpen}
                         onClick={() => setJamiAssistantOpen(true)}
                       >
-                        <svg
-                          aria-hidden="true"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          className="h-4 w-4"
-                        >
-                          <path d="M12 3.5 13.35 8a4 4 0 0 0 2.65 2.65L20.5 12 16 13.35A4 4 0 0 0 13.35 16L12 20.5 10.65 16A4 4 0 0 0 8 13.35L3.5 12 8 10.65A4 4 0 0 0 10.65 8L12 3.5Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-                        </svg>
+                        <JamiSparklesIcon className="h-4 w-4" />
                         Ask Jami
                       </Button>
                     </div>
@@ -2487,11 +2481,7 @@ export default function StudyPage() {
                 open={jamiAssistantOpen}
                 onOpenChange={setJamiAssistantOpen}
                 resetKey={current.id}
-                contextLabel={
-                  deckNamesById[current.deckId]
-                    ? `${deckNamesById[current.deckId]} flashcard`
-                    : "Current flashcard"
-                }
+                contextLabel="Current flashcard"
                 getContext={getLearnAssistantContext}
                 quickActions={learnAssistantQuickActions}
               />

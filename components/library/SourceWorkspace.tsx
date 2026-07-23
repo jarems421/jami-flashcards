@@ -8,7 +8,7 @@ import {
 } from "@/lib/practice/sources";
 import { getSourceFileTypeLabel } from "@/lib/practice/source-files";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
-import { Button } from "@/components/ui";
+import { Button, JamiSparklesIcon } from "@/components/ui";
 import styles from "./SourceWorkspace.module.css";
 
 export type SourceActionIconName =
@@ -93,7 +93,11 @@ export function SourceActionIcon({
   name: SourceActionIconName;
   className?: string;
 }) {
-  const paths: Record<SourceActionIconName, ReactNode> = {
+  if (name === "sparkles") {
+    return <JamiSparklesIcon className={className} />;
+  }
+
+  const paths: Record<Exclude<SourceActionIconName, "sparkles">, ReactNode> = {
     "arrow-left": <path d="m15 18-6-6 6-6" />,
     close: (
       <>
@@ -113,13 +117,6 @@ export function SourceActionIcon({
         <circle cx="6" cy="12" r="1" fill="currentColor" stroke="none" />
         <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
         <circle cx="18" cy="12" r="1" fill="currentColor" stroke="none" />
-      </>
-    ),
-    sparkles: (
-      <>
-        <path d="m12 3 1.1 3.2L16 7.5l-2.9 1.3L12 12l-1.1-3.2L8 7.5l2.9-1.3z" />
-        <path d="m18 13 .8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8z" />
-        <path d="m6 13 .6 1.7 1.7.6-1.7.6L6 17.5l-.6-1.6-1.7-.6 1.7-.6z" />
       </>
     ),
   };

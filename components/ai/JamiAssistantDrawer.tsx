@@ -7,13 +7,14 @@ import {
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   formatJamiAssistantUsedContext,
   type JamiAssistantContext,
   type JamiAssistantUsedContext,
 } from "@/lib/ai/jami-assistant";
 import { sendJamiAssistantMessage } from "@/services/ai/jami-assistant";
-import { Button, StudyText } from "@/components/ui";
+import { JamiSparklesIcon, StudyText } from "@/components/ui";
 
 export type JamiAssistantQuickAction =
   | string
@@ -37,27 +38,9 @@ type DrawerMessage = {
   used?: JamiAssistantUsedContext[];
 };
 
-function SparkleIcon({ className = "h-5 w-5" }: { className?: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className}
-    >
-      <path
-        d="M12 3.5 13.35 8a4 4 0 0 0 2.65 2.65L20.5 12 16 13.35A4 4 0 0 0 13.35 16L12 20.5 10.65 16A4 4 0 0 0 8 13.35L3.5 12 8 10.65A4 4 0 0 0 10.65 8L12 3.5Z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function CloseIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-5 w-5">
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
       <path d="m5 5 10 10M15 5 5 15" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
     </svg>
   );
@@ -66,8 +49,7 @@ function CloseIcon() {
 function SendIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4">
-      <path d="m4 4 17 8-17 8 3-8-3-8Z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
-      <path d="M7 12h14" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" />
+      <path d="M12 18V6m0 0-4.5 4.5M12 6l4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
@@ -86,7 +68,6 @@ export default function JamiAssistantDrawer({
   const [error, setError] = useState<string | null>(null);
   const [useRelatedSources, setUseRelatedSources] = useState(true);
   const drawerRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const restoreFocusRef = useRef<HTMLElement | null>(null);
@@ -219,9 +200,9 @@ export default function JamiAssistantDrawer({
     }
   };
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] flex justify-end">
       <button
         type="button"
@@ -235,56 +216,45 @@ export default function JamiAssistantDrawer({
         role="dialog"
         aria-modal="true"
         aria-labelledby="jami-assistant-title"
-        className="relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[34rem] flex-col overflow-hidden border-l border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)]"
+        className="relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)]"
         onKeyDown={handleFocusTrap}
       >
-        <header className="relative overflow-hidden border-b border-[var(--color-border)] px-5 py-5 sm:px-7 sm:py-6">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute -right-16 -top-24 h-52 w-52 rounded-full bg-accent/10 blur-3xl"
-          />
-          <div className="relative flex items-start justify-between gap-4">
-            <div className="flex min-w-0 items-start gap-3">
-              <div className="app-selected flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl text-accent shadow-[0_12px_28px_rgba(124,92,255,0.16)]">
-                <SparkleIcon />
+        <header className="border-b border-[var(--color-border)] px-4 py-3.5 sm:px-5">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
+                <JamiSparklesIcon className="h-[1.1rem] w-[1.1rem]" />
               </div>
               <div className="min-w-0">
-                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  Jami assistant
-                </div>
-                <h2 id="jami-assistant-title" className="mt-1 text-xl font-semibold text-text-primary sm:text-2xl">
-                  Study with Jami
+                <h2 id="jami-assistant-title" className="text-base font-semibold leading-tight text-text-primary">
+                  Jami
                 </h2>
-                <div className="mt-2 inline-flex max-w-full items-center rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1 text-xs text-text-secondary">
-                  <span className="truncate">Using {contextLabel}</span>
-                </div>
+                <p className="mt-0.5 truncate text-xs text-text-muted">
+                  {contextLabel}
+                </p>
               </div>
             </div>
-            <Button
-              ref={closeButtonRef}
+            <button
               type="button"
-              variant="ghost"
-              size="icon"
               aria-label="Close Jami assistant"
+              title="Close"
+              className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
               onClick={() => onOpenChange(false)}
             >
               <CloseIcon />
-            </Button>
+            </button>
           </div>
         </header>
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
           {messages.length === 0 ? (
-            <div className="flex min-h-full flex-col justify-center py-6">
+            <div className="flex min-h-full flex-col justify-center py-5">
               <div className="mx-auto max-w-sm text-center">
-                <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl border border-accent/20 bg-accent/10 text-accent">
-                  <SparkleIcon className="h-6 w-6" />
-                </div>
-                <h3 className="mt-4 text-lg font-semibold text-text-primary">
-                  What would help right now?
+                <h3 className="text-lg font-semibold text-text-primary">
+                  How can I help?
                 </h3>
                 <p className="mt-2 text-sm leading-relaxed text-text-secondary">
-                  Ask about this study context. Jami can combine general knowledge with relevant material from your workspace.
+                  Ask about what you are studying, or choose a useful starting point.
                 </p>
               </div>
               {normalizedQuickActions.length > 0 ? (
@@ -314,8 +284,8 @@ export default function JamiAssistantDrawer({
                     <div
                       className={`rounded-[1.35rem] px-4 py-3 text-sm leading-relaxed ${
                         message.role === "user"
-                          ? "app-selected rounded-br-md"
-                          : "app-chip rounded-bl-md text-text-primary"
+                          ? "rounded-br-md bg-accent text-white"
+                          : "rounded-bl-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-primary"
                       }`}
                     >
                       <StudyText text={message.text} className="whitespace-pre-wrap" />
@@ -349,37 +319,6 @@ export default function JamiAssistantDrawer({
         </div>
 
         <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
-          <button
-            type="button"
-            role="switch"
-            aria-checked={useRelatedSources}
-            className="mb-3 flex w-full items-center justify-between gap-4 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3.5 py-3 text-left transition duration-fast hover:border-border-strong"
-            onClick={() => setUseRelatedSources((current) => !current)}
-          >
-            <span className="min-w-0">
-              <span className="block text-xs font-semibold text-text-primary">
-                Use related Jami material
-              </span>
-              <span className="mt-0.5 block text-[0.68rem] leading-relaxed text-text-muted">
-                Let Jami choose up to five relevant sources for this question.
-              </span>
-            </span>
-            <span
-              aria-hidden="true"
-              className={`relative h-6 w-11 shrink-0 rounded-full border transition duration-fast ${
-                useRelatedSources
-                  ? "border-accent/40 bg-accent/65"
-                  : "border-[var(--color-border-strong)] bg-[var(--color-glass-medium)]"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition duration-fast ${
-                  useRelatedSources ? "left-5" : "left-0.5"
-                }`}
-              />
-            </span>
-          </button>
-
           {error ? (
             <div className="mb-3 flex items-start justify-between gap-3 rounded-[1.25rem] border border-error/35 bg-error-muted px-3.5 py-3 text-xs text-[var(--color-error-text)]" role="alert">
               <span className="leading-relaxed">{error}</span>
@@ -393,7 +332,7 @@ export default function JamiAssistantDrawer({
             </div>
           ) : null}
 
-          <div className="flex items-end gap-2">
+          <div className="relative rounded-[1.3rem] border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-[0_8px_24px_rgba(8,2,26,0.08)] transition duration-fast focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/15">
             <label htmlFor="jami-assistant-message" className="sr-only">
               Message Jami
             </label>
@@ -404,25 +343,79 @@ export default function JamiAssistantDrawer({
               value={input}
               disabled={loading}
               placeholder="Ask Jami..."
-              className="app-field min-h-[3.25rem] flex-1 resize-none rounded-[1.35rem] px-4 py-3 text-sm leading-relaxed outline-none transition disabled:cursor-not-allowed disabled:saturate-[0.82]"
+              className="min-h-[3.5rem] w-full resize-none bg-transparent py-3 pl-4 pr-14 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted disabled:cursor-not-allowed disabled:saturate-[0.82]"
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
             />
-            <Button
+            <button
               type="button"
-              size="icon"
               aria-label="Send message to Jami"
               disabled={loading || !input.trim()}
+              className="absolute bottom-2 right-2 inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-white shadow-[0_6px_16px_rgba(124,92,255,0.22)] transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
               onClick={() => void sendMessage(input)}
             >
               <SendIcon />
-            </Button>
+            </button>
           </div>
-          <div className="mt-2 text-center text-[0.65rem] text-text-muted">
-            Jami can make mistakes. Check important answers.
+
+          <div className="mt-2 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
+            <details className="group min-w-0 flex-1 basis-[15rem] text-xs text-text-muted">
+              <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-full px-1.5 font-medium transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 [&::-webkit-details-marker]:hidden">
+                <span>Context</span>
+                <span aria-hidden="true" className="h-1 w-1 rounded-full bg-current opacity-45" />
+                <span>{useRelatedSources ? "Related material on" : "Related material off"}</span>
+                <svg
+                  aria-hidden="true"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  className="h-3.5 w-3.5 transition-transform duration-fast group-open:rotate-180"
+                >
+                  <path
+                    d="m4 6 4 4 4-4"
+                    stroke="currentColor"
+                    strokeWidth="1.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </summary>
+              <div className="mt-2 flex w-full items-center justify-between gap-4 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold text-text-primary">
+                    Use related Jami material
+                  </span>
+                  <span className="mt-0.5 block text-[0.68rem] leading-relaxed text-text-muted">
+                    Jami may choose up to five relevant sources when you ask.
+                  </span>
+                </span>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-label="Use related Jami material"
+                  aria-checked={useRelatedSources}
+                  className={`relative h-6 w-11 shrink-0 rounded-full border transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
+                    useRelatedSources
+                      ? "border-accent/40 bg-accent/65"
+                      : "border-[var(--color-border-strong)] bg-[var(--color-glass-medium)]"
+                  }`}
+                  onClick={() => setUseRelatedSources((current) => !current)}
+                >
+                  <span
+                    aria-hidden="true"
+                    className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow-sm transition duration-fast ${
+                      useRelatedSources ? "left-5" : "left-0.5"
+                    }`}
+                  />
+                </button>
+              </div>
+            </details>
+            <div className="px-1.5 pt-1 text-[0.65rem] text-text-muted">
+              Jami can make mistakes. Check important answers.
+            </div>
           </div>
         </footer>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

@@ -34,6 +34,7 @@ import {
   ConfirmDialog,
   EmptyState,
   FeedbackBanner,
+  JamiSparklesIcon,
   Skeleton,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
@@ -637,6 +638,10 @@ type NotebookIconName =
 // Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
 // caps/joins, and shared optical margins, so the set reads as one family.
 function NotebookIcon({ name }: { name: NotebookIconName }) {
+  if (name === "ai") {
+    return <JamiSparklesIcon className="h-[1.125rem] w-[1.125rem]" />;
+  }
+
   const common = {
     fill: "none",
     stroke: "currentColor",
@@ -684,18 +689,6 @@ function NotebookIcon({ name }: { name: NotebookIconName }) {
         <>
           <path {...common} d="M15 13.6l4.5-4.5L15 4.6" />
           <path {...common} d="M19.5 9.1H9.9a5.35 5.35 0 0 0 0 10.7h4.9" />
-        </>
-      ) : null}
-      {name === "ai" ? (
-        <>
-          <path
-            {...common}
-            d="M11 5.3c.38 2.1 1.1 3.55 2.02 4.48.93.92 2.38 1.64 4.48 2.02-2.1.38-3.55 1.1-4.48 2.02-.92.93-1.64 2.38-2.02 4.48-.38-2.1-1.1-3.55-2.02-4.48-.93-.92-2.38-1.64-4.48-2.02 2.1-.38 3.55-1.1 4.48-2.02C9.9 8.85 10.62 7.4 11 5.3Z"
-          />
-          <path
-            {...common}
-            d="M18.5 14.7c.2.98.53 1.67.97 2.11.44.44 1.13.77 2.11.97-.98.2-1.67.53-2.11.97-.44.44-.77 1.13-.97 2.11-.2-.98-.53-1.67-.97-2.11-.44-.44-1.13-.77-2.11-.97.98-.2 1.67-.53 2.11-.97.44-.44.77-1.13.97-2.11Z"
-          />
         </>
       ) : null}
       {name === "chevron" ? <path {...common} d="m7 10.4 5 5 5-5" /> : null}
@@ -5090,7 +5083,7 @@ export default function NotebookEditorPage() {
           open={assistantOpen}
           onOpenChange={handleAssistantOpenChange}
           resetKey={`notebook:${notebook.id}`}
-          contextLabel={`${notebook.title}, page ${selectedPage?.pageNumber ?? 1}`}
+          contextLabel="Current notebook page"
           getContext={getNotebookAssistantContext}
           quickActions={NOTEBOOK_ASSISTANT_QUICK_ACTIONS}
         />
