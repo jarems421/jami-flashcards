@@ -2,6 +2,10 @@ export type MathRichTextSegment =
   | { type: "text"; value: string }
   | { type: "math"; value: string; display: boolean };
 
+export type MathRichDisplaySegment = MathRichTextSegment & {
+  trailingPunctuation?: string;
+};
+
 const MATH_DELIMITER_PATTERN =
   /\\\[([\s\S]*?)\\\]|\\\(([\s\S]*?)\\\)|\$\$([\s\S]*?)\$\$|\$([^$\n]+?)\$/g;
 
@@ -44,4 +48,24 @@ export function splitMathRichText(text: string): MathRichTextSegment[] {
   }
 
   return segments.length > 0 ? segments : [{ type: "text", value: text }];
+}
+
+export function attachInlineMathPunctuation(
+  input: readonly MathRichTextSegment[]
+): MathRichDisplaySegment[] {
+  const segments: MathRichDisplaySegment[] = input.map((segment) => ({
+    ...segment,
+  }));
+  for (let index = 0; index < segments.length - 1; index += 1) {
+    const segment = segments[index];
+    const next = segments[index + 1];
+    if (segment.type !== "math" || segment.display || next.type !== "text") {
+      continue;
+    }
+    const punctuation = next.value.match(/^[,.;:!?]/)?.[0];
+    if (!punctuation) continue;
+    segment.trailingPunctuation = punctuation;
+    next.value = next.value.slice(punctuation.length);
+  }
+  return segments;
 }

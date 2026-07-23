@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  attachInlineMathPunctuation,
   normalizeLegacyJamiMathText,
   splitMathRichText,
 } from "@/lib/study/math-text";
@@ -46,5 +47,29 @@ describe("math-rich study text", () => {
     expect(
       normalizeLegacyJamiMathText("x³ Bigl {0}^{2} and Bigl(x + 1 Bigr)")
     ).toBe("x³ evaluated from 0 to 2 and (x + 1 )");
+  });
+
+  it("keeps punctuation attached to an inline equation", () => {
+    expect(
+      attachInlineMathPunctuation(
+        splitMathRichText("Use $x^{n+1}/(n+1) + C$, where $n \\ne -1$.")
+      )
+    ).toEqual([
+      { type: "text", value: "Use " },
+      {
+        type: "math",
+        value: "x^{n+1}/(n+1) + C",
+        display: false,
+        trailingPunctuation: ",",
+      },
+      { type: "text", value: " where " },
+      {
+        type: "math",
+        value: "n \\ne -1",
+        display: false,
+        trailingPunctuation: ".",
+      },
+      { type: "text", value: "" },
+    ]);
   });
 });

@@ -5,7 +5,6 @@ import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 
 type JamiAssistantHistoryProps = {
   threads: JamiAssistantThread[];
-  currentContextKey: string;
   loading: boolean;
   error: string | null;
   onOpen: (thread: JamiAssistantThread) => void;
@@ -42,6 +41,16 @@ function DeleteIcon() {
   );
 }
 
+function MoreIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+      <circle cx="5" cy="10" r="1.25" fill="currentColor" />
+      <circle cx="10" cy="10" r="1.25" fill="currentColor" />
+      <circle cx="15" cy="10" r="1.25" fill="currentColor" />
+    </svg>
+  );
+}
+
 function formatUpdatedAt(timestamp: number) {
   if (!timestamp) return "";
   const date = new Date(timestamp);
@@ -65,7 +74,6 @@ function surfaceName(surface: JamiAssistantThread["surface"]) {
 
 export default function JamiAssistantHistory({
   threads,
-  currentContextKey,
   loading,
   error,
   onOpen,
@@ -126,12 +134,9 @@ export default function JamiAssistantHistory({
   return (
     <section aria-label="Jami chat history" className="mx-auto w-full max-w-lg">
       <div className="flex items-start justify-between gap-4">
-        <div>
-          <h3 className="text-base font-semibold text-text-primary">Previous chats</h3>
-          <p className="mt-1 text-xs leading-relaxed text-text-muted">
-            Reopen saved conversations without rebuilding their study material.
-          </p>
-        </div>
+        <h3 className="pt-1 text-base font-semibold text-text-primary">
+          Previous chats
+        </h3>
         <button
           type="button"
           className="shrink-0 rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-white transition duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
@@ -166,21 +171,20 @@ export default function JamiAssistantHistory({
           </p>
         </div>
       ) : (
-        <div className="mt-5 space-y-2">
+        <div className="mt-4 space-y-2">
           {threads.map((thread) => {
             const editing = editingId === thread.id;
             const deleting = deleteId === thread.id;
             const busy = busyId === thread.id;
-            const currentContext = thread.contextKey === currentContextKey;
 
             return (
               <article
                 key={thread.id}
-                className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 transition duration-fast hover:border-[var(--color-border-strong)] hover:bg-[var(--color-glass-medium)]"
+                className="relative rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-1.5 transition duration-fast hover:border-[var(--color-border-strong)]"
               >
                 {editing ? (
                   <form
-                    className="flex items-center gap-2"
+                    className="flex items-center gap-2 p-1"
                     onSubmit={(event) => {
                       event.preventDefault();
                       void saveRename(thread);
@@ -215,7 +219,7 @@ export default function JamiAssistantHistory({
                     </button>
                   </form>
                 ) : deleting ? (
-                  <div className="flex flex-wrap items-center justify-between gap-3 px-1 py-1">
+                  <div className="flex flex-wrap items-center justify-between gap-3 px-2 py-1.5">
                     <p className="text-xs font-medium text-text-primary">Delete this chat?</p>
                     <div className="flex items-center gap-1.5">
                       <button
@@ -237,57 +241,60 @@ export default function JamiAssistantHistory({
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-center gap-1">
                     <button
                       type="button"
-                      className="min-w-0 flex-1 rounded-xl px-1.5 py-1 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                      className="min-w-0 flex-1 rounded-xl px-2.5 py-2 text-left transition duration-fast hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
                       onClick={() => onOpen(thread)}
                     >
-                      <span className="block truncate text-sm font-semibold text-text-primary">
+                      <span className="block truncate text-sm font-semibold leading-snug text-text-primary">
                         {thread.title}
                       </span>
                       <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[0.68rem] text-text-muted">
                         <span>{surfaceName(thread.surface)}</span>
                         <span aria-hidden="true">·</span>
-                        <span className="truncate">{thread.contextLabel}</span>
-                        {currentContext ? (
-                          <>
-                            <span aria-hidden="true">·</span>
-                            <span className="shrink-0 font-medium text-accent">Here</span>
-                          </>
-                        ) : null}
+                        <span>{formatUpdatedAt(thread.updatedAt)}</span>
                       </span>
-                      {thread.lastMessagePreview ? (
-                        <span className="mt-1.5 block truncate text-xs text-text-secondary">
-                          {thread.lastMessagePreview}
-                        </span>
-                      ) : null}
                     </button>
-                    <span className="shrink-0 pt-1.5 text-[0.65rem] text-text-muted">
-                      {formatUpdatedAt(thread.updatedAt)}
-                    </span>
-                    <button
-                      type="button"
-                      aria-label={`Rename ${thread.title}`}
-                      title="Rename"
-                      className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-full text-text-muted hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-                      onClick={() => beginRename(thread)}
-                    >
-                      <EditIcon />
-                    </button>
-                    <button
-                      type="button"
-                      aria-label={`Delete ${thread.title}`}
-                      title="Delete"
-                      className="inline-grid h-8 w-8 shrink-0 place-items-center rounded-full text-text-muted hover:bg-error-muted hover:text-[var(--color-error-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-                      onClick={() => {
-                        setEditingId(null);
-                        setDeleteId(thread.id);
-                        setActionError(null);
-                      }}
-                    >
-                      <DeleteIcon />
-                    </button>
+                    <details className="group relative shrink-0">
+                      <summary
+                        aria-label={`More options for ${thread.title}`}
+                        title="More options"
+                        className="inline-grid h-9 w-9 cursor-pointer list-none place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 [&::-webkit-details-marker]:hidden"
+                      >
+                        <MoreIcon />
+                      </summary>
+                      <div className="absolute right-0 top-10 z-20 w-36 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1 shadow-[0_12px_28px_rgba(8,3,20,0.16)]">
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                          onClick={(event) => {
+                            event.currentTarget
+                              .closest("details")
+                              ?.removeAttribute("open");
+                            beginRename(thread);
+                          }}
+                        >
+                          <EditIcon />
+                          Rename
+                        </button>
+                        <button
+                          type="button"
+                          className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-text-secondary hover:bg-error-muted hover:text-[var(--color-error-text)]"
+                          onClick={(event) => {
+                            event.currentTarget
+                              .closest("details")
+                              ?.removeAttribute("open");
+                            setEditingId(null);
+                            setDeleteId(thread.id);
+                            setActionError(null);
+                          }}
+                        >
+                          <DeleteIcon />
+                          Delete
+                        </button>
+                      </div>
+                    </details>
                   </div>
                 )}
               </article>

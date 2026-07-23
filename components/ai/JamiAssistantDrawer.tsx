@@ -504,7 +504,6 @@ export default function JamiAssistantDrawer({
           {historyOpen ? (
             <JamiAssistantHistory
               threads={threads}
-              currentContextKey={contextKey}
               loading={historyLoading}
               error={historyError}
               onOpen={(thread) => void openThread(thread)}
