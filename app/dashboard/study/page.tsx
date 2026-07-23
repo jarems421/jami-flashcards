@@ -59,8 +59,6 @@ import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
 import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
-import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
-import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import AppPage from "@/components/layout/AppPage";
 import {
   Button,
@@ -68,7 +66,6 @@ import {
   EmptyState,
   FeedbackBanner,
   Input,
-  JamiSparklesIcon,
   ProgressBar,
   Skeleton,
   StudyText,
@@ -326,7 +323,6 @@ export default function StudyPage() {
   const [feedback, setFeedback] = useState<{ type: "error" | "success"; message: string } | null>(null);
   const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null);
   const [countdownMs, setCountdownMs] = useState(getMsUntilNextStudyBoundary());
-  const [jamiAssistantOpen, setJamiAssistantOpen] = useState(false);
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineSnapshotAt, setOfflineSnapshotAt] = useState<number | null>(null);
   const [pendingOfflineReviews, setPendingOfflineReviews] = useState(0);
@@ -358,7 +354,6 @@ export default function StudyPage() {
     setSessionCards([]);
     setIndex(0);
     setFlipped(false);
-    setJamiAssistantOpen(false);
     setAnswerFeedback(null);
     setSessionStats(createEmptySessionStats());
     autoStartHandledRef.current = false;
@@ -849,7 +844,6 @@ export default function StudyPage() {
       setIndex(0);
       setFlipped(false);
       setSavingRating(null);
-      setJamiAssistantOpen(false);
       setAnswerFeedback(null);
       setFeedback(null);
       savePersistedStudySession(nextSession);
@@ -1042,7 +1036,6 @@ export default function StudyPage() {
       setIndex(restored.index);
       setFlipped(false);
       setSavingRating(null);
-      setJamiAssistantOpen(false);
       setAnswerFeedback(null);
       setFeedback(null);
 
@@ -1092,44 +1085,6 @@ export default function StudyPage() {
     ? decks.find((deck) => deck.id === current.deckId)
     : undefined;
   const currentDeckColor = getDeckColorPreset(currentDeck?.colorPreset);
-  const getLearnAssistantContext = useCallback(async (): Promise<JamiAssistantContext> => {
-    if (!current) {
-      throw new Error("This flashcard is no longer available.");
-    }
-
-    return {
-      surface: "learn",
-      cardId: current.id,
-      phase: flipped ? "answer" : "question",
-    };
-  }, [current, flipped]);
-  const learnAssistantQuickActions = useMemo(
-    () =>
-      flipped
-        ? [
-            { label: "Explain simply", prompt: "Explain this card simply." },
-            { label: "Give an example", prompt: "Give me a clear example of this idea." },
-            {
-              label: "What might I mix up?",
-              prompt: "What is this commonly confused with, and how can I tell the difference?",
-            },
-          ]
-        : [
-            {
-              label: "Gentle clue",
-              prompt: "Give me a gentle clue without revealing the answer.",
-            },
-            {
-              label: "Stronger clue",
-              prompt: "Give me a stronger clue, but do not reveal the answer directly.",
-            },
-            {
-              label: "Quiz my thinking",
-              prompt: "Ask me one short question that helps me work this out myself.",
-            },
-          ],
-    [flipped]
-  );
   const nextDueCard = useMemo(
     () =>
       cards
@@ -1250,7 +1205,6 @@ export default function StudyPage() {
   const goNext = () => {
     setIndex((value) => value + 1);
     setFlipped(false);
-    setJamiAssistantOpen(false);
   };
 
   const requeueCurrentCard = (nextCard: Card) => {
@@ -1260,7 +1214,6 @@ export default function StudyPage() {
       return [...before, ...after, nextCard];
     });
     setFlipped(false);
-    setJamiAssistantOpen(false);
   };
 
   const handleOfflineRating = async (rating: CardRating) => {
@@ -1412,7 +1365,6 @@ export default function StudyPage() {
     }));
     setAnswerFeedback(getSimpleStudyFeedback(result));
     setFlipped(false);
-    setJamiAssistantOpen(false);
 
     try {
       await updateDoc(doc(db, "cards", current.id), {
@@ -1640,7 +1592,6 @@ export default function StudyPage() {
     setIndex(0);
     setFlipped(false);
     setSavingRating(null);
-    setJamiAssistantOpen(false);
     setAnswerFeedback(null);
   };
 
@@ -2333,26 +2284,12 @@ export default function StudyPage() {
                         <span>cards remaining</span>
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-end gap-3 lg:flex-nowrap">
-                      <div className="min-w-[10rem] flex-1 lg:min-w-[12rem]">
-                        <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
-                          <span>Progress</span>
-                          <span className="tabular-nums">{progressPercent}%</span>
-                        </div>
-                        <ProgressBar progress={progressPercent} />
+                    <div className="min-w-[10rem] lg:min-w-[12rem]">
+                      <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
+                        <span>Progress</span>
+                        <span className="tabular-nums">{progressPercent}%</span>
                       </div>
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        className="shrink-0 gap-2"
-                        aria-haspopup="dialog"
-                        aria-expanded={jamiAssistantOpen}
-                        onClick={() => setJamiAssistantOpen(true)}
-                      >
-                        <JamiSparklesIcon className="h-4 w-4" />
-                        Ask Jami
-                      </Button>
+                      <ProgressBar progress={progressPercent} />
                     </div>
                   </div>
                   <div className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-[2rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
@@ -2477,16 +2414,6 @@ export default function StudyPage() {
               <div className="flex flex-wrap gap-3">
                 <Button type="button" onClick={exitSession} variant="secondary">End session</Button>
               </div>
-              <JamiAssistantDrawer
-                open={jamiAssistantOpen}
-                onOpenChange={setJamiAssistantOpen}
-                resetKey={current.id}
-                contextKey={`learn:${current.id}`}
-                contextLabel="Current flashcard"
-                historyContextLabel={`Flashcard · ${current.front.slice(0, 72)}`}
-                getContext={getLearnAssistantContext}
-                quickActions={learnAssistantQuickActions}
-              />
             </div>
           ) : null}
         </>
