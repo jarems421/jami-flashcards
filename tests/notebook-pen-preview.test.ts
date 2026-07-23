@@ -1,37 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  installFrameGatedNotebookPenPreview,
-  type NotebookFrameGatedPen,
-  type NotebookPenPreviewScheduler,
+  installBatchedNotebookPenPreview,
+  type NotebookBatchedPen,
 } from "@/lib/workspace/notebook-pen-preview";
 
-function makeHarness() {
-  let nextFrameId = 1;
-  const frames = new Map<number, FrameRequestCallback>();
-  const scheduler: NotebookPenPreviewScheduler = {
-    requestFrame(callback) {
-      const frameId = nextFrameId;
-      nextFrameId += 1;
-      frames.set(frameId, callback);
-      return frameId;
-    },
-    cancelFrame(frameId) {
-      frames.delete(frameId);
-    },
-  };
-  const runFrames = () => {
-    const queued = [...frames.values()];
-    frames.clear();
-    queued.forEach((callback) => callback(0));
-  };
-  return { frames, runFrames, scheduler };
-}
-
-describe("notebook pen preview scheduling", () => {
-  it("paints at most once for all samples in a display frame", () => {
-    const harness = makeHarness();
+describe("notebook pen preview batching", () => {
+  it("paints coalesced samples once, synchronously at the end of the packet", () => {
     let previewCount = 0;
-    const pen: NotebookFrameGatedPen = {
+    const pen: NotebookBatchedPen = {
       previewStroke() {
         previewCount += 1;
       },
@@ -40,52 +16,66 @@ describe("notebook pen preview scheduling", () => {
       },
       onGestureCancel() {},
     };
-    const dispose = installFrameGatedNotebookPenPreview(pen, harness.scheduler);
+    const batch = installBatchedNotebookPenPreview(pen);
 
+    batch.beginBatch();
     pen.previewStroke();
     pen.previewStroke();
     pen.previewStroke();
-
     expect(previewCount).toBe(0);
-    expect(harness.frames.size).toBe(1);
-    harness.runFrames();
+
+    batch.endBatch();
     expect(previewCount).toBe(1);
-    dispose();
+    batch.dispose();
   });
 
-  it("cancels a stale frame and paints completed geometry exactly once", () => {
-    const harness = makeHarness();
+  it("does not defer an ordinary preview or the first contact paint", () => {
     let previewCount = 0;
-    const pen: NotebookFrameGatedPen = {
+    const pen: NotebookBatchedPen = {
+      previewStroke() {
+        previewCount += 1;
+      },
+      onPointerUp() {},
+      onGestureCancel() {},
+    };
+    const batch = installBatchedNotebookPenPreview(pen);
+
+    pen.previewStroke();
+    batch.paintNow();
+
+    expect(previewCount).toBe(2);
+  });
+
+  it("paints completed geometry exactly once on pointer-up", () => {
+    let previewCount = 0;
+    const pen: NotebookBatchedPen = {
       previewStroke() {
         previewCount += 1;
       },
       onPointerUp() {
-        // js-draw previews after adding the pointer-up point and then requests
-        // the same preview again while finalizing the stroke.
+        // js-draw asks for a preview after adding the pointer-up point and
+        // again while finalizing the same stroke.
         this.previewStroke();
         this.previewStroke();
         return false;
       },
       onGestureCancel() {},
     };
-    installFrameGatedNotebookPenPreview(pen, harness.scheduler);
+    const batch = installBatchedNotebookPenPreview(pen);
 
+    batch.beginBatch();
     pen.previewStroke();
-    expect(harness.frames.size).toBe(1);
     expect(pen.onPointerUp({})).toBe(false);
 
-    expect(harness.frames.size).toBe(0);
     expect(previewCount).toBe(1);
-    harness.runFrames();
+    batch.endBatch();
     expect(previewCount).toBe(1);
   });
 
-  it("drops pending preview work when a gesture is cancelled or disposed", () => {
-    const harness = makeHarness();
+  it("drops unfinished batch work when cancelled or disposed", () => {
     let previewCount = 0;
     let cancelCount = 0;
-    const pen: NotebookFrameGatedPen = {
+    const pen: NotebookBatchedPen = {
       previewStroke() {
         previewCount += 1;
       },
@@ -94,17 +84,19 @@ describe("notebook pen preview scheduling", () => {
         cancelCount += 1;
       },
     };
-    const dispose = installFrameGatedNotebookPenPreview(pen, harness.scheduler);
+    const batch = installBatchedNotebookPenPreview(pen);
 
+    batch.beginBatch();
     pen.previewStroke();
     pen.onGestureCancel({});
+    batch.endBatch();
     expect(cancelCount).toBe(1);
-    expect(harness.frames.size).toBe(0);
-    harness.runFrames();
     expect(previewCount).toBe(0);
 
+    batch.beginBatch();
     pen.previewStroke();
-    dispose();
-    expect(harness.frames.size).toBe(0);
+    batch.dispose();
+    batch.endBatch();
+    expect(previewCount).toBe(0);
   });
 });

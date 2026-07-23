@@ -59,10 +59,7 @@ export const NOTEBOOK_PEN_MIN_WIDTH = 2;
 export const NOTEBOOK_PEN_MAX_WIDTH = 10;
 export const NOTEBOOK_HIGHLIGHTER_MIN_WIDTH = 10;
 export const NOTEBOOK_HIGHLIGHTER_MAX_WIDTH = 30;
-export const NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT = 3;
-
-const NOTEBOOK_LIVE_CURVE_DEVIATION_PX = 0.75;
-const NOTEBOOK_LIVE_PRESSURE_DEVIATION = 0.08;
+export const NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT = 8;
 
 export function appendPendingNotebookStroke(
   pending: NotebookStroke[],
@@ -128,6 +125,23 @@ export function shouldPointerDrawEvent(
   tool: "pen" | "eraser" | "highlighter" | "text" | "select"
 ) {
   return shouldPointerDraw(event.pointerType, tool);
+}
+
+export function shouldUseNotebookPenPressure(input: {
+  maxTouchPoints: number;
+  platform: string;
+  pointerType: string;
+  userAgent: string;
+}) {
+  if (input.pointerType !== "pen") return false;
+
+  const platform = input.platform.toLowerCase();
+  const userAgent = input.userAgent.toLowerCase();
+  const isIPad =
+    userAgent.includes("ipad") ||
+    platform.startsWith("ipad") ||
+    (platform === "macintel" && input.maxTouchPoints > 1);
+  return isIPad;
 }
 
 export function shouldPointerSwipePages(pointerType: string) {
@@ -499,119 +513,35 @@ export function getBoundedLivePointerSamples<T extends LivePointerSample>(
       : [];
   if (!previous || coalescedSamples.length === 0) return [event];
 
-  const candidates = coalescedSamples.filter(
-    (sample) =>
-      !(
-        sample.clientX === event.clientX &&
-        sample.clientY === event.clientY &&
-        sample.timeStamp === event.timeStamp
-      )
-  );
+  const candidates = coalescedSamples.filter((sample, index, samples) => {
+    const duplicatesEndpoint =
+      sample.clientX === event.clientX &&
+      sample.clientY === event.clientY &&
+      sample.timeStamp === event.timeStamp;
+    const prior = samples[index - 1];
+    const duplicatesPrior =
+      prior?.clientX === sample.clientX &&
+      prior.clientY === sample.clientY &&
+      prior.timeStamp === sample.timeStamp;
+    return !duplicatesEndpoint && !duplicatesPrior;
+  });
   if (candidates.length === 0) return [event];
 
-  const getDeviationScore = (
-    sample: LivePointerSample,
-    start: LivePointerSample,
-    end: LivePointerSample
-  ) => {
-    const segmentX = end.clientX - start.clientX;
-    const segmentY = end.clientY - start.clientY;
-    const segmentLengthSquared = segmentX * segmentX + segmentY * segmentY;
-    const offsetX = sample.clientX - start.clientX;
-    const offsetY = sample.clientY - start.clientY;
-    const geometricProgress =
-      segmentLengthSquared > 0
-        ? Math.max(
-            0,
-            Math.min(
-              1,
-              (offsetX * segmentX + offsetY * segmentY) /
-                segmentLengthSquared
-            )
-          )
-        : 0;
-    const projectedX = start.clientX + geometricProgress * segmentX;
-    const projectedY = start.clientY + geometricProgress * segmentY;
-    const curveDeviation = Math.hypot(
-      sample.clientX - projectedX,
-      sample.clientY - projectedY
+  const historyLimit = NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT - 1;
+  if (candidates.length <= historyLimit) return [...candidates, event];
+
+  // Dense packets are uncommon, but keep their full time span rather than
+  // taking only the newest points. Even sampling preserves curves and pressure
+  // changes while keeping the amount of per-event geometry work bounded.
+  const selected: T[] = [];
+  for (let index = 0; index < historyLimit; index += 1) {
+    const candidateIndex = Math.round(
+      (index * (candidates.length - 1)) / (historyLimit - 1)
     );
-    const timeSpan = end.timeStamp - start.timeStamp;
-    const pressureProgress =
-      Number.isFinite(timeSpan) && timeSpan > 0
-        ? Math.max(
-            0,
-            Math.min(1, (sample.timeStamp - start.timeStamp) / timeSpan)
-          )
-        : geometricProgress;
-    const startPressure = normalizePointerPressure(start.pressure);
-    const expectedPressure =
-      startPressure +
-      (normalizePointerPressure(end.pressure) - startPressure) * pressureProgress;
-    const pressureDeviation = Math.abs(
-      normalizePointerPressure(sample.pressure) - expectedPressure
-    );
-    return Math.max(
-      curveDeviation / NOTEBOOK_LIVE_CURVE_DEVIATION_PX,
-      pressureDeviation / NOTEBOOK_LIVE_PRESSURE_DEVIATION
-    );
-  };
-
-  const findStrongest = (
-    indexes: readonly number[],
-    start: LivePointerSample,
-    end: LivePointerSample
-  ) => {
-    let strongestIndex = -1;
-    let strongestScore = 1;
-    for (const index of indexes) {
-      const score = getDeviationScore(candidates[index], start, end);
-      if (score > strongestScore) {
-        strongestScore = score;
-        strongestIndex = index;
-      }
-    }
-    return strongestIndex;
-  };
-
-  const allIndexes = candidates.map((_, index) => index);
-  const firstIndex = findStrongest(allIndexes, previous, event);
-  if (firstIndex < 0) return [event];
-
-  const selectedIndexes = [firstIndex];
-  const beforeIndexes = allIndexes.filter((index) => index < firstIndex);
-  const afterIndexes = allIndexes.filter((index) => index > firstIndex);
-  const beforeIndex = findStrongest(
-    beforeIndexes,
-    previous,
-    candidates[firstIndex]
-  );
-  const afterIndex = findStrongest(
-    afterIndexes,
-    candidates[firstIndex],
-    event
-  );
-  const secondIndex = [beforeIndex, afterIndex]
-    .filter((index) => index >= 0)
-    .sort(
-      (left, right) =>
-        getDeviationScore(
-          candidates[right],
-          right < firstIndex ? previous : candidates[firstIndex],
-          right < firstIndex ? candidates[firstIndex] : event
-        ) -
-        getDeviationScore(
-          candidates[left],
-          left < firstIndex ? previous : candidates[firstIndex],
-          left < firstIndex ? candidates[firstIndex] : event
-        )
-    )[0];
-  if (secondIndex !== undefined) selectedIndexes.push(secondIndex);
-
-  return selectedIndexes
-    .sort((left, right) => left - right)
-    .map((index) => candidates[index])
-    .concat(event);
+    const candidate = candidates[candidateIndex];
+    if (candidate && selected.at(-1) !== candidate) selected.push(candidate);
+  }
+  return [...selected, event];
 }
 
 export function shouldAppendInkPoint(

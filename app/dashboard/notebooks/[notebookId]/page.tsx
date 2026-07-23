@@ -168,6 +168,7 @@ import {
   isNotebookToolbarSideDock,
   readNotebookToolbarDockPreference,
   saveNotebookToolbarDockPreference,
+  snapNotebookToolbarOffsetToDevicePixels,
   type NotebookToolbarPointerSample,
   type NotebookToolbarDock,
 } from "@/lib/workspace/notebook-toolbar";
@@ -1018,7 +1019,6 @@ export default function NotebookEditorPage() {
   const toolbarDragRef = useRef<NotebookToolbarDragState | null>(null);
   const toolbarPendingSnapRectRef = useRef<DOMRect | null>(null);
   const toolbarPendingSnapVelocityRef = useRef(0);
-  const toolbarDragAnimationFrameRef = useRef<number | null>(null);
   const toolbarSnapAnimationFrameRef = useRef<number | null>(null);
   const toolbarClickResetTimerRef = useRef<number | null>(null);
   const suppressToolbarClickRef = useRef(false);
@@ -2055,9 +2055,6 @@ export default function NotebookEditorPage() {
 
   useEffect(
     () => () => {
-      if (toolbarDragAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(toolbarDragAnimationFrameRef.current);
-      }
       if (toolbarSnapAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
       }
@@ -4348,9 +4345,27 @@ export default function NotebookEditorPage() {
     (
       dock: NotebookToolbarDock,
       persist: boolean,
-      releaseVelocity = 0
+      releaseVelocity = 0,
+      dragDistance = 0
     ) => {
       const toolbar = drawingToolbarRef.current;
+      if (toolbar && dock === toolbarDockRef.current) {
+        toolbarPendingSnapRectRef.current = null;
+        toolbarPendingSnapVelocityRef.current = 0;
+        const settleDuration = getNotebookToolbarSettleDuration({
+          distance: dragDistance,
+          velocity: releaseVelocity,
+        });
+        if (prefersReducedNotebookMotion()) {
+          toolbar.style.transition = "";
+          toolbar.style.transform = "";
+        } else {
+          toolbar.style.transition = `transform ${settleDuration}ms ${NOTEBOOK_TOOLBAR_SETTLE_EASING}`;
+          toolbar.style.transform = "translate3d(0, 0, 0)";
+        }
+        if (persist) saveNotebookToolbarDockPreference(dock);
+        return;
+      }
       if (toolbar) {
         toolbarPendingSnapRectRef.current = toolbar.getBoundingClientRect();
       }
@@ -4362,7 +4377,7 @@ export default function NotebookEditorPage() {
         saveNotebookToolbarDockPreference(dock);
       }
     },
-    []
+    [prefersReducedNotebookMotion]
   );
 
   useLayoutEffect(() => {
@@ -4417,29 +4432,20 @@ export default function NotebookEditorPage() {
     drag: NotebookToolbarDragState,
     toolbar: HTMLDivElement
   ) => {
-    const offset = clampNotebookToolbarDragOffset({
-      deltaX: drag.lastX - drag.startX,
-      deltaY: drag.lastY - drag.startY,
-      originLeft: drag.originLeft,
-      originTop: drag.originTop,
-      toolbarWidth: drag.toolbarWidth,
-      toolbarHeight: drag.toolbarHeight,
-      frameWidth: drag.frameWidth,
-      frameHeight: drag.frameHeight,
-    });
+    const offset = snapNotebookToolbarOffsetToDevicePixels(
+      clampNotebookToolbarDragOffset({
+        deltaX: drag.lastX - drag.startX,
+        deltaY: drag.lastY - drag.startY,
+        originLeft: drag.originLeft,
+        originTop: drag.originTop,
+        toolbarWidth: drag.toolbarWidth,
+        toolbarHeight: drag.toolbarHeight,
+        frameWidth: drag.frameWidth,
+        frameHeight: drag.frameHeight,
+      }),
+      window.devicePixelRatio
+    );
     toolbar.style.transform = `translate3d(${offset.x}px, ${offset.y}px, 0)`;
-  };
-
-  const scheduleToolbarDragFrame = () => {
-    if (toolbarDragAnimationFrameRef.current !== null) return;
-
-    toolbarDragAnimationFrameRef.current = window.requestAnimationFrame(() => {
-      toolbarDragAnimationFrameRef.current = null;
-      const drag = toolbarDragRef.current;
-      const toolbar = drawingToolbarRef.current;
-      if (!drag?.started || !toolbar) return;
-      applyToolbarDragPosition(drag, toolbar);
-    });
   };
 
   const handleToolbarPointerDown = (
@@ -4563,7 +4569,9 @@ export default function NotebookEditorPage() {
 
     event.preventDefault();
     event.stopPropagation();
-    scheduleToolbarDragFrame();
+    // This hot path contains no layout reads. Write the compositor transform
+    // in the same pointer event so iPad does not wait an extra display frame.
+    applyToolbarDragPosition(drag, toolbar);
   };
 
   const handleToolbarPointerLeave = (
@@ -4596,10 +4604,6 @@ export default function NotebookEditorPage() {
     const toolbar = drawingToolbarRef.current;
     if (!drag || !toolbar || drag.pointerId !== event.pointerId) return;
 
-    if (toolbarDragAnimationFrameRef.current !== null) {
-      window.cancelAnimationFrame(toolbarDragAnimationFrameRef.current);
-      toolbarDragAnimationFrameRef.current = null;
-    }
     if (drag.started) {
       applyToolbarDragPosition(drag, toolbar);
     }
@@ -4637,7 +4641,8 @@ export default function NotebookEditorPage() {
     requestToolbarDockSnap(
       nextDock,
       !cancelled,
-      cancelled ? 0 : releaseVelocity
+      cancelled ? 0 : releaseVelocity,
+      Math.hypot(drag.lastX - drag.startX, drag.lastY - drag.startY)
     );
   };
 
@@ -4665,10 +4670,6 @@ export default function NotebookEditorPage() {
     const drag = toolbarDragRef.current;
     if (!drag?.started) return;
 
-    if (toolbarDragAnimationFrameRef.current !== null) {
-      window.cancelAnimationFrame(toolbarDragAnimationFrameRef.current);
-      toolbarDragAnimationFrameRef.current = null;
-    }
     const toolbar = drawingToolbarRef.current;
     if (toolbar) delete toolbar.dataset.toolbarDragging;
     toolbarDragRef.current = null;

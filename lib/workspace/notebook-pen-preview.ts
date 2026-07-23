@@ -1,65 +1,61 @@
-export type NotebookPenPreviewScheduler = {
-  requestFrame(callback: FrameRequestCallback): number;
-  cancelFrame(frameId: number): void;
-};
-
-export type NotebookFrameGatedPen = {
+export type NotebookBatchedPen = {
   previewStroke(): void;
   onPointerUp(event: unknown): boolean | void;
   onGestureCancel(event: unknown): void;
 };
 
-const browserScheduler: NotebookPenPreviewScheduler = {
-  requestFrame: (callback) => window.requestAnimationFrame(callback),
-  cancelFrame: (frameId) => window.cancelAnimationFrame(frameId),
+export type NotebookPenPreviewBatch = {
+  beginBatch(): void;
+  endBatch(): void;
+  paintNow(): void;
+  dispose(): void;
 };
 
 /**
- * js-draw's pen clears its wet canvas and repaints the complete unfinished
- * stroke for every input sample. Apple Pencil packets contain several
- * coalesced samples, so doing that work for each sample quickly falls behind on
- * iPad. Gate the expensive preview to the display frame while still feeding all
- * selected geometry into the stroke builder.
+ * js-draw clears and repaints the full unfinished stroke whenever a point is
+ * added. A single Apple Pencil pointermove can contain several coalesced
+ * points, so repainting after every point is unnecessarily expensive.
  *
- * Pointer-up is special: it synchronously paints the exact completed geometry
- * once before js-draw flattens the wet canvas into the committed image. The pen
- * asks for the same preview twice during finalization, so the second request is
- * deliberately ignored.
+ * Batch only the points inside that one browser event, then paint once
+ * synchronously before returning to Safari. This preserves the richer Pencil
+ * geometry without the extra requestAnimationFrame of latency that the old
+ * frame gate introduced.
  */
-export function installFrameGatedNotebookPenPreview(
-  pen: NotebookFrameGatedPen,
-  scheduler: NotebookPenPreviewScheduler = browserScheduler
-) {
+export function installBatchedNotebookPenPreview(
+  pen: NotebookBatchedPen
+): NotebookPenPreviewBatch {
   const originalPreviewStroke = pen.previewStroke;
   const originalPointerUp = pen.onPointerUp;
   const originalGestureCancel = pen.onGestureCancel;
-  let pendingFrame: number | null = null;
+  let batchDepth = 0;
+  let dirty = false;
   let finalizing = false;
   let finalPreviewPainted = false;
+  let disposed = false;
 
-  const cancelPendingPreview = () => {
-    if (pendingFrame === null) return;
-    scheduler.cancelFrame(pendingFrame);
-    pendingFrame = null;
+  const paintOriginal = () => {
+    if (disposed) return;
+    originalPreviewStroke.call(pen);
   };
 
-  pen.previewStroke = function frameGatedPreview() {
+  pen.previewStroke = function batchedPreview() {
     if (finalizing) {
       if (!finalPreviewPainted) {
         finalPreviewPainted = true;
-        originalPreviewStroke.call(pen);
+        paintOriginal();
       }
       return;
     }
-    if (pendingFrame !== null) return;
-    pendingFrame = scheduler.requestFrame(() => {
-      pendingFrame = null;
-      originalPreviewStroke.call(pen);
-    });
+    if (batchDepth > 0) {
+      dirty = true;
+      return;
+    }
+    paintOriginal();
   };
 
-  pen.onPointerUp = function frameGatedPointerUp(event) {
-    cancelPendingPreview();
+  pen.onPointerUp = function batchedPointerUp(event) {
+    batchDepth = 0;
+    dirty = false;
     finalizing = true;
     finalPreviewPainted = false;
     try {
@@ -70,15 +66,37 @@ export function installFrameGatedNotebookPenPreview(
     }
   };
 
-  pen.onGestureCancel = function frameGatedGestureCancel(event) {
-    cancelPendingPreview();
+  pen.onGestureCancel = function batchedGestureCancel(event) {
+    batchDepth = 0;
+    dirty = false;
     return originalGestureCancel.call(pen, event);
   };
 
-  return () => {
-    cancelPendingPreview();
-    pen.previewStroke = originalPreviewStroke;
-    pen.onPointerUp = originalPointerUp;
-    pen.onGestureCancel = originalGestureCancel;
+  return {
+    beginBatch() {
+      if (!disposed) batchDepth += 1;
+    },
+    endBatch() {
+      if (disposed || batchDepth === 0) return;
+      batchDepth -= 1;
+      if (batchDepth === 0 && dirty) {
+        dirty = false;
+        paintOriginal();
+      }
+    },
+    paintNow() {
+      if (disposed) return;
+      dirty = false;
+      paintOriginal();
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      batchDepth = 0;
+      dirty = false;
+      pen.previewStroke = originalPreviewStroke;
+      pen.onPointerUp = originalPointerUp;
+      pen.onGestureCancel = originalGestureCancel;
+    },
   };
 }

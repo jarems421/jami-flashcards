@@ -11,6 +11,7 @@ import {
   NOTEBOOK_TOOLBAR_DOCK_STORAGE_KEY,
   readNotebookToolbarDockPreference,
   saveNotebookToolbarDockPreference,
+  snapNotebookToolbarOffsetToDevicePixels,
 } from "@/lib/workspace/notebook-toolbar";
 
 describe("notebook toolbar docking", () => {
@@ -112,6 +113,21 @@ describe("notebook toolbar docking", () => {
         frameHeight: 600,
       })
     ).toEqual({ x: -92, y: 476 });
+  });
+
+  it("snaps fractional touch movement to the physical pixel grid", () => {
+    expect(
+      snapNotebookToolbarOffsetToDevicePixels(
+        { x: 10.18, y: -3.42 },
+        2
+      )
+    ).toEqual({ x: 10, y: -3.5 });
+    expect(
+      snapNotebookToolbarOffsetToDevicePixels(
+        { x: 10.18, y: -3.42 },
+        Number.NaN
+      )
+    ).toEqual({ x: 10, y: -3 });
   });
 
   it.each([

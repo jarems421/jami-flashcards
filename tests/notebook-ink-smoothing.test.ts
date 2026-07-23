@@ -46,7 +46,7 @@ describe("notebook ink smoothing", () => {
     });
 
     // Raw deviation is 1px; the filtered line should be markedly calmer.
-    expect(maxFilteredDeviation).toBeLessThan(0.3);
+    expect(maxFilteredDeviation).toBeLessThan(0.45);
   });
 
   it("stays close to the pen during fast movement", () => {
@@ -88,8 +88,8 @@ describe("notebook ink smoothing", () => {
         });
       }
 
-      expect(step - first.x).toBeLessThan(3);
-      expect(30 * step - latest.x).toBeLessThan(1.5);
+      expect(step - first.x).toBeLessThan(1.25);
+      expect(30 * step - latest.x).toBeLessThan(0.75);
     }
   );
 

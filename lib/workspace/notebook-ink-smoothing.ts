@@ -33,9 +33,9 @@ export type NotebookInkSmoothingOptions = {
 };
 
 export const NOTEBOOK_INK_SMOOTHING: NotebookInkSmoothingOptions = {
-  minCutoff: 3,
-  beta: 0.15,
-  derivativeCutoff: 10,
+  minCutoff: 4.5,
+  beta: 0.3,
+  derivativeCutoff: 16,
 };
 
 // Duplicate or out-of-order timestamps (common for coalesced pointer samples)

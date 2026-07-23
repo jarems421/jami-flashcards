@@ -139,6 +139,20 @@ export function clampNotebookToolbarDragOffset(input: {
   };
 }
 
+export function snapNotebookToolbarOffsetToDevicePixels(
+  offset: { x: number; y: number },
+  devicePixelRatio: number
+) {
+  const scale =
+    Number.isFinite(devicePixelRatio) && devicePixelRatio > 0
+      ? devicePixelRatio
+      : 1;
+  return {
+    x: Math.round(offset.x * scale) / scale,
+    y: Math.round(offset.y * scale) / scale,
+  };
+}
+
 export function getNearestNotebookToolbarDock(input: {
   x: number;
   y: number;

@@ -34,12 +34,17 @@ import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
 import {
-  installFrameGatedNotebookPenPreview,
-  type NotebookFrameGatedPen,
+  installBatchedNotebookPenPreview,
+  type NotebookBatchedPen,
+  type NotebookPenPreviewBatch,
 } from "@/lib/workspace/notebook-pen-preview";
+import { dispatchPreciseNotebookPointerMove } from "@/lib/workspace/notebook-direct-ink-input";
 import { NotebookInkPointerLifecycle } from "@/lib/workspace/notebook-pointer-lifecycle";
 import { shouldSuppressNotebookNativeInkPointer } from "@/lib/workspace/notebook-interaction-lock";
-import { getBoundedLivePointerSamples } from "@/lib/workspace/notebook-inking";
+import {
+  getBoundedLivePointerSamples,
+  shouldUseNotebookPenPressure,
+} from "@/lib/workspace/notebook-inking";
 
 export type NotebookInkTool = "pen" | "highlighter" | "eraser" | "select" | "text";
 
@@ -223,7 +228,9 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
       style.activeTool === "highlighter"
         ? style.highlighterThickness
         : style.penThickness;
-    const pressureEnabled = style.activeTool === "pen";
+    // Pressure is enabled per contact only for Apple Pencil. Keeping this
+    // baseline off gives mouse and desktop-stylus strokes one consistent width.
+    const pressureEnabled = false;
     if (!primaryPen.getColor().eq(parsedColor)) primaryPen.setColor(parsedColor);
     if (primaryPen.getThickness() !== thickness) {
       primaryPen.setThickness(thickness);
@@ -231,11 +238,6 @@ function applyInkStyle(editor: JsDrawEditor, style: InkStyle, jsDraw: JsDrawModu
     if (primaryPen.getPressureSensitivityEnabled() !== pressureEnabled) {
       primaryPen.setPressureSensitivityEnabled(pressureEnabled);
     }
-    // The default freehand builder re-fits one quadratic Bézier over the whole
-    // uncommitted tail on every sample, so the live stroke visibly reshapes
-    // ("pulls") behind the pen. The polyline builder commits each sample
-    // immediately — with coalesced pointer input the ink follows the pen
-    // faithfully, and what is drawn is exactly what is kept.
   }
 }
 
@@ -314,6 +316,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const pointerLifecycleRef = useRef<NotebookInkPointerLifecycle | null>(null);
     pointerLifecycleRef.current ??= new NotebookInkPointerLifecycle();
     const inkSmoothersRef = useRef<Map<number, NotebookInkSmoother>>(new Map());
+    const penPreviewBatchRef = useRef<NotebookPenPreviewBatch | null>(null);
     const lastForwardedPointerSampleRef = useRef<Map<number, PointerEvent>>(
       new Map()
     );
@@ -427,7 +430,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       let disposed = false;
       let editor: JsDrawEditor | null = null;
       let historyListener: { remove(): void } | null = null;
-      let disposePenPreview: (() => void) | null = null;
+      let penPreviewBatch: NotebookPenPreviewBatch | null = null;
       let viewportResizeObserver: ResizeObserver | null = null;
       let removeViewportResizeFallback: (() => void) | null = null;
       loadingRef.current = true;
@@ -537,13 +540,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             primaryPen.setInputMapper(
               makePrecisePenInputMapper(jsDraw, editor, inkSmoothersRef.current)
             );
-            // Polyline geometry follows the Pencil without reshaping the tail.
-            // Gate its whole-stroke wet preview to the display frame while
-            // retaining an exact synchronous final paint on pointer-up.
-            primaryPen.setStrokeFactory(jsDraw.makePolylineBuilder);
-            disposePenPreview = installFrameGatedNotebookPenPreview(
-              primaryPen as unknown as NotebookFrameGatedPen
+            // Connect exact coalesced Pencil samples as smooth quadratic
+            // curves, then paint the complete packet synchronously once.
+            primaryPen.setStrokeFactory(jsDraw.makeFreehandLineBuilder);
+            penPreviewBatch = installBatchedNotebookPenPreview(
+              primaryPen as unknown as NotebookBatchedPen
             );
+            penPreviewBatchRef.current = penPreviewBatch;
           }
           editor.toolController
             .getMatchingTools(jsDraw.EraserTool)
@@ -653,7 +656,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         lastForwardedPointerSamples.clear();
         viewportResizeObserver?.disconnect();
         removeViewportResizeFallback?.();
-        disposePenPreview?.();
+        penPreviewBatch?.dispose();
+        if (penPreviewBatchRef.current === penPreviewBatch) {
+          penPreviewBatchRef.current = null;
+        }
         precisionEraserGestureRef.current?.gesture.cancel();
         precisionEraserGestureRef.current = null;
         eraserSurfaceOffsetRef.current = null;
@@ -941,6 +947,23 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             applyInkStyle(editor, pointerStyle, jsDraw);
             appliedStyleRef.current = { ...pointerStyle };
           }
+          const primaryPen =
+            editor.toolController.getMatchingTools(jsDraw.PenTool)[0];
+          if (primaryPen) {
+            const pressureEnabled =
+              activeTool === "pen" &&
+              shouldUseNotebookPenPressure({
+                maxTouchPoints: navigator.maxTouchPoints,
+                platform: navigator.platform,
+                pointerType: event.pointerType,
+                userAgent: navigator.userAgent,
+              });
+            if (
+              primaryPen.getPressureSensitivityEnabled() !== pressureEnabled
+            ) {
+              primaryPen.setPressureSensitivityEnabled(pressureEnabled);
+            }
+          }
           // Reassert mutable eraser state at contact time. Precision routing no
           // longer trusts js-draw's mode, but Stroke mode still uses its tool.
           if (activeTool === "eraser") {
@@ -1044,16 +1067,32 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               }
             }
           }
-        } else if (type === "pointermove") {
-          // Preserve up to two meaningful bends/pressure extrema plus the
-          // current endpoint. Preview painting is frame-gated, so this richer
-          // geometry does not cause multiple full wet-canvas paints per packet.
+        } else if (
+          type === "pointermove" &&
+          (activeTool === "pen" || activeTool === "highlighter") &&
+          jsDrawRef.current
+        ) {
+          // Safari groups high-frequency Pencil input into coalesced packets.
+          // Feed those exact points through js-draw's normal tool pipeline,
+          // bypassing only its coarse two-CSS-pixel move filter. The wet canvas
+          // is repainted once, immediately, after the whole packet is added.
           const liveSamples = getBoundedLivePointerSamples(
             event.nativeEvent,
             lastForwardedPointerSampleRef.current.get(event.pointerId)
           );
-          for (const sample of liveSamples) {
-            editor.handleHTMLPointerEvent("pointermove", sample);
+          const previewBatch = penPreviewBatchRef.current;
+          previewBatch?.beginBatch();
+          try {
+            for (const sample of liveSamples) {
+              dispatchPreciseNotebookPointerMove({
+                editor,
+                event: sample,
+                jsDraw: jsDrawRef.current,
+                surface,
+              });
+            }
+          } finally {
+            previewBatch?.endBatch();
           }
           lastForwardedPointerSampleRef.current.set(
             event.pointerId,
@@ -1061,6 +1100,13 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           );
         } else {
           editor.handleHTMLPointerEvent(type, event.nativeEvent);
+          if (
+            type === "pointerdown" &&
+            (activeTool === "pen" || activeTool === "highlighter")
+          ) {
+            // Show contact immediately instead of waiting for the first move.
+            penPreviewBatchRef.current?.paintNow();
+          }
         }
       }
       if (type === "pointercancel") {

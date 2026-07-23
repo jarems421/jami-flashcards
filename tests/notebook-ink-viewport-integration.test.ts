@@ -130,6 +130,10 @@ describe("notebook ink viewport integration", () => {
     expect(pointerMoveSource).toContain(
       "safelySetPointerCapture(toolbar, event.pointerId)"
     );
+    expect(pointerMoveSource).toContain(
+      "applyToolbarDragPosition(drag, toolbar)"
+    );
+    expect(pointerMoveSource).not.toContain("requestAnimationFrame");
     expect(notebookPageSource.slice(pointerLeaveStart, finishStart)).toContain(
       "toolbarDragRef.current = null"
     );
@@ -147,11 +151,13 @@ describe("notebook ink viewport integration", () => {
     );
   });
 
-  it("frame-gates bounded live Pencil preview work", () => {
-    expect(editorSource).toContain(
-      "getBoundedLivePointerSamples("
-    );
-    expect(editorSource).toContain("installFrameGatedNotebookPenPreview(");
+  it("batches exact live Pencil packets without a deferred frame", () => {
+    expect(editorSource).toContain("getBoundedLivePointerSamples(");
+    expect(editorSource).toContain("installBatchedNotebookPenPreview(");
+    expect(editorSource).toContain("dispatchPreciseNotebookPointerMove({");
+    expect(editorSource).toContain("previewBatch?.beginBatch()");
+    expect(editorSource).toContain("previewBatch?.endBatch()");
+    expect(editorSource).toContain("jsDraw.makeFreehandLineBuilder");
     expect(editorSource).toContain("event.kind === jsDraw.InputEvtType.PointerMoveEvt");
   });
 
@@ -160,7 +166,7 @@ describe("notebook ink viewport integration", () => {
       "if (precisionEraserActive) {"
     );
     const stockMoveBranch = editorSource.indexOf(
-      '} else if (type === "pointermove") {',
+      'type === "pointermove" &&',
       precisionBranchStart
     );
     const precisionSource = editorSource.slice(

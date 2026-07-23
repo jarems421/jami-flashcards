@@ -36,6 +36,7 @@ import {
   shouldPointerDrawEvent,
   shouldPointerSwipePages,
   shouldSuppressTouchAfterStylus,
+  shouldUseNotebookPenPressure,
 } from "@/lib/workspace/notebook-inking";
 import {
   getFreehandOutline,
@@ -176,9 +177,10 @@ describe("notebook inking helpers", () => {
     };
 
     const samples = getBoundedLivePointerSamples(event, previous);
-    expect(NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT).toBe(3);
-    expect(samples).toEqual([event]);
-    expect(samples).toHaveLength(1);
+    expect(NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT).toBe(8);
+    expect(samples).toHaveLength(8);
+    expect(samples[0]).toMatchObject({ clientX: 10, timeStamp: 1 });
+    expect(samples.at(-1)).toBe(event);
     expect(getBoundedLivePointerSamples(eventWithoutHistory, previous)).toEqual([
       eventWithoutHistory,
     ]);
@@ -209,7 +211,7 @@ describe("notebook inking helpers", () => {
     ).toEqual([bend, event]);
   });
 
-  it("retains a pressure peak without exceeding the live render budget", () => {
+  it("retains every ordinary coalesced pressure sample in chronological order", () => {
     const pressurePeak = {
       clientX: 5,
       clientY: 0,
@@ -235,6 +237,7 @@ describe("notebook inking helpers", () => {
     });
 
     expect(samples).toEqual([
+      { clientX: 2, clientY: 0, pressure: 0.2, timeStamp: 2 },
       pressurePeak,
       { clientX: 8, clientY: 0, pressure: 0.2, timeStamp: 8 },
       event,
@@ -244,7 +247,7 @@ describe("notebook inking helpers", () => {
     );
   });
 
-  it("retains two opposite bends in chronological order", () => {
+  it("retains opposite bends in chronological order", () => {
     const firstBend = {
       clientX: 3,
       clientY: 8,
@@ -273,7 +276,42 @@ describe("notebook inking helpers", () => {
     });
 
     expect(samples).toEqual([firstBend, secondBend, event]);
-    expect(samples).toHaveLength(NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT);
+    expect(samples).toHaveLength(3);
+  });
+
+  it("keeps pressure variation for Apple Pencil but disables it on desktop", () => {
+    expect(
+      shouldUseNotebookPenPressure({
+        maxTouchPoints: 5,
+        platform: "iPad",
+        pointerType: "pen",
+        userAgent: "Mozilla/5.0 (iPad)",
+      })
+    ).toBe(true);
+    expect(
+      shouldUseNotebookPenPressure({
+        maxTouchPoints: 5,
+        platform: "MacIntel",
+        pointerType: "pen",
+        userAgent: "Mozilla/5.0 (Macintosh)",
+      })
+    ).toBe(true);
+    expect(
+      shouldUseNotebookPenPressure({
+        maxTouchPoints: 10,
+        platform: "Win32",
+        pointerType: "pen",
+        userAgent: "Mozilla/5.0 (Windows NT 10.0)",
+      })
+    ).toBe(false);
+    expect(
+      shouldUseNotebookPenPressure({
+        maxTouchPoints: 0,
+        platform: "MacIntel",
+        pointerType: "mouse",
+        userAgent: "Mozilla/5.0 (Macintosh)",
+      })
+    ).toBe(false);
   });
 
   it("normalizes missing or zero pressure and timing to useful ink fallbacks", () => {
