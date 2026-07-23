@@ -108,9 +108,9 @@ describe("notebook page content", () => {
     const gridBackground = decodeURIComponent(
       getNotebookPageStyleBackground("white", "grid")?.backgroundImage ?? ""
     );
-    expect(gridBackground).toContain("M 10 0 V 1240");
-    expect(gridBackground).toContain("M 890 0 V 1240");
-    expect(gridBackground).toContain("M 10 1240 H 890");
+    expect(gridBackground).toContain("M 0 12.5 V 1227.5");
+    expect(gridBackground).toContain("M 900 12.5 V 1227.5");
+    expect(gridBackground).toContain("M 0 1227.5 H 900");
   });
 
   it("bounds thumbnail paths and produces stable accessible element ids", () => {

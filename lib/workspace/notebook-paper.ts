@@ -1,4 +1,5 @@
 export const NOTEBOOK_RULE_SPACING = 40;
+export const NOTEBOOK_GRID_SPACING = 45;
 export const NOTEBOOK_DOT_SPACING = 28;
 export const NOTEBOOK_DOT_RADIUS = 1.35;
 
@@ -8,7 +9,7 @@ function finitePositive(value: number) {
 
 export function getNotebookCompleteGridLines(
   length: number,
-  spacing = NOTEBOOK_RULE_SPACING
+  spacing = NOTEBOOK_GRID_SPACING
 ) {
   const boundedLength = finitePositive(length);
   const boundedSpacing = finitePositive(spacing);
@@ -35,4 +36,3 @@ export function getNotebookRuledLines(
   }
   return lines;
 }
-

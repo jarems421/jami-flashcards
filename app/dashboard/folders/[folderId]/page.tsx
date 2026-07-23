@@ -38,7 +38,12 @@ import {
   getFolderTabFromSearch,
   type FolderWorkspaceTab,
 } from "@/lib/workspace/folder-navigation";
-import type { Notebook, NotebookPageColor, NotebookPageStyle } from "@/lib/workspace/notebooks";
+import {
+  NOTEBOOK_CREATION_PAGE_STYLES,
+  type Notebook,
+  type NotebookPageColor,
+  type NotebookPageStyle,
+} from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
 import { archiveStudyFolder, getStudyFolderById, updateStudyFolder } from "@/services/study/folders";
@@ -769,7 +774,7 @@ export default function FolderDetailPage() {
                   <div>
                     <div className="text-sm font-medium text-text-secondary">Page style</div>
                     <div className="mt-2 flex flex-wrap gap-2">
-                      {(["plain", "lined", "grid", "dot"] as NotebookPageStyle[]).map((style) => (
+                      {NOTEBOOK_CREATION_PAGE_STYLES.map((style) => (
                         <button
                           key={style}
                           type="button"

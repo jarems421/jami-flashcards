@@ -45,6 +45,11 @@ export type NotebookStrokeColor =
   | NotebookCustomStrokeColor;
 export type NotebookPageColor = "white" | "black";
 export type NotebookPageStyle = "plain" | "lined" | "grid" | "dot";
+export const NOTEBOOK_CREATION_PAGE_STYLES = [
+  "plain",
+  "lined",
+  "grid",
+] as const satisfies readonly NotebookPageStyle[];
 export type NotebookPageStatus = "blank" | "working" | "needs_review" | "marked";
 
 export type NotebookStrokePoint = {

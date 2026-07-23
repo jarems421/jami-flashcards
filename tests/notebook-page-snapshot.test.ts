@@ -133,14 +133,14 @@ describe("notebook page snapshot geometry", () => {
 
     const grid = getNotebookSnapshotPaperPattern("black", "grid", 81, 81);
     expect(grid.backgroundColor).toBe("#080a10");
-    expect(grid.horizontalLines).toEqual([0.5, 40.5, 80.5]);
-    expect(grid.verticalLines).toEqual([0.5, 40.5, 80.5]);
+    expect(grid.horizontalLines).toEqual([18, 63]);
+    expect(grid.verticalLines).toEqual([18, 63]);
 
     const fullPageGrid = getNotebookSnapshotPaperPattern("white", "grid");
-    expect(fullPageGrid.verticalLines[0]).toBe(10);
-    expect(fullPageGrid.verticalLines.at(-1)).toBe(890);
-    expect(fullPageGrid.horizontalLines[0]).toBe(0);
-    expect(fullPageGrid.horizontalLines.at(-1)).toBe(1240);
+    expect(fullPageGrid.verticalLines[0]).toBe(0);
+    expect(fullPageGrid.verticalLines.at(-1)).toBe(900);
+    expect(fullPageGrid.horizontalLines[0]).toBe(12.5);
+    expect(fullPageGrid.horizontalLines.at(-1)).toBe(1227.5);
 
     const dotted = getNotebookSnapshotPaperPattern("white", "dot", 43, 43);
     expect(dotted.dotCenters).toEqual([
