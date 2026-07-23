@@ -4,8 +4,11 @@ import {
   getNotebookInkViewportScale,
   getNotebookViewportLayout,
   getNotebookViewportPanBounds,
+  getNotebookViewportSwipeGap,
+  NOTEBOOK_VIEWPORT_COMPACT_SWIPE_GAP,
   NOTEBOOK_VIEWPORT_MAX_ZOOM,
   NOTEBOOK_VIEWPORT_MIN_ZOOM,
+  NOTEBOOK_VIEWPORT_SWIPE_GAP,
 } from "@/lib/workspace/notebook-viewport";
 
 describe("notebook viewport layout", () => {
@@ -24,7 +27,9 @@ describe("notebook viewport layout", () => {
     expect(layout.fitOrigin.x).toBeCloseTo((768 - layout.fitSize.width) / 2);
     expect(layout.fitOrigin.y).toBe(16);
     expect(layout.pageOrigin).toEqual(layout.fitOrigin);
-    expect(layout.swipeTravel).toBeCloseTo(layout.pageSize.width + 16);
+    expect(layout.swipeTravel).toBeCloseTo(
+      layout.pageSize.width + NOTEBOOK_VIEWPORT_SWIPE_GAP
+    );
   });
 
   it("opens iPad landscape at a true proportional full-page fit", () => {
@@ -188,10 +193,21 @@ describe("notebook viewport layout", () => {
       swipeGap: 24,
     });
 
-    expect(fitted.swipeGap).toBe(16);
-    expect(fitted.swipeTravel).toBe(fitted.pageSize.width + 16);
+    expect(fitted.swipeGap).toBe(NOTEBOOK_VIEWPORT_SWIPE_GAP);
+    expect(fitted.swipeTravel).toBe(
+      fitted.pageSize.width + NOTEBOOK_VIEWPORT_SWIPE_GAP
+    );
     expect(zoomed.swipeGap).toBe(24);
     expect(zoomed.swipeTravel).toBe(zoomed.pageSize.width + 24);
+  });
+
+  it("keeps a smaller but visible sheet gap on compact screens", () => {
+    expect(getNotebookViewportSwipeGap(390)).toBe(
+      NOTEBOOK_VIEWPORT_COMPACT_SWIPE_GAP
+    );
+    expect(getNotebookViewportSwipeGap(1024)).toBe(
+      NOTEBOOK_VIEWPORT_SWIPE_GAP
+    );
   });
 
   it("provides deterministic centred bounds for an undersized page", () => {
@@ -221,7 +237,7 @@ describe("notebook viewport layout", () => {
     expect(layout.fitSize).toEqual({ width: 0, height: 0 });
     expect(layout.fitScale).toBe(0);
     expect(layout.pageOrigin).toEqual({ x: 0, y: 0 });
-    expect(layout.swipeTravel).toBe(16);
+    expect(layout.swipeTravel).toBe(NOTEBOOK_VIEWPORT_COMPACT_SWIPE_GAP);
   });
 });
 

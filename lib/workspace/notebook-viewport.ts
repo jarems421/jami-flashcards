@@ -9,7 +9,8 @@ export const NOTEBOOK_VIEWPORT_COMPACT_MAX_WIDTH = 767;
 export const NOTEBOOK_VIEWPORT_COMPACT_INSET = 12;
 export const NOTEBOOK_VIEWPORT_REGULAR_INSET = 16;
 export const NOTEBOOK_VIEWPORT_LANDSCAPE_INSET = 8;
-export const NOTEBOOK_VIEWPORT_SWIPE_GAP = 16;
+export const NOTEBOOK_VIEWPORT_COMPACT_SWIPE_GAP = 24;
+export const NOTEBOOK_VIEWPORT_SWIPE_GAP = 48;
 
 export type NotebookViewportSize = {
   width: number;
@@ -68,6 +69,12 @@ export function getNotebookViewportInset(
   return height > 0 && width > height
     ? NOTEBOOK_VIEWPORT_LANDSCAPE_INSET
     : NOTEBOOK_VIEWPORT_REGULAR_INSET;
+}
+
+export function getNotebookViewportSwipeGap(frameWidth: number) {
+  return finiteNonNegative(frameWidth) <= NOTEBOOK_VIEWPORT_COMPACT_MAX_WIDTH
+    ? NOTEBOOK_VIEWPORT_COMPACT_SWIPE_GAP
+    : NOTEBOOK_VIEWPORT_SWIPE_GAP;
 }
 
 export function getNotebookViewportFit(input: {
@@ -223,7 +230,7 @@ export function getNotebookViewportLayout(input: {
     bounds: panBounds,
   });
   const swipeGap = finiteNonNegative(
-    input.swipeGap ?? NOTEBOOK_VIEWPORT_SWIPE_GAP
+    input.swipeGap ?? getNotebookViewportSwipeGap(frameSize.width)
   );
 
   return {

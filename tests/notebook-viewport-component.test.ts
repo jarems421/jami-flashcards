@@ -12,6 +12,10 @@ const notebookEditorSource = readFileSync(
   ),
   "utf8"
 );
+const globalStylesSource = readFileSync(
+  join(process.cwd(), "app/globals.css"),
+  "utf8"
+);
 
 describe("NotebookViewport", () => {
   it("renders every carousel slot through the same sheet treatment", () => {
@@ -72,6 +76,21 @@ describe("NotebookViewport", () => {
     expect(notebookEditorSource).toContain("queueLivePinchTransform()");
     expect(notebookEditorSource).toContain(
       "isNotebookPageSwipePreviewEnabled("
+    );
+  });
+
+  it("keeps the live ink canvas stable and input-locked during page travel", () => {
+    expect(notebookEditorSource).toContain(
+      "readOnly={!fullNotebookEditingEnabled}"
+    );
+    expect(notebookEditorSource).not.toContain(
+      "!fullNotebookEditingEnabled || Boolean(pageSwipeMotion)"
+    );
+    expect(globalStylesSource).toContain(
+      '.notebook-page-track[data-swipe-active="true"] .notebook-ink-surface'
+    );
+    expect(globalStylesSource).toMatch(
+      /\.notebook-page-track\[data-swipe-active="true"\] \.notebook-ink-surface\s*\{\s*pointer-events: none;/
     );
   });
 

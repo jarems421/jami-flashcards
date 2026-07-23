@@ -514,11 +514,26 @@
   }
 
   .notebook-page-track {
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
     transform: translate3d(0, 0, 0);
   }
 
   .notebook-page-track[data-swipe-active="true"] {
     will-change: transform;
+  }
+
+  .notebook-page-track [data-notebook-sheet="true"] {
+    -webkit-backface-visibility: hidden;
+    backface-visibility: hidden;
+  }
+
+  .notebook-page-track[data-swipe-active="true"] [data-notebook-sheet="true"] {
+    will-change: transform;
+  }
+
+  .notebook-page-track[data-swipe-active="true"] .notebook-ink-surface {
+    pointer-events: none;
   }
 
   .notebook-page-swipe-preview {

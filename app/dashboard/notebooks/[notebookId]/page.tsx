@@ -5337,9 +5337,10 @@ export default function NotebookEditorPage() {
                     eraserThickness={
                       NOTEBOOK_ERASER_THICKNESS_BY_SIZE[eraserWidth]
                     }
-                    readOnly={
-                      !fullNotebookEditingEnabled || Boolean(pageSwipeMotion)
-                    }
+                    // Keep js-draw's canvas mode stable while the compositor
+                    // moves the page. CSS blocks new input for the brief swipe
+                    // phase without forcing an iPad canvas repaint.
+                    readOnly={!fullNotebookEditingEnabled}
                     onChange={() => {
                       const current = pendingInkUiRef.current;
                       pendingInkUiRef.current = {
