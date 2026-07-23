@@ -9,6 +9,11 @@ import {
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
 } from "@/lib/workspace/notebooks";
+import {
+  getNotebookCompleteGridLines,
+  getNotebookRuledLines,
+  NOTEBOOK_DOT_SPACING,
+} from "@/lib/workspace/notebook-paper";
 
 export const NOTEBOOK_PAGE_SNAPSHOT_SCALE = 2;
 export const NOTEBOOK_PAGE_SNAPSHOT_FALLBACK_SCALE = 1.6;
@@ -132,13 +137,21 @@ export function getNotebookSnapshotPaperPattern(
   const boundedHeight = Math.max(1, height);
 
   if (pageStyle === "lined") {
-    for (let y = 40; y < boundedHeight; y += 40) horizontalLines.push(y);
+    horizontalLines.push(...getNotebookRuledLines(boundedHeight));
   } else if (pageStyle === "grid") {
-    for (let x = 0; x < boundedWidth; x += 40) verticalLines.push(x);
-    for (let y = 0; y < boundedHeight; y += 40) horizontalLines.push(y);
+    verticalLines.push(...getNotebookCompleteGridLines(boundedWidth));
+    horizontalLines.push(...getNotebookCompleteGridLines(boundedHeight));
   } else if (pageStyle === "dot") {
-    for (let y = 14; y < boundedHeight; y += 28) {
-      for (let x = 14; x < boundedWidth; x += 28) {
+    for (
+      let y = NOTEBOOK_DOT_SPACING / 2;
+      y < boundedHeight;
+      y += NOTEBOOK_DOT_SPACING
+    ) {
+      for (
+        let x = NOTEBOOK_DOT_SPACING / 2;
+        x < boundedWidth;
+        x += NOTEBOOK_DOT_SPACING
+      ) {
         dotCenters.push({ x, y });
       }
     }

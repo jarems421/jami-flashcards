@@ -17,6 +17,12 @@ import {
   type NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
 import type { NotebookPageDraft } from "@/lib/workspace/notebook-drafts";
+import {
+  getNotebookCompleteGridLines,
+  getNotebookRuledLines,
+  NOTEBOOK_DOT_RADIUS,
+  NOTEBOOK_DOT_SPACING,
+} from "@/lib/workspace/notebook-paper";
 
 const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
   white: "#ffffff",
@@ -168,21 +174,50 @@ export function getNotebookPageStyleBackground(
   style: NotebookPageStyle
 ) {
   if (style === "plain") return undefined;
-  const lineColor =
-    pageColor === "black" ? "rgba(248,250,252,0.14)" : "rgba(30,41,59,0.14)";
-  if (style === "lined") {
-    return {
-      backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent 39px, ${lineColor} 40px)`,
-    };
-  }
-  if (style === "grid") {
-    return {
-      backgroundImage: `repeating-linear-gradient(to right, ${lineColor} 0 1px, transparent 1px 40px), repeating-linear-gradient(to bottom, ${lineColor} 0 1px, transparent 1px 40px)`,
-    };
-  }
+  const lineColor = pageColor === "black" ? "#f8fafc" : "#1e293b";
+  const svgBody =
+    style === "lined"
+      ? `<path d="${getNotebookRuledLines(NOTEBOOK_PAGE_COORDINATE_HEIGHT)
+          .map(
+            (y) =>
+              `M 0 ${y} H ${NOTEBOOK_PAGE_COORDINATE_WIDTH}`
+          )
+          .join(" ")}" fill="none" stroke="${lineColor}" stroke-opacity="0.14" stroke-width="1"/>`
+      : style === "grid"
+        ? (() => {
+            const verticalLines = getNotebookCompleteGridLines(
+              NOTEBOOK_PAGE_COORDINATE_WIDTH
+            );
+            const horizontalLines = getNotebookCompleteGridLines(
+              NOTEBOOK_PAGE_COORDINATE_HEIGHT
+            );
+            const minX = verticalLines[0] ?? 0;
+            const maxX =
+              verticalLines[verticalLines.length - 1] ??
+              NOTEBOOK_PAGE_COORDINATE_WIDTH;
+            const minY = horizontalLines[0] ?? 0;
+            const maxY =
+              horizontalLines[horizontalLines.length - 1] ??
+              NOTEBOOK_PAGE_COORDINATE_HEIGHT;
+            return `<path d="${[
+              ...verticalLines.map((x) => `M ${x} ${minY} V ${maxY}`),
+              ...horizontalLines.map((y) => `M ${minX} ${y} H ${maxX}`),
+            ].join(
+              " "
+            )}" fill="none" stroke="${lineColor}" stroke-opacity="0.14" stroke-width="1"/>`;
+          })()
+        : `<defs><pattern id="notebook-dots" width="${NOTEBOOK_DOT_SPACING}" height="${NOTEBOOK_DOT_SPACING}" patternUnits="userSpaceOnUse"><circle cx="${
+            NOTEBOOK_DOT_SPACING / 2
+          }" cy="${
+            NOTEBOOK_DOT_SPACING / 2
+          }" r="${NOTEBOOK_DOT_RADIUS}" fill="${lineColor}" fill-opacity="0.14"/></pattern></defs><rect width="${NOTEBOOK_PAGE_COORDINATE_WIDTH}" height="${NOTEBOOK_PAGE_COORDINATE_HEIGHT}" fill="url(#notebook-dots)"/>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${NOTEBOOK_PAGE_COORDINATE_WIDTH} ${NOTEBOOK_PAGE_COORDINATE_HEIGHT}" preserveAspectRatio="none">${svgBody}</svg>`;
+
   return {
-    backgroundImage: `radial-gradient(circle, ${lineColor} 1.35px, transparent 1.35px)`,
-    backgroundSize: "28px 28px",
+    backgroundImage: `url("data:image/svg+xml,${encodeURIComponent(svg)}")`,
+    backgroundPosition: "0 0",
+    backgroundRepeat: "no-repeat",
+    backgroundSize: "100% 100%",
   };
 }
 

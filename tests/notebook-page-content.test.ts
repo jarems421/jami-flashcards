@@ -94,9 +94,23 @@ describe("notebook page content", () => {
       )
     ).toBe("#080a10");
     expect(getNotebookPageStyleBackground("white", "plain")).toBeUndefined();
-    expect(
-      getNotebookPageStyleBackground("black", "dot")?.backgroundSize
-    ).toBe("28px 28px");
+    const dottedBackground = getNotebookPageStyleBackground("black", "dot");
+    expect(dottedBackground?.backgroundSize).toBe("100% 100%");
+    expect(dottedBackground?.backgroundRepeat).toBe("no-repeat");
+
+    const linedBackground = decodeURIComponent(
+      getNotebookPageStyleBackground("white", "lined")?.backgroundImage ?? ""
+    );
+    expect(linedBackground).toContain('viewBox="0 0 900 1240"');
+    expect(linedBackground).toContain("M 0 40 H 900");
+    expect(linedBackground).toContain("M 0 1200 H 900");
+
+    const gridBackground = decodeURIComponent(
+      getNotebookPageStyleBackground("white", "grid")?.backgroundImage ?? ""
+    );
+    expect(gridBackground).toContain("M 10 0 V 1240");
+    expect(gridBackground).toContain("M 890 0 V 1240");
+    expect(gridBackground).toContain("M 10 1240 H 890");
   });
 
   it("bounds thumbnail paths and produces stable accessible element ids", () => {
