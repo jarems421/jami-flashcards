@@ -1,14 +1,6 @@
-import { Card, EmptyState, SectionHeader } from "@/components/ui";
+import { Card, SectionHeader } from "@/components/ui";
 import type { SpacedRepetitionAnalytics } from "@/lib/study/analytics";
 import type { StreakPrediction } from "@/lib/study/streak-prediction";
-
-function formatDelta(value: number, suffix = "") {
-  const rounded = Math.round(value);
-  if (rounded === 0) {
-    return "No change";
-  }
-  return `${rounded > 0 ? "+" : ""}${rounded}${suffix}`;
-}
 
 function getToneClass(riskTier: StreakPrediction["riskTier"]) {
   if (riskTier === "low") {
@@ -188,103 +180,6 @@ export function ScheduleForecastPanel({ analytics }: { analytics: SpacedRepetiti
             </div>
           ))}
         </div>
-      </div>
-    </Card>
-  );
-}
-
-export function RecentChangesPanel({ analytics }: { analytics: SpacedRepetitionAnalytics }) {
-  const reviewDelta = analytics.recentChanges.last7Reviews - analytics.recentChanges.previous7Reviews;
-  const accuracyDelta = analytics.recentChanges.last7Accuracy - analytics.recentChanges.previous7Accuracy;
-  const minutesDelta = analytics.recentChanges.last7Minutes - analytics.recentChanges.previous7Minutes;
-
-  return (
-    <Card padding="lg" className="animate-fade-in">
-      <SectionHeader
-        title="What changed recently"
-        description="A 7-day comparison against the previous week so the stats page feels directional instead of static."
-      />
-      <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-        {[
-          {
-            label: "Reviews",
-            value: analytics.recentChanges.last7Reviews,
-            detail: formatDelta(reviewDelta),
-          },
-          {
-            label: "Accuracy",
-            value: `${analytics.recentChanges.last7Accuracy}%`,
-            detail: formatDelta(accuracyDelta, " pts"),
-          },
-          {
-            label: "Focus time",
-            value: `${analytics.recentChanges.last7Minutes} min`,
-            detail: formatDelta(minutesDelta, " min"),
-          },
-          {
-            label: "New cards added",
-            value: analytics.recentChanges.newCardsLast7Days,
-            detail: "Last 7 days",
-          },
-        ].map((item) => (
-          <div
-            key={item.label}
-            className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4"
-          >
-            <div className="text-xs uppercase tracking-[0.16em] text-text-muted">{item.label}</div>
-            <div className="mt-3 text-xl font-semibold text-text-primary">{item.value}</div>
-            <div className="mt-2 text-sm text-text-secondary">{item.detail}</div>
-          </div>
-        ))}
-      </div>
-    </Card>
-  );
-}
-
-export function WeakAreasPanel({
-  analytics,
-  title = "Weakest areas",
-  description = "Decks and Topics carrying the strongest lapse and difficulty signal right now.",
-}: {
-  analytics: SpacedRepetitionAnalytics;
-  title?: string;
-  description?: string;
-}) {
-  return (
-    <Card padding="lg" className="animate-fade-in">
-      <SectionHeader title={title} description={description} />
-      <div className="mt-4 space-y-3">
-        {analytics.weakestAreas.length > 0 ? (
-          analytics.weakestAreas.map((area) => (
-            <div
-              key={`${area.kind}-${area.name}`}
-              className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4"
-            >
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-sm font-semibold text-text-primary">{area.name}</div>
-                  <div className="mt-1 text-xs text-text-muted">
-                    {area.kind === "deck" ? "Deck" : "Tag"} - {area.cardCount} reviewed card{area.cardCount === 1 ? "" : "s"}
-                  </div>
-                </div>
-                <div className="rounded-full border border-accent/25 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
-                  {area.score.toFixed(1)}
-                </div>
-              </div>
-              <div className="mt-3 text-sm leading-6 text-text-secondary">
-                Difficulty {area.avgDifficulty.toFixed(1)} / 10 with {area.totalLapses} lapse{area.totalLapses === 1 ? "" : "s"}.
-              </div>
-            </div>
-          ))
-        ) : (
-          <EmptyState
-            variant="plain"
-            emoji="Stats"
-            eyebrow="No weak areas yet"
-            title="Review data is still building"
-            description="Once cards have a little more history, weak patterns will surface here."
-          />
-        )}
       </div>
     </Card>
   );

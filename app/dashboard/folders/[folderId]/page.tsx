@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { FirebaseError } from "firebase/app";
 import { useParams, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
@@ -16,9 +15,10 @@ import {
   normalizeObjectIcon,
   type ObjectColorId,
   type ObjectIconId,
-} from "@/components/workspace/object-card-styles";
+} from "@/lib/workspace/object-card-styles";
 import {
   Button,
+  ButtonLink,
   Card,
   ConfirmDialog,
   EmptyState,
@@ -26,12 +26,11 @@ import {
   Input,
   SectionHeader,
   Skeleton,
-  Textarea,
 } from "@/components/ui";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckHref } from "@/lib/app/routes";
 import { useUser } from "@/lib/auth/user-context";
-import type { Source, SourceType } from "@/lib/practice/sources";
+import type { Source } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import {
@@ -50,14 +49,11 @@ import {
   updateNotebook,
 } from "@/services/study/notebooks";
 import { importUploadedNotebook } from "@/services/study/notebook-import";
-import { createSource, getActiveSources, updateSource } from "@/services/study/sources";
+import { getActiveSources, updateSource } from "@/services/study/sources";
 import { getActiveTopics } from "@/services/study/topics";
+import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 
 type Feedback = { type: "success" | "error"; message: string };
-function isPermissionDenied(error: unknown) {
-  return error instanceof FirebaseError && error.code === "permission-denied";
-}
-
 function resultValue<T>(result: PromiseSettledResult<T>, fallback: T) {
   return result.status === "fulfilled" ? result.value : fallback;
 }
@@ -87,6 +83,9 @@ export default function FolderDetailPage() {
   const [folder, setFolder] = useState<StudyFolder | null>(null);
   const [decks, setDecks] = useState<Deck[]>([]);
   const [sources, setSources] = useState<Source[]>([]);
+  const [decksLoaded, setDecksLoaded] = useState(false);
+  const [sourcesLoaded, setSourcesLoaded] = useState(false);
+  const [loadingAssetTab, setLoadingAssetTab] = useState<"decks" | "sources" | null>(null);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [editingNotebook, setEditingNotebook] = useState<Notebook | null>(null);
   const [notebookPendingDelete, setNotebookPendingDelete] =
@@ -125,13 +124,6 @@ export default function FolderDetailPage() {
   const [showSourcePicker, setShowSourcePicker] = useState(false);
   const [sourceSearch, setSourceSearch] = useState("");
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
-  const [showCreateSource, setShowCreateSource] = useState(false);
-  const [sourceTitle, setSourceTitle] = useState("");
-  const [sourceType, setSourceType] = useState<SourceType>("pasted_text");
-  const [sourceText, setSourceText] = useState("");
-  const [sourceUrl, setSourceUrl] = useState("");
-  const [sourceFileName, setSourceFileName] = useState("");
-  const [sourceTopicIds, setSourceTopicIds] = useState<string[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
 
   useEffect(() => {
@@ -159,17 +151,13 @@ export default function FolderDetailPage() {
     }
 
     setLoading(true);
+    setDecks([]);
+    setSources([]);
+    setDecksLoaded(false);
+    setSourcesLoaded(false);
     try {
-      const [
-        folderResult,
-        decksResult,
-        sourcesResult,
-        notebooksResult,
-        topicsResult,
-      ] = await Promise.allSettled([
+      const [folderResult, notebooksResult, topicsResult] = await Promise.allSettled([
         getStudyFolderById(user.uid, folderId),
-        getDecks(user.uid),
-        getActiveSources(user.uid),
         getNotebooksForFolder(user.uid, folderId),
         getActiveTopics(user.uid),
       ]);
@@ -179,8 +167,6 @@ export default function FolderDetailPage() {
       }
 
       const optionalErrors = [
-        decksResult,
-        sourcesResult,
         notebooksResult,
         topicsResult,
       ]
@@ -197,21 +183,17 @@ export default function FolderDetailPage() {
       }
 
       const nextFolder = folderResult.value;
-      const nextDecks = resultValue<Deck[]>(decksResult, []);
-      const nextSources = resultValue<Source[]>(sourcesResult, []);
       const nextNotebooks = resultValue<Notebook[]>(notebooksResult, []);
       const nextTopics = resultValue<Topic[]>(topicsResult, []);
 
       setFolder(nextFolder);
-      setDecks(nextDecks);
-      setSources(nextSources);
       setNotebooks(nextNotebooks);
       setTopics(nextTopics);
     } catch (error) {
       console.error(error);
       setFeedback({
         type: "error",
-        message: isPermissionDenied(error)
+        message: isFirebasePermissionDenied(error)
           ? "Could not open this folder yet. Refresh once the workspace has finished syncing."
           : "Could not load this folder. Try refreshing in a moment.",
       });
@@ -223,6 +205,38 @@ export default function FolderDetailPage() {
   useEffect(() => {
     void loadFolder();
   }, [loadFolder]);
+
+  const loadAssetTab = useCallback(
+    async (tab: "decks" | "sources") => {
+      if (!user?.uid) return;
+      if ((tab === "decks" && decksLoaded) || (tab === "sources" && sourcesLoaded)) return;
+      setLoadingAssetTab(tab);
+      try {
+        if (tab === "decks") {
+          setDecks(await getDecks(user.uid));
+          setDecksLoaded(true);
+        } else {
+          setSources(await getActiveSources(user.uid));
+          setSourcesLoaded(true);
+        }
+      } catch (error) {
+        console.error(error);
+        setFeedback({
+          type: "error",
+          message: `Could not load this folder’s ${tab}. Try again in a moment.`,
+        });
+      } finally {
+        setLoadingAssetTab((current) => (current === tab ? null : current));
+      }
+    },
+    [decksLoaded, sourcesLoaded, user?.uid]
+  );
+
+  useEffect(() => {
+    if (activeTab === "decks" || activeTab === "sources") {
+      void loadAssetTab(activeTab);
+    }
+  }, [activeTab, loadAssetTab]);
 
   const folderDecks = useMemo(
     () => decks.filter((deck) => folder && deck.folderIds.includes(folder.id)),
@@ -452,54 +466,6 @@ export default function FolderDetailPage() {
       setFeedback({
         type: "error",
         message: error instanceof Error ? error.message : "Could not add sources.",
-      });
-    } finally {
-      setBusyAssetId(null);
-    }
-  };
-
-  const handleCreateFolderSource = async () => {
-    if (!user?.uid || !folder || !sourceTitle.trim()) return;
-    setBusyAssetId("new-source");
-    try {
-      const sourceId = await createSource(user.uid, {
-        title: sourceTitle,
-        type: sourceType,
-        folderIds: [folder.id],
-        topicIds: sourceTopicIds,
-        contentText: sourceType === "pasted_text" || sourceType === "manual_note" ? sourceText : undefined,
-        externalUrl: sourceType === "link" ? sourceUrl : undefined,
-        fileName: sourceType === "file" ? sourceFileName : undefined,
-        fileType: sourceType === "file" ? "Reference" : undefined,
-      });
-      const now = Date.now();
-      const nextSource: Source = {
-        id: sourceId,
-        title: sourceTitle.trim(),
-        type: sourceType,
-        folderIds: [folder.id],
-        topicIds: sourceTopicIds,
-        contentText: sourceType === "pasted_text" || sourceType === "manual_note" ? sourceText.trim() || undefined : undefined,
-        externalUrl: sourceType === "link" ? sourceUrl.trim() || undefined : undefined,
-        fileName: sourceType === "file" ? sourceFileName.trim() || undefined : undefined,
-        fileType: sourceType === "file" ? "Reference" : undefined,
-        status: "active",
-        createdBy: user.uid,
-        createdAt: now,
-        updatedAt: now,
-      };
-      setSources((current) => [nextSource, ...current]);
-      setSourceTitle("");
-      setSourceText("");
-      setSourceUrl("");
-      setSourceFileName("");
-      setSourceTopicIds([]);
-      setShowCreateSource(false);
-      setFeedback({ type: "success", message: "Source created in this folder and Sources." });
-    } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not create source.",
       });
     } finally {
       setBusyAssetId(null);
@@ -1028,6 +994,12 @@ export default function FolderDetailPage() {
                 </Button>
               </div>
             </div>
+            {loadingAssetTab === "decks" ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <Skeleton className="h-28" />
+                <Skeleton className="h-28" />
+              </div>
+            ) : null}
             {showDeckPicker ? (
               <Card padding="sm">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1075,7 +1047,8 @@ export default function FolderDetailPage() {
                 </div>
               </Card>
             ) : null}
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
+            {loadingAssetTab !== "decks" ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {folderDecks.length > 0 ? (
                 folderDecks.map((deck) => (
                   <DeckObjectCard
@@ -1094,7 +1067,8 @@ export default function FolderDetailPage() {
                   description="Add an existing deck."
                 />
               )}
-            </div>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -1106,11 +1080,19 @@ export default function FolderDetailPage() {
                 <Button type="button" variant="secondary" onClick={() => setShowSourcePicker((value) => !value)}>
                   Add existing source
                 </Button>
-                <Button type="button" onClick={() => setShowCreateSource((value) => !value)}>
-                  Create source
-                </Button>
+                <ButtonLink
+                  href={`/dashboard/library?create=1&folderId=${encodeURIComponent(folder.id)}`}
+                >
+                  Create in Sources
+                </ButtonLink>
               </div>
             </div>
+            {loadingAssetTab === "sources" ? (
+              <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <Skeleton className="h-28" />
+                <Skeleton className="h-28" />
+              </div>
+            ) : null}
             {showSourcePicker ? (
               <Card padding="sm">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -1155,52 +1137,6 @@ export default function FolderDetailPage() {
                   ) : (
                     <p className="text-sm text-text-muted">No saved sources to add.</p>
                   )}
-                </div>
-              </Card>
-            ) : null}
-            {showCreateSource ? (
-              <Card padding="sm">
-                <div className="grid gap-3 md:grid-cols-2">
-                  <Input label="Source title" value={sourceTitle} onChange={(event) => setSourceTitle(event.target.value)} />
-                  <label className="block">
-                    <span className="mb-1.5 block text-sm font-medium text-text-secondary">Type</span>
-                    <select
-                      value={sourceType}
-                      onChange={(event) => setSourceType(event.target.value as SourceType)}
-                      className="min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 text-sm text-text-primary"
-                    >
-                      <option value="pasted_text">Pasted text</option>
-                      <option value="manual_note">Manual note</option>
-                      <option value="link">Link</option>
-                      <option value="file">File reference</option>
-                    </select>
-                  </label>
-                </div>
-                {sourceType === "link" ? (
-                  <Input label="URL" value={sourceUrl} onChange={(event) => setSourceUrl(event.target.value)} containerClassName="mt-3" />
-                ) : sourceType === "file" ? (
-                  <Input label="File name" value={sourceFileName} onChange={(event) => setSourceFileName(event.target.value)} containerClassName="mt-3" />
-                ) : (
-                  <Textarea label="Source text" value={sourceText} onChange={(event) => setSourceText(event.target.value)} rows={5} containerClassName="mt-3" />
-                )}
-                <div className="mt-3">
-                  <TopicPicker
-                    userId={user.uid}
-                    topics={topics}
-                    selectedTopicIds={sourceTopicIds}
-                    onChange={setSourceTopicIds}
-                    onTopicsChange={setTopics}
-                    disabled={busyAssetId === "new-source"}
-                  />
-                </div>
-                <div className="mt-3">
-                  <Button
-                    type="button"
-                    disabled={!sourceTitle.trim() || busyAssetId === "new-source"}
-                    onClick={() => void handleCreateFolderSource()}
-                  >
-                    {busyAssetId === "new-source" ? "Creating..." : "Create source"}
-                  </Button>
                 </div>
               </Card>
             ) : null}

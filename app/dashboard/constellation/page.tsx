@@ -2,9 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
-import { db } from "@/services/firebase/client";
 import {
   getActiveConstellation,
   getFallbackConstellation,
@@ -24,12 +22,16 @@ import {
   setConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
 import {
-  parseStarData,
   spreadBackfilledStars,
   type NormalizedStar,
 } from "@/lib/constellation/stars";
-import { normalizeGoal, type Goal } from "@/lib/study/goals";
-import { backfillStarPositions, saveStarPosition } from "@/services/constellation/stars";
+import type { Goal } from "@/lib/study/goals";
+import {
+  backfillStarPositions,
+  getStars,
+  saveStarPosition,
+} from "@/services/constellation/stars";
+import { getGoals } from "@/services/study/goals";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, EmptyState, FeedbackBanner, Input, PageHero, SectionHeader, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
@@ -78,14 +80,12 @@ export default function ConstellationDashboardPage() {
     setIsLoading(true);
     try {
       const nextConstellations = await ensureConstellationSetup(uid);
-      const [starsSnapshot, goalsSnapshot] = await Promise.all([
-        getDocs(collection(db, "users", uid, "stars")),
-        getDocs(collection(db, "users", uid, "goals")),
+      const [stars, goals] = await Promise.all([
+        getStars(uid),
+        getGoals(uid),
       ]);
       const adjustedStars = spreadBackfilledStars(
-        starsSnapshot.docs.map((starDoc) =>
-          parseStarData(starDoc.id, starDoc.data() as Record<string, unknown>)
-        )
+        stars
       ).sort((left, right) => right.createdAt - left.createdAt);
       const fallbackConstellation = getFallbackConstellation(nextConstellations);
 
@@ -93,13 +93,7 @@ export default function ConstellationDashboardPage() {
       setAllStars(adjustedStars);
       setGoalsById(
         Object.fromEntries(
-          goalsSnapshot.docs.map((goalDoc) => [
-            goalDoc.id,
-            normalizeGoal(
-              goalDoc.id,
-              goalDoc.data() as Record<string, unknown>
-            ),
-          ])
+          goals.map((goal) => [goal.id, goal])
         )
       );
       setSelectedConstellationId((currentId) => {

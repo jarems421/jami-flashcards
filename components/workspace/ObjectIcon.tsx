@@ -1,4 +1,4 @@
-import { normalizeObjectIcon, type ObjectIconId } from "./object-card-styles";
+import { normalizeObjectIcon, type ObjectIconId } from "@/lib/workspace/object-card-styles";
 
 type ObjectIconProps = {
   icon?: string | null;

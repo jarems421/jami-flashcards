@@ -7,14 +7,16 @@
   },
   "scripts": {
     "dev": "next dev --webpack",
-    "dev:clean": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\" && next dev --webpack",
+    "clean": "node -e \"require('node:fs').rmSync('.next',{recursive:true,force:true})\"",
+    "dev:clean": "npm run clean && next dev --webpack",
     "build": "next build --webpack",
     "start": "next start",
-    "lint": "eslint",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "check": "npm run typecheck && npm run lint && npm test",
     "test:rules": "firebase emulators:exec --only firestore,storage \"vitest run --config vitest.rules.config.ts\"",
-    "emulators:firestore": "firebase emulators:start --only firestore,storage",
+    "emulators:rules": "firebase emulators:start --only firestore,storage",
     "firebase:login": "firebase login",
     "firebase:projects": "firebase projects:list",
     "firebase:rules:deploy": "firebase deploy --only firestore:rules,storage"
@@ -22,11 +24,11 @@
   "dependencies": {
     "@google/generative-ai": "^0.24.1",
     "cheerio": "^1.1.2",
-    "firebase": "^12.11.0",
-    "firebase-admin": "^13.7.0",
+    "firebase": "^12.16.0",
+    "firebase-admin": "^13.10.0",
     "js-draw": "^1.33.0",
     "mammoth": "^1.12.0",
-    "next": "^16.2.1",
+    "next": "^16.2.11",
     "officeparser": "^7.2.1",
     "pdfjs-dist": "^6.0.227",
     "perfect-freehand": "^1.2.3",
@@ -39,17 +41,22 @@
   },
   "devDependencies": {
     "@firebase/rules-unit-testing": "^5.0.0",
-    "@types/node": "^20",
+    "@types/node": "^22",
     "@types/react": "^19.2.0",
     "@types/react-dom": "^19.2.0",
     "@types/web-push": "^3.6.4",
     "autoprefixer": "^10.4.20",
     "eslint": "^9",
-    "eslint-config-next": "16.2.1",
-    "firebase-tools": "^15.12.0",
+    "eslint-config-next": "16.2.11",
+    "firebase-tools": "^15.24.0",
     "postcss": "^8.4.49",
     "tailwindcss": "^3.4.17",
     "typescript": "^5",
-    "vitest": "^4.1.2"
+    "vitest": "^4.1.10"
+  },
+  "overrides": {
+    "protobufjs": "7.6.5",
+    "tar": "7.5.19",
+    "websocket-driver": "0.7.5"
   }
 }

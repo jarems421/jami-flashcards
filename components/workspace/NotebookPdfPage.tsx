@@ -11,17 +11,35 @@ import { createNotebookPdfDocumentCache } from "@/lib/workspace/notebook-pdf-cac
 import {
   getNotebookPdfRenderMetrics,
   loadNotebookPdfJs,
+  MAX_NOTEBOOK_PDF_CANVAS_PIXELS,
   validateNotebookPdfPageIndex,
 } from "@/lib/workspace/notebook-pdf";
 import { getNotebookFileBytes } from "@/services/study/notebook-files";
 
+const documentLoadingTasks = new WeakMap<
+  PDFDocumentProxy,
+  { destroy: () => Promise<void> }
+>();
 const documentCache = createNotebookPdfDocumentCache<PDFDocumentProxy>(
   async (storagePath) => {
     const [pdfjs, bytes] = await Promise.all([
       loadNotebookPdfJs(),
       getNotebookFileBytes(storagePath),
     ]);
-    return pdfjs.getDocument({ data: bytes }).promise;
+    const loadingTask = pdfjs.getDocument({ data: bytes });
+    const pdf = await loadingTask.promise;
+    documentLoadingTasks.set(pdf, loadingTask);
+    return pdf;
+  },
+  6,
+  async (pdf) => {
+    const loadingTask = documentLoadingTasks.get(pdf);
+    documentLoadingTasks.delete(pdf);
+    if (loadingTask) {
+      await loadingTask.destroy();
+      return;
+    }
+    await pdf.cleanup();
   }
 );
 
@@ -30,8 +48,10 @@ type NotebookPdfPageProps = Omit<HTMLAttributes<HTMLDivElement>, "children"> & {
   pageIndex: number;
   lazy?: boolean;
   maxPixelRatio?: number;
+  maxCanvasPixels?: number;
   fadeIn?: boolean;
   onRenderStateChange?: (state: NotebookPdfRenderState) => void;
+  onCanvasReady?: (canvas: HTMLCanvasElement | null) => void;
 };
 
 export type NotebookPdfRenderState = "loading" | "ready" | "error";
@@ -41,8 +61,10 @@ export default function NotebookPdfPage({
   pageIndex,
   lazy = false,
   maxPixelRatio = 2,
+  maxCanvasPixels = MAX_NOTEBOOK_PDF_CANVAS_PIXELS,
   fadeIn = true,
   onRenderStateChange,
+  onCanvasReady,
   className = "",
   ...props
 }: NotebookPdfPageProps) {
@@ -50,6 +72,7 @@ export default function NotebookPdfPage({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const hostSizeRef = useRef({ width: 0, height: 0 });
   const onRenderStateChangeRef = useRef(onRenderStateChange);
+  const onCanvasReadyRef = useRef(onCanvasReady);
   const [sizeRevision, setSizeRevision] = useState(0);
   const [retryRevision, setRetryRevision] = useState(0);
   const [visible, setVisible] = useState(!lazy);
@@ -65,6 +88,10 @@ export default function NotebookPdfPage({
   useEffect(() => {
     onRenderStateChangeRef.current = onRenderStateChange;
   }, [onRenderStateChange]);
+
+  useEffect(() => {
+    onCanvasReadyRef.current = onCanvasReady;
+  }, [onCanvasReady]);
 
   useEffect(() => {
     onRenderStateChangeRef.current?.(status);
@@ -137,6 +164,7 @@ export default function NotebookPdfPage({
           hostHeight: host.clientHeight,
           pixelRatio: window.devicePixelRatio || 1,
           maxPixelRatio,
+          maxCanvasPixels,
         });
         const viewport = page.getViewport({
           scale: metrics.cssScale * metrics.pixelRatio,
@@ -157,7 +185,10 @@ export default function NotebookPdfPage({
           background: "#ffffff",
         });
         await renderTask.promise;
-        if (!disposed) setRenderState({ key: renderKey, status: "ready" });
+        if (!disposed) {
+          setRenderState({ key: renderKey, status: "ready" });
+          onCanvasReadyRef.current?.(canvas);
+        }
       })
       .catch((error) => {
         if (
@@ -180,14 +211,17 @@ export default function NotebookPdfPage({
                   ? "This page is missing from the uploaded PDF."
                   : "This PDF page could not be rendered.",
           });
+          onCanvasReadyRef.current?.(null);
         }
       });
 
     return () => {
       disposed = true;
       renderTask?.cancel();
+      onCanvasReadyRef.current?.(null);
     };
   }, [
+    maxCanvasPixels,
     maxPixelRatio,
     pageIndex,
     renderKey,

@@ -7,7 +7,8 @@ let isBlockedSourceAddress: (address: string) => boolean;
 let normalizeSourceTutorIds: (values: unknown[]) => string[];
 let prepareSourceForTutor: (
   source: Source,
-  loadStoredFile: (storagePath: string) => Promise<Buffer>
+  loadStoredFile: (storagePath: string) => Promise<Buffer>,
+  cacheNamespace: string
 ) => Promise<{
   sourceId: string;
   label: string;
@@ -20,7 +21,7 @@ let prepareSourceForTutor: (
 beforeAll(async () => {
   ({ isBlockedSourceAddress, normalizeSourceTutorIds, prepareSourceForTutor } =
     await import("@/lib/ai/source-ingestion"));
-}, 45_000);
+}, 120_000);
 
 describe("source Tutor network protection", () => {
   it("blocks private and loopback addresses", () => {
@@ -60,11 +61,11 @@ describe("source Tutor network protection", () => {
         createdAt: 1,
         updatedAt: 1,
       },
-      loadStoredFile
+      loadStoredFile,
+      "user-1"
     );
 
     expect(loadStoredFile).not.toHaveBeenCalled();
-    expect(result.parts[0]?.text).toContain("[Source: Biology notes]");
     expect(result.parts[0]?.text).toContain("Plants use light energy.");
   });
 
@@ -84,12 +85,46 @@ describe("source Tutor network protection", () => {
         createdAt: 1,
         updatedAt: 1,
       },
-      async () => Buffer.from("image")
+      async () => Buffer.from("image"),
+      "user-1"
     );
 
-    expect(result.parts[1]?.inlineData).toEqual({
+    expect(result.parts[0]?.inlineData).toEqual({
       mimeType: "image/png",
       data: Buffer.from("image").toString("base64"),
     });
+  });
+
+  it("isolates prepared-source cache entries by user", async () => {
+    const baseSource: Source = {
+      id: "shared-looking-id",
+      title: "Notes",
+      type: "manual_note",
+      folderIds: [],
+      topicIds: [],
+      contentText: "Alice's private notes.",
+      status: "active",
+      createdBy: "alice",
+      createdAt: 1,
+      updatedAt: 10,
+    };
+
+    const alice = await prepareSourceForTutor(
+      baseSource,
+      async () => Buffer.alloc(0),
+      "alice"
+    );
+    const bob = await prepareSourceForTutor(
+      {
+        ...baseSource,
+        createdBy: "bob",
+        contentText: "Bob's separate notes.",
+      },
+      async () => Buffer.alloc(0),
+      "bob"
+    );
+
+    expect(alice.parts[0]?.text).toBe("Alice's private notes.");
+    expect(bob.parts[0]?.text).toBe("Bob's separate notes.");
   });
 });

@@ -10,7 +10,7 @@ import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { createStudyFolder } from "@/services/study/folders";
 import { ObjectStylePicker } from "./ObjectStylePicker";
 import WorkspaceActionDialog from "./WorkspaceActionDialog";
-import type { ObjectColorId, ObjectIconId } from "./object-card-styles";
+import type { ObjectColorId, ObjectIconId } from "@/lib/workspace/object-card-styles";
 
 type CreateFolderDialogProps = {
   open: boolean;

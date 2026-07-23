@@ -1,5 +1,5 @@
 import type { Card } from "@/lib/study/cards";
-import type { DailyReviewState } from "@/lib/study/daily-review";
+import type { DailyReviewState } from "@/lib/study/daily-review-types";
 import { getStudyDayKey } from "@/lib/study/day";
 import type { CardRating } from "@/lib/study/scheduler";
 

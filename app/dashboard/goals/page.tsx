@@ -1,25 +1,17 @@
 "use client";
 
-import { useCallback, useEffect, useId, useRef, useState } from "react";
-import {
-  addDoc,
-  collection,
-  doc,
-  getDocs,
-  updateDoc,
-} from "firebase/firestore";
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useUser } from "@/lib/auth/user-context";
-import { db } from "@/services/firebase/client";
 import {
   getActiveConstellation,
   type Constellation,
 } from "@/lib/constellation/constellations";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
-  getGoalStatusAtTime,
   getGoalAccuracy,
-  normalizeGoal,
+  getGoalDisplayName,
   type Goal,
+  type GoalScopeType,
 } from "@/lib/study/goals";
 import {
   buildPreviewStar,
@@ -29,6 +21,16 @@ import AppPage from "@/components/layout/AppPage";
 import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, SectionHeader, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
+import { getDecks, type Deck } from "@/services/study/decks";
+import { getActiveTopics } from "@/services/study/topics";
+import { getActiveStudyFolders } from "@/services/study/folders";
+import {
+  createGoal,
+  getGoalsWithCurrentStatuses,
+  updateGoal,
+} from "@/services/study/goals";
+import type { Topic } from "@/lib/practice/topics";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
 
 type Feedback = { type: "success" | "error"; message: string };
 type GoalPreset = "today-10" | "week-20";
@@ -160,7 +162,11 @@ export default function GoalsPage() {
   const { user } = useUser();
 
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [showGoalComposer, setShowGoalComposer] = useState(false);
   const [showGoalHistory, setShowGoalHistory] = useState(false);
+  const [goalName, setGoalName] = useState("");
+  const [goalScopeType, setGoalScopeType] = useState<GoalScopeType>("all");
+  const [goalScopeId, setGoalScopeId] = useState("");
   const [targetCards, setTargetCards] = useState("");
   const [targetAccuracy, setTargetAccuracy] = useState("");
   const [deadlineDate, setDeadlineDate] = useState("");
@@ -173,41 +179,16 @@ export default function GoalsPage() {
   const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [activeConstellation, setActiveConstellation] =
     useState<Constellation | null>(null);
+  const [decks, setDecks] = useState<Deck[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
+  const [folders, setFolders] = useState<StudyFolder[]>([]);
 
   const lastForegroundRefreshAtRef = useRef(0);
 
   const loadGoals = useCallback(async (uid: string) => {
     setIsLoadingGoals(true);
     try {
-      const now = Date.now();
-      const snapshot = await getDocs(collection(db, "users", uid, "goals"));
-      const updates: Promise<void>[] = [];
-
-      const nextGoals: Goal[] = snapshot.docs.map((goalDoc) => {
-        const goal = normalizeGoal(
-          goalDoc.id,
-          goalDoc.data() as Record<string, unknown>
-        );
-        const statusAtTime = getGoalStatusAtTime(goal, now);
-
-        if (statusAtTime !== goal.status) {
-          updates.push(
-            updateDoc(doc(db, "users", uid, "goals", goal.id), {
-              status: statusAtTime,
-            })
-          );
-          return { ...goal, status: statusAtTime };
-        }
-
-        return goal;
-      });
-
-      if (updates.length > 0) {
-        await Promise.all(updates);
-      }
-
-      nextGoals.sort((left, right) => right.createdAt - left.createdAt);
-      setGoals(nextGoals);
+      setGoals(await getGoalsWithCurrentStatuses(uid));
     } catch (error) {
       console.error(error);
       setGoals([]);
@@ -236,6 +217,23 @@ export default function GoalsPage() {
   useEffect(() => {
     void loadAll(user.uid);
   }, [user.uid, loadAll]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void Promise.all([
+      getDecks(user.uid).catch(() => [] as Deck[]),
+      getActiveTopics(user.uid).catch(() => [] as Topic[]),
+      getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
+    ]).then(([nextDecks, nextTopics, nextFolders]) => {
+      if (cancelled) return;
+      setDecks(nextDecks);
+      setTopics(nextTopics);
+      setFolders(nextFolders);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [user.uid]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -284,6 +282,20 @@ export default function GoalsPage() {
     constellationId: previewConstellationId,
     position: { x: 50, y: 50 },
   });
+  const scopeOptions = useMemo(() => {
+    if (goalScopeType === "deck") {
+      return decks.map((deck) => ({ id: deck.id, label: deck.name }));
+    }
+    if (goalScopeType === "topic") {
+      return topics.map((topic) => ({ id: topic.id, label: topic.name }));
+    }
+    if (goalScopeType === "folder") {
+      return folders.map((folder) => ({ id: folder.id, label: folder.name }));
+    }
+    return [];
+  }, [decks, folders, goalScopeType, topics]);
+  const selectedScopeLabel =
+    scopeOptions.find((option) => option.id === goalScopeId)?.label ?? "";
 
   const formatGoalAccuracyText = (goal: Goal) => {
     if (goal.progress.totalAnswers === 0) {
@@ -302,13 +314,19 @@ export default function GoalsPage() {
     !deadlineDate ||
     (Number.isFinite(deadlineTimestamp) && deadlineTimestamp > Date.now());
   const canSaveGoal =
+    goalName.trim().length > 0 &&
+    (goalScopeType === "all" || Boolean(goalScopeId && selectedScopeLabel)) &&
     parsedGoalTargetCards !== null &&
     parsedGoalTargetAccuracy !== null &&
     deadlineIsValid &&
     !isCreatingGoal;
   const disabledReason =
-    parsedGoalTargetCards === null
-      ? null
+    !goalName.trim()
+      ? "Give this goal a short name."
+      : goalScopeType !== "all" && (!goalScopeId || !selectedScopeLabel)
+        ? `Choose a ${goalScopeType} for this goal.`
+        : parsedGoalTargetCards === null
+      ? "Enter a card target greater than zero."
       : parsedGoalTargetAccuracy === null
         ? "Enter an accuracy target from 0 to 100%."
         : !deadlineIsValid
@@ -316,22 +334,32 @@ export default function GoalsPage() {
           : null;
 
   const resetGoalForm = () => {
+    setGoalName("");
+    setGoalScopeType("all");
+    setGoalScopeId("");
     setTargetCards("");
     setTargetAccuracy("");
     setDeadlineDate("");
     setDeadlineTime("");
     setEditingGoalId(null);
+    setShowGoalComposer(false);
   };
+  const formatGoalScopeText = (goal: Goal) =>
+    goal.scope.type === "all"
+      ? "All study"
+      : goal.scope.label || `${goal.scope.type[0].toUpperCase()}${goal.scope.type.slice(1)}`;
 
   const applyPreset = (preset: GoalPreset) => {
     const deadline = new Date();
 
     if (preset === "today-10") {
+      setGoalName("Today’s review");
       setTargetCards("10");
       setTargetAccuracy("80");
       setDeadlineDate(getDateInputValue(deadline));
       setDeadlineTime("23:59");
     } else if (preset === "week-20") {
+      setGoalName("This week’s review");
       deadline.setDate(deadline.getDate() + 7);
       setTargetCards("20");
       setTargetAccuracy("80");
@@ -340,11 +368,16 @@ export default function GoalsPage() {
     }
 
     setEditingGoalId(null);
+    setShowGoalComposer(true);
     setFeedback(null);
   };
 
   const startEditingGoal = (goal: Goal) => {
     setEditingGoalId(goal.id);
+    setShowGoalComposer(true);
+    setGoalName(getGoalDisplayName(goal));
+    setGoalScopeType(goal.scope.type);
+    setGoalScopeId(goal.scope.id ?? "");
     setTargetCards(String(goal.targetCards));
     setTargetAccuracy(String(Math.round(goal.targetAccuracy * 100)));
     if (goal.deadline > 0) {
@@ -369,6 +402,7 @@ export default function GoalsPage() {
   };
 
   const handleSaveGoal = async () => {
+    const nextName = goalName.trim().slice(0, 120);
     const nextTargetCards = parseTargetCardsInput(targetCards);
     const nextTargetAccuracy = parseTargetAccuracyInput(targetAccuracy);
     const parsedDeadline = deadlineDate
@@ -376,6 +410,8 @@ export default function GoalsPage() {
       : 0;
 
     if (
+      !nextName ||
+      (goalScopeType !== "all" && (!goalScopeId || !selectedScopeLabel)) ||
       nextTargetCards === null ||
       nextTargetAccuracy === null ||
       (deadlineDate &&
@@ -383,7 +419,7 @@ export default function GoalsPage() {
     ) {
       setFeedback({
         type: "error",
-        message: "Enter valid targets and choose a future deadline, or leave it blank.",
+        message: "Name the goal, choose its study scope, and enter valid targets.",
       });
       return;
     }
@@ -393,13 +429,22 @@ export default function GoalsPage() {
 
     try {
       const goalUpdates = {
+        name: nextName,
+        scope:
+          goalScopeType === "all"
+            ? { type: "all" as const }
+            : {
+                type: goalScopeType,
+                id: goalScopeId,
+                label: selectedScopeLabel,
+              },
         targetCards: nextTargetCards,
         targetAccuracy: nextTargetAccuracy,
         deadline: parsedDeadline,
       };
 
       if (editingGoalId) {
-        await updateDoc(doc(db, "users", user.uid, "goals", editingGoalId), goalUpdates);
+        await updateGoal(user.uid, editingGoalId, goalUpdates);
         setGoals((prev) =>
           prev.map((goal) =>
             goal.id === editingGoalId ? { ...goal, ...goalUpdates } : goal
@@ -414,12 +459,9 @@ export default function GoalsPage() {
         status: "active" as const,
         createdAt,
         };
-        const goalRef = await addDoc(
-          collection(db, "users", user.uid, "goals"),
-          newGoal
-        );
+        const createdGoal = await createGoal(user.uid, newGoal);
 
-        setGoals((prev) => [{ id: goalRef.id, ...newGoal }, ...prev]);
+        setGoals((prev) => [createdGoal, ...prev]);
         setFeedback({ type: "success", message: "Goal created." });
       }
 
@@ -447,7 +489,7 @@ export default function GoalsPage() {
     setCancellingGoalId(goal.id);
     setFeedback(null);
     try {
-      await updateDoc(doc(db, "users", user.uid, "goals", goal.id), {
+      await updateGoal(user.uid, goal.id, {
         status: "cancelled",
       });
       setGoals((prev) =>
@@ -487,7 +529,28 @@ export default function GoalsPage() {
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
         ) : null}
 
-        <Card id="new-goal" tone="warm" padding="lg">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <SectionHeader
+            eyebrow="Current targets"
+            title={activeGoals.length === 0 ? "No active goals" : `${activeGoals.length} active goal${activeGoals.length === 1 ? "" : "s"}`}
+          />
+          {!showGoalComposer ? (
+            <Button
+              type="button"
+              variant="warm"
+              onClick={() => {
+                setEditingGoalId(null);
+                setShowGoalComposer(true);
+                setFeedback(null);
+              }}
+            >
+              New goal
+            </Button>
+          ) : null}
+        </div>
+
+        {showGoalComposer ? (
+          <Card id="new-goal" tone="warm" padding="lg">
           <SectionHeader
             eyebrow={editingGoalId ? "Edit goal" : "New goal"}
             title={editingGoalId ? "Adjust this target." : "Set a clear target."}
@@ -511,6 +574,52 @@ export default function GoalsPage() {
           </div>
           <div className="goal-form-layout min-w-0">
             <div className="goal-form-grid grid min-w-0 gap-3 sm:gap-4">
+              <Input
+                value={goalName}
+                maxLength={120}
+                onChange={(event) => setGoalName(event.target.value)}
+                label="Goal name"
+                placeholder="For example, Biology review"
+                containerClassName="goal-form-span-all min-w-0"
+                className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
+              />
+              <label className="min-w-0 text-sm font-medium text-text-secondary">
+                Counts study from
+                <select
+                  value={goalScopeType}
+                  onChange={(event) => {
+                    setGoalScopeType(event.target.value as GoalScopeType);
+                    setGoalScopeId("");
+                  }}
+                  className="app-field mt-2 min-h-11 w-full rounded-[1.15rem] px-4 py-2.5 text-sm"
+                >
+                  <option value="all">All study</option>
+                  <option value="deck">One deck</option>
+                  <option value="topic">One topic</option>
+                  <option value="folder">One folder</option>
+                </select>
+              </label>
+              {goalScopeType !== "all" ? (
+                <label className="min-w-0 text-sm font-medium text-text-secondary">
+                  {goalScopeType[0].toUpperCase() + goalScopeType.slice(1)}
+                  <select
+                    value={goalScopeId}
+                    onChange={(event) => setGoalScopeId(event.target.value)}
+                    className="app-field mt-2 min-h-11 w-full rounded-[1.15rem] px-4 py-2.5 text-sm"
+                  >
+                    <option value="">Choose {goalScopeType}</option>
+                    {scopeOptions.map((option) => (
+                      <option key={option.id} value={option.id}>
+                        {option.label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="app-subtle-panel flex min-h-11 items-center rounded-[1.15rem] px-4 py-2.5 text-sm text-text-secondary">
+                  Every reviewed card counts toward this goal.
+                </div>
+              )}
               <Input
                 type="number"
                 min="1"
@@ -589,7 +698,8 @@ export default function GoalsPage() {
               </div>
             </div>
           </div>
-        </Card>
+          </Card>
+        ) : null}
 
         {isLoadingGoals ? (
           <div className="grid gap-4 lg:grid-cols-2">
@@ -605,12 +715,13 @@ export default function GoalsPage() {
                 title="No active goals"
                 description="Create a goal to earn stars."
                 action={
-                  <a
-                    href="#new-goal"
-                    className="app-button-primary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium"
+                  <Button
+                    type="button"
+                    variant="warm"
+                    onClick={() => setShowGoalComposer(true)}
                   >
                     Create your first goal
-                  </a>
+                  </Button>
                 }
               />
             ) : (
@@ -634,7 +745,13 @@ export default function GoalsPage() {
                     >
                       <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <div className="font-semibold">
+                          <div className="text-base font-semibold text-text-primary">
+                            {getGoalDisplayName(goal)}
+                          </div>
+                          <div className="mt-1 text-xs font-medium text-text-muted">
+                            {formatGoalScopeText(goal)}
+                          </div>
+                          <div className="mt-3 font-semibold">
                             {goal.progress.cardsCompleted} / {goal.targetCards} cards
                           </div>
                           <div className="mt-1 text-text-muted">
@@ -699,8 +816,9 @@ export default function GoalsPage() {
                       className="app-panel p-4 text-sm"
                     >
                       <div className="flex items-center justify-between">
-                        <span className="font-semibold">
-                          {goal.progress.cardsCompleted} / {goal.targetCards} cards
+                        <span className="min-w-0 pr-3">
+                          <span className="block truncate font-semibold">{getGoalDisplayName(goal)}</span>
+                          <span className="mt-1 block text-xs text-text-muted">{formatGoalScopeText(goal)}</span>
                         </span>
                         <span
                           className={`rounded-full px-3 py-1 text-xs font-semibold ${
@@ -719,6 +837,7 @@ export default function GoalsPage() {
                         </span>
                       </div>
                       <div className="text-text-muted">
+                        {goal.progress.cardsCompleted} / {goal.targetCards} cards ·{" "}
                         {formatGoalAccuracyText(goal)}
                       </div>
                     </div>

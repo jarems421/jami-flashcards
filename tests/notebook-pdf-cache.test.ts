@@ -43,4 +43,24 @@ describe("notebook PDF document cache", () => {
 
     expect(load).toHaveBeenCalledTimes(4);
   });
+
+  it("disposes loaded PDF documents on eviction, invalidation, and clear", async () => {
+    const dispose = vi.fn(async () => undefined);
+    const load = vi.fn(async (storagePath: string) => ({ storagePath }));
+    const cache = createNotebookPdfDocumentCache(load, 1, dispose);
+
+    await cache.get("one.pdf");
+    await cache.get("two.pdf");
+    await Promise.resolve();
+    expect(dispose).toHaveBeenCalledWith({ storagePath: "one.pdf" });
+
+    cache.invalidate("two.pdf");
+    await Promise.resolve();
+    expect(dispose).toHaveBeenCalledWith({ storagePath: "two.pdf" });
+
+    await cache.get("three.pdf");
+    cache.clear();
+    await Promise.resolve();
+    expect(dispose).toHaveBeenCalledWith({ storagePath: "three.pdf" });
+  });
 });

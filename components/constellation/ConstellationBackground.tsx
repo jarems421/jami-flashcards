@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { User } from "firebase/auth";
-import { collection, getDocs } from "firebase/firestore";
 import { listenToAuth } from "@/lib/auth/auth-listener";
 import {
   getResolvedBackgroundConstellation,
@@ -10,12 +9,10 @@ import {
 } from "@/lib/constellation/constellations";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
-  parseStarData,
   spreadBackfilledStars,
   type NormalizedStar,
 } from "@/lib/constellation/stars";
-import { backfillStarPositions } from "@/services/constellation/stars";
-import { db } from "@/services/firebase/client";
+import { backfillStarPositions, getStars } from "@/services/constellation/stars";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 
 type ConstellationBackgroundProps = {
@@ -52,16 +49,11 @@ export default function ConstellationBackground({
     void (async () => {
       try {
         const nextConstellations = await ensureConstellationSetup(user.uid);
-        const starsSnapshot = await getDocs(collection(db, "users", user.uid, "stars"));
+        const stars = await getStars(user.uid);
         if (cancelled) return;
 
         const adjustedStars = spreadBackfilledStars(
-          starsSnapshot.docs.map((starDoc) =>
-            parseStarData(
-              starDoc.id,
-              starDoc.data() as Record<string, unknown>
-            )
-          )
+          stars
         ).sort((a, b) => b.createdAt - a.createdAt);
 
         setConstellations(nextConstellations);
@@ -130,4 +122,3 @@ export default function ConstellationBackground({
     </div>
   );
 }
-

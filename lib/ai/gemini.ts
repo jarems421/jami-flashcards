@@ -42,16 +42,20 @@ function shouldTryNextModel(error: unknown) {
   return status === 429 || (typeof status === "number" && status >= 500);
 }
 
-async function withRequestTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-  let timeoutId: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_, reject) => {
-    timeoutId = setTimeout(() => reject(new Error(TIMEOUT_MESSAGE)), timeoutMs);
-  });
+async function withRequestTimeout<T>(
+  run: (signal: AbortSignal) => Promise<T>,
+  timeoutMs: number
+) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(TIMEOUT_MESSAGE), timeoutMs);
 
   try {
-    return await Promise.race([promise, timeoutPromise]);
+    return await run(controller.signal);
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(TIMEOUT_MESSAGE);
+    throw error;
   } finally {
-    if (timeoutId) clearTimeout(timeoutId);
+    clearTimeout(timeoutId);
   }
 }
 
@@ -80,8 +84,8 @@ export async function generateGeminiText({
 
     try {
       const result = await withRequestTimeout(
-        model.generateContent(request),
-        timeoutMs,
+        (signal) => model.generateContent(request, { signal }),
+        timeoutMs
       );
       return result.response.text();
     } catch (error) {

@@ -8,6 +8,8 @@ import type { Goal } from "@/lib/study/goals";
 function buildGoal(targetCards: number, targetAccuracy = 0.8): Goal {
   return {
     id: "goal",
+    name: "Test goal",
+    scope: { type: "all" },
     targetCards,
     targetAccuracy,
     deadline: 0,

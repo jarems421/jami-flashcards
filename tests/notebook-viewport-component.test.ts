@@ -71,7 +71,7 @@ describe("NotebookViewport", () => {
     );
     expect(notebookEditorSource).toContain("queueLivePinchTransform()");
     expect(notebookEditorSource).toContain(
-      "pageSwipePreviewEnabled = viewportLayout.zoom <= 1.0001"
+      "isNotebookPageSwipePreviewEnabled("
     );
   });
 

@@ -5,7 +5,7 @@ import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
 import ObjectIcon from "@/components/workspace/ObjectIcon";
-import { getObjectColorPreset } from "@/components/workspace/object-card-styles";
+import { getObjectColorPreset } from "@/lib/workspace/object-card-styles";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");

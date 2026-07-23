@@ -1,0 +1,16 @@
+.drawerPanel {
+  animation: sources-drawer-in 180ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes sources-drawer-in {
+  from {
+    opacity: 0;
+    transform: translate3d(1.5rem, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .drawerPanel {
+    animation: none;
+  }
+}

@@ -1,47 +1,15 @@
 import {
-  deleteObject,
-  getDownloadURL,
-  ref,
-  uploadBytesResumable,
-} from "firebase/storage";
-import { storage } from "@/services/firebase/client";
+  createStorageFileId,
+  deleteStorageFile,
+  getStorageFileDownloadUrl,
+  getStorageUploadErrorMessage,
+  sanitizeStorageFileName,
+  uploadStorageFile,
+} from "@/services/firebase/storage-files";
 import {
   resolveSourceFileMimeType,
   validateSourceFile,
 } from "@/lib/practice/source-files";
-
-function sanitizeFileName(fileName: string) {
-  const [baseName, ...extensionParts] = fileName.trim().split(".");
-  const safeBase =
-    (baseName || "source-file")
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, 80) || "source-file";
-  const extension = extensionParts.pop()?.toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 12);
-  return extension ? `${safeBase}.${extension}` : safeBase;
-}
-
-function getUploadErrorMessage(error: unknown) {
-  const code =
-    typeof error === "object" && error && "code" in error
-      ? String((error as { code?: unknown }).code)
-      : "";
-
-  if (code === "storage/unauthorized") {
-    return "You do not have permission to upload this source file.";
-  }
-  if (code === "storage/canceled") {
-    return "The source file upload was cancelled.";
-  }
-  if (code === "storage/quota-exceeded") {
-    return "Source file upload quota was exceeded. Try a smaller file.";
-  }
-  if (code === "storage/retry-limit-exceeded") {
-    return "The upload could not finish. Check your connection and try again.";
-  }
-  return error instanceof Error ? error.message : "Could not upload this source file.";
-}
 
 export function validateSourceUploadFile(file: File) {
   const fileType = resolveSourceFileMimeType(file.name, file.type);
@@ -61,7 +29,7 @@ export function buildSourceStoragePath(input: {
   if (!userId) throw new Error("Missing userId.");
   if (!sourceId) throw new Error("Missing sourceId.");
   if (!fileId) throw new Error("Missing fileId.");
-  return `users/${userId}/sourceFiles/${sourceId}/${fileId}-${sanitizeFileName(input.fileName)}`;
+  return `users/${userId}/sourceFiles/${sourceId}/${fileId}-${sanitizeStorageFileName(input.fileName, "source-file")}`;
 }
 
 export async function uploadSourceFile(input: {
@@ -72,37 +40,19 @@ export async function uploadSourceFile(input: {
 }) {
   const { userId, sourceId, file, onProgress } = input;
   const fileType = validateSourceUploadFile(file);
-  const fileId =
-    typeof crypto !== "undefined" && "randomUUID" in crypto
-      ? crypto.randomUUID()
-      : `file-${Date.now()}`;
+  const fileId = createStorageFileId();
   const storagePath = buildSourceStoragePath({
     userId,
     sourceId,
     fileId,
     fileName: file.name,
   });
-  const storageRef = ref(storage, storagePath);
-
   try {
-    await new Promise<void>((resolve, reject) => {
-      const uploadTask = uploadBytesResumable(storageRef, file, {
-        contentType: fileType ?? file.type,
-        cacheControl: "private,max-age=3600",
-      });
-
-      uploadTask.on(
-        "state_changed",
-        (snapshot) => {
-          const progress =
-            snapshot.totalBytes > 0
-              ? Math.round((snapshot.bytesTransferred / snapshot.totalBytes) * 100)
-              : 0;
-          onProgress?.(progress);
-        },
-        (error) => reject(error),
-        () => resolve()
-      );
+    await uploadStorageFile({
+      storagePath,
+      file,
+      contentType: fileType ?? file.type,
+      onProgress,
     });
 
     return {
@@ -112,18 +62,18 @@ export async function uploadSourceFile(input: {
       storagePath,
     };
   } catch (error) {
-    throw new Error(getUploadErrorMessage(error));
+    throw new Error(getStorageUploadErrorMessage(error, "source file"));
   }
 }
 
 export async function getSourceFileDownloadUrl(storagePath: string) {
   const normalizedPath = storagePath.trim();
   if (!normalizedPath) throw new Error("Missing source file path.");
-  return getDownloadURL(ref(storage, normalizedPath));
+  return getStorageFileDownloadUrl(normalizedPath);
 }
 
 export async function deleteSourceFile(storagePath: string) {
   const normalizedPath = storagePath.trim();
   if (!normalizedPath) return;
-  await deleteObject(ref(storage, normalizedPath));
+  await deleteStorageFile(normalizedPath);
 }

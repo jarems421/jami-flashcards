@@ -106,6 +106,24 @@ describe("notebook PDF helpers", () => {
     });
   });
 
+  it("caps the total canvas allocation at high zoom on Retina screens", () => {
+    const metrics = getNotebookPdfRenderMetrics({
+      pageWidth: 900,
+      pageHeight: 1240,
+      hostWidth: 3_600,
+      hostHeight: 4_960,
+      pixelRatio: 2,
+      maxCanvasPixels: 6_000_000,
+    });
+
+    expect(metrics.canvasWidth * metrics.canvasHeight).toBeLessThanOrEqual(
+      6_000_000
+    );
+    expect(metrics.pixelRatio).toBeLessThan(1);
+    expect(metrics.cssWidth).toBe(3_600);
+    expect(metrics.cssHeight).toBe(4_960);
+  });
+
   it("falls back to legacy uploaded-file notebooks at PDF page zero", () => {
     expect(
       resolveNotebookPageBackgroundFileId({

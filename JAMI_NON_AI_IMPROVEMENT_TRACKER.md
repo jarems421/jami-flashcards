@@ -1,5 +1,10 @@
 # Jami Non-AI Improvement Tracker
 
+> **Archived planning snapshot (6 June 2026).** This document records the
+> decisions and status labels used during the non-AI improvement phase. It is
+> useful history, but it is no longer the active backlog or a source of truth for
+> current implementation status.
+
 Generated from the user-supplied non-AI improvement plan and re-audited against the
 current app on 6 June 2026.
 

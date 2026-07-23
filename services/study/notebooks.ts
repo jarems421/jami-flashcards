@@ -5,8 +5,10 @@ import {
   doc,
   getDoc,
   getDocs,
+  increment,
   orderBy,
   query,
+  runTransaction,
   updateDoc,
   where,
   writeBatch,
@@ -23,6 +25,7 @@ import {
   getNotebookPagesAfterDelete,
   normalizeNotebookTitle,
   normalizeNotebookPreviewSvg,
+  prepareNotebookPageSnapshotForPersistence,
   type Notebook,
   type NotebookFile,
   type NotebookInkData,
@@ -38,6 +41,19 @@ import {
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
+
+export class NotebookPageConflictError extends Error {
+  readonly code = "notebook-page-conflict";
+  readonly remoteRevision: number;
+
+  constructor(remoteRevision: number) {
+    super(
+      "This page changed on another device. Your work is safe in a local draft; reopen the notebook to choose which version to keep."
+    );
+    this.name = "NotebookPageConflictError";
+    this.remoteRevision = remoteRevision;
+  }
+}
 
 function notebooksCollection(userId: string) {
   return collection(db, "users", userId, "notebooks");
@@ -333,6 +349,7 @@ export async function updateNotebookPage(
     textBlocks: NotebookTextBlock[];
     inkData: NotebookInkData | null;
     strokeData: NotebookStrokeData | null;
+    pageColor: NotebookPageColor;
     pageStyle: NotebookPageStyle;
     status: NotebookPageStatus;
     questionPrompt: string;
@@ -356,12 +373,36 @@ export async function updateNotebookPage(
     updatedAt: Date.now(),
   };
 
+  const changesPageContent =
+    input.typedContent !== undefined ||
+    input.textBlocks !== undefined ||
+    input.inkData !== undefined ||
+    input.strokeData !== undefined ||
+    input.pageColor !== undefined ||
+    input.pageStyle !== undefined ||
+    input.status !== undefined;
+  if (
+    input.typedContent !== undefined ||
+    input.textBlocks !== undefined ||
+    input.inkData !== undefined
+  ) {
+    prepareNotebookPageSnapshotForPersistence({
+      typedContent: input.typedContent ?? "",
+      textBlocks: input.textBlocks ?? [],
+      inkData: input.inkData ?? undefined,
+      pageColor: input.pageColor ?? "white",
+      pageStyle: input.pageStyle ?? "plain",
+      status: input.status ?? "blank",
+    });
+  }
+
   if (input.title !== undefined) updates.title = input.title.trim().slice(0, 120) || null;
   if (input.pageType !== undefined) updates.pageType = input.pageType;
-  if (input.typedContent !== undefined) updates.typedContent = input.typedContent.trim().slice(0, 30_000) || null;
+  if (input.typedContent !== undefined) updates.typedContent = input.typedContent.trim() || null;
   if (input.textBlocks !== undefined) updates.textBlocks = input.textBlocks;
   if (input.inkData !== undefined) updates.inkData = input.inkData;
   if (input.strokeData !== undefined) updates.strokeData = input.strokeData;
+  if (input.pageColor !== undefined) updates.pageColor = input.pageColor;
   if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
   if (input.status !== undefined) updates.status = input.status;
   if (input.questionPrompt !== undefined) updates.questionPrompt = input.questionPrompt.trim().slice(0, 4_000) || null;
@@ -377,6 +418,7 @@ export async function updateNotebookPage(
         ? Math.round(input.pdfPageIndex)
         : null;
   }
+  if (changesPageContent) updates.contentRevision = increment(1);
 
   await withTimeout(
     updateDoc(doc(db, "users", normalizedUserId, "notebookPages", normalizedPageId), updates),
@@ -393,8 +435,10 @@ export async function saveNotebookPageSnapshot(
     typedContent: string;
     textBlocks: NotebookTextBlock[];
     inkData: NotebookInkData;
+    pageColor: NotebookPageColor;
     pageStyle: NotebookPageStyle;
     status: NotebookPageStatus;
+    baseContentRevision: number;
   }
 ) {
   const normalizedUserId = userId.trim();
@@ -404,30 +448,57 @@ export async function saveNotebookPageSnapshot(
   if (!notebookId) throw new Error("Missing notebookId.");
   if (!pageId) throw new Error("Missing pageId.");
 
-  const now = Date.now();
-  const previewInkSvg = normalizeNotebookPreviewSvg(input.inkData.svg);
-  const batch = writeBatch(db);
-  batch.update(
-    doc(db, "users", normalizedUserId, "notebookPages", pageId),
-    {
-      typedContent: input.typedContent.trim().slice(0, 30_000) || null,
-      textBlocks: input.textBlocks,
-      inkData: input.inkData,
-      strokeData: null,
-      pageStyle: input.pageStyle,
-      status: input.status,
-      updatedAt: now,
-    }
+  const snapshot = prepareNotebookPageSnapshotForPersistence(input);
+  const inkData = snapshot.inkData;
+  if (!inkData) throw new Error("This page has no drawing snapshot to save.");
+  const baseContentRevision =
+    Number.isFinite(input.baseContentRevision) && input.baseContentRevision >= 0
+      ? Math.round(input.baseContentRevision)
+      : 0;
+  const pageRef = doc(db, "users", normalizedUserId, "notebookPages", pageId);
+  const notebookRef = doc(db, "users", normalizedUserId, "notebooks", notebookId);
+
+  return withTimeout(
+    runTransaction(db, async (transaction) => {
+      const pageDocument = await transaction.get(pageRef);
+      if (!pageDocument.exists()) throw new Error("This notebook page no longer exists.");
+      const pageData = pageDocument.data() as Record<string, unknown>;
+      if (pageData.notebookId !== notebookId) {
+        throw new Error("This page does not belong to the open notebook.");
+      }
+      const remoteRevision =
+        typeof pageData.contentRevision === "number" &&
+        Number.isFinite(pageData.contentRevision) &&
+        pageData.contentRevision >= 0
+          ? Math.round(pageData.contentRevision)
+          : 0;
+      if (remoteRevision !== baseContentRevision) {
+        throw new NotebookPageConflictError(remoteRevision);
+      }
+
+      const now = Date.now();
+      const contentRevision = remoteRevision + 1;
+      transaction.update(pageRef, {
+        typedContent: snapshot.typedContent.trim() || null,
+        textBlocks: snapshot.textBlocks,
+        inkData,
+        strokeData: null,
+        pageColor: snapshot.pageColor,
+        pageStyle: snapshot.pageStyle,
+        status: snapshot.status,
+        contentRevision,
+        updatedAt: now,
+      });
+      transaction.update(notebookRef, {
+        previewInkSvg: normalizeNotebookPreviewSvg(input.inkData.svg) ?? null,
+        previewPageId: pageId,
+        updatedAt: now,
+      });
+      return { contentRevision, updatedAt: now };
+    }),
+    WRITE_MS,
+    "Save notebook page"
   );
-  batch.update(
-    doc(db, "users", normalizedUserId, "notebooks", notebookId),
-    {
-      previewInkSvg: previewInkSvg ?? null,
-      previewPageId: pageId,
-      updatedAt: now,
-    }
-  );
-  await withTimeout(batch.commit(), WRITE_MS, "Save notebook page");
 }
 
 export async function deleteNotebookPage(

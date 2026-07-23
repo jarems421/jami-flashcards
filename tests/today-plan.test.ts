@@ -151,7 +151,7 @@ describe("today plan", () => {
     expect(plan.workspace.recentNotebook?.title).toBe("Photosynthesis working");
   });
 
-  it("prioritizes due cards once there is no recent notebook", () => {
+  it("prioritizes due cards over recent notebook work", () => {
     const dueCards = [
       card({ id: "due-1", deckId: "deck-b", front: "A", back: "B", dueDate: NOW - 1 }),
       card({ id: "due-2", deckId: "deck-b", front: "C", back: "D", dueDate: NOW - 1 }),
@@ -161,12 +161,26 @@ describe("today plan", () => {
       ...basePlanInput(),
       cards: dueCards,
       dueCards,
-      notebooks: [],
+      notebooks: [notebook],
     });
 
     expect(plan.nextAction.type).toBe("review_due_cards");
     expect(plan.nextAction.title).toBe("Review 3 due flashcards in History deck");
     expect(plan.dueCards.primaryDeckName).toBe("History deck");
+  });
+
+  it("resumes an unfinished study session before other work", () => {
+    const plan = buildTodayPlan({
+      ...basePlanInput(),
+      notebooks: [notebook],
+      dueCards: [
+        card({ id: "due-1", deckId: "deck-a", front: "A", back: "B", dueDate: NOW - 1 }),
+      ],
+      hasActiveStudySession: true,
+    });
+
+    expect(plan.nextAction.type).toBe("resume_study_session");
+    expect(plan.nextAction.label).toBe("Resume session");
   });
 
   it("surfaces flashcard and notebook page drafts that are still draft status", () => {
@@ -251,6 +265,8 @@ describe("today plan", () => {
   it("continues an active goal before card setup once folders exist", () => {
     const goal: Goal = {
       id: "goal-1",
+      name: "Biology review",
+      scope: { type: "all" },
       targetCards: 10,
       targetAccuracy: 0.8,
       deadline: NOW + 1000,
@@ -269,6 +285,29 @@ describe("today plan", () => {
 
     expect(plan.nextAction.type).toBe("continue_goal");
     expect(plan.goalSummary?.progressPercent).toBe(30);
+  });
+
+  it("surfaces a near-deadline goal before notebook continuity", () => {
+    const goal: Goal = {
+      id: "goal-urgent",
+      name: "Finish biology",
+      scope: { type: "deck", id: "deck-a", label: "Biology deck" },
+      targetCards: 10,
+      targetAccuracy: 0.8,
+      deadline: NOW + 60 * 60 * 1000,
+      progress: { cardsCompleted: 3, correctAnswers: 3, totalAnswers: 3 },
+      status: "active",
+      createdAt: 1,
+    };
+    const plan = buildTodayPlan({
+      ...basePlanInput(),
+      notebooks: [notebook],
+      topics: [],
+      activeGoals: [goal],
+    });
+
+    expect(plan.nextAction.type).toBe("continue_goal");
+    expect(plan.goalSummary?.isAtRisk).toBe(true);
   });
 
   it("falls back to deck setup after the folder/workspace path exists", () => {

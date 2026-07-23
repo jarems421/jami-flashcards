@@ -1,6 +1,9 @@
 # Jami Manual QA Checklist
 
-Use this checklist after changes to the learning-loop MVP. Phase 6.1 removes the legacy question-bank Practice architecture. The active Practice model is now:
+> **Maintenance note (22 July 2026).** This checklist describes the current
+> authenticated product. Historical signed-out demo assumptions have been removed.
+
+Use this checklist after changes to the learning loop. The legacy question-bank Practice architecture is retired. The active Practice model is:
 
 **Folder -> Notebook -> Pages -> Working**
 
@@ -19,7 +22,7 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 9. Check Today for notebook, folder, review, and draft actions.
 10. Check Progress for weak cards/topics plus linked folder/notebook/source context.
 
-## Phase 6.1 Notebook-First Practice
+## Notebook-First Practice
 
 1. Open `/dashboard/practise`.
 2. Confirm user-facing copy says `Practice`, not `Practise`.
@@ -41,7 +44,7 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 
 ## Phase 7 Notebook Editor V2
 
-1. Open `/dashboard/notebooks/notebook-photosynthesis?agent=1` or any signed-in notebook.
+1. Open any notebook while signed in.
 2. Confirm the editor opens as an immersive notebook workspace rather than a dashboard card stack.
 3. Confirm the toolbar is icon-first with accessible labels/tooltips for Pages, Text, Pen, Eraser, Undo, Clear, Settings, AI, Add Page, and Save.
 4. Confirm the page is long and paper-like, not a short landscape card.
@@ -107,24 +110,18 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 5. Confirm the notebook editor shows a file chip/card.
 6. Confirm copy says: `File saved. Full paper annotation comes later.`
 7. Confirm the UI does not claim PDF rendering, OCR, handwriting recognition, image AI, automatic reading, or annotation.
-8. Confirm public walkthrough simulates uploaded-file notebooks locally and does not write to Firebase.
+8. Reload the notebook and confirm the uploaded-file metadata still resolves for the owning account.
 
-## Public Walkthrough And Agent Routes
+## Authenticated Route Index
 
 1. Open `/agent` while signed out.
-2. Confirm the route map links to Today, Learn, Practice, Folders, Notebook, Sources, Cards, Decks, Progress, and Account.
-3. Open `/llms.txt` and confirm it lists the same notebook-first route map in plain text.
-4. Open `/dashboard?agent=1` while signed out.
-5. Confirm it does not redirect to auth.
-6. Open `/dashboard/practise?agent=1`.
-7. Confirm Practice is notebook-first and local-only.
-8. Confirm the old question bank, old attempt form, confidence block, and old Practice Tutor flow do not appear.
-9. Open `/dashboard/notebooks/notebook-photosynthesis?agent=1`.
-10. Type, save, add a page, and confirm local-only page navigation.
-11. Open `/dashboard/folders?agent=1` and confirm public folders are balanced across subjects.
-12. Open Sources and approve a practice draft into a local notebook page.
-13. Confirm all public actions are labelled or behave as local-only simulations.
-14. Confirm there are no Firebase permission errors in the browser console.
+2. Confirm it clearly says dashboard routes require authentication and provides no demo-data bypass.
+3. Open `/llms.txt` and confirm it lists the same stable authenticated route map in plain text.
+4. Open `/dashboard` while signed out and confirm it redirects to authentication.
+5. Sign in, return to `/agent`, and open the Today, Learn, Folders, Sources, Progress, and Account links.
+6. Confirm the routes use the signed-in account's real Firebase-backed data.
+7. Confirm the old question bank, attempt form, confidence block, and old Practice Tutor flow do not appear.
+8. Confirm there are no Firebase permission errors in the browser console.
 
 ## Sources Loop
 
@@ -176,9 +173,9 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 
 ## Regression Boundaries
 
-1. `/demo` should still point users into the public dashboard walkthrough.
-2. `/dashboard` should remain public-readable when signed out.
-3. Public walkthrough components must not call private Firestore services.
-4. `/agent` and `/llms.txt` should remain public and must not expose private user data.
+1. `/dashboard` must redirect signed-out visitors to authentication.
+2. `/agent` and `/llms.txt` may remain public route documentation but must not bypass authentication or expose private data.
+3. Dashboard pages and feature components must use domain services instead of direct Firestore or Storage clients where a service boundary exists.
+4. Route aliases and installed-PWA compatibility paths must continue to resolve safely.
 5. Sources, folders, notebooks, source Tutor, and generated drafts are allowed.
 6. Do not expose OCR, PDF parsing, PDF annotation, file AI, full-paper mode, browser extension, always-on screen watching, advanced voice tutor, or advanced analytics.

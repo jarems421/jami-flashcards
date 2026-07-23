@@ -954,15 +954,6 @@
     color: currentColor !important;
   }
 
-  .app-link {
-    color: var(--color-text-secondary);
-  }
-
-  .app-link:hover {
-    color: var(--color-text-primary);
-  }
-
-  .app-focusable,
   a,
   button,
   input,
@@ -974,7 +965,6 @@
     outline-offset: 3px;
   }
 
-  .app-focusable:focus-visible,
   a:focus-visible,
   button:focus-visible,
   input:focus-visible,

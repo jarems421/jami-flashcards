@@ -1,6 +1,6 @@
 import Link from "next/link";
 import ObjectIcon from "./ObjectIcon";
-import { getObjectColorPreset } from "./object-card-styles";
+import { getObjectColorPreset } from "@/lib/workspace/object-card-styles";
 
 export type FolderObjectStat = {
   label: string;

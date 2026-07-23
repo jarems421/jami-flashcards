@@ -11,13 +11,25 @@ import { db } from "@/services/firebase/client";
 import { getActiveOrCreateInitialConstellation } from "@/services/constellation/constellations";
 import type { Goal } from "@/lib/study/goals";
 import { getStarColor, getStarRewardSize, resolveStarPresetId } from "@/lib/constellation/stars";
-import type { NormalizedStar } from "@/lib/constellation/stars";
+import { parseStarData, type NormalizedStar } from "@/lib/constellation/stars";
 import { withTimeout } from "@/services/firebase/firestore";
 
 const QUERY_MS = 30_000;
 const CREATE_MS = 30_000;
 const UPDATE_MS = 30_000;
 const STAR_COUNT_FIELD = "starCount";
+
+function getStarsCollection(userId: string) {
+  return collection(db, "users", userId, "stars");
+}
+
+export async function getStars(userId: string): Promise<NormalizedStar[]> {
+  const snapshot = await getDocs(getStarsCollection(userId));
+
+  return snapshot.docs.map((starDoc) =>
+    parseStarData(starDoc.id, starDoc.data() as Record<string, unknown>)
+  );
+}
 
 export async function backfillStarPositions(
   userId: string,
@@ -43,7 +55,7 @@ export async function backfillStarPositions(
 }
 
 export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
-  const starsCollection = collection(db, "users", userId, "stars");
+  const starsCollection = getStarsCollection(userId);
   const starRef = doc(starsCollection, goal.id);
   const existingStarSnapshot = await withTimeout(
     getDocs(query(starsCollection, where("goalId", "==", goal.id))),

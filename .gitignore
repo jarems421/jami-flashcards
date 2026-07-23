@@ -32,8 +32,9 @@ yarn-error.log*
 firebase-debug.log*
 firestore-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files (keep the documented placeholder template)
 .env*
+!.env.example
 
 # typescript
 tsconfig.tsbuildinfo

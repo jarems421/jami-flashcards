@@ -1,59 +1,38 @@
-# Jami agent route map
+# Jami route map
 
-Jami exposes a safe public walkthrough for LLM/browser agents.
+Jami is an authenticated study workspace. Start at / and sign in with Google or
+email. Dashboard pages load the signed-in user's Firebase data; do not assume a
+signed-out visitor can access seeded or public dashboard data.
 
-Start here:
-- /agent
-- /dashboard?agent=1
+Primary destinations:
+- /dashboard - Home and recommended next action
+- /dashboard/study - Learn and flashcard review
+- /dashboard/practise - Folders and notebook-first study spaces
+- /dashboard/progress - Progress and weak areas
+- /dashboard/decks - Flashcard decks
+- /dashboard/cards - All flashcards
+- /dashboard/topics - Connected study topics
+- /dashboard/library - Saved sources and existing source tools
+- /dashboard/goals - Scoped study goals
+- /dashboard/constellation - Stars and constellation rewards
+- /dashboard/profile - Account and profile settings
 
-Important rules:
-- Signed-out visitors can open /dashboard and supported child routes without an account.
-- Signed-out dashboard mode uses seeded local walkthrough data.
-- Local walkthrough actions can change state in the browser session but do not write to Firebase.
-- Real private data and persistent writes still require authentication.
-- Do not assume the public walkthrough is a real user account.
+Additional routes:
+- /dashboard/folders/[folderId] - A folder's notebooks, decks, topics, and sources
+- /dashboard/notebooks/[notebookId] - Page-based notebook editor
+- /dashboard/decks/[id] - Deck detail and card management
+- /dashboard/decks/[id]/study - Deck study session
+- /dashboard/topics/[topicId] - Topic detail
 
-Core route family:
-- /dashboard?agent=1 - Today / daily command centre.
-- /dashboard/study?agent=1 - Learn / flashcard review.
-- /dashboard/practise?agent=1 - Practice / notebook-first landing with Continue working, Folders, and notebook entry points.
-- /dashboard/notebooks/notebook-photosynthesis?agent=1 - Notebook / icon toolbar, long page, text boxes, pen tools, page counter, add page, and page navigation.
-- /dashboard/progress?agent=1 - Progress / weak cards, drafts, sources, folders, and notebook activity.
-- /dashboard/folders?agent=1 - Folders / folder-first study spaces with seeded local data.
-- /dashboard/library?agent=1 - Sources / seeded references and local source actions.
-- /dashboard/cards?agent=1 - Cards / browse cards and drafts.
-- /dashboard/decks?agent=1 - Decks / card-set organisation.
-- /dashboard/goals?agent=1 - Goals / study targets.
-- /dashboard/constellation?agent=1 - Stars / rewards.
-- /dashboard/profile?agent=1 - Account / public walkthrough explanation and sign-in boundary.
+Compatibility:
+- /dashboard/practice redirects to /dashboard/practise
+- User-facing copy says Folders or Practice even though the legacy `practise` path
+  is retained for route compatibility.
 
-Suggested click test:
-1. Open /agent.
-2. Click "Start public dashboard".
-3. Open Learn and flip/review a seeded card.
-4. Open Practice and confirm Continue working plus Folders are the main entry points.
-5. Open /dashboard/notebooks/notebook-photosynthesis?agent=1.
-6. Create a text box on the notebook page, draw, save, add a page, and switch pages.
-7. Resize to phone width and confirm "Notebook editing works best on iPad or desktop" appears where notebook editing is shown.
-8. Open Folders and confirm the folder detail view uses Notebooks, Decks, and Sources tabs.
-9. In a folder, confirm the Decks tab only shows folder decks and only adds existing global decks.
-10. In a folder, confirm the Sources tab only shows folder sources and uses add/create local simulations.
-11. Open Sources and inspect seeded source actions.
-10. Open Account and confirm no private data was accessed.
-
-Phase 6 notebook-first Practice test:
-1. Open /dashboard/practise?agent=1.
-2. Confirm there is no old question bank, Add question form, confidence block, or Practice Tutor attempt panel.
-3. Open a Continue working notebook.
-4. Use the notebook toolbar to create a text box, draw, save, and check the page counter.
-5. Add a page and navigate between pages.
-6. Open /dashboard/folders?agent=1 and inspect notebook templates plus folder Decks/Sources add flows.
-7. Open Sources and approve a practice draft into a notebook page.
-8. Confirm uploaded-file copy says file saved only; no OCR, PDF annotation, or automatic reading is claimed.
-
-Out of scope in public walkthrough:
-- Persistent writes.
-- Private user data.
-- OCR/PDF parsing.
-- Browser extension or Anywhere.
-- Always-on screen watching.
+Data and privacy:
+- Persistent dashboard actions require Firebase authentication.
+- Notebook PDF rendering and page counting happen client-side where supported.
+- Saved sources are only sent to the existing source Tutor after the user selects
+  them and asks a question.
+- Do not infer OCR, background source indexing, browser monitoring, or a public
+  demo workspace.

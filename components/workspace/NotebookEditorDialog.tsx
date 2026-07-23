@@ -19,7 +19,7 @@ import {
   normalizeObjectIcon,
   type ObjectColorId,
   type ObjectIconId,
-} from "./object-card-styles";
+} from "@/lib/workspace/object-card-styles";
 
 type NotebookEditorDialogProps = {
   userId: string;

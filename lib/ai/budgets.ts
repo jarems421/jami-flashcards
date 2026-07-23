@@ -4,6 +4,7 @@ import { getAdminDb } from "@/services/firebase/admin";
 
 export type AiBudgetAction =
   | "chat"
+  | "assistant"
   | "sourceTutorExplain"
   | "sourceFlashcardDrafts"
   | "sourcePracticeDrafts";
@@ -17,6 +18,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
   chat: { dailyRequestLimit: 50, tokenCap: 8_000 },
+  assistant: { dailyRequestLimit: 40, tokenCap: 8_000 },
   sourceTutorExplain: { dailyRequestLimit: 20, tokenCap: 10_000 },
   sourceFlashcardDrafts: { dailyRequestLimit: 10, tokenCap: 12_000 },
   sourcePracticeDrafts: { dailyRequestLimit: 10, tokenCap: 12_000 },

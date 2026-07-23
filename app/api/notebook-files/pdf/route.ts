@@ -11,6 +11,13 @@ import {
 
 export const runtime = "nodejs";
 
+const NOTEBOOK_FILE_CONTENT_TYPES = new Set([
+  "application/pdf",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+]);
+
 export async function GET(request: NextRequest) {
   const token = getBearerToken(request.headers.get("authorization"));
   if (!token) {
@@ -39,11 +46,18 @@ export async function GET(request: NextRequest) {
     const [metadata] = await file.getMetadata();
     const size = Number(metadata.size ?? 0);
 
-    if (metadata.contentType !== "application/pdf") {
-      return Response.json({ error: "This notebook file is not a PDF." }, { status: 415 });
+    const contentType = metadata.contentType ?? "";
+    if (!NOTEBOOK_FILE_CONTENT_TYPES.has(contentType)) {
+      return Response.json(
+        { error: "This notebook file type is not supported." },
+        { status: 415 }
+      );
     }
     if (!Number.isFinite(size) || size < 1 || size > MAX_NOTEBOOK_FILE_SIZE) {
-      return Response.json({ error: "This PDF has an invalid file size." }, { status: 413 });
+      return Response.json(
+        { error: "This notebook file has an invalid file size." },
+        { status: 413 }
+      );
     }
 
     const [bytes] = await file.download();
@@ -53,7 +67,7 @@ export async function GET(request: NextRequest) {
       headers: {
         "Cache-Control": "private, max-age=3600",
         "Content-Length": String(bytes.byteLength),
-        "Content-Type": "application/pdf",
+        "Content-Type": contentType,
       },
     });
   } catch (error) {
@@ -62,15 +76,18 @@ export async function GET(request: NextRequest) {
         ? Number((error as { code?: unknown }).code)
         : 0;
     if (code === 404) {
-      return Response.json({ error: "This PDF no longer exists." }, { status: 404 });
+      return Response.json(
+        { error: "This notebook file no longer exists." },
+        { status: 404 }
+      );
     }
 
-    console.error("Could not download notebook PDF.", {
+    console.error("Could not download notebook file.", {
       storagePath,
       error,
     });
     return Response.json(
-      { error: "This PDF could not be downloaded." },
+      { error: "This notebook file could not be downloaded." },
       { status: 500 }
     );
   }

@@ -3,6 +3,9 @@ import {
   normalizeStringArray,
 } from "@/lib/practice/content";
 import { normalizeInkPressure, normalizeInkTime } from "@/lib/workspace/notebook-ink-engine";
+import type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
+
+export type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
 
 export type NotebookType =
   | "blank"
@@ -40,7 +43,6 @@ export type NotebookStrokeColor =
   | NotebookPenColor
   | NotebookHighlighterColor
   | NotebookCustomStrokeColor;
-export type NotebookStrokeTool = "pen" | "eraser" | "highlighter";
 export type NotebookPageColor = "white" | "black";
 export type NotebookPageStyle = "plain" | "lined" | "grid" | "dot";
 export type NotebookPageStatus = "blank" | "working" | "needs_review" | "marked";
@@ -119,6 +121,8 @@ export type NotebookPage = {
   linkedQuestionId?: string;
   linkedSourceId?: string;
   linkedPastPaperId?: string;
+  /** Monotonic content version used to reject stale editor writes. */
+  contentRevision: number;
   createdAt: number;
   updatedAt: number;
 };
@@ -143,6 +147,10 @@ export const MAX_NOTEBOOK_SOURCE_IDS = 30;
 export const MAX_NOTEBOOK_PAGE_TYPED_CONTENT = 30_000;
 export const MAX_NOTEBOOK_TEXT_BLOCKS = 80;
 export const MAX_NOTEBOOK_TEXT_BLOCK_TEXT = 4_000;
+export const MAX_NOTEBOOK_INK_SVG_LENGTH = 850_000;
+// Firestore documents have a 1 MiB ceiling. Leave room for field names and
+// page metadata instead of relying on the backend to reject a nearly-full doc.
+export const MAX_NOTEBOOK_PAGE_SNAPSHOT_BYTES = 900_000;
 export const NOTEBOOK_PAGE_COORDINATE_WIDTH = 900;
 export const NOTEBOOK_PAGE_COORDINATE_HEIGHT = 1240;
 export const MAX_NOTEBOOK_IMAGE_REFS = 12;
@@ -241,8 +249,7 @@ function normalizeNotebookStroke(value: unknown): NotebookStroke | null {
   const rawPoints = Array.isArray(stroke.points) ? stroke.points : [];
   const points = rawPoints
     .map((point, index) => normalizeNotebookStrokePoint(point, index))
-    .filter((point): point is NotebookStrokePoint => Boolean(point))
-    .slice(0, MAX_NOTEBOOK_STROKE_POINTS);
+    .filter((point): point is NotebookStrokePoint => Boolean(point));
   if (points.length === 0) return null;
 
   const width =
@@ -270,8 +277,7 @@ function normalizeStrokeData(value: unknown): NotebookStrokeData | undefined {
 
   const strokes = data.strokes
     .map(normalizeNotebookStroke)
-    .filter((stroke): stroke is NotebookStroke => Boolean(stroke))
-    .slice(0, MAX_NOTEBOOK_STROKES);
+    .filter((stroke): stroke is NotebookStroke => Boolean(stroke));
 
   return {
     version: typeof data.version === "number" ? data.version : 1,
@@ -279,14 +285,13 @@ function normalizeStrokeData(value: unknown): NotebookStrokeData | undefined {
   };
 }
 
-function normalizeInkData(value: unknown): NotebookInkData | undefined {
+export function normalizeNotebookInkData(value: unknown): NotebookInkData | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) return undefined;
   const data = value as Record<string, unknown>;
   if (
     data.version !== 2 ||
     data.format !== "js-draw-svg" ||
     typeof data.svg !== "string" ||
-    data.svg.length > 700_000 ||
     !data.svg.trimStart().startsWith("<svg")
   ) {
     return undefined;
@@ -325,7 +330,6 @@ function normalizeImageRefs(value: unknown): NotebookImageRef[] {
       width: typeof image.width === "number" ? image.width : undefined,
       height: typeof image.height === "number" ? image.height : undefined,
     });
-    if (images.length >= MAX_NOTEBOOK_IMAGE_REFS) break;
   }
 
   return images;
@@ -388,7 +392,9 @@ function normalizeTextBlock(value: unknown): NotebookTextBlock | null {
   const block = value as Record<string, unknown>;
   const id = normalizeOptionalString(block.id, 160);
   if (!id || typeof block.text !== "string") return null;
-  const text = normalizeOptionalString(block.text, MAX_NOTEBOOK_TEXT_BLOCK_TEXT) ?? "";
+  // Loading is intentionally lossless for legacy documents. The write
+  // contract below reports limits instead of silently truncating user work.
+  const text = block.text;
 
   const width = clampTextBlockNumber(
     block.width,
@@ -420,14 +426,16 @@ export function normalizeNotebookTextBlocks(value: unknown): NotebookTextBlock[]
 
   return value
     .map(normalizeTextBlock)
-    .filter((block): block is NotebookTextBlock => Boolean(block))
-    .slice(0, MAX_NOTEBOOK_TEXT_BLOCKS);
+    .filter((block): block is NotebookTextBlock => Boolean(block));
 }
 
 export function createNotebookTextBlocksFromTypedContent(
   typedContent: string | undefined
 ): NotebookTextBlock[] {
-  const text = normalizeOptionalString(typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT);
+  const text =
+    typeof typedContent === "string" && typedContent.trim()
+      ? typedContent
+      : undefined;
   if (!text) return [];
 
   return [
@@ -444,13 +452,110 @@ export function createNotebookTextBlocksFromTypedContent(
 }
 
 export function buildTypedContentFromTextBlocks(textBlocks: NotebookTextBlock[]) {
-  return normalizeOptionalString(
-    textBlocks
-      .map((block) => block.text.trim())
-      .filter(Boolean)
-      .join("\n\n"),
-    MAX_NOTEBOOK_PAGE_TYPED_CONTENT
+  const content = textBlocks
+    .map((block) => block.text.trim())
+    .filter(Boolean)
+    .join("\n\n");
+  return content || undefined;
+}
+
+export type NotebookPageSnapshotInput = {
+  typedContent: string;
+  textBlocks: NotebookTextBlock[];
+  inkData?: NotebookInkData;
+  pageColor: NotebookPageColor;
+  pageStyle: NotebookPageStyle;
+  status: NotebookPageStatus;
+};
+
+export type NotebookPagePersistenceErrorCode =
+  | "invalid-ink"
+  | "ink-too-large"
+  | "too-many-text-blocks"
+  | "text-block-too-large"
+  | "typed-content-too-large"
+  | "legacy-strokes-too-large"
+  | "too-many-images"
+  | "snapshot-too-large";
+
+export class NotebookPagePersistenceError extends Error {
+  readonly code: NotebookPagePersistenceErrorCode;
+
+  constructor(code: NotebookPagePersistenceErrorCode, message: string) {
+    super(message);
+    this.name = "NotebookPagePersistenceError";
+    this.code = code;
+  }
+}
+
+function getUtf8ByteLength(value: string) {
+  return new TextEncoder().encode(value).byteLength;
+}
+
+/**
+ * Canonical preflight for every editable notebook-page write.
+ *
+ * Readers remain tolerant so legacy content is never clipped on open. Writers
+ * are strict and actionable so the editor can keep a local draft instead of
+ * pretending a lossy save succeeded.
+ */
+export function prepareNotebookPageSnapshotForPersistence(
+  input: NotebookPageSnapshotInput
+): NotebookPageSnapshotInput & { byteLength: number } {
+  const inkData = input.inkData
+    ? normalizeNotebookInkData(input.inkData)
+    : undefined;
+  if (input.inkData && !inkData) {
+    throw new NotebookPagePersistenceError(
+      "invalid-ink",
+      "This page's drawing data is invalid. Your local draft is still available."
+    );
+  }
+  if (inkData && inkData.svg.length > MAX_NOTEBOOK_INK_SVG_LENGTH) {
+    throw new NotebookPagePersistenceError(
+      "ink-too-large",
+      "This page has too much ink to sync safely. Split the work across another page; this draft remains on this device."
+    );
+  }
+  if (!Array.isArray(input.textBlocks) || input.textBlocks.length > MAX_NOTEBOOK_TEXT_BLOCKS) {
+    throw new NotebookPagePersistenceError(
+      "too-many-text-blocks",
+      `A page can sync up to ${MAX_NOTEBOOK_TEXT_BLOCKS} text boxes. Delete or move a text box, then try again.`
+    );
+  }
+  const oversizedTextBlock = input.textBlocks.find(
+    (block) => typeof block.text !== "string" || block.text.length > MAX_NOTEBOOK_TEXT_BLOCK_TEXT
   );
+  if (oversizedTextBlock) {
+    throw new NotebookPagePersistenceError(
+      "text-block-too-large",
+      `Each text box can sync up to ${MAX_NOTEBOOK_TEXT_BLOCK_TEXT.toLocaleString()} characters. Shorten that text box and try again.`
+    );
+  }
+  if (input.typedContent.length > MAX_NOTEBOOK_PAGE_TYPED_CONTENT) {
+    throw new NotebookPagePersistenceError(
+      "typed-content-too-large",
+      `Typed page content can sync up to ${MAX_NOTEBOOK_PAGE_TYPED_CONTENT.toLocaleString()} characters. Split it across another page and try again.`
+    );
+  }
+
+  const snapshot = {
+    typedContent: input.typedContent,
+    textBlocks: input.textBlocks.map((block) => ({ ...block })),
+    inkData,
+    pageColor: input.pageColor,
+    pageStyle: input.pageStyle,
+    status: input.status,
+  };
+  const byteLength = getUtf8ByteLength(JSON.stringify(snapshot));
+  if (byteLength > MAX_NOTEBOOK_PAGE_SNAPSHOT_BYTES) {
+    throw new NotebookPagePersistenceError(
+      "snapshot-too-large",
+      "This page is too large to sync safely. Split some writing or text onto another page; this draft remains on this device."
+    );
+  }
+
+  return { ...snapshot, byteLength };
 }
 
 export function getNotebookPagesAfterDelete(
@@ -508,7 +613,10 @@ export function mapNotebookPageData(
     typeof data.pageNumber === "number" && Number.isFinite(data.pageNumber)
       ? Math.max(1, Math.round(data.pageNumber))
       : 1;
-  const typedContent = normalizeOptionalString(data.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT);
+  const typedContent =
+    typeof data.typedContent === "string" && data.typedContent.trim()
+      ? data.typedContent
+      : undefined;
   const textBlocks = normalizeNotebookTextBlocks(data.textBlocks);
 
   return {
@@ -520,7 +628,7 @@ export function mapNotebookPageData(
     pageType: isNotebookPageType(data.pageType) ? data.pageType : "blank",
     typedContent,
     textBlocks: textBlocks.length > 0 ? textBlocks : createNotebookTextBlocksFromTypedContent(typedContent),
-    inkData: normalizeInkData(data.inkData),
+    inkData: normalizeNotebookInkData(data.inkData),
     strokeData: normalizeStrokeData(data.strokeData),
     imageRefs: normalizeImageRefs(data.imageRefs),
     backgroundFileId: normalizeOptionalString(data.backgroundFileId, 160),
@@ -537,6 +645,12 @@ export function mapNotebookPageData(
     linkedQuestionId: normalizeOptionalString(data.linkedQuestionId, 160),
     linkedSourceId: normalizeOptionalString(data.linkedSourceId, 160),
     linkedPastPaperId: normalizeOptionalString(data.linkedPastPaperId, 160),
+    contentRevision:
+      typeof data.contentRevision === "number" &&
+      Number.isFinite(data.contentRevision) &&
+      data.contentRevision >= 0
+        ? Math.round(data.contentRevision)
+        : 0,
     createdAt: typeof data.createdAt === "number" ? data.createdAt : 0,
     updatedAt: typeof data.updatedAt === "number" ? data.updatedAt : 0,
   };
@@ -630,9 +744,43 @@ export function buildNotebookPagePayload(input: {
   const textBlocks = normalizeNotebookTextBlocks(input.textBlocks);
   const typedContent =
     buildTypedContentFromTextBlocks(textBlocks) ??
-    normalizeOptionalString(input.typedContent, MAX_NOTEBOOK_PAGE_TYPED_CONTENT);
+    (typeof input.typedContent === "string" && input.typedContent.trim()
+      ? input.typedContent
+      : undefined);
   const strokeData = input.strokeData ? normalizeStrokeData(input.strokeData) : undefined;
-  const inkData = input.inkData ? normalizeInkData(input.inkData) : undefined;
+  if (
+    input.strokeData &&
+    (input.strokeData.strokes.length > MAX_NOTEBOOK_STROKES ||
+      input.strokeData.strokes.some(
+        (stroke) => stroke.points.length > MAX_NOTEBOOK_STROKE_POINTS
+      ))
+  ) {
+    throw new NotebookPagePersistenceError(
+      "legacy-strokes-too-large",
+      "This legacy drawing is too large to sync safely. Open it in the notebook editor to preserve it as current ink data."
+    );
+  }
+  if ((input.imageRefs?.length ?? 0) > MAX_NOTEBOOK_IMAGE_REFS) {
+    throw new NotebookPagePersistenceError(
+      "too-many-images",
+      `A page can sync up to ${MAX_NOTEBOOK_IMAGE_REFS} images.`
+    );
+  }
+  const inkData = input.inkData ? normalizeNotebookInkData(input.inkData) : undefined;
+  if (input.inkData && !inkData) {
+    throw new NotebookPagePersistenceError(
+      "invalid-ink",
+      "This page's drawing data is invalid and could not be saved."
+    );
+  }
+  prepareNotebookPageSnapshotForPersistence({
+    typedContent: typedContent ?? "",
+    textBlocks,
+    inkData,
+    pageColor: input.pageColor ?? "white",
+    pageStyle: input.pageStyle ?? "plain",
+    status: input.status ?? "blank",
+  });
 
   return {
     notebookId,
@@ -644,7 +792,7 @@ export function buildNotebookPagePayload(input: {
     textBlocks,
     inkData: inkData ?? null,
     strokeData: strokeData ?? null,
-    imageRefs: (input.imageRefs ?? []).slice(0, MAX_NOTEBOOK_IMAGE_REFS),
+    imageRefs: (input.imageRefs ?? []).map((image) => ({ ...image })),
     backgroundFileId: normalizeOptionalString(input.backgroundFileId, 160) ?? null,
     pdfPageIndex:
       typeof input.pdfPageIndex === "number" &&
@@ -659,6 +807,7 @@ export function buildNotebookPagePayload(input: {
     linkedQuestionId: normalizeOptionalString(input.linkedQuestionId, 160) ?? null,
     linkedSourceId: normalizeOptionalString(input.linkedSourceId, 160) ?? null,
     linkedPastPaperId: normalizeOptionalString(input.linkedPastPaperId, 160) ?? null,
+    contentRevision: 0,
     createdAt: now,
     updatedAt: now,
   };

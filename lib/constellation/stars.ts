@@ -218,6 +218,8 @@ export function buildPreviewStar({
       presetId ??
       resolveStarPresetId({
         id: goalId,
+        name: "Preview goal",
+        scope: { type: "all" },
         deadline: 0,
         progress: {
           cardsCompleted: 0,

@@ -1,5 +1,5 @@
 import { getStroke } from "perfect-freehand";
-import type { NotebookStrokeTool } from "@/lib/workspace/notebooks";
+import type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
 
 export type TimedInkPoint = {
   x: number;

@@ -1,39 +1,18 @@
 export type FeatureFlagKey =
-  | "enableTopics"
-  | "enablePractise"
-  | "enableTutorInPractice"
-  | "enableMasteryProgress"
-  | "enableToday"
-  | "enableLibrary"
   | "enableFolders"
-  | "enableNotebooks"
-  | "enableFlashcardAi"
-  | "enableAnywhere";
+  | "enableMasteryProgress"
+  | "enableFlashcardAi";
 
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
-  enableTopics: true,
-  enablePractise: true,
-  enableTutorInPractice: true,
-  enableMasteryProgress: true,
-  enableToday: false,
-  enableLibrary: true,
   enableFolders: true,
-  enableNotebooks: true,
+  enableMasteryProgress: true,
   enableFlashcardAi: false,
-  enableAnywhere: false,
 };
 
 const ENV_KEYS: Record<FeatureFlagKey, string> = {
-  enableTopics: "NEXT_PUBLIC_ENABLE_TOPICS",
-  enablePractise: "NEXT_PUBLIC_ENABLE_PRACTISE",
-  enableTutorInPractice: "NEXT_PUBLIC_ENABLE_TUTOR_IN_PRACTICE",
-  enableMasteryProgress: "NEXT_PUBLIC_ENABLE_MASTERY_PROGRESS",
-  enableToday: "NEXT_PUBLIC_ENABLE_TODAY",
-  enableLibrary: "NEXT_PUBLIC_ENABLE_LIBRARY",
   enableFolders: "NEXT_PUBLIC_ENABLE_FOLDERS",
-  enableNotebooks: "NEXT_PUBLIC_ENABLE_NOTEBOOKS",
+  enableMasteryProgress: "NEXT_PUBLIC_ENABLE_MASTERY_PROGRESS",
   enableFlashcardAi: "NEXT_PUBLIC_ENABLE_FLASHCARD_AI",
-  enableAnywhere: "NEXT_PUBLIC_ENABLE_ANYWHERE",
 };
 
 function parseFlagValue(value: string | undefined, fallback: boolean) {
@@ -49,14 +28,7 @@ export function isFeatureEnabled(key: FeatureFlagKey) {
 }
 
 export const featureFlags: Record<FeatureFlagKey, boolean> = {
-  enableTopics: isFeatureEnabled("enableTopics"),
-  enablePractise: isFeatureEnabled("enablePractise"),
-  enableTutorInPractice: isFeatureEnabled("enableTutorInPractice"),
-  enableMasteryProgress: isFeatureEnabled("enableMasteryProgress"),
-  enableToday: isFeatureEnabled("enableToday"),
-  enableLibrary: isFeatureEnabled("enableLibrary"),
   enableFolders: isFeatureEnabled("enableFolders"),
-  enableNotebooks: isFeatureEnabled("enableNotebooks"),
+  enableMasteryProgress: isFeatureEnabled("enableMasteryProgress"),
   enableFlashcardAi: isFeatureEnabled("enableFlashcardAi"),
-  enableAnywhere: isFeatureEnabled("enableAnywhere"),
 };

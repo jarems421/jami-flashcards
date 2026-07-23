@@ -2,7 +2,7 @@ import { getCustomStudyHref } from "@/lib/app/routes";
 import { buildTopicProgress, type TopicProgressSummary } from "@/lib/practice/progress";
 import type { MasteryEvent } from "@/lib/practice/mastery";
 import type { Topic } from "@/lib/practice/topics";
-import type { Goal } from "@/lib/study/goals";
+import { getGoalDisplayName, type Goal } from "@/lib/study/goals";
 import type { Card } from "@/lib/study/cards";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import type { Source } from "@/lib/practice/sources";
@@ -10,6 +10,7 @@ import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
 
 export type TodayNextActionType =
+  | "resume_study_session"
   | "create_first_deck"
   | "add_first_cards"
   | "review_due_cards"
@@ -63,6 +64,7 @@ export type TodayGoalSummary = {
   title: string;
   detail: string;
   progressPercent: number;
+  isAtRisk: boolean;
   href: string;
 };
 
@@ -133,6 +135,7 @@ export type BuildTodayPlanInput = {
   reviewedToday?: number;
   progressVisited?: boolean;
   hasEarnedStars?: boolean;
+  hasActiveStudySession?: boolean;
   now?: number;
 };
 
@@ -262,12 +265,16 @@ function buildGoalSummary(input: BuildTodayPlanInput, now: number): TodayGoalSum
     goal.targetCards > 0
       ? Math.min(100, Math.round((goal.progress.cardsCompleted / goal.targetCards) * 100))
       : 0;
+  const remainingCards = Math.max(0, goal.targetCards - goal.progress.cardsCompleted);
+  const timeRemaining = goal.deadline > 0 ? goal.deadline - now : Number.POSITIVE_INFINITY;
+  const isAtRisk = remainingCards > 0 && timeRemaining <= 48 * 60 * 60 * 1000;
 
   return {
     goalId: goal.id,
-    title: `Review ${pluralize(goal.targetCards, "card")} for this goal.`,
+    title: getGoalDisplayName(goal),
     detail: `${goal.progress.cardsCompleted} / ${goal.targetCards} cards complete.`,
     progressPercent,
+    isAtRisk,
     href: "/dashboard/goals",
   };
 }
@@ -316,28 +323,16 @@ function buildNextAction(input: {
   workspace: TodayWorkspaceSummary;
   reviewedToday: number;
   hasEarnedStars: boolean;
+  hasActiveStudySession: boolean;
 }): TodayNextAction {
-  if (input.workspace.folderCount === 0) {
+  if (input.hasActiveStudySession) {
     return {
-      type: "create_first_folder",
-      title: "Create your first study folder.",
-      description: "Folders are where notebooks, decks, and sources come together.",
-      href: "/dashboard/folders",
-      label: "Create folder",
+      type: "resume_study_session",
+      title: "Resume your study session.",
+      description: "Continue from the exact card where you stopped.",
+      href: getCustomStudyHref({ mode: "daily" }),
+      label: "Resume session",
       priority: 1,
-    };
-  }
-
-  if (input.workspace.recentNotebook) {
-    return {
-      type: "continue_notebook",
-      title: `Continue ${input.workspace.recentNotebook.title}`,
-      description: "Open the latest notebook page and keep working naturally.",
-      href: input.workspace.recentNotebook.href,
-      label: "Continue notebook",
-      priority: 2,
-      secondaryHref: "/dashboard/folders",
-      secondaryLabel: "Open folders",
     };
   }
 
@@ -349,7 +344,42 @@ function buildNextAction(input: {
       description: "Due cards are time-sensitive. Review them, then return to notebook work.",
       href: getCustomStudyHref({ mode: "daily" }),
       label: "Start review",
+      priority: 2,
+      secondaryHref: "/dashboard/folders",
+      secondaryLabel: "Open folders",
+    };
+  }
+
+  if (input.goalSummary?.isAtRisk) {
+    return {
+      type: "continue_goal",
+      title: "Keep this goal within reach.",
+      description: input.goalSummary.detail,
+      href: input.goalSummary.href,
+      label: "Open goal",
       priority: 3,
+    };
+  }
+
+  if (input.workspace.folderCount === 0) {
+    return {
+      type: "create_first_folder",
+      title: "Create your first study folder.",
+      description: "Folders are where notebooks, decks, and sources come together.",
+      href: "/dashboard/folders",
+      label: "Create folder",
+      priority: 4,
+    };
+  }
+
+  if (input.workspace.recentNotebook) {
+    return {
+      type: "continue_notebook",
+      title: `Continue ${input.workspace.recentNotebook.title}`,
+      description: "Open the latest notebook page and keep working naturally.",
+      href: input.workspace.recentNotebook.href,
+      label: "Continue notebook",
+      priority: 5,
       secondaryHref: "/dashboard/folders",
       secondaryLabel: "Open folders",
     };
@@ -362,7 +392,7 @@ function buildNextAction(input: {
       description: "Generated drafts stay separate until you approve them into Learn or a notebook.",
       href: input.drafts[0]?.href ?? "/dashboard/library",
       label: "Review drafts",
-      priority: 4,
+      priority: 6,
     };
   }
 
@@ -373,8 +403,8 @@ function buildNextAction(input: {
       title: `Open work linked to ${topic.name}.`,
       description: topic.reason,
       href: topic.href,
-      label: "Open folder",
-      priority: 5,
+      label: "Open topic",
+      priority: 7,
       secondaryHref: "/dashboard/study",
       secondaryLabel: "Review linked cards",
     };
@@ -387,7 +417,7 @@ function buildNextAction(input: {
       description: input.goalSummary.detail,
       href: input.goalSummary.href,
       label: "Open goal",
-      priority: 6,
+      priority: 8,
     };
   }
 
@@ -398,7 +428,7 @@ function buildNextAction(input: {
       description: "Open Stars to see the reward earned from your completed goal.",
       href: "/dashboard/constellation",
       label: "View star",
-      priority: 7,
+      priority: 9,
       secondaryHref: "/dashboard/goals",
       secondaryLabel: "Set another goal",
     };
@@ -411,7 +441,7 @@ function buildNextAction(input: {
       description: "Set a small goal while today’s study rhythm is still fresh.",
       href: "/dashboard/goals",
       label: "Set a goal",
-      priority: 8,
+      priority: 10,
     };
   }
 
@@ -422,7 +452,7 @@ function buildNextAction(input: {
       description: "Decks still power quick review, especially on mobile.",
       href: "/dashboard/decks",
       label: "Create deck",
-      priority: 9,
+      priority: 11,
     };
   }
 
@@ -433,7 +463,7 @@ function buildNextAction(input: {
       description: "Your workspace is ready. Add a few cards so Jami can schedule reviews.",
       href: "/dashboard/cards",
       label: "Add cards",
-      priority: 10,
+      priority: 12,
       secondaryHref: "/dashboard/decks",
       secondaryLabel: "Open decks",
     };
@@ -445,7 +475,7 @@ function buildNextAction(input: {
     description: "Open a notebook, review cards, or organise a folder.",
     href: getCustomStudyHref({ mode: "custom" }),
     label: "Focused review",
-    priority: 11,
+    priority: 13,
     secondaryHref: "/dashboard/folders",
     secondaryLabel: "Open folders",
   };
@@ -469,6 +499,7 @@ export function buildTodayPlan(input: BuildTodayPlanInput): TodayPlan {
     workspace,
     reviewedToday: input.reviewedToday ?? 0,
     hasEarnedStars: input.hasEarnedStars === true,
+    hasActiveStudySession: input.hasActiveStudySession === true,
   });
 
   return {

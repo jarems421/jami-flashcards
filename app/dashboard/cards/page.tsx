@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { FirebaseError } from "firebase/app";
 import { collection, deleteDoc, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
+import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
 import { getActiveStudyFolders } from "@/services/study/folders";
@@ -55,10 +55,6 @@ import Link from "next/link";
 const CARD_RESULT_PAGE_SIZE = 50;
 const RECENT_CARD_COUNT = 4;
 type CardStatusFilter = "all" | "due" | "weak" | "new";
-
-function isPermissionDenied(error: unknown) {
-  return error instanceof FirebaseError && error.code === "permission-denied";
-}
 
 export default function CardsSearchPage() {
   const { user } = useUser();
@@ -201,7 +197,7 @@ export default function CardsSearchPage() {
         setTopics(userTopics);
       } catch (error) {
         console.error(error);
-        if (!isPermissionDenied(error)) {
+        if (!isFirebasePermissionDenied(error)) {
           setFeedback({ type: "error", message: "Failed to load cards." });
         }
       } finally {

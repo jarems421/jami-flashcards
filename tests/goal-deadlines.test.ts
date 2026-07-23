@@ -1,9 +1,16 @@
 import { describe, expect, it } from "vitest";
-import { getGoalStatusAtTime, type Goal } from "@/lib/study/goals";
+import {
+  doesGoalMatchAnswer,
+  getGoalStatusAtTime,
+  getUpdatedGoalAfterAnswer,
+  type Goal,
+} from "@/lib/study/goals";
 import { formatTimeRemaining, getDeadlineDisplay } from "@/lib/study/time";
 
 const baseGoal: Goal = {
   id: "goal",
+  name: "Daily review",
+  scope: { type: "all" },
   targetCards: 10,
   targetAccuracy: 0.8,
   deadline: 0,
@@ -41,5 +48,36 @@ describe("optional goal deadlines", () => {
     expect(getDeadlineDisplay(now + 24 * 60 * 60 * 1000, now).label).toBe(
       "Due tomorrow"
     );
+  });
+
+  it("only advances scoped goals for matching study", () => {
+    const deckGoal: Goal = {
+      ...baseGoal,
+      scope: { type: "deck", id: "deck-a", label: "Biology" },
+    };
+
+    expect(doesGoalMatchAnswer(deckGoal, { deckId: "deck-b" })).toBe(false);
+    expect(
+      getUpdatedGoalAfterAnswer(deckGoal, true, Date.now(), { deckId: "deck-b" })
+    ).toBe(deckGoal);
+    expect(
+      getUpdatedGoalAfterAnswer(deckGoal, true, Date.now(), { deckId: "deck-a" }).progress
+        .cardsCompleted
+    ).toBe(1);
+  });
+
+  it("matches topic and folder scopes through card context", () => {
+    expect(
+      doesGoalMatchAnswer(
+        { ...baseGoal, scope: { type: "topic", id: "topic-a" } },
+        { topicIds: ["topic-a"] }
+      )
+    ).toBe(true);
+    expect(
+      doesGoalMatchAnswer(
+        { ...baseGoal, scope: { type: "folder", id: "folder-a" } },
+        { folderIds: ["folder-a"] }
+      )
+    ).toBe(true);
   });
 });

@@ -7,7 +7,7 @@ import {
   OBJECT_ICON_PICKER_PRESETS,
   type ObjectColorId,
   type ObjectIconId,
-} from "@/components/workspace/object-card-styles";
+} from "@/lib/workspace/object-card-styles";
 
 function cx(...classes: Array<string | false | null | undefined>) {
   return classes.filter(Boolean).join(" ");

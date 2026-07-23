@@ -2,17 +2,10 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import {
-  collection,
-  getDocs,
-  query,
-  where,
-} from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { getDecks, type Deck } from "@/services/study/decks";
-import { db } from "@/services/firebase/client";
 import { FirebaseError } from "firebase/app";
-import { normalizeGoal, type Goal } from "@/lib/study/goals";
+import type { Goal } from "@/lib/study/goals";
 import { getCustomStudyHref } from "@/lib/app/routes";
 import {
   countTodayReviews,
@@ -25,8 +18,12 @@ import { getMasteryEvents } from "@/services/study/mastery";
 import { getGeneratedContentDrafts } from "@/services/study/generated-content";
 import { getActiveSources } from "@/services/study/sources";
 import type { GeneratedContentDraft } from "@/services/study/generated-content";
-import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
-import { ensureDailyReviewState, ensureStudyStateSetup } from "@/services/study/daily-review";
+import type { Card as StudyCard } from "@/lib/study/cards";
+import {
+  ensureDailyReviewState,
+  ensureStudyStateSetup,
+  loadUserCards,
+} from "@/services/study/daily-review";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, Card, FeedbackBanner, IconBubble, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
@@ -42,12 +39,35 @@ import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
+import { getGoals } from "@/services/study/goals";
 import { usePersistentDisclosure } from "@/lib/app/disclosure-preference";
 
 type DashboardFeedback = { type: "success" | "error"; message: string };
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
 const GETTING_STARTED_OPEN_STORAGE_KEY = "jami:getting-started-open";
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
+const DASHBOARD_CACHE_MAX_AGE_MS = 5 * 60_000;
+
+type DashboardSnapshot = {
+  fetchedAt: number;
+  decks: Deck[];
+  dueCards: StudyCard[];
+  remainingOptionalCount: number;
+  activeGoals: Goal[];
+  hasEarnedStars: boolean;
+  studyActivity: DailyStudyActivity[];
+  cards: StudyCard[];
+  topics: Topic[];
+  masteryEvents: MasteryEvent[];
+  drafts: GeneratedContentDraft[];
+  sources: Source[];
+  studyFolders: StudyFolder[];
+  notebooks: Notebook[];
+  username: string | null;
+  hasActiveStudySession: boolean;
+};
+
+const dashboardSnapshotCache = new Map<string, DashboardSnapshot>();
 
 type ChecklistItem = {
   label: string;
@@ -216,30 +236,6 @@ function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
   );
 }
 
-function TodayReviewCard({ plan }: { plan: TodayPlan }) {
-  return (
-    <Card
-      padding="lg"
-      className="h-full !border-[color-mix(in_srgb,var(--color-text-primary)_14%,transparent)]"
-    >
-      <SectionHeader
-        eyebrow="Today's review"
-        title={plan.dueCards.count > 0 ? `${plan.dueCards.count} cards due` : "Daily Review is clear"}
-      />
-      <div className="mt-5 grid gap-3 sm:grid-cols-2">
-        <MiniMetric label="Due cards" value={plan.dueCards.count} />
-        <MiniMetric label="Weak cards" value={plan.dueCards.weakCount} />
-      </div>
-      <div className="mt-5 flex flex-wrap gap-2">
-        <ActionPill href={getCustomStudyHref({ mode: "daily" })}>Start review</ActionPill>
-        <ActionPill href={getCustomStudyHref({ mode: "custom" })} variant="secondary">
-          Focused review
-        </ActionPill>
-      </div>
-    </Card>
-  );
-}
-
 function DraftQueueCard({ plan }: { plan: TodayPlan }) {
   return (
     <Card padding="lg">
@@ -346,17 +342,6 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div className="app-chip rounded-[1rem] px-3 py-3">
-      <div className="text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
-        {label}
-      </div>
-      <div className="mt-1 text-base font-semibold tabular-nums text-text-primary">{value}</div>
-    </div>
-  );
-}
-
 export default function DashboardHome() {
   const { user } = useUser();
 
@@ -374,20 +359,52 @@ export default function DashboardHome() {
   const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [progressVisited, setProgressVisited] = useState(false);
+  const [hasActiveStudySession, setHasActiveStudySession] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<DashboardFeedback | null>(null);
   const [inAppUsername, setInAppUsername] = useState<string | null>(null);
   const lastForegroundRefreshAtRef = useRef(0);
 
+  const applySnapshot = useCallback((snapshot: DashboardSnapshot) => {
+    setDecks(snapshot.decks);
+    setDueCards(snapshot.dueCards);
+    setRemainingOptionalCount(snapshot.remainingOptionalCount);
+    setActiveGoals(snapshot.activeGoals);
+    setHasEarnedStars(snapshot.hasEarnedStars);
+    setStudyActivity(snapshot.studyActivity);
+    setCards(snapshot.cards);
+    setTopics(snapshot.topics);
+    setMasteryEvents(snapshot.masteryEvents);
+    setDrafts(snapshot.drafts);
+    setSources(snapshot.sources);
+    setStudyFolders(snapshot.studyFolders);
+    setNotebooks(snapshot.notebooks);
+    setInAppUsername(snapshot.username);
+    setHasActiveStudySession(snapshot.hasActiveStudySession);
+  }, []);
+
   const loadAll = useCallback(async (uid: string) => {
     try {
       await ensureStudyStateSetup(uid);
-
-      const [fetchedDecks] = await Promise.all([
-        getDecks(uid).catch((e) => {
-          console.error(e);
-          const code = e instanceof FirebaseError ? e.code : undefined;
+      const now = Date.now();
+      const [
+        fetchedDecks,
+        username,
+        allCards,
+        activeSessionResult,
+        goals,
+        activity,
+        nextTopics,
+        nextMasteryEvents,
+        nextDrafts,
+        nextSources,
+        nextStudyFolders,
+        nextNotebooks,
+      ] = await Promise.all([
+        getDecks(uid).catch((error) => {
+          console.error(error);
+          const code = error instanceof FirebaseError ? error.code : undefined;
           if (code !== "permission-denied") {
             setFeedback({
               type: "error",
@@ -396,32 +413,25 @@ export default function DashboardHome() {
           }
           return [] as Deck[];
         }),
+        loadInAppUsername(uid).catch(() => null),
+        loadUserCards(uid),
+        loadRemoteActiveStudySession(uid, getStudyDayKey(now), now).catch((error) => {
+          console.warn("Failed to load active study session for dashboard counts.", error);
+          return { session: null, foundRemoteSession: false };
+        }),
+        getGoals(uid).catch(() => null),
+        loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
+        getActiveTopics(uid).catch(() => [] as Topic[]),
+        getMasteryEvents(uid).catch(() => [] as MasteryEvent[]),
+        getGeneratedContentDrafts(uid).catch(() => [] as GeneratedContentDraft[]),
+        getActiveSources(uid).catch(() => [] as Source[]),
+        getActiveStudyFolders(uid).catch(() => [] as StudyFolder[]),
+        getActiveNotebooks(uid).catch(() => [] as Notebook[]),
       ]);
-      const username = await loadInAppUsername(uid).catch(() => null);
+
       setInAppUsername(username);
-
       setDecks(fetchedDecks);
-
-      const cardsQuery = query(
-        collection(db, "cards"),
-        where("userId", "==", uid)
-      );
-      const snapshot = await getDocs(cardsQuery);
-      const now = Date.now();
-      const allCards: StudyCard[] = [];
-      for (const cardDoc of snapshot.docs) {
-        const data = cardDoc.data();
-        allCards.push(mapCardData(cardDoc.id, data as Record<string, unknown>));
-      }
-
-      const activeSessionResult = await loadRemoteActiveStudySession(
-        uid,
-        getStudyDayKey(now),
-        now
-      ).catch((error) => {
-        console.warn("Failed to load active study session for dashboard counts.", error);
-        return { session: null, foundRemoteSession: false };
-      });
+      setHasActiveStudySession(Boolean(activeSessionResult.session));
       const dailyReviewState = await ensureDailyReviewState(uid, allCards, now, {
         activeSession: activeSessionResult.session,
       });
@@ -442,26 +452,6 @@ export default function DashboardHome() {
       setRemainingOptionalCount(optionalCards.length);
       setCards(allCards);
 
-      const [
-        goalsSnapshot,
-        activity,
-        nextTopics,
-        nextMasteryEvents,
-        nextDrafts,
-        nextSources,
-        nextStudyFolders,
-        nextNotebooks,
-      ] = await Promise.all([
-        getDocs(collection(db, "users", uid, "goals")).catch(() => null),
-        loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
-        getActiveTopics(uid).catch(() => [] as Topic[]),
-        getMasteryEvents(uid).catch(() => [] as MasteryEvent[]),
-        getGeneratedContentDrafts(uid).catch(() => [] as GeneratedContentDraft[]),
-        getActiveSources(uid).catch(() => [] as Source[]),
-        getActiveStudyFolders(uid).catch(() => [] as StudyFolder[]),
-        getActiveNotebooks(uid).catch(() => [] as Notebook[]),
-      ]);
-
       setStudyActivity(activity);
       setTopics(nextTopics);
       setMasteryEvents(nextMasteryEvents);
@@ -470,32 +460,56 @@ export default function DashboardHome() {
       setStudyFolders(nextStudyFolders);
       setNotebooks(nextNotebooks);
 
-      if (goalsSnapshot) {
+      let nextActiveGoals: Goal[] = [];
+      let nextHasEarnedStars = false;
+      if (goals) {
         const now2 = Date.now();
-        const goals = goalsSnapshot.docs.map((d) =>
-          normalizeGoal(d.id, d.data() as Record<string, unknown>)
-        );
-        const activeGoals = goals
+        nextActiveGoals = goals
           .filter(
             (goal) =>
               goal.status === "active" &&
               (goal.deadline <= 0 || goal.deadline > now2)
           );
-        setActiveGoals(activeGoals);
-        setHasEarnedStars(goals.some((goal) => goal.status === "completed"));
-      } else {
-        setActiveGoals([]);
-        setHasEarnedStars(false);
+        nextHasEarnedStars = goals.some((goal) => goal.status === "completed");
       }
+      setActiveGoals(nextActiveGoals);
+      setHasEarnedStars(nextHasEarnedStars);
+      dashboardSnapshotCache.set(uid, {
+        fetchedAt: Date.now(),
+        decks: fetchedDecks,
+        dueCards: requiredCards,
+        remainingOptionalCount: optionalCards.length,
+        activeGoals: nextActiveGoals,
+        hasEarnedStars: nextHasEarnedStars,
+        studyActivity: activity,
+        cards: allCards,
+        topics: nextTopics,
+        masteryEvents: nextMasteryEvents,
+        drafts: nextDrafts,
+        sources: nextSources,
+        studyFolders: nextStudyFolders,
+        notebooks: nextNotebooks,
+        username,
+        hasActiveStudySession: Boolean(activeSessionResult.session),
+      });
+      lastForegroundRefreshAtRef.current = Date.now();
     } finally {
       setIsLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    setIsLoading(true);
+    const cached = dashboardSnapshotCache.get(user.uid);
+    const cacheAge = cached ? Date.now() - cached.fetchedAt : Number.POSITIVE_INFINITY;
+    if (cached && cacheAge <= DASHBOARD_CACHE_MAX_AGE_MS) {
+      applySnapshot(cached);
+      setIsLoading(false);
+      lastForegroundRefreshAtRef.current = cached.fetchedAt;
+    } else {
+      setIsLoading(true);
+    }
     void loadAll(user.uid);
-  }, [user.uid, loadAll]);
+  }, [applySnapshot, user.uid, loadAll]);
 
   useEffect(() => {
     try {
@@ -510,7 +524,7 @@ export default function DashboardHome() {
       const now = Date.now();
       if (
         document.visibilityState !== "hidden" &&
-        now - lastForegroundRefreshAtRef.current > 15_000
+        now - lastForegroundRefreshAtRef.current > 60_000
       ) {
         lastForegroundRefreshAtRef.current = now;
         void loadAll(user.uid);
@@ -558,6 +572,7 @@ export default function DashboardHome() {
         reviewedToday: todayReviews,
         progressVisited,
         hasEarnedStars,
+        hasActiveStudySession,
       }),
     [
       activeGoals,
@@ -569,6 +584,7 @@ export default function DashboardHome() {
       masteryEvents,
       progressVisited,
       hasEarnedStars,
+      hasActiveStudySession,
       sources,
       studyFolders,
       todayReviews,
@@ -674,10 +690,7 @@ export default function DashboardHome() {
           </Card>
         ) : (
           <>
-            <div className="grid items-stretch gap-4 md:grid-cols-2">
-              <RecommendedActionCard plan={todayPlan} />
-              <TodayReviewCard plan={todayPlan} />
-            </div>
+            <RecommendedActionCard plan={todayPlan} />
 
             {hasSecondaryCards ? (
               <div

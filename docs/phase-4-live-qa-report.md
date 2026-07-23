@@ -2,6 +2,12 @@
 
 Date: 2026-05-24
 
+> **Archived QA snapshot.** This report describes the Phase 4 application and
+> is retained as historical evidence. Its public walkthrough, route-access,
+> feature, and test-count claims are not current release criteria. Use
+> `docs/manual-qa.md` and the automated checks in `package.json` for current
+> verification.
+
 Targets tested:
 - https://jami-jarems421s-projects.vercel.app/agent
 - https://jami-jarems421s-projects.vercel.app/dashboard?agent=1

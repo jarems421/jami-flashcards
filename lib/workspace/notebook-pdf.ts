@@ -1,5 +1,8 @@
 export const MAX_NOTEBOOK_PDF_PAGES = 200;
 export const MAX_NOTEBOOK_FILE_SIZE = 20 * 1024 * 1024;
+// A single RGBA canvas at this ceiling uses roughly 24 MiB. This avoids the
+// 30-100 MiB canvases that high zoom + Retina DPR could allocate on iPad.
+export const MAX_NOTEBOOK_PDF_CANVAS_PIXELS = 6_000_000;
 
 type PdfJsModule = typeof import("pdfjs-dist");
 
@@ -95,16 +98,28 @@ export function getNotebookPdfRenderMetrics(input: {
   hostHeight: number;
   pixelRatio: number;
   maxPixelRatio?: number;
+  maxCanvasPixels?: number;
 }) {
   const maxPixelRatio = input.maxPixelRatio ?? 2;
+  const maxCanvasPixels =
+    Number.isFinite(input.maxCanvasPixels) && (input.maxCanvasPixels ?? 0) > 0
+      ? Math.max(1, Math.floor(input.maxCanvasPixels!))
+      : MAX_NOTEBOOK_PDF_CANVAS_PIXELS;
   const cssScale = Math.min(
     Math.max(1, input.hostWidth) / Math.max(1, input.pageWidth),
     Math.max(1, input.hostHeight) / Math.max(1, input.pageHeight)
   );
-  const pixelRatio = Math.min(
+  const desiredPixelRatio = Math.min(
     maxPixelRatio,
     Math.max(1, input.pixelRatio || 1)
   );
+  const cssWidth = input.pageWidth * cssScale;
+  const cssHeight = input.pageHeight * cssScale;
+  const desiredPixels = cssWidth * cssHeight * desiredPixelRatio ** 2;
+  const pixelRatio =
+    desiredPixels > maxCanvasPixels
+      ? desiredPixelRatio * Math.sqrt(maxCanvasPixels / desiredPixels)
+      : desiredPixelRatio;
   return {
     cssScale,
     pixelRatio,
@@ -116,8 +131,8 @@ export function getNotebookPdfRenderMetrics(input: {
       1,
       Math.floor(input.pageHeight * cssScale * pixelRatio)
     ),
-    cssWidth: input.pageWidth * cssScale,
-    cssHeight: input.pageHeight * cssScale,
+    cssWidth,
+    cssHeight,
   };
 }
 

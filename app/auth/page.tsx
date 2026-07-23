@@ -6,6 +6,7 @@ import {
   handleGoogleRedirectResult,
   signInWithEmail,
   signInWithGoogle,
+  sendPasswordReset,
   signUpWithEmail,
 } from "@/services/auth";
 import { listenToAuth } from "@/lib/auth/auth-listener";
@@ -36,7 +37,9 @@ export default function AuthPage() {
   const [isSignInMode, setIsSignInMode] = useState(true);
   const [loading, setLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
+  const [resetLoading, setResetLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
     routerRef.current = router;
@@ -96,6 +99,36 @@ export default function AuthPage() {
   const toggleMode = () => {
     setIsSignInMode((prev) => !prev);
     setError(null);
+    setNotice(null);
+  };
+
+  const handlePasswordReset = async () => {
+    const trimmedEmail = email.trim();
+    if (!trimmedEmail) {
+      setError("Enter your email first, then choose Forgot password.");
+      setNotice(null);
+      return;
+    }
+
+    setResetLoading(true);
+    setError(null);
+    setNotice(null);
+    try {
+      await sendPasswordReset(trimmedEmail);
+      setNotice(
+        "If an account exists for that email, Firebase has sent a password reset link."
+      );
+    } catch (nextError) {
+      if (getAuthErrorCode(nextError) === "auth/user-not-found") {
+        setNotice(
+          "If an account exists for that email, Firebase has sent a password reset link."
+        );
+      } else {
+        setError(getFriendlyAuthError(getAuthErrorCode(nextError)));
+      }
+    } finally {
+      setResetLoading(false);
+    }
   };
 
   return (
@@ -157,6 +190,14 @@ export default function AuthPage() {
               {error}
             </div>
           ) : null}
+          {notice ? (
+            <div
+              role="status"
+              className="app-success mt-5 rounded-2xl px-4 py-3 text-sm leading-6"
+            >
+              {notice}
+            </div>
+          ) : null}
 
           <Button
             type="button"
@@ -202,7 +243,10 @@ export default function AuthPage() {
               label="Email"
               placeholder="you@example.com"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={(event) => {
+                setEmail(event.target.value);
+                setNotice(null);
+              }}
               autoComplete="email"
             />
 
@@ -215,9 +259,23 @@ export default function AuthPage() {
               autoComplete={isSignInMode ? "current-password" : "new-password"}
             />
 
+            {isSignInMode ? (
+              <div className="flex justify-end">
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={loading || googleLoading || resetLoading}
+                  onClick={() => void handlePasswordReset()}
+                >
+                  {resetLoading ? "Sending reset link..." : "Forgot password?"}
+                </Button>
+              </div>
+            ) : null}
+
             <Button
               type="submit"
-              disabled={loading || googleLoading}
+              disabled={loading || googleLoading || resetLoading}
               variant="secondary"
               size="lg"
               className="w-full"

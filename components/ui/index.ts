@@ -7,7 +7,6 @@ export { default as EmptyState } from "./EmptyState";
 export { default as FeedbackBanner } from "./FeedbackBanner";
 export { default as IconBubble } from "./IconBubble";
 export { default as Input } from "./Input";
-export { default as MetricStrip, type MetricStripItem } from "./MetricStrip";
 export { default as PageHero } from "./PageHero";
 export { default as Textarea } from "./Textarea";
 export { default as ProgressBar } from "./ProgressBar";

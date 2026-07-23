@@ -1,25 +1,18 @@
 import type { Card } from "@/lib/study/cards";
+import type {
+  DailyReviewState,
+  DailyReviewStateData,
+} from "@/lib/study/daily-review-types";
 import { getStudyDayKey } from "@/lib/study/day";
 import { getMemoryRiskInfo, hasActiveMemoryRiskOverride } from "@/lib/study/memory-risk";
 import type { PersistedStudySession } from "@/lib/study/session";
 
 export type DailyReviewBucket = "weak" | "medium" | "easy";
 
-export type DailyReviewState = {
-  id: string;
-  studyDayKey: string;
-  generatedAt: number;
-  requiredCardIds: string[];
-  optionalCardIds: string[];
-  carryoverRequiredCardIds: string[];
-  completedRequiredCardIds: string[];
-  completedOptionalCardIds: string[];
-  parkedRequiredCardIds: string[];
-  requiredRetryCounts: Record<string, number>;
-  updatedAt: number;
-};
-
-export type DailyReviewStateData = Omit<DailyReviewState, "id">;
+export type {
+  DailyReviewState,
+  DailyReviewStateData,
+} from "@/lib/study/daily-review-types";
 
 export const DAILY_REVIEW_STATE_DOC_ID = "dailyReview";
 export const STUDY_STATE_META_DOC_ID = "meta";

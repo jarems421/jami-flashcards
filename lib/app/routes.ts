@@ -6,6 +6,30 @@ export function getDeckStudyRouteHref(deckId: string) {
   return `${getDeckHref(deckId)}/study`;
 }
 
+export type RouteSearchParams = Record<
+  string,
+  string | string[] | undefined
+>;
+
+export function buildDeckStudyRedirectHref(
+  deckId: string,
+  searchParams: RouteSearchParams = {},
+) {
+  const nextSearchParams = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(searchParams)) {
+    if (Array.isArray(value)) {
+      value.forEach((item) => nextSearchParams.append(key, item));
+    } else if (typeof value === "string") {
+      nextSearchParams.set(key, value);
+    }
+  }
+
+  nextSearchParams.set("mode", "custom");
+  nextSearchParams.set("decks", deckId);
+  return `/dashboard/study?${nextSearchParams.toString()}`;
+}
+
 export function getCustomStudyHref(options?: {
   mode?: "daily" | "custom";
   deckIds?: string[];

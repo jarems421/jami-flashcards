@@ -1,8 +1,9 @@
-import type {
-  NotebookInkData,
-  NotebookStroke,
-  NotebookStrokeColor,
-  NotebookStrokeTool,
+import {
+  prepareNotebookPageSnapshotForPersistence,
+  type NotebookInkData,
+  type NotebookStroke,
+  type NotebookStrokeColor,
+  type NotebookStrokeTool,
 } from "@/lib/workspace/notebooks";
 
 export const NOTEBOOK_INK_VERSION = 2;
@@ -56,10 +57,18 @@ export function legacyStrokesToJsDrawSvg(
 }
 
 export function makeNotebookInkData(svg: string): NotebookInkData {
-  return {
+  const inkData: NotebookInkData = {
     version: NOTEBOOK_INK_VERSION,
     format: NOTEBOOK_INK_FORMAT,
     svg,
   };
+  prepareNotebookPageSnapshotForPersistence({
+    typedContent: "",
+    textBlocks: [],
+    inkData,
+    pageColor: "white",
+    pageStyle: "plain",
+    status: "blank",
+  });
+  return inkData;
 }
-

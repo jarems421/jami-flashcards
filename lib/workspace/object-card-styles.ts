@@ -25,7 +25,7 @@ export type ObjectIconId =
   | "star"
   | "heart";
 
-export type ObjectColorPreset = {
+type ObjectColorPreset = {
   id: ObjectColorId;
   label: string;
   base: string;
@@ -119,7 +119,7 @@ export const OBJECT_COLOR_PRESETS: ObjectColorPreset[] = [
   },
 ];
 
-export const OBJECT_ICON_PRESETS: Array<{ id: ObjectIconId; label: string }> = [
+const OBJECT_ICON_PRESETS: Array<{ id: ObjectIconId; label: string }> = [
   { id: "none", label: "None" },
   { id: "book", label: "Book" },
   { id: "notebook", label: "Notebook" },

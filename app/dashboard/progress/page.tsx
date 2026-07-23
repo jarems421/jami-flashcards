@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs } from "firebase/firestore";
 import {
   Bar,
   BarChart,
@@ -16,14 +15,13 @@ import {
 import { useUser } from "@/lib/auth/user-context";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getCustomStudyHref, getDeckStudyHref } from "@/lib/app/routes";
-import { db } from "@/services/firebase/client";
 import type { Source } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
 import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
 import { computeStudyStreak, type DailyStudyActivity } from "@/lib/study/activity";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import { getStudyDayWindow } from "@/lib/study/day";
-import { normalizeGoal, type Goal } from "@/lib/study/goals";
+import type { Goal } from "@/lib/study/goals";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import {
   buildAccuracySeries,
@@ -43,6 +41,7 @@ import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
+import { getGoals } from "@/services/study/goals";
 import AppPage from "@/components/layout/AppPage";
 import { ScheduleForecastPanel } from "@/components/stats/AnalyticsPanels";
 import {
@@ -118,7 +117,7 @@ export default function ProgressPage() {
           nextDecks,
           nextTopics,
           nextStudyActivity,
-          goalsSnapshot,
+          nextGoals,
         ] = await Promise.all([
           loadUserCards(user.uid),
           getGeneratedContentDrafts(user.uid).catch(() => [] as GeneratedContentDraft[]),
@@ -127,7 +126,7 @@ export default function ProgressPage() {
           getDecks(user.uid).catch(() => [] as Deck[]),
           getActiveTopics(user.uid).catch(() => [] as Topic[]),
           loadStudyActivity(user.uid).catch(() => [] as DailyStudyActivity[]),
-          getDocs(collection(db, "users", user.uid, "goals")).catch(() => null),
+          getGoals(user.uid).catch(() => null),
         ]);
 
         if (!cancelled) {
@@ -138,13 +137,7 @@ export default function ProgressPage() {
           setDecks(nextDecks);
           setTopics(nextTopics);
           setStudyActivity(nextStudyActivity);
-          setGoals(
-            goalsSnapshot
-              ? goalsSnapshot.docs.map((goalDoc) =>
-                  normalizeGoal(goalDoc.id, goalDoc.data() as Record<string, unknown>)
-                )
-              : []
-          );
+          setGoals(nextGoals ?? []);
         }
       } catch (error) {
         console.error(error);

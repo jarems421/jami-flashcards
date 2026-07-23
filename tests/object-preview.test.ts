@@ -8,7 +8,7 @@ import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
 import {
   normalizeObjectIcon,
   OBJECT_ICON_PICKER_PRESETS,
-} from "@/components/workspace/object-card-styles";
+} from "@/lib/workspace/object-card-styles";
 
 describe("study object edit previews", () => {
   it("renders folder draft title, colour and icon inputs as a preview object", () => {

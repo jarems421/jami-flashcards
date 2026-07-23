@@ -6,31 +6,21 @@ import {
   useMemo,
   useRef,
   useState,
-  type ReactNode,
 } from "react";
-import { FirebaseError } from "firebase/app";
-import Link from "next/link";
 import { useUser } from "@/lib/auth/user-context";
-import {
-  MAX_SOURCE_FOLDER_IDS,
-  type Source,
-  type SourceType,
-} from "@/lib/practice/sources";
+import type { Source, SourceType } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { Deck } from "@/services/study/decks";
 import {
-  convertFlashcardDraftToCard,
-  convertPracticeQuestionDraftToNotebookPage,
   getGeneratedContentDrafts,
-  updateGeneratedContentDraftContent,
-  updateGeneratedContentDraftStatus,
   type GeneratedContentDraft,
 } from "@/services/study/generated-content";
 import { getDecks } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
+import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import {
   createSource,
   deleteSource,
@@ -43,7 +33,6 @@ import {
   uploadSourceFile,
   validateSourceUploadFile,
 } from "@/services/study/source-files";
-import { getSourceFileTypeLabel } from "@/lib/practice/source-files";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import {
@@ -53,22 +42,26 @@ import {
   type LibrarySourceTypeFilter,
 } from "@/lib/study/library-navigation";
 import {
-  focusTutorSourceSelection,
-  getAdditionalTutorSources,
-  MAX_TUTOR_SOURCE_SELECTION,
-  reconcileTutorSourceSelection,
-  shouldResetTutorConversation,
-  toggleTutorSourceSelection,
-} from "@/lib/study/library-management";
-import {
   buildSourceComposerContent,
   clearFilenameDerivedTitle,
   getSourceTitleFromFileName,
   type SourceComposerKind,
 } from "@/lib/study/source-composer";
-import { askSourceTutor } from "@/services/ai/source";
+import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import AppPage from "@/components/layout/AppPage";
 import SourcePreview from "@/components/library/SourcePreview";
+import SourceDetailsDrawer from "@/components/library/SourceDetailsDrawer";
+import SourceDraftsDrawer from "@/components/library/SourceDraftsDrawer";
+import {
+  closeDisclosureAndFocusTrigger,
+  sourceDisplayLabel,
+  sourceTypeLabel,
+  sourceTypes,
+  SourceActionIcon,
+  SourceFolderPicker,
+  SourceTypeIcon,
+} from "@/components/library/SourceWorkspace";
+import type { SourceWorkspaceFeedback } from "@/components/library/source-workspace-types";
 import TopicPicker from "@/components/topics/TopicPicker";
 import WorkspaceActionDialog from "@/components/workspace/WorkspaceActionDialog";
 import {
@@ -82,28 +75,9 @@ import {
 } from "@/components/ui";
 import styles from "./page.module.css";
 
-type Feedback = { type: "success" | "error"; message: string };
-type TutorMessage = { role: "user" | "model"; text: string };
 type LibraryMobileTab = "sources" | "source";
 type SourceManagementAction = "archive" | "delete" | null;
 type SourceWorkspacePanel = "tutor" | "details" | "drafts" | null;
-type SourceActionIconName =
-  | "arrow-left"
-  | "close"
-  | "filter"
-  | "more"
-  | "sparkles";
-
-function isPermissionDenied(error: unknown) {
-  return error instanceof FirebaseError && error.code === "permission-denied";
-}
-
-const sourceTypes: Array<{ value: SourceType; label: string }> = [
-  { value: "pasted_text", label: "Pasted text" },
-  { value: "manual_note", label: "Text note" },
-  { value: "link", label: "Link" },
-  { value: "file", label: "File" },
-];
 
 const sourceComposerKinds: Array<{
   value: SourceComposerKind;
@@ -113,577 +87,6 @@ const sourceComposerKinds: Array<{
   { value: "link", label: "Link" },
   { value: "upload", label: "Upload" },
 ];
-
-function typeLabel(type: SourceType) {
-  return sourceTypes.find((item) => item.value === type)?.label ?? "Source";
-}
-
-function sourceDisplayLabel(source: Source) {
-  return source.type === "file"
-    ? getSourceFileTypeLabel(source.fileType)
-    : typeLabel(source.type);
-}
-
-function SourceTypeIcon({
-  type,
-  className = "",
-}: {
-  type: SourceType;
-  className?: string;
-}) {
-  const paths: Record<SourceType, ReactNode> = {
-    pasted_text: (
-      <>
-        <path d="M7 4h10v16H7z" />
-        <path d="M10 8h4M10 12h4M10 16h3" />
-      </>
-    ),
-    manual_note: (
-      <>
-        <path d="M5 19l3.5-.8L18 8.7 15.3 6 5.8 15.5z" />
-        <path d="M13.8 7.5l2.7 2.7" />
-      </>
-    ),
-    link: (
-      <>
-        <path d="M9.5 14.5l5-5" />
-        <path d="M7.2 16.8l-1 1a3 3 0 004.2 4.2l3-3a3 3 0 000-4.2" />
-        <path d="M16.8 7.2l1-1A3 3 0 0013.6 2l-3 3a3 3 0 000 4.2" />
-      </>
-    ),
-    file: (
-      <>
-        <path d="M7 3h7l4 4v14H7z" />
-        <path d="M14 3v5h4M10 13h5M10 17h5" />
-      </>
-    ),
-  };
-
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {paths[type]}
-    </svg>
-  );
-}
-
-function SourceActionIcon({
-  name,
-  className = "h-4 w-4",
-}: {
-  name: SourceActionIconName;
-  className?: string;
-}) {
-  const paths: Record<SourceActionIconName, ReactNode> = {
-    "arrow-left": <path d="m15 18-6-6 6-6" />,
-    close: (
-      <>
-        <path d="m7 7 10 10" />
-        <path d="M17 7 7 17" />
-      </>
-    ),
-    filter: (
-      <>
-        <path d="M4 7h16" />
-        <path d="M7 12h10" />
-        <path d="M10 17h4" />
-      </>
-    ),
-    more: (
-      <>
-        <circle cx="6" cy="12" r="1" fill="currentColor" stroke="none" />
-        <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
-        <circle cx="18" cy="12" r="1" fill="currentColor" stroke="none" />
-      </>
-    ),
-    sparkles: (
-      <>
-        <path d="m12 3 1.1 3.2L16 7.5l-2.9 1.3L12 12l-1.1-3.2L8 7.5l2.9-1.3z" />
-        <path d="m18 13 .8 2.2L21 16l-2.2.8L18 19l-.8-2.2L15 16l2.2-.8z" />
-        <path d="m6 13 .6 1.7 1.7.6-1.7.6L6 17.5l-.6-1.6-1.7-.6 1.7-.6z" />
-      </>
-    ),
-  };
-
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      className={className}
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.7"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-    >
-      {paths[name]}
-    </svg>
-  );
-}
-
-function closeDisclosureAndFocusTrigger(target: EventTarget | null) {
-  if (!(target instanceof HTMLElement)) return;
-  const disclosure = target.closest("details");
-  const trigger = disclosure?.querySelector<HTMLElement>("summary");
-  disclosure?.removeAttribute("open");
-  trigger?.focus();
-}
-
-function SourceWorkspaceDrawer({
-  open,
-  eyebrow,
-  title,
-  wide = false,
-  onClose,
-  footer,
-  children,
-}: {
-  open: boolean;
-  eyebrow: string;
-  title: string;
-  wide?: boolean;
-  onClose: () => void;
-  footer?: ReactNode;
-  children: ReactNode;
-}) {
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    restoreFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const frame = window.requestAnimationFrame(() => {
-      const autofocusTarget = drawerRef.current?.querySelector<HTMLElement>(
-        '[data-drawer-autofocus="true"]'
-      );
-      (autofocusTarget ?? closeButtonRef.current)?.focus();
-    });
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    const previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = previousBodyOverflow;
-      restoreFocusRef.current?.focus();
-    };
-  }, [onClose, open]);
-
-  if (!open) return null;
-
-  return (
-    <div className="fixed inset-0 z-[75] flex justify-end">
-      <button
-        type="button"
-        aria-label={`Close ${title}`}
-        tabIndex={-1}
-        className="absolute inset-0 bg-black/50"
-        onClick={onClose}
-      />
-      <div
-        ref={drawerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`source-drawer-${eyebrow.toLowerCase().replaceAll(" ", "-")}`}
-        className={`${styles.drawerPanel} relative flex h-[100dvh] max-h-[100dvh] w-full flex-col border-l border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)] ${
-          wide ? "max-w-3xl" : "max-w-lg"
-        }`}
-        onKeyDown={(event) => {
-          if (event.key !== "Tab") return;
-          const focusable = Array.from(
-            drawerRef.current?.querySelectorAll<HTMLElement>(
-              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-            ) ?? []
-          ).filter(
-            (element) =>
-              !element.hasAttribute("hidden") &&
-              element.getClientRects().length > 0
-          );
-          if (focusable.length === 0) return;
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-          }
-        }}
-      >
-        <header className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-5 sm:px-7 sm:py-6">
-          <div className="min-w-0">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
-              {eyebrow}
-            </div>
-            <h2
-              id={`source-drawer-${eyebrow.toLowerCase().replaceAll(" ", "-")}`}
-              className="mt-1 truncate text-xl font-semibold text-text-primary sm:text-2xl"
-            >
-              {title}
-            </h2>
-          </div>
-          <Button
-            ref={closeButtonRef}
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label={`Close ${title}`}
-            onClick={onClose}
-          >
-            <SourceActionIcon name="close" className="h-5 w-5" />
-          </Button>
-        </header>
-        <div
-          className={`min-h-0 flex-1 overflow-y-auto px-5 pt-5 sm:px-7 sm:pt-6 ${
-            footer
-              ? "pb-5 sm:pb-6"
-              : "pb-[max(1.25rem,env(safe-area-inset-bottom))] sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]"
-          }`}
-        >
-          {children}
-        </div>
-        {footer ? (
-          <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))] sm:pt-5">
-            {footer}
-          </footer>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-function SourceFolderPicker({
-  folders,
-  selectedFolderIds,
-  onChange,
-}: {
-  folders: StudyFolder[];
-  selectedFolderIds: string[];
-  onChange: (folderIds: string[]) => void;
-}) {
-  const selectedFolders = folders.filter((folder) =>
-    selectedFolderIds.includes(folder.id)
-  );
-  const summary =
-    selectedFolders.length === 0
-      ? "No folders"
-      : selectedFolders.length === 1
-        ? selectedFolders[0].name
-        : `${selectedFolders.length} folders`;
-
-  return (
-    <div className="block min-w-0">
-      <span className="mb-2 block text-sm font-medium tracking-[0.01em] text-text-secondary">
-        Folders
-      </span>
-      {folders.length === 0 ? (
-        <div className="app-field flex min-h-[3.25rem] items-center rounded-[1.6rem] px-5 text-sm text-text-muted">
-          No folders
-        </div>
-      ) : (
-        <details className="group relative">
-          <summary className="app-field flex min-h-[3.25rem] cursor-pointer list-none items-center justify-between gap-3 rounded-[1.6rem] px-5 text-sm text-text-primary outline-none transition focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden">
-            <span className="truncate">{summary}</span>
-            <svg
-              aria-hidden="true"
-              viewBox="0 0 20 20"
-              fill="none"
-              className="h-4 w-4 shrink-0 text-text-secondary transition group-open:rotate-180"
-            >
-              <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
-          </summary>
-          <div className="absolute left-0 right-0 z-40 mt-2 max-h-60 overflow-y-auto rounded-[1.2rem] border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-2 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
-            {folders.map((folder) => {
-              const checked = selectedFolderIds.includes(folder.id);
-              const selectionLimitReached =
-                !checked && selectedFolderIds.length >= MAX_SOURCE_FOLDER_IDS;
-
-              return (
-                <label
-                  key={folder.id}
-                  className={`flex min-h-11 items-center gap-3 rounded-[0.85rem] px-3 text-sm transition ${
-                    selectionLimitReached
-                      ? "cursor-not-allowed text-text-muted"
-                      : "cursor-pointer text-text-primary hover:bg-[var(--color-glass-subtle)]"
-                  }`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={checked}
-                    disabled={selectionLimitReached}
-                    onChange={() =>
-                      onChange(
-                        checked
-                          ? selectedFolderIds.filter((id) => id !== folder.id)
-                          : [...selectedFolderIds, folder.id]
-                      )
-                    }
-                    className="h-4 w-4 accent-[var(--color-accent)]"
-                  />
-                  <span className="min-w-0 truncate">{folder.name}</span>
-                </label>
-              );
-            })}
-          </div>
-        </details>
-      )}
-    </div>
-  );
-}
-
-function DraftEditor({
-  draft,
-  topics,
-  decks,
-  notebooks,
-  selectedDeckId,
-  selectedNotebookId,
-  onDeckChange,
-  onNotebookChange,
-  onSaved,
-  onTopicsChange,
-  userId,
-  sourceTitle,
-}: {
-  draft: GeneratedContentDraft;
-  topics: Topic[];
-  decks: Deck[];
-  notebooks: Notebook[];
-  selectedDeckId: string;
-  selectedNotebookId: string;
-  onDeckChange: (value: string) => void;
-  onNotebookChange: (value: string) => void;
-  onSaved: (message: string) => void;
-  onTopicsChange: (topics: Topic[]) => void;
-  userId: string;
-  sourceTitle?: string;
-}) {
-  const [front, setFront] = useState(draft.front ?? "");
-  const [back, setBack] = useState(draft.back ?? "");
-  const [questionText, setQuestionText] = useState(draft.questionText ?? "");
-  const [answerText, setAnswerText] = useState(draft.answerText ?? "");
-  const [solutionText, setSolutionText] = useState(draft.solutionText ?? "");
-  const [topicIds, setTopicIds] = useState(draft.topicIds);
-  const [busy, setBusy] = useState(false);
-  const isFlashcard = draft.kind === "flashcard";
-
-  useEffect(() => {
-    setFront(draft.front ?? "");
-    setBack(draft.back ?? "");
-    setQuestionText(draft.questionText ?? "");
-    setAnswerText(draft.answerText ?? "");
-    setSolutionText(draft.solutionText ?? "");
-    setTopicIds(draft.topicIds);
-  }, [draft]);
-
-  return (
-    <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <div className="text-sm font-semibold text-text-primary">
-            {isFlashcard ? "Flashcard draft" : "Notebook question draft"}
-          </div>
-          <div className="mt-1 text-xs text-text-muted">
-            Draft - based on a saved source. Review before it enters Learn or a notebook.
-          </div>
-        </div>
-        <span className="rounded-full border border-warm-border bg-warm-glow px-3 py-1 text-xs font-semibold text-warm-accent">
-          Based on: {sourceTitle ?? "Saved source"}
-        </span>
-      </div>
-      <div className="mt-4 space-y-3">
-        {isFlashcard ? (
-          <>
-            <Textarea label="Front" rows={3} value={front} onChange={(event) => setFront(event.target.value)} />
-            <Textarea label="Back" rows={4} value={back} onChange={(event) => setBack(event.target.value)} />
-          </>
-        ) : (
-          <>
-            <Textarea
-              label="Question"
-              rows={3}
-              value={questionText}
-              onChange={(event) => setQuestionText(event.target.value)}
-            />
-            <Textarea
-              label="Expected answer"
-              rows={3}
-              value={answerText}
-              onChange={(event) => setAnswerText(event.target.value)}
-            />
-            <Textarea
-              label="Solution notes"
-              rows={3}
-              value={solutionText}
-              onChange={(event) => setSolutionText(event.target.value)}
-            />
-          </>
-        )}
-        <TopicPicker
-          userId={userId}
-          topics={topics}
-          selectedTopicIds={topicIds}
-          onChange={setTopicIds}
-          onTopicsChange={onTopicsChange}
-          disabled={busy}
-        />
-        {isFlashcard ? (
-          decks.length > 0 ? (
-            <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-                Destination deck
-              </span>
-              <select
-                value={selectedDeckId}
-                onChange={(event) => onDeckChange(event.target.value)}
-                className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-[var(--color-border)] bg-surface-panel-strong px-3 text-sm text-text-primary outline-none focus:border-warm-accent"
-              >
-                {decks.map((deck) => (
-                  <option key={deck.id} value={deck.id}>
-                    {deck.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div className="rounded-[1.15rem] border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
-              <div className="font-semibold text-text-primary">
-                Create a deck before adding this flashcard.
-              </div>
-              <p className="mt-1">
-                Drafts can stay here, but flashcards need a deck before they join Learn.
-              </p>
-              <Link
-                href="/dashboard/decks"
-                className="mt-3 inline-flex min-h-[2.4rem] items-center justify-center rounded-full border border-warm-border bg-[var(--color-glass-subtle)] px-3 text-xs font-semibold text-warm-accent transition hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
-              >
-                Create deck
-              </Link>
-            </div>
-          )
-        ) : (
-          notebooks.length > 0 ? (
-            <label className="block">
-              <span className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-                Destination notebook
-              </span>
-              <select
-                value={selectedNotebookId}
-                onChange={(event) => onNotebookChange(event.target.value)}
-                className="mt-2 min-h-[2.8rem] w-full rounded-2xl border border-[var(--color-border)] bg-surface-panel-strong px-3 text-sm text-text-primary outline-none focus:border-warm-accent"
-              >
-                {notebooks.map((notebook) => (
-                  <option key={notebook.id} value={notebook.id}>
-                    {notebook.title}
-                  </option>
-                ))}
-              </select>
-            </label>
-          ) : (
-            <div className="rounded-[1.15rem] border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
-              <div className="font-semibold text-text-primary">
-                Create a notebook before approving this question draft.
-              </div>
-              <p className="mt-1">
-                Question drafts become notebook pages so students can work naturally.
-              </p>
-              <Link
-                href="/dashboard/folders"
-                className="mt-3 inline-flex min-h-[2.4rem] items-center justify-center rounded-full border border-warm-border bg-[var(--color-glass-subtle)] px-3 text-xs font-semibold text-warm-accent transition hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
-              >
-                Open folders
-              </Link>
-            </div>
-          )
-        )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await updateGeneratedContentDraftContent(
-                  userId,
-                  draft.id,
-                  isFlashcard
-                    ? { front, back, topicIds }
-                    : { questionText, answerText, solutionText, topicIds }
-                );
-                onSaved("Draft edits saved.");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Save edits
-          </Button>
-          <Button
-            type="button"
-            disabled={busy || (isFlashcard ? !selectedDeckId : !selectedNotebookId)}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await updateGeneratedContentDraftContent(
-                  userId,
-                  draft.id,
-                  isFlashcard
-                    ? { front, back, topicIds }
-                    : { questionText, answerText, solutionText, topicIds }
-                );
-                if (isFlashcard) {
-                  await convertFlashcardDraftToCard(userId, { draftId: draft.id, deckId: selectedDeckId });
-                  onSaved("Card added to your deck. You can review it in Learn.");
-                } else {
-                  await convertPracticeQuestionDraftToNotebookPage(userId, { draftId: draft.id, notebookId: selectedNotebookId });
-                  onSaved("Question page added to your notebook. Open it from Practice when you are ready.");
-                }
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            {isFlashcard ? "Add to deck" : "Add to notebook"}
-          </Button>
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await updateGeneratedContentDraftStatus(userId, draft.id, "rejected");
-                onSaved("Draft rejected.");
-              } finally {
-                setBusy(false);
-              }
-            }}
-          >
-            Reject
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
-}
 
 export default function LibraryPage() {
   const { user } = useUser();
@@ -696,7 +99,7 @@ export default function LibraryPage() {
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [showAddSource, setShowAddSource] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [feedback, setFeedback] = useState<SourceWorkspaceFeedback | null>(null);
   const [composerKind, setComposerKind] = useState<SourceComposerKind>("text");
   const [title, setTitle] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
@@ -707,23 +110,16 @@ export default function LibraryPage() {
   const [fileType, setFileType] = useState("");
   const [sourceFile, setSourceFile] = useState<File | null>(null);
   const filenameDerivedTitleRef = useRef("");
+  const sourceComposerPrefillHandledRef = useRef(false);
   const filterDisclosureRef = useRef<HTMLDetailsElement>(null);
   const sourceActionsDisclosureRef = useRef<HTMLDetailsElement>(null);
-  const tutorRequestIdRef = useRef(0);
   const [sourceFileUrls, setSourceFileUrls] = useState<Record<string, string>>({});
-  const [tutorMessage, setTutorMessage] = useState("Explain the key ideas in this source.");
-  const [tutorMessages, setTutorMessages] = useState<TutorMessage[]>([]);
-  const [tutorSourceIds, setTutorSourceIds] = useState<string[]>([]);
-  const [tutorPrimarySourceId, setTutorPrimarySourceId] = useState<string | null>(
-    null
-  );
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [deckIdByDraft, setDeckIdByDraft] = useState<Record<string, string>>({});
   const [notebookIdByDraft, setNotebookIdByDraft] = useState<Record<string, string>>({});
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [mobileTab, setMobileTab] = useState<LibraryMobileTab>("sources");
   const [activePanel, setActivePanel] = useState<SourceWorkspacePanel>(null);
-  const [showTutorSourcePicker, setShowTutorSourcePicker] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [folderFilter, setFolderFilter] = useState("");
   const [typeFilter, setTypeFilter] =
@@ -738,7 +134,6 @@ export default function LibraryPage() {
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const closeWorkspacePanel = useCallback(() => {
     setActivePanel(null);
-    setShowTutorSourcePicker(false);
   }, []);
 
   useEffect(() => {
@@ -775,6 +170,28 @@ export default function LibraryPage() {
     window.addEventListener("popstate", applyUrlState);
     return () => window.removeEventListener("popstate", applyUrlState);
   }, []);
+
+  useEffect(() => {
+    if (loading || sourceComposerPrefillHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("create") !== "1") return;
+
+    sourceComposerPrefillHandledRef.current = true;
+    const requestedFolderId = params.get("folderId")?.trim() ?? "";
+    if (requestedFolderId && folders.some((folder) => folder.id === requestedFolderId)) {
+      setSelectedFolderIds([requestedFolderId]);
+    }
+    setShowAddSource(true);
+
+    params.delete("create");
+    params.delete("folderId");
+    const nextSearch = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
+    );
+  }, [folders, loading]);
 
   useEffect(() => {
     if (!urlStateReady) return;
@@ -888,12 +305,6 @@ export default function LibraryPage() {
           ? current
           : null
       );
-      setTutorSourceIds((current) => {
-        return reconcileTutorSourceSelection(
-          current,
-          nextSources.map((source) => source.id)
-        );
-      });
     } catch (error) {
       console.error(error);
       setSources([]);
@@ -902,7 +313,7 @@ export default function LibraryPage() {
       setDecks([]);
       setNotebooks([]);
       setDrafts([]);
-      if (!isPermissionDenied(error)) {
+      if (!isFirebasePermissionDenied(error)) {
         setFeedback({ type: "error", message: "Failed to load Sources." });
       }
     } finally {
@@ -1184,21 +595,6 @@ export default function LibraryPage() {
   const openTutorForSelectedSource = () => {
     if (!selectedSource) return;
     setFeedback(null);
-    const tutorContextChanged = shouldResetTutorConversation(
-      tutorSourceIds,
-      tutorPrimarySourceId,
-      selectedSource.id
-    );
-    setTutorSourceIds((current) =>
-      focusTutorSourceSelection(current, selectedSource.id)
-    );
-    if (tutorContextChanged) {
-      tutorRequestIdRef.current += 1;
-      setTutorMessages([]);
-      if (busyAction === "source-tutor") setBusyAction(null);
-    }
-    setTutorPrimarySourceId(selectedSource.id);
-    setShowTutorSourcePicker(false);
     setActivePanel("tutor");
   };
 
@@ -1207,57 +603,6 @@ export default function LibraryPage() {
     setFolderFilter("");
     setTypeFilter("all");
     setStatusFilter("active");
-  };
-
-  const toggleTutorSource = (sourceId: string) => {
-    setTutorSourceIds((current) => {
-      const result = toggleTutorSourceSelection(current, sourceId);
-      if (result.limitReached) {
-        setFeedback({
-          type: "error",
-          message: `Tutor can use up to ${MAX_TUTOR_SOURCE_SELECTION} sources at once.`,
-        });
-      }
-      return result.sourceIds;
-    });
-  };
-
-  const runSourceTutor = async () => {
-    if (tutorSourceIds.length === 0) {
-      setFeedback({ type: "error", message: "Select at least one source for Tutor." });
-      return;
-    }
-    const requestId = tutorRequestIdRef.current + 1;
-    tutorRequestIdRef.current = requestId;
-    const submittedSourceIds = [...tutorSourceIds];
-    const submittedMessage = tutorMessage;
-    setBusyAction("source-tutor");
-    setFeedback(null);
-    setShowTutorSourcePicker(false);
-    setTutorMessages((current) => [
-      ...current,
-      { role: "user", text: submittedMessage },
-    ]);
-    try {
-      const response = await askSourceTutor({
-        sourceIds: submittedSourceIds,
-        message: submittedMessage,
-      });
-      if (tutorRequestIdRef.current !== requestId) return;
-      setTutorMessages((current) => [...current, { role: "model", text: response.reply }]);
-      setFeedback({
-        type: "success",
-        message:
-          response.sourceFailures.length > 0
-            ? `Tutor used ${response.sourcesUsed.length} source${response.sourcesUsed.length === 1 ? "" : "s"}. ${response.sourceFailures.length} could not be read.`
-            : `Tutor used ${response.sourcesUsed.length} selected source${response.sourcesUsed.length === 1 ? "" : "s"}.`,
-      });
-    } catch (error) {
-      if (tutorRequestIdRef.current !== requestId) return;
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Source Tutor failed." });
-    } finally {
-      if (tutorRequestIdRef.current === requestId) setBusyAction(null);
-    }
   };
 
   const updateSelectedSourceTopics = async (nextTopicIds: string[]) => {
@@ -1322,13 +667,6 @@ export default function LibraryPage() {
     Number(Boolean(folderFilter)) +
     Number(typeFilter !== "all") +
     Number(statusFilter !== "active");
-  const tutorSelectedSources = tutorSourceIds
-    .map((sourceId) => sources.find((source) => source.id === sourceId))
-    .filter((source): source is Source => Boolean(source));
-  const tutorAdditionalSources = getAdditionalTutorSources(
-    sources,
-    tutorPrimarySourceId ?? selectedSource?.id ?? ""
-  );
   const canOpenSelectedSource = Boolean(
     selectedSource &&
       ((selectedSource.type === "link" && selectedSource.externalUrl) ||
@@ -1645,376 +983,80 @@ export default function LibraryPage() {
         onConfirm={() => void deleteSelectedSource()}
       />
 
-      <SourceWorkspaceDrawer
+      <JamiAssistantDrawer
         open={activePanel === "tutor"}
-        eyebrow="Jami Tutor"
-        title={`Ask about ${tutorSelectedSources[0]?.title ?? "this source"}`}
-        onClose={closeWorkspacePanel}
-        footer={
-          <div className="space-y-3">
-            <Textarea
-              label="Question"
-              placeholder="What would you like help with?"
-              rows={4}
-              value={tutorMessage}
-              data-drawer-autofocus="true"
-              onChange={(event) => setTutorMessage(event.target.value)}
-            />
-            <Button
-              type="button"
-              className="min-h-11 w-full"
-              disabled={
-                busyAction === "source-tutor" ||
-                tutorSourceIds.length === 0 ||
-                !tutorMessage.trim()
-              }
-              onClick={() => void runSourceTutor()}
-            >
-              <SourceActionIcon name="sparkles" className="mr-2 h-4 w-4" />
-              {busyAction === "source-tutor" ? "Reading..." : "Ask Jami"}
-            </Button>
-          </div>
-        }
-      >
-        <div className="space-y-6">
-          {feedback ? (
-            <FeedbackBanner
-              type={feedback.type}
-              message={feedback.message}
-              autoDismissMs={0}
-              onDismiss={() => setFeedback(null)}
-            />
-          ) : null}
+        onOpenChange={(open) => {
+          if (!open) closeWorkspacePanel();
+        }}
+        resetKey={selectedSource?.id ?? "no-source"}
+        contextLabel={selectedSource?.title ?? "Selected source"}
+        getContext={() => ({
+          surface: "sources",
+          sourceIds: selectedSource ? [selectedSource.id] : [],
+        })}
+        quickActions={[
+          {
+            label: "Explain key ideas",
+            prompt: "Explain the key ideas in this source clearly.",
+          },
+          {
+            label: "Revision summary",
+            prompt: "Summarise this source for revision.",
+          },
+          {
+            label: "Quiz me",
+            prompt: "Quiz me on the most important ideas in this source.",
+          },
+        ]}
+      />
 
-          <section className="app-subtle-panel rounded-[1.15rem] p-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-              <div className="min-w-0">
-                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
-                  Using for this request
-                </div>
-                <div className="mt-1 truncate text-sm font-semibold text-text-primary">
-                  {tutorSelectedSources[0]?.title ?? "No source selected"}
-                  {tutorSelectedSources.length > 1
-                    ? ` +${tutorSelectedSources.length - 1} more`
-                    : ""}
-                </div>
-                <p className="mt-1 text-xs leading-5 text-text-muted">
-                  Jami reads only these sources when you press Ask.
-                </p>
-              </div>
-              {tutorAdditionalSources.length > 0 ? (
-                <button
-                  type="button"
-                  aria-expanded={showTutorSourcePicker}
-                  aria-controls="tutor-extra-source-picker"
-                  disabled={busyAction === "source-tutor"}
-                  onClick={() => setShowTutorSourcePicker((current) => !current)}
-                  className="min-h-11 self-start rounded-full px-3 text-xs font-semibold text-text-secondary transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 sm:shrink-0 sm:self-auto"
-                >
-                  {showTutorSourcePicker
-                    ? "Done"
-                    : tutorSelectedSources.length > 1
-                      ? "Change sources"
-                      : "Add another source"}
-                </button>
-              ) : null}
-            </div>
-
-            {showTutorSourcePicker ? (
-              <div
-                id="tutor-extra-source-picker"
-                className="mt-4 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)]"
-              >
-                <div className="flex items-center justify-between border-b border-[var(--color-border)] px-3 py-2 text-xs text-text-muted">
-                  <span>Additional sources</span>
-                  <span>
-                    {tutorSourceIds.length}/{MAX_TUTOR_SOURCE_SELECTION}
-                  </span>
-                </div>
-                <div className="max-h-72 overflow-y-auto">
-                  {tutorAdditionalSources.map((source) => {
-                    const checked = tutorSourceIds.includes(source.id);
-                    const limitReached =
-                      !checked &&
-                      tutorSourceIds.length >= MAX_TUTOR_SOURCE_SELECTION;
-                    const selectionLocked = busyAction === "source-tutor";
-                    return (
-                      <label
-                        key={source.id}
-                        className={
-                          "flex min-h-12 items-center gap-3 border-b border-[var(--color-border)] px-3 text-sm last:border-b-0 " +
-                          (limitReached || selectionLocked
-                            ? "cursor-not-allowed text-text-muted"
-                            : "cursor-pointer text-text-primary hover:bg-[var(--color-glass-subtle)]")
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={limitReached || selectionLocked}
-                          onChange={() => toggleTutorSource(source.id)}
-                          className="h-4 w-4 shrink-0 accent-[var(--color-accent)]"
-                        />
-                        <SourceTypeIcon
-                          type={source.type}
-                          className="h-4 w-4 shrink-0 text-text-muted"
-                        />
-                        <span className="min-w-0 flex-1 truncate">
-                          {source.title}
-                        </span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-            ) : null}
-          </section>
-
-          <section aria-label="Tutor conversation">
-            {tutorMessages.length === 0 ? (
-              <p className="text-sm leading-6 text-text-muted">
-                Ask for an explanation, summary, or comparison.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {tutorMessages.map((message, index) => (
-                  <div
-                    key={message.role + "-" + index}
-                    className={
-                      message.role === "model"
-                        ? "border-l-2 border-[var(--color-border-strong)] py-1 pl-4 text-sm leading-6 text-text-primary"
-                        : "rounded-[1.1rem] bg-[var(--color-glass-subtle)] p-4 text-sm leading-6 text-text-secondary"
-                    }
-                  >
-                    <div className="mb-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
-                      {message.role === "model" ? "Jami" : "You"}
-                    </div>
-                    {message.text}
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-        </div>
-      </SourceWorkspaceDrawer>
-
-      <SourceWorkspaceDrawer
+      <SourceDetailsDrawer
         open={activePanel === "details"}
-        eyebrow="Source details"
-        title={selectedSource?.title ?? "Source"}
+        source={selectedSource ?? null}
+        folders={folders}
+        topics={topics}
+        userId={user.uid}
+        feedback={feedback}
+        busyAction={busyAction}
         onClose={closeWorkspacePanel}
-      >
-        {selectedSource ? (
-          <div className="space-y-7">
-            {feedback ? (
-              <FeedbackBanner
-                type={feedback.type}
-                message={feedback.message}
-                autoDismissMs={0}
-                onDismiss={() => setFeedback(null)}
-              />
-            ) : null}
-
-            <section>
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <h3 className="text-sm font-semibold text-text-primary">
-                    Folders
-                  </h3>
-                  <p className="mt-1 text-xs leading-5 text-text-muted">
-                    Place this source in up to {MAX_SOURCE_FOLDER_IDS} study spaces.
-                  </p>
-                </div>
-                <span className="shrink-0 text-xs font-semibold text-text-muted">
-                  {selectedSource.folderIds.length}/{MAX_SOURCE_FOLDER_IDS}
-                </span>
-              </div>
-              {folders.length === 0 ? (
-                <p className="mt-3 text-sm leading-6 text-text-muted">
-                  No folders yet.
-                </p>
-              ) : (
-                <div className="mt-4 overflow-hidden rounded-[1rem] border border-[var(--color-border)]">
-                  {folders.map((folder) => {
-                    const checked = selectedSource.folderIds.includes(folder.id);
-                    const limitReached =
-                      !checked &&
-                      selectedSource.folderIds.length >= MAX_SOURCE_FOLDER_IDS;
-                    return (
-                      <label
-                        key={folder.id}
-                        className={
-                          "flex min-h-12 items-center gap-3 border-b border-[var(--color-border)] px-3 text-sm last:border-b-0 " +
-                          (limitReached
-                            ? "cursor-not-allowed text-text-muted"
-                            : "cursor-pointer text-text-primary hover:bg-[var(--color-glass-subtle)]")
-                        }
-                      >
-                        <input
-                          type="checkbox"
-                          checked={checked}
-                          disabled={
-                            limitReached || busyAction === "source-folders"
-                          }
-                          onChange={() => void toggleSourceFolder(folder.id)}
-                          className="h-4 w-4 accent-[var(--color-accent)]"
-                        />
-                        <span className="min-w-0 truncate">{folder.name}</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-
-            <section className="border-t border-[var(--color-border)] pt-6">
-              <TopicPicker
-                userId={user.uid}
-                topics={topics}
-                selectedTopicIds={selectedSource.topicIds}
-                onChange={(nextTopicIds) =>
-                  void updateSelectedSourceTopics(nextTopicIds)
-                }
-                onTopicsChange={setTopics}
-                disabled={busyAction !== null}
-              />
-            </section>
-
-            <section className="border-t border-[var(--color-border)] pt-6">
-              <h3 className="text-sm font-semibold text-text-primary">
-                About this source
-              </h3>
-              <dl className="mt-4 grid grid-cols-[auto_minmax(0,1fr)] gap-x-5 gap-y-3 text-sm">
-                <dt className="text-text-muted">Type</dt>
-                <dd className="text-right text-text-secondary">
-                  {sourceDisplayLabel(selectedSource)}
-                </dd>
-                <dt className="text-text-muted">Added</dt>
-                <dd className="text-right text-text-secondary">
-                  {selectedSource.createdAt > 0
-                    ? new Intl.DateTimeFormat("en", {
-                        day: "numeric",
-                        month: "short",
-                        year: "numeric",
-                      }).format(selectedSource.createdAt)
-                    : "Previously"}
-                </dd>
-                <dt className="text-text-muted">Status</dt>
-                <dd className="text-right capitalize text-text-secondary">
-                  {selectedSource.status}
-                </dd>
-                {selectedSource.fileName ? (
-                  <>
-                    <dt className="text-text-muted">File</dt>
-                    <dd className="break-words text-right text-text-secondary">
-                      {selectedSource.fileName}
-                    </dd>
-                  </>
-                ) : null}
-                {typeof selectedSource.sizeBytes === "number" ? (
-                  <>
-                    <dt className="text-text-muted">Size</dt>
-                    <dd className="text-right text-text-secondary">
-                      {Math.round(selectedSource.sizeBytes / 1024)} KB
-                    </dd>
-                  </>
-                ) : null}
-              </dl>
-            </section>
-          </div>
-        ) : null}
-      </SourceWorkspaceDrawer>
-
-      <SourceWorkspaceDrawer
-        open={activePanel === "drafts" && sourceDrafts.length > 0}
-        eyebrow="Draft review"
-        title={
-          sourceDrafts.length === 1
-            ? "1 draft from this source"
-            : sourceDrafts.length + " drafts from this source"
+        onDismissFeedback={() => setFeedback(null)}
+        onToggleFolder={(folderId) => void toggleSourceFolder(folderId)}
+        onUpdateTopics={(topicIds) =>
+          void updateSelectedSourceTopics(topicIds)
         }
-        wide
+        onTopicsChange={setTopics}
+      />
+
+      <SourceDraftsDrawer
+        open={activePanel === "drafts"}
+        drafts={sourceDrafts}
+        selectedDraft={selectedDraft ?? null}
+        sourceTitle={selectedSource?.title ?? null}
+        topics={topics}
+        decks={decks}
+        notebooks={notebooks}
+        deckIdByDraft={deckIdByDraft}
+        notebookIdByDraft={notebookIdByDraft}
+        userId={user.uid}
+        feedback={feedback}
         onClose={closeWorkspacePanel}
-      >
-        <div className="space-y-5">
-          {feedback ? (
-            <FeedbackBanner
-              type={feedback.type}
-              message={feedback.message}
-              autoDismissMs={0}
-              onDismiss={() => setFeedback(null)}
-            />
-          ) : null}
-
-          <p className="text-sm leading-6 text-text-muted">
-            Review generated content before it enters Learn or a notebook.
-          </p>
-
-          <div className="flex gap-2 overflow-x-auto pb-1">
-            {sourceDrafts.map((draft, index) => {
-              const active = selectedDraft?.id === draft.id;
-              return (
-                <button
-                  key={draft.id}
-                  type="button"
-                  onClick={() => setSelectedDraftId(draft.id)}
-                  className={
-                    "min-w-[13rem] rounded-[1rem] border p-3 text-left transition " +
-                    (active
-                      ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-text-primary"
-                      : "border-[var(--color-border)] text-text-secondary hover:bg-[var(--color-glass-subtle)]")
-                  }
-                >
-                  <div className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-text-muted">
-                    Draft {index + 1}
-                  </div>
-                  <div className="mt-1 line-clamp-2 text-sm font-semibold text-text-primary">
-                    {draft.kind === "flashcard"
-                      ? draft.front ?? "Flashcard draft"
-                      : draft.questionText ?? "Notebook question draft"}
-                  </div>
-                  <div className="mt-2 text-xs text-text-muted">
-                    {draft.kind === "flashcard" ? "Flashcard" : "Notebook page"}
-                  </div>
-                </button>
-              );
-            })}
-          </div>
-
-          {selectedDraft && selectedSource ? (
-            <DraftEditor
-              key={selectedDraft.id}
-              draft={selectedDraft}
-              topics={topics}
-              decks={decks}
-              notebooks={notebooks}
-              selectedDeckId={
-                deckIdByDraft[selectedDraft.id] ?? decks[0]?.id ?? ""
-              }
-              selectedNotebookId={
-                notebookIdByDraft[selectedDraft.id] ?? notebooks[0]?.id ?? ""
-              }
-              onDeckChange={(value) =>
-                setDeckIdByDraft((current) => ({
-                  ...current,
-                  [selectedDraft.id]: value,
-                }))
-              }
-              onNotebookChange={(value) =>
-                setNotebookIdByDraft((current) => ({
-                  ...current,
-                  [selectedDraft.id]: value,
-                }))
-              }
-              onSaved={handleDraftSaved}
-              onTopicsChange={setTopics}
-              userId={user.uid}
-              sourceTitle={selectedSource.title}
-            />
-          ) : null}
-        </div>
-      </SourceWorkspaceDrawer>
+        onDismissFeedback={() => setFeedback(null)}
+        onSelectDraft={setSelectedDraftId}
+        onDeckChange={(draftId, deckId) =>
+          setDeckIdByDraft((current) => ({
+            ...current,
+            [draftId]: deckId,
+          }))
+        }
+        onNotebookChange={(draftId, notebookId) =>
+          setNotebookIdByDraft((current) => ({
+            ...current,
+            [draftId]: notebookId,
+          }))
+        }
+        onSaved={handleDraftSaved}
+        onTopicsChange={setTopics}
+      />
 
       <p className="px-1 text-sm leading-6 text-text-muted">
         Save references, read them here, and ask Jami when you need help.
@@ -2123,7 +1165,7 @@ export default function LibraryPage() {
                             <option value="all">All types</option>
                             {sourceTypes.map((type) => (
                               <option key={type.value} value={type.value}>
-                                {typeLabel(type.value)}
+                                {sourceTypeLabel(type.value)}
                               </option>
                             ))}
                           </select>

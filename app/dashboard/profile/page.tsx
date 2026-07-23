@@ -1,6 +1,5 @@
 "use client";
 
-import { FirebaseError } from "firebase/app";
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@/lib/auth/user-context";
@@ -9,7 +8,13 @@ import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
 import HowJamiWorksCard from "@/components/study/HowJamiWorksCard";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
 import { Button, Card, Input, SectionHeader } from "@/components/ui";
-import { logout, deleteAccount } from "@/services/auth";
+import {
+  deleteAccount,
+  getAccountDeletionErrorCode,
+  logout,
+  reauthenticateForAccountDeletion,
+} from "@/services/auth";
+import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
 import {
   loadInAppUsername,
   MAX_USERNAME_LENGTH,
@@ -79,6 +84,11 @@ export default function ProfilePage() {
 
   const [isDeleting, setIsDeleting] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletionPhase, setDeletionPhase] = useState<
+    "reauthenticating" | "authorizing" | "deleting" | null
+  >(null);
+  const [requiresRecentLogin, setRequiresRecentLogin] = useState(false);
+  const [deletePassword, setDeletePassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loadingUsername, setLoadingUsername] = useState(true);
   const [savingUsername, setSavingUsername] = useState(false);
@@ -91,6 +101,12 @@ export default function ProfilePage() {
     savedUsername ||
     user.displayName ||
     (user.email ? user.email.split("@")[0] : "User");
+  const canReauthenticateWithGoogle = user.providerData.some(
+    (provider) => provider.providerId === "google.com"
+  );
+  const needsPasswordForReauthentication =
+    !canReauthenticateWithGoogle &&
+    user.providerData.some((provider) => provider.providerId === "password");
 
   useEffect(() => {
     let cancelled = false;
@@ -126,18 +142,54 @@ export default function ProfilePage() {
     setIsDeleting(true);
     setError(null);
     try {
-      await deleteAccount();
-      router.push("/");
-    } catch (e) {
-      console.error(e);
-      const message =
-        e instanceof FirebaseError && e.code === "auth/requires-recent-login"
-          ? "Please sign in again before deleting your account."
-          : e instanceof Error
-            ? e.message
-            : "Failed to delete account.";
-      setError(message);
+      await deleteAccount((phase) => setDeletionPhase(phase));
+      router.replace("/");
+    } catch (nextError) {
+      console.error(nextError);
+      if (
+        getAccountDeletionErrorCode(nextError) ===
+        "auth/requires-recent-login"
+      ) {
+        setRequiresRecentLogin(true);
+        setError(
+          "For security, verify your sign-in again before Jami removes the account."
+        );
+      } else {
+        setError(
+          nextError instanceof Error
+            ? nextError.message
+            : "Jami could not finish deleting your account. Your sign-in was kept so you can retry."
+        );
+      }
+    } finally {
       setIsDeleting(false);
+      setDeletionPhase(null);
+    }
+  };
+
+  const handleReauthenticateAndDelete = async () => {
+    setIsDeleting(true);
+    setDeletionPhase("reauthenticating");
+    setError(null);
+    try {
+      await reauthenticateForAccountDeletion(deletePassword);
+      setDeletePassword("");
+      setRequiresRecentLogin(false);
+      setIsDeleting(false);
+      setDeletionPhase(null);
+      await handleDeleteAccount();
+    } catch (nextError) {
+      console.error(nextError);
+      const accountCode = getAccountDeletionErrorCode(nextError);
+      setError(
+        accountCode === "account/password-required"
+          ? "Enter your current password to continue."
+          : accountCode === "account/unsupported-provider"
+            ? "Sign out, sign back in, and then try deleting your account again."
+            : getFriendlyAuthError(getAuthErrorCode(nextError))
+      );
+      setIsDeleting(false);
+      setDeletionPhase(null);
     }
   };
 
@@ -214,7 +266,7 @@ export default function ProfilePage() {
 
       <Button
         onClick={() => void handleSignOut()}
-        variant="danger"
+        variant="secondary"
         size="lg"
         className="w-full justify-start"
       >
@@ -232,36 +284,113 @@ export default function ProfilePage() {
       <Card tone="subtle" className="border-error-muted bg-error-muted/20 sm:p-6" padding="md">
         <SectionHeader
           title={<span className="text-rose-200">Danger zone</span>}
-          description="Permanently delete your account and data."
+          description="Permanently remove your sign-in and all data stored by Jami."
         />
 
         {error ? (
-          <p className="mt-3 text-xs text-rose-200">{error}</p>
+          <p className="mt-3 text-sm leading-6 text-rose-200" role="alert">
+            {error}
+          </p>
         ) : null}
 
         {!showDeleteConfirm ? (
           <Button
-            onClick={() => setShowDeleteConfirm(true)}
+            onClick={() => {
+              setShowDeleteConfirm(true);
+              setRequiresRecentLogin(false);
+              setDeletePassword("");
+              setError(null);
+            }}
             variant="danger"
             className="mt-4"
           >
             Delete Account
           </Button>
         ) : (
-          <div className="mt-4 flex flex-wrap gap-2">
-            <Button
-              disabled={isDeleting}
-              onClick={() => void handleDeleteAccount()}
-              variant="danger"
-            >
-              {isDeleting ? "Deleting..." : "Yes, delete everything"}
-            </Button>
-            <Button
-              onClick={() => setShowDeleteConfirm(false)}
-              variant="secondary"
-            >
-              Cancel
-            </Button>
+          <div className="app-subtle-panel mt-4 rounded-[1.2rem] p-4">
+            <p className="text-sm font-semibold text-text-primary">
+              This cannot be undone.
+            </p>
+            <p className="mt-2 text-sm leading-6 text-text-secondary">
+              Jami will remove your decks, cards, folders, notebooks and pages,
+              uploaded files, sources, Topics, Tutor history, AI usage records,
+              goals, stars, study history, notification data, profile, and
+              Firebase sign-in.
+            </p>
+
+            {requiresRecentLogin ? (
+              <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+                <p className="text-sm font-semibold text-text-primary">
+                  Verify it is you
+                </p>
+                <p className="mt-1 text-xs leading-5 text-text-muted">
+                  {needsPasswordForReauthentication
+                    ? "Enter your current password. Jami will then retry the deletion."
+                    : "Continue with your sign-in provider. Jami will then retry the deletion."}
+                </p>
+                {needsPasswordForReauthentication ? (
+                  <Input
+                    type="password"
+                    label="Current password"
+                    value={deletePassword}
+                    onChange={(event) => setDeletePassword(event.target.value)}
+                    autoComplete="current-password"
+                    disabled={isDeleting}
+                    containerClassName="mt-3 max-w-md"
+                  />
+                ) : null}
+                <Button
+                  type="button"
+                  disabled={
+                    isDeleting ||
+                    (needsPasswordForReauthentication && !deletePassword)
+                  }
+                  onClick={() => void handleReauthenticateAndDelete()}
+                  variant="danger"
+                  className="mt-3"
+                >
+                  {deletionPhase === "reauthenticating"
+                    ? "Verifying..."
+                    : needsPasswordForReauthentication
+                      ? "Verify and delete"
+                      : "Verify sign-in and delete"}
+                </Button>
+              </div>
+            ) : null}
+
+            {deletionPhase ? (
+              <p className="mt-4 text-sm font-medium text-text-secondary" role="status">
+                {deletionPhase === "authorizing"
+                  ? "Verifying your account..."
+                  : deletionPhase === "deleting"
+                    ? "Removing your data and uploaded files. Keep this page open..."
+                    : "Verifying your sign-in..."}
+              </p>
+            ) : null}
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              {!requiresRecentLogin ? (
+                <Button
+                  disabled={isDeleting}
+                  onClick={() => void handleDeleteAccount()}
+                  variant="danger"
+                >
+                  {isDeleting ? "Deleting..." : "Yes, delete everything"}
+                </Button>
+              ) : null}
+              <Button
+                disabled={isDeleting}
+                onClick={() => {
+                  setShowDeleteConfirm(false);
+                  setRequiresRecentLogin(false);
+                  setDeletePassword("");
+                  setError(null);
+                }}
+                variant="secondary"
+              >
+                Cancel
+              </Button>
+            </div>
           </div>
         )}
       </Card>

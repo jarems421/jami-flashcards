@@ -1,4 +1,17 @@
 export type GoalStatus = "active" | "completed" | "failed" | "cancelled";
+export type GoalScopeType = "all" | "deck" | "topic" | "folder";
+
+export type GoalScope = {
+  type: GoalScopeType;
+  id?: string;
+  label?: string;
+};
+
+export type GoalAnswerContext = {
+  deckId?: string;
+  topicIds?: string[];
+  folderIds?: string[];
+};
 
 export type GoalProgress = {
   cardsCompleted: number;
@@ -8,6 +21,8 @@ export type GoalProgress = {
 
 export type Goal = {
   id: string;
+  name: string;
+  scope: GoalScope;
   targetCards: number;
   targetAccuracy: number;
   deadline: number;
@@ -15,6 +30,35 @@ export type Goal = {
   status: GoalStatus;
   createdAt: number;
 };
+
+function normalizeGoalScope(value: unknown): GoalScope {
+  if (!value || typeof value !== "object") return { type: "all" };
+  const data = value as Record<string, unknown>;
+  const type: GoalScopeType =
+    data.type === "deck" || data.type === "topic" || data.type === "folder"
+      ? data.type
+      : "all";
+  const id = typeof data.id === "string" ? data.id.trim().slice(0, 160) : "";
+  const label = typeof data.label === "string" ? data.label.trim().slice(0, 120) : "";
+  if (type === "all" || !id) return { type: "all" };
+  return {
+    type,
+    id,
+    ...(label ? { label } : {}),
+  };
+}
+
+export function getGoalDisplayName(goal: Pick<Goal, "name" | "targetCards">) {
+  return goal.name.trim() || `Review ${goal.targetCards} cards`;
+}
+
+export function doesGoalMatchAnswer(goal: Goal, context: GoalAnswerContext = {}) {
+  if (goal.scope.type === "all") return true;
+  if (!goal.scope.id) return false;
+  if (goal.scope.type === "deck") return context.deckId === goal.scope.id;
+  if (goal.scope.type === "topic") return context.topicIds?.includes(goal.scope.id) === true;
+  return context.folderIds?.includes(goal.scope.id) === true;
+}
 
 export function getGoalAccuracy(progress: GoalProgress): number {
   if (progress.totalAnswers <= 0) {
@@ -38,6 +82,11 @@ export function normalizeGoal(
 
   return {
     id,
+    name:
+      typeof data.name === "string" && data.name.trim()
+        ? data.name.trim().slice(0, 120)
+        : `Review ${typeof data.targetCards === "number" ? data.targetCards : 0} cards`,
+    scope: normalizeGoalScope(data.scope),
     targetCards: typeof data.targetCards === "number" ? data.targetCards : 0,
     targetAccuracy:
       typeof data.targetAccuracy === "number" ? data.targetAccuracy : 0,
@@ -81,7 +130,8 @@ export function getGoalStatusAtTime(goal: Goal, now: number): GoalStatus {
 export function getUpdatedGoalAfterAnswer(
   goal: Goal,
   isCorrect: boolean,
-  now: number
+  now: number,
+  context: GoalAnswerContext = {}
 ): Goal {
   if (goal.status !== "active") {
     return goal;
@@ -93,6 +143,10 @@ export function getUpdatedGoalAfterAnswer(
       ...goal,
       status: "failed",
     };
+  }
+
+  if (!doesGoalMatchAnswer(goal, context)) {
+    return goal;
   }
 
   const progress = {

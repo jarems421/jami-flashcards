@@ -1,234 +1,133 @@
 <p align="center">
-  <img src="public/icons/icon-512.png" alt="Jami app icon" width="112" height="112" style="border-radius: 24px;" />
+  <img src="public/icons/icon-512.png" alt="Jami app icon" width="112" height="112" />
 </p>
 
-<h1 align="center">Jami Flashcards</h1>
+<h1 align="center">Jami</h1>
 
 <p align="center">
-  <strong><a href="https://jami-jarems421s-projects.vercel.app">Open the live app</a></strong>
-</p>
-
-<p align="center">
-  Start here: https://jami-jarems421s-projects.vercel.app
+  A notebook-first study workspace combining handwritten practice, flashcards,
+  sources, goals, and progress tracking.
 </p>
 
 <p align="center">
-  A memory-aware flashcard app with AI-assisted study support, offline-ready review, actionable analytics, and a constellation reward loop.
-</p>
-
-<p align="center">
-  <a href="https://jami-jarems421s-projects.vercel.app"><strong>Live app</strong></a>
-  &middot;
-  <a href="https://jami-jarems421s-projects.vercel.app/demo"><strong>Public demo</strong></a>
+  <a href="https://jami-jarems421s-projects.vercel.app"><strong>Open Jami</strong></a>
   &middot;
   <a href="https://github.com/jarems421/jami-flashcards"><strong>Source</strong></a>
 </p>
 
-<p align="center">
-  <strong>Next.js 16</strong> &middot; <strong>React 19</strong> &middot; <strong>TypeScript</strong> &middot; <strong>Firebase</strong> &middot; <strong>Tailwind CSS</strong> &middot; <strong>Gemini</strong>
-</p>
+Jami is an authenticated Next.js application backed by Firebase. Students organise
+work in folders, write on fixed-page notebooks, build and review flashcards, save
+sources, set scoped goals, and monitor progress. The installed PWA supports cached
+study data and queued review synchronisation.
 
----
+## Product areas
 
-## At a glance
+The dashboard keeps eleven stable destinations:
 
-Jami is designed to feel like a finished learning product, not just a flashcard CRUD app.
+- **Home** recommends the most useful next action.
+- **Learn** runs scheduled and focused flashcard study.
+- **Folders** groups notebooks, decks, topics, and sources into study spaces.
+- **Progress** surfaces weak areas and recent activity.
+- **Decks** and **Cards** manage flashcard material.
+- **Topics** connect related study material.
+- **Sources** stores selected references and hosts the existing source tools.
+- **Goals** tracks time, card, accuracy, and streak targets against a chosen scope.
+- **Stars** visualises earned constellation rewards.
+- **Account** manages profile data, authentication, and account deletion.
 
-- Build cards quickly with single-card entry, bulk paste, file import, tag management, and quality warnings.
-- Study through Daily Review, Focused Review, or Simple Study depending on how much structure you want.
-- Stay productive offline with cached study data and queued review sync.
-- See what matters next through retention signals, weak areas, hardest cards, due-load forecasting, and streak pressure.
-- Turn progress into something visible with goals, stars, and constellation rewards.
+`/dashboard/practise` remains the compatibility route for the user-facing Folders
+workspace. `/dashboard/practice` redirects to it.
 
-## Live walkthrough
+## Technology
 
-If you open the app from top to bottom, the story is:
+| Area | Technology |
+| --- | --- |
+| Web application | Next.js 16, React 19, TypeScript |
+| Styling | Tailwind CSS and reusable components in `components/ui` |
+| Authentication and data | Firebase Auth, Firestore, and Storage |
+| Study scheduling | `ts-fsrs` plus Jami's prioritisation logic |
+| Notebook rendering | `js-draw`, PDF.js, and browser canvas APIs |
+| Existing AI features | Google Gemini through server Route Handlers |
+| Testing | Vitest and Firebase Rules Unit Testing |
 
-1. Start from a polished landing flow with Google sign-in, email sign-in, and a reviewer-friendly public demo.
-2. Build a card library through decks, tags, bulk imports, tag cleanup, and card-quality warnings.
-3. Study through Daily Review for the highest-risk cards, Focused Review for targeted deck/tag practice, or Simple Study for a lighter two-button practice loop.
-4. Use Insights to understand weak areas, upcoming workload, streak pressure, and hardest cards.
-5. Track longer-term progress through goals, stars, and the constellation system.
-
-## Heavy hitters
-
-### 1. Memory-aware study engine
-
-- Daily Review is ranked by memory risk, not just due date order.
-- FSRS provides the scheduling base layer.
-- A custom risk model pulls in overdue pressure, lapses, and recent struggle history.
-- Required and optional review queues keep the session focused without feeling punishing.
-- Active study sessions persist with stable session identity and revision ordering, so PWA resume, tab focus, offline fallback, and cross-device saves do not rebuild or rewind the queue.
-
-### 2. Simple Study mode
-
-- Simple Study is practice-only: it does not reschedule cards, move Daily Review progress, or award goals and stars.
-- The queue starts with cards that have no prior rating, then shows missed or historically hard cards from hardest to easiest.
-- The answer flow is intentionally small: `Got it` clears the card, while `Missed` moves it to the back of the queue.
-- Separate Simple Study card fields track lightweight progress without mixing it into FSRS due dates.
-
-### 3. Fast card authoring
-
-- Single-card entry for quick capture.
-- Paste-list import for spreadsheet-style workflows.
-- AI card-back autocomplete to speed up writing without auto-committing weak output.
-- Tag rename, merge, and removal tools for keeping a growing library tidy.
-- Quality warnings for duplicate, oversized, untagged, or suspicious cards.
-- Export helpers for TSV and CSV deck dumps.
-
-### 4. Useful analytics
-
-- Retention health and due-load summaries.
-- Weakest decks, tags, and hardest cards.
-- Streak rescue and recent activity changes.
-- Coverage and activity metrics that tell the user what to do next, not just what already happened.
-
-### 5. Offline-ready product behavior
-
-- Local snapshots for cards and decks.
-- Queued review events while offline.
-- Sync-back when connectivity returns.
-- PWA-safe session restore keeps the current card, cursor, and remaining count stable when the app is backgrounded or reopened.
-
-### 6. Demo and presentation readiness
-
-- Public preview at `/demo`.
-- Shared study session for safe hands-on review.
-- Demo protections block destructive edits while keeping the review loop accessible.
-- Product framing, empty states, and navigation are tuned for interviews, portfolio walkthroughs, and live demos.
-
-## Architecture
-
-```mermaid
-flowchart LR
-    A[Browser UI<br/>Next.js App Router] --> B[Client state and study shell]
-    B --> C[Next.js route handlers]
-    B --> D[Offline snapshot and queued review sync]
-
-    C --> E[Firebase Auth]
-    C --> F[Firestore]
-    C --> G[Firebase Storage]
-    C --> H[Gemini API]
-    C --> I[Web Push]
-
-    J[Demo admin services] --> F
-    J --> E
-
-    F --> K[Decks and cards]
-    F --> L[Goals, stars, constellation state]
-    F --> M[Study activity and daily review state]
-
-    H --> N[AI autocomplete, explanations, and study chat]
-    I --> O[Digest notifications]
-```
-
-## Why it reads well on a CV
-
-- Full-stack learning product built with Next.js 16, React 19, TypeScript, Firebase Auth, Firestore, Storage, and Gemini.
-- FSRS spaced repetition extended with a custom memory-risk ranking layer.
-- Offline-capable study flow with cached data and deferred sync.
-- AI-assisted card-back autocomplete, explanations, and study chat designed with human review in the loop.
-- Analytics, goals, and reward systems connected into one coherent product story.
-- Safe public demo and shared study mode for portfolio and interview walkthroughs.
-- Unit and rules testing across card utilities, analytics, auth, notifications, demo routes, and Firestore permissions.
-
-## Product map
+## Repository layout
 
 ```text
-app/
-  api/ai/                AI autocomplete, chat, and explanation routes
-  api/demo/              Demo login and refresh routes
-  api/notifications/     Digest and notification test routes
-  dashboard/             Authenticated product experience
-  demo/                  Public product preview
-components/
-  decks/                 Deck editing, card editing, import, tags, exports
-  demo/                  Shared demo entry points
-  layout/                App shell, notices, navigation
-  stats/                 Analytics presentation
-  study/                 Study flow and assistant UI
-  ui/                    Shared design system primitives
-lib/
-  ai/                    Prompting and AI output cleanup
-  auth/                  Auth context and listeners
-  demo/                  Demo mode helpers
-  study/                 Scheduling, analytics, memory risk, simple study, offline queue
-services/
-  ai/                    Client helpers for AI endpoints
-  auth/                  Sign-in and account lifecycle helpers
-  demo/                  Demo seeding and login services
-  firebase/              Client/admin Firebase setup
-  notifications/         Push subscription logic
-  study/                 Deck, goal, review, and activity services
-tests/                   Unit tests and Firestore rules tests
+app/                  Next.js pages, layouts, and server Route Handlers
+components/           Feature UI, application layout, and shared UI primitives
+lib/                  Models, validation, calculations, and browser-side utilities
+services/             Firebase persistence and client API adapters
+tests/                Unit, service, Route Handler, and Firebase rules tests
+docs/                 Design guidance, current QA notes, and marked historical reports
+public/               PWA files, application icons, and static assets
 ```
 
-## Tech stack
+Routes should stay thin where practical. Firebase and HTTP access belongs in
+`services`; pure domain logic belongs in `lib`; reusable visual primitives belong
+in `components/ui`. See [`docs/architecture.md`](docs/architecture.md) for dependency
+and compatibility boundaries. UI work must follow
+[`docs/ui-design-system.md`](docs/ui-design-system.md).
 
-| Area | Tools |
-| --- | --- |
-| Frontend | Next.js 16, React 19, TypeScript, Tailwind CSS |
-| Backend | Firebase Auth, Firestore, Storage, Admin SDK |
-| AI | Google Gemini via `@google/generative-ai` |
-| Study engine | `ts-fsrs` plus custom memory-risk ranking |
-| Charts | Recharts |
-| Testing | Vitest, Firebase rules testing |
-| Deployment | Vercel |
+## Local development
 
-## Demo mode
+### Requirements
 
-- `https://jami-jarems421s-projects.vercel.app/demo` is the public preview.
-- The shared study session opens a protected demo account without exposing real credentials.
-- On the Hobby Vercel plan, the demo workspace refreshes on access when stale.
+- Node.js 22.13 or newer
+- npm
+- A Firebase project with Authentication, Firestore, and Storage
+- A Gemini API key only when exercising the existing AI endpoints
 
-## Local setup
-
-### Prerequisites
-
-- Node.js 20+
-- A Firebase project with Authentication, Firestore, and Storage enabled
-- Gemini API key if you want AI authoring features
-- Web Push VAPID keys if you want notifications
-
-### Run locally
+### Setup
 
 ```bash
 git clone https://github.com/jarems421/jami-flashcards.git
 cd jami-flashcards
-npm install
+npm ci
 cp .env.example .env.local
 npm run dev
 ```
 
-Local app:
+Open `http://localhost:3000`. The dashboard requires a Firebase-authenticated user.
+The variable names and safe placeholders are documented in
+[`.env.example`](.env.example); never commit `.env.local` or production secrets.
 
-```text
-http://localhost:3000
-```
-
-Environment variables are documented in [`.env.example`](.env.example).
-
-## Useful scripts
+## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the local dev server |
-| `npm run dev:clean` | Clear `.next` and start fresh |
+| `npm run dev` | Start the Webpack development server |
+| `npm run clean` | Remove the generated `.next` directory |
+| `npm run dev:clean` | Clean and start the development server |
+| `npm run typecheck` | Run strict TypeScript checks, including unused code checks |
+| `npm run lint` | Lint the complete repository |
+| `npm test` | Run the Vitest suite once |
+| `npm run test:rules` | Run Firestore and Storage rules tests in emulators |
+| `npm run emulators:rules` | Start the Firestore and Storage emulators |
 | `npm run build` | Create a production build |
-| `npm run lint` | Run ESLint |
-| `npm run typecheck` | Run TypeScript without emitting |
-| `npm test` | Run Vitest unit tests |
-| `npm run test:rules` | Run Firestore security rule tests in the emulator |
-| `npm run firebase:rules:deploy` | Deploy Firestore rules |
+| `npm run check` | Run typecheck, lint, and tests |
+| `npm run firebase:rules:deploy` | Deploy Firestore and Storage rules |
+
+Pull requests and pushes to `main` run typecheck, lint, tests, and a production
+build in GitHub Actions.
 
 ## Verification
 
+Run focused tests while iterating, then use the complete quality gate before a
+release:
+
 ```bash
-npm run typecheck
-npm run lint
-npm test
+npm run check
 npm run build
 ```
+
+Notebook and responsive UI changes also require manual desktop, iPad, and phone
+checks from [`docs/manual-qa.md`](docs/manual-qa.md).
+
+## Security and data changes
+
+Do not delete legacy Firestore structures, rules, indexes, compatibility fields,
+or externally callable API routes based only on static import analysis. Inventory
+production data and traffic first, then use an explicit migration or deprecation.
 
 ## License
 

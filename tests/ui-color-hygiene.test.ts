@@ -8,7 +8,6 @@ const auditedFiles = [
   "components/ui/Button.tsx",
   "components/ui/Input.tsx",
   "components/ui/Textarea.tsx",
-  "components/ui/MetricStrip.tsx",
   "components/ui/EmptyState.tsx",
   "components/ui/StatTile.tsx",
   "components/ui/FeedbackBanner.tsx",

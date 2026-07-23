@@ -20,6 +20,9 @@ export type OfflineQueuedReview = {
   reviewedAt: number;
   studyDayKey: string;
   isCorrect: boolean;
+  deckId?: string;
+  topicIds?: string[];
+  folderIds?: string[];
   durationMs?: number;
   sessionKind: "daily-required" | "daily-optional" | "custom";
   cardUpdates: Record<string, number | string>;

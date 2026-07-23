@@ -18,10 +18,10 @@ import {
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
 import AppPage from "@/components/layout/AppPage";
+import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import {
   NotebookInkEditor,
   type NotebookInkEditorHandle,
-  type PreparedNotebookStroke,
 } from "@/components/workspace/NotebookInkEditor";
 import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
 import NotebookViewport, {
@@ -37,15 +37,13 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
+import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
   Notebook,
   NotebookFile,
-  NotebookHighlighterColor,
   NotebookPage,
   NotebookPageColor,
   NotebookPageStyle,
-  NotebookPageStatus,
-  NotebookPenColor,
   NotebookStrokeColor,
   NotebookStrokeTool,
   NotebookTextBlock,
@@ -53,18 +51,47 @@ import type {
 } from "@/lib/workspace/notebooks";
 import {
   buildTypedContentFromTextBlocks,
+  MAX_NOTEBOOK_TEXT_BLOCKS,
+  MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
   normalizeNotebookStrokeColor,
   resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
+import {
+  applyNotebookDraftToPage,
+  buildNotebookThumbnailPoints,
+  clampNotebookTextBlock,
+  getNotebookPageStyleBackground,
+  getNotebookStrokePaintColor,
+  getNotebookStrokePaintColorForPage,
+  getNotebookTextBlockOptionsElementId,
+  getNotebookWorkingPageStatus,
+  makeNotebookTextBlockId,
+  normalizeNotebookStrokes,
+} from "@/lib/workspace/notebook-page-content";
+import {
+  isNotebookPageSwipePreviewEnabled,
+  resolveNotebookCarouselPages,
+  shouldShowNotebookNewPagePreview,
+  type NotebookPageSwipeMotion as PageSwipeMotion,
+} from "@/lib/workspace/notebook-carousel";
+import {
+  createNotebookPageDraft,
+  deleteNotebookPageDraft,
+  getNotebookDraftDecision,
+  NOTEBOOK_DRAFT_IDLE_MS,
+  readNotebookPageDraft,
+  writeNotebookPageDraft,
+  writeNotebookPageDraftSync,
+  type NotebookPageDraft,
+} from "@/lib/workspace/notebook-drafts";
 import { getNotebookViewportLayout } from "@/lib/workspace/notebook-viewport";
 import {
   NOTEBOOK_ERASER_THICKNESS_BY_SIZE,
   type NotebookEraserMode,
   type NotebookEraserSize,
 } from "@/lib/workspace/notebook-eraser";
-import { normalizeTimedInkPoint } from "@/lib/workspace/notebook-ink-engine";
 import {
   clearNotebookNativeSelection,
   isNotebookTextEditingTarget,
@@ -105,16 +132,21 @@ import {
   type PointerClientSample,
 } from "@/lib/workspace/notebook-inking";
 import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
+import { renderNotebookPageSnapshot } from "@/lib/workspace/notebook-page-snapshot";
 import {
   createNotebookPage,
   deleteNotebookPage,
   getNotebookById,
   getNotebookFiles,
   getNotebookPages,
+  NotebookPageConflictError,
   saveNotebookPageSnapshot,
 } from "@/services/study/notebooks";
 import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
-import { getNotebookFileDownloadUrl } from "@/services/study/notebook-files";
+import {
+  getNotebookFileBytes,
+  getNotebookFileDownloadUrl,
+} from "@/services/study/notebook-files";
 import {
   legacyStrokesToJsDrawSvg,
   makeNotebookInkData,
@@ -140,10 +172,6 @@ import {
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
-type InkPoint = Point & { pressure?: number; time?: number };
-type Stroke = PreparedNotebookStroke & {
-  points: InkPoint[];
-};
 type SaveStatus = "saved" | "unsaved" | "saving" | "failed";
 type EditorTool = NotebookStrokeTool | "text" | "select";
 type TextBlockDragState = {
@@ -186,14 +214,6 @@ type PageSwipeState = {
   axis: "horizontal" | "vertical" | null;
   intent: NotebookPageDragIntent | null;
   completed: boolean;
-};
-type PageSwipeMotion = {
-  phase: "settling" | "returning" | "handoff";
-  kind: "page" | "create" | "cancel";
-  direction: "next" | "previous" | null;
-  targetPage: NotebookPage | null;
-  targetOffset: number;
-  durationMs: number;
 };
 type PinchZoomState = {
   startDistance: number;
@@ -242,9 +262,35 @@ type NotebookUndoAction = {
 type NotebookConfirmRequest =
   | { kind: "clear-page" }
   | { kind: "delete-page"; page: NotebookPage };
+type NotebookDraftConflict = {
+  draft: NotebookPageDraft;
+  pageId: string;
+};
 
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
+const NOTEBOOK_ASSISTANT_QUICK_ACTIONS = [
+  {
+    label: "Check my work",
+    prompt:
+      "Check the work on this page. Point out any mistakes and explain how to improve them without rewriting everything for me.",
+  },
+  {
+    label: "Give me a hint",
+    prompt:
+      "Give me one useful hint for the work on this page without revealing the full answer.",
+  },
+  {
+    label: "Explain this page",
+    prompt:
+      "Explain the ideas and working on this page clearly, including anything important I may have missed.",
+  },
+  {
+    label: "Quiz me",
+    prompt:
+      "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
+  },
+] as const;
 // The shared viewport supplies the sheet edge; page content only supplies its
 // paper colour and ruling.
 const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
@@ -273,21 +319,6 @@ const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
     "bottom-[calc(var(--notebook-control-bottom-inset)+3.95rem)] left-1/2 -translate-x-1/2",
   left:
     "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-1/2 -translate-y-1/2",
-};
-const PAGE_COLOR_HEX: Record<NotebookPageColor, string> = {
-  white: "#ffffff",
-  black: "#080a10",
-};
-const PEN_COLOR_HEX: Record<NotebookPenColor, string> = {
-  black: "#111827",
-  white: "#f8fafc",
-  red: "#ef4444",
-  green: "#22c55e",
-};
-const HIGHLIGHTER_COLOR_HEX: Record<NotebookHighlighterColor, string> = {
-  yellow: "#fde047",
-  green: "#86efac",
-  pink: "#f9a8d4",
 };
 const TEXT_COLOR_CLASS: Record<NotebookPageColor, string> = {
   white: "text-slate-950 placeholder:text-slate-400",
@@ -326,116 +357,28 @@ const TEXT_BLOCK_RESIZE_HANDLES: Array<{
     gripClass: "h-4 w-[3px]",
   },
 ];
-function isPoint(value: unknown): value is InkPoint {
-  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
-  const point = value as Record<string, unknown>;
-  return (
-    typeof point.x === "number" &&
-    Number.isFinite(point.x) &&
-    typeof point.y === "number" &&
-    Number.isFinite(point.y)
-  );
-}
 
-function normalizeInkPoint(point: InkPoint): InkPoint {
-  return normalizeTimedInkPoint(point);
-}
-
-function getNotebookStrokePaintColor(color: NotebookStrokeColor, tool: NotebookStrokeTool) {
-  if (color.startsWith("#")) return color;
-  if (tool === "highlighter" && color in HIGHLIGHTER_COLOR_HEX) {
-    return HIGHLIGHTER_COLOR_HEX[color as NotebookHighlighterColor];
-  }
-  return (
-    PEN_COLOR_HEX[color as NotebookPenColor] ??
-    HIGHLIGHTER_COLOR_HEX[color as NotebookHighlighterColor] ??
-    PEN_COLOR_HEX.black
-  );
-}
-
-function normalizeStrokes(value: unknown): Stroke[] {
-  if (!Array.isArray(value)) return [];
-
-  const strokes: Stroke[] = [];
-  for (const entry of value) {
-    if (!entry || typeof entry !== "object" || Array.isArray(entry)) continue;
-    const points = (entry as { points?: unknown }).points;
-    if (!Array.isArray(points)) continue;
-    const cleanPoints = points.filter(isPoint).map(normalizeInkPoint).slice(0, 1_200);
-    if (cleanPoints.length > 0) {
-      const stroke = entry as Record<string, unknown>;
-      const tool =
-        stroke.tool === "eraser" || stroke.tool === "highlighter"
-          ? stroke.tool
-          : "pen";
-      const width =
-        typeof stroke.width === "number" && Number.isFinite(stroke.width)
-          ? Math.max(1, Math.min(96, Math.round(stroke.width)))
-          : tool === "eraser"
-            ? 18
-            : 5;
-      strokes.push({
-        points: cleanPoints,
-        color: normalizeNotebookStrokeColor(stroke.color),
-        tool,
-        width,
-      });
-    }
-  }
-
-  return strokes;
-}
-
-function makeTextBlockId() {
-  return `text-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
-}
-
-function getTextBlockOptionsElementId(blockId: string, element: "menu" | "trigger") {
-  return `notebook-text-box-options-${encodeURIComponent(blockId)}-${element}`;
-}
-
-function clampTextBlock(block: NotebookTextBlock): NotebookTextBlock {
-  const width = Math.max(120, Math.min(CANVAS_WIDTH, Math.round(block.width)));
-  const height = Math.max(48, Math.min(CANVAS_HEIGHT, Math.round(block.height)));
-  return {
-    ...block,
-    width,
-    height,
-    x: Math.max(0, Math.min(CANVAS_WIDTH - width, Math.round(block.x))),
-    y: Math.max(0, Math.min(CANVAS_HEIGHT - height, Math.round(block.y))),
-  };
-}
-
-function strokePaintColor(stroke: Stroke, pageColor: NotebookPageColor) {
-  if (stroke.tool === "eraser") return PAGE_COLOR_HEX[pageColor];
-  return getNotebookStrokePaintColor(stroke.color, stroke.tool);
-}
-
-function getPageStyleBackground(pageColor: NotebookPageColor, style: NotebookPageStyle) {
-  if (style === "plain") return undefined;
-  const lineColor =
-    pageColor === "black" ? "rgba(248,250,252,0.14)" : "rgba(30,41,59,0.14)";
-  if (style === "lined") {
-    return {
-      backgroundImage: `repeating-linear-gradient(to bottom, transparent 0, transparent 39px, ${lineColor} 40px)`,
+function readBlobAsBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => {
+      reject(
+        new Error("This browser could not prepare the notebook page for Jami.")
+      );
     };
-  }
-  if (style === "grid") {
-    return {
-      backgroundImage: `repeating-linear-gradient(to right, ${lineColor} 0 1px, transparent 1px 40px), repeating-linear-gradient(to bottom, ${lineColor} 0 1px, transparent 1px 40px)`,
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      const separatorIndex = dataUrl.indexOf(",");
+      if (separatorIndex < 0 || separatorIndex === dataUrl.length - 1) {
+        reject(
+          new Error("This browser could not prepare the notebook page for Jami.")
+        );
+        return;
+      }
+      resolve(dataUrl.slice(separatorIndex + 1));
     };
-  }
-  return {
-    backgroundImage: `radial-gradient(circle, ${lineColor} 1.35px, transparent 1.35px)`,
-    backgroundSize: "28px 28px",
-  };
-}
-
-function buildThumbnailPoints(points: InkPoint[]) {
-  return points
-    .slice(0, 80)
-    .map((point) => `${point.x},${point.y}`)
-    .join(" ");
+    reader.readAsDataURL(blob);
+  });
 }
 
 function NotebookPageThumbnail({
@@ -451,14 +394,14 @@ function NotebookPageThumbnail({
 }) {
   const pageColor = page.pageColor ?? notebook.pageColor ?? "white";
   const pageStyle = page.pageStyle ?? notebook.pageStyle ?? "plain";
-  const strokes = normalizeStrokes(page.strokeData?.strokes).slice(0, 10);
+  const strokes = normalizeNotebookStrokes(page.strokeData?.strokes).slice(0, 10);
   const textBlocks = page.textBlocks.slice(0, 3);
   const inkSvg = page.inkData?.svg;
 
   return (
     <div
       className={`relative aspect-[900/1240] overflow-hidden rounded-[0.6rem] shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
-      style={getPageStyleBackground(pageColor, pageStyle)}
+      style={getNotebookPageStyleBackground(pageColor, pageStyle)}
     >
       {backgroundUrl && backgroundFile?.fileType.startsWith("image/") ? (
         <div
@@ -502,15 +445,15 @@ function NotebookPageThumbnail({
               cx={stroke.points[0].x}
               cy={stroke.points[0].y}
               r={Math.max(3, stroke.width * 1.7)}
-              fill={strokePaintColor(stroke, pageColor)}
+              fill={getNotebookStrokePaintColorForPage(stroke, pageColor)}
               opacity={stroke.tool === "highlighter" ? 0.32 : 0.72}
             />
           ) : (
             <polyline
               key={`${page.id}-stroke-${index}`}
-              points={buildThumbnailPoints(stroke.points)}
+              points={buildNotebookThumbnailPoints(stroke.points)}
               fill="none"
-              stroke={strokePaintColor(stroke, pageColor)}
+              stroke={getNotebookStrokePaintColorForPage(stroke, pageColor)}
               strokeLinecap="round"
               strokeLinejoin="round"
               strokeWidth={Math.max(5, stroke.width * 2.3)}
@@ -576,7 +519,7 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
   const inkSvg =
     page.inkData?.svg ??
     legacyStrokesToJsDrawSvg(
-      normalizeStrokes(page.strokeData?.strokes),
+      normalizeNotebookStrokes(page.strokeData?.strokes),
       CANVAS_WIDTH,
       CANVAS_HEIGHT
     );
@@ -587,7 +530,7 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
       <div
         aria-hidden="true"
         className="absolute inset-0"
-        style={getPageStyleBackground(pageColor, pageStyle)}
+        style={getNotebookPageStyleBackground(pageColor, pageStyle)}
       />
       {backgroundFile?.fileType.startsWith("image/") && backgroundUrl ? (
         <div
@@ -1044,6 +987,9 @@ export default function NotebookEditorPage() {
   const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<NotebookConfirmRequest | null>(null);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const [draftConflict, setDraftConflict] =
+    useState<NotebookDraftConflict | null>(null);
+  const [inkEditorMountRevision, setInkEditorMountRevision] = useState(0);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
   const [phoneFullEditing, setPhoneFullEditing] = useState(false);
   const [showAddPagesDialog, setShowAddPagesDialog] = useState(false);
@@ -1052,7 +998,7 @@ export default function NotebookEditorPage() {
     null
   );
   const [addingNotebookFile, setAddingNotebookFile] = useState(false);
-  const [aiPlaceholderOpen, setAiPlaceholderOpen] = useState(false);
+  const [assistantOpen, setAssistantOpen] = useState(false);
   const [pagesDrawerOpen, setPagesDrawerOpen] = useState(false);
   const [penMenuOpen, setPenMenuOpen] = useState(false);
   const [highlighterMenuOpen, setHighlighterMenuOpen] = useState(false);
@@ -1081,6 +1027,8 @@ export default function NotebookEditorPage() {
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
   const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const activePdfCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const activePdfCanvasKeyRef = useRef<string | null>(null);
   const pageTrackOffsetRef = useRef(0);
   const pageTrackPendingOffsetRef = useRef(0);
   const pageTrackAnimationFrameRef = useRef<number | null>(null);
@@ -1102,10 +1050,18 @@ export default function NotebookEditorPage() {
   const pagePanLiveRef = useRef<NotebookPagePan>({ x: 0, y: 0 });
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
+  const draftTimerRef = useRef<number | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
   const selectedPageRef = useRef<NotebookPage | null>(null);
   const textBlocksRef = useRef<NotebookTextBlock[]>([]);
   const saveStatusRef = useRef<SaveStatus>("saved");
+  const pageContentRevisionRef = useRef(0);
+  const recoveredDraftRef = useRef<{
+    pageId: string;
+    localRevision: number;
+  } | null>(null);
+  const draftPersistenceErrorShownRef = useRef(false);
+  const persistCurrentPageDraftRef = useRef<(() => Promise<void>) | null>(null);
   const inkInteractionActiveRef = useRef(false);
   const saveOperationRef = useRef<Promise<boolean> | null>(null);
   const saveCurrentPageRef = useRef<
@@ -1148,23 +1104,13 @@ export default function NotebookEditorPage() {
   );
   const previousPage = pages[selectedPageIndex - 1] ?? null;
   const nextPage = pages[selectedPageIndex + 1] ?? null;
-  const frozenHandoffPage =
-    pageSwipeMotion?.phase === "handoff" ? pageSwipeMotion.targetPage : null;
-  const settlingCreatePreview =
-    pageSwipeMotion?.kind === "create" &&
-    pageSwipeMotion.phase !== "handoff";
-  const trackPreviousPage = frozenHandoffPage
-    ? pageSwipeMotion?.direction === "previous"
-      ? frozenHandoffPage
-      : null
-    : previousPage;
-  const trackNextPage = frozenHandoffPage
-    ? pageSwipeMotion?.direction === "next"
-      ? frozenHandoffPage
-      : null
-    : settlingCreatePreview
-      ? null
-      : nextPage;
+  const carouselPages = resolveNotebookCarouselPages({
+    motion: pageSwipeMotion,
+    previousPage,
+    nextPage,
+  });
+  const trackPreviousPage = carouselPages.previousPage;
+  const trackNextPage = carouselPages.nextPage;
   const selectedPageInkSvg = useMemo(() => {
     if (!selectedPage) {
       return legacyStrokesToJsDrawSvg([], CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -1172,7 +1118,7 @@ export default function NotebookEditorPage() {
     return (
       selectedPage.inkData?.svg ??
       legacyStrokesToJsDrawSvg(
-        normalizeStrokes(selectedPage.strokeData?.strokes),
+        normalizeNotebookStrokes(selectedPage.strokeData?.strokes),
         CANVAS_WIDTH,
         CANVAS_HEIGHT
       )
@@ -1194,6 +1140,12 @@ export default function NotebookEditorPage() {
     selectedPage?.backgroundFileId,
   ]);
   const activeNotebookFileUrl = activeNotebookFile ? fileUrls[activeNotebookFile.id] : undefined;
+  const activePdfRenderKey =
+    selectedPage &&
+    activeNotebookFile?.fileType === "application/pdf" &&
+    activeNotebookFile.storagePath
+      ? `${selectedPage.id}:${activeNotebookFile.id}:${selectedPage.pdfPageIndex ?? 0}`
+      : null;
   // Resolve any page's background file + URL (mirrors activeNotebookFile) so the
   // swipe preview can render the real adjacent page rather than a placeholder.
   const resolvePageBackground = useCallback(
@@ -1407,6 +1359,159 @@ export default function NotebookEditorPage() {
     []
   );
 
+  const handleAssistantOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      setPagesDrawerOpen(false);
+      setPenMenuOpen(false);
+      setHighlighterMenuOpen(false);
+      setEraserMenuOpen(false);
+    }
+    setAssistantOpen(open);
+  }, []);
+
+  const getNotebookAssistantContext = useCallback(
+    async (): Promise<JamiAssistantContext> => {
+      const page = selectedPageRef.current;
+      const currentNotebook = notebook;
+      const editor = inkEditorRef.current;
+      if (
+        !page ||
+        !currentNotebook ||
+        page.id !== selectedPage?.id ||
+        page.notebookId !== currentNotebook.id
+      ) {
+        throw new Error(
+          "This notebook page changed before Jami could read it. Try again on the page you want help with."
+        );
+      }
+      if (!editor || !inkReadyRef.current) {
+        throw new Error(
+          "This notebook page is still opening. Wait until the writing appears, then try again."
+        );
+      }
+      if (inkInteractionActiveRef.current || editor.isInteracting()) {
+        throw new Error(
+          "Finish the current pen stroke, then ask Jami again."
+        );
+      }
+
+      const capturedPageId = page.id;
+      const capturedContentRevision = pageContentRevisionRef.current;
+      const capturedEditorRevision = editorRevisionRef.current;
+      const capturedTextBlocks = textBlocksRef.current.map((block) => ({
+        ...block,
+      }));
+      const capturedPageColor = pageColorRef.current;
+      const capturedPageStyle = pageStyleRef.current;
+
+      const assertCaptureIsCurrent = () => {
+        if (
+          selectedPageRef.current?.id !== capturedPageId ||
+          pageContentRevisionRef.current !== capturedContentRevision ||
+          editorRevisionRef.current !== capturedEditorRevision ||
+          inkEditorRef.current !== editor
+        ) {
+          throw new Error(
+            "This notebook page changed while Jami was reading it. Try sending your question again."
+          );
+        }
+        if (inkInteractionActiveRef.current || editor.isInteracting()) {
+          throw new Error(
+            "Finish the current pen stroke, then ask Jami again."
+          );
+        }
+      };
+
+      const inkSvg = await editor.serializeAsync();
+      if (inkSvg === null) {
+        throw new Error(
+          "Finish the current pen stroke and wait for the page to settle, then try again."
+        );
+      }
+      assertCaptureIsCurrent();
+
+      let background:
+        | {
+            kind: "pdf-canvas";
+            canvas: HTMLCanvasElement;
+          }
+        | {
+            kind: "image-bytes";
+            bytes: Uint8Array;
+            mimeType: string;
+          }
+        | null = null;
+
+      if (
+        activeNotebookFile?.fileType === "application/pdf" &&
+        activeNotebookFile.storagePath
+      ) {
+        const pdfCanvas = activePdfCanvasRef.current;
+        if (
+          !activePdfRenderKey ||
+          !pdfCanvas ||
+          activePdfCanvasKeyRef.current !== activePdfRenderKey ||
+          pdfCanvas.width <= 0 ||
+          pdfCanvas.height <= 0
+        ) {
+          throw new Error(
+            "This PDF page is still loading. Wait until it appears, then ask Jami again."
+          );
+        }
+        background = { kind: "pdf-canvas", canvas: pdfCanvas };
+      } else if (
+        activeNotebookFile?.fileType.startsWith("image/") &&
+        activeNotebookFile.storagePath
+      ) {
+        let bytes: Uint8Array;
+        try {
+          bytes = await getNotebookFileBytes(activeNotebookFile.storagePath);
+        } catch {
+          throw new Error(
+            "Jami could not read this page's image background. Wait a moment and try again."
+          );
+        }
+        assertCaptureIsCurrent();
+        background = {
+          kind: "image-bytes",
+          bytes,
+          mimeType: activeNotebookFile.fileType,
+        };
+      }
+
+      const snapshot = await renderNotebookPageSnapshot({
+        pageColor: capturedPageColor,
+        pageStyle: capturedPageStyle,
+        inkSvg,
+        textBlocks: capturedTextBlocks,
+        background,
+      });
+      assertCaptureIsCurrent();
+      const dataBase64 = await readBlobAsBase64(snapshot.blob);
+      assertCaptureIsCurrent();
+
+      return {
+        surface: "notebook",
+        notebookId: currentNotebook.id,
+        pageId: capturedPageId,
+        snapshot: {
+          mimeType: snapshot.mimeType,
+          width: snapshot.width,
+          height: snapshot.height,
+          dataBase64,
+        },
+        typedText: snapshot.typedText || undefined,
+        questionPrompt: page.questionPrompt?.trim() || undefined,
+      };
+    },
+    [
+      activeNotebookFile,
+      activePdfRenderKey,
+      notebook,
+      selectedPage?.id,
+    ]
+  );
+
   const writeCreatePageProgress = useCallback((progress: number) => {
     const next = Math.max(0, Math.min(1, progress));
     if (createPageAffordanceRef.current) {
@@ -1429,6 +1534,11 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     selectedPageRef.current = selectedPage;
   }, [selectedPage]);
+
+  useEffect(() => {
+    activePdfCanvasRef.current = null;
+    activePdfCanvasKeyRef.current = null;
+  }, [activePdfRenderKey]);
 
   useEffect(() => {
     createPageActiveRef.current = createPageActive;
@@ -1633,6 +1743,110 @@ export default function NotebookEditorPage() {
     }, NOTEBOOK_AUTOSAVE_IDLE_MS);
   }, []);
 
+  const persistCurrentPageDraft = useCallback(async () => {
+    const page = selectedPageRef.current;
+    const inkEditor = inkEditorRef.current;
+    if (
+      !page ||
+      !user?.uid ||
+      editorRevisionRef.current <= 0 ||
+      inkInteractionActiveRef.current ||
+      inkEditor?.isInteracting()
+    ) {
+      return;
+    }
+
+    try {
+      const inkSvg = inkEditor ? await inkEditor.serializeAsync() : selectedPageInkSvg;
+      if (selectedPageRef.current?.id !== page.id || inkSvg === null) return;
+      const typedContent = buildTypedContentFromTextBlocks(textBlocksRef.current) ?? "";
+      const draft = createNotebookPageDraft({
+        userId: user.uid,
+        notebookId: page.notebookId,
+        pageId: page.id,
+        baseContentRevision: pageContentRevisionRef.current,
+        remoteUpdatedAt: page.updatedAt,
+        localRevision: editorRevisionRef.current,
+        textBlocks: textBlocksRef.current,
+        inkSvg,
+        pageColor: pageColorRef.current,
+        pageStyle: pageStyleRef.current,
+        status: getNotebookWorkingPageStatus({
+          typedContent,
+          hasInk: inkEditor?.hasInk() ?? Boolean(page.inkData?.svg),
+        }),
+      });
+      await writeNotebookPageDraft(draft);
+      draftPersistenceErrorShownRef.current = false;
+    } catch (error) {
+      if (draftPersistenceErrorShownRef.current) return;
+      draftPersistenceErrorShownRef.current = true;
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "This device could not store a recovery copy of the page.",
+      });
+    }
+  }, [selectedPageInkSvg, user?.uid]);
+
+  useEffect(() => {
+    persistCurrentPageDraftRef.current = persistCurrentPageDraft;
+    return () => {
+      if (persistCurrentPageDraftRef.current === persistCurrentPageDraft) {
+        persistCurrentPageDraftRef.current = null;
+      }
+    };
+  }, [persistCurrentPageDraft]);
+
+  const scheduleNotebookDraft = useCallback(() => {
+    if (draftTimerRef.current !== null) {
+      window.clearTimeout(draftTimerRef.current);
+    }
+    draftTimerRef.current = window.setTimeout(() => {
+      draftTimerRef.current = null;
+      if (
+        inkInteractionActiveRef.current ||
+        inkEditorRef.current?.isInteracting()
+      ) {
+        scheduleNotebookDraft();
+        return;
+      }
+      void persistCurrentPageDraftRef.current?.();
+    }, NOTEBOOK_DRAFT_IDLE_MS);
+  }, []);
+
+  const persistCurrentPageDraftSync = useCallback(() => {
+    const page = selectedPageRef.current;
+    const inkEditor = inkEditorRef.current;
+    if (!page || !user?.uid || editorRevisionRef.current <= 0) return false;
+    try {
+      const inkSvg = inkEditor ? inkEditor.serialize() : selectedPageInkSvg;
+      if (inkSvg === null) return false;
+      const typedContent = buildTypedContentFromTextBlocks(textBlocksRef.current) ?? "";
+      const draft = createNotebookPageDraft({
+        userId: user.uid,
+        notebookId: page.notebookId,
+        pageId: page.id,
+        baseContentRevision: pageContentRevisionRef.current,
+        remoteUpdatedAt: page.updatedAt,
+        localRevision: editorRevisionRef.current,
+        textBlocks: textBlocksRef.current,
+        inkSvg,
+        pageColor: pageColorRef.current,
+        pageStyle: pageStyleRef.current,
+        status: getNotebookWorkingPageStatus({
+          typedContent,
+          hasInk: inkEditor?.hasInk() ?? Boolean(page.inkData?.svg),
+        }),
+      });
+      return writeNotebookPageDraftSync(draft);
+    } catch {
+      return false;
+    }
+  }, [selectedPageInkSvg, user?.uid]);
+
   const markPageUnsaved = useCallback((options?: {
     deferUi?: boolean;
     scheduleUi?: boolean;
@@ -1640,6 +1854,7 @@ export default function NotebookEditorPage() {
     editorRevisionRef.current += 1;
     saveStatusRef.current = "unsaved";
     scheduleNotebookAutosave();
+    scheduleNotebookDraft();
     if (options?.deferUi) {
       if (options.scheduleUi !== false) {
         scheduleInkUiSync();
@@ -1647,7 +1862,12 @@ export default function NotebookEditorPage() {
       return;
     }
     flushInkUiSync();
-  }, [flushInkUiSync, scheduleInkUiSync, scheduleNotebookAutosave]);
+  }, [
+    flushInkUiSync,
+    scheduleInkUiSync,
+    scheduleNotebookAutosave,
+    scheduleNotebookDraft,
+  ]);
 
   // With js-draw as the single ink engine, switching tools only updates the
   // desired style; NotebookInkEditor defers applying it while a pointer is
@@ -1673,6 +1893,9 @@ export default function NotebookEditorPage() {
     hydratedPageIdRef.current = null;
     editorRevisionRef.current = 0;
     latestSaveIdRef.current = 0;
+    pageContentRevisionRef.current = 0;
+    recoveredDraftRef.current = null;
+    setDraftConflict(null);
     try {
       const nextNotebook = await getNotebookById(user.uid, notebookId);
       let nextPages: NotebookPage[] = [];
@@ -1703,18 +1926,51 @@ export default function NotebookEditorPage() {
         }
       }
 
-      setNotebook(nextNotebook);
-      setPages(nextPages);
-      setFiles(nextFiles);
       const requestedPageId =
         typeof window === "undefined"
           ? null
           : getNotebookPageIdFromSearch(window.location.search);
-      setSelectedPageId(
+      const nextSelectedPageId =
         nextPages.find((page) => page.id === requestedPageId)?.id ??
-          nextPages[0]?.id ??
-          null
+        nextPages[0]?.id ??
+        null;
+      const nextSelectedPage = nextPages.find(
+        (page) => page.id === nextSelectedPageId
       );
+      if (nextSelectedPage && nextNotebook) {
+        const draft = await readNotebookPageDraft({
+          userId: user.uid,
+          notebookId: nextNotebook.id,
+          pageId: nextSelectedPage.id,
+        });
+        if (draft) {
+          const decision = getNotebookDraftDecision(draft, nextSelectedPage);
+          if (decision === "restore") {
+            nextPages = nextPages.map((page) =>
+              page.id === nextSelectedPage.id
+                ? applyNotebookDraftToPage(page, draft)
+                : page
+            );
+            recoveredDraftRef.current = {
+              pageId: nextSelectedPage.id,
+              localRevision: Math.max(1, draft.localRevision),
+            };
+          } else if (decision === "conflict") {
+            setDraftConflict({ draft, pageId: nextSelectedPage.id });
+          } else {
+            void deleteNotebookPageDraft({
+              userId: user.uid,
+              notebookId: nextNotebook.id,
+              pageId: nextSelectedPage.id,
+            });
+          }
+        }
+      }
+
+      setNotebook(nextNotebook);
+      setPages(nextPages);
+      setFiles(nextFiles);
+      setSelectedPageId(nextSelectedPageId);
     } catch (error) {
       console.error(error);
       setFeedback({
@@ -1775,7 +2031,7 @@ export default function NotebookEditorPage() {
 
     const focusFrame = window.requestAnimationFrame(() => {
       const menu = document.getElementById(
-        getTextBlockOptionsElementId(openTextBlockOptionsId, "menu")
+        getNotebookTextBlockOptionsElementId(openTextBlockOptionsId, "menu")
       );
       menu
         ?.querySelector<HTMLElement>('[role="menuitemcheckbox"]')
@@ -1843,14 +2099,34 @@ export default function NotebookEditorPage() {
     setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
     setPageStyle(selectedPage.pageStyle ?? notebook?.pageStyle ?? "plain");
     hydratedPageIdRef.current = selectedPage.id;
-    editorRevisionRef.current = 0;
-    saveStatusRef.current = "saved";
-    setSaveStatus("saved");
+    pageContentRevisionRef.current = selectedPage.contentRevision;
+    const recoveredDraft =
+      recoveredDraftRef.current?.pageId === selectedPage.id
+        ? recoveredDraftRef.current
+        : null;
+    if (recoveredDraft) {
+      recoveredDraftRef.current = null;
+      editorRevisionRef.current = Math.max(1, recoveredDraft.localRevision);
+      saveStatusRef.current = "unsaved";
+      setSaveStatus("unsaved");
+      setFeedback({
+        type: "success",
+        message: "Recovered unsaved work from this device. Syncing it now.",
+      });
+      scheduleNotebookAutosave();
+      scheduleNotebookDraft();
+    } else {
+      editorRevisionRef.current = 0;
+      saveStatusRef.current = "saved";
+      setSaveStatus("saved");
+    }
     window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
   }, [
     cancelInkUiSync,
     notebook?.pageColor,
     notebook?.pageStyle,
+    scheduleNotebookAutosave,
+    scheduleNotebookDraft,
     selectedPage,
   ]);
 
@@ -2185,8 +2461,15 @@ export default function NotebookEditorPage() {
   };
 
   const createTextBlockAtPoint = (point: Point) => {
-    const block = clampTextBlock({
-      id: makeTextBlockId(),
+    if (textBlocksRef.current.length >= MAX_NOTEBOOK_TEXT_BLOCKS) {
+      setFeedback({
+        type: "error",
+        message: `A page can contain up to ${MAX_NOTEBOOK_TEXT_BLOCKS} text boxes. Move or delete one before adding another.`,
+      });
+      return;
+    }
+    const block = clampNotebookTextBlock({
+      id: makeNotebookTextBlockId(),
       x: point.x - 120,
       y: point.y - 36,
       width: 300,
@@ -2273,6 +2556,7 @@ export default function NotebookEditorPage() {
       pageStyle: NotebookPageStyle;
       saveId: number;
       saveRevision: number;
+      baseContentRevision: number;
     }) => {
       if (!user?.uid) return false;
       saveStatusRef.current = "saving";
@@ -2280,18 +2564,25 @@ export default function NotebookEditorPage() {
       try {
         const persistedTextBlocks = input.textBlocks;
         const typedContent = buildTypedContentFromTextBlocks(persistedTextBlocks) ?? "";
-        const status: NotebookPageStatus =
-          typedContent.trim() || input.hasInk ? "working" : "blank";
+        const status = getNotebookWorkingPageStatus({
+          typedContent,
+          hasInk: input.hasInk,
+        });
         const inkData = makeNotebookInkData(input.inkSvg);
-        await saveNotebookPageSnapshot(user.uid, {
+        const saveResult = await saveNotebookPageSnapshot(user.uid, {
           notebookId: input.page.notebookId,
           pageId: input.page.id,
           typedContent,
           textBlocks: persistedTextBlocks,
           inkData,
+          pageColor: input.pageColor,
           pageStyle: input.pageStyle,
           status,
+          baseContentRevision: input.baseContentRevision,
         });
+        if (selectedPageRef.current?.id === input.page.id) {
+          pageContentRevisionRef.current = saveResult.contentRevision;
+        }
         const currentRevision = editorRevisionRef.current;
         const selectedPageId = selectedPageRef.current?.id ?? null;
         const canUpdateLivePage = shouldNotebookSaveUpdateLivePage({
@@ -2318,7 +2609,8 @@ export default function NotebookEditorPage() {
                   pageColor: canReplaceStoredContent ? input.pageColor : page.pageColor,
                   pageStyle: canReplaceStoredContent ? input.pageStyle : page.pageStyle,
                   status,
-                  updatedAt: Date.now(),
+                  contentRevision: saveResult.contentRevision,
+                  updatedAt: saveResult.updatedAt,
                 }
               : page
           )
@@ -2332,7 +2624,7 @@ export default function NotebookEditorPage() {
                     ? input.inkSvg
                     : undefined,
                 previewPageId: input.page.id,
-                updatedAt: Date.now(),
+                updatedAt: saveResult.updatedAt,
               }
             : current
         );
@@ -2354,6 +2646,14 @@ export default function NotebookEditorPage() {
             current?.message === "Could not autosave this page." ? null : current
           );
         }
+        void deleteNotebookPageDraft(
+          {
+            userId: user.uid,
+            notebookId: input.page.notebookId,
+            pageId: input.page.id,
+          },
+          input.saveRevision
+        );
         return true;
       } catch (error) {
         if (
@@ -2368,7 +2668,12 @@ export default function NotebookEditorPage() {
           setSaveStatus("failed");
           setFeedback({
             type: "error",
-            message: error instanceof Error ? error.message : "Could not autosave this page.",
+            message:
+              error instanceof NotebookPageConflictError
+                ? error.message
+                : error instanceof Error
+                  ? error.message
+                  : "Could not autosave this page.",
           });
         }
         return false;
@@ -2442,6 +2747,7 @@ export default function NotebookEditorPage() {
           pageStyle: pageStyleRef.current,
           saveId,
           saveRevision,
+          baseContentRevision: pageContentRevisionRef.current,
         });
       })();
 
@@ -2526,6 +2832,7 @@ export default function NotebookEditorPage() {
       pageStyle: pageStyleRef.current,
       saveId,
       saveRevision,
+      baseContentRevision: pageContentRevisionRef.current,
     };
     const precedingSave = saveOperationRef.current;
     const operation = (async () => {
@@ -2537,7 +2844,10 @@ export default function NotebookEditorPage() {
           // an older serialization or write failed.
         }
       }
-      return savePageSnapshot(snapshot);
+      return savePageSnapshot({
+        ...snapshot,
+        baseContentRevision: pageContentRevisionRef.current,
+      });
     })();
 
     saveOperationRef.current = operation;
@@ -2873,6 +3183,9 @@ export default function NotebookEditorPage() {
       if (autosaveTimerRef.current !== null) {
         window.clearTimeout(autosaveTimerRef.current);
       }
+      if (draftTimerRef.current !== null) {
+        window.clearTimeout(draftTimerRef.current);
+      }
       cancelInkUiSync();
     },
     [cancelInkUiSync]
@@ -2884,6 +3197,7 @@ export default function NotebookEditorPage() {
         saveStatusRef.current === "unsaved" ||
         saveStatusRef.current === "failed"
       ) {
+        persistCurrentPageDraftSync();
         void saveCurrentPage({ flush: true });
         if (event?.type === "beforeunload") {
           event.preventDefault();
@@ -2905,13 +3219,14 @@ export default function NotebookEditorPage() {
       window.removeEventListener("beforeunload", saveBeforeExit);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
-  }, [saveCurrentPage]);
+  }, [persistCurrentPageDraftSync, saveCurrentPage]);
 
   const handleExitNotebook = (event: ReactMouseEvent<HTMLAnchorElement>) => {
     if (
       saveStatusRef.current === "unsaved" ||
       saveStatusRef.current === "failed"
     ) {
+      persistCurrentPageDraftSync();
       const saveQueued = queueCurrentPageSaveForExit();
       if (!saveQueued) {
         event.preventDefault();
@@ -2934,6 +3249,56 @@ export default function NotebookEditorPage() {
     saveStatusRef.current = "unsaved";
     setSaveStatus("unsaved");
     void saveCurrentPage({ flush: true });
+  };
+
+  const handleRestoreLocalDraft = () => {
+    if (!draftConflict || !user?.uid) return;
+    const remotePage = pages.find((page) => page.id === draftConflict.pageId);
+    if (!remotePage) return;
+    const rebasedDraft = createNotebookPageDraft({
+      ...draftConflict.draft,
+      baseContentRevision: remotePage.contentRevision,
+      remoteUpdatedAt: remotePage.updatedAt,
+      savedAt: Date.now(),
+    });
+    recoveredDraftRef.current = {
+      pageId: remotePage.id,
+      localRevision: Math.max(1, rebasedDraft.localRevision),
+    };
+    hydratedPageIdRef.current = null;
+    setInkEditorMountRevision((current) => current + 1);
+    setPages((current) =>
+      current.map((page) =>
+        page.id === remotePage.id
+          ? applyNotebookDraftToPage(page, rebasedDraft)
+          : page
+      )
+    );
+    setDraftConflict(null);
+    void writeNotebookPageDraft(rebasedDraft).catch((error) => {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "This device could not update the recovery copy.",
+      });
+    });
+  };
+
+  const handleKeepSavedDraftVersion = () => {
+    if (!draftConflict || !user?.uid) return;
+    const conflict = draftConflict;
+    setDraftConflict(null);
+    void deleteNotebookPageDraft({
+      userId: user.uid,
+      notebookId: conflict.draft.notebookId,
+      pageId: conflict.pageId,
+    });
+    setFeedback({
+      type: "success",
+      message: "Kept the latest synced version of this page.",
+    });
   };
 
   const createBlankPageAtEnd = async (velocityX = -2) => {
@@ -3391,7 +3756,9 @@ export default function NotebookEditorPage() {
   const updateTextBlock = (blockId: string, updates: Partial<NotebookTextBlock>) => {
     setTextBlocks((current) =>
       current.map((block) =>
-        block.id === blockId ? clampTextBlock({ ...block, ...updates }) : block
+        block.id === blockId
+          ? clampNotebookTextBlock({ ...block, ...updates })
+          : block
       )
     );
     markPageUnsaved();
@@ -3440,7 +3807,9 @@ export default function NotebookEditorPage() {
       setOpenTextBlockOptionsId(null);
       window.requestAnimationFrame(() => {
         document
-          .getElementById(getTextBlockOptionsElementId(blockId, "trigger"))
+          .getElementById(
+            getNotebookTextBlockOptionsElementId(blockId, "trigger")
+          )
           ?.focus({ preventScroll: true });
       });
       return;
@@ -4291,7 +4660,9 @@ export default function NotebookEditorPage() {
     );
   }
 
-  const pageSwipePreviewEnabled = viewportLayout.zoom <= 1.0001;
+  const pageSwipePreviewEnabled = isNotebookPageSwipePreviewEnabled(
+    viewportLayout.zoom
+  );
   const previousViewportPreview: NotebookViewportPreview | null =
     pageSwipePreviewEnabled && trackPreviousPage
       ? {
@@ -4310,14 +4681,16 @@ export default function NotebookEditorPage() {
           ),
         }
       : null;
-  const shouldShowNewPagePreview =
-    pageSwipePreviewEnabled &&
-    !trackNextPage &&
-    (createPageActive ||
-      creatingPage ||
-      pageSwipeMotion?.kind === "create" ||
-      (fullNotebookEditingEnabled &&
-        selectedPageIndex === pages.length - 1));
+  const shouldShowNewPagePreview = shouldShowNotebookNewPagePreview({
+    previewEnabled: pageSwipePreviewEnabled,
+    hasNextPage: Boolean(trackNextPage),
+    createPageActive,
+    creatingPage,
+    motionKind: pageSwipeMotion?.kind ?? null,
+    fullEditingEnabled: fullNotebookEditingEnabled,
+    selectedPageIndex,
+    pageCount: pages.length,
+  });
   const nextViewportPreview: NotebookViewportPreview | null =
     pageSwipePreviewEnabled && trackNextPage
     ? {
@@ -4343,7 +4716,7 @@ export default function NotebookEditorPage() {
             <div
               aria-hidden="true"
               className="absolute inset-0"
-              style={getPageStyleBackground(pageColor, pageStyle)}
+              style={getNotebookPageStyleBackground(pageColor, pageStyle)}
             />
           ),
         }
@@ -4385,18 +4758,17 @@ export default function NotebookEditorPage() {
                 setPenMenuOpen(false);
                 setHighlighterMenuOpen(false);
                 setEraserMenuOpen(false);
-                setPagesDrawerOpen((value) => !value);
+                const nextOpen = !pagesDrawerOpen;
+                setPagesDrawerOpen(nextOpen);
+                if (nextOpen) handleAssistantOpenChange(false);
               }}
             />
             <ToolbarIconButton
               label="Jami Tutor"
               icon="ai"
-              active={aiPlaceholderOpen}
+              active={assistantOpen}
               onClick={() => {
-                setPenMenuOpen(false);
-                setHighlighterMenuOpen(false);
-                setEraserMenuOpen(false);
-                setAiPlaceholderOpen((value) => !value);
+                handleAssistantOpenChange(!assistantOpen);
               }}
             />
           </div>
@@ -4412,7 +4784,9 @@ export default function NotebookEditorPage() {
                     label="Pen color"
                     value={penColor}
                     presets={["black", "white", "red", "green"]}
-                    getPresetColor={(color) => PEN_COLOR_HEX[color as NotebookPenColor]}
+                    getPresetColor={(color) =>
+                      getNotebookStrokePaintColor(color, "pen")
+                    }
                     onPresetSelect={(color) => {
                       setPenColor(color);
                       switchNotebookTool("pen");
@@ -4441,7 +4815,7 @@ export default function NotebookEditorPage() {
                     value={highlighterColor}
                     presets={["yellow", "green", "pink"]}
                     getPresetColor={(color) =>
-                      HIGHLIGHTER_COLOR_HEX[color as NotebookHighlighterColor]
+                      getNotebookStrokePaintColor(color, "highlighter")
                     }
                     onPresetSelect={(color) => {
                       setHighlighterColor(color);
@@ -4559,6 +4933,48 @@ export default function NotebookEditorPage() {
           </div>
         ) : null}
 
+        {draftConflict && draftConflict.pageId === selectedPage?.id ? (
+          <div
+            className={`absolute left-3 right-3 z-50 mx-auto max-w-2xl ${
+              feedback ? "top-24" : "top-3"
+            }`}
+          >
+            <Card
+              padding="sm"
+              role="alert"
+              className="border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-[var(--shadow-shell)]"
+            >
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-text-primary">
+                    Unsaved work found on this device
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-text-muted">
+                    The synced page changed after this recovery copy was made. Choose which version to keep.
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-wrap gap-2">
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="secondary"
+                    onClick={handleKeepSavedDraftVersion}
+                  >
+                    Keep synced
+                  </Button>
+                  <Button
+                    type="button"
+                    size="sm"
+                    onClick={handleRestoreLocalDraft}
+                  >
+                    Restore mine
+                  </Button>
+                </div>
+              </div>
+            </Card>
+          </div>
+        ) : null}
+
         {showAddPagesDialog ? (
           <div className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-3 backdrop-blur-sm sm:items-center sm:p-4">
             <Card
@@ -4670,34 +5086,14 @@ export default function NotebookEditorPage() {
           </div>
         ) : null}
 
-        {aiPlaceholderOpen ? (
-          <aside className="notebook-drawer-in-right notebook-drawer-surface absolute bottom-0 right-0 top-0 z-50 flex w-full max-w-sm flex-col border-l border-[var(--color-border)] p-4 shadow-[-20px_0_44px_rgba(0,0,0,0.22)]">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex min-w-0 items-center gap-2.5">
-                <span className="inline-grid h-9 w-9 shrink-0 place-items-center rounded-full border border-[var(--color-selected-border)]/40 bg-[var(--color-selected-bg)] text-[var(--color-selected-text)]">
-                  <NotebookIcon name="ai" />
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate text-sm font-semibold text-text-primary">Jami Tutor</div>
-                  <div className="text-xs text-text-muted">Coming soon</div>
-                </div>
-              </div>
-              <button
-                type="button"
-                aria-label="Close Jami Tutor"
-                title="Close Jami Tutor"
-                className="app-chip inline-grid h-9 w-9 shrink-0 place-items-center rounded-full"
-                onClick={() => setAiPlaceholderOpen(false)}
-              >
-                <NotebookIcon name="close" />
-              </button>
-            </div>
-            <p className="mt-4 text-sm leading-6 text-text-secondary">
-              Tutor will be able to look at this notebook page and help when you
-              ask. Nothing from your pages is sent anywhere yet.
-            </p>
-          </aside>
-        ) : null}
+        <JamiAssistantDrawer
+          open={assistantOpen}
+          onOpenChange={handleAssistantOpenChange}
+          resetKey={`notebook:${notebook.id}`}
+          contextLabel={`${notebook.title}, page ${selectedPage?.pageNumber ?? 1}`}
+          getContext={getNotebookAssistantContext}
+          quickActions={NOTEBOOK_ASSISTANT_QUICK_ACTIONS}
+        />
 
         {pagesDrawerOpen ? (
           <aside className="notebook-drawer-in notebook-drawer-surface absolute bottom-0 left-0 top-0 z-50 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]">
@@ -4839,7 +5235,7 @@ export default function NotebookEditorPage() {
                   <div
                     aria-hidden="true"
                     className="pointer-events-none absolute inset-0 z-0"
-                    style={getPageStyleBackground(pageColor, pageStyle)}
+                    style={getNotebookPageStyleBackground(pageColor, pageStyle)}
                   />
                   {activeNotebookFile ? (
                     <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden">
@@ -4875,6 +5271,19 @@ export default function NotebookEditorPage() {
                             pageIndex={selectedPage.pdfPageIndex ?? 0}
                             fadeIn={pageSwipeMotion?.phase !== "handoff"}
                             onRenderStateChange={handleActivePdfRenderStateChange}
+                            onCanvasReady={(canvas) => {
+                              if (canvas && activePdfRenderKey) {
+                                activePdfCanvasRef.current = canvas;
+                                activePdfCanvasKeyRef.current = activePdfRenderKey;
+                                return;
+                              }
+                              if (
+                                activePdfCanvasKeyRef.current === activePdfRenderKey
+                              ) {
+                                activePdfCanvasRef.current = null;
+                                activePdfCanvasKeyRef.current = null;
+                              }
+                            }}
                             className="absolute inset-0"
                           />
                       ) : (
@@ -4899,7 +5308,7 @@ export default function NotebookEditorPage() {
                   ) : null}
                   <NotebookInkEditor
                     ref={inkEditorRef}
-                    key={selectedPage.id}
+                    key={`${selectedPage.id}:${inkEditorMountRevision}`}
                     pageId={selectedPage.id}
                     pageWidth={CANVAS_WIDTH}
                     pageHeight={CANVAS_HEIGHT}
@@ -5001,8 +5410,11 @@ export default function NotebookEditorPage() {
                           : "border-slate-950/25"
                         : "border-transparent";
                       const optionsOpen = openTextBlockOptionsId === block.id;
-                      const optionsMenuId = getTextBlockOptionsElementId(block.id, "menu");
-                      const optionsTriggerId = getTextBlockOptionsElementId(
+                      const optionsMenuId = getNotebookTextBlockOptionsElementId(
+                        block.id,
+                        "menu"
+                      );
+                      const optionsTriggerId = getNotebookTextBlockOptionsElementId(
                         block.id,
                         "trigger"
                       );
@@ -5176,6 +5588,7 @@ export default function NotebookEditorPage() {
                           {editing && fullNotebookEditingEnabled ? (
                             <textarea
                               value={block.text}
+                              maxLength={MAX_NOTEBOOK_TEXT_BLOCK_TEXT}
                               autoFocus
                               onPointerDown={(event) => event.stopPropagation()}
                               onPointerMove={(event) => event.stopPropagation()}

@@ -254,9 +254,14 @@ function writeCache(key: string, value: PreparedSource) {
 
 export async function prepareSourceForTutor(
   source: Source,
-  loadStoredFile: (storagePath: string) => Promise<Buffer>
+  loadStoredFile: (storagePath: string) => Promise<Buffer>,
+  cacheNamespace: string
 ): Promise<PreparedSource> {
-  const cacheKey = `${source.id}:${source.updatedAt}`;
+  const normalizedCacheNamespace = cacheNamespace.trim();
+  if (!normalizedCacheNamespace) {
+    throw new Error("A source cache namespace is required.");
+  }
+  const cacheKey = `${normalizedCacheNamespace}:${source.id}:${source.updatedAt}`;
   const cached = readCache(cacheKey);
   if (cached) return cached;
 
@@ -269,7 +274,7 @@ export async function prepareSourceForTutor(
       sourceId: source.id,
       label,
       inputBytes: Buffer.byteLength(text),
-      parts: [{ text: `[Source: ${label}]\n${text}` }],
+      parts: [{ text }],
     };
   } else if (source.type === "link" && source.externalUrl) {
     const text = await fetchPublicSourceText(source.externalUrl);
@@ -278,7 +283,7 @@ export async function prepareSourceForTutor(
       sourceId: source.id,
       label,
       inputBytes: Buffer.byteLength(text),
-      parts: [{ text: `[Source: ${label}]\n${text}` }],
+      parts: [{ text }],
     };
   } else if (source.type === "file" && source.storagePath && source.fileType) {
     if (!isSourceFileMimeType(source.fileType)) {
@@ -295,7 +300,6 @@ export async function prepareSourceForTutor(
         label,
         inputBytes: buffer.byteLength,
         parts: [
-          { text: `[Source: ${label}]` },
           {
             inlineData: {
               mimeType: source.fileType,
@@ -311,7 +315,7 @@ export async function prepareSourceForTutor(
         sourceId: source.id,
         label,
         inputBytes: buffer.byteLength,
-        parts: [{ text: `[Source: ${label}]\n${text}` }],
+        parts: [{ text }],
       };
     }
   } else {

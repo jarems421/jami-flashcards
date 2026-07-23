@@ -44,24 +44,10 @@ import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
 import { db } from "@/services/firebase/client";
 import { getDeckStudyHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
-
-function sanitizeFileName(value: string) {
-  const normalized = value.trim().replace(/[^a-z0-9-_]+/gi, "-").replace(/^-+|-+$/g, "");
-  return normalized || "flashcards";
-}
-
-function downloadTextFile(fileName: string, text: string, type: string) {
-  const content = type.startsWith("text/csv") ? `\uFEFF${text}` : text;
-  const blob = new Blob([content], { type });
-  const url = URL.createObjectURL(blob);
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = fileName;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  URL.revokeObjectURL(url);
-}
+import {
+  downloadTextFile,
+  sanitizeDownloadFileName,
+} from "@/lib/app/download";
 
 export default function DeckDetailPageClient() {
   const params = useParams();
@@ -234,7 +220,7 @@ export default function DeckDetailPageClient() {
     const text = exportCardsToSeparatedText(sortedCards, format);
     const extension = format === "csv" ? "csv" : "tsv";
     downloadTextFile(
-      `${sanitizeFileName(deck.name)}-flashcards.${extension}`,
+      `${sanitizeDownloadFileName(deck.name, "flashcards")}-flashcards.${extension}`,
       text,
       format === "csv" ? "text/csv;charset=utf-8" : "text/tab-separated-values;charset=utf-8"
     );

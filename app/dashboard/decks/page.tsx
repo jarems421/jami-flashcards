@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { FirebaseError } from "firebase/app";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
@@ -15,6 +14,7 @@ import {
 } from "@/lib/study/deck-style";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import { db } from "@/services/firebase/client";
+import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
@@ -23,10 +23,6 @@ import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 
 type DeckCounts = Record<string, { due: number; total: number }>;
 type Feedback = { type: "success" | "error"; message: string };
-
-function isPermissionDenied(error: unknown) {
-  return error instanceof FirebaseError && error.code === "permission-denied";
-}
 
 export default function DecksPage() {
   const { user } = useUser();
@@ -84,7 +80,7 @@ export default function DecksPage() {
       console.error(error);
       setDecks([]);
       setDeckCounts({});
-      if (!isPermissionDenied(error)) {
+      if (!isFirebasePermissionDenied(error)) {
         setFeedback({ type: "error", message: "Failed to load decks." });
       }
     } finally {

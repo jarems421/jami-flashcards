@@ -1,7 +1,7 @@
 import { db } from "../firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import { normalizeFolderIds } from "@/lib/workspace/folder-links";
-import { FirebaseError } from "firebase/app";
 import {
   DEFAULT_DECK_COLOR_PRESET,
   DEFAULT_DECK_ICON_PRESET,
@@ -55,10 +55,6 @@ const DELETE_MS = 30_000;
 const BATCH_DELETE_LIMIT = 400;
 
 type DeckSnapshot = QueryDocumentSnapshot | DocumentSnapshot;
-
-function isPermissionDenied(error: unknown) {
-  return error instanceof FirebaseError && error.code === "permission-denied";
-}
 
 function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
   if (!docSnap.exists()) {
@@ -223,7 +219,7 @@ export const getDecks = async (userId: string): Promise<Deck[]> => {
   const byUserId = await withTimeout(getDocs(qByUserId), LOAD_MS, "Load decks (userId)");
   const byLegacyUid = await withTimeout(getDocs(qByLegacyUid), LOAD_MS, "Load decks (uid)").catch(
     (error: unknown) => {
-      if (isPermissionDenied(error)) {
+      if (isFirebasePermissionDenied(error)) {
         console.warn("Legacy deck lookup was denied; continuing with current userId decks.");
         return null;
       }

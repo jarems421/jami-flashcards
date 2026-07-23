@@ -36,7 +36,11 @@ export async function syncOfflineStudyReviews(userId: string) {
           durationMs: review.durationMs,
           sessionKind: review.sessionKind === "custom" ? "custom" : "daily",
         }),
-        applyGoalProgressForAnswer(userId, review.isCorrect, review.reviewedAt),
+        applyGoalProgressForAnswer(userId, review.isCorrect, review.reviewedAt, {
+          deckId: review.deckId,
+          topicIds: review.topicIds,
+          folderIds: review.folderIds,
+        }),
       ];
 
       if (Object.keys(cardUpdates).length > 0) {

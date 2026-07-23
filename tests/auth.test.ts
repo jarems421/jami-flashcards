@@ -1,23 +1,39 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const authMocks = vi.hoisted(() => ({
+  auth: {
+    currentUser: null as null | {
+      uid: string;
+      email: string | null;
+      providerData: Array<{ providerId: string }>;
+      getIdToken: (forceRefresh?: boolean) => Promise<string>;
+    },
+  },
+  emailCredential: vi.fn(),
   getRedirectResult: vi.fn(),
+  reauthenticateWithCredential: vi.fn(),
+  reauthenticateWithPopup: vi.fn(),
+  sendPasswordResetEmail: vi.fn(),
   setPersistence: vi.fn(),
+  signOut: vi.fn(),
   signInWithPopup: vi.fn(),
   signInWithRedirect: vi.fn(),
 }));
 
 vi.mock("@/services/firebase/client", () => ({
-  auth: {},
+  auth: authMocks.auth,
 }));
 
 vi.mock("firebase/auth", () => ({
+  EmailAuthProvider: { credential: authMocks.emailCredential },
   GoogleAuthProvider: class {},
   getRedirectResult: authMocks.getRedirectResult,
+  reauthenticateWithCredential: authMocks.reauthenticateWithCredential,
+  reauthenticateWithPopup: authMocks.reauthenticateWithPopup,
+  sendPasswordResetEmail: authMocks.sendPasswordResetEmail,
   signInWithPopup: authMocks.signInWithPopup,
   signInWithRedirect: authMocks.signInWithRedirect,
-  signOut: vi.fn(),
-  deleteUser: vi.fn(),
+  signOut: authMocks.signOut,
   createUserWithEmailAndPassword: vi.fn(),
   signInWithEmailAndPassword: vi.fn(),
   setPersistence: authMocks.setPersistence,
@@ -25,6 +41,7 @@ vi.mock("firebase/auth", () => ({
 }));
 
 afterEach(() => {
+  authMocks.auth.currentUser = null;
   vi.unstubAllGlobals();
 });
 
@@ -121,5 +138,83 @@ describe("signInWithGoogle", () => {
 
     await expect(signInWithGoogle()).resolves.toBeNull();
     expect(authMocks.signInWithRedirect).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("account recovery and deletion", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    authMocks.setPersistence.mockResolvedValue(undefined);
+    authMocks.sendPasswordResetEmail.mockResolvedValue(undefined);
+    authMocks.signOut.mockResolvedValue(undefined);
+  });
+
+  it("sends a Firebase password reset email", async () => {
+    const { sendPasswordReset } = await import("@/services/auth");
+
+    await expect(sendPasswordReset(" student@example.com ")).resolves.toBeUndefined();
+    expect(authMocks.sendPasswordResetEmail).toHaveBeenCalledWith(
+      authMocks.auth,
+      "student@example.com"
+    );
+  });
+
+  it("reauthenticates password accounts before retrying deletion", async () => {
+    const credential = { providerId: "password" };
+    authMocks.emailCredential.mockReturnValue(credential);
+    authMocks.reauthenticateWithCredential.mockResolvedValue(undefined);
+    authMocks.auth.currentUser = {
+      uid: "user-a",
+      email: "student@example.com",
+      providerData: [{ providerId: "password" }],
+      getIdToken: vi.fn(async () => "fresh-token"),
+    };
+    const { reauthenticateForAccountDeletion } = await import(
+      "@/services/auth"
+    );
+
+    await expect(
+      reauthenticateForAccountDeletion("current-password")
+    ).resolves.toBeUndefined();
+    expect(authMocks.emailCredential).toHaveBeenCalledWith(
+      "student@example.com",
+      "current-password"
+    );
+    expect(authMocks.reauthenticateWithCredential).toHaveBeenCalledWith(
+      authMocks.auth.currentUser,
+      credential
+    );
+  });
+
+  it("authorizes the server deletion route and clears the local session", async () => {
+    authMocks.auth.currentUser = {
+      uid: "user-a",
+      email: "student@example.com",
+      providerData: [{ providerId: "password" }],
+      getIdToken: vi.fn(async () => "fresh-token"),
+    };
+    const fetchMock = vi.fn(async () => ({
+      ok: true,
+      json: async () => ({ ok: true }),
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    const phases: string[] = [];
+    const { deleteAccount } = await import("@/services/auth");
+
+    await expect(
+      deleteAccount((phase) => phases.push(phase))
+    ).resolves.toBeUndefined();
+
+    expect(phases).toEqual(["authorizing", "deleting"]);
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/api/account/delete",
+      expect.objectContaining({
+        method: "DELETE",
+        headers: expect.objectContaining({
+          Authorization: "Bearer fresh-token",
+        }),
+      })
+    );
+    expect(authMocks.signOut).toHaveBeenCalledWith(authMocks.auth);
   });
 });
