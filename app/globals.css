@@ -523,21 +523,25 @@
     will-change: transform;
   }
 
-  .notebook-page-track [data-notebook-sheet="true"] {
-    -webkit-backface-visibility: hidden;
-    backface-visibility: hidden;
-  }
-
-  .notebook-page-track[data-swipe-active="true"] [data-notebook-sheet="true"] {
-    will-change: transform;
-  }
-
   .notebook-page-track[data-swipe-active="true"] .notebook-ink-surface {
     pointer-events: none;
   }
 
   .notebook-page-swipe-preview {
     pointer-events: none;
+    visibility: hidden;
+  }
+
+  .notebook-page-track[data-swipe-direction="previous"]
+    .notebook-page-swipe-preview[data-notebook-slot="previous"],
+  .notebook-page-track[data-swipe-direction="next"]
+    .notebook-page-swipe-preview[data-notebook-slot="next"] {
+    visibility: visible;
+  }
+
+  .notebook-page-track[data-ink-snapshot-ready="true"]
+    [data-notebook-live-ink-editor="true"] {
+    visibility: hidden;
   }
 
   [data-notebook-page-frame] {

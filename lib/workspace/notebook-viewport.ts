@@ -77,6 +77,22 @@ export function getNotebookViewportSwipeGap(frameWidth: number) {
     : NOTEBOOK_VIEWPORT_SWIPE_GAP;
 }
 
+export function getNotebookViewportSwipeTravel(input: {
+  frameWidth: number;
+  pageWidth: number;
+  swipeGap: number;
+}) {
+  const frameWidth = finiteNonNegative(input.frameWidth);
+  const pageWidth = finiteNonNegative(input.pageWidth);
+  const swipeGap = finiteNonNegative(input.swipeGap);
+  const centredWorkspaceGap = Math.max(0, (frameWidth - pageWidth) / 2);
+
+  // Place each adjacent sheet just beyond the nearest viewport edge. Wide
+  // workspaces therefore remain single-page surfaces instead of exposing
+  // several page-width-spaced carousel slots at once.
+  return pageWidth + Math.max(swipeGap, centredWorkspaceGap);
+}
+
 export function getNotebookViewportFit(input: {
   frameWidth: number;
   frameHeight: number;
@@ -246,7 +262,11 @@ export function getNotebookViewportLayout(input: {
     pageOrigin,
     panBounds,
     swipeGap,
-    swipeTravel: pageSize.width + swipeGap,
+    swipeTravel: getNotebookViewportSwipeTravel({
+      frameWidth: frameSize.width,
+      pageWidth: pageSize.width,
+      swipeGap,
+    }),
   };
 }
 

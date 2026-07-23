@@ -72,6 +72,7 @@ import {
   normalizeNotebookStrokes,
 } from "@/lib/workspace/notebook-page-content";
 import {
+  getNotebookSwipePreviewDirection,
   isNotebookPageSwipePreviewEnabled,
   resolveNotebookCarouselPages,
   shouldShowNotebookNewPagePreview,
@@ -998,6 +999,10 @@ export default function NotebookEditorPage() {
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
   const [pageSwipeMotion, setPageSwipeMotion] =
     useState<PageSwipeMotion | null>(null);
+  const [pageSwipeInkSnapshot, setPageSwipeInkSnapshot] = useState<{
+    pageId: string;
+    svg: string;
+  } | null>(null);
   const [createPageActive, setCreatePageActive] = useState(false);
   const [createPageProgress, setCreatePageProgress] = useState(0);
   const [creatingPage, setCreatingPage] = useState(false);
@@ -1028,6 +1033,11 @@ export default function NotebookEditorPage() {
   const pinchZoomAnimationFrameRef = useRef<number | null>(null);
   const pinchCommitPendingRef = useRef(false);
   const pageTrackTransitionResolverRef = useRef<(() => void) | null>(null);
+  const pagePreviewDirectionRef = useRef<"next" | "previous" | null>(null);
+  const pageSwipeInkSnapshotRef = useRef<{
+    pageId: string;
+    svg: string;
+  } | null>(null);
   const pageNavigationTokenRef = useRef(0);
   const pageNavigationLockedRef = useRef(false);
   const pageCreationInFlightRef = useRef(false);
@@ -1247,6 +1257,38 @@ export default function NotebookEditorPage() {
     setPageSwipeMotion(next);
   }, []);
 
+  const setPagePreviewDirection = useCallback(
+    (direction: "next" | "previous" | null) => {
+      if (pagePreviewDirectionRef.current === direction) return;
+      pagePreviewDirectionRef.current = direction;
+      const track = pageTrackRef.current;
+      if (!track) return;
+      if (direction) {
+        track.dataset.swipeDirection = direction;
+      } else {
+        delete track.dataset.swipeDirection;
+      }
+    },
+    []
+  );
+
+  const capturePageSwipeInkSnapshot = useCallback(() => {
+    const page = selectedPageRef.current;
+    if (!page || pageSwipeInkSnapshotRef.current?.pageId === page.id) return;
+    const svg = inkEditorRef.current?.serialize() ?? selectedPageInkSvg;
+    const snapshot = { pageId: page.id, svg };
+    pageSwipeInkSnapshotRef.current = snapshot;
+    const track = pageTrackRef.current;
+    if (track) delete track.dataset.inkSnapshotReady;
+    setPageSwipeInkSnapshot(snapshot);
+  }, [selectedPageInkSvg]);
+
+  const markPageSwipeInkSnapshotReady = useCallback((pageId: string) => {
+    if (pageSwipeInkSnapshotRef.current?.pageId !== pageId) return;
+    const track = pageTrackRef.current;
+    if (track) track.dataset.inkSnapshotReady = "true";
+  }, []);
+
   const setPagePreviewVisibility = useCallback((visible: boolean) => {
     const layer = pagePreviewLayerRef.current;
     if (layer) layer.style.visibility = visible ? "visible" : "hidden";
@@ -1256,7 +1298,14 @@ export default function NotebookEditorPage() {
         track.dataset.swipeActive = "true";
       } else {
         delete track.dataset.swipeActive;
+        delete track.dataset.swipeDirection;
+        delete track.dataset.inkSnapshotReady;
       }
+    }
+    if (!visible) {
+      pagePreviewDirectionRef.current = null;
+      pageSwipeInkSnapshotRef.current = null;
+      setPageSwipeInkSnapshot(null);
     }
   }, []);
 
@@ -1288,6 +1337,13 @@ export default function NotebookEditorPage() {
 
   const animatePageTrackTo = useCallback(
     (motion: PageSwipeMotion) => {
+      const previewDirection =
+        motion.direction ??
+        getNotebookSwipePreviewDirection(pageTrackOffsetRef.current);
+      if (motion.targetOffset !== 0 || pageTrackOffsetRef.current !== 0) {
+        capturePageSwipeInkSnapshot();
+      }
+      setPagePreviewDirection(previewDirection);
       updatePageSwipeMotion(motion);
       setPagePreviewVisibility(true);
       if (pageTrackAnimationFrameRef.current !== null) {
@@ -1318,7 +1374,9 @@ export default function NotebookEditorPage() {
       });
     },
     [
+      capturePageSwipeInkSnapshot,
       resolvePageTrackTransition,
+      setPagePreviewDirection,
       setPagePreviewVisibility,
       updatePageSwipeMotion,
       writePageTrackOffset,
@@ -3156,19 +3214,13 @@ export default function NotebookEditorPage() {
       if (nextIndex === selectedPageIndex) return false;
       const targetPage = pages[nextIndex];
       if (!targetPage) return false;
-      setPagePreviewVisibility(true);
       return runPageTrackNavigation(
         targetPage,
         direction,
         direction === "next" ? -2 : 2
       );
     },
-    [
-      pages,
-      runPageTrackNavigation,
-      selectedPageIndex,
-      setPagePreviewVisibility,
-    ]
+    [pages, runPageTrackNavigation, selectedPageIndex]
   );
 
   useEffect(
@@ -3495,6 +3547,9 @@ export default function NotebookEditorPage() {
     }
 
     if (swipe.intent !== "page") return;
+
+    capturePageSwipeInkSnapshot();
+    setPagePreviewDirection(getNotebookSwipePreviewDirection(totalDx));
 
     // Forward pull past the last page → engage the "create new page" affordance.
     if (selectedPageIndex === pages.length - 1 && totalDx < 0) {
@@ -5392,6 +5447,24 @@ export default function NotebookEditorPage() {
                     onPointerUp={handlePagePointerUp}
                     onPointerCancel={handlePagePointerCancel}
                   />
+                  {pageSwipeInkSnapshot?.pageId === selectedPage.id ? (
+                    <Image
+                      alt=""
+                      aria-hidden="true"
+                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(
+                        pageSwipeInkSnapshot.svg
+                      )}`}
+                      fill
+                      unoptimized
+                      sizes="48rem"
+                      className="notebook-page-swipe-ink-snapshot pointer-events-none absolute inset-0 z-[25] object-fill"
+                      onLoad={() =>
+                        markPageSwipeInkSnapshotReady(
+                          pageSwipeInkSnapshot.pageId
+                        )
+                      }
+                    />
+                  ) : null}
                   <div className="pointer-events-none absolute inset-0 z-30">
                     {textBlocks.map((block) => {
                       const selected = selectedTextBlockId === block.id;

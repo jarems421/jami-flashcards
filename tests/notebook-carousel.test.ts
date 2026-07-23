@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  getNotebookSwipePreviewDirection,
   isNotebookPageSwipePreviewEnabled,
   resolveNotebookCarouselPages,
   shouldShowNotebookNewPagePreview,
@@ -40,6 +41,12 @@ function makeMotion(
 }
 
 describe("notebook carousel state", () => {
+  it("exposes only the page in the active drag direction", () => {
+    expect(getNotebookSwipePreviewDirection(-40)).toBe("next");
+    expect(getNotebookSwipePreviewDirection(40)).toBe("previous");
+    expect(getNotebookSwipePreviewDirection(0)).toBeNull();
+  });
+
   it("uses ordinary adjacent pages while the track is idle", () => {
     const previousPage = makePage("page-1");
     const nextPage = makePage("page-3");

@@ -5,6 +5,7 @@ import {
   getNotebookViewportLayout,
   getNotebookViewportPanBounds,
   getNotebookViewportSwipeGap,
+  getNotebookViewportSwipeTravel,
   NOTEBOOK_VIEWPORT_COMPACT_SWIPE_GAP,
   NOTEBOOK_VIEWPORT_MAX_ZOOM,
   NOTEBOOK_VIEWPORT_MIN_ZOOM,
@@ -28,7 +29,11 @@ describe("notebook viewport layout", () => {
     expect(layout.fitOrigin.y).toBe(16);
     expect(layout.pageOrigin).toEqual(layout.fitOrigin);
     expect(layout.swipeTravel).toBeCloseTo(
-      layout.pageSize.width + NOTEBOOK_VIEWPORT_SWIPE_GAP
+      layout.pageSize.width +
+        Math.max(
+          NOTEBOOK_VIEWPORT_SWIPE_GAP,
+          (layout.frameSize.width - layout.pageSize.width) / 2
+        )
     );
   });
 
@@ -195,7 +200,11 @@ describe("notebook viewport layout", () => {
 
     expect(fitted.swipeGap).toBe(NOTEBOOK_VIEWPORT_SWIPE_GAP);
     expect(fitted.swipeTravel).toBe(
-      fitted.pageSize.width + NOTEBOOK_VIEWPORT_SWIPE_GAP
+      fitted.pageSize.width +
+        Math.max(
+          NOTEBOOK_VIEWPORT_SWIPE_GAP,
+          (fitted.frameSize.width - fitted.pageSize.width) / 2
+        )
     );
     expect(zoomed.swipeGap).toBe(24);
     expect(zoomed.swipeTravel).toBe(zoomed.pageSize.width + 24);
@@ -208,6 +217,20 @@ describe("notebook viewport layout", () => {
     expect(getNotebookViewportSwipeGap(1024)).toBe(
       NOTEBOOK_VIEWPORT_SWIPE_GAP
     );
+  });
+
+  it("places adjacent fitted sheets immediately beyond a wide viewport", () => {
+    const frameWidth = 1912;
+    const pageWidth = 672;
+    const pageX = (frameWidth - pageWidth) / 2;
+    const swipeTravel = getNotebookViewportSwipeTravel({
+      frameWidth,
+      pageWidth,
+      swipeGap: NOTEBOOK_VIEWPORT_SWIPE_GAP,
+    });
+
+    expect(pageX + swipeTravel).toBe(frameWidth);
+    expect(pageX - swipeTravel + pageWidth).toBe(0);
   });
 
   it("provides deterministic centred bounds for an undersized page", () => {

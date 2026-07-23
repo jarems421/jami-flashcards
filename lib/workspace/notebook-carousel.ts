@@ -39,6 +39,12 @@ export function isNotebookPageSwipePreviewEnabled(zoom: number) {
   return zoom <= 1.0001;
 }
 
+export function getNotebookSwipePreviewDirection(offset: number) {
+  if (offset < 0) return "next" as const;
+  if (offset > 0) return "previous" as const;
+  return null;
+}
+
 export function shouldShowNotebookNewPagePreview(input: {
   previewEnabled: boolean;
   hasNextPage: boolean;

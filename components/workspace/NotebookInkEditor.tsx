@@ -1103,7 +1103,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       getNotebookEraserCursorDiameter(eraserMode, eraserThickness);
 
     return (
-      <div className="absolute inset-0 z-20">
+      <div
+        data-notebook-live-ink-editor="true"
+        className="absolute inset-0 z-20"
+      >
         <div
           ref={hostRef}
           aria-hidden="true"

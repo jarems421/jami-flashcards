@@ -92,6 +92,19 @@ describe("NotebookViewport", () => {
     expect(globalStylesSource).toMatch(
       /\.notebook-page-track\[data-swipe-active="true"\] \.notebook-ink-surface\s*\{\s*pointer-events: none;/
     );
+    expect(notebookEditorSource).toContain("pageSwipeInkSnapshot");
+    expect(notebookEditorSource).toContain(
+      "markPageSwipeInkSnapshotReady"
+    );
+    expect(globalStylesSource).toContain(
+      '.notebook-page-track[data-swipe-direction="previous"]'
+    );
+    expect(globalStylesSource).toContain(
+      '.notebook-page-track[data-swipe-direction="next"]'
+    );
+    expect(globalStylesSource).toContain(
+      '.notebook-page-track[data-ink-snapshot-ready="true"]'
+    );
   });
 
   it("keeps the measurable frame mounted before a page is ready", () => {
