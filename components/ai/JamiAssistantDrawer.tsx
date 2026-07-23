@@ -216,6 +216,7 @@ export default function JamiAssistantDrawer({
       />
       <div
         ref={drawerRef}
+        data-notebook-text-editor="true"
         role="dialog"
         aria-modal="true"
         aria-labelledby="jami-assistant-title"
@@ -291,7 +292,10 @@ export default function JamiAssistantDrawer({
                           : "rounded-bl-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-primary"
                       }`}
                     >
-                      <StudyText text={message.text} className="whitespace-pre-wrap" />
+                      <StudyText
+                        text={message.text}
+                        className="select-text whitespace-pre-wrap"
+                      />
                     </div>
                     {message.role === "assistant" ? (
                       <>

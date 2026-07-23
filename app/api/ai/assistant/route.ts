@@ -216,6 +216,7 @@ Return JSON only with exactly these fields:
 {"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true}
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
 Be specific, supportive, and focused on helping the student understand.
+For mathematics, use precise conventional terminology and notation. Write fractions as \\frac{numerator}{denominator}; use standard symbols such as ∫, Σ, √, ≤, ≥, ∞, π, and Δ when appropriate. Preserve meaningful powers, subscripts, limits, variables, and units instead of spelling symbols out or using ASCII approximations.
 ${responseGuidance.instruction}`;
   const contents = [
     ...parsedRequest.history.map((historyMessage) => ({

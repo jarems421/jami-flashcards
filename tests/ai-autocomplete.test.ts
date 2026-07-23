@@ -63,6 +63,14 @@ describe("card autocomplete helpers", () => {
     );
   });
 
+  it("preserves conventional integral and summation symbols with limits", () => {
+    expect(
+      cleanGeneratedStudyText(
+        "$\\int_0^1 x^2 dx + \\sum_{i=1}^{n} i$"
+      )
+    ).toBe("∫₀¹ x² dx + Σᵢ₌₁^{n} i");
+  });
+
   it("cleans model wrappers without stripping the actual answer", () => {
     expect(cleanGeneratedCardBack("```text\nAnswer: F = ma, where F = force\n```")).toBe(
       "F = ma, where F = force"

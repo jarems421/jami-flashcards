@@ -119,10 +119,10 @@ const LATEX_SYMBOL_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\\Lambda\b/g, "\u039b"],
   [/\\Omega\b/g, "\u03a9"],
   [/\\Theta\b/g, "\u0398"],
-  [/\\Sigma\b/g, "\u03a3"],
-  [/\\sum\b/g, "\u03a3"],
-  [/\\prod\b/g, "\u03a0"],
-  [/\\int\b/g, "\u222b"],
+  [/\\Sigma(?![A-Za-z])/g, "\u03a3"],
+  [/\\sum(?![A-Za-z])/g, "\u03a3"],
+  [/\\prod(?![A-Za-z])/g, "\u03a0"],
+  [/\\int(?![A-Za-z])/g, "\u222b"],
   [/\\partial\b/g, "\u2202"],
   [/\\nabla\b/g, "\u2207"],
   [/\\sin\b/g, "sin"],
@@ -262,20 +262,23 @@ function normalizeLatexStructures(text: string) {
 function normalizeSubscriptNotation(text: string) {
   return text
     .replace(
-      /([A-Za-z])_\{([A-Za-z0-9+\-=()]{1,6})\}/g,
+      /([A-Za-z\u0370-\u03FF\u220F\u2211\u222B])_\{([A-Za-z0-9+\-=()]{1,6})\}/g,
       (_match, base: string, subscript: string) => {
         const converted = toSubscript(subscript);
         return converted === subscript ? `${base} ${subscript}` : `${base}${converted}`;
       }
     )
     .replace(
-      /([A-Za-z])_([A-Za-z0-9+\-=()]{1,3})\b/g,
+      /([A-Za-z\u0370-\u03FF\u220F\u2211\u222B])_([A-Za-z0-9+\-=()]{1,3})\b/g,
       (_match, base: string, subscript: string) => {
         const converted = toSubscript(subscript);
         return converted === subscript ? `${base} ${subscript}` : `${base}${converted}`;
       }
     )
-    .replace(/([A-Za-z])_([A-Za-z][A-Za-z0-9]{2,})\b/g, "$1 $2");
+    .replace(
+      /([A-Za-z\u0370-\u03FF\u220F\u2211\u222B])_([A-Za-z][A-Za-z0-9]{2,})\b/g,
+      "$1 $2"
+    );
 }
 
 function normalizeMathOperators(text: string) {

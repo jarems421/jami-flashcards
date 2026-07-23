@@ -19,4 +19,24 @@ describe("study text display helpers", () => {
       { type: "sup", value: "n+1" },
     ]);
   });
+
+  it("turns numeric and grouped slash notation into display fractions", () => {
+    expect(
+      splitStudyTextForDisplay(
+        "A third is 1/3 and the gradient is (Δ y)/(Δ x)."
+      )
+    ).toEqual([
+      { type: "text", value: "A third is " },
+      { type: "fraction", numerator: "1", denominator: "3" },
+      { type: "text", value: " and the gradient is " },
+      { type: "fraction", numerator: "Δ y", denominator: "Δ x" },
+      { type: "text", value: "." },
+    ]);
+  });
+
+  it("does not mistake prose slashes or dates for mathematical fractions", () => {
+    expect(
+      splitStudyTextForDisplay("Use and/or on 23/07/2026.")
+    ).toEqual([{ type: "text", value: "Use and/or on 23/07/2026." }]);
+  });
 });

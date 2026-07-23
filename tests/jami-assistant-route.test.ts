@@ -160,7 +160,9 @@ describe("universal Jami assistant route", () => {
           }),
         }),
         request: expect.objectContaining({
-          systemInstruction: expect.stringContaining("BRIEF mode"),
+          systemInstruction: expect.stringMatching(
+            /standard symbols such as ∫, Σ[\s\S]*BRIEF mode/
+          ),
         }),
       })
     );
