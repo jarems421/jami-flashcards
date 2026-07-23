@@ -10,11 +10,28 @@ import {
 import { createPortal } from "react-dom";
 import {
   formatJamiAssistantUsedContext,
+  JAMI_ASSISTANT_MAX_HISTORY_MESSAGES,
   type JamiAssistantContext,
   type JamiAssistantFollowUp,
   type JamiAssistantUsedContext,
 } from "@/lib/ai/jami-assistant";
+import {
+  getJamiAssistantContextKey,
+  getJamiAssistantSavedContext,
+  type JamiAssistantThread,
+} from "@/lib/ai/jami-assistant-history";
 import { sendJamiAssistantMessage } from "@/services/ai/jami-assistant";
+import {
+  deleteJamiAssistantThread,
+  getJamiAssistantThreadMessages,
+  getJamiAssistantThreads,
+  renameJamiAssistantThread,
+  saveJamiAssistantTurn,
+  toDrawerMessages,
+} from "@/services/ai/jami-assistant-history";
+import { auth } from "@/services/firebase/client";
+import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
+import JamiResponseText from "@/components/ai/JamiResponseText";
 import { JamiSparklesIcon, StudyText } from "@/components/ui";
 
 export type JamiAssistantQuickAction =
@@ -28,7 +45,9 @@ type JamiAssistantDrawerProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   resetKey: string;
+  contextKey: string;
   contextLabel: string;
+  historyContextLabel: string;
   getContext: () => JamiAssistantContext | Promise<JamiAssistantContext>;
   quickActions?: readonly JamiAssistantQuickAction[];
 };
@@ -56,11 +75,40 @@ function SendIcon() {
   );
 }
 
+function HistoryIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-[1.05rem] w-[1.05rem]">
+      <path
+        d="M4.6 5.3A7 7 0 1 1 3 10m1.6-4.7V2.8m0 2.5H2.1M10 6.3V10l2.6 1.6"
+        stroke="currentColor"
+        strokeWidth="1.55"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function NewChatIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-[1.05rem] w-[1.05rem]">
+      <path
+        d="M10 4v12M4 10h12"
+        stroke="currentColor"
+        strokeWidth="1.65"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export default function JamiAssistantDrawer({
   open,
   onOpenChange,
   resetKey,
+  contextKey,
   contextLabel,
+  historyContextLabel,
   getContext,
   quickActions = [],
 }: JamiAssistantDrawerProps) {
@@ -68,6 +116,13 @@ export default function JamiAssistantDrawer({
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [historyNotice, setHistoryNotice] = useState<string | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
+  const [threadLoading, setThreadLoading] = useState(false);
+  const [threads, setThreads] = useState<JamiAssistantThread[]>([]);
+  const [activeThread, setActiveThread] = useState<JamiAssistantThread | null>(null);
   const [useRelatedSources, setUseRelatedSources] = useState(true);
   const drawerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -89,8 +144,38 @@ export default function JamiAssistantDrawer({
     setInput("");
     setLoading(false);
     setError(null);
+    setHistoryNotice(null);
+    setHistoryOpen(false);
+    setThreadLoading(false);
+    setActiveThread(null);
     onOpenChange(false);
   }, [onOpenChange, resetKey]);
+
+  const refreshThreads = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      setThreads([]);
+      return;
+    }
+    setHistoryLoading(true);
+    setHistoryError(null);
+    try {
+      setThreads(await getJamiAssistantThreads(user.uid));
+    } catch (loadError) {
+      setHistoryError(
+        loadError instanceof Error
+          ? loadError.message
+          : "Your previous chats could not be loaded."
+      );
+    } finally {
+      setHistoryLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!open) return;
+    void refreshThreads();
+  }, [open, refreshThreads]);
 
   useEffect(() => {
     if (!open) return;
@@ -119,12 +204,101 @@ export default function JamiAssistantDrawer({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [loading, messages, open]);
+  }, [historyOpen, loading, messages, open, threadLoading]);
+
+  const startNewChat = useCallback(() => {
+    requestIdRef.current += 1;
+    requestPendingRef.current = false;
+    setMessages([]);
+    setInput("");
+    setLoading(false);
+    setError(null);
+    setHistoryNotice(null);
+    setHistoryOpen(false);
+    setThreadLoading(false);
+    setActiveThread(null);
+    window.requestAnimationFrame(() => inputRef.current?.focus());
+  }, []);
+
+  const openThread = useCallback(async (thread: JamiAssistantThread) => {
+    const user = auth.currentUser;
+    if (!user) {
+      setHistoryError("Sign in again to open your saved chats.");
+      return;
+    }
+    requestIdRef.current += 1;
+    requestPendingRef.current = false;
+    setThreadLoading(true);
+    setHistoryError(null);
+    setError(null);
+    setHistoryNotice(null);
+    try {
+      const storedMessages = await getJamiAssistantThreadMessages(user.uid, thread.id);
+      setMessages(toDrawerMessages(storedMessages));
+      setActiveThread(thread);
+      setHistoryOpen(false);
+    } catch (loadError) {
+      setHistoryError(
+        loadError instanceof Error
+          ? loadError.message
+          : "That chat could not be opened."
+      );
+    } finally {
+      setThreadLoading(false);
+    }
+  }, []);
+
+  const renameThread = useCallback(
+    async (thread: JamiAssistantThread, title: string) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error("Sign in again to rename this chat.");
+      const renamedTitle = await renameJamiAssistantThread(user.uid, thread.id, title);
+      setThreads((current) =>
+        current.map((candidate) =>
+          candidate.id === thread.id
+            ? { ...candidate, title: renamedTitle, updatedAt: Date.now() }
+            : candidate
+        )
+      );
+      setActiveThread((current) =>
+        current?.id === thread.id ? { ...current, title: renamedTitle } : current
+      );
+    },
+    []
+  );
+
+  const removeThread = useCallback(
+    async (thread: JamiAssistantThread) => {
+      const user = auth.currentUser;
+      if (!user) throw new Error("Sign in again to delete this chat.");
+      await deleteJamiAssistantThread(user.uid, thread.id);
+      setThreads((current) =>
+        current.filter((candidate) => candidate.id !== thread.id)
+      );
+      if (activeThread?.id === thread.id) {
+        setActiveThread(null);
+        setHistoryNotice(null);
+        setError(null);
+        setInput("");
+        setLoading(false);
+        requestPendingRef.current = false;
+        requestIdRef.current += 1;
+        setMessages([]);
+      }
+    },
+    [activeThread?.id]
+  );
+
+  const viewingForeignThread =
+    activeThread !== null && activeThread.contextKey !== contextKey;
+  const latestCurrentThread = threads.find(
+    (thread) => thread.contextKey === contextKey && thread.id !== activeThread?.id
+  );
 
   const sendMessage = useCallback(
     async (rawMessage: string) => {
       const message = rawMessage.trim();
-      if (!message || requestPendingRef.current) return;
+      if (!message || requestPendingRef.current || viewingForeignThread) return;
 
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
@@ -133,29 +307,69 @@ export default function JamiAssistantDrawer({
       setInput("");
       setLoading(true);
       setError(null);
+      setHistoryNotice(null);
 
       try {
         const context = await getContext();
+        const savedContext = getJamiAssistantSavedContext(context);
+        const resolvedContextKey = getJamiAssistantContextKey(savedContext);
+        if (resolvedContextKey !== contextKey) {
+          throw new Error("The study context changed. Open Jami again and retry.");
+        }
         const response = await sendJamiAssistantMessage({
           message,
-          history: messages.map((historyMessage) => ({
-            role: historyMessage.role === "assistant" ? ("model" as const) : ("user" as const),
-            text: historyMessage.text,
-          })),
+          history: messages
+            .slice(-JAMI_ASSISTANT_MAX_HISTORY_MESSAGES)
+            .map((historyMessage) => ({
+              role:
+                historyMessage.role === "assistant"
+                  ? ("model" as const)
+                  : ("user" as const),
+              text: historyMessage.text,
+            })),
           context,
           useRelatedSources,
         });
 
         if (requestIdRef.current !== requestId) return;
-        setMessages((current) => [
-          ...current,
-          {
-            role: "assistant",
-            text: response.reply,
-            used: response.used,
-            followUps: response.followUps,
-          },
-        ]);
+        const assistantMessage: DrawerMessage = {
+          role: "assistant",
+          text: response.reply,
+          used: response.used,
+          followUps: response.followUps,
+        };
+        setMessages((current) => [...current, assistantMessage]);
+
+        const user = auth.currentUser;
+        if (user) {
+          try {
+            const savedThread = await saveJamiAssistantTurn({
+              userId: user.uid,
+              thread: activeThread ?? undefined,
+              context: savedContext,
+              contextKey: resolvedContextKey,
+              contextLabel: historyContextLabel,
+              userMessage: message,
+              assistantMessage: {
+                text: response.reply,
+                used: response.used,
+                followUps: response.followUps,
+              },
+            });
+            if (requestIdRef.current !== requestId) return;
+            setActiveThread(savedThread);
+            setThreads((current) => [
+              savedThread,
+              ...current.filter((thread) => thread.id !== savedThread.id),
+            ]);
+          } catch {
+            if (requestIdRef.current === requestId) {
+              setHistoryNotice(
+                "Jami answered, but this turn could not be added to chat history."
+              );
+            }
+          }
+        }
       } catch (requestError) {
         if (requestIdRef.current !== requestId) return;
         setError(
@@ -170,7 +384,15 @@ export default function JamiAssistantDrawer({
         }
       }
     },
-    [getContext, messages, useRelatedSources]
+    [
+      activeThread,
+      contextKey,
+      getContext,
+      historyContextLabel,
+      messages,
+      useRelatedSources,
+      viewingForeignThread,
+    ]
   );
 
   const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
@@ -234,24 +456,68 @@ export default function JamiAssistantDrawer({
                   Jami
                 </h2>
                 <p className="mt-0.5 truncate text-xs text-text-muted">
-                  {contextLabel}
+                  {historyOpen
+                    ? "Chat history"
+                    : viewingForeignThread
+                      ? "Saved chat · read only"
+                      : contextLabel}
                 </p>
               </div>
             </div>
-            <button
-              type="button"
-              aria-label="Close Jami assistant"
-              title="Close"
-              className="inline-grid h-10 w-10 shrink-0 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
-              onClick={() => onOpenChange(false)}
-            >
-              <CloseIcon />
-            </button>
+            <div className="flex shrink-0 items-center gap-0.5">
+              <button
+                type="button"
+                aria-label={historyOpen ? "Return to current Jami chat" : "Open Jami chat history"}
+                title={historyOpen ? "Current chat" : "Chat history"}
+                className={`inline-grid h-10 w-10 place-items-center rounded-full transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
+                  historyOpen
+                    ? "bg-accent/12 text-accent"
+                    : "text-text-muted hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                }`}
+                onClick={() => setHistoryOpen((current) => !current)}
+              >
+                <HistoryIcon />
+              </button>
+              <button
+                type="button"
+                aria-label="Start a new Jami chat"
+                title="New chat"
+                className="inline-grid h-10 w-10 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                onClick={startNewChat}
+              >
+                <NewChatIcon />
+              </button>
+              <button
+                type="button"
+                aria-label="Close Jami assistant"
+                title="Close"
+                className="inline-grid h-10 w-10 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                onClick={() => onOpenChange(false)}
+              >
+                <CloseIcon />
+              </button>
+            </div>
           </div>
         </header>
 
         <div ref={scrollRef} className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7 sm:py-6">
-          {messages.length === 0 ? (
+          {historyOpen ? (
+            <JamiAssistantHistory
+              threads={threads}
+              currentContextKey={contextKey}
+              loading={historyLoading}
+              error={historyError}
+              onOpen={(thread) => void openThread(thread)}
+              onNew={startNewChat}
+              onRename={renameThread}
+              onDelete={removeThread}
+            />
+          ) : threadLoading ? (
+            <div className="flex min-h-full items-center justify-center gap-2 text-sm text-text-muted" role="status">
+              <span className="h-4 w-4 animate-spin rounded-full border-2 border-current border-r-transparent" />
+              Opening chat
+            </div>
+          ) : messages.length === 0 ? (
             <div className="flex min-h-full flex-col justify-center py-5">
               <div className="mx-auto max-w-sm text-center">
                 <h3 className="text-lg font-semibold text-text-primary">
@@ -261,6 +527,16 @@ export default function JamiAssistantDrawer({
                   Ask about what you are studying, or choose a useful starting point.
                 </p>
               </div>
+              {latestCurrentThread ? (
+                <button
+                  type="button"
+                  className="mx-auto mt-5 flex max-w-full items-center gap-2 rounded-full border border-accent/25 bg-accent/8 px-3.5 py-2 text-xs font-medium text-accent transition duration-fast hover:border-accent/40 hover:bg-accent/12 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                  onClick={() => void openThread(latestCurrentThread)}
+                >
+                  <HistoryIcon />
+                  <span className="truncate">Continue {latestCurrentThread.title}</span>
+                </button>
+              ) : null}
               {normalizedQuickActions.length > 0 ? (
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
                   {normalizedQuickActions.map((action) => (
@@ -292,10 +568,17 @@ export default function JamiAssistantDrawer({
                           : "rounded-bl-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-primary"
                       }`}
                     >
-                      <StudyText
-                        text={message.text}
-                        className="select-text whitespace-pre-wrap"
-                      />
+                      {message.role === "assistant" ? (
+                        <JamiResponseText
+                          text={message.text}
+                          className="select-text whitespace-pre-wrap"
+                        />
+                      ) : (
+                        <StudyText
+                          text={message.text}
+                          className="select-text whitespace-pre-wrap"
+                        />
+                      )}
                     </div>
                     {message.role === "assistant" ? (
                       <>
@@ -344,6 +627,30 @@ export default function JamiAssistantDrawer({
         </div>
 
         <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
+          {historyOpen ? (
+            <div className="text-center text-[0.65rem] text-text-muted">
+              Saved chats keep their messages, not source files or notebook snapshots.
+            </div>
+          ) : viewingForeignThread ? (
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-accent/20 bg-accent/8 px-4 py-3">
+              <div className="min-w-0 flex-1">
+                <p className="text-xs font-semibold text-text-primary">
+                  This chat belongs to another study context
+                </p>
+                <p className="mt-1 text-[0.7rem] leading-relaxed text-text-muted">
+                  You can read it here. Start a new chat to ask about {historyContextLabel}.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded-full bg-accent px-3.5 py-2 text-xs font-semibold text-white transition duration-fast hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                onClick={startNewChat}
+              >
+                New chat
+              </button>
+            </div>
+          ) : (
+            <>
           {error ? (
             <div className="mb-3 flex items-start justify-between gap-3 rounded-[1.25rem] border border-error/35 bg-error-muted px-3.5 py-3 text-xs text-[var(--color-error-text)]" role="alert">
               <span className="leading-relaxed">{error}</span>
@@ -351,6 +658,18 @@ export default function JamiAssistantDrawer({
                 type="button"
                 className="shrink-0 font-semibold underline decoration-current/40 underline-offset-2"
                 onClick={() => setError(null)}
+              >
+                Dismiss
+              </button>
+            </div>
+          ) : null}
+          {historyNotice ? (
+            <div className="mb-3 flex items-start justify-between gap-3 rounded-[1.15rem] border border-warning/30 bg-warning-muted px-3.5 py-3 text-xs text-text-secondary" role="status">
+              <span className="leading-relaxed">{historyNotice}</span>
+              <button
+                type="button"
+                className="shrink-0 font-semibold underline decoration-current/40 underline-offset-2"
+                onClick={() => setHistoryNotice(null)}
               >
                 Dismiss
               </button>
@@ -439,6 +758,8 @@ export default function JamiAssistantDrawer({
               Jami can make mistakes. Check important answers.
             </div>
           </div>
+            </>
+          )}
         </footer>
       </div>
     </div>,

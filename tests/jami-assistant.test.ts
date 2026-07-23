@@ -287,4 +287,5 @@ describe("Jami assistant related-source ranking", () => {
       })
     ).toHaveLength(5);
   });
+
 });

@@ -21,7 +21,7 @@ const SUPERSCRIPT_TO_PLAIN: Record<string, string> = {
 };
 
 const EXPONENT_PATTERN =
-  /([A-Za-z0-9\u0370-\u03FF)\]])(?:\*\*|\^)(\{[^{}\n]+\}|[+\-]?\([^)\n]+\)|[+\-]?[A-Za-z0-9\u0370-\u03FF.]+)/gu;
+  /([A-Za-z0-9\u0370-\u03FF\u2070-\u209F)\]])(?:\*\*|\^)(\{[^{}\n]+\}|[+\-]?\([^)\n]+\)|[+\-]?[A-Za-z0-9\u0370-\u03FF.]+)/gu;
 const STORAGE_EXPONENT_PATTERN =
   /([A-Za-z0-9\u0370-\u03FF)\]])\s*(?:\*\*|\^)\s*(\{[^{}\n]+\}|[+\-\u2212\u2013\u2014]?\([^)\n]+\)|[+\-\u2212\u2013\u2014]?[A-Za-z0-9\u0370-\u03FF.]+)/gu;
 const SUPERSCRIPT_SEQUENCE_PATTERN =

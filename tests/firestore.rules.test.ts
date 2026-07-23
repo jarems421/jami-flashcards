@@ -536,6 +536,46 @@ describe("Firestore security rules", () => {
       })
     );
 
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "assistantThreads", "assistant-thread-1"), {
+        title: "Explain this page",
+        surface: "notebook",
+        contextKey: "notebook:notebook-1:page:page-1",
+        contextLabel: "Eigenvalues practice · Page 1",
+        context: {
+          surface: "notebook",
+          notebookId: "notebook-1",
+          pageId: "page-1",
+        },
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "assistantMessages", "assistant-message-1"), {
+        threadId: "assistant-thread-1",
+        role: "assistant",
+        text: "Start with the characteristic polynomial.",
+        createdAt: 1,
+      })
+    );
+    await assertSucceeds(
+      getDoc(
+        doc(aliceDb, "users", ALICE, "assistantThreads", "assistant-thread-1")
+      )
+    );
+    await assertFails(
+      getDoc(doc(bobDb, "users", ALICE, "assistantThreads", "assistant-thread-1"))
+    );
+    await assertFails(
+      setDoc(doc(bobDb, "users", ALICE, "assistantMessages", "assistant-message-2"), {
+        threadId: "assistant-thread-1",
+        role: "user",
+        text: "Wrong user",
+        createdAt: 2,
+      })
+    );
+
     await assertFails(
       setDoc(doc(bobDb, "users", ALICE, "attempts", "attempt-2"), {
         questionId: "question-1",
@@ -571,6 +611,21 @@ describe("Firestore security rules", () => {
         createdAt: 1,
         updatedAt: 1,
       })
+    );
+
+    await assertFails(
+      setDoc(
+        doc(demoDb, "users", ALICE, "assistantThreads", "demo-assistant-thread"),
+        {
+          title: "Demo chat",
+          surface: "learn",
+          contextKey: "learn:card-1",
+          contextLabel: "Flashcard",
+          context: { surface: "learn", cardId: "card-1" },
+          createdAt: 1,
+          updatedAt: 1,
+        }
+      )
     );
 
     await assertFails(

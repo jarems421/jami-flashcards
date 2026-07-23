@@ -2481,7 +2481,9 @@ export default function StudyPage() {
                 open={jamiAssistantOpen}
                 onOpenChange={setJamiAssistantOpen}
                 resetKey={current.id}
+                contextKey={`learn:${current.id}`}
                 contextLabel="Current flashcard"
+                historyContextLabel={`Flashcard · ${current.front.slice(0, 72)}`}
                 getContext={getLearnAssistantContext}
                 quickActions={learnAssistantQuickActions}
               />

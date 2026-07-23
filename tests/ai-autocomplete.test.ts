@@ -33,6 +33,15 @@ describe("card autocomplete helpers", () => {
     );
   });
 
+  it("preserves delimited TeX for rich assistant rendering", () => {
+    expect(
+      cleanGeneratedStudyText(
+        "**Result:** $\\int_{0}^{2} x^2\\,dx = \\frac{8}{3}$",
+        { preserveLatex: true }
+      )
+    ).toBe("Result: $\\int_{0}^{2} x^2\\,dx = \\frac{8}{3}$");
+  });
+
   it("converts plain-word greek symbols and infinity", () => {
     expect(
       cleanGeneratedStudyText(

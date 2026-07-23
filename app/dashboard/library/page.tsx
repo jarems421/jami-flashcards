@@ -989,7 +989,9 @@ export default function LibraryPage() {
           if (!open) closeWorkspacePanel();
         }}
         resetKey={selectedSource?.id ?? "no-source"}
+        contextKey={`sources:${selectedSource?.id ?? ""}`}
         contextLabel="Current source"
+        historyContextLabel={selectedSource?.title ?? "Source"}
         getContext={() => ({
           surface: "sources",
           sourceIds: selectedSource ? [selectedSource.id] : [],

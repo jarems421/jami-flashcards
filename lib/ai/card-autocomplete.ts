@@ -13,6 +13,7 @@ type SubjectInput = {
 
 type CleanGeneratedStudyTextOptions = {
   stripLeadingLabel?: boolean;
+  preserveLatex?: boolean;
 };
 
 const SUPERSCRIPT_CHARS: Record<string, string> = {
@@ -344,7 +345,14 @@ export function cleanGeneratedStudyText(
   options: CleanGeneratedStudyTextOptions = {}
 ) {
   let next = normalizeMarkdownSyntax(text);
-  next = normalizeMathNotation(next);
+  next = options.preserveLatex
+    ? next
+        .replace(/\u00a0/g, " ")
+        .replace(/[ \t]+\n/g, "\n")
+        .replace(/[ \t]{2,}/g, " ")
+        .replace(/\n{3,}/g, "\n\n")
+        .trim()
+    : normalizeMathNotation(next);
 
   if (options.stripLeadingLabel) {
     next = next.replace(/^(answer|back|explanation|result)\s*:\s*/i, "");

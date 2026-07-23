@@ -5082,8 +5082,10 @@ export default function NotebookEditorPage() {
         <JamiAssistantDrawer
           open={assistantOpen}
           onOpenChange={handleAssistantOpenChange}
-          resetKey={`notebook:${notebook.id}`}
+          resetKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
+          contextKey={`notebook:${notebook.id}:page:${selectedPage?.id ?? "no-page"}`}
           contextLabel="Current notebook page"
+          historyContextLabel={`${notebook.title} · Page ${Math.max(selectedPageIndex + 1, 1)}`}
           getContext={getNotebookAssistantContext}
           quickActions={NOTEBOOK_ASSISTANT_QUICK_ACTIONS}
         />

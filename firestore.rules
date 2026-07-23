@@ -148,6 +148,16 @@ service cloud.firestore {
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
+      match /assistantThreads/{threadId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
+      match /assistantMessages/{messageId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
       match /masteryEvents/{eventId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();

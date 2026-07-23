@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Nunito_Sans } from "next/font/google";
+import "katex/dist/katex.min.css";
 
 const nunitoSans = Nunito_Sans({
   subsets: ["latin"],

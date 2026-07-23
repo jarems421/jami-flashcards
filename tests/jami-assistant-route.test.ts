@@ -161,10 +161,26 @@ describe("universal Jami assistant route", () => {
         }),
         request: expect.objectContaining({
           systemInstruction: expect.stringMatching(
-            /standard symbols such as ∫, Σ[\s\S]*BRIEF mode/
+            /current context C1 is authoritative[\s\S]*valid TeX delimiters[\s\S]*BRIEF mode/
           ),
         }),
       })
+    );
+    const generationRequest = mocks.generateText.mock.calls[0]?.[0] as {
+      request: { contents: Array<{ parts: Array<{ text?: string }> }> };
+    };
+    const finalParts = generationRequest.request.contents.at(-1)?.parts ?? [];
+    const referenceOrder = finalParts
+      .map((part) => part.text ?? "")
+      .join("\n");
+    expect(referenceOrder.indexOf("REFERENCE S1")).toBeLessThan(
+      referenceOrder.indexOf("REFERENCE C1")
+    );
+    expect(referenceOrder.indexOf("REFERENCE C1")).toBeLessThan(
+      referenceOrder.indexOf("GROUNDING PRIORITY")
+    );
+    expect(referenceOrder).toContain(
+      "ignore it completely when it is about something else"
     );
   });
 

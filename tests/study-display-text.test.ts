@@ -20,6 +20,15 @@ describe("study text display helpers", () => {
     ]);
   });
 
+  it("renders an integral upper limit after a Unicode lower limit", () => {
+    expect(splitStudyTextForDisplay("∫₀^{2} x² dx")).toEqual([
+      { type: "text", value: "∫" },
+      { type: "text", value: "₀" },
+      { type: "sup", value: "2" },
+      { type: "text", value: " x² dx" },
+    ]);
+  });
+
   it("turns numeric and grouped slash notation into display fractions", () => {
     expect(
       splitStudyTextForDisplay(
