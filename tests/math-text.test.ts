@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   attachInlineMathPunctuation,
   normalizeLegacyJamiMathText,
+  normalizeMathDelimiters,
+  preprocessMathDelimiters,
   splitMathRichText,
 } from "@/lib/study/math-text";
 
@@ -71,5 +73,68 @@ describe("math-rich study text", () => {
       },
       { type: "text", value: "" },
     ]);
+  });
+});
+
+describe("normalizeMathDelimiters", () => {
+  it("converts parenthesised inline math to dollar delimiters", () => {
+    expect(normalizeMathDelimiters("Use \\(x^2 + y^2\\) here.")).toBe(
+      "Use $x^2 + y^2$ here."
+    );
+  });
+
+  it("converts bracketed display math to multi-line dollar delimiters", () => {
+    expect(normalizeMathDelimiters("\\[a^2 + b^2 = c^2\\]")).toBe(
+      "$$\na^2 + b^2 = c^2\n$$"
+    );
+  });
+
+  it("converts single-line display math to multi-line display math", () => {
+    expect(normalizeMathDelimiters("$$\\sum_{i=1}^{n} i$$")).toBe(
+      "$$\n\\sum_{i=1}^{n} i\n$$"
+    );
+  });
+
+  it("keeps existing inline math delimiters", () => {
+    expect(normalizeMathDelimiters("The value is $x^2$.")).toBe(
+      "The value is $x^2$."
+    );
+  });
+
+  it("handles multiple math blocks", () => {
+    expect(
+      normalizeMathDelimiters("Inline \\(x\\) and display \\[y\\] plus $$z$$")
+    ).toBe("Inline $x$ and display $$\ny\n$$ plus $$\nz\n$$");
+  });
+
+  it("preserves text without math", () => {
+    expect(normalizeMathDelimiters("Just plain text.")).toBe("Just plain text.");
+  });
+});
+
+describe("preprocessMathDelimiters", () => {
+  it("normalises math outside code blocks but leaves code blocks untouched", () => {
+    const input = "$$x$$\n```\n$$y$$\n```\n\\(z\\)";
+    const output = preprocessMathDelimiters(input);
+    expect(output).toContain("$$\nx\n$$");
+    expect(output).toContain("```\n$$y$$\n```");
+    expect(output).toContain("$z$");
+  });
+
+  it("leaves inline code untouched", () => {
+    const input = "Use `$x^2$` as a literal";
+    expect(preprocessMathDelimiters(input)).toBe(input);
+  });
+
+  it("still converts display math in the surrounding text", () => {
+    expect(preprocessMathDelimiters("\\[a + b\\]")).toBe("$$\na + b\n$$");
+  });
+
+  it("leaves tilde-fenced code blocks untouched", () => {
+    const input = "$$x$$\n~~~\n$$y$$\n~~~\n\\(z\\)";
+    const output = preprocessMathDelimiters(input);
+    expect(output).toContain("$$\nx\n$$");
+    expect(output).toContain("~~~\n$$y$$\n~~~");
+    expect(output).toContain("$z$");
   });
 });

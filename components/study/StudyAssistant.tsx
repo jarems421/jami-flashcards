@@ -8,7 +8,7 @@ import {
   type StudyChatIntent,
 } from "@/services/ai/chat";
 import type { Card } from "@/lib/study/cards";
-import { StudyText } from "@/components/ui";
+import AiResponseRenderer from "@/components/ai/AiResponseRenderer";
 
 type Props = {
   card: Card;
@@ -223,7 +223,11 @@ export default function StudyAssistant({
                     : "app-chip"
                 }`}
               >
-                <StudyText text={msg.text} />
+                {msg.role === "user" ? (
+                  <span className="whitespace-pre-wrap">{msg.text}</span>
+                ) : (
+                  <AiResponseRenderer content={msg.text} />
+                )}
               </div>
             </div>
           ))}

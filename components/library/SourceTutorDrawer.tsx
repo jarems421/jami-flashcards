@@ -2,6 +2,7 @@
 
 import type { Source } from "@/lib/practice/sources";
 import { MAX_TUTOR_SOURCE_SELECTION } from "@/lib/study/library-management";
+import AiResponseRenderer from "@/components/ai/AiResponseRenderer";
 import { Button, FeedbackBanner, Textarea } from "@/components/ui";
 import {
   SourceActionIcon,
@@ -240,7 +241,11 @@ export default function SourceTutorDrawer({
                       </span>
                     ) : null}
                   </div>
-                  <div className="whitespace-pre-wrap">{tutorMessage.text}</div>
+                  {tutorMessage.role === "model" ? (
+                    <AiResponseRenderer content={tutorMessage.text} />
+                  ) : (
+                    <div className="whitespace-pre-wrap">{tutorMessage.text}</div>
+                  )}
                   {tutorMessage.role === "model" &&
                   tutorMessage.sourcesUsed &&
                   tutorMessage.sourcesUsed.length > 0 ? (
