@@ -25,6 +25,16 @@ const input = {
   useRelatedSources: true,
 };
 
+/** Builds the newline-delimited stream the assistant route now returns. */
+function streamedResponse(...events: Record<string, unknown>[]) {
+  const body =
+    events.map((event) => JSON.stringify(event)).join("\n") + "\n";
+  return new Response(body, {
+    status: 200,
+    headers: { "Content-Type": "application/x-ndjson" },
+  });
+}
+
 describe("Jami assistant client service", () => {
   beforeEach(() => {
     vi.restoreAllMocks();
@@ -32,7 +42,8 @@ describe("Jami assistant client service", () => {
 
   it("sends authenticated typed context and preserves the Used receipt", async () => {
     const fetchMock = vi.fn(async () =>
-      Response.json({
+      streamedResponse({
+        type: "done",
         reply: "A clear explanation.",
         used: [
           { kind: "current-context", id: "card-1", label: "Current card" },

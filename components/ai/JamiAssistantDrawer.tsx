@@ -318,6 +318,10 @@ export default function JamiAssistantDrawer({
       setError(null);
       setHistoryNotice(null);
 
+      // Tracks whether a streamed placeholder message is on screen, so it can
+      // be settled on success or cleared if generation fails part-way through.
+      let streaming = false;
+
       try {
         const context = await getContext();
         const savedContext = getJamiAssistantSavedContext(context);
@@ -325,20 +329,37 @@ export default function JamiAssistantDrawer({
         if (resolvedContextKey !== contextKey) {
           throw new Error("The study context changed. Open Jami again and retry.");
         }
-        const response = await sendJamiAssistantMessage({
-          message,
-          history: messages
-            .slice(-JAMI_ASSISTANT_MAX_HISTORY_MESSAGES)
-            .map((historyMessage) => ({
-              role:
-                historyMessage.role === "assistant"
-                  ? ("model" as const)
-                  : ("user" as const),
-              text: historyMessage.text,
-            })),
-          context,
-          useRelatedSources,
-        });
+        // The answer streams in, so a placeholder is appended on the first
+        // chunk and then updated in place. The receipt and follow-ups only
+        // arrive once the whole response has been validated.
+        const response = await sendJamiAssistantMessage(
+          {
+            message,
+            history: messages
+              .slice(-JAMI_ASSISTANT_MAX_HISTORY_MESSAGES)
+              .map((historyMessage) => ({
+                role:
+                  historyMessage.role === "assistant"
+                    ? ("model" as const)
+                    : ("user" as const),
+                text: historyMessage.text,
+              })),
+            context,
+            useRelatedSources,
+          },
+          (textSoFar) => {
+            if (requestIdRef.current !== requestId) return;
+            setMessages((current) => {
+              if (!streaming) {
+                streaming = true;
+                return [...current, { role: "assistant", text: textSoFar }];
+              }
+              const next = [...current];
+              next[next.length - 1] = { ...next[next.length - 1], text: textSoFar };
+              return next;
+            });
+          }
+        );
 
         if (requestIdRef.current !== requestId) return;
         const assistantMessage: DrawerMessage = {
@@ -347,7 +368,13 @@ export default function JamiAssistantDrawer({
           used: response.used,
           followUps: response.followUps,
         };
-        setMessages((current) => [...current, assistantMessage]);
+        // Settle on the validated reply, replacing the streamed placeholder
+        // rather than trusting the deltas that produced it.
+        setMessages((current) =>
+          streaming
+            ? [...current.slice(0, -1), assistantMessage]
+            : [...current, assistantMessage]
+        );
 
         const user = auth.currentUser;
         if (user) {
@@ -381,6 +408,9 @@ export default function JamiAssistantDrawer({
         }
       } catch (requestError) {
         if (requestIdRef.current !== requestId) return;
+        // Drop any partially streamed answer so an incomplete reply is not
+        // left sitting above the error.
+        if (streaming) setMessages((current) => current.slice(0, -1));
         setError(
           requestError instanceof Error
             ? requestError.message
