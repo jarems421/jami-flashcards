@@ -1895,7 +1895,13 @@ body.constellation-background-enabled::before {
     overflow-x: auto;
     overflow-y: hidden;
     vertical-align: middle;
-    font-size: inherit;
+    /*
+      Matching body size exactly left an inline \frac with a numerator and
+      denominator each around half the line height, which is too small to read
+      inside a sentence or a bullet. A small step up clears that without maths
+      towering over the prose around it.
+    */
+    font-size: 1.08em;
   }
 
   .ai-response .katex-display {
@@ -1909,5 +1915,7 @@ body.constellation-background-enabled::before {
 
   .ai-response .katex-display .katex {
     display: inline-block;
+    /* Display maths already had room on its own line; only inline needed the step up. */
+    font-size: 1em;
   }
 }

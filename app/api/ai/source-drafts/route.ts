@@ -11,6 +11,7 @@ import {
   clampSourceDraftCount,
   filterSourceFlashcardDrafts,
   filterSourceQuestionDrafts,
+  getSourceDraftPromptKey,
   getSourceDraftCountForDepth,
   getSourceDraftDepthPrompt,
   normalizeSourceDraftDepth,
@@ -187,12 +188,35 @@ ${source.contentText.slice(0, 12_000)}`,
 
     const now = Date.now();
     const draftsCollection = adminDb.collection("users").doc(uid).collection("generatedContentDrafts");
+    // Drafts already waiting on this source, so a second Make does not hand the
+    // student another copy of a question they have not reviewed yet. Filtered in
+    // memory rather than with a second equality clause, because the number of
+    // pending drafts for one source is small and this needs no index.
+    const pendingSnapshot = await draftsCollection.where("sourceId", "==", source.id).get();
+    const existingPromptKeys = pendingSnapshot.docs
+      .map((pendingDoc) => pendingDoc.data() as Record<string, unknown>)
+      .filter(
+        (data) =>
+          data.contentStatus === "draft" &&
+          data.kind === (kind === "flashcard" ? "flashcard" : "practice-question")
+      )
+      .map((data) =>
+        getSourceDraftPromptKey(
+          String((kind === "flashcard" ? data.front : data.questionText) ?? "")
+        )
+      )
+      .filter(Boolean);
+
     const parsedCardDrafts = kind === "flashcard" ? parseGeneratedCardDrafts(generated) : [];
     const parsedQuestionDrafts = kind === "practice-question" ? parseGeneratedQuestionDrafts(generated) : [];
     const filteredCardDrafts =
-      kind === "flashcard" ? filterSourceFlashcardDrafts(parsedCardDrafts, count) : [];
+      kind === "flashcard"
+        ? filterSourceFlashcardDrafts(parsedCardDrafts, count, existingPromptKeys)
+        : [];
     const filteredQuestionDrafts =
-      kind === "practice-question" ? filterSourceQuestionDrafts(parsedQuestionDrafts, count) : [];
+      kind === "practice-question"
+        ? filterSourceQuestionDrafts(parsedQuestionDrafts, count, existingPromptKeys)
+        : [];
     const removedDraftCount =
       kind === "flashcard"
         ? Math.max(0, parsedCardDrafts.length - filteredCardDrafts.length)
@@ -228,10 +252,17 @@ ${source.contentText.slice(0, 12_000)}`,
           }));
 
     if (drafts.length === 0) {
+      // Everything the model returned matched a draft already waiting, which is
+      // a different situation from a source too thin to draft from.
+      const everythingWasDuplicate =
+        existingPromptKeys.length > 0 &&
+        (kind === "flashcard" ? parsedCardDrafts.length : parsedQuestionDrafts.length) > 0;
+
       return Response.json(
         {
-          error:
-            "Jami could not find enough source-grounded draft material. Try a longer pasted source or generate fewer drafts.",
+          error: everythingWasDuplicate
+            ? "Jami did not find anything new here. The drafts already waiting for review cover this source."
+            : "Jami could not find enough source-grounded draft material. Try a longer pasted source or generate fewer drafts.",
         },
         { status: 422 }
       );

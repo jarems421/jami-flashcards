@@ -64,7 +64,19 @@ describe("due-card definition", () => {
     // A card that was never scheduled cannot be late, so overdue stays a
     // strict subset. Before the fix both numbers were 4 and the "overdue
     // portion" told the student nothing.
-    expect(overdueCards).toBe(4);
     expect(overdueCards).toBeLessThan(due);
+    expect(overdueCards).toBeGreaterThan(0);
+  });
+
+  it("counts a card as late only once a study day has passed", () => {
+    // overdue-4 fell due a minute ago, which is still today's work. Counting it
+    // as late would have a card go overdue between opening the app and reading
+    // the page, and would disagree with the deck-health figures beside it.
+    const { overdueCards } = buildSpacedRepetitionAnalytics(cards, [], {}, now);
+    expect(overdueCards).toBe(3);
+
+    const dueEarlierToday = cards.find((card) => card.id === "overdue-4");
+    expect(dueEarlierToday?.dueDate).toBeLessThan(now);
+    expect(isCardDue(dueEarlierToday!, now)).toBe(true);
   });
 });

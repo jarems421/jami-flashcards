@@ -111,7 +111,9 @@ export default function LibraryPage() {
   const [showAddSource, setShowAddSource] = useState(false);
   const [feedback, setFeedback] = useState<SourceWorkspaceFeedback | null>(null);
   const [draftingKind, setDraftingKind] = useState<SourceDraftKind | null>(null);
-  const [useConversationFocus, setUseConversationFocus] = useState(true);
+  // Off by default: drafting should cover the source evenly unless the student
+  // asks for the slant of whatever they last discussed.
+  const [useConversationFocus, setUseConversationFocus] = useState(false);
   const [sourceThreadId, setSourceThreadId] = useState<string | null>(null);
   const [rejectingAllDrafts, setRejectingAllDrafts] = useState(false);
   const [composerKind, setComposerKind] = useState<SourceComposerKind>("text");

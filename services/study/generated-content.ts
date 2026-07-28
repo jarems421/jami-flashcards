@@ -95,7 +95,10 @@ export function mapGeneratedContentDraftData(
 
 export async function getGeneratedContentDrafts(userId: string) {
   const snapshot = await withTimeout(
-    getDocs(query(draftsCollection(userId), orderBy("updatedAt", "desc"))),
+    // Ordered by when the draft was made, not when it was last touched. Sorting
+    // by updatedAt moved a draft to the top the moment it was edited, so the
+    // numbering shifted under the student while they were working through them.
+    getDocs(query(draftsCollection(userId), orderBy("createdAt", "desc"))),
     LOAD_MS,
     "Load generated content drafts"
   );
