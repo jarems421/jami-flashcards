@@ -59,6 +59,86 @@ function normalizeIds(value: unknown, maxItems = 30) {
   ).slice(0, maxItems);
 }
 
+const LEARN_RELATED_CARD_SCAN_LIMIT = 20;
+const LEARN_MAX_RELATED_CARDS = 6;
+
+/**
+ * Describes how well the student knows this card, from the FSRS state already
+ * stored on the card document, so the tutor can scale how much scaffolding it
+ * gives. Read server-side rather than trusted from the request.
+ */
+function describeMemoryProfile(cardData: Record<string, unknown>) {
+  const asNumber = (value: unknown) => (typeof value === "number" ? value : undefined);
+  const difficulty = asNumber(cardData.difficulty);
+  const reps = asNumber(cardData.reps) ?? 0;
+
+  const difficultyLabel =
+    difficulty === undefined
+      ? "unknown"
+      : difficulty >= 7
+        ? "high"
+        : difficulty >= 4
+          ? "medium"
+          : difficulty > 0
+            ? "low"
+            : "new";
+
+  return `Memory profile:
+- Difficulty: ${difficultyLabel}
+- Times struggled: ${asNumber(cardData.lapses) ?? 0}
+- Successful reps: ${reps}
+- Current interval: ${asNumber(cardData.scheduledDays) ?? 0} day(s)
+- Days since last review window: ${asNumber(cardData.elapsedDays) ?? 0}
+
+If this profile looks shaky (hard card, repeated struggles, short review gaps), give more scaffolding, point out likely confusion, and prefer compact memory hooks. If it looks stable, keep the answer concise and avoid overexplaining.`;
+}
+
+/**
+ * Nearby cards from the same deck, so the tutor can spot the mix-ups and
+ * contrasts a student is most likely to hit.
+ *
+ * Scoped to the deck rather than scanning a slice of the whole collection:
+ * an unordered limit over every card returns an arbitrary window, so genuine
+ * matches outside it are missed at random.
+ */
+async function loadRelatedCards(input: {
+  db: AdminDb;
+  uid: string;
+  deckId: string;
+  cardId: string;
+  topicIds: readonly string[];
+}) {
+  if (!input.deckId) return "";
+
+  const snapshot = await input.db
+    .collection("cards")
+    .where("userId", "==", input.uid)
+    .where("deckId", "==", input.deckId)
+    .limit(LEARN_RELATED_CARD_SCAN_LIMIT)
+    .get();
+
+  const related = snapshot.docs
+    .filter((doc) => doc.id !== input.cardId)
+    .map((doc) => {
+      const data = doc.data();
+      return {
+        front: normalizeString(data.front, 140),
+        back: normalizeString(data.back, 220),
+        overlap: countOverlap(normalizeIds(data.topicIds), input.topicIds),
+      };
+    })
+    .filter((card) => card.front && card.back)
+    .sort((left, right) => right.overlap - left.overlap)
+    .slice(0, LEARN_MAX_RELATED_CARDS);
+
+  if (related.length === 0) return "";
+
+  return `Nearby cards in the same deck:
+${related.map((card) => `- Q: ${card.front}\n  A: ${card.back}`).join("\n")}
+
+Use these only to infer likely mix-ups or useful contrasts. Never answer as though the student asked about one of them.`;
+}
+
 function getSearchTerms(value: string) {
   return Array.from(
     new Set(
@@ -273,9 +353,26 @@ async function resolveLearnContext(input: {
 
   const front = normalizeString(cardData.front, 500);
   const back = normalizeString(cardData.back, 2_000);
+  const topicIds = normalizeIds(cardData.topicIds);
+  const relatedCardsText = await loadRelatedCards({
+    db: input.db,
+    uid: input.uid,
+    deckId,
+    cardId: cardSnapshot.id,
+    topicIds,
+  });
+
   const parts: Part[] = [
     {
-      text: `Learn phase: ${input.context.phase}\nDeck: ${deckName}\nCard front: ${front || "(empty)"}\nCard answer: ${back || "(empty)"}`,
+      text: [
+        `Learn phase: ${input.context.phase}`,
+        `Deck: ${deckName}`,
+        `Card front: ${front || "(empty)"}`,
+        `Card answer: ${back || "(empty)"}`,
+        "",
+        describeMemoryProfile(cardData),
+        ...(relatedCardsText ? ["", relatedCardsText] : []),
+      ].join("\n"),
     },
   ];
   return {
@@ -286,7 +383,7 @@ async function resolveLearnContext(input: {
       currentSourceIds: [],
       directSourceIds: normalizeIds(cardData.sourceIds),
       folderIds,
-      topicIds: normalizeIds(cardData.topicIds),
+      topicIds,
     } satisfies SourceRelations,
   };
 }

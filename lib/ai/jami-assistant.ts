@@ -138,7 +138,7 @@ export function getJamiAssistantResponseGuidance(input: {
       : checksNotebookWork
         ? "For checking work: give the verdict first, identify at most three concrete issues, then give one next step. Omit any empty section."
         : input.context.surface === "sources"
-          ? "Answer the question first. Add source support only where it improves the answer."
+          ? "Start from what the selected sources say, then build on them with wider knowledge where it helps the student understand. Be explicit when you go beyond the sources."
           : "";
 
   const modeInstruction =
