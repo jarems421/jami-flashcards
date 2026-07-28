@@ -48,9 +48,8 @@ vi.mock("@/lib/ai/gemini", () => ({
   generateGeminiText: mocks.generateText,
 }));
 
-vi.mock("@/lib/ai/card-autocomplete", () => ({
-  cleanGeneratedStudyText: (value: string) => value.trim(),
-}));
+// No cleaner mock: the route uses the real cleanAiResponseText so these tests
+// exercise the seam that previously flattened every reply.
 
 let postAssistant: (request: NextRequest) => Promise<Response>;
 
@@ -182,6 +181,25 @@ describe("universal Jami assistant route", () => {
     expect(referenceOrder).toContain(
       "ignore it completely when it is about something else"
     );
+  });
+
+  it("returns the reply with its Markdown and LaTeX intact", async () => {
+    mocks.generateText.mockResolvedValue(
+      JSON.stringify({
+        answer:
+          "**Method**\n\n1. Differentiate: $f'(x) = 2x$\n2. Solve for $x_1$.\n\n$$\\frac{n(n+1)}{2}$$",
+        sourceRefs: [],
+        usedCurrentContext: true,
+        usedGeneralKnowledge: false,
+      })
+    );
+
+    const body = await (await postAssistant(request(validBody()))).json();
+
+    expect(body.reply).toContain("**Method**");
+    expect(body.reply).toContain("$f'(x) = 2x$");
+    expect(body.reply).toContain("$x_1$");
+    expect(body.reply).toContain("\\frac{n(n+1)}{2}");
   });
 
   it("uses the larger response budget only for an explicit depth request", async () => {

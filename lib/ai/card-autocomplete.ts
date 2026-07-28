@@ -1,3 +1,5 @@
+import { decodeLiteralUnicodeEscapes } from "@/lib/ai/response-text";
+
 type SubjectHint =
   | "maths"
   | "science"
@@ -185,12 +187,6 @@ const COMMON_WORD_SYMBOL_REPLACEMENTS: Array<[RegExp, string]> = [
   [/\bdegree\b/gi, "\u00b0"],
 ];
 
-function decodeLiteralUnicodeEscapes(text: string) {
-  return text.replace(/\\u([0-9a-fA-F]{4})/g, (_match, hex: string) =>
-    String.fromCharCode(Number.parseInt(hex, 16))
-  );
-}
-
 function toSuperscript(value: string) {
   return value
     .split("")
@@ -361,8 +357,27 @@ export function cleanGeneratedStudyText(
   return next.trim();
 }
 
+/**
+ * Card faces are rendered by StudyText, which sends delimited maths through
+ * KaTeX, so generated card text keeps its LaTeX instead of being flattened to
+ * Unicode. Markdown emphasis is still stripped: card faces are plain text.
+ */
 export function cleanGeneratedCardBack(text: string) {
-  return cleanGeneratedStudyText(text, { stripLeadingLabel: true });
+  return cleanGeneratedStudyText(text, {
+    stripLeadingLabel: true,
+    preserveLatex: true,
+  });
+}
+
+/**
+ * Same contract as cleanGeneratedCardBack, for generated fronts, questions,
+ * and worked solutions.
+ */
+export function cleanGeneratedCardText(text: string) {
+  return cleanGeneratedStudyText(text, {
+    stripLeadingLabel: true,
+    preserveLatex: true,
+  });
 }
 
 export function detectCardBackSubject({
@@ -405,10 +420,10 @@ export function getSubjectPrompt(subject: SubjectHint) {
     case "maths":
       return `Maths accuracy rules:
 - Preserve the variables and notation used on the front unless a standard symbol is clearly better.
-- Prefer readable plain text maths, e.g. "x = (-b \u00b1 \u221a(b\u00b2 - 4ac)) / 2a".
-- Use Unicode symbols for common notation, not LaTeX, broken character codes, HTML entities, or weird substitutions.
-- Never output visible backslashes, dollar-delimited maths, or underscore subscripts; write x\u2081, a\u2099, \u03c0, \u221a(x), and \u00b7 instead.
-- For complex expressions, use compact plain text with clear brackets if Unicode would be unclear.
+- Write every mathematical expression as LaTeX inside $...$, e.g. "$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$".
+- Use $$...$$ on its own line only for a result worth displaying on its own.
+- Never output bare Unicode maths characters, broken character codes, or HTML entities. Write $\\pi$, $\\sqrt{x}$, $\\cdot$, $x_1$, and $a_n$ rather than the symbols themselves.
+- Never leave a LaTeX command outside maths delimiters.
 - Do not invent extra cases, constants, or methods unless the card asks for them.
 - Sanity-check signs, powers, brackets, and units before answering.`;
     case "science":

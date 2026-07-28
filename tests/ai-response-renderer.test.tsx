@@ -1,9 +1,6 @@
-// @vitest-environment jsdom
-
 import { describe, expect, it } from "vitest";
 import { renderToString } from "react-dom/server";
 import AiResponseRenderer from "@/components/ai/AiResponseRenderer";
-import JamiResponseText from "@/components/ai/JamiResponseText";
 
 describe("AiResponseRenderer", () => {
   function render(content: string) {
@@ -161,14 +158,5 @@ function derivative(x: number): number {
     expect(html).toContain("<code");
     expect(html).toContain("$x^2$");
     expect(html).not.toContain("katex");
-  });
-});
-
-describe("JamiResponseText backwards compatibility", () => {
-  it("renders the same content as AiResponseRenderer", () => {
-    const content = "**Hello** $x^2$";
-    const rendererHtml = renderToString(<AiResponseRenderer content={content} />);
-    const wrapperHtml = renderToString(<JamiResponseText text={content} />);
-    expect(wrapperHtml).toEqual(rendererHtml);
   });
 });

@@ -1,3 +1,5 @@
+import { hasMathDelimiters } from "@/lib/study/math-text";
+
 export type StudyTextSegment =
   | { type: "text"; value: string }
   | { type: "sup"; value: string }
@@ -58,6 +60,13 @@ function normalizeSuperscriptSequence(value: string) {
 export function normalizeStudyTextInput(text: string) {
   if (!text) {
     return "";
+  }
+
+  // LaTeX is rendered by MathText, not by the superscript heuristics below, and
+  // those heuristics would corrupt it: `x^{n+1}` loses its braces and becomes
+  // `x^n+1`, which renders as x^n + 1. Leave delimited maths exactly as written.
+  if (hasMathDelimiters(text)) {
+    return text.replace(/\u00a0/g, " ");
   }
 
   return text

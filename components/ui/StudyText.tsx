@@ -1,5 +1,8 @@
-import { Fragment, type ElementType } from "react";
-import { splitStudyTextForDisplay } from "@/lib/study/display-text";
+"use client";
+
+import { Suspense, lazy, type ElementType } from "react";
+import { hasMathDelimiters } from "@/lib/study/math-text";
+import StudyTextSegments from "@/components/ui/StudyTextSegments";
 
 type StudyTextProps = {
   text: string;
@@ -7,42 +10,40 @@ type StudyTextProps = {
   className?: string;
 };
 
+/**
+ * KaTeX is ~270 KB, and every card written before AI output moved to LaTeX
+ * contains no maths delimiters at all, so it is loaded on demand rather than
+ * shipped with the study and deck routes.
+ *
+ * React.lazy is used rather than next/dynamic because next/dynamic owns its own
+ * Suspense boundary and its `loading` component cannot receive props. Here the
+ * fallback needs the text, so it can render the same content through the plain
+ * path instead of flashing blank.
+ */
+const MathText = lazy(() => import("@/components/ui/MathText"));
+
+/**
+ * Renders card text.
+ *
+ * Text containing balanced LaTeX delimiters is rendered with KaTeX; everything
+ * else keeps the original Unicode superscript and fraction rendering. Existing
+ * stored cards have no delimiters, so they render exactly as before and no data
+ * migration is needed.
+ */
 export default function StudyText({
   text,
   as: Component = "span",
   className = "",
 }: StudyTextProps) {
-  const segments = splitStudyTextForDisplay(text);
+  if (!hasMathDelimiters(text)) {
+    return <StudyTextSegments text={text} as={Component} className={className} />;
+  }
 
   return (
-    <Component className={className}>
-      {segments.map((segment, index) =>
-        segment.type === "sup" ? (
-          <sup key={`${segment.type}-${index}`} className="text-[0.72em] leading-none">
-            {segment.value}
-          </sup>
-        ) : segment.type === "fraction" ? (
-          <span
-            key={`${segment.type}-${index}`}
-            className="mx-[0.12em] inline-grid min-w-[1.4em] grid-cols-1 grid-rows-[auto_1px_auto] align-middle font-[inherit] leading-none"
-            data-study-fraction="true"
-          >
-            <span className="row-start-1 px-[0.2em] pb-[0.12em] text-center text-[0.86em]">
-              <StudyText text={segment.numerator} />
-            </span>
-            <span
-              aria-hidden="true"
-              className="row-start-2 border-t border-current opacity-80"
-            />
-            <span className="sr-only">/</span>
-            <span className="row-start-3 px-[0.2em] pt-[0.12em] text-center text-[0.86em]">
-              <StudyText text={segment.denominator} />
-            </span>
-          </span>
-        ) : (
-          <Fragment key={`${segment.type}-${index}`}>{segment.value}</Fragment>
-        )
-      )}
-    </Component>
+    <Suspense
+      fallback={<StudyTextSegments text={text} as={Component} className={className} />}
+    >
+      <MathText text={text} as={Component} className={className} />
+    </Suspense>
   );
 }

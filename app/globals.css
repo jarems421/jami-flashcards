@@ -1506,11 +1506,16 @@ body.constellation-background-enabled::before {
 /* AI response renderer (Markdown + math) */
 
 @layer components {
+  /*
+   * No white-space: pre-wrap here. mdast-util-to-hast emits a literal "\n"
+   * text node between every block child, so pre-wrap would render each one as
+   * a visible blank line on top of the margins below, double-spacing
+   * paragraphs and list items. Markdown block structure handles the spacing.
+   */
   .ai-response {
     color: var(--color-text-primary);
     font-size: 0.875rem;
     line-height: 1.625;
-    white-space: pre-wrap;
   }
 
   .ai-response > *:first-child {

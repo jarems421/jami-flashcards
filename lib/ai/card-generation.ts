@@ -1,6 +1,6 @@
 import {
   cleanGeneratedCardBack,
-  cleanGeneratedStudyText,
+  cleanGeneratedCardText,
 } from "@/lib/ai/card-autocomplete";
 import {
   MAX_BACK_LENGTH,
@@ -47,9 +47,7 @@ function normalizeGeneratedDraft(value: unknown): GeneratedCardDraft | null {
   const backValue = record.back ?? record.answer ?? record.definition;
   const front =
     typeof frontValue === "string"
-      ? normalizeCardContentInput(
-          cleanGeneratedStudyText(frontValue, { stripLeadingLabel: true })
-        )
+      ? normalizeCardContentInput(cleanGeneratedCardText(frontValue))
       : "";
   const back =
     typeof backValue === "string"

@@ -1,4 +1,4 @@
-import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
+import { cleanGeneratedCardText } from "@/lib/ai/card-autocomplete";
 
 export const MAX_SOURCE_QUESTION_DRAFTS = 5;
 
@@ -23,15 +23,15 @@ function normalizeQuestionDraft(value: unknown): GeneratedQuestionDraft | null {
   const solutionValue = record.solutionText ?? record.solutionNotes ?? record.method;
   const questionText =
     typeof questionValue === "string"
-      ? cleanGeneratedStudyText(questionValue, { stripLeadingLabel: true }).slice(0, 4_000)
+      ? cleanGeneratedCardText(questionValue).slice(0, 4_000)
       : "";
   const answerText =
     typeof answerValue === "string"
-      ? cleanGeneratedStudyText(answerValue, { stripLeadingLabel: true }).slice(0, 4_000)
+      ? cleanGeneratedCardText(answerValue).slice(0, 4_000)
       : "";
   const solutionText =
     typeof solutionValue === "string"
-      ? cleanGeneratedStudyText(solutionValue, { stripLeadingLabel: true }).slice(0, 8_000)
+      ? cleanGeneratedCardText(solutionValue).slice(0, 8_000)
       : "";
 
   if (!questionText) return null;
