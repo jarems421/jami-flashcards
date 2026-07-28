@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { checkRateLimit } from "@/lib/ai/rate-limit";
+import { checkAiBudget, getAiTokenCap } from "@/lib/ai/budgets";
 import { generateGeminiText, isGeminiTimeoutError } from "@/lib/ai/gemini";
 import {
   cleanGeneratedCardBack,
@@ -13,7 +13,6 @@ import { featureFlags } from "@/lib/app/feature-flags";
 export const runtime = "nodejs";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
-const MAX_AUTOCOMPLETE_PER_HOUR = 50;
 const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_RELATED_CARDS = 5;
 const MAX_BACK_OUTPUT_LENGTH = 2000;
@@ -98,10 +97,10 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const allowed = await checkRateLimit(uid, "autocomplete-card", MAX_AUTOCOMPLETE_PER_HOUR);
+  const allowed = await checkAiBudget({ uid, action: "autocompleteCard" });
   if (!allowed) {
     return Response.json(
-      { error: "AI limit reached for now." },
+      { error: "Jami has reached today's AI limit. Try again tomorrow." },
       { status: 429 },
     );
   }
@@ -218,7 +217,7 @@ Write the best flashcard back. If there is already a draft, improve or complete 
         generationConfig: {
           temperature: 0.15,
           topP: 0.85,
-          maxOutputTokens: 900,
+          maxOutputTokens: getAiTokenCap("autocompleteCard"),
         },
         request: {
           systemInstruction: systemPrompt,

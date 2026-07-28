@@ -21,6 +21,9 @@ const ROOT_OWNER_QUERIES = [
   { collection: "decks", field: "uid" },
 ] as const;
 
+// "rateLimits" is no longer written to — lib/ai/rate-limit.ts was replaced by
+// the transactional lib/ai/budgets.ts — but existing users still have documents
+// there, so deletion must keep clearing it.
 const UID_PREFIXED_COLLECTIONS = ["aiBudgets", "rateLimits"] as const;
 
 function getErrorCode(error: unknown) {

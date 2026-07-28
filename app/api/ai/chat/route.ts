@@ -1,8 +1,9 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { checkRateLimit } from "@/lib/ai/rate-limit";
-import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
+import { checkAiBudget, getAiTokenCap } from "@/lib/ai/budgets";
+import { AI_RESPONSE_FORMAT_PROMPT } from "@/lib/ai/response-format";
+import { cleanAiResponseText } from "@/lib/ai/response-text";
 import { generateGeminiText } from "@/lib/ai/gemini";
 
 export const runtime = "nodejs";
@@ -13,7 +14,6 @@ const MAX_CARDS = 200;
 const MAX_MESSAGES = 20;
 const MAX_CONTEXT_LENGTH = 8000;
 const REQUEST_TIMEOUT_MS = 15_000;
-const MAX_CHAT_PER_HOUR = 30;
 const MAX_RELATED_CARDS = 6;
 
 type ChatMessage = {
@@ -91,10 +91,10 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const allowed = await checkRateLimit(uid, "chat", MAX_CHAT_PER_HOUR);
+  const allowed = await checkAiBudget({ uid, action: "chat" });
   if (!allowed) {
     return Response.json(
-      { error: "AI limit reached for now." },
+      { error: "Jami has reached today's AI limit. Try again tomorrow." },
       { status: 429 },
     );
   }
@@ -360,7 +360,9 @@ Current response style:
 ${intentPrompt}
 
 Help by quizzing, explaining concepts, suggesting mnemonics, or connecting ideas.
-Under 120 words. Be conversational, specific, and useful for flashcard study.`;
+Under 120 words. Be conversational, specific, and useful for flashcard study.
+
+${AI_RESPONSE_FORMAT_PROMPT}`;
 
     const contents = [
       ...history.map((m) => ({
@@ -377,6 +379,9 @@ Under 120 words. Be conversational, specific, and useful for flashcard study.`;
       const text = await generateGeminiText({
         apiKey: GEMINI_API_KEY,
         timeoutMs: REQUEST_TIMEOUT_MS,
+        generationConfig: {
+          maxOutputTokens: getAiTokenCap("chat"),
+        },
         request: {
           systemInstruction: systemPrompt,
           contents: nextContents,
@@ -389,7 +394,7 @@ Under 120 words. Be conversational, specific, and useful for flashcard study.`;
         },
       });
 
-      return cleanGeneratedStudyText(text);
+      return cleanAiResponseText(text);
     };
 
     let reply = await generateReply(contents).catch(async (error) => {
