@@ -1,5 +1,5 @@
 /**
- * Formatting contract shared by every AI surface whose reply is rendered by
+ * Base formatting rules for replies rendered by
  * `components/ai/AiResponseRenderer`.
  *
  * The renderer understands GitHub-flavoured Markdown plus LaTeX maths via
@@ -7,15 +7,16 @@
  * defaults to bare Unicode maths, which renders as literal characters and
  * reads badly at small sizes.
  *
- * The maths rules originated in the notebook assistant route, which was the
- * only surface that got them right; they live here now so chat, explain, and
- * the source tutor stay in step with it.
+ * Not exported: the assistant is the only surface that returns a rendered
+ * reply, and it goes through getJsonAnswerFormatPrompt because its answer
+ * arrives inside a JSON envelope. Export this again if a route ever returns
+ * prose directly.
  *
  * Escaping note: backslashes are doubled because this is a template string. An
  * unrecognised escape such as `\s` silently collapses to `s`, which would
  * corrupt every LaTeX example below.
  */
-export const AI_RESPONSE_FORMAT_PROMPT = `Formatting rules for your reply:
+const AI_RESPONSE_FORMAT_PROMPT = `Formatting rules for your reply:
 - Use GitHub-flavoured Markdown for structure: **bold** for key terms, "-" for bullet lists, "1." for ordered steps, tables for comparisons, and fenced code blocks for code.
 - For mathematics, use precise conventional terminology and notation.
 - Put every mathematical expression in valid TeX delimiters: $...$ inline and $$...$$ on its own line for display maths.
