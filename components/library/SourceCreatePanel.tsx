@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { SourceDraftKind } from "@/services/ai/source-drafts";
+import type { SourceDraftDepth, SourceDraftKind } from "@/services/ai/source-drafts";
 import { Button } from "@/components/ui";
 
 export type SourceMadeCounts = {
@@ -15,7 +15,7 @@ type SourceCreatePanelProps = {
   conversationFocusAvailable: boolean;
   useConversationFocus: boolean;
   onUseConversationFocusChange: (value: boolean) => void;
-  onGenerate: (kind: SourceDraftKind, count: number) => void;
+  onGenerate: (kind: SourceDraftKind, depth: SourceDraftDepth) => void;
 };
 
 const KINDS: Array<{
@@ -23,74 +23,26 @@ const KINDS: Array<{
   label: string;
   detail: string;
   destination: string;
-  min: number;
-  max: number;
-  fallback: number;
 }> = [
   {
     kind: "flashcard",
     label: "Flashcards",
     detail: "One concept each, for recall practice",
     destination: "Learn",
-    min: 1,
-    max: 20,
-    fallback: 10,
   },
   {
     kind: "practice-question",
     label: "Practice questions",
     detail: "Longer questions with a worked answer",
     destination: "a notebook",
-    min: 1,
-    max: 5,
-    fallback: 3,
   },
 ];
 
-function Stepper({
-  value,
-  min,
-  max,
-  disabled,
-  label,
-  onChange,
-}: {
-  value: number;
-  min: number;
-  max: number;
-  disabled: boolean;
-  label: string;
-  onChange: (next: number) => void;
-}) {
-  return (
-    <div className="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1">
-      <button
-        type="button"
-        aria-label={`One fewer ${label}`}
-        disabled={disabled || value <= min}
-        onClick={() => onChange(value - 1)}
-        className="grid h-7 w-7 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-medium)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-      >
-        &minus;
-      </button>
-      <span
-        aria-live="polite"
-        className="min-w-[1.75rem] text-center text-sm font-semibold tabular-nums text-text-primary"
-      >
-        {value}
-      </span>
-      <button
-        type="button"
-        aria-label={`One more ${label}`}
-        disabled={disabled || value >= max}
-        onClick={() => onChange(value + 1)}
-        className="grid h-7 w-7 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-[var(--color-glass-medium)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent"
-      >
-        +
-      </button>
-    </div>
-  );
-}
+const DEPTHS: Array<{ value: SourceDraftDepth; label: string; detail: string }> = [
+  { value: "low", label: "Light", detail: "Just the ideas you cannot do without" },
+  { value: "medium", label: "Standard", detail: "Main ideas and the detail that matters" },
+  { value: "high", label: "Thorough", detail: "Close coverage, including distinctions and exceptions" },
+];
 
 /**
  * Making study material out of a source.
@@ -108,10 +60,7 @@ export default function SourceCreatePanel({
   onUseConversationFocusChange,
   onGenerate,
 }: SourceCreatePanelProps) {
-  const [counts, setCounts] = useState<Record<SourceDraftKind, number>>({
-    flashcard: 10,
-    "practice-question": 3,
-  });
+  const [depth, setDepth] = useState<SourceDraftDepth>("medium");
 
   const madeTotal = made.flashcards + made.questions;
 
@@ -122,6 +71,39 @@ export default function SourceCreatePanel({
           ? "Turn this source into things you can actually study. Everything is a draft until you approve it."
           : `Made so far: ${made.flashcards} flashcard${made.flashcards === 1 ? "" : "s"} and ${made.questions} practice question${made.questions === 1 ? "" : "s"}.`}
       </p>
+
+      <div>
+        <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
+          How thorough
+        </div>
+        <div role="radiogroup" aria-label="How thorough" className="mt-2 grid gap-1.5 sm:grid-cols-3">
+          {DEPTHS.map((option) => {
+            const active = depth === option.value;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                role="radio"
+                aria-checked={active}
+                disabled={drafting !== null}
+                onClick={() => setDepth(option.value)}
+                className={`rounded-[1rem] border p-2.5 text-left transition duration-fast disabled:cursor-not-allowed disabled:opacity-60 ${
+                  active
+                    ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)]"
+                    : "border-[var(--color-border)] hover:border-border-strong hover:bg-[var(--color-glass-medium)]"
+                }`}
+              >
+                <span className="block text-sm font-semibold text-text-primary">
+                  {option.label}
+                </span>
+                <span className="mt-0.5 block text-xs leading-4 text-text-muted">
+                  {option.detail}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       <div className="space-y-2.5">
         {KINDS.map((option) => {
@@ -139,27 +121,16 @@ export default function SourceCreatePanel({
                   {option.detail} · goes to {option.destination}
                 </div>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Stepper
-                  value={counts[option.kind]}
-                  min={option.min}
-                  max={option.max}
-                  disabled={disabled}
-                  label={option.label.toLowerCase()}
-                  onChange={(next) =>
-                    setCounts((current) => ({ ...current, [option.kind]: next }))
-                  }
-                />
-                <Button
-                  type="button"
-                  size="sm"
-                  variant="secondary"
-                  disabled={disabled}
-                  onClick={() => onGenerate(option.kind, counts[option.kind])}
-                >
-                  {busy ? "Making…" : "Make"}
-                </Button>
-              </div>
+              <Button
+                type="button"
+                size="sm"
+                variant="secondary"
+                className="shrink-0"
+                disabled={disabled}
+                onClick={() => onGenerate(option.kind, depth)}
+              >
+                {busy ? "Making…" : "Make"}
+              </Button>
             </div>
           );
         })}

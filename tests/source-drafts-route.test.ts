@@ -228,18 +228,6 @@ describe("source draft generation", () => {
     expect(prompt).not.toContain("x".repeat(1_600));
   });
 
-  it("honours the requested count", async () => {
-    await postDrafts(request({ sourceId: "source-1", kind: "flashcard", count: 4 }));
-
-    const prompt = (
-      mocks.generateText.mock.calls[0]?.[0] as {
-        request: { contents: Array<{ parts: Array<{ text?: string }> }> };
-      }
-    ).request.contents[0].parts[0].text;
-
-    expect(prompt).toContain("up to 4 concise flashcard drafts");
-  });
-
   it("tells the student to paste text when the source is a reference only", async () => {
     mocks.sourceData.contentText = "";
 

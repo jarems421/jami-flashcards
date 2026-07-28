@@ -2,6 +2,7 @@ import { auth } from "@/services/firebase/client";
 import type { GeneratedContentDraft } from "@/services/study/generated-content";
 
 export type SourceDraftKind = "flashcard" | "practice-question";
+export type SourceDraftDepth = "low" | "medium" | "high";
 
 function friendlyError(status: number, message?: string) {
   if (status === 429) return "Jami has reached today's draft limit. Try again tomorrow.";
@@ -22,7 +23,8 @@ function friendlyError(status: number, message?: string) {
 export async function generateSourceDrafts(input: {
   sourceId: string;
   kind: SourceDraftKind;
-  count?: number;
+  /** How thorough to be. Decides how many drafts and how granular each is. */
+  depth: SourceDraftDepth;
   /** Recent tutor conversation about this source, to steer what gets drafted. */
   focus?: string;
 }) {

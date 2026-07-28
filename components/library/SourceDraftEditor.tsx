@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
@@ -14,6 +14,9 @@ import {
 } from "@/services/study/generated-content";
 import TopicPicker from "@/components/topics/TopicPicker";
 import { Button, StudyText, Textarea } from "@/components/ui";
+
+// Long enough that a typed sentence costs one write rather than one per key.
+const AUTOSAVE_DELAY_MS = 900;
 
 export default function SourceDraftEditor({
   draft,
@@ -49,6 +52,12 @@ export default function SourceDraftEditor({
   const [solutionText, setSolutionText] = useState(draft.solutionText ?? "");
   const [topicIds, setTopicIds] = useState(draft.topicIds);
   const [busy, setBusy] = useState(false);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  // Set only by a real edit, so loading a draft never writes it straight back.
+  const dirtyRef = useRef(false);
+  const markDirty = () => {
+    dirtyRef.current = true;
+  };
   const isFlashcard = draft.kind === "flashcard";
 
   // Mirrors the fields shown above, so the preview always reflects what is
@@ -73,7 +82,54 @@ export default function SourceDraftEditor({
     setAnswerText(draft.answerText ?? "");
     setSolutionText(draft.solutionText ?? "");
     setTopicIds(draft.topicIds);
+    // Loading a different draft is not an edit, so nothing should be written
+    // back and the previous draft's status should not carry over.
+    dirtyRef.current = false;
+    setSaveState("idle");
   }, [draft]);
+
+  /**
+   * Edits save themselves.
+   *
+   * A save button on a draft made no sense: the whole screen is a draft, and
+   * leaving without pressing it silently lost work. Writes are debounced so a
+   * sentence costs one write rather than one per keystroke, and only run when
+   * the student actually changed something, which is what dirtyRef tracks.
+   * Nothing is reported upward, because a toast and a reload on every pause
+   * would be worse than the button was.
+   */
+  useEffect(() => {
+    if (!dirtyRef.current) return;
+
+    const timer = setTimeout(async () => {
+      setSaveState("saving");
+      try {
+        await updateGeneratedContentDraftContent(
+          userId,
+          draft.id,
+          isFlashcard
+            ? { front, back, topicIds }
+            : { questionText, answerText, solutionText, topicIds }
+        );
+        dirtyRef.current = false;
+        setSaveState("saved");
+      } catch {
+        setSaveState("error");
+      }
+    }, AUTOSAVE_DELAY_MS);
+
+    return () => clearTimeout(timer);
+  }, [
+    answerText,
+    back,
+    draft.id,
+    front,
+    isFlashcard,
+    questionText,
+    solutionText,
+    topicIds,
+    userId,
+  ]);
 
   return (
     <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
@@ -93,8 +149,8 @@ export default function SourceDraftEditor({
       <div className="mt-4 space-y-3">
         {isFlashcard ? (
           <>
-            <Textarea label="Front" rows={3} value={front} onChange={(event) => setFront(event.target.value)} />
-            <Textarea label="Back" rows={4} value={back} onChange={(event) => setBack(event.target.value)} />
+            <Textarea label="Front" rows={3} value={front} onChange={(event) => { markDirty(); setFront(event.target.value); }} />
+            <Textarea label="Back" rows={4} value={back} onChange={(event) => { markDirty(); setBack(event.target.value); }} />
           </>
         ) : (
           <>
@@ -102,19 +158,19 @@ export default function SourceDraftEditor({
               label="Question"
               rows={3}
               value={questionText}
-              onChange={(event) => setQuestionText(event.target.value)}
+              onChange={(event) => { markDirty(); setQuestionText(event.target.value); }}
             />
             <Textarea
               label="Expected answer"
               rows={3}
               value={answerText}
-              onChange={(event) => setAnswerText(event.target.value)}
+              onChange={(event) => { markDirty(); setAnswerText(event.target.value); }}
             />
             <Textarea
               label="Solution notes"
               rows={3}
               value={solutionText}
-              onChange={(event) => setSolutionText(event.target.value)}
+              onChange={(event) => { markDirty(); setSolutionText(event.target.value); }}
             />
           </>
         )}
@@ -150,7 +206,7 @@ export default function SourceDraftEditor({
           userId={userId}
           topics={topics}
           selectedTopicIds={topicIds}
-          onChange={setTopicIds}
+          onChange={(next) => { markDirty(); setTopicIds(next); }}
           onTopicsChange={onTopicsChange}
           disabled={busy}
         />
@@ -221,29 +277,19 @@ export default function SourceDraftEditor({
             </Link>
           </div>
         )}
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="secondary"
-            disabled={busy}
-            onClick={async () => {
-              setBusy(true);
-              try {
-                await updateGeneratedContentDraftContent(
-                  userId,
-                  draft.id,
-                  isFlashcard
-                    ? { front, back, topicIds }
-                    : { questionText, answerText, solutionText, topicIds }
-                );
-                onSaved("Draft edits saved.");
-              } finally {
-                setBusy(false);
-              }
-            }}
+        <div className="flex flex-wrap items-center gap-2">
+          <span
+            aria-live="polite"
+            className="mr-auto text-xs font-medium text-text-muted"
           >
-            Save edits
-          </Button>
+            {saveState === "saving"
+              ? "Saving…"
+              : saveState === "error"
+                ? "Could not save. Your edits are still here."
+                : saveState === "saved"
+                  ? "Saved"
+                  : ""}
+          </span>
           <Button
             type="button"
             disabled={busy || (isFlashcard ? !selectedDeckId : !selectedNotebookId)}
@@ -271,9 +317,10 @@ export default function SourceDraftEditor({
           >
             {isFlashcard ? "Add to deck" : "Add to notebook"}
           </Button>
-          <Button
+          <button
             type="button"
-            variant="secondary"
+            aria-label="Reject this draft"
+            title="Reject this draft"
             disabled={busy}
             onClick={async () => {
               setBusy(true);
@@ -284,9 +331,18 @@ export default function SourceDraftEditor({
                 setBusy(false);
               }
             }}
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-full text-text-muted transition duration-fast hover:bg-error-muted hover:text-[var(--color-error-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            Reject
-          </Button>
+            <svg aria-hidden="true" viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+              <path
+                d="M4 6h12M8.5 6V4.8c0-.44.36-.8.8-.8h1.4c.44 0 .8.36.8.8V6m-6.2 0 .6 8.6c.03.42.38.75.8.75h4.6c.42 0 .77-.33.8-.75L15.1 6"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </button>
         </div>
       </div>
     </div>

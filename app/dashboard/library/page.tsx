@@ -14,10 +14,12 @@ import type { Notebook } from "@/lib/workspace/notebooks";
 import type { Deck } from "@/services/study/decks";
 import {
   getGeneratedContentDrafts,
+  updateGeneratedContentDraftStatus,
   type GeneratedContentDraft,
 } from "@/services/study/generated-content";
 import {
   generateSourceDrafts,
+  type SourceDraftDepth,
   type SourceDraftKind,
 } from "@/services/ai/source-drafts";
 import {
@@ -111,6 +113,7 @@ export default function LibraryPage() {
   const [draftingKind, setDraftingKind] = useState<SourceDraftKind | null>(null);
   const [useConversationFocus, setUseConversationFocus] = useState(true);
   const [sourceThreadId, setSourceThreadId] = useState<string | null>(null);
+  const [rejectingAllDrafts, setRejectingAllDrafts] = useState(false);
   const [composerKind, setComposerKind] = useState<SourceComposerKind>("text");
   const [title, setTitle] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
@@ -656,6 +659,36 @@ export default function LibraryPage() {
     };
   }, [selectedSource, user.uid]);
 
+  /**
+   * Clears everything still awaiting review for this source.
+   *
+   * Rejecting is reversible in the sense that nothing is deleted: drafts move
+   * to "rejected" and stop appearing, which is why this does not ask twice.
+   */
+  const rejectAllSourceDrafts = async () => {
+    if (sourceDrafts.length === 0 || rejectingAllDrafts) return;
+
+    setRejectingAllDrafts(true);
+    setFeedback(null);
+    try {
+      await Promise.all(
+        sourceDrafts.map((draft) =>
+          updateGeneratedContentDraftStatus(user.uid, draft.id, "rejected")
+        )
+      );
+      setDrafts(await getGeneratedContentDrafts(user.uid));
+      setSelectedDraftId(null);
+      setFeedback({
+        type: "success",
+        message: `Cleared ${sourceDrafts.length} draft${sourceDrafts.length === 1 ? "" : "s"}.`,
+      });
+    } catch {
+      setFeedback({ type: "error", message: "Could not clear these drafts just now." });
+    } finally {
+      setRejectingAllDrafts(false);
+    }
+  };
+
   const buildConversationFocus = async () => {
     if (!sourceThreadId) return "";
 
@@ -677,7 +710,7 @@ export default function LibraryPage() {
    * discussing the source. The route writes the drafts itself, so this reloads
    * from Firestore and hands straight over to the review panel.
    */
-  const generateDraftsForSelectedSource = async (kind: SourceDraftKind, count: number) => {
+  const generateDraftsForSelectedSource = async (kind: SourceDraftKind, depth: SourceDraftDepth) => {
     if (!selectedSource || draftingKind) return;
 
     setDraftingKind(kind);
@@ -688,7 +721,7 @@ export default function LibraryPage() {
       const { drafts: created, removedDraftCount } = await generateSourceDrafts({
         sourceId: selectedSource.id,
         kind,
-        count,
+        depth,
         ...(focus ? { focus } : {}),
       });
 
@@ -1158,7 +1191,9 @@ export default function LibraryPage() {
         conversationFocusAvailable={Boolean(sourceThreadId)}
         useConversationFocus={useConversationFocus}
         onUseConversationFocusChange={setUseConversationFocus}
-        onGenerate={(kind, count) => void generateDraftsForSelectedSource(kind, count)}
+        onGenerate={(kind, depth) => void generateDraftsForSelectedSource(kind, depth)}
+        rejectingAll={rejectingAllDrafts}
+        onRejectAll={() => void rejectAllSourceDrafts()}
         selectedDraft={selectedDraft ?? null}
         sourceTitle={selectedSource?.title ?? null}
         topics={topics}

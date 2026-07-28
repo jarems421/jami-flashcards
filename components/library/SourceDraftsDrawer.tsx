@@ -4,7 +4,7 @@ import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { Deck } from "@/services/study/decks";
 import type { GeneratedContentDraft } from "@/services/study/generated-content";
-import type { SourceDraftKind } from "@/services/ai/source-drafts";
+import type { SourceDraftDepth, SourceDraftKind } from "@/services/ai/source-drafts";
 import { FeedbackBanner } from "@/components/ui";
 import SourceDraftEditor from "./SourceDraftEditor";
 import SourceCreatePanel, { type SourceMadeCounts } from "./SourceCreatePanel";
@@ -19,7 +19,9 @@ type SourceDraftsDrawerProps = {
   conversationFocusAvailable: boolean;
   useConversationFocus: boolean;
   onUseConversationFocusChange: (value: boolean) => void;
-  onGenerate: (kind: SourceDraftKind, count: number) => void;
+  onGenerate: (kind: SourceDraftKind, depth: SourceDraftDepth) => void;
+  rejectingAll: boolean;
+  onRejectAll: () => void;
   selectedDraft: GeneratedContentDraft | null;
   sourceTitle: string | null;
   topics: Topic[];
@@ -47,6 +49,8 @@ export default function SourceDraftsDrawer({
   useConversationFocus,
   onUseConversationFocusChange,
   onGenerate,
+  rejectingAll,
+  onRejectAll,
   selectedDraft,
   sourceTitle,
   topics,
@@ -101,8 +105,18 @@ export default function SourceDraftsDrawer({
         ) : null}
 
         {drafts.length > 0 ? (
-          <div className="text-sm font-semibold text-text-primary">
-            Awaiting review ({drafts.length})
+          <div className="flex items-center justify-between gap-3">
+            <div className="text-sm font-semibold text-text-primary">
+              Awaiting review ({drafts.length})
+            </div>
+            <button
+              type="button"
+              disabled={rejectingAll}
+              onClick={onRejectAll}
+              className="rounded-full px-2.5 py-1.5 text-xs font-semibold text-text-muted transition duration-fast hover:bg-error-muted hover:text-[var(--color-error-text)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {rejectingAll ? "Clearing…" : "Reject all"}
+            </button>
           </div>
         ) : null}
 
