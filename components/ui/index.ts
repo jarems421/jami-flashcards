@@ -15,3 +15,4 @@ export { default as SectionHeader } from "./SectionHeader";
 export { default as Skeleton } from "./Skeleton";
 export { default as StatTile } from "./StatTile";
 export { default as StudyText } from "./StudyText";
+export { default as StudyTextSegments } from "./StudyTextSegments";

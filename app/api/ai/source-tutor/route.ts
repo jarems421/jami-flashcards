@@ -2,7 +2,8 @@ import { createHash, randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { checkAiBudget, getAiTokenCap } from "@/lib/ai/budgets";
-import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
+import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
+import { cleanAiResponseText } from "@/lib/ai/response-text";
 import { generateGeminiText } from "@/lib/ai/gemini";
 import {
   normalizeSourceTutorIds,
@@ -407,7 +408,9 @@ Return JSON only with exactly these fields:
 {"outcome":"grounded"|"insufficient","answer":"student-facing answer","sourceRefs":["S1"]}
 Use "grounded" only when the answer is directly supported. Put an inline source reference such as [S1] immediately after each supported claim or paragraph, and include only those same references in sourceRefs.
 Use "insufficient" with an empty sourceRefs array when the sources conflict, do not answer the request, or do not contain enough evidence. Say what is missing without guessing.
-Be concise, student-friendly, and focused on understanding. Do not create flashcards or notebook question drafts.`,
+Be concise, student-friendly, and focused on understanding. Do not create flashcards or notebook question drafts.
+
+${getJsonAnswerFormatPrompt("answer")}`,
           contents: [
             ...history.map((historyMessage) => ({
               role: historyMessage.role,
@@ -471,7 +474,7 @@ Be concise, student-friendly, and focused on understanding. Do not create flashc
         : failures.length > 0
           ? "partial"
           : "grounded";
-    const cleanedAnswer = cleanGeneratedStudyText(parsed.answer);
+    const cleanedAnswer = cleanAiResponseText(parsed.answer);
     const failureNote =
       failures.length > 0 && outcome !== "insufficient"
         ? `\n\nI could not read ${failures

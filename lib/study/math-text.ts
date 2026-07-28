@@ -50,6 +50,18 @@ export function splitMathRichText(text: string): MathRichTextSegment[] {
   return segments.length > 0 ? segments : [{ type: "text", value: text }];
 }
 
+/**
+ * Whether the text contains at least one balanced maths expression.
+ *
+ * Deliberately implemented on top of splitMathRichText so detection can never
+ * disagree with rendering: an unbalanced `$` or a bare price like "$5" is not
+ * treated as maths, exactly as the splitter treats it.
+ */
+export function hasMathDelimiters(text: string): boolean {
+  if (!text || !/[$\\]/.test(text)) return false;
+  return splitMathRichText(text).some((segment) => segment.type === "math");
+}
+
 export function attachInlineMathPunctuation(
   input: readonly MathRichTextSegment[]
 ): MathRichDisplaySegment[] {
@@ -70,51 +82,6 @@ export function attachInlineMathPunctuation(
   return segments;
 }
 
-export type DisplayMathSegment =
-  | { type: "text"; value: string }
-  | { type: "math"; value: string };
-
-const DISPLAY_MATH_DELIMITER_PATTERN = /\$\$([\s\S]*?)\$\$|\\\[([\s\S]*?)\\\]/g;
-
-export function splitDisplayMath(text: string): DisplayMathSegment[] {
-  if (!text) return [{ type: "text", value: "" }];
-
-  const segments: DisplayMathSegment[] = [];
-  let cursor = 0;
-
-  for (const match of text.matchAll(DISPLAY_MATH_DELIMITER_PATTERN)) {
-    const index = match.index ?? -1;
-    if (index < 0) continue;
-    if (index > 0 && text[index - 1] === "\\") continue;
-
-    const value = (match[1] ?? match[2] ?? "").trim();
-    if (!value) continue;
-
-    if (index > cursor) {
-      segments.push({ type: "text", value: text.slice(cursor, index) });
-    }
-    segments.push({ type: "math", value });
-    cursor = index + match[0].length;
-  }
-
-  if (cursor < text.length) {
-    segments.push({ type: "text", value: text.slice(cursor) });
-  }
-
-  return segments.length > 0 ? segments : [{ type: "text", value: text }];
-}
-
-export function stripDisplayMathDelimiters(value: string): string {
-  return value
-    .replace(/^\$\$([\s\S]*?)\$\$$/, "$1")
-    .replace(/^\\\[([\s\S]*?)\\\]$/, "$1")
-    .trim();
-}
-
-export function normalizeInlineMathDelimiters(text: string): string {
-  return text.replace(/\\\((.*?)\\\)/g, "$$1$");
-}
-
 /**
  * Normalize math delimiters so that remark-math / rehype-katex can render them.
  *
@@ -129,13 +96,10 @@ export function normalizeInlineMathDelimiters(text: string): string {
  * Use preprocessMathDelimiters when working with raw Markdown.
  */
 export function normalizeMathDelimiters(text: string): string {
-  // Clone the shared pattern so that matchAll does not mutate the global
-  // regex's lastIndex for other callers.
-  const pattern = new RegExp(MATH_DELIMITER_PATTERN.source, MATH_DELIMITER_PATTERN.flags);
   const result: string[] = [];
   let cursor = 0;
 
-  for (const match of text.matchAll(pattern)) {
+  for (const match of text.matchAll(MATH_DELIMITER_PATTERN)) {
     const index = match.index ?? -1;
     if (index < 0) continue;
     // Skip escaped delimiters such as \$...\$

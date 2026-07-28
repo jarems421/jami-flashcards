@@ -4,6 +4,7 @@ import { getBearerToken } from "@/lib/auth/bearer";
 import { checkAiBudget } from "@/lib/ai/budgets";
 import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
+import { CARD_TEXT_FORMAT_PROMPT } from "@/lib/ai/response-format";
 import { generateGeminiText } from "@/lib/ai/gemini";
 import { parseGeneratedQuestionDrafts } from "@/lib/ai/question-generation";
 import {
@@ -31,7 +32,9 @@ Each card should test one concept or distinction.
 Every card must be directly answerable from the source text.
 Do not make vague cards such as "summarise this source".
 If the source does not support ${count} useful cards, return fewer.
-Do not invent facts that are not grounded in the source.`;
+Do not invent facts that are not grounded in the source.
+
+${CARD_TEXT_FORMAT_PROMPT}`;
   }
 
   return `Create up to ${count} practice question drafts from the source.
@@ -39,7 +42,9 @@ Return JSON only as an array of objects with "questionText", "answerText", and "
 Questions should be short, useful for revision, and answerable from the source.
 Every question must include an expected answer.
 If the source does not support ${count} useful notebook questions, return fewer.
-Do not invent facts that are not grounded in the source.`;
+Do not invent facts that are not grounded in the source.
+
+${CARD_TEXT_FORMAT_PROMPT}`;
 }
 
 export async function POST(request: NextRequest) {

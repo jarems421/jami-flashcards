@@ -86,9 +86,8 @@ vi.mock("@/lib/ai/gemini", () => ({
   generateGeminiText: mocks.generateGeminiText,
 }));
 
-vi.mock("@/lib/ai/card-autocomplete", () => ({
-  cleanGeneratedStudyText: (value: string) => value,
-}));
+// No cleaner mock: the route uses the real cleanAiResponseText so these tests
+// exercise the seam that previously flattened every reply.
 
 vi.mock("@/lib/ai/source-ingestion", () => ({
   normalizeSourceTutorIds: (values: unknown[]) =>

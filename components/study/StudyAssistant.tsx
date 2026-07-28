@@ -8,7 +8,7 @@ import {
   type StudyChatIntent,
 } from "@/services/ai/chat";
 import type { Card } from "@/lib/study/cards";
-import AiResponseRenderer from "@/components/ai/AiResponseRenderer";
+import AiResponse from "@/components/ai/AiResponse";
 
 type Props = {
   card: Card;
@@ -217,7 +217,7 @@ export default function StudyAssistant({
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[90%] whitespace-pre-wrap rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
+                className={`max-w-[90%] rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed ${
                   msg.role === "user"
                     ? "app-selected"
                     : "app-chip"
@@ -226,7 +226,7 @@ export default function StudyAssistant({
                 {msg.role === "user" ? (
                   <span className="whitespace-pre-wrap">{msg.text}</span>
                 ) : (
-                  <AiResponseRenderer content={msg.text} />
+                  <AiResponse content={msg.text} />
                 )}
               </div>
             </div>

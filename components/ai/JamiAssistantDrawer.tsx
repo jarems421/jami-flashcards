@@ -31,7 +31,7 @@ import {
 } from "@/services/ai/jami-assistant-history";
 import { auth } from "@/services/firebase/client";
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
-import JamiResponseText from "@/components/ai/JamiResponseText";
+import AiResponse from "@/components/ai/AiResponse";
 import { JamiSparklesIcon, StudyText } from "@/components/ui";
 
 export type JamiAssistantQuickAction =
@@ -568,10 +568,7 @@ export default function JamiAssistantDrawer({
                       }`}
                     >
                       {message.role === "assistant" ? (
-                        <JamiResponseText
-                          text={message.text}
-                          className="select-text whitespace-pre-wrap"
-                        />
+                        <AiResponse content={message.text} className="select-text" />
                       ) : (
                         <StudyText
                           text={message.text}

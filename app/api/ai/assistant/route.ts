@@ -18,7 +18,8 @@ import {
   resolveJamiAssistantContext,
 } from "@/lib/ai/assistant-context.server";
 import { checkAiBudget, getAiTokenCap } from "@/lib/ai/budgets";
-import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
+import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
+import { cleanAiResponseText } from "@/lib/ai/response-text";
 import {
   generateGeminiText,
   type GeminiResponseDiagnostics,
@@ -218,7 +219,9 @@ Return JSON only with exactly these fields:
 {"answer":"student-facing response","sourceRefs":["S1"],"usedCurrentContext":true,"usedGeneralKnowledge":true}
 sourceRefs must contain only references that materially informed the response. It may be empty. Set each used boolean truthfully.
 Be specific, supportive, and focused on helping the student understand.
-For mathematics, use precise conventional terminology and notation. Put every mathematical expression in valid TeX delimiters: use $...$ inline and $$...$$ for a separate display line. Use proper structures such as \\frac{a}{b}, \\int_{0}^{2}, \\sum_{i=1}^{n}, exponents, subscripts, radicals, limits, and units. Never leave a TeX command outside delimiters, mix raw TeX with plain Unicode notation, or expose sizing commands such as \\Bigl in prose.
+
+${getJsonAnswerFormatPrompt("answer")}
+
 ${responseGuidance.instruction}`;
   const contents = [
     ...parsedRequest.history.map((historyMessage) => ({
@@ -367,9 +370,7 @@ ${responseGuidance.instruction}`;
     used.push({ kind: "general-knowledge", label: "general knowledge" });
   }
 
-  const reply = cleanGeneratedStudyText(parsedAnswer.answer, {
-    preserveLatex: true,
-  });
+  const reply = cleanAiResponseText(parsedAnswer.answer);
   if (!reply) {
     return failureResponse(
       "Jami could not produce a reliable answer just now. Try again.",
