@@ -73,6 +73,69 @@ export function isGeminiTimeoutError(error: unknown) {
   return error instanceof Error && error.message === TIMEOUT_MESSAGE;
 }
 
+/**
+ * Same contract as generateGeminiText, but yields the response as it arrives.
+ *
+ * Deliberately does not fall back to the next model: a fallback would have to
+ * discard text already sent to the client. Callers stream the first attempt and
+ * use generateGeminiText for any retry, which then arrives in one piece.
+ */
+export async function* streamGeminiText({
+  apiKey,
+  request,
+  timeoutMs,
+  generationConfig,
+  modelName,
+  onResponse,
+}: {
+  apiKey: string;
+  request: GenerateContentRequest;
+  timeoutMs: number;
+  generationConfig?: GenerationConfig;
+  modelName: string;
+  onResponse?: (info: GeminiResponseDiagnostics) => void;
+}): AsyncGenerator<string, void, unknown> {
+  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
+    model: modelName,
+    generationConfig,
+  });
+
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(TIMEOUT_MESSAGE), timeoutMs);
+
+  try {
+    const result = await model.generateContentStream(request, {
+      signal: controller.signal,
+    });
+
+    for await (const chunk of result.stream) {
+      const text = chunk.text();
+      if (text) yield text;
+    }
+
+    const final = await result.response;
+    const candidate = final.candidates?.[0];
+    const usage = final.usageMetadata;
+    onResponse?.({
+      modelName,
+      ...(candidate?.finishReason ? { finishReason: candidate.finishReason } : {}),
+      ...(candidate?.finishMessage ? { finishMessage: candidate.finishMessage } : {}),
+      ...(usage
+        ? {
+            promptTokenCount: usage.promptTokenCount,
+            candidatesTokenCount: usage.candidatesTokenCount,
+            totalTokenCount: usage.totalTokenCount,
+          }
+        : {}),
+    });
+  } catch (error) {
+    if (controller.signal.aborted) throw new Error(TIMEOUT_MESSAGE);
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
 export async function generateGeminiText({
   apiKey,
   request,

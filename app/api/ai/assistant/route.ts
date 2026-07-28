@@ -22,8 +22,10 @@ import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
 import {
   generateGeminiText,
+  streamGeminiText,
   type GeminiResponseDiagnostics,
 } from "@/lib/ai/gemini";
+import { extractStreamingAnswer } from "@/lib/ai/streaming-answer";
 import { prepareSourceForTutor } from "@/lib/ai/source-ingestion";
 import { getBearerToken } from "@/lib/auth/bearer";
 import {
@@ -292,99 +294,170 @@ ${responseGuidance.instruction}`;
       },
     });
 
-  let generated: string;
-  let parsedAnswer: ParsedJamiAssistantModelAnswer | null;
-  try {
-    generated = await generateAssistantResponse({
-      maxOutputTokens: Math.min(
-        getAiTokenCap("assistant"),
-        responseGuidance.maxOutputTokens
-      ),
-      modelNames: primaryModelNames,
-    });
-    parsedAnswer = parseJamiAssistantModelAnswer(generated, allowedSourceRefs);
-
-    if (!parsedAnswer) {
-      const successfulModelName =
-        providerDiagnostics.at(-1)?.modelName ?? primaryModelNames[0];
-      const retryModelName =
-        successfulModelName === "gemini-2.5-flash"
-          ? "gemini-2.5-flash-lite"
-          : "gemini-2.5-flash";
-      console.warn("Jami assistant received invalid structured output.", {
-        depth: responseGuidance.depth,
-        generatedCharacters: generated.length,
-        providerDiagnostics,
-        retryModelName,
-      });
-      generated = await generateAssistantResponse({
-        maxOutputTokens: getAiTokenCap("assistant"),
-        modelNames: [retryModelName],
-        structuredRetry: true,
-      });
-      parsedAnswer = parseJamiAssistantModelAnswer(
-        generated,
-        allowedSourceRefs
-      );
-    }
-  } catch (error) {
-    console.error("Jami assistant provider error:", error);
-    return failureResponse(
-      "Jami could not finish that answer just now. Try again in a moment.",
-      502,
-      "provider_failure"
+  /**
+   * Builds the receipt that accompanies a finished answer. Runs once the whole
+   * structured object has arrived, so source references are still validated
+   * before the client is told which sources were used.
+   */
+  const buildAnswerPayload = (parsedAnswer: ParsedJamiAssistantModelAnswer) => {
+    const sourcesByRef = new Map(
+      readable.map((result) => [result.sourceRef, result.source] as const)
     );
-  }
+    const used: JamiAssistantUsedContext[] = [];
+    if (parsedAnswer.usedCurrentContext) {
+      used.push({
+        kind: "current-context",
+        id: resolved.currentId,
+        label: resolved.currentLabel,
+      });
+    }
+    parsedAnswer.sourceRefs.forEach((sourceRef) => {
+      const source = sourcesByRef.get(sourceRef);
+      if (source) {
+        used.push({ kind: "source", id: source.id, label: source.title });
+      }
+    });
+    if (parsedAnswer.usedGeneralKnowledge || used.length === 0) {
+      used.push({ kind: "general-knowledge", label: "general knowledge" });
+    }
 
-  if (!parsedAnswer) {
-    console.error("Jami assistant structured-output retry failed.", {
+    const reply = cleanAiResponseText(parsedAnswer.answer);
+    if (!reply) return null;
+
+    return {
+      reply,
+      used,
+      ...(responseGuidance.followUps.length > 0
+        ? { followUps: responseGuidance.followUps }
+        : {}),
+      ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
+    };
+  };
+
+  const maxOutputTokens = Math.min(
+    getAiTokenCap("assistant"),
+    responseGuidance.maxOutputTokens
+  );
+
+  /**
+   * Recovers from a malformed structured response using the existing
+   * non-streaming retry. Nothing was shown to the student, because text is only
+   * emitted while the first attempt still parses as a growing JSON object.
+   */
+  const retryWithoutStreaming = async (generated: string) => {
+    const successfulModelName =
+      providerDiagnostics.at(-1)?.modelName ?? primaryModelNames[0];
+    const retryModelName =
+      successfulModelName === "gemini-2.5-flash"
+        ? "gemini-2.5-flash-lite"
+        : "gemini-2.5-flash";
+    console.warn("Jami assistant received invalid structured output.", {
       depth: responseGuidance.depth,
       generatedCharacters: generated.length,
       providerDiagnostics,
+      retryModelName,
     });
-    return failureResponse(
-      "Jami could not produce a reliable answer just now. Try again.",
-      502,
-      "invalid_provider_response"
-    );
-  }
+    const retried = await generateAssistantResponse({
+      maxOutputTokens: getAiTokenCap("assistant"),
+      modelNames: [retryModelName],
+      structuredRetry: true,
+    });
+    return parseJamiAssistantModelAnswer(retried, allowedSourceRefs);
+  };
 
-  const sourcesByRef = new Map(
-    readable.map((result) => [result.sourceRef, result.source] as const)
-  );
-  const used: JamiAssistantUsedContext[] = [];
-  if (parsedAnswer.usedCurrentContext) {
-    used.push({
-      kind: "current-context",
-      id: resolved.currentId,
-      label: resolved.currentLabel,
-    });
-  }
-  parsedAnswer.sourceRefs.forEach((sourceRef) => {
-    const source = sourcesByRef.get(sourceRef);
-    if (source) {
-      used.push({ kind: "source", id: source.id, label: source.title });
-    }
+  const encoder = new TextEncoder();
+  const event = (payload: Record<string, unknown>) =>
+    encoder.encode(`${JSON.stringify(payload)}\n`);
+
+  const stream = new ReadableStream<Uint8Array>({
+    async start(controller) {
+      let buffer = "";
+      let emitted = "";
+
+      try {
+        for await (const chunk of streamGeminiText({
+          apiKey: GEMINI_API_KEY,
+          timeoutMs: REQUEST_TIMEOUT_MS,
+          modelName: primaryModelNames[0],
+          generationConfig: {
+            temperature: 0.2,
+            topP: 0.85,
+            maxOutputTokens,
+            responseMimeType: "application/json",
+            responseSchema,
+          },
+          request: { systemInstruction, contents },
+          onResponse: (diagnostics) => {
+            providerDiagnostics.push(diagnostics);
+          },
+        })) {
+          buffer += chunk;
+          const answerSoFar = extractStreamingAnswer(buffer);
+          if (answerSoFar.length > emitted.length) {
+            controller.enqueue(
+              event({ type: "text", value: answerSoFar.slice(emitted.length) })
+            );
+            emitted = answerSoFar;
+          }
+        }
+
+        let parsedAnswer = parseJamiAssistantModelAnswer(buffer, allowedSourceRefs);
+        if (!parsedAnswer) {
+          parsedAnswer = await retryWithoutStreaming(buffer);
+        }
+
+        if (!parsedAnswer) {
+          console.error("Jami assistant structured-output retry failed.", {
+            depth: responseGuidance.depth,
+            generatedCharacters: buffer.length,
+            providerDiagnostics,
+          });
+          controller.enqueue(
+            event({
+              type: "error",
+              error: "Jami could not produce a reliable answer just now. Try again.",
+              code: "invalid_provider_response",
+            })
+          );
+          return;
+        }
+
+        const payload = buildAnswerPayload(parsedAnswer);
+        if (!payload) {
+          controller.enqueue(
+            event({
+              type: "error",
+              error: "Jami could not produce a reliable answer just now. Try again.",
+              code: "invalid_provider_response",
+            })
+          );
+          return;
+        }
+
+        // The retry path, and any cleanup applied to the streamed text, can
+        // leave what was shown out of step with the final answer. Sending the
+        // whole reply lets the client settle on it rather than trusting deltas.
+        controller.enqueue(event({ type: "done", ...payload }));
+      } catch (error) {
+        console.error("Jami assistant provider error:", error);
+        controller.enqueue(
+          event({
+            type: "error",
+            error: "Jami could not finish that answer just now. Try again in a moment.",
+            code: "provider_failure",
+          })
+        );
+      } finally {
+        controller.close();
+      }
+    },
   });
-  if (parsedAnswer.usedGeneralKnowledge || used.length === 0) {
-    used.push({ kind: "general-knowledge", label: "general knowledge" });
-  }
 
-  const reply = cleanAiResponseText(parsedAnswer.answer);
-  if (!reply) {
-    return failureResponse(
-      "Jami could not produce a reliable answer just now. Try again.",
-      502,
-      "invalid_provider_response"
-    );
-  }
-
-  return Response.json({
-    reply,
-    used,
-    ...(responseGuidance.followUps.length > 0
-      ? { followUps: responseGuidance.followUps }
-      : {}),
-    ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
+  return new Response(stream, {
+    headers: {
+      "Content-Type": "application/x-ndjson; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Accel-Buffering": "no",
+    },
   });
 }

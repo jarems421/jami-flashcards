@@ -20,6 +20,7 @@ const mocks = vi.hoisted(() => {
     checkBudget: vi.fn(async () => true),
     prepareSource: vi.fn(),
     generateText: vi.fn(),
+    streamText: vi.fn(),
   };
 });
 
@@ -46,6 +47,15 @@ vi.mock("@/lib/ai/source-ingestion", () => ({
 
 vi.mock("@/lib/ai/gemini", () => ({
   generateGeminiText: mocks.generateText,
+  // The route streams the first attempt and falls back to generateGeminiText
+  // only when the structured output does not parse.
+  streamGeminiText: async function* (...args: unknown[]) {
+    const text: string = await mocks.streamText(...args);
+    const size = Math.max(1, Math.ceil(text.length / 3));
+    for (let at = 0; at < text.length; at += size) {
+      yield text.slice(at, at + size);
+    }
+  },
 }));
 
 // No cleaner mock: the route uses the real cleanAiResponseText so these tests
@@ -74,6 +84,28 @@ function validBody(overrides: Record<string, unknown> = {}) {
     context: { surface: "learn", cardId: "card-1", phase: "answer" },
     useRelatedSources: true,
     ...overrides,
+  };
+}
+
+/**
+ * The route streams newline-delimited events. Text events carry the answer as
+ * it generates; a single terminal event carries the validated receipt, or an
+ * error raised after the response had already begun.
+ */
+async function readStream(response: Response) {
+  const events = (await response.text())
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line) as Record<string, unknown>);
+
+  return {
+    streamedText: events
+      .filter((event) => event.type === "text")
+      .map((event) => event.value as string)
+      .join(""),
+    terminal: events.find(
+      (event) => event.type === "done" || event.type === "error"
+    ) as Record<string, unknown> | undefined,
   };
 }
 
@@ -111,23 +143,27 @@ beforeEach(() => {
     inputBytes: 100,
     parts: [{ text: "Plants capture light energy." }],
   });
-  mocks.generateText.mockResolvedValue(
-    JSON.stringify({
-      answer: "Plants turn light energy into stored chemical energy.",
-      sourceRefs: ["S1"],
-      usedCurrentContext: true,
-      usedGeneralKnowledge: true,
-    })
-  );
+  const validAnswer = JSON.stringify({
+    answer: "Plants turn light energy into stored chemical energy.",
+    sourceRefs: ["S1"],
+    usedCurrentContext: true,
+    usedGeneralKnowledge: true,
+  });
+  mocks.streamText.mockResolvedValue(validAnswer);
+  mocks.generateText.mockResolvedValue(validAnswer);
 });
 
 describe("universal Jami assistant route", () => {
   it("returns a validated answer and exact per-response Used context", async () => {
     const response = await postAssistant(request(validBody()));
-    const body = await response.json();
+    const { streamedText, terminal } = await readStream(response);
 
     expect(response.status).toBe(200);
-    expect(body).toEqual({
+    expect(streamedText).toBe(
+      "Plants turn light energy into stored chemical energy."
+    );
+    expect(terminal).toEqual({
+      type: "done",
       reply: "Plants turn light energy into stored chemical energy.",
       used: [
         { kind: "current-context", id: "card-1", label: "Current card" },
@@ -144,9 +180,9 @@ describe("universal Jami assistant route", () => {
       context: { surface: "learn", cardId: "card-1", phase: "answer" },
       useRelatedSources: true,
     });
-    expect(mocks.generateText).toHaveBeenCalledWith(
+    expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelNames: ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
+        modelName: "gemini-2.5-flash-lite",
         generationConfig: expect.objectContaining({
           maxOutputTokens: 1_500,
           responseSchema: expect.objectContaining({
@@ -165,7 +201,7 @@ describe("universal Jami assistant route", () => {
         }),
       })
     );
-    const generationRequest = mocks.generateText.mock.calls[0]?.[0] as {
+    const generationRequest = mocks.streamText.mock.calls[0]?.[0] as {
       request: { contents: Array<{ parts: Array<{ text?: string }> }> };
     };
     const finalParts = generationRequest.request.contents.at(-1)?.parts ?? [];
@@ -184,7 +220,7 @@ describe("universal Jami assistant route", () => {
   });
 
   it("returns the reply with its Markdown and LaTeX intact", async () => {
-    mocks.generateText.mockResolvedValue(
+    mocks.streamText.mockResolvedValue(
       JSON.stringify({
         answer:
           "**Method**\n\n1. Differentiate: $f'(x) = 2x$\n2. Solve for $x_1$.\n\n$$\\frac{n(n+1)}{2}$$",
@@ -194,7 +230,10 @@ describe("universal Jami assistant route", () => {
       })
     );
 
-    const body = await (await postAssistant(request(validBody()))).json();
+    const { terminal } = await readStream(
+      await postAssistant(request(validBody()))
+    );
+    const body = terminal as { reply: string };
 
     expect(body.reply).toContain("**Method**");
     expect(body.reply).toContain("$f'(x) = 2x$");
@@ -211,9 +250,9 @@ describe("universal Jami assistant route", () => {
       )
     );
 
-    expect(mocks.generateText).toHaveBeenCalledWith(
+    expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelNames: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+        modelName: "gemini-2.5-flash",
         generationConfig: expect.objectContaining({ maxOutputTokens: 6_000 }),
         request: expect.objectContaining({
           systemInstruction: expect.stringContaining("DETAILED mode"),
@@ -231,7 +270,7 @@ describe("universal Jami assistant route", () => {
       request(validBody({ context: { surface: "goals", id: "goal-1" } }))
     );
     expect(invalid.status).toBe(400);
-    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.streamText).not.toHaveBeenCalled();
   });
 
   it("does not expose or continue with an unowned current context", async () => {
@@ -241,7 +280,7 @@ describe("universal Jami assistant route", () => {
     const response = await postAssistant(request(validBody()));
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ code: "context_not_found" });
-    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.streamText).not.toHaveBeenCalled();
   });
 
   it("rejects invented source references from the provider", async () => {
@@ -251,26 +290,34 @@ describe("universal Jami assistant route", () => {
       usedCurrentContext: false,
       usedGeneralKnowledge: true,
     });
-    mocks.generateText
-      .mockResolvedValueOnce(invalidAnswer)
-      .mockResolvedValueOnce(invalidAnswer);
+    mocks.streamText.mockResolvedValue(invalidAnswer);
+    mocks.generateText.mockResolvedValue(invalidAnswer);
+
     const response = await postAssistant(request(validBody()));
-    expect(response.status).toBe(502);
-    expect(await response.json()).toMatchObject({
+    const { terminal } = await readStream(response);
+
+    // Once the response has started the status line is already sent, so a
+    // failure after that point arrives as a terminal event rather than a code.
+    expect(response.status).toBe(200);
+    expect(terminal).toMatchObject({
+      type: "error",
       code: "invalid_provider_response",
     });
-    expect(mocks.generateText).toHaveBeenCalledTimes(2);
+    expect(mocks.streamText).toHaveBeenCalledTimes(1);
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
   });
 
   it("retries one malformed structured response with the alternate model", async () => {
-    mocks.generateText.mockResolvedValueOnce('{"answer":"Incomplete');
+    mocks.streamText.mockResolvedValue('{"answer":"Incomplete');
 
     const response = await postAssistant(request(validBody()));
+    const { terminal } = await readStream(response);
 
     expect(response.status).toBe(200);
-    expect(mocks.generateText).toHaveBeenCalledTimes(2);
+    expect(terminal).toMatchObject({ type: "done" });
+    expect(mocks.generateText).toHaveBeenCalledTimes(1);
     expect(mocks.generateText).toHaveBeenNthCalledWith(
-      2,
+      1,
       expect.objectContaining({
         modelNames: ["gemini-2.5-flash"],
         generationConfig: expect.objectContaining({ maxOutputTokens: 8_000 }),
@@ -285,7 +332,7 @@ describe("universal Jami assistant route", () => {
 
   it("can answer from general knowledge when a related source is unreadable", async () => {
     mocks.prepareSource.mockRejectedValueOnce(new Error("Unreadable file"));
-    mocks.generateText.mockResolvedValueOnce(
+    mocks.streamText.mockResolvedValueOnce(
       JSON.stringify({
         answer: "A general explanation.",
         sourceRefs: [],
@@ -294,8 +341,11 @@ describe("universal Jami assistant route", () => {
       })
     );
     const response = await postAssistant(request(validBody()));
+    const { terminal } = await readStream(response);
+
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({
+    expect(terminal).toEqual({
+      type: "done",
       reply: "A general explanation.",
       used: [{ kind: "general-knowledge", label: "general knowledge" }],
       followUps: [
@@ -316,6 +366,6 @@ describe("universal Jami assistant route", () => {
     const response = await postAssistant(request(validBody()));
     expect(response.status).toBe(429);
     expect(mocks.prepareSource).not.toHaveBeenCalled();
-    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.streamText).not.toHaveBeenCalled();
   });
 });
