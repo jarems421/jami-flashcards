@@ -15,6 +15,7 @@ export const runtime = "nodejs";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const REQUEST_TIMEOUT_MS = 12_000;
 const MAX_RELATED_CARDS = 5;
+const RELATED_CARD_SCAN_LIMIT = 20;
 const MAX_BACK_OUTPUT_LENGTH = 2000;
 const MIN_COMPLETE_BACK_LENGTH = 42;
 
@@ -140,34 +141,44 @@ export async function POST(request: NextRequest) {
 
   try {
     const adminDb = getAdminDb();
-    const cardsSnapshot = await adminDb
-      .collection("cards")
-      .where("userId", "==", uid)
-      .limit(120)
-      .get();
 
-    const relatedCards = cardsSnapshot.docs
-      .map((cardDoc) => {
-        const data = cardDoc.data();
-        const cardFront = typeof data.front === "string" ? data.front : "";
-        const cardBack = typeof data.back === "string" ? data.back : "";
-        const cardDeckId = typeof data.deckId === "string" ? data.deckId : "";
-        const cardTopicIds = Array.isArray(data.topicIds)
-          ? data.topicIds.filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
-          : [];
+    // These cards are only used as a formatting and tone reference, so the
+    // query is scoped to the card's own deck rather than reading a slice of
+    // the whole collection and discarding most of it. The previous version
+    // read 120 arbitrary cards and kept only deck or topic matches, which
+    // also made it unreliable: with no ordering, matches outside that
+    // arbitrary window were missed at random.
+    const relatedCards = deckId
+      ? (
+          await adminDb
+            .collection("cards")
+            .where("userId", "==", uid)
+            .where("deckId", "==", deckId)
+            .limit(RELATED_CARD_SCAN_LIMIT)
+            .get()
+        ).docs
+          .map((cardDoc) => {
+            const data = cardDoc.data();
+            const cardFront = typeof data.front === "string" ? data.front : "";
+            const cardBack = typeof data.back === "string" ? data.back : "";
+            const cardTopicIds = Array.isArray(data.topicIds)
+              ? data.topicIds.filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
+              : [];
 
-        let score = 0;
-        if (deckId && cardDeckId === deckId) score += 5;
-        if (topicIds.length > 0) {
-          score += cardTopicIds.filter((topicId) => topicIds.includes(topicId)).length * 3;
-        }
-        if (cardFront.trim() === front.trim()) score -= 10;
+            // Same-deck cards all score alike, so shared topics break the tie
+            // towards the most closely related ones.
+            let score = 5;
+            if (topicIds.length > 0) {
+              score += cardTopicIds.filter((topicId) => topicIds.includes(topicId)).length * 3;
+            }
+            if (cardFront.trim() === front.trim()) score -= 10;
 
-        return { front: cardFront, back: cardBack, score };
-      })
-      .filter((card) => card.score > 0 && card.front && card.back)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, MAX_RELATED_CARDS);
+            return { front: cardFront, back: cardBack, score };
+          })
+          .filter((card) => card.score > 0 && card.front && card.back)
+          .sort((left, right) => right.score - left.score)
+          .slice(0, MAX_RELATED_CARDS)
+      : [];
 
     const relatedCardsPrompt = relatedCards.length
       ? `Nearby cards for tone, level, and formatting:
