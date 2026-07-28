@@ -1,5 +1,7 @@
 import type { Part } from "@google/generative-ai";
 
+import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
+
 export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
 export const JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH = 4_000;
 export const JAMI_ASSISTANT_MAX_MESSAGE_LENGTH = 2_000;
@@ -352,7 +354,9 @@ export function parseJamiAssistantModelAnswer(
 ): ParsedJamiAssistantModelAnswer | null {
   let payload: ModelAnswerPayload;
   try {
-    payload = JSON.parse(unwrapJson(value)) as ModelAnswerPayload;
+    payload = JSON.parse(
+      repairModelJsonBackslashes(unwrapJson(value))
+    ) as ModelAnswerPayload;
   } catch {
     return null;
   }

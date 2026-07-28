@@ -13,9 +13,14 @@
  * document.
  */
 
+import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
+
 const ANSWER_KEY_PATTERN = /"answer"\s*:\s*"/;
 
-export function extractStreamingAnswer(buffer: string): string {
+export function extractStreamingAnswer(rawBuffer: string): string {
+  // Unescaped LaTeX backslashes would otherwise be unescaped into control
+  // characters here, mid-stream, before anything else can notice.
+  const buffer = repairModelJsonBackslashes(rawBuffer);
   const opening = buffer.match(ANSWER_KEY_PATTERN);
   if (!opening || opening.index === undefined) return "";
 
