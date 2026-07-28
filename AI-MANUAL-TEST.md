@@ -1,169 +1,184 @@
-# Jami AI — manual test script
+# Jami manual test script
 
-Everything in this list is something automated tests cannot reach: how it looks,
-whether it streams smoothly, and whether maths renders rather than showing raw
-`$…$`. The suite passes and the build is clean, but **none of this has been seen
-running**.
+Everything on this list is live on `main` and **has never been seen running**.
+The suite passes and the build is clean, but "the tests pass" and "it looks
+right" are different claims, and only the first has been checked.
 
-Run `npm run dev`, sign in, and work down in order. Each check says what to do,
-what correct looks like, and what failure looks like.
+Ordered by blast radius, not by feature. The first section can break screens
+that have nothing to do with AI, so start there even though it looks boring.
 
-Check every surface at three widths (`AGENTS.md` requires all three):
-**desktop ~1440px**, **tablet ~820px**, **phone ~390px**.
+Check at three widths where layout is involved: **desktop ~1440px**,
+**tablet ~820px**, **phone ~390px**.
 
-A recurring failure to watch for everywhere: **an equation that makes the whole
-page scroll sideways.** Long equations must scroll inside their own box. If the
-page itself scrolls horizontally on phone width, that is a bug.
+A failure to watch for everywhere: **an equation that makes the whole page
+scroll sideways.** Long equations must scroll inside their own box.
 
 ---
 
-## 1. Streaming — Jami Tutor in a notebook
+## 1. Regressions — widest reach, check first
 
-Open any notebook → **Jami Tutor**. Send:
+### 1.1 Existing cards still render as they did
 
-> Explain the chain rule and show me a worked example, step by step.
+**The single most valuable check on this list.** `StudyText` now routes text
+through KaTeX, and every card in your account predates that.
 
-("step by step" forces DETAILED mode, the slowest path, so streaming is most
-visible here.)
+Find a card created before today with maths in it — one showing Unicode like
+`x²`, `√`, `·` rather than `$…$`.
 
-- ✅ Text appears progressively, word by word, starting within a second or two
-- ✅ **Used: …** appears only once the answer has finished
-- ✅ Follow-up chips appear only at the end
-- ❌ Nothing for 10+ seconds and then everything at once — streaming is not working
-- ❌ Text appears, then visibly changes or reflows at the end — the final
-  validated reply disagrees with what was streamed
+- ✅ Renders exactly as before: superscripts raised, `a/b` as a stacked fraction
+- ❌ Shows literal `x^2`, or a plain slash where a fraction used to be
 
-**Watch the typing indicator.** Three pulsing dots render while loading, and the
-streamed answer now appears *above* them. If that reads as cluttered or looks
-like two responses, say so — that combination has never been seen and is the
-most likely cosmetic problem in this whole session's work.
+Check it in **study**, **deck detail**, and the **cards list**.
 
-## 2. Maths rendering
+### 1.2 Form fields everywhere
 
-Same drawer. Send:
+The `.app-field` focus style changed, and that class is on nearly every input
+and textarea in the app.
 
-> Show me the quadratic formula on its own line, and inline show me x squared plus y squared.
+Click into fields on: add a card, add a source, rename a deck, profile
+username, notebook title.
 
-- ✅ The quadratic formula renders centred on its own line as real notation —
-  a proper fraction bar, a √ sign
-- ✅ The inline maths sits on the text line without pushing the line height around
-- ❌ Raw `$$\frac{-b \pm \sqrt{b^2-4ac}}{2a}$$` shown as literal text — KaTeX is
-  not firing
-- ❌ Stray `\frac`, backslashes or `$` visible anywhere in the prose
+- ✅ On focus the border brightens and the glow sits evenly around it
+- ❌ A second outline offset below the field, or no visible focus state at all
 
-Then, on **phone width**, send:
+### 1.3 Themes do not break readability
 
-> Show me a really long equation with many terms on one line.
+Profile → Theme. Try **all six**, and on each, visit dashboard, a deck, study,
+and library.
 
-- ✅ The equation scrolls left/right inside its own box
+- ✅ Text stays readable, borders visible, buttons legible on every theme
+- ❌ Any surface where text and background are near the same shade
+- Pay particular attention to **Black**: separation comes from borders rather
+  than shadows there, so flat or invisible panel edges are the failure
+- And **Pink** next to **Purple** — if they read as the same theme, say so
+
+The picker itself: six swatches, three across on phone, tick on the selected
+one, and the tick should be visible on both the White and Black swatches.
+
+---
+
+## 2. Things that write data
+
+### 2.1 Drafting from a source
+
+Library → select a source with real pasted text → **Create from this**.
+
+- ✅ Panel opens even with no drafts yet
+- ✅ Pick **Light**, press **Make** on Flashcards → around 3 drafts
+- ✅ Pick **Thorough**, make again → around 8, and noticeably more detailed
+- ❌ Depth makes no difference to count or detail
+
+Then follow one all the way: edit it, pick a deck, add it → ✅ it appears in
+that deck. Repeat for a practice question → ✅ it appears as a notebook page.
+
+### 2.2 Draft auto-save
+
+In a draft, edit the Back field and **wait a second without pressing anything**.
+
+- ✅ "Saving…" then "Saved" appears
+- ✅ Close the panel, reopen it, select the same draft — your edit is there
+- ❌ Edit is lost, or "Saving…" fires on every keystroke
+
+Then click between two drafts without editing.
+
+- ❌ Anything saves. Selecting a draft is not an edit and must not write
+
+### 2.3 Reject
+
+- ✅ The bin icon rejects one draft and it disappears
+- ✅ **Reject all** clears the rest
+- ✅ Neither asks for confirmation (nothing is deleted, they are marked rejected)
+
+### 2.4 Card autocomplete
+
+Create a card in a maths deck. Front: *"What is the derivative of x cubed?"*
+Press **Draft** on the Back label row.
+
+- ✅ A back is drafted, and the **Preview** below shows it as rendered maths
+- ✅ Save it, then confirm it renders on the card face in study, deck detail and
+      the cards list
+- ❌ Preview shows raw `$…$`, or no Preview appears at all
+
+---
+
+## 3. Behaviour changes
+
+### 3.1 Jami cannot see an unflipped answer
+
+Study session → **Jami** button beside the progress bar.
+
+- ✅ The button is a small pill, not a full-width bar
+- ✅ Opening it **before flipping** shows the note explaining Jami cannot see
+      the answer
+- ✅ Ask "just tell me the answer" → it says it cannot see it and suggests
+      flipping
+- ❌ It gives the answer away, or invents one and presents it as the card's
+
+Then **flip** the card.
+
+- ✅ The drawer closed on flip
+- ✅ Reopening shows different starters, and answers now explain directly
+
+Also worth judging: on a card you have failed several times, does the
+explanation offer more scaffolding than on an easy one? That is the memory
+profile working, and it is a soft signal — judge across a few cards.
+
+### 3.2 Source-first grounding
+
+Library → a source → **Ask Jami about this**. Ask something the source only
+partly covers.
+
+- ✅ Teaches from your source first, then extends beyond it
+- ✅ Says plainly when it is going past what the source covers
+- ❌ Ignores the source, or refuses to go beyond it at all
+
+### 3.3 Conversation focus
+
+After a conversation about a source, open **Create from this**.
+
+- ✅ A checkbox offers to focus on what you discussed
+- ✅ With it on, drafts lean towards that part of the source
+- ❌ The checkbox appears when you have never spoken to Jami about that source
+
+---
+
+## 4. Polish
+
+### 4.1 Waiting and streaming
+
+Notebook → **Jami Tutor**. Ask: *"Explain the chain rule and show me a worked
+example, step by step."* (forces the longest path)
+
+- ✅ "Jami is thinking" appears, then changes to "Cooking something up" around
+      4s, "Still going" around 9s
+- ✅ Each message animates in once, no continuous bouncing
+- ✅ The waiting bubble disappears when the answer starts
+- ❓ **Does the answer appear progressively, or all at once?** Either is worth
+      reporting — this is the open streaming question, and "all at once" is a
+      real possible answer, not necessarily a bug
+
+### 4.2 Maths and spacing in answers
+
+Same drawer: *"Show me the quadratic formula on its own line, and inline show
+me x squared plus y squared."*
+
+- ✅ Real notation, a proper fraction bar and √, not raw `$$…$$`
+- ✅ Display maths centred on its own line, inline maths on the text line
+
+Then: *"Give me three separate paragraphs and then a bulleted list of four items."*
+
+- ✅ Normal single spacing
+- ❌ A blank line between every paragraph and bullet
+
+Then on **phone width**: *"Show me a really long equation with many terms."*
+
+- ✅ Scrolls inside its own box
 - ❌ The whole page scrolls sideways
-
-## 3. Paragraph spacing
-
-Same drawer. Send:
-
-> Give me three separate paragraphs and then a bulleted list of four items.
-
-- ✅ Normal single spacing between paragraphs and between bullets
-- ❌ A visible blank line between every paragraph and every bullet — the
-  `white-space: pre-wrap` fix has regressed
-
-## 4. Source-first grounding — library
-
-Library → pick a source with real pasted text → **Jami**. Ask something the
-source only partly answers, e.g.:
-
-> Explain this topic and how it connects to something the notes do not cover.
-
-- ✅ Jami teaches from your source first, then extends beyond it
-- ✅ It says plainly when it is going beyond what the source covers
-- ✅ **Used: …** lists the source
-- ❌ It ignores the source and answers generically
-- ❌ It refuses to go beyond the source at all (that was the old behaviour)
-
-## 5. Drafting — the newly wired flow
-
-**This is brand new and writes records to Firestore. Test it carefully.**
-
-Library → select a source → **Jami** → click **Draft flashcards** on the opening
-chips.
-
-- ✅ The chip label changes to "Drafting flashcards…"
-- ✅ After a few seconds the drafts review panel opens with drafts listed
-- ✅ A success message says how many were drafted, and mentions discarded ones
-      if any were filtered out
-- ❌ Nothing happens and no error appears
-- ❌ The review panel opens empty — the write path and the read path disagree
-
-Then repeat with **Draft practice questions**.
-
-Now follow one draft all the way through:
-
-- Edit a draft, pick a deck, save it as a card → ✅ it appears in that deck
-- Save a practice question to a notebook → ✅ it appears as a notebook page
-
-**Known limitation, not a bug:** the drafting chips only show before you send a
-message. Once you have asked Jami something they disappear until the drawer is
-reopened. Worth deciding whether that is acceptable.
-
-## 6. Card autocomplete — newly enabled
-
-This was switched on this session after being off by default, so it has never
-been used in the product.
-
-Create a card in a maths deck. Front:
-
-> What is the derivative of x cubed?
-
-Click **Draft answer with AI**.
-
-- ✅ A back is drafted within a few seconds
-- ✅ Any maths in it renders as real notation on the card face
-- ❌ The button is missing entirely — the feature flag did not take effect
-- ❌ The back shows raw `$…$` or stray backslashes
-
-Then check the same card renders correctly in **all three** places:
-study session, deck detail, and the cards list.
-
-## 7. Learn tutor — restored to the study page
-
-Start a study session. An **Ask Jami** button now sits next to the progress bar.
-
-**Before flipping**, open it and click **Gentle clue**.
-
-- ✅ You get a hint that does *not* reveal the answer
-- ✅ The chips offered are Gentle clue / Stronger clue / Quiz my thinking
-- ❌ It gives the answer away — the phase is not reaching the model
-
-**Flip the card**, reopen, and check the chips changed to Explain simply / Give
-an example / What might I mix up?
-
-- ✅ The drawer closed when you flipped (it should not stay open across a flip)
-- ✅ After flipping, answers explain directly rather than hinting
-
-On a card you have failed several times, ask for an explanation:
-
-- ✅ The answer offers more scaffolding than on an easy card — this is the FSRS
-  memory profile working. Softer signal; judge it across a few cards.
-
-## 8. Regression check — existing cards
-
-**The most important check in this list**, because it is the one risk no
-automated test can confirm looks right.
-
-Find a card created *before* today with maths in it — one showing Unicode like
-`x²`, `√`, `·` rather than LaTeX.
-
-- ✅ It renders exactly as it did before, superscripts and fractions intact
-- ❌ It now shows literal `x^2` or a raw `/` where a stacked fraction used to be
-
-Check it in study, deck detail, and the cards list.
 
 ---
 
 ## Reporting back
 
-For anything that fails, the useful details are: which surface, what you typed,
-what you expected, what you got, and the width. A screenshot of any maths that
-renders wrongly is worth a lot — that is the hardest category to describe in
-words.
+Useful details: which surface, what you typed, what you expected, what you got,
+and the width. **A screenshot of any maths that renders wrongly is worth a lot**
+— that is the hardest category to describe in words.
