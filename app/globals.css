@@ -1037,12 +1037,18 @@
     border-color: var(--color-border-strong);
   }
 
+  /*
+   * The focus glow is concentric with the border. The resting shadow is offset
+   * 10px down, which is right for lifting a card off the page but reads as a
+   * misaligned second outline once a bright ring is drawn around the same
+   * shape, so focus replaces it with a symmetric halo instead of stacking on it.
+   */
   .app-field:focus,
   .app-field:focus-within {
     border-color: color-mix(in srgb, var(--color-warm-accent) 78%, transparent);
     box-shadow:
-      0 10px 22px rgba(8, 2, 24, 0.18),
-      0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent);
+      0 0 0 4px color-mix(in srgb, var(--color-accent) 16%, transparent),
+      0 0 20px color-mix(in srgb, var(--color-accent) 14%, transparent);
     outline: none;
   }
 

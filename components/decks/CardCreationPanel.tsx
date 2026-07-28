@@ -433,31 +433,31 @@ export default function CardCreationPanel({
               maxLength={MAX_FRONT_LENGTH}
               disabled={addingSingleCard}
             />
-            <div className="space-y-3">
-              <CardBackEditor
-                label="Back"
-                placeholder="Back"
-                value={singleBack}
-                onChange={setSingleBack}
-                maxLength={MAX_BACK_LENGTH}
-                rows={6}
-                disabled={addingSingleCard}
-              />
-              {featureFlags.enableFlashcardAi ? (
-                <CardBackAutocomplete
-                  front={singleFront}
-                  currentBack={singleBack}
-                  deckId={singleDeckId || undefined}
-                  deckName={deckNamesById[singleDeckId]}
-                  topics={topics
-                    .filter((topic) => singleTopicIds.includes(topic.id))
-                    .map((topic) => topic.name)}
-                  topicIds={singleTopicIds}
-                  disabled={addingSingleCard}
-                  onApply={setSingleBack}
-                />
-              ) : null}
-            </div>
+            <CardBackEditor
+              label="Back"
+              placeholder="Back"
+              value={singleBack}
+              onChange={setSingleBack}
+              maxLength={MAX_BACK_LENGTH}
+              rows={6}
+              disabled={addingSingleCard}
+              action={
+                featureFlags.enableFlashcardAi ? (
+                  <CardBackAutocomplete
+                    front={singleFront}
+                    currentBack={singleBack}
+                    deckId={singleDeckId || undefined}
+                    deckName={deckNamesById[singleDeckId]}
+                    topics={topics
+                      .filter((topic) => singleTopicIds.includes(topic.id))
+                      .map((topic) => topic.name)}
+                    topicIds={singleTopicIds}
+                    disabled={addingSingleCard}
+                    onApply={setSingleBack}
+                  />
+                ) : null
+              }
+            />
           </div>
 
           {/*
