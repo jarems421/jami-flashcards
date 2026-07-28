@@ -30,7 +30,7 @@ describe("generateSourceDrafts", () => {
   it("sends an authenticated request and returns the drafts", async () => {
     const fetchMock = vi.fn(async () =>
       jsonResponse(200, {
-        drafts: [{ id: "draft-1", kind: "flashcard" }],
+        drafts: [{ id: "draft-1", kind: "flashcard", depth: "medium" }],
         removedDraftCount: 2,
         requestedCount: 5,
       })
@@ -38,9 +38,9 @@ describe("generateSourceDrafts", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     await expect(
-      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard" })
+      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard", depth: "medium" })
     ).resolves.toEqual({
-      drafts: [{ id: "draft-1", kind: "flashcard" }],
+      drafts: [{ id: "draft-1", kind: "flashcard", depth: "medium" }],
       removedDraftCount: 2,
       requestedCount: 5,
     });
@@ -53,6 +53,7 @@ describe("generateSourceDrafts", () => {
     expect(JSON.parse(init.body as string)).toEqual({
       sourceId: "source-1",
       kind: "flashcard",
+      depth: "medium",
     });
   });
 
@@ -60,7 +61,7 @@ describe("generateSourceDrafts", () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(200, { drafts: [] })));
 
     await expect(
-      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard" })
+      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard", depth: "medium" })
     ).resolves.toEqual({
       drafts: [],
       removedDraftCount: 0,
@@ -72,7 +73,7 @@ describe("generateSourceDrafts", () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(429, {})));
 
     await expect(
-      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard" })
+      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard", depth: "medium" })
     ).rejects.toThrow(/today's draft limit/i);
   });
 
@@ -80,7 +81,7 @@ describe("generateSourceDrafts", () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(503, {})));
 
     await expect(
-      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard" })
+      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard", depth: "medium" })
     ).rejects.toThrow(/not configured/i);
   });
 
@@ -90,7 +91,7 @@ describe("generateSourceDrafts", () => {
     ));
 
     await expect(
-      generateSourceDrafts({ sourceId: "source-1", kind: "practice-question" })
+      generateSourceDrafts({ sourceId: "source-1", kind: "practice-question", depth: "medium" })
     ).rejects.toThrow("Try a longer pasted source.");
   });
 
@@ -101,7 +102,7 @@ describe("generateSourceDrafts", () => {
     );
 
     await expect(
-      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard" })
+      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard", depth: "medium" })
     ).rejects.toThrow(/could not generate drafts/i);
   });
 
@@ -111,7 +112,7 @@ describe("generateSourceDrafts", () => {
     mocks.auth.currentUser = null;
 
     await expect(
-      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard" })
+      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard", depth: "medium" })
     ).rejects.toThrow("Not signed in");
     expect(fetchMock).not.toHaveBeenCalled();
   });

@@ -11,6 +11,10 @@ import {
   clampSourceDraftCount,
   filterSourceFlashcardDrafts,
   filterSourceQuestionDrafts,
+  getSourceDraftCountForDepth,
+  getSourceDraftDepthPrompt,
+  normalizeSourceDraftDepth,
+  type SourceDraftDepth,
   type SourceDraftKind,
 } from "@/lib/ai/source-draft-quality";
 import { mapSourceData } from "@/lib/practice/sources";
@@ -25,9 +29,13 @@ function isSourceDraftKind(value: unknown): value is SourceDraftKind {
   return value === "flashcard" || value === "practice-question";
 }
 
-function getPrompt(kind: SourceDraftKind, count: number) {
+function getPrompt(kind: SourceDraftKind, count: number, depth: SourceDraftDepth) {
+  const depthLine = getSourceDraftDepthPrompt(depth);
+
   if (kind === "flashcard") {
-    return `Create up to ${count} concise flashcard drafts from the source.
+    return `${depthLine}
+
+Create up to ${count} concise flashcard drafts from the source.
 Return JSON only as an array of objects with "front" and "back".
 Each card should test one concept or distinction.
 Every card must be directly answerable from the source text.
@@ -38,7 +46,9 @@ Do not invent facts that are not grounded in the source.
 ${CARD_TEXT_FORMAT_PROMPT}`;
   }
 
-  return `Create up to ${count} practice question drafts from the source.
+  return `${depthLine}
+
+Create up to ${count} practice question drafts from the source.
 Return JSON only as an array of objects with "questionText", "answerText", and "solutionText".
 Questions should be short, useful for revision, and answerable from the source.
 Every question must include an expected answer.
@@ -66,13 +76,17 @@ export async function POST(request: NextRequest) {
 
   let sourceId: string;
   let kind: SourceDraftKind;
+  let depth: SourceDraftDepth;
   let count: number;
   let focus: string;
   try {
     const body = await request.json();
     sourceId = typeof body.sourceId === "string" ? body.sourceId.trim().slice(0, 160) : "";
     kind = isSourceDraftKind(body.kind) ? body.kind : "flashcard";
-    count = clampSourceDraftCount(kind, body.count);
+    depth = normalizeSourceDraftDepth(body.depth);
+    // Depth decides how many, so a client cannot ask for more than the depth it
+    // selected. The clamp still runs as the backstop on the kind's own ceiling.
+    count = clampSourceDraftCount(kind, getSourceDraftCountForDepth(kind, depth));
     // What the student has been working through with Jami on this source, so
     // drafts can follow that rather than covering the source evenly. Bounded
     // hard: it is conversation text and only steers emphasis.
@@ -146,7 +160,7 @@ Return valid JSON only.`,
             role: "user",
             parts: [
               {
-                text: `${getPrompt(kind, count)}
+                text: `${getPrompt(kind, count, depth)}
 ${
   focus
     ? `
