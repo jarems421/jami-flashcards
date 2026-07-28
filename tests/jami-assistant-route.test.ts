@@ -182,7 +182,9 @@ describe("universal Jami assistant route", () => {
     });
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelName: "gemini-2.5-flash-lite",
+        // Brief answers lead with the cheaper model and keep the other as the
+        // fallback the stream uses if the first one is unavailable.
+        modelNames: ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
         generationConfig: expect.objectContaining({
           maxOutputTokens: 1_500,
           responseSchema: expect.objectContaining({
@@ -252,7 +254,7 @@ describe("universal Jami assistant route", () => {
 
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelName: "gemini-2.5-flash",
+        modelNames: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
         generationConfig: expect.objectContaining({ maxOutputTokens: 6_000 }),
         request: expect.objectContaining({
           systemInstruction: expect.stringContaining("DETAILED mode"),

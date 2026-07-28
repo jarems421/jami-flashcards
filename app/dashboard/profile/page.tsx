@@ -75,20 +75,24 @@ function ThemePreferenceCard() {
                 style={{ backgroundImage: option.preview }}
                 aria-hidden="true"
               >
+                {/*
+                  The tick sits on a filled accent disc rather than straight on
+                  the swatch: a white check alone disappears against the White
+                  and Pink previews, and tinting it per option would need a
+                  contrast decision for every future theme.
+                */}
                 {active ? (
-                  <svg
-                    viewBox="0 0 20 20"
-                    fill="none"
-                    className="h-5 w-5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]"
-                  >
-                    <path
-                      d="m5 10.5 3.4 3.4L15 7.2"
-                      stroke="#ffffff"
-                      strokeWidth="2.2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                  </svg>
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-accent)] shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
+                    <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
+                      <path
+                        d="m5 10.5 3.4 3.4L15 7.2"
+                        stroke="#ffffff"
+                        strokeWidth="2.4"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                    </svg>
+                  </span>
                 ) : null}
               </span>
               <span

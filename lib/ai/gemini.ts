@@ -76,64 +76,90 @@ export function isGeminiTimeoutError(error: unknown) {
 /**
  * Same contract as generateGeminiText, but yields the response as it arrives.
  *
- * Deliberately does not fall back to the next model: a fallback would have to
- * discard text already sent to the client. Callers stream the first attempt and
- * use generateGeminiText for any retry, which then arrives in one piece.
+ * Falls back to the next model only while nothing has been yielded yet. Once a
+ * chunk has reached the caller it has already been shown to the student, and a
+ * second model would have to contradict it, so a mid-stream failure is rethrown
+ * and the caller decides what to say.
+ *
+ * That still covers the common case: providers reject an overloaded model when
+ * the stream is opened, before any text exists.
  */
 export async function* streamGeminiText({
   apiKey,
   request,
   timeoutMs,
   generationConfig,
-  modelName,
+  modelNames = DEFAULT_MODEL_NAMES,
+  onRetry,
   onResponse,
 }: {
   apiKey: string;
   request: GenerateContentRequest;
   timeoutMs: number;
   generationConfig?: GenerationConfig;
-  modelName: string;
+  modelNames?: readonly string[];
+  onRetry?: (info: GeminiRetryInfo) => void;
   onResponse?: (info: GeminiResponseDiagnostics) => void;
 }): AsyncGenerator<string, void, unknown> {
-  const model = new GoogleGenerativeAI(apiKey).getGenerativeModel({
-    model: modelName,
-    generationConfig,
-  });
+  const genAI = new GoogleGenerativeAI(apiKey);
+  let lastError: unknown = null;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(TIMEOUT_MESSAGE), timeoutMs);
-
-  try {
-    const result = await model.generateContentStream(request, {
-      signal: controller.signal,
+  for (let index = 0; index < modelNames.length; index += 1) {
+    const modelName = modelNames[index];
+    const nextModelName = modelNames[index + 1];
+    const model = genAI.getGenerativeModel({
+      model: modelName,
+      generationConfig,
     });
 
-    for await (const chunk of result.stream) {
-      const text = chunk.text();
-      if (text) yield text;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(TIMEOUT_MESSAGE), timeoutMs);
+    let hasYielded = false;
+
+    try {
+      const result = await model.generateContentStream(request, {
+        signal: controller.signal,
+      });
+
+      for await (const chunk of result.stream) {
+        const text = chunk.text();
+        if (text) {
+          hasYielded = true;
+          yield text;
+        }
+      }
+
+      const final = await result.response;
+      const candidate = final.candidates?.[0];
+      const usage = final.usageMetadata;
+      onResponse?.({
+        modelName,
+        ...(candidate?.finishReason ? { finishReason: candidate.finishReason } : {}),
+        ...(candidate?.finishMessage ? { finishMessage: candidate.finishMessage } : {}),
+        ...(usage
+          ? {
+              promptTokenCount: usage.promptTokenCount,
+              candidatesTokenCount: usage.candidatesTokenCount,
+              totalTokenCount: usage.totalTokenCount,
+            }
+          : {}),
+      });
+      return;
+    } catch (error) {
+      const failure = controller.signal.aborted ? new Error(TIMEOUT_MESSAGE) : error;
+      lastError = failure;
+
+      if (hasYielded || !nextModelName || !shouldTryNextModel(failure)) {
+        throw failure;
+      }
+
+      onRetry?.({ error: failure, modelName, nextModelName });
+    } finally {
+      clearTimeout(timeoutId);
     }
-
-    const final = await result.response;
-    const candidate = final.candidates?.[0];
-    const usage = final.usageMetadata;
-    onResponse?.({
-      modelName,
-      ...(candidate?.finishReason ? { finishReason: candidate.finishReason } : {}),
-      ...(candidate?.finishMessage ? { finishMessage: candidate.finishMessage } : {}),
-      ...(usage
-        ? {
-            promptTokenCount: usage.promptTokenCount,
-            candidatesTokenCount: usage.candidatesTokenCount,
-            totalTokenCount: usage.totalTokenCount,
-          }
-        : {}),
-    });
-  } catch (error) {
-    if (controller.signal.aborted) throw new Error(TIMEOUT_MESSAGE);
-    throw error;
-  } finally {
-    clearTimeout(timeoutId);
   }
+
+  throw lastError ?? new Error("Gemini request failed");
 }
 
 export async function generateGeminiText({

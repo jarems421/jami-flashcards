@@ -378,7 +378,7 @@ ${responseGuidance.instruction}`;
         for await (const chunk of streamGeminiText({
           apiKey: GEMINI_API_KEY,
           timeoutMs: REQUEST_TIMEOUT_MS,
-          modelName: primaryModelNames[0],
+          modelNames: primaryModelNames,
           generationConfig: {
             temperature: 0.2,
             topP: 0.85,
@@ -389,6 +389,12 @@ ${responseGuidance.instruction}`;
           request: { systemInstruction, contents },
           onResponse: (diagnostics) => {
             providerDiagnostics.push(diagnostics);
+          },
+          onRetry: ({ error, modelName, nextModelName }) => {
+            console.warn(
+              `Jami assistant stream failed on ${modelName}; retrying with ${nextModelName}.`,
+              error
+            );
           },
         })) {
           buffer += chunk;

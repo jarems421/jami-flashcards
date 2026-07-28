@@ -2379,6 +2379,8 @@ export default function StudyPage() {
                     <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
                       <div
                         className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
+                        aria-hidden={flipped}
+                        inert={flipped}
                         style={{
                           "--study-card-border": currentDeckColor.base,
                         } as React.CSSProperties}
@@ -2416,8 +2418,16 @@ export default function StudyPage() {
                         </div>
                         <div className="text-center text-xs font-medium opacity-60">Tap anywhere on the card or press Space to reveal</div>
                       </div>
+                      {/*
+                        backface-visibility hides the answer visually but leaves
+                        it in the accessibility tree and in find-in-page, so an
+                        unflipped card would read out its own answer. inert and
+                        aria-hidden take it out of both until the flip.
+                      */}
                       <div
                         className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10"
+                        aria-hidden={!flipped}
+                        inert={!flipped}
                         style={{
                           "--study-card-border": currentDeckColor.base,
                         } as React.CSSProperties}
