@@ -36,17 +36,6 @@ type CacheEntry = {
 const sourceCache = new Map<string, CacheEntry>();
 let sourceCacheBytes = 0;
 
-export function normalizeSourceTutorIds(values: unknown[]) {
-  return Array.from(
-    new Set(
-      values
-        .filter((value): value is string => typeof value === "string")
-        .map((value) => value.trim().slice(0, 160))
-        .filter(Boolean)
-    )
-  );
-}
-
 function normalizeExtractedText(value: string) {
   return value
     .replace(/\r\n?/g, "\n")
