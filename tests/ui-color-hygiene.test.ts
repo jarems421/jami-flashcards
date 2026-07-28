@@ -17,7 +17,6 @@ const auditedFiles = [
   "components/decks/CardBackAutocomplete.tsx",
   "components/decks/CardQualityWarnings.tsx",
   "components/decks/CardCreationPanel.tsx",
-  "components/study/StudyAssistant.tsx",
   "components/notifications/NotificationSettingsCard.tsx",
   "app/page.tsx",
   "app/auth/page.tsx",

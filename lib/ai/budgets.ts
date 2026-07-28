@@ -3,11 +3,8 @@ import "server-only";
 import { getAdminDb } from "@/services/firebase/admin";
 
 export type AiBudgetAction =
-  | "chat"
-  | "explain"
   | "autocompleteCard"
   | "assistant"
-  | "sourceTutorExplain"
   | "sourceFlashcardDrafts"
   | "sourcePracticeDrafts";
 
@@ -25,13 +22,10 @@ const DAY_MS = 24 * 60 * 60 * 1000;
  * truncated with finishReason MAX_TOKENS instead of shorter.
  */
 export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
-  chat: { dailyRequestLimit: 50, tokenCap: 8_000 },
-  explain: { dailyRequestLimit: 20, tokenCap: 8_000 },
   // One request here can cost up to three provider calls because the route
   // retries an incomplete draft, so the daily limit is not a call count.
   autocompleteCard: { dailyRequestLimit: 40, tokenCap: 900 },
   assistant: { dailyRequestLimit: 40, tokenCap: 8_000 },
-  sourceTutorExplain: { dailyRequestLimit: 20, tokenCap: 10_000 },
   sourceFlashcardDrafts: { dailyRequestLimit: 10, tokenCap: 12_000 },
   sourcePracticeDrafts: { dailyRequestLimit: 10, tokenCap: 12_000 },
 };
