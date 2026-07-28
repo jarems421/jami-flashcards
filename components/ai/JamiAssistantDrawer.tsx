@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent as ReactKeyboardEvent,
+  type ReactNode,
 } from "react";
 import { createPortal } from "react-dom";
 import {
@@ -59,6 +60,12 @@ type JamiAssistantDrawerProps = {
   historyContextLabel: string;
   getContext: () => JamiAssistantContext | Promise<JamiAssistantContext>;
   quickActions?: readonly JamiAssistantQuickAction[];
+  /**
+   * Short note shown above the starting points, for surfaces where Jami works
+   * differently from what a student would assume. Only rendered before the
+   * conversation begins.
+   */
+  emptyStateNote?: ReactNode;
 };
 
 type DrawerMessage = {
@@ -120,6 +127,7 @@ export default function JamiAssistantDrawer({
   historyContextLabel,
   getContext,
   quickActions = [],
+  emptyStateNote,
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
   const [input, setInput] = useState("");
@@ -564,6 +572,11 @@ export default function JamiAssistantDrawer({
                 <p className="mt-2 text-sm leading-relaxed text-text-secondary">
                   Ask about what you are studying, or choose a useful starting point.
                 </p>
+                {emptyStateNote ? (
+                  <p className="mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-xs leading-5 text-text-muted">
+                    {emptyStateNote}
+                  </p>
+                ) : null}
               </div>
               {latestCurrentThread ? (
                 <button

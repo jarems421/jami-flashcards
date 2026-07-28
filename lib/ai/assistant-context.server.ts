@@ -362,13 +362,27 @@ async function resolveLearnContext(input: {
     topicIds,
   });
 
+  /*
+   * The answer is withheld until the student has flipped the card.
+   *
+   * Telling the model to avoid spoiling it was never a real guarantee: it held
+   * the answer and was instructed to hand it over if asked plainly, so the
+   * hinting was decorative. Not sending it makes the constraint structural.
+   * A student who wants the answer flips the card, which is the point of a
+   * flashcard, and the related cards below still let the tutor spot likely
+   * mix-ups without seeing this card's answer.
+   */
+  const answerIsVisibleToStudent = input.context.phase === "answer";
+
   const parts: Part[] = [
     {
       text: [
         `Learn phase: ${input.context.phase}`,
         `Deck: ${deckName}`,
         `Card front: ${front || "(empty)"}`,
-        `Card answer: ${back || "(empty)"}`,
+        answerIsVisibleToStudent
+          ? `Card answer: ${back || "(empty)"}`
+          : "Card answer: withheld. The student has not flipped this card yet, so you have not been given it. Help them recall it themselves. If they ask for it outright, say you cannot see it and suggest they flip the card.",
         "",
         describeMemoryProfile(cardData),
         ...(relatedCardsText ? ["", relatedCardsText] : []),

@@ -87,11 +87,11 @@ vi.mock("@/services/firebase/admin", () => ({
 
 const { resolveJamiAssistantContext } = await import("@/lib/ai/assistant-context.server");
 
-async function resolveLearn() {
+async function resolveLearn(phase: "question" | "answer" = "question") {
   return resolveJamiAssistantContext({
     uid: "user-1",
     message: "Give me a hint.",
-    context: { surface: "learn", cardId: "card-1", phase: "question" },
+    context: { surface: "learn", cardId: "card-1", phase },
     useRelatedSources: false,
   });
 }
@@ -127,6 +127,39 @@ describe("learn context memory profile", () => {
     expect(text).toContain("Learn phase: question");
     expect(text).toContain("Deck: Biology");
     expect(text).toContain("What is photosynthesis?");
+  });
+});
+
+/**
+ * Before the flip the answer is not sent at all. Instructing the model to
+ * avoid revealing it was never a guarantee, because it held the answer and was
+ * told to hand it over when asked plainly. These tests pin the structural
+ * version: a student cannot extract what the server never sent.
+ */
+describe("the answer is withheld until the card is flipped", () => {
+  it("does not send the answer while the card is face down", async () => {
+    const text = contextText(await resolveLearn("question"));
+
+    expect(text).not.toContain("Converting light energy into chemical energy.");
+    expect(text).toContain("withheld");
+  });
+
+  it("still sends the question, so hints have something to work from", async () => {
+    const text = contextText(await resolveLearn("question"));
+
+    expect(text).toContain("What is photosynthesis?");
+    expect(text).toContain("Learn phase: question");
+  });
+
+  it("tells the tutor what to say when asked for it outright", async () => {
+    expect(contextText(await resolveLearn("question"))).toContain("flip the card");
+  });
+
+  it("sends the answer once the student has flipped", async () => {
+    const text = contextText(await resolveLearn("answer"));
+
+    expect(text).toContain("Converting light energy into chemical energy.");
+    expect(text).not.toContain("withheld");
   });
 });
 
