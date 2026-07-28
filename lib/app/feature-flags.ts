@@ -6,7 +6,7 @@ export type FeatureFlagKey =
 const DEFAULT_FLAGS: Record<FeatureFlagKey, boolean> = {
   enableFolders: true,
   enableMasteryProgress: true,
-  enableFlashcardAi: false,
+  enableFlashcardAi: true,
 };
 
 const ENV_KEYS: Record<FeatureFlagKey, string> = {

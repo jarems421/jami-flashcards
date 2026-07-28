@@ -65,10 +65,10 @@ describe("Jami notebook-first learning foundations", () => {
     expect(card.topicIds).toEqual(["topic-photosynthesis"]);
   });
 
-  it("keeps live workspace flags enabled while flashcard AI stays scoped down", () => {
+  it("keeps the live workspace and flashcard AI flags enabled by default", () => {
     expect(isFeatureEnabled("enableFolders")).toBe(true);
     expect(isFeatureEnabled("enableMasteryProgress")).toBe(true);
-    expect(isFeatureEnabled("enableFlashcardAi")).toBe(false);
+    expect(isFeatureEnabled("enableFlashcardAi")).toBe(true);
   });
 
   it("routes folder deck objects to study while preserving deck detail access", () => {
