@@ -34,11 +34,20 @@ import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
 import AiResponse from "@/components/ai/AiResponse";
 import { JamiSparklesIcon, StudyText } from "@/components/ui";
 
+/**
+ * A chip offered before the conversation starts. Most send a prompt, but a
+ * surface can also offer an action that does something else entirely, such as
+ * drafting flashcards from the source being discussed.
+ */
 export type JamiAssistantQuickAction =
   | string
   | {
       label: string;
       prompt: string;
+    }
+  | {
+      label: string;
+      run: () => void | Promise<void>;
     };
 
 type JamiAssistantDrawerProps = {
@@ -540,11 +549,13 @@ export default function JamiAssistantDrawer({
                 <div className="mt-6 flex flex-wrap justify-center gap-2">
                   {normalizedQuickActions.map((action) => (
                     <button
-                      key={`${action.label}:${action.prompt}`}
+                      key={"prompt" in action ? `${action.label}:${action.prompt}` : action.label}
                       type="button"
                       disabled={loading}
                       className="app-chip rounded-full px-3.5 py-2 text-xs font-medium text-text-secondary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary disabled:cursor-not-allowed disabled:saturate-[0.82]"
-                      onClick={() => void sendMessage(action.prompt)}
+                      onClick={() =>
+                        "prompt" in action ? void sendMessage(action.prompt) : void action.run()
+                      }
                     >
                       {action.label}
                     </button>

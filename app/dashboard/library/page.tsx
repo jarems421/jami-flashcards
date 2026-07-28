@@ -16,6 +16,10 @@ import {
   getGeneratedContentDrafts,
   type GeneratedContentDraft,
 } from "@/services/study/generated-content";
+import {
+  generateSourceDrafts,
+  type SourceDraftKind,
+} from "@/services/ai/source-drafts";
 import { getDecks } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
@@ -100,6 +104,7 @@ export default function LibraryPage() {
   const [loading, setLoading] = useState(true);
   const [showAddSource, setShowAddSource] = useState(false);
   const [feedback, setFeedback] = useState<SourceWorkspaceFeedback | null>(null);
+  const [draftingKind, setDraftingKind] = useState<SourceDraftKind | null>(null);
   const [composerKind, setComposerKind] = useState<SourceComposerKind>("text");
   const [title, setTitle] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
@@ -598,6 +603,44 @@ export default function LibraryPage() {
     setActivePanel("tutor");
   };
 
+  /**
+   * Drafting is offered from inside the Jami drawer rather than as a separate
+   * button, so the student asks for cards in the same place they were already
+   * discussing the source. The route writes the drafts itself, so this reloads
+   * from Firestore and hands straight over to the review panel.
+   */
+  const generateDraftsForSelectedSource = async (kind: SourceDraftKind) => {
+    if (!selectedSource || draftingKind) return;
+
+    setDraftingKind(kind);
+    setFeedback(null);
+    try {
+      const { drafts: created, removedDraftCount } = await generateSourceDrafts({
+        sourceId: selectedSource.id,
+        kind,
+      });
+
+      setDrafts(await getGeneratedContentDrafts(user.uid));
+      setSelectedDraftId(created[0]?.id ?? null);
+      setActivePanel("drafts");
+      setFeedback({
+        type: "success",
+        message:
+          removedDraftCount > 0
+            ? `Drafted ${created.length} for review. ${removedDraftCount} weaker one${removedDraftCount === 1 ? " was" : "s were"} discarded.`
+            : `Drafted ${created.length} for review.`,
+      });
+    } catch (error) {
+      setFeedback({
+        type: "error",
+        message:
+          error instanceof Error ? error.message : "Jami could not generate drafts just now.",
+      });
+    } finally {
+      setDraftingKind(null);
+    }
+  };
+
   const clearFilters = () => {
     setSearchTerm("");
     setFolderFilter("");
@@ -1008,6 +1051,17 @@ export default function LibraryPage() {
           {
             label: "Quiz me",
             prompt: "Quiz me on the most important ideas in this source.",
+          },
+          {
+            label: draftingKind === "flashcard" ? "Drafting flashcards…" : "Draft flashcards",
+            run: () => generateDraftsForSelectedSource("flashcard"),
+          },
+          {
+            label:
+              draftingKind === "practice-question"
+                ? "Drafting questions…"
+                : "Draft practice questions",
+            run: () => generateDraftsForSelectedSource("practice-question"),
           },
         ]}
       />
