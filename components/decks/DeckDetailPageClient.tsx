@@ -672,21 +672,23 @@ export default function DeckDetailPageClient() {
                         maxLength={MAX_BACK_LENGTH}
                         rows={6}
                         disabled={savingCardId === card.id}
+                        action={
+                          featureFlags.enableFlashcardAi ? (
+                            <CardBackAutocomplete
+                              front={editingFront}
+                              currentBack={editingBack}
+                              deckId={deckId}
+                              deckName={deck.name}
+                              topics={editingTopicIds
+                                .map((topicId) => topicsById.get(topicId)?.name)
+                                .filter((name): name is string => Boolean(name))}
+                              topicIds={editingTopicIds}
+                              disabled={savingCardId === card.id}
+                              onApply={setEditingBack}
+                            />
+                          ) : null
+                        }
                       />
-                      {featureFlags.enableFlashcardAi ? (
-                        <CardBackAutocomplete
-                          front={editingFront}
-                          currentBack={editingBack}
-                          deckId={deckId}
-                          deckName={deck.name}
-                          topics={editingTopicIds
-                            .map((topicId) => topicsById.get(topicId)?.name)
-                            .filter((name): name is string => Boolean(name))}
-                          topicIds={editingTopicIds}
-                          disabled={savingCardId === card.id}
-                          onApply={setEditingBack}
-                        />
-                      ) : null}
                       <TopicPicker
                         userId={user.uid}
                         topics={topics}

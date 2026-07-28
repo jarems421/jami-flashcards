@@ -943,21 +943,23 @@ export default function CardsSearchPage() {
                       maxLength={MAX_BACK_LENGTH}
                       rows={6}
                       disabled={savingCardId === card.id}
+                      action={
+                        featureFlags.enableFlashcardAi ? (
+                          <CardBackAutocomplete
+                            front={editingFront}
+                            currentBack={editingBack}
+                            deckId={card.deckId}
+                            deckName={deckNamesById[card.deckId]}
+                            topics={editingTopicIds
+                              .map((topicId) => topicNamesById[topicId])
+                              .filter((name): name is string => Boolean(name))}
+                            topicIds={editingTopicIds}
+                            disabled={savingCardId === card.id}
+                            onApply={setEditingBack}
+                          />
+                        ) : null
+                      }
                     />
-                    {featureFlags.enableFlashcardAi ? (
-                      <CardBackAutocomplete
-                        front={editingFront}
-                        currentBack={editingBack}
-                        deckId={card.deckId}
-                        deckName={deckNamesById[card.deckId]}
-                        topics={editingTopicIds
-                          .map((topicId) => topicNamesById[topicId])
-                          .filter((name): name is string => Boolean(name))}
-                        topicIds={editingTopicIds}
-                        disabled={savingCardId === card.id}
-                        onApply={setEditingBack}
-                      />
-                    ) : null}
                     <TopicPicker
                       userId={user.uid}
                       topics={topics}

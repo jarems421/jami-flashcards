@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { autocompleteCardBack } from "@/services/ai/autocomplete-card";
-import { Button } from "@/components/ui";
+import { JamiSparklesIcon } from "@/components/ui";
 
 type Props = {
   front: string;
@@ -56,37 +56,41 @@ export default function CardBackAutocomplete({
     }
   };
 
+  /*
+   * A single control rather than a titled panel. What it does is evident from
+   * the sparkle, the word, and the field it sits on, and it lives on the Back
+   * label row so it costs no vertical space and never separates the field from
+   * what comes after it.
+   *
+   * Both reasons it can be unavailable are explained on hover rather than in
+   * standing body text: no front yet, or a failed attempt.
+   */
+  const hint = !front.trim()
+    ? "Write the front first, then Jami can draft the answer."
+    : "Draft this answer with Jami. You can edit it before saving.";
+
   return (
-    <div className="app-subtle-panel rounded-[1.4rem] p-3">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <div className="text-sm font-semibold text-text-primary">Draft the answer with AI</div>
-          <div className="mt-0.5 text-xs leading-5 text-text-muted">
-            Jami can draft a concise back for this card. You can still edit it before saving.
-          </div>
-        </div>
-        <div className="flex sm:items-center">
-          <Button
-            type="button"
-            variant="secondary"
-            size="sm"
-            disabled={!canDraft}
-            onClick={() => void handleDraft()}
-          >
-            {loading ? "Drafting..." : "Draft answer"}
-          </Button>
-        </div>
-      </div>
+    <div className="flex min-w-0 items-center justify-end gap-2">
       {error ? (
-        <div className="app-danger mt-2 rounded-[1rem] px-3 py-2 text-xs font-medium" role="alert">
+        <span
+          role="alert"
+          className="min-w-0 truncate text-xs font-medium text-[var(--color-error-text)]"
+          title={error}
+        >
           {error}
-        </div>
+        </span>
       ) : null}
-      {!front.trim() ? (
-        <div className="mt-2 text-xs text-text-muted">
-          Add the front of the card first, then AI can help write the answer.
-        </div>
-      ) : null}
+      <button
+        type="button"
+        disabled={!canDraft}
+        onClick={() => void handleDraft()}
+        title={error ?? hint}
+        aria-label={hint}
+        className="inline-flex shrink-0 items-center gap-1.5 rounded-full px-2.5 py-1.5 text-xs font-semibold text-text-muted transition duration-fast hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:opacity-45 disabled:hover:bg-transparent disabled:hover:text-text-muted"
+      >
+        <JamiSparklesIcon className="h-3.5 w-3.5" />
+        {loading ? "Drafting…" : "Draft"}
+      </button>
     </div>
   );
 }
