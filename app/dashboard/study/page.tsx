@@ -1535,8 +1535,9 @@ export default function StudyPage() {
     };
   }, [current, flipped]);
 
-  // Before the flip Jami must not give the answer away, so the offered actions
-  // are recall aids; afterwards they shift to understanding it.
+  // Openers so the input is not blank, not a hint ladder. Keeping the answer
+  // back before the flip is handled server-side, where it is actually
+  // enforceable, rather than by asking politely through a chip.
   const learnAssistantQuickActions = useMemo(
     () =>
       flipped
@@ -1549,13 +1550,10 @@ export default function StudyPage() {
             },
           ]
         : [
+            { label: "Nudge me", prompt: "Nudge me towards this without giving it away." },
             {
-              label: "Gentle clue",
-              prompt: "Give me a gentle clue without revealing the answer.",
-            },
-            {
-              label: "Stronger clue",
-              prompt: "Give me a stronger clue, but do not reveal the answer directly.",
+              label: "Break it down",
+              prompt: "What is this question actually asking? Break it down for me.",
             },
             {
               label: "Quiz my thinking",
@@ -2333,25 +2331,33 @@ export default function StudyPage() {
                         <span>cards remaining</span>
                       </div>
                     </div>
-                    <div className="min-w-[10rem] lg:min-w-[12rem]">
-                      <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
-                        <span>Progress</span>
-                        <span className="tabular-nums">{progressPercent}%</span>
+                    {/*
+                      The grid has two columns, so progress and the Jami button
+                      share the second one. As separate children the button
+                      became a third grid item, wrapped to its own row and
+                      stretched to a full-width bar.
+                    */}
+                    <div className="flex items-end gap-2.5">
+                      <div className="min-w-[10rem] flex-1 lg:min-w-[12rem] lg:flex-none">
+                        <div className="mb-2 flex items-center justify-between gap-3 text-xs font-semibold text-text-muted">
+                          <span>Progress</span>
+                          <span className="tabular-nums">{progressPercent}%</span>
+                        </div>
+                        <ProgressBar progress={progressPercent} />
                       </div>
-                      <ProgressBar progress={progressPercent} />
+                      <button
+                        type="button"
+                        title="Ask Jami about this card"
+                        aria-label="Ask Jami about this card"
+                        aria-haspopup="dialog"
+                        aria-expanded={jamiAssistantOpen}
+                        onClick={() => setJamiAssistantOpen(true)}
+                        className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-xs font-semibold text-text-secondary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                      >
+                        <JamiSparklesIcon className="h-3.5 w-3.5" />
+                        Jami
+                      </button>
                     </div>
-                    <Button
-                      type="button"
-                      variant="secondary"
-                      size="sm"
-                      className="shrink-0 gap-2"
-                      aria-haspopup="dialog"
-                      aria-expanded={jamiAssistantOpen}
-                      onClick={() => setJamiAssistantOpen(true)}
-                    >
-                      <JamiSparklesIcon className="h-4 w-4" />
-                      Ask Jami
-                    </Button>
                   </div>
 
                   <JamiAssistantDrawer
@@ -2363,6 +2369,11 @@ export default function StudyPage() {
                     historyContextLabel={`Flashcard · ${current.front.slice(0, 72)}`}
                     getContext={getLearnAssistantContext}
                     quickActions={learnAssistantQuickActions}
+                    emptyStateNote={
+                      flipped
+                        ? undefined
+                        : "Jami cannot see this card's answer until you flip it, so it can nudge you towards it but never hand it over."
+                    }
                   />
                   <div className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-[2rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
                     <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
