@@ -23,6 +23,8 @@ export async function generateSourceDrafts(input: {
   sourceId: string;
   kind: SourceDraftKind;
   count?: number;
+  /** Recent tutor conversation about this source, to steer what gets drafted. */
+  focus?: string;
 }) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
