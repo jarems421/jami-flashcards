@@ -659,6 +659,7 @@ export default function CardsSearchPage() {
       <CardCreationPanel
         userId={user.uid}
         decks={decks}
+        decksLoading={loading}
         existingCards={cards}
         topics={topics}
         onTopicsChange={setTopics}
@@ -671,9 +672,11 @@ export default function CardsSearchPage() {
           <div>
             <div className="text-lg font-semibold text-text-primary">Browse cards</div>
             <p className="mt-0.5 text-sm text-text-muted">
-              {shouldShowCardResults
-                ? `${filtered.length} matching card${filtered.length === 1 ? "" : "s"}`
-                : `${cards.length} card${cards.length === 1 ? "" : "s"}`}
+              {loading
+                ? "Loading cards..."
+                : shouldShowCardResults
+                  ? `${filtered.length} matching card${filtered.length === 1 ? "" : "s"}`
+                  : `${cards.length} card${cards.length === 1 ? "" : "s"}`}
             </p>
           </div>
           <div className="grid gap-2 sm:flex sm:flex-wrap sm:justify-end">
