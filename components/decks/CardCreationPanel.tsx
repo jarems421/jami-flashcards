@@ -459,6 +459,34 @@ export default function CardCreationPanel({
               ) : null}
             </div>
           </div>
+
+          {/*
+            Card text is written as LaTeX now, both by hand and by the AI draft,
+            and a textarea can only ever show the source. Without this the only
+            way to find out what "$\frac{a}{b}$" becomes is to save the card and
+            go and study it.
+          */}
+          {singleFront.trim() || singleBack.trim() ? (
+            <div className="app-subtle-panel rounded-[1.25rem] p-4">
+              <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
+                Preview
+              </div>
+              <div className="mt-3 space-y-2">
+                <StudyText
+                  as="div"
+                  text={singleFront}
+                  className="whitespace-pre-wrap text-sm font-medium leading-6 text-text-primary"
+                />
+                {singleBack.trim() ? (
+                  <StudyText
+                    as="div"
+                    text={singleBack}
+                    className="whitespace-pre-wrap border-t border-[var(--color-border)] pt-2 text-sm leading-6 text-text-secondary"
+                  />
+                ) : null}
+              </div>
+            </div>
+          ) : null}
           <details className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3">
             <summary className="cursor-pointer text-sm font-medium text-text-secondary">
               Topics <span className="font-normal text-text-muted">(optional)</span>
