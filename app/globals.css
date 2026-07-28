@@ -258,6 +258,83 @@
     --shadow-bubble: 0 18px 34px rgba(7, 3, 13, 0.24);
   }
 
+  /*
+   * Pink: the warm counterpart to purple. Kept dark rather than a pastel light
+   * theme so it sits alongside the other dark options, and the accent is a rose
+   * that stays legible on near-black rather than washing out.
+   */
+  html.app-theme-pink,
+  body.app-theme-pink {
+    --color-surface-base: #170610;
+    --color-surface-raised: #200b18;
+    --color-surface-overlay: #331127;
+    --color-surface-panel: rgba(40, 14, 30, 0.9);
+    --color-surface-panel-strong: rgba(27, 9, 20, 0.95);
+    --color-glass-subtle: rgba(255, 205, 230, 0.055);
+    --color-glass-medium: rgba(255, 205, 230, 0.095);
+    --color-glass-strong: rgba(255, 205, 230, 0.16);
+    --color-accent: #f07fb0;
+    --color-accent-hover: #ff9bc4;
+    --color-accent-muted: rgba(240, 127, 176, 0.22);
+    --color-success-text: #dffcf7;
+    --color-error-text: #ffe7f2;
+    --color-warning-text: #fff1dc;
+    --color-warm-glow: rgba(255, 176, 210, 0.12);
+    --color-warm-border: rgba(255, 176, 210, 0.28);
+    --color-warm-accent: #ffc2da;
+    --color-text-primary: #fff7fb;
+    --color-text-secondary: #ffeef6;
+    --color-text-muted: #e3bccf;
+    --color-text-inverse: #220a16;
+    --color-field-bg: rgba(20, 7, 14, 0.78);
+    --color-field-text: #fff7fb;
+    --color-field-placeholder: #e3bccf;
+    --color-field-border: rgba(255, 219, 236, 0.24);
+    --color-chip-bg: rgba(255, 255, 255, 0.085);
+    --color-chip-text: #ffeef6;
+    --color-chip-border: rgba(255, 219, 236, 0.18);
+    --color-selected-bg: rgba(255, 194, 218, 0.24);
+    --color-selected-text: #fff7fb;
+    --color-selected-border: rgba(255, 219, 236, 0.36);
+    --color-border: rgba(247, 200, 222, 0.15);
+    --color-border-strong: rgba(255, 219, 236, 0.24);
+    --app-background: var(--color-surface-base);
+    --app-overlay: transparent;
+    --gradient-card: linear-gradient(160deg, rgba(48, 17, 35, 0.97) 0%, rgba(59, 20, 43, 0.93) 52%, rgba(27, 9, 20, 0.98) 100%);
+    --topbar-bg: linear-gradient(180deg, rgba(44, 15, 32, 0.9), rgba(22, 8, 16, 0.84));
+    --topbar-border: rgba(252, 208, 230, 0.13);
+    --topbar-shadow: 0 18px 38px rgba(12, 3, 8, 0.34);
+    --nav-shell-bg: linear-gradient(180deg, rgba(44, 15, 32, 0.93), rgba(19, 6, 13, 0.96));
+    --nav-shell-border: rgba(252, 208, 230, 0.13);
+    --nav-shell-shadow: 0 22px 44px rgba(12, 3, 8, 0.38);
+    --nav-hover-bg: rgba(255, 205, 230, 0.055);
+    --nav-active-bg: linear-gradient(135deg, rgba(240, 127, 176, 0.2), rgba(255, 205, 230, 0.075));
+    --nav-active-border: rgba(255, 194, 218, 0.34);
+    --nav-active-text: #fff7fb;
+    --button-primary-bg: linear-gradient(180deg, #f07fb0 0%, #d1568e 100%);
+    --button-primary-bg-hover: linear-gradient(180deg, #ff9bc4 0%, #e0679d 100%);
+    --button-primary-text: #ffffff;
+    --button-primary-shadow: 0 14px 26px rgba(209, 86, 142, 0.26);
+    --button-primary-shadow-hover: 0 18px 32px rgba(209, 86, 142, 0.34);
+    --button-secondary-bg: linear-gradient(180deg, rgba(255, 226, 240, 0.18), rgba(255, 226, 240, 0.1));
+    --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 226, 240, 0.26), rgba(255, 226, 240, 0.13));
+    --button-secondary-border: rgba(255, 226, 240, 0.24);
+    --button-secondary-border-hover: rgba(255, 226, 240, 0.36);
+    --button-secondary-text: var(--color-text-primary);
+    --button-surface-bg: linear-gradient(180deg, rgba(45, 16, 33, 0.94), rgba(25, 9, 18, 0.94));
+    --button-surface-bg-hover: linear-gradient(180deg, rgba(56, 20, 41, 0.96), rgba(32, 11, 23, 0.96));
+    --button-surface-border: rgba(255, 226, 240, 0.24);
+    --button-surface-border-hover: rgba(255, 226, 240, 0.36);
+    --button-warm-bg: linear-gradient(180deg, #fffafc 0%, #ffe9f2 48%, #ffc2da 100%);
+    --button-warm-bg-hover: linear-gradient(180deg, #ffffff 0%, #fff0f6 48%, #ffd2e5 100%);
+    --button-warm-border: rgba(255, 255, 255, 0.24);
+    --button-warm-border-hover: rgba(255, 255, 255, 0.32);
+    --button-warm-text: #220a16;
+    --shadow-card: 0 18px 34px rgba(12, 3, 8, 0.24);
+    --shadow-shell: 0 20px 38px rgba(12, 3, 8, 0.28);
+    --shadow-bubble: 0 18px 34px rgba(12, 3, 8, 0.24);
+  }
+
   html.app-theme-paper-white,
   body.app-theme-paper-white {
     --color-surface-base: #f8f7fb;
@@ -412,6 +489,90 @@
     --shadow-card: 0 18px 34px rgba(0, 0, 0, 0.24);
     --shadow-shell: 0 20px 38px rgba(0, 0, 0, 0.28);
     --shadow-bubble: 0 18px 34px rgba(0, 0, 0, 0.24);
+  }
+
+  /*
+   * Black: true #000 base so OLED pixels switch off, which Grey deliberately
+   * does not do. Panels lift to near-black greys rather than staying flat, or
+   * every surface boundary would disappear. Shadows are near-useless on black,
+   * so separation comes from borders being a touch brighter than Grey's.
+   */
+  html.app-theme-black,
+  body.app-theme-black {
+    --color-surface-base: #000000;
+    --color-surface-raised: #0c0c0c;
+    --color-surface-overlay: #161616;
+    --color-surface-panel: rgba(16, 16, 16, 0.92);
+    --color-surface-panel-strong: rgba(8, 8, 8, 0.96);
+    --color-glass-subtle: rgba(255, 255, 255, 0.05);
+    --color-glass-medium: rgba(255, 255, 255, 0.085);
+    --color-glass-strong: rgba(255, 255, 255, 0.15);
+    --color-accent: #b4b4b4;
+    --color-accent-hover: #d6d6d6;
+    --color-accent-muted: rgba(214, 214, 214, 0.18);
+    --color-success-text: #dffcf7;
+    --color-error-text: #ffe7f2;
+    --color-warning-text: #fff1dc;
+    --color-warm-glow: rgba(224, 224, 224, 0.1);
+    --color-warm-border: rgba(228, 228, 228, 0.24);
+    --color-warm-accent: #e8e8e8;
+    --color-text-primary: #ffffff;
+    --color-text-secondary: #f2f2f2;
+    --color-text-muted: #cccccc;
+    --color-text-inverse: #000000;
+    --color-field-bg: rgba(10, 10, 10, 0.82);
+    --color-field-text: #ffffff;
+    --color-field-placeholder: #cccccc;
+    --color-field-border: rgba(255, 255, 255, 0.24);
+    --color-chip-bg: rgba(255, 255, 255, 0.08);
+    --color-chip-text: #f2f2f2;
+    --color-chip-border: rgba(255, 255, 255, 0.2);
+    --color-selected-bg: rgba(255, 255, 255, 0.18);
+    --color-selected-text: #ffffff;
+    --color-selected-border: rgba(255, 255, 255, 0.34);
+    --color-border: rgba(255, 255, 255, 0.16);
+    --color-border-strong: rgba(255, 255, 255, 0.26);
+    --app-background: var(--color-surface-base);
+    --app-overlay: transparent;
+    --gradient-card: linear-gradient(160deg, rgba(20, 20, 20, 0.97) 0%, rgba(14, 14, 14, 0.95) 54%, rgba(5, 5, 5, 0.98) 100%);
+    --topbar-bg: linear-gradient(180deg, rgba(16, 16, 16, 0.9), rgba(0, 0, 0, 0.86));
+    --topbar-border: rgba(255, 255, 255, 0.16);
+    --topbar-shadow: 0 18px 38px rgba(0, 0, 0, 0.5);
+    --nav-shell-bg: linear-gradient(180deg, rgba(15, 15, 15, 0.95), rgba(0, 0, 0, 0.98));
+    --nav-shell-border: rgba(255, 255, 255, 0.16);
+    --nav-shell-shadow: 0 22px 44px rgba(0, 0, 0, 0.55);
+    --nav-hover-bg: rgba(255, 255, 255, 0.06);
+    --nav-active-bg: linear-gradient(135deg, rgba(255, 255, 255, 0.15), rgba(224, 224, 224, 0.07));
+    --nav-active-border: rgba(255, 255, 255, 0.32);
+    --nav-active-text: #ffffff;
+    --button-primary-bg: linear-gradient(180deg, #e8e8e8 0%, #b4b4b4 100%);
+    --button-primary-bg-hover: linear-gradient(180deg, #ffffff 0%, #cccccc 100%);
+    --button-primary-text: #000000;
+    --button-primary-shadow: 0 14px 26px rgba(0, 0, 0, 0.5);
+    --button-primary-shadow-hover: 0 18px 32px rgba(0, 0, 0, 0.6);
+    --button-secondary-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.18), rgba(255, 255, 255, 0.1));
+    --button-secondary-bg-hover: linear-gradient(180deg, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.14));
+    --button-secondary-border: rgba(255, 255, 255, 0.28);
+    --button-secondary-border-hover: rgba(255, 255, 255, 0.38);
+    --button-secondary-text: var(--color-text-primary);
+    --button-secondary-shadow: 0 10px 20px rgba(0, 0, 0, 0.4);
+    --button-secondary-shadow-hover: 0 14px 26px rgba(0, 0, 0, 0.5);
+    --button-surface-bg: linear-gradient(180deg, rgba(18, 18, 18, 0.95), rgba(6, 6, 6, 0.95));
+    --button-surface-bg-hover: linear-gradient(180deg, rgba(26, 26, 26, 0.97), rgba(12, 12, 12, 0.97));
+    --button-surface-border: rgba(255, 255, 255, 0.26);
+    --button-surface-border-hover: rgba(255, 255, 255, 0.36);
+    --button-warm-bg: linear-gradient(180deg, #ffffff 0%, #dcdcdc 100%);
+    --button-warm-bg-hover: linear-gradient(180deg, #ffffff 0%, #ececec 100%);
+    --button-warm-border: rgba(255, 255, 255, 0.28);
+    --button-warm-border-hover: rgba(255, 255, 255, 0.36);
+    --button-warm-text: #000000;
+    --button-ghost-bg-hover: rgba(255, 255, 255, 0.09);
+    --button-disabled-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.07));
+    --button-disabled-border: rgba(255, 255, 255, 0.24);
+    --button-disabled-text: #dcdcdc;
+    --shadow-card: 0 18px 34px rgba(0, 0, 0, 0.5);
+    --shadow-shell: 0 20px 38px rgba(0, 0, 0, 0.55);
+    --shadow-bubble: 0 18px 34px rgba(0, 0, 0, 0.5);
   }
 
   button,

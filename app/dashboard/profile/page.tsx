@@ -42,33 +42,61 @@ function ThemePreferenceCard() {
         title="Theme"
         description="Choose the app look on this device. This changes the whole shell, not your study data."
       />
-      <div className="mt-5 flex flex-wrap gap-3">
+      {/*
+        Read as a palette rather than a list of settings: the swatch is the
+        content, the name labels it, and the description moves to the button's
+        title and accessible name so screen readers keep it without the grid
+        turning into a wall of text at six options.
+      */}
+      <div
+        role="radiogroup"
+        aria-label="App theme"
+        className="mt-5 grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6"
+      >
         {APP_THEME_OPTIONS.map((option) => {
           const active = selectedTheme === option.value;
           return (
             <button
               key={option.value}
               type="button"
+              role="radio"
+              aria-checked={active}
+              title={option.description}
+              aria-label={`${option.label}. ${option.description}`}
               onClick={() => handleSelectTheme(option.value)}
-              className={`flex min-w-[8rem] items-center gap-3 rounded-[1.15rem] p-3 text-left transition duration-fast ${
-                active
-                  ? "app-selected"
-                  : "app-chip hover:border-border-strong hover:bg-[var(--color-glass-medium)]"
-              }`}
-              aria-pressed={active}
+              className="group flex flex-col items-center gap-2 rounded-[1.15rem] p-1.5 outline-none transition duration-fast focus-visible:ring-2 focus-visible:ring-accent/45"
             >
               <span
-                className={`h-11 w-11 shrink-0 rounded-full border shadow-[0_10px_24px_rgba(4,8,18,0.18)] ${
-                  active ? "border-[var(--color-selected-border)]" : "border-[var(--color-chip-border)]"
+                className={`relative grid aspect-square w-full max-w-[4.5rem] place-items-center rounded-full border-2 transition duration-fast ${
+                  active
+                    ? "border-[var(--color-accent)] shadow-[0_0_0_4px_var(--color-accent-muted)]"
+                    : "border-[var(--color-border)] group-hover:border-border-strong"
                 }`}
                 style={{ backgroundImage: option.preview }}
                 aria-hidden="true"
-              />
-              <span className="min-w-0">
-                <span className="block text-sm font-semibold text-text-primary">{option.label}</span>
-                <span className="mt-0.5 block text-xs leading-5 text-text-muted">
-                  {option.description}
-                </span>
+              >
+                {active ? (
+                  <svg
+                    viewBox="0 0 20 20"
+                    fill="none"
+                    className="h-5 w-5 drop-shadow-[0_1px_2px_rgba(0,0,0,0.55)]"
+                  >
+                    <path
+                      d="m5 10.5 3.4 3.4L15 7.2"
+                      stroke="#ffffff"
+                      strokeWidth="2.2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    />
+                  </svg>
+                ) : null}
+              </span>
+              <span
+                className={`text-center text-xs font-semibold leading-4 transition duration-fast ${
+                  active ? "text-text-primary" : "text-text-muted group-hover:text-text-primary"
+                }`}
+              >
+                {option.label}
               </span>
             </button>
           );

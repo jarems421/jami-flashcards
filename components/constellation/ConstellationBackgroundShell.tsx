@@ -120,8 +120,10 @@ export default function ConstellationBackgroundShell({
     for (const target of themeTargets) {
       target.classList.toggle("app-theme-normal", appTheme === "normal");
       target.classList.toggle("app-theme-purple", appTheme === "purple");
+      target.classList.toggle("app-theme-pink", appTheme === "pink");
       target.classList.toggle("app-theme-paper-white", appTheme === "paper-white");
       target.classList.toggle("app-theme-soft-grey", appTheme === "soft-grey");
+      target.classList.toggle("app-theme-black", appTheme === "black");
     }
 
     return () => {
@@ -129,9 +131,13 @@ export default function ConstellationBackgroundShell({
         target.classList.remove(
           "app-theme-normal",
           "app-theme-purple",
+          // Retired, but still removed so a stale class from an older session
+          // cannot linger on the element.
           "app-theme-purple-pink",
+          "app-theme-pink",
           "app-theme-paper-white",
-          "app-theme-soft-grey"
+          "app-theme-soft-grey",
+          "app-theme-black"
         );
       }
     };

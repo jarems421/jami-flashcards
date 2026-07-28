@@ -7,8 +7,10 @@ export const APP_THEME_EVENT = "jami-app-theme-change";
 export type AppThemePreference =
   | "normal"
   | "purple"
+  | "pink"
   | "paper-white"
-  | "soft-grey";
+  | "soft-grey"
+  | "black";
 
 export const APP_THEME_OPTIONS: Array<{
   value: AppThemePreference;
@@ -29,6 +31,12 @@ export const APP_THEME_OPTIONS: Array<{
     preview: "linear-gradient(135deg,#160822 0%,#2b1540 50%,#09050f 100%)",
   },
   {
+    value: "pink",
+    label: "Pink",
+    description: "A warm rose-tinted dark.",
+    preview: "linear-gradient(135deg,#1f0a17 0%,#3d1330 50%,#12060f 100%)",
+  },
+  {
     value: "paper-white",
     label: "White",
     description: "A clean pale study desk.",
@@ -40,18 +48,29 @@ export const APP_THEME_OPTIONS: Array<{
     description: "A darker neutral workspace.",
     preview: "linear-gradient(135deg,#2b2b2b 0%,#1d1d1d 54%,#0f0f0f 100%)",
   },
+  {
+    value: "black",
+    label: "Black",
+    description: "True black for OLED screens.",
+    preview: "linear-gradient(135deg,#0a0a0a 0%,#000000 54%,#000000 100%)",
+  },
 ];
 
 function isAppThemePreference(value: unknown): value is AppThemePreference {
   return (
     value === "normal" ||
     value === "purple" ||
+    value === "pink" ||
     value === "paper-white" ||
-    value === "soft-grey"
+    value === "soft-grey" ||
+    value === "black"
   );
 }
 
 function normalizeAppThemePreference(value: unknown): AppThemePreference | null {
+  // The old purple-pink theme was folded into purple before a distinct pink
+  // existed. Keep sending it to purple: anyone still on it chose that look,
+  // not the new pink.
   if (value === "purple-pink") return "purple";
   if (isAppThemePreference(value)) return value;
   return null;
