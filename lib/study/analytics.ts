@@ -219,6 +219,11 @@ export function buildSpacedRepetitionAnalytics(
 
   let overdueDaysTotal = 0;
 
+  // A card is late once a whole study day has passed without it, not the moment
+  // its due time slips by: a card due this morning is still today's work at
+  // lunchtime. This matches the deck-health figures shown beside these numbers.
+  const currentStudyDayStart = getStudyDayStartFromKey(getStudyDayKey(now));
+
   cards.forEach((card) => {
     const risk = getMemoryRiskInfo(card, now);
     if (risk.label === "New") {
@@ -227,7 +232,7 @@ export function buildSpacedRepetitionAnalytics(
       retentionSummary[risk.tier] += 1;
     }
 
-    if (typeof card.dueDate === "number" && card.dueDate < now) {
+    if (typeof card.dueDate === "number" && card.dueDate < currentStudyDayStart) {
       retentionSummary.overdue += 1;
       overdueDaysTotal += Math.max(1, Math.ceil((now - card.dueDate) / DAY_MS));
     }

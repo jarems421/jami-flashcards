@@ -155,6 +155,13 @@ export default function JamiAssistantDrawer({
   const [threads, setThreads] = useState<JamiAssistantThread[]>([]);
   const [activeThread, setActiveThread] = useState<JamiAssistantThread | null>(null);
   const [useRelatedSources, setUseRelatedSources] = useState(true);
+  /*
+   * Wide screens have room for the drawer to sit beside the work rather than
+   * over it. Jami is meant to nudge you towards an answer you are looking at,
+   * which does not work if opening it hides the card. Below this the page is
+   * too narrow to show both, so it stays a modal sheet.
+   */
+  const [sidePanel, setSidePanel] = useState(false);
   const drawerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -235,6 +242,14 @@ export default function JamiAssistantDrawer({
   }, [open, refreshThreads]);
 
   useEffect(() => {
+    const query = window.matchMedia("(min-width: 1024px)");
+    const sync = () => setSidePanel(query.matches);
+    sync();
+    query.addEventListener("change", sync);
+    return () => query.removeEventListener("change", sync);
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
 
     restoreFocusRef.current =
@@ -245,7 +260,9 @@ export default function JamiAssistantDrawer({
       if (event.key === "Escape") onOpenChange(false);
     };
 
-    document.body.style.overflow = "hidden";
+    // Only lock the page when the drawer is covering it. As a side panel the
+    // student still needs to scroll the notebook or card it sits next to.
+    if (!sidePanel) document.body.style.overflow = "hidden";
     window.addEventListener("keydown", handleEscape);
     return () => {
       window.cancelAnimationFrame(frame);
@@ -253,7 +270,7 @@ export default function JamiAssistantDrawer({
       document.body.style.overflow = previousBodyOverflow;
       restoreFocusRef.current?.focus();
     };
-  }, [onOpenChange, open]);
+  }, [onOpenChange, open, sidePanel]);
 
   useEffect(() => {
     if (!open) return;
@@ -515,22 +532,43 @@ export default function JamiAssistantDrawer({
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] flex justify-end">
-      <button
-        type="button"
-        aria-label="Close Jami assistant"
-        tabIndex={-1}
-        className="absolute inset-0 bg-black/55 backdrop-blur-[1px]"
-        onClick={() => onOpenChange(false)}
-      />
+    <div
+      className={`fixed inset-0 z-[80] flex justify-end ${
+        sidePanel ? "pointer-events-none" : ""
+      }`}
+    >
+      {sidePanel ? null : (
+        <button
+          type="button"
+          aria-label="Close Jami assistant"
+          tabIndex={-1}
+          className="absolute inset-0 bg-black/55 backdrop-blur-[1px]"
+          onClick={() => onOpenChange(false)}
+        />
+      )}
       <div
         ref={drawerRef}
         data-notebook-text-editor="true"
         role="dialog"
-        aria-modal="true"
+        aria-modal={sidePanel ? undefined : "true"}
         aria-labelledby="jami-assistant-title"
-        className="relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)]"
-        onKeyDown={handleFocusTrap}
+        className="pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)]"
+        /*
+          The panel colour is a few percent translucent, which reads as depth
+          over the scrim but lets the card show through once the scrim is gone.
+          As a side panel it sits on an opaque base so the same colour stays,
+          and the work behind it does not bleed into the conversation.
+        */
+        style={
+          sidePanel
+            ? {
+                backgroundColor: "var(--color-surface-base)",
+                backgroundImage:
+                  "linear-gradient(var(--color-surface-panel-strong), var(--color-surface-panel-strong))",
+              }
+            : undefined
+        }
+        onKeyDown={sidePanel ? undefined : handleFocusTrap}
       >
         <header className="border-b border-[var(--color-border)] px-4 py-3.5 sm:px-5">
           <div className="flex items-center justify-between gap-3">

@@ -78,8 +78,86 @@ export function clampSourceDraftCount(kind: SourceDraftKind, value: unknown) {
   return Math.max(1, Math.min(limit, requested));
 }
 
-export function filterSourceFlashcardDrafts(drafts: GeneratedCardDraft[], maxCount: number) {
-  const seen = new Set<string>();
+/**
+ * The prompt a draft asks, reduced to something two wordings can be compared on.
+ *
+ * Pressing Make twice on the same source asks the model the same thing twice, so
+ * it tends to answer the same way. Comparing on the question alone rather than
+ * the whole draft is deliberate: the same question with a differently worded
+ * answer is still a second copy for the student to read and reject.
+ */
+export function getSourceDraftPromptKey(value: string) {
+  return compact(value);
+}
+
+/**
+ * Words that carry no meaning for telling two questions apart, so "what is the
+ * name of" and "what is another name for" compare as the same question.
+ */
+const PROMPT_STOP_WORDS = new Set([
+  "a", "an", "and", "another", "are", "as", "at", "be", "by", "do", "does", "for",
+  "from", "in", "into", "is", "it", "its", "of", "on", "or", "state", "that",
+  "the", "their", "them", "there", "these", "they", "this", "to", "what", "when",
+  "where", "which", "who", "why", "with", "you", "your",
+]);
+
+function promptTerms(value: string) {
+  return new Set(
+    compact(value)
+      .split(" ")
+      .filter((word) => word.length > 1 && !PROMPT_STOP_WORDS.has(word))
+  );
+}
+
+/**
+ * How near two questions have to be before the second is not worth reviewing.
+ *
+ * Jaccard overlap of the meaningful words. Tuned against real repeats: "main
+ * products" against "key products" scores about 0.71 and is the same card,
+ * while "light-dependent reactions" against "light-independent reactions"
+ * scores about 0.6 and is genuinely a different one.
+ *
+ * Erring towards dropping is safe here in a way it would not be elsewhere: a
+ * draft is only ever discarded because an equivalent one is already sitting in
+ * the review queue, so the concept is still in front of the student.
+ */
+const NEAR_DUPLICATE_THRESHOLD = 0.7;
+
+function isNearDuplicate(candidate: Set<string>, existing: Set<string>) {
+  if (candidate.size === 0 || existing.size === 0) return false;
+
+  let shared = 0;
+  for (const term of candidate) if (existing.has(term)) shared += 1;
+
+  const union = candidate.size + existing.size - shared;
+  return union > 0 && shared / union >= NEAR_DUPLICATE_THRESHOLD;
+}
+
+/** Tracks which questions have been kept, by exact key and by meaning. */
+function createPromptMatcher(existingPromptKeys: readonly string[]) {
+  const keys = new Set(existingPromptKeys);
+  const termSets = existingPromptKeys.map(promptTerms);
+
+  return {
+    seen(prompt: string) {
+      const key = getSourceDraftPromptKey(prompt);
+      if (keys.has(key)) return true;
+      const terms = promptTerms(prompt);
+      return termSets.some((existing) => isNearDuplicate(terms, existing));
+    },
+    remember(prompt: string) {
+      keys.add(getSourceDraftPromptKey(prompt));
+      termSets.push(promptTerms(prompt));
+    },
+  };
+}
+
+export function filterSourceFlashcardDrafts(
+  drafts: GeneratedCardDraft[],
+  maxCount: number,
+  existingPromptKeys: readonly string[] = []
+) {
+  const matcher = createPromptMatcher(existingPromptKeys);
   const safeCount = Math.max(1, Math.min(SOURCE_FLASHCARD_DRAFT_LIMIT, maxCount));
 
   return drafts
@@ -88,16 +166,19 @@ export function filterSourceFlashcardDrafts(drafts: GeneratedCardDraft[], maxCou
       if (isGenericPrompt(draft.front)) return false;
       if (compact(draft.front) === compact(draft.back)) return false;
 
-      const key = `${compact(draft.front)}::${compact(draft.back)}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
+      if (matcher.seen(draft.front)) return false;
+      matcher.remember(draft.front);
       return true;
     })
     .slice(0, safeCount);
 }
 
-export function filterSourceQuestionDrafts(drafts: GeneratedQuestionDraft[], maxCount: number) {
-  const seen = new Set<string>();
+export function filterSourceQuestionDrafts(
+  drafts: GeneratedQuestionDraft[],
+  maxCount: number,
+  existingPromptKeys: readonly string[] = []
+) {
+  const matcher = createPromptMatcher(existingPromptKeys);
   const safeCount = Math.max(1, Math.min(SOURCE_PRACTICE_DRAFT_LIMIT, maxCount));
 
   return drafts
@@ -106,9 +187,8 @@ export function filterSourceQuestionDrafts(drafts: GeneratedQuestionDraft[], max
       if (!isUsefulText(draft.answerText, 1)) return false;
       if (isGenericPrompt(draft.questionText)) return false;
 
-      const key = compact(draft.questionText);
-      if (seen.has(key)) return false;
-      seen.add(key);
+      if (matcher.seen(draft.questionText)) return false;
+      matcher.remember(draft.questionText);
       return true;
     })
     .slice(0, safeCount);

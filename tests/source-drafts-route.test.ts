@@ -17,6 +17,8 @@ import type { NextRequest } from "next/server";
 
 const mocks = vi.hoisted(() => {
   const added: { path: string; data: Record<string, unknown> }[] = [];
+  /** Drafts already awaiting review, which a repeat Make must not duplicate. */
+  const pendingDrafts: Record<string, unknown>[] = [];
 
   const sourceData: Record<string, unknown> = {
     title: "Photosynthesis notes",
@@ -42,10 +44,19 @@ const mocks = vi.hoisted(() => {
       added.push({ path, data });
       return { id: `draft-${added.length}` };
     },
+    where: () => ({
+      get: async () => ({
+        docs: pendingDrafts.map((data, index) => ({
+          id: `pending-${index}`,
+          data: () => data,
+        })),
+      }),
+    }),
   });
 
   return {
     added,
+    pendingDrafts,
     sourceData,
     verifyIdToken: vi.fn(async () => ({ uid: "user-1" })),
     checkBudget: vi.fn(async () => true),
@@ -98,6 +109,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.added.length = 0;
+  mocks.pendingDrafts.length = 0;
   mocks.sourceData.contentText =
     "Plants convert light energy into stored chemical energy.";
   mocks.verifyIdToken.mockResolvedValue({ uid: "user-1" });
@@ -251,6 +263,74 @@ describe("source draft generation", () => {
 
     expect(response.status).toBe(422);
     expect(mocks.added).toHaveLength(0);
+  });
+
+  it("skips drafts that repeat one already awaiting review", async () => {
+    mocks.pendingDrafts.push({
+      kind: "flashcard",
+      contentStatus: "draft",
+      front: "What does photosynthesis convert?",
+      back: "Light into chemical energy, worded differently.",
+    });
+
+    const response = await postDrafts(
+      request({ sourceId: "source-1", kind: "flashcard" })
+    );
+    const body = (await response.json()) as { drafts: { front: string }[] };
+
+    // The model returned both cards again; only the unseen one is kept, and a
+    // differently worded back does not make it a new question.
+    expect(response.status).toBe(200);
+    expect(body.drafts).toHaveLength(1);
+    expect(body.drafts[0].front).toBe("Where does photosynthesis happen?");
+    expect(mocks.added).toHaveLength(1);
+  });
+
+  it("ignores pending drafts of the other kind and reviewed ones", async () => {
+    mocks.pendingDrafts.push(
+      {
+        kind: "practice-question",
+        contentStatus: "draft",
+        questionText: "What does photosynthesis convert?",
+      },
+      {
+        kind: "flashcard",
+        contentStatus: "approved",
+        front: "Where does photosynthesis happen?",
+      }
+    );
+
+    const response = await postDrafts(
+      request({ sourceId: "source-1", kind: "flashcard" })
+    );
+    const body = (await response.json()) as { drafts: unknown[] };
+
+    expect(response.status).toBe(200);
+    expect(body.drafts).toHaveLength(2);
+  });
+
+  it("says so when everything generated was already waiting", async () => {
+    mocks.pendingDrafts.push(
+      {
+        kind: "flashcard",
+        contentStatus: "draft",
+        front: "What does photosynthesis convert?",
+      },
+      {
+        kind: "flashcard",
+        contentStatus: "draft",
+        front: "Where does photosynthesis happen?",
+      }
+    );
+
+    const response = await postDrafts(
+      request({ sourceId: "source-1", kind: "flashcard" })
+    );
+    const body = (await response.json()) as { error: string };
+
+    expect(response.status).toBe(422);
+    expect(mocks.added).toHaveLength(0);
+    expect(body.error).toMatch(/already waiting/i);
   });
 
   it("rejects a request without a source id", async () => {
