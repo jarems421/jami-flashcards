@@ -260,6 +260,9 @@ export default function DecksPage() {
             }
           />
 
+
+        
+        
           <div className="grid gap-4">
             <StatTile label="Decks" value={decks.length} detail="Card sets ready to study." />
             <StatTile label="All cards" value="Open" detail="Search and edit cards across every deck." href="/dashboard/cards" />
