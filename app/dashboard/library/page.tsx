@@ -20,6 +20,10 @@ import {
   generateSourceDrafts,
   type SourceDraftKind,
 } from "@/services/ai/source-drafts";
+import {
+  getJamiAssistantThreadMessages,
+  getJamiAssistantThreads,
+} from "@/services/ai/jami-assistant-history";
 import { getDecks } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks } from "@/services/study/notebooks";
@@ -105,6 +109,8 @@ export default function LibraryPage() {
   const [showAddSource, setShowAddSource] = useState(false);
   const [feedback, setFeedback] = useState<SourceWorkspaceFeedback | null>(null);
   const [draftingKind, setDraftingKind] = useState<SourceDraftKind | null>(null);
+  const [useConversationFocus, setUseConversationFocus] = useState(true);
+  const [sourceThreadId, setSourceThreadId] = useState<string | null>(null);
   const [composerKind, setComposerKind] = useState<SourceComposerKind>("text");
   const [title, setTitle] = useState("");
   const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>([]);
@@ -268,6 +274,23 @@ export default function LibraryPage() {
       ),
     [drafts, selectedSource]
   );
+
+  // What this source has actually produced, as opposed to what is still
+  // waiting. Approved drafts have already become cards or notebook pages.
+  const sourceMadeCounts = useMemo(() => {
+    const approved = drafts.filter(
+      (draft) =>
+        draft.contentStatus === "approved" &&
+        draft.sourceType === "source" &&
+        selectedSource &&
+        draft.sourceId === selectedSource.id
+    );
+
+    return {
+      flashcards: approved.filter((draft) => draft.kind === "flashcard").length,
+      questions: approved.filter((draft) => draft.kind !== "flashcard").length,
+    };
+  }, [drafts, selectedSource]);
   const selectedDraft = useMemo(
     () =>
       sourceDrafts.find((draft) => draft.id === selectedDraftId) ??
@@ -604,20 +627,69 @@ export default function LibraryPage() {
   };
 
   /**
+   * Finds any saved Jami conversation about the selected source, so drafting
+   * can offer to follow it. Threads are already persisted per context, so this
+   * reads them rather than lifting live state out of the drawer.
+   */
+  useEffect(() => {
+    if (!selectedSource) {
+      setSourceThreadId(null);
+      return;
+    }
+
+    let cancelled = false;
+    const contextKey = `sources:${selectedSource.id}`;
+
+    void getJamiAssistantThreads(user.uid)
+      .then((threads) => {
+        if (cancelled) return;
+        const match = threads.find((thread) => thread.contextKey === contextKey);
+        setSourceThreadId(match?.id ?? null);
+      })
+      .catch(() => {
+        // Focus is an enhancement; drafting still works without it.
+        if (!cancelled) setSourceThreadId(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedSource, user.uid]);
+
+  const buildConversationFocus = async () => {
+    if (!sourceThreadId) return "";
+
+    try {
+      const messages = await getJamiAssistantThreadMessages(user.uid, sourceThreadId);
+      return messages
+        .slice(-6)
+        .map((message) => `${message.role === "user" ? "Student" : "Tutor"}: ${message.text}`)
+        .join("\n")
+        .slice(-1_500);
+    } catch {
+      return "";
+    }
+  };
+
+  /**
    * Drafting is offered from inside the Jami drawer rather than as a separate
    * button, so the student asks for cards in the same place they were already
    * discussing the source. The route writes the drafts itself, so this reloads
    * from Firestore and hands straight over to the review panel.
    */
-  const generateDraftsForSelectedSource = async (kind: SourceDraftKind) => {
+  const generateDraftsForSelectedSource = async (kind: SourceDraftKind, count: number) => {
     if (!selectedSource || draftingKind) return;
 
     setDraftingKind(kind);
     setFeedback(null);
     try {
+      const focus =
+        useConversationFocus && sourceThreadId ? await buildConversationFocus() : "";
       const { drafts: created, removedDraftCount } = await generateSourceDrafts({
         sourceId: selectedSource.id,
         kind,
+        count,
+        ...(focus ? { focus } : {}),
       });
 
       setDrafts(await getGeneratedContentDrafts(user.uid));
@@ -1053,15 +1125,10 @@ export default function LibraryPage() {
             prompt: "Quiz me on the most important ideas in this source.",
           },
           {
-            label: draftingKind === "flashcard" ? "Drafting flashcards…" : "Draft flashcards",
-            run: () => generateDraftsForSelectedSource("flashcard"),
-          },
-          {
-            label:
-              draftingKind === "practice-question"
-                ? "Drafting questions…"
-                : "Draft practice questions",
-            run: () => generateDraftsForSelectedSource("practice-question"),
+            // Drafting itself lives in Create from this, which has room for
+            // how much and what to focus on. This only points at it.
+            label: "Make study material",
+            run: () => openWorkspacePanel("drafts"),
           },
         ]}
       />
@@ -1086,6 +1153,12 @@ export default function LibraryPage() {
       <SourceDraftsDrawer
         open={activePanel === "drafts"}
         drafts={sourceDrafts}
+        made={sourceMadeCounts}
+        drafting={draftingKind}
+        conversationFocusAvailable={Boolean(sourceThreadId)}
+        useConversationFocus={useConversationFocus}
+        onUseConversationFocusChange={setUseConversationFocus}
+        onGenerate={(kind, count) => void generateDraftsForSelectedSource(kind, count)}
         selectedDraft={selectedDraft ?? null}
         sourceTitle={selectedSource?.title ?? null}
         topics={topics}
@@ -1414,6 +1487,26 @@ export default function LibraryPage() {
                           className="mr-2 h-4 w-4"
                         />
                         Ask Jami about this
+                      </Button>
+
+                      {/*
+                        A peer to asking, not a shortcut inside it. Understanding
+                        the source and turning it into study material are two
+                        different jobs and now look like it.
+                      */}
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="secondary"
+                        className="min-h-11"
+                        onClick={() => openWorkspacePanel("drafts")}
+                      >
+                        Create from this
+                        {sourceDrafts.length > 0 ? (
+                          <span className="ml-2 rounded-full bg-[var(--color-accent-muted)] px-1.5 py-0.5 text-[0.68rem] font-semibold tabular-nums">
+                            {sourceDrafts.length}
+                          </span>
+                        ) : null}
                       </Button>
 
                       <details

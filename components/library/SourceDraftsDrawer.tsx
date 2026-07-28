@@ -4,14 +4,22 @@ import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { Deck } from "@/services/study/decks";
 import type { GeneratedContentDraft } from "@/services/study/generated-content";
+import type { SourceDraftKind } from "@/services/ai/source-drafts";
 import { FeedbackBanner } from "@/components/ui";
 import SourceDraftEditor from "./SourceDraftEditor";
+import SourceCreatePanel, { type SourceMadeCounts } from "./SourceCreatePanel";
 import { SourceWorkspaceDrawer } from "./SourceWorkspace";
 import type { SourceWorkspaceFeedback } from "./source-workspace-types";
 
 type SourceDraftsDrawerProps = {
   open: boolean;
   drafts: GeneratedContentDraft[];
+  made: SourceMadeCounts;
+  drafting: SourceDraftKind | null;
+  conversationFocusAvailable: boolean;
+  useConversationFocus: boolean;
+  onUseConversationFocusChange: (value: boolean) => void;
+  onGenerate: (kind: SourceDraftKind, count: number) => void;
   selectedDraft: GeneratedContentDraft | null;
   sourceTitle: string | null;
   topics: Topic[];
@@ -33,6 +41,12 @@ type SourceDraftsDrawerProps = {
 export default function SourceDraftsDrawer({
   open,
   drafts,
+  made,
+  drafting,
+  conversationFocusAvailable,
+  useConversationFocus,
+  onUseConversationFocusChange,
+  onGenerate,
   selectedDraft,
   sourceTitle,
   topics,
@@ -52,13 +66,11 @@ export default function SourceDraftsDrawer({
 }: SourceDraftsDrawerProps) {
   return (
     <SourceWorkspaceDrawer
-      open={open && drafts.length > 0}
-      eyebrow="Draft review"
-      title={
-        drafts.length === 1
-          ? "1 draft from this source"
-          : drafts.length + " drafts from this source"
-      }
+      // Opens whether or not drafts exist: this is where making them happens,
+      // not just where finished ones are reviewed.
+      open={open}
+      eyebrow="Study material"
+      title={sourceTitle ? `Create from ${sourceTitle}` : "Create from this source"}
       wide
       onClose={onClose}
     >
@@ -72,9 +84,27 @@ export default function SourceDraftsDrawer({
           />
         ) : null}
 
-        <p className="text-sm leading-6 text-text-muted">
-          Review generated content before it enters Learn or a notebook.
-        </p>
+        <SourceCreatePanel
+          made={made}
+          drafting={drafting}
+          conversationFocusAvailable={conversationFocusAvailable}
+          useConversationFocus={useConversationFocus}
+          onUseConversationFocusChange={onUseConversationFocusChange}
+          onGenerate={onGenerate}
+        />
+
+        {drafts.length === 0 ? (
+          <p className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm leading-6 text-text-muted">
+            Nothing is waiting for review. Anything you make above lands here
+            first, so you can edit it before it reaches Learn or a notebook.
+          </p>
+        ) : null}
+
+        {drafts.length > 0 ? (
+          <div className="text-sm font-semibold text-text-primary">
+            Awaiting review ({drafts.length})
+          </div>
+        ) : null}
 
         <div className="flex gap-2 overflow-x-auto pb-1">
           {drafts.map((draft, index) => {
