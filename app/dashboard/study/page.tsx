@@ -60,12 +60,15 @@ import { getActiveTopics } from "@/services/study/topics";
 import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
 import AppPage from "@/components/layout/AppPage";
+import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
+import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import {
   Button,
   Card as SurfaceCard,
   EmptyState,
   FeedbackBanner,
   Input,
+  JamiSparklesIcon,
   ProgressBar,
   Skeleton,
   StudyText,
@@ -318,6 +321,7 @@ export default function StudyPage() {
   const [loaded, setLoaded] = useState(false);
   const [index, setIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
+  const [jamiAssistantOpen, setJamiAssistantOpen] = useState(false);
   const [savingRating, setSavingRating] = useState<CardRating | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>(createEmptySessionStats());
   const [feedback, setFeedback] = useState<{ type: "error" | "success"; message: string } | null>(null);
@@ -1514,7 +1518,52 @@ export default function StudyPage() {
     if (!current || flipped) return;
     flipTimestampRef.current = Date.now();
     setFlipped(true);
+    // The tutor is told whether the card is flipped, so a drawer left open
+    // across the flip would be answering about the wrong phase.
+    setJamiAssistantOpen(false);
   }, [current, flipped]);
+
+  const getLearnAssistantContext = useCallback(async (): Promise<JamiAssistantContext> => {
+    if (!current) {
+      throw new Error("This flashcard is no longer available.");
+    }
+
+    return {
+      surface: "learn",
+      cardId: current.id,
+      phase: flipped ? "answer" : "question",
+    };
+  }, [current, flipped]);
+
+  // Before the flip Jami must not give the answer away, so the offered actions
+  // are recall aids; afterwards they shift to understanding it.
+  const learnAssistantQuickActions = useMemo(
+    () =>
+      flipped
+        ? [
+            { label: "Explain simply", prompt: "Explain this card simply." },
+            { label: "Give an example", prompt: "Give me a clear example of this idea." },
+            {
+              label: "What might I mix up?",
+              prompt: "What is this commonly confused with, and how can I tell the difference?",
+            },
+          ]
+        : [
+            {
+              label: "Gentle clue",
+              prompt: "Give me a gentle clue without revealing the answer.",
+            },
+            {
+              label: "Stronger clue",
+              prompt: "Give me a stronger clue, but do not reveal the answer directly.",
+            },
+            {
+              label: "Quiz my thinking",
+              prompt: "Ask me one short question that helps me work this out myself.",
+            },
+          ],
+    [flipped]
+  );
 
   const handleRatingRef = useRef(handleRating);
   useEffect(() => {
@@ -2291,7 +2340,30 @@ export default function StudyPage() {
                       </div>
                       <ProgressBar progress={progressPercent} />
                     </div>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      size="sm"
+                      className="shrink-0 gap-2"
+                      aria-haspopup="dialog"
+                      aria-expanded={jamiAssistantOpen}
+                      onClick={() => setJamiAssistantOpen(true)}
+                    >
+                      <JamiSparklesIcon className="h-4 w-4" />
+                      Ask Jami
+                    </Button>
                   </div>
+
+                  <JamiAssistantDrawer
+                    open={jamiAssistantOpen}
+                    onOpenChange={setJamiAssistantOpen}
+                    resetKey={current.id}
+                    contextKey={`learn:${current.id}`}
+                    contextLabel="Current flashcard"
+                    historyContextLabel={`Flashcard · ${current.front.slice(0, 72)}`}
+                    getContext={getLearnAssistantContext}
+                    quickActions={learnAssistantQuickActions}
+                  />
                   <div className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-[2rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
                     <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
                       <div
