@@ -32,6 +32,12 @@ type Feedback = { type: "success" | "error"; message: string };
 type CardCreationPanelProps = {
   userId: string;
   decks: Deck[];
+  /**
+   * An empty `decks` while the page is still fetching is not the same as having
+   * no decks, and telling someone with a deck to "create a deck first" is worse
+   * than saying nothing for a moment.
+   */
+  decksLoading?: boolean;
   existingCards: Card[];
   topics: Topic[];
   onTopicsChange: (topics: Topic[]) => void;
@@ -94,6 +100,7 @@ function ModeButton({
 export default function CardCreationPanel({
   userId,
   decks,
+  decksLoading = false,
   existingCards,
   topics,
   onTopicsChange,
@@ -408,7 +415,7 @@ export default function CardCreationPanel({
         }
       />
 
-      {decks.length === 0 ? (
+      {decks.length === 0 && !decksLoading ? (
         <p className="app-subtle-panel mt-4 rounded-[1.25rem] p-4 text-sm leading-6">
           Create a deck first. Then you can add cards here.
         </p>

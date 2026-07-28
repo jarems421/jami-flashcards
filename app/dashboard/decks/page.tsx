@@ -264,7 +264,15 @@ export default function DecksPage() {
         
         
           <div className="grid gap-4">
-            <StatTile label="Decks" value={decks.length} detail="Card sets ready to study." />
+            {/*
+              The deck list below shows a skeleton while loading, but this tile
+              sat outside it and read a confident "0" until the decks arrived.
+            */}
+            <StatTile
+              label="Decks"
+              value={isLoadingDecks ? "..." : decks.length}
+              detail="Card sets ready to study."
+            />
             <StatTile label="All cards" value="Open" detail="Search and edit cards across every deck." href="/dashboard/cards" />
           </div>
         </div>

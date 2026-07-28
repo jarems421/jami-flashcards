@@ -20,6 +20,7 @@ import type { Topic } from "@/lib/practice/topics";
 import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
 import { computeStudyStreak, type DailyStudyActivity } from "@/lib/study/activity";
 import type { Card as StudyCard } from "@/lib/study/cards";
+import { isCardDue } from "@/lib/study/daily-review";
 import { getStudyDayWindow } from "@/lib/study/day";
 import type { Goal } from "@/lib/study/goals";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
@@ -215,9 +216,7 @@ export default function ProgressPage() {
         const deckCards = cards.filter((card) => card.deckId === deck.id);
         const risks = deckCards.map((card) => getMemoryRiskInfo(card, now));
         const weakCount = risks.filter((risk) => risk.tier === "high").length;
-        const dueCount = deckCards.filter(
-          (card) => typeof card.dueDate === "number" && card.dueDate <= now
-        ).length;
+        const dueCount = deckCards.filter((card) => isCardDue(card, now)).length;
         const overdueCount = deckCards.filter(
           (card) =>
             typeof card.dueDate === "number" &&
@@ -265,9 +264,11 @@ export default function ProgressPage() {
   ).length;
   const selectedHasReviews = selectedActivity.some((entry) => entry.reviewCount > 0);
   const selectedHasTime = selectedActivity.some((entry) => entry.totalDurationMs > 0);
-  const cardsDue = cards.filter(
-    (card) => typeof card.dueDate === "number" && card.dueDate <= Date.now()
-  ).length;
+  // isCardDue is the definition the rest of the app studies by: a card that has
+  // never been reviewed has no dueDate and is due now. Counting only scheduled
+  // cards here made Progress report fewer due cards than Decks and Learn, and
+  // made the overdue figure below equal the total rather than a portion of it.
+  const cardsDue = cards.filter((card) => isCardDue(card, Date.now())).length;
 
   if (!featureFlags.enableMasteryProgress) {
     return (
