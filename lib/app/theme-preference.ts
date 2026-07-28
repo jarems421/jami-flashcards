@@ -33,8 +33,8 @@ export const APP_THEME_OPTIONS: Array<{
   {
     value: "pink",
     label: "Pink",
-    description: "A warm rose-tinted dark.",
-    preview: "linear-gradient(135deg,#1f0a17 0%,#3d1330 50%,#12060f 100%)",
+    description: "Soft blush with hot pink accents.",
+    preview: "linear-gradient(135deg,#fff5fa 0%,#ffd9ec 52%,#f472b6 100%)",
   },
   {
     value: "paper-white",

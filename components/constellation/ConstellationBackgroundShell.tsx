@@ -124,6 +124,14 @@ export default function ConstellationBackgroundShell({
       target.classList.toggle("app-theme-paper-white", appTheme === "paper-white");
       target.classList.toggle("app-theme-soft-grey", appTheme === "soft-grey");
       target.classList.toggle("app-theme-black", appTheme === "black");
+      // Components across the app hard-code white text and white/opacity
+      // backgrounds, which disappear on a pale surface. The fixes for that are
+      // keyed on lightness rather than on one theme's name, so a light theme
+      // cannot be added without them.
+      target.classList.toggle(
+        "app-theme-light",
+        appTheme === "paper-white" || appTheme === "pink"
+      );
     }
 
     return () => {
@@ -137,7 +145,8 @@ export default function ConstellationBackgroundShell({
           "app-theme-pink",
           "app-theme-paper-white",
           "app-theme-soft-grey",
-          "app-theme-black"
+          "app-theme-black",
+          "app-theme-light"
         );
       }
     };
