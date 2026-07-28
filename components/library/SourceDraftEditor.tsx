@@ -13,7 +13,7 @@ import {
   type GeneratedContentDraft,
 } from "@/services/study/generated-content";
 import TopicPicker from "@/components/topics/TopicPicker";
-import { Button, Textarea } from "@/components/ui";
+import { Button, StudyText, Textarea } from "@/components/ui";
 
 export default function SourceDraftEditor({
   draft,
@@ -50,6 +50,21 @@ export default function SourceDraftEditor({
   const [topicIds, setTopicIds] = useState(draft.topicIds);
   const [busy, setBusy] = useState(false);
   const isFlashcard = draft.kind === "flashcard";
+
+  // Mirrors the fields shown above, so the preview always reflects what is
+  // actually being edited rather than a fixed pair.
+  const previewFields = (
+    isFlashcard
+      ? [
+          { label: "Front", value: front },
+          { label: "Back", value: back },
+        ]
+      : [
+          { label: "Question", value: questionText },
+          { label: "Expected answer", value: answerText },
+          { label: "Solution notes", value: solutionText },
+        ]
+  ).filter((field) => field.value.trim());
 
   useEffect(() => {
     setFront(draft.front ?? "");
@@ -103,6 +118,34 @@ export default function SourceDraftEditor({
             />
           </>
         )}
+
+        {/*
+          Drafts arrive written in LaTeX, and a textarea can only show the
+          source. Reviewing a batch means judging whether each one is right,
+          which is impossible while the maths is still "$\frac{a}{b}$".
+        */}
+        {previewFields.length > 0 ? (
+          <div className="app-subtle-panel rounded-[1.25rem] p-4">
+            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
+              Preview
+            </div>
+            <div className="mt-3 space-y-3">
+              {previewFields.map((field) => (
+                <div key={field.label}>
+                  <div className="text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">
+                    {field.label}
+                  </div>
+                  <StudyText
+                    as="div"
+                    text={field.value}
+                    className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text-primary"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         <TopicPicker
           userId={userId}
           topics={topics}
