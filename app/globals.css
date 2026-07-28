@@ -1623,6 +1623,32 @@ body.constellation-background-enabled::before {
   gap: 0.3rem;
 }
 
+/*
+ * Waiting messages animate on change, not continuously. The dots beside them
+ * already carry the "still alive" signal, so a looping bounce on the text
+ * would compete with it and wear thin across a twenty-second wait. This is a
+ * single settle as each new message swaps in.
+ */
+@keyframes ai-waiting-label-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.35rem);
+  }
+  60% {
+    transform: translateY(-0.06rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ai-waiting-label {
+    animation: ai-waiting-label-in 320ms cubic-bezier(0.34, 1.4, 0.64, 1);
+  }
+}
+
 .ai-thinking-dots span {
   height: 0.38rem;
   width: 0.38rem;

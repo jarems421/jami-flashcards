@@ -40,6 +40,20 @@ import { JamiSparklesIcon, StudyText } from "@/components/ui";
  * surface can also offer an action that does something else entirely, such as
  * drafting flashcards from the source being discussed.
  */
+/**
+ * What Jami says while the student waits.
+ *
+ * Escalating by elapsed time rather than cycling at random, so a long wait
+ * reads as progress instead of noise, and nothing claims to be nearly done
+ * before it plausibly is. The last one lands well inside the 45s timeout.
+ */
+const WAITING_LABELS: Array<{ text: string; after: number }> = [
+  { text: "Jami is thinking", after: 0 },
+  { text: "Cooking something up", after: 4_000 },
+  { text: "Still going", after: 9_000 },
+  { text: "Nearly there", after: 18_000 },
+];
+
 export type JamiAssistantQuickAction =
   | string
   | {
@@ -151,6 +165,32 @@ export default function JamiAssistantDrawer({
   const normalizedQuickActions = quickActions.map((action) =>
     typeof action === "string" ? { label: action, prompt: action } : action
   );
+
+  /*
+   * Once the first words arrive there is a streamed assistant message on the
+   * end of the list, so the waiting state has served its purpose.
+   */
+  const answerHasStarted =
+    loading && messages[messages.length - 1]?.role === "assistant";
+
+  const [waitingStage, setWaitingStage] = useState(0);
+
+  useEffect(() => {
+    if (!loading || answerHasStarted) {
+      setWaitingStage(0);
+      return;
+    }
+
+    // Escalates rather than cycling, so the wait reads as progress. Nothing
+    // here claims to be nearly finished before it plausibly is.
+    const timers = WAITING_LABELS.slice(1).map((_, index) =>
+      setTimeout(() => setWaitingStage(index + 1), WAITING_LABELS[index + 1].after)
+    );
+
+    return () => timers.forEach(clearTimeout);
+  }, [answerHasStarted, loading]);
+
+  const waitingLabel = WAITING_LABELS[waitingStage].text;
 
   useEffect(() => {
     if (previousResetKeyRef.current === resetKey) return;
@@ -658,11 +698,19 @@ export default function JamiAssistantDrawer({
                   </div>
                 </div>
               ))}
-              {loading ? (
+              {/*
+                Only shown until the first words arrive. These models think
+                before they write, so there is a silent gap that streaming
+                cannot fill, and once text is streaming the dots would be
+                competing with it.
+              */}
+              {loading && !answerHasStarted ? (
                 <div className="flex justify-start">
                   <div className="app-chip rounded-[1.35rem] rounded-bl-md px-4 py-3 text-sm text-text-muted" role="status">
                     <span className="inline-flex items-center gap-2">
-                      Jami is thinking
+                      <span key={waitingLabel} className="ai-waiting-label inline-block">
+                        {waitingLabel}
+                      </span>
                       <span className="inline-flex gap-1" aria-hidden="true">
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                         <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current [animation-delay:120ms]" />
