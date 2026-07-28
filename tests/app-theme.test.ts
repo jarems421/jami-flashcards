@@ -96,6 +96,51 @@ describe("every theme is actually implemented", () => {
   });
 });
 
+/**
+ * A great many components hard-code white text and white/opacity backgrounds.
+ * On a pale surface those disappear, so globals.css carries a block of fixes
+ * for it. Those fixes are keyed on an app-theme-light class rather than on one
+ * theme's name, because keying them to paper-white meant the next light theme
+ * silently shipped with invisible text.
+ */
+describe("light themes get the fixes that make them legible", () => {
+  const LIGHT_THEMES = ["paper-white", "pink"];
+
+  it("keys the white-text fixes on lightness, not on a single theme", () => {
+    expect(globalsCss).toContain("body.app-theme-light .text-white");
+    expect(globalsCss).toContain('body.app-theme-light [class*="bg-white/"]');
+  });
+
+  it("marks every light theme as light in the background shell", () => {
+    const toggle = backgroundShell
+      .split('"app-theme-light"')[1]
+      ?.split(");")[0];
+
+    for (const theme of LIGHT_THEMES) {
+      expect(toggle, theme).toContain(`"${theme}"`);
+    }
+  });
+
+  it("clears the light class as well when unmounting", () => {
+    expect(backgroundShell.split("classList.remove")[1]).toContain(
+      '"app-theme-light"'
+    );
+  });
+
+  it("gives light themes dark text, so the fixes are actually needed", () => {
+    for (const theme of LIGHT_THEMES) {
+      const primary = themeBlock(theme)
+        ?.split("--color-text-primary:")[1]
+        ?.split(";")[0]
+        ?.trim();
+
+      // Anything starting #f/#e is a pale colour, which on a pale surface
+      // would mean the theme was built inverted.
+      expect(primary, theme).toMatch(/^#[0-6]/);
+    }
+  });
+});
+
 describe("black is a true black, distinct from grey", () => {
   function surfaceBase(theme: string) {
     return themeBlock(theme)

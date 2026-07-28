@@ -69,8 +69,10 @@ describe("theme colour hygiene", () => {
     expect(globals).toContain('body [class*="bg-warm-glow"] .text-warm-accent');
     expect(globals).toContain('body [class*="bg-error-muted"] [class*="text-rose"]');
     expect(globals).toContain('body [class*="bg-success-muted"] [class*="text-emerald"]');
-    expect(globals).toContain('body.app-theme-paper-white [class*="bg-white/"][class*="text-white"]');
-    expect(globals).toContain('body.app-theme-paper-white [class*="bg-accent"].text-white');
+    // Keyed on lightness rather than on paper-white by name, so every light
+    // theme is covered rather than only the first one that existed.
+    expect(globals).toContain('body.app-theme-light [class*="bg-white/"][class*="text-white"]');
+    expect(globals).toContain('body.app-theme-light [class*="bg-accent"].text-white');
     expect(globals).toContain("--button-secondary-text: #101827;");
     expect(globals).toContain("--button-surface-text: #101827;");
     expect(globals).toContain(".study-flashcard-face {");
