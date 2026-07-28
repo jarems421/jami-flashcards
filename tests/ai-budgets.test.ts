@@ -56,24 +56,21 @@ beforeEach(() => {
 });
 
 describe("AI budget configuration", () => {
-  it("covers every route that calls a model", () => {
+  it("covers every route that calls a model, and nothing that no longer exists", () => {
     expect(Object.keys(AI_BUDGETS).sort()).toEqual(
       [
         "assistant",
         "autocompleteCard",
-        "chat",
-        "explain",
         "sourceFlashcardDrafts",
         "sourcePracticeDrafts",
-        "sourceTutorExplain",
       ].sort()
     );
   });
 
-  it("uses the agreed daily allowances for the migrated routes", () => {
-    expect(AI_BUDGETS.chat.dailyRequestLimit).toBe(50);
-    expect(AI_BUDGETS.explain.dailyRequestLimit).toBe(20);
+  it("uses the agreed daily allowances", () => {
+    expect(AI_BUDGETS.assistant.dailyRequestLimit).toBe(40);
     expect(AI_BUDGETS.autocompleteCard.dailyRequestLimit).toBe(40);
+    expect(AI_BUDGETS.sourceFlashcardDrafts.dailyRequestLimit).toBe(10);
   });
 
   it("exposes a token cap for each action", () => {
@@ -85,18 +82,18 @@ describe("AI budget configuration", () => {
 
 describe("checkAiBudget", () => {
   it("allows requests up to the daily limit and refuses the next one", async () => {
-    for (let index = 0; index < AI_BUDGETS.explain.dailyRequestLimit; index += 1) {
-      expect(await checkAiBudget({ uid: "user-1", action: "explain" })).toBe(true);
+    for (let index = 0; index < AI_BUDGETS.sourceFlashcardDrafts.dailyRequestLimit; index += 1) {
+      expect(await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts" })).toBe(true);
     }
 
-    expect(await checkAiBudget({ uid: "user-1", action: "explain" })).toBe(false);
+    expect(await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts" })).toBe(false);
   });
 
   it("cannot be exceeded by concurrent requests", async () => {
-    const limit = AI_BUDGETS.chat.dailyRequestLimit;
+    const limit = AI_BUDGETS.assistant.dailyRequestLimit;
     const results = await Promise.all(
       Array.from({ length: limit + 25 }, () =>
-        checkAiBudget({ uid: "user-1", action: "chat" })
+        checkAiBudget({ uid: "user-1", action: "assistant" })
       )
     );
 
@@ -104,32 +101,32 @@ describe("checkAiBudget", () => {
   });
 
   it("budgets each action separately", async () => {
-    for (let index = 0; index < AI_BUDGETS.explain.dailyRequestLimit; index += 1) {
-      await checkAiBudget({ uid: "user-1", action: "explain" });
+    for (let index = 0; index < AI_BUDGETS.sourceFlashcardDrafts.dailyRequestLimit; index += 1) {
+      await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts" });
     }
 
-    expect(await checkAiBudget({ uid: "user-1", action: "explain" })).toBe(false);
-    expect(await checkAiBudget({ uid: "user-1", action: "chat" })).toBe(true);
+    expect(await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts" })).toBe(false);
+    expect(await checkAiBudget({ uid: "user-1", action: "assistant" })).toBe(true);
   });
 
   it("budgets each user separately", async () => {
-    for (let index = 0; index < AI_BUDGETS.explain.dailyRequestLimit; index += 1) {
-      await checkAiBudget({ uid: "user-1", action: "explain" });
+    for (let index = 0; index < AI_BUDGETS.sourceFlashcardDrafts.dailyRequestLimit; index += 1) {
+      await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts" });
     }
 
-    expect(await checkAiBudget({ uid: "user-1", action: "explain" })).toBe(false);
-    expect(await checkAiBudget({ uid: "user-2", action: "explain" })).toBe(true);
+    expect(await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts" })).toBe(false);
+    expect(await checkAiBudget({ uid: "user-2", action: "sourceFlashcardDrafts" })).toBe(true);
   });
 
   it("resets when the day rolls over", async () => {
     const day = 1_700_000_000_000;
     const nextDay = day + 24 * 60 * 60 * 1000;
 
-    for (let index = 0; index < AI_BUDGETS.explain.dailyRequestLimit; index += 1) {
-      await checkAiBudget({ uid: "user-1", action: "explain", now: day });
+    for (let index = 0; index < AI_BUDGETS.sourceFlashcardDrafts.dailyRequestLimit; index += 1) {
+      await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts", now: day });
     }
 
-    expect(await checkAiBudget({ uid: "user-1", action: "explain", now: day })).toBe(false);
-    expect(await checkAiBudget({ uid: "user-1", action: "explain", now: nextDay })).toBe(true);
+    expect(await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts", now: day })).toBe(false);
+    expect(await checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts", now: nextDay })).toBe(true);
   });
 });
