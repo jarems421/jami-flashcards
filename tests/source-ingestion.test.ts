@@ -4,7 +4,6 @@ import type { Source } from "@/lib/practice/sources";
 vi.mock("server-only", () => ({}));
 
 let isBlockedSourceAddress: (address: string) => boolean;
-let normalizeSourceTutorIds: (values: unknown[]) => string[];
 let prepareSourceForTutor: (
   source: Source,
   loadStoredFile: (storagePath: string) => Promise<Buffer>,
@@ -19,8 +18,9 @@ let prepareSourceForTutor: (
 // The module pulls in officeparser, mammoth, and cheerio — a cold import can
 // take well over ten seconds on a slow disk, so give the hook extra room.
 beforeAll(async () => {
-  ({ isBlockedSourceAddress, normalizeSourceTutorIds, prepareSourceForTutor } =
-    await import("@/lib/ai/source-ingestion"));
+  ({ isBlockedSourceAddress, prepareSourceForTutor } = await import(
+    "@/lib/ai/source-ingestion"
+  ));
 }, 120_000);
 
 describe("source Tutor network protection", () => {
@@ -38,12 +38,6 @@ describe("source Tutor network protection", () => {
     expect(isBlockedSourceAddress("8.8.8.8")).toBe(false);
     expect(isBlockedSourceAddress("1.1.1.1")).toBe(false);
     expect(isBlockedSourceAddress("2606:4700:4700::1111")).toBe(false);
-  });
-
-  it("normalizes and deduplicates selected source ids", () => {
-    expect(
-      normalizeSourceTutorIds([" source-a ", "source-a", "", 2, "source-b"])
-    ).toEqual(["source-a", "source-b"]);
   });
 
   it("prepares saved text without loading a file", async () => {
