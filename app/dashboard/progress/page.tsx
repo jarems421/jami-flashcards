@@ -35,7 +35,8 @@ import {
   type ProgressTimeRange,
 } from "@/lib/study/progress-statistics";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import { ensureStudyStateSetup, loadUserCards } from "@/services/study/daily-review";
+import { ensureStudyStateSetup } from "@/services/study/daily-review";
+import { loadUserCards } from "@/services/study/cards";
 import { getGeneratedContentDrafts, type GeneratedContentDraft } from "@/services/study/generated-content";
 import { loadStudyActivity } from "@/services/study/activity";
 import { getDecks, type Deck } from "@/services/study/decks";

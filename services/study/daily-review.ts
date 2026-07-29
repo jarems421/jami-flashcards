@@ -5,10 +5,8 @@ import {
   doc,
   getDoc,
   getDocs,
-  query,
   runTransaction,
   setDoc,
-  where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
@@ -23,7 +21,7 @@ import {
   STUDY_STATE_META_DOC_ID,
   type DailyReviewState,
 } from "@/lib/study/daily-review";
-import { mapCardData, type Card } from "@/lib/study/cards";
+import type { Card } from "@/lib/study/cards";
 import { getStudyDayKey } from "@/lib/study/day";
 import type { PersistedStudySession } from "@/lib/study/session";
 
@@ -166,18 +164,6 @@ export async function ensureStudyStateSetup(userId: string) {
   } catch (error) {
     console.warn("Study state setup failed; continuing without migration.", error);
   }
-}
-
-export async function loadUserCards(userId: string): Promise<Card[]> {
-  const snapshot = await withTimeout(
-    getDocs(query(collection(db, "cards"), where("userId", "==", userId))),
-    LOAD_MS,
-    "Load study cards"
-  );
-
-  return snapshot.docs.map((cardDoc) =>
-    mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
-  );
 }
 
 export async function loadDailyReviewState(userId: string) {
