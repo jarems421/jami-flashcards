@@ -3,7 +3,6 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { doc, writeBatch } from "firebase/firestore";
 import {
   exportCardsToSeparatedText,
   getCardContentKey,
@@ -29,10 +28,14 @@ import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
 import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
-import { deleteCard, getCardsForDeck, updateCardContent } from "@/services/study/cards";
+import {
+  deleteCard,
+  getCardsForDeck,
+  setCardTopicsInBulk,
+  updateCardContent,
+} from "@/services/study/cards";
 import { getActiveTopics } from "@/services/study/topics";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
-import { db } from "@/services/firebase/client";
 import { getDeckStudyHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {
@@ -371,17 +374,7 @@ export default function DeckDetailPageClient() {
     setFeedback(null);
 
     try {
-      for (let start = 0; start < cardsToUpdate.length; start += 450) {
-        const batch = writeBatch(db);
-        const chunk = cardsToUpdate.slice(start, start + 450);
-        for (const card of chunk) {
-          batch.update(doc(db, "cards", card.id), {
-            topicIds: card.topicIds,
-            tags: [],
-          });
-        }
-        await batch.commit();
-      }
+      await setCardTopicsInBulk(cardsToUpdate);
 
       const topicIdsByCardId = new Map(
         cardsToUpdate.map((card) => [card.id, card.topicIds])
