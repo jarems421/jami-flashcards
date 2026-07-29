@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { doc, updateDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import AppPage from "@/components/layout/AppPage";
@@ -21,9 +20,8 @@ import { buildTopicSummaries } from "@/lib/practice/topic-management";
 import type { Source } from "@/lib/practice/sources";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
 import type { Card as StudyCard } from "@/lib/study/cards";
-import { loadUserCards } from "@/services/study/cards";
+import { loadUserCards, updateCardTopics } from "@/services/study/cards";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import { db } from "@/services/firebase/client";
 import { getDecks, type Deck } from "@/services/study/decks";
 import {
   getGeneratedContentDrafts,
@@ -147,7 +145,7 @@ export default function TopicDetailPage() {
     const topicIds = addOrRemoveTopic(card.topicIds ?? [], topicId, !linked);
     setBusyId(`card:${card.id}`);
     try {
-      await updateDoc(doc(db, "cards", card.id), { topicIds, tags: [] });
+      await updateCardTopics(card.id, topicIds);
       setCards((current) =>
         current.map((item) => (item.id === card.id ? { ...item, topicIds, tags: [] } : item))
       );
