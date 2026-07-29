@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import {
   Button,
@@ -18,6 +18,7 @@ import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { getActiveNotebooks, updateNotebook } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import CreateFolderDialog from "./CreateFolderDialog";
 import FolderObjectCard from "./FolderObjectCard";
 import NotebookEditorDialog from "./NotebookEditorDialog";
@@ -55,35 +56,45 @@ export default function PracticeWorkspace() {
     null
   );
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const loadWorkspace = useCallback(async () => {
-    setLoading(true);
-    setFeedback(null);
-    try {
-      const [nextFolders, nextNotebooks, nextTopics] = await Promise.all([
-        getActiveStudyFolders(user.uid),
-        getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
-        getActiveTopics(user.uid).catch(() => [] as Topic[]),
-      ]);
-      setFolders(nextFolders);
-      setNotebooks(nextNotebooks);
-      setTopics(nextTopics);
-    } catch (error) {
-      console.error(error);
-      setFeedback({
-        type: "error",
-        message: "Failed to load your folders and notebooks.",
-      });
-    } finally {
-      setLoading(false);
-    }
+    const [nextFolders, nextNotebooks, nextTopics] = await Promise.all([
+      getActiveStudyFolders(user.uid),
+      getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
+      getActiveTopics(user.uid).catch(() => [] as Topic[]),
+    ]);
+    return { folders: nextFolders, notebooks: nextNotebooks, topics: nextTopics };
   }, [user.uid]);
 
-  useEffect(() => {
-    void loadWorkspace();
-  }, [loadWorkspace]);
+  const applyWorkspace = useCallback(
+    (data: Awaited<ReturnType<typeof loadWorkspace>>) => {
+      setFolders(data.folders);
+      setNotebooks(data.notebooks);
+      setTopics(data.topics);
+    },
+    []
+  );
+
+  const handleWorkspaceLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setFeedback({
+      type: "error",
+      message: "Failed to load your folders and notebooks.",
+    });
+  }, []);
+
+  const handleWorkspaceLoadStart = useCallback(() => {
+    setFeedback(null);
+  }, []);
+
+  const { loading } = useDashboardData({
+    requestKey: user.uid,
+    load: loadWorkspace,
+    apply: applyWorkspace,
+    onError: handleWorkspaceLoadError,
+    onLoadStart: handleWorkspaceLoadStart,
+  });
 
   const recentNotebooks = useMemo(
     () =>
