@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import AppPage from "@/components/layout/AppPage";
@@ -35,6 +35,7 @@ import {
   getActiveTopics,
   updateTopic,
 } from "@/services/study/topics";
+import { useDashboardData } from "@/hooks/useDashboardData";
 
 type TopicSection = "overview" | "cards" | "notebooks" | "sources" | "drafts";
 
@@ -61,38 +62,51 @@ export default function TopicDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [nextTopics, nextCards, nextDecks, nextNotebooks, nextSources, nextDrafts] =
-        await Promise.all([
-          getActiveTopics(user.uid),
-          loadUserCards(user.uid),
-          getDecks(user.uid),
-          getActiveNotebooks(user.uid),
-          getActiveSources(user.uid),
-          getGeneratedContentDrafts(user.uid),
-        ]);
-      setTopics(nextTopics);
-      setCards(nextCards);
-      setDecks(nextDecks);
-      setNotebooks(nextNotebooks);
-      setSources(nextSources);
-      setDrafts(nextDrafts);
-    } catch (error) {
-      console.error(error);
-      setFeedback({ type: "error", message: "Could not load this Topic." });
-    } finally {
-      setLoading(false);
-    }
+  const loadTopicData = useCallback(async () => {
+    const [nextTopics, nextCards, nextDecks, nextNotebooks, nextSources, nextDrafts] =
+      await Promise.all([
+        getActiveTopics(user.uid),
+        loadUserCards(user.uid),
+        getDecks(user.uid),
+        getActiveNotebooks(user.uid),
+        getActiveSources(user.uid),
+        getGeneratedContentDrafts(user.uid),
+      ]);
+    return {
+      topics: nextTopics,
+      cards: nextCards,
+      decks: nextDecks,
+      notebooks: nextNotebooks,
+      sources: nextSources,
+      drafts: nextDrafts,
+    };
   }, [user.uid]);
 
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+  const applyTopicData = useCallback(
+    (data: Awaited<ReturnType<typeof loadTopicData>>) => {
+      setTopics(data.topics);
+      setCards(data.cards);
+      setDecks(data.decks);
+      setNotebooks(data.notebooks);
+      setSources(data.sources);
+      setDrafts(data.drafts);
+    },
+    []
+  );
+
+  const handleTopicLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setFeedback({ type: "error", message: "Could not load this Topic." });
+  }, []);
+
+  const { loading } = useDashboardData({
+    requestKey: user.uid,
+    load: loadTopicData,
+    apply: applyTopicData,
+    onError: handleTopicLoadError,
+  });
 
   const topic = topics.find((item) => item.id === topicId) ?? null;
   const summary = useMemo(
