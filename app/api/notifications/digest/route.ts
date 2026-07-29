@@ -11,6 +11,7 @@ import {
   isWithinStudyDayBoundaryWindow,
 } from "@/lib/study/day";
 import { mapCardData } from "@/lib/study/cards";
+import { toPushRecord } from "@/lib/app/push-subscriptions";
 import { getAdminDb } from "@/services/firebase/admin";
 import {
   isExpiredPushSubscriptionError,
@@ -34,33 +35,6 @@ function getDigestClaim(data: Record<string, unknown>) {
       typeof data.digestClaimedAt === "number" && Number.isFinite(data.digestClaimedAt)
         ? data.digestClaimedAt
         : null,
-  };
-}
-
-function hasValidSubscription(data: Record<string, unknown>) {
-  return (
-    typeof data.endpoint === "string" &&
-    !!data.endpoint &&
-    typeof data.keys === "object" &&
-    data.keys !== null &&
-    typeof (data.keys as { auth?: unknown }).auth === "string" &&
-    typeof (data.keys as { p256dh?: unknown }).p256dh === "string"
-  );
-}
-
-function toPushRecord(data: Record<string, unknown>) {
-  if (!hasValidSubscription(data)) {
-    return null;
-  }
-
-  return {
-    endpoint: data.endpoint as string,
-    expirationTime:
-      typeof data.expirationTime === "number" ? data.expirationTime : null,
-    keys: {
-      auth: (data.keys as { auth: string }).auth,
-      p256dh: (data.keys as { p256dh: string }).p256dh,
-    },
   };
 }
 

@@ -1,39 +1,13 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
+import { toPushRecord } from "@/lib/app/push-subscriptions";
 import {
   isExpiredPushSubscriptionError,
   sendPushNotification,
 } from "@/services/notifications/web-push";
 
 export const runtime = "nodejs";
-
-function hasValidSubscription(data: Record<string, unknown>) {
-  return (
-    typeof data.endpoint === "string" &&
-    !!data.endpoint &&
-    typeof data.keys === "object" &&
-    data.keys !== null &&
-    typeof (data.keys as { auth?: unknown }).auth === "string" &&
-    typeof (data.keys as { p256dh?: unknown }).p256dh === "string"
-  );
-}
-
-function toPushRecord(data: Record<string, unknown>) {
-  if (!hasValidSubscription(data)) {
-    return null;
-  }
-
-  return {
-    endpoint: data.endpoint as string,
-    expirationTime:
-      typeof data.expirationTime === "number" ? data.expirationTime : null,
-    keys: {
-      auth: (data.keys as { auth: string }).auth,
-      p256dh: (data.keys as { p256dh: string }).p256dh,
-    },
-  };
-}
 
 function getErrorMessage(error: unknown) {
   if (error instanceof Error) {
