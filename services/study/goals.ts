@@ -11,12 +11,23 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { createStarForGoalIfMissing } from "@/services/constellation/stars";
 import {
+  getGoalDisplayName,
   getGoalStatusAtTime,
   getUpdatedGoalAfterAnswer,
   normalizeGoal,
   type Goal,
   type GoalAnswerContext,
 } from "@/lib/study/goals";
+import type { Star } from "@/lib/constellation/stars";
+
+/** A finished goal and the star it earned, for the session to celebrate. */
+export type GoalReward = { star: Star; goalName: string };
+
+export type GoalProgressResult = {
+  completedGoals: number;
+  starsEarned: number;
+  rewards: GoalReward[];
+};
 
 const QUERY_MS = 30_000;
 const UPDATE_MS = 30_000;
@@ -99,6 +110,7 @@ export async function applyGoalProgressForAnswer(
       return {
         completedGoals: 0,
         starsEarned: 0,
+        rewards: [] as GoalReward[],
       };
     }
 
@@ -116,22 +128,29 @@ export async function applyGoalProgressForAnswer(
       return {
         completedGoals: 1,
         starsEarned: createdStar ? 1 : 0,
+        // Carried back so the session can show the star that was actually
+        // written, with its own colour and shape, rather than a stand-in.
+        rewards: createdStar
+          ? [{ star: createdStar, goalName: getGoalDisplayName(updatedGoal) }]
+          : [],
       };
     }
 
     return {
       completedGoals: 0,
       starsEarned: 0,
+      rewards: [] as GoalReward[],
     };
   });
 
   const results = await Promise.all(goalUpdates);
 
-  return results.reduce(
+  return results.reduce<GoalProgressResult>(
     (totals, result) => ({
       completedGoals: totals.completedGoals + result.completedGoals,
       starsEarned: totals.starsEarned + result.starsEarned,
+      rewards: [...totals.rewards, ...result.rewards],
     }),
-    { completedGoals: 0, starsEarned: 0 }
+    { completedGoals: 0, starsEarned: 0, rewards: [] }
   );
 }

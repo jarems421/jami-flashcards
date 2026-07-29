@@ -60,6 +60,9 @@ import { getActiveTopics } from "@/services/study/topics";
 import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
 import AppPage from "@/components/layout/AppPage";
+import StarRewardOverlay, {
+  type StarReward,
+} from "@/components/constellation/StarRewardOverlay";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import {
@@ -160,31 +163,26 @@ function getAnswerFeedback(rating: CardRating, sessionKind: SessionKind, parked:
 }
 
 /**
- * Says so when a review finished a goal.
+ * Says so when a review finished a goal without earning a star.
  *
- * A star was being awarded mid-session with nothing said about it: the card
- * feedback carried on as normal and the reward only turned up later on the
- * Stars page. Folding it into the same line keeps the moment where the student
- * is already looking, and holds it a little longer than a recall note.
+ * A star gets the overlay instead, which shows the star itself. This covers the
+ * quieter case, where a goal completes but the constellation is already full,
+ * so the completion is still acknowledged rather than passing in silence.
  */
 function withGoalReward(
   feedback: AnswerFeedback,
   progress: { completedGoals: number; starsEarned: number }
 ): AnswerFeedback {
-  if (progress.completedGoals <= 0) return feedback;
+  if (progress.completedGoals <= 0 || progress.starsEarned > 0) return feedback;
 
   const goals =
     progress.completedGoals === 1
       ? "Goal complete."
       : `${progress.completedGoals} goals complete.`;
-  const reward =
-    progress.starsEarned > 0
-      ? ` You earned ${progress.starsEarned === 1 ? "a star" : `${progress.starsEarned} stars`}.`
-      : "";
 
   return {
     tone: "good",
-    message: `${feedback.message} ${goals}${reward}`,
+    message: `${feedback.message} ${goals}`,
     holdMs: 5_000,
   };
 }
@@ -361,6 +359,8 @@ export default function StudyPage() {
   const [sessionStats, setSessionStats] = useState<SessionStats>(createEmptySessionStats());
   const [feedback, setFeedback] = useState<{ type: "error" | "success"; message: string } | null>(null);
   const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null);
+  const [starReward, setStarReward] = useState<StarReward | null>(null);
+  const handleStarRewardDone = useCallback(() => setStarReward(null), []);
   const [countdownMs, setCountdownMs] = useState(getMsUntilNextStudyBoundary());
   const [offlineMode, setOfflineMode] = useState(false);
   const [offlineSnapshotAt, setOfflineSnapshotAt] = useState<number | null>(null);
@@ -1544,6 +1544,9 @@ export default function StudyPage() {
           goalProgress
         )
       );
+      // Only the first is shown: finishing two goals on one card is rare, and
+      // stacking overlays would bury the card behind the celebration.
+      if (goalProgress.rewards.length > 0) setStarReward(goalProgress.rewards[0]);
       if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
         requeueCurrentCard(nextCard);
       } else {
@@ -2554,6 +2557,12 @@ export default function StudyPage() {
           ) : null}
         </>
       )}
+      {/*
+        Mounted at the top of the page rather than beside the card: rating a
+        card swaps the card subtree, which was taking the celebration down with
+        it after a few hundred milliseconds.
+      */}
+      <StarRewardOverlay reward={starReward} onDone={handleStarRewardDone} />
     </AppPage>
   );
 }
