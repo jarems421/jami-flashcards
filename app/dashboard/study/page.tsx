@@ -3,9 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { deleteField, doc, increment, updateDoc } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
-import { db } from "@/services/firebase/client";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
   buildDailyReviewQueues,
@@ -20,6 +18,10 @@ import {
 import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
 import type { Card } from "@/lib/study/cards";
+import {
+  buildCardReviewUpdateCommand,
+  hasCardReviewUpdateCommand,
+} from "@/lib/study/card-review";
 import {
   applySimpleStudyResultToCard,
   applySimpleStudyResultToQueue,
@@ -55,6 +57,7 @@ import { ensureDailyReviewState, ensureStudyStateSetup, markDailyReviewCardCompl
 import {
   loadUserCards,
   recordSimpleStudyResult,
+  updateCardAfterReview,
 } from "@/services/study/cards";
 import { syncOfflineStudyReviews } from "@/services/study/offline";
 import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
@@ -1440,24 +1443,12 @@ export default function StudyPage() {
       const isCorrect = isSuccessfulRating(rating);
       const isStruggle = isStruggleRating(rating);
       const schedule = sessionKind === "custom" ? null : updateCardSchedule(current, rating);
-      const cardUpdates: Record<string, unknown> = {};
-      if (schedule) {
-        Object.assign(cardUpdates, schedule);
-        if (isCorrect) {
-          cardUpdates.memoryRiskOverrideDayKey = deleteField();
-        }
-      } else if (isStruggle) {
-        const studyDayKey = getStudyDayKey(now);
-        cardUpdates.lastStruggleAt = now;
-        cardUpdates.lastStruggleStudyDayKey = studyDayKey;
-        cardUpdates.memoryRiskOverrideDayKey = shiftStudyDayKey(studyDayKey, 1);
-        cardUpdates.customStruggleCount = increment(1);
-      }
-      if (isStruggle) {
-        cardUpdates.simpleStudyLastResult = "wrong";
-        cardUpdates.simpleStudyLastReviewedAt = now;
-        cardUpdates.simpleStudyWrongCount = increment(1);
-      }
+      const cardReviewUpdate = buildCardReviewUpdateCommand({
+        schedule,
+        isCorrect,
+        isStruggle,
+        reviewedAt: now,
+      });
 
       const reviewPromise = recordStudyReview(user.uid, now, {
         isCorrect,
@@ -1470,7 +1461,11 @@ export default function StudyPage() {
         folderIds: decks.find((deck) => deck.id === current.deckId)?.folderIds ?? [],
       });
       const remainingPromises: Promise<unknown>[] = [];
-      if (Object.keys(cardUpdates).length > 0) remainingPromises.push(updateDoc(doc(db, "cards", current.id), cardUpdates));
+      if (hasCardReviewUpdateCommand(cardReviewUpdate)) {
+        remainingPromises.push(
+          updateCardAfterReview(current.id, cardReviewUpdate)
+        );
+      }
       let retryResultPromise: Promise<{ attemptCount: number; parked: boolean }> | null = null;
       if (sessionKind === "daily-required" && isStruggle) {
         retryResultPromise = recordDailyReviewWeakAttempt(user.uid, current.id, now);
@@ -1490,7 +1485,9 @@ export default function StudyPage() {
             }
           : null;
       if (parkedRiskUpdates) {
-        await updateDoc(doc(db, "cards", current.id), parkedRiskUpdates);
+        await updateCardAfterReview(current.id, {
+          values: parkedRiskUpdates,
+        });
       }
       const nextCard: Card = {
         ...current,

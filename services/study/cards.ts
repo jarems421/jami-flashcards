@@ -17,8 +17,7 @@ import {
   mapCardData,
   normalizeCardContentInput,
   type Card,
-  type CardReviewCounterUpdates,
-  type CardReviewValueUpdates,
+  type CardReviewUpdateCommand,
   type ImportedCardDraft,
 } from "@/lib/study/cards";
 
@@ -48,12 +47,6 @@ type CardWrite = Pick<
   Card,
   "deckId" | "userId" | "front" | "back" | "tags" | "topicIds" | "createdAt"
 >;
-
-export type CardReviewUpdateCommand = {
-  values?: CardReviewValueUpdates;
-  increments?: CardReviewCounterUpdates;
-  clearMemoryRiskOverrideDayKey?: boolean;
-};
 
 export class CardBatchCreateError extends Error {
   readonly createdCards: Card[];
