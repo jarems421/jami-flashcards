@@ -22,8 +22,8 @@ import type { Card as StudyCard } from "@/lib/study/cards";
 import {
   ensureDailyReviewState,
   ensureStudyStateSetup,
-  loadUserCards,
 } from "@/services/study/daily-review";
+import { loadUserCards } from "@/services/study/cards";
 import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, Card, FeedbackBanner, IconBubble, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";

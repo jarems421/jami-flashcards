@@ -51,7 +51,8 @@ import {
   type StudySessionKind,
   type StudySessionStats,
 } from "@/lib/study/session";
-import { ensureDailyReviewState, ensureStudyStateSetup, loadUserCards, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
+import { ensureDailyReviewState, ensureStudyStateSetup, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
+import { loadUserCards } from "@/services/study/cards";
 import { syncOfflineStudyReviews } from "@/services/study/offline";
 import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
