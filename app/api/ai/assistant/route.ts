@@ -16,7 +16,7 @@ import {
 import {
   JamiAssistantContextError,
   resolveJamiAssistantContext,
-} from "@/lib/ai/assistant-context.server";
+} from "@/services/ai/assistant-context";
 import { checkAiBudget, getAiTokenCap } from "@/services/ai/budgets";
 import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
