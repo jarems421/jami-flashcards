@@ -20,6 +20,7 @@ import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, P
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
+import { useDashboardData } from "@/hooks/useDashboardData";
 
 type Feedback = { type: "success" | "error"; message: string };
 
@@ -30,7 +31,6 @@ export default function DecksPage() {
   const [deckCounts, setDeckCounts] = useState<DeckCounts>({});
   const [name, setName] = useState("");
   const [createFolderId, setCreateFolderId] = useState("");
-  const [isLoadingDecks, setIsLoadingDecks] = useState(true);
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
   const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
   const [editingDeckName, setEditingDeckName] = useState("");
@@ -45,38 +45,47 @@ export default function DecksPage() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const lastForegroundRefreshAtRef = useRef(0);
 
-  const loadAll = useCallback(async () => {
-    setIsLoadingDecks(true);
-    try {
-      const [nextDecks, nextFolders, nextCards] = await Promise.all([
-        getDecks(user.uid),
-        getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
-        loadUserCards(user.uid),
-      ]);
-      const nextCounts = getDeckCardCounts(
+  const loadDeckData = useCallback(async () => {
+    const [nextDecks, nextFolders, nextCards] = await Promise.all([
+      getDecks(user.uid),
+      getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
+      loadUserCards(user.uid),
+    ]);
+    return {
+      decks: nextDecks,
+      folders: nextFolders,
+      counts: getDeckCardCounts(
         nextDecks.map((deck) => deck.id),
         nextCards,
         Date.now()
-      );
-
-      setDecks(nextDecks);
-      setFolders(nextFolders);
-      setDeckCounts(nextCounts);
-    } catch (error) {
-      console.error(error);
-      setDecks([]);
-      setDeckCounts({});
-      if (!isFirebasePermissionDenied(error)) {
-        setFeedback({ type: "error", message: "Failed to load decks." });
-      }
-    } finally {
-      setIsLoadingDecks(false);
-    }
+      ),
+    };
   }, [user.uid]);
 
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+  const applyDeckData = useCallback(
+    (data: Awaited<ReturnType<typeof loadDeckData>>) => {
+      setDecks(data.decks);
+      setFolders(data.folders);
+      setDeckCounts(data.counts);
+    },
+    []
+  );
+
+  const handleDeckLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setDecks([]);
+    setDeckCounts({});
+    if (!isFirebasePermissionDenied(error)) {
+      setFeedback({ type: "error", message: "Failed to load decks." });
+    }
+  }, []);
+
+  const { loading: isLoadingDecks, reload: loadAll } = useDashboardData({
+    requestKey: user.uid,
+    load: loadDeckData,
+    apply: applyDeckData,
+    onError: handleDeckLoadError,
+  });
 
   useEffect(() => {
     const handleFocus = () => {
