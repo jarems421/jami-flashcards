@@ -7,7 +7,6 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
-  memo,
   useMemo,
   useRef,
   useState,
@@ -23,6 +22,9 @@ import {
   type NotebookInkEditorHandle,
 } from "@/components/workspace/NotebookInkEditor";
 import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
+import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
+import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
+import NotebookPageThumbnail from "@/components/workspace/NotebookPageThumbnail";
 import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
 import NotebookSaveIndicator, {
   type SaveStatus,
@@ -66,11 +68,9 @@ import {
 } from "@/lib/workspace/notebooks";
 import {
   applyNotebookDraftToPage,
-  buildNotebookThumbnailPoints,
   clampNotebookTextBlock,
   getNotebookPageStyleBackground,
   getNotebookStrokePaintColor,
-  getNotebookStrokePaintColorForPage,
   getNotebookTextBlockOptionsElementId,
   getNotebookWorkingPageStatus,
   makeNotebookTextBlockId,
@@ -141,7 +141,6 @@ import {
   type NotebookPageDragIntent,
   type PointerClientSample,
 } from "@/lib/workspace/notebook-inking";
-import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
 import {
   readBlobAsBase64,
   renderNotebookPageSnapshot,
@@ -304,12 +303,6 @@ const NOTEBOOK_ASSISTANT_QUICK_ACTIONS = [
       "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
   },
 ] as const;
-// The shared viewport supplies the sheet edge; page content only supplies its
-// paper colour and ruling.
-const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
-  white: "bg-white text-slate-950",
-  black: "bg-[#080a10] text-[#f8fafc]",
-};
 const NOTEBOOK_PAGE_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const NOTEBOOK_TOOLBAR_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const NOTEBOOK_TOOLBAR_DOCK_CLASS: Record<NotebookToolbarDock, string> = {
@@ -370,216 +363,6 @@ const TEXT_BLOCK_RESIZE_HANDLES: Array<{
     gripClass: "h-4 w-[3px]",
   },
 ];
-
-function NotebookPageThumbnail({
-  page,
-  notebook,
-  backgroundFile,
-  backgroundUrl,
-}: {
-  page: NotebookPage;
-  notebook: Notebook;
-  backgroundFile?: NotebookFile;
-  backgroundUrl?: string;
-}) {
-  const pageColor = page.pageColor ?? notebook.pageColor ?? "white";
-  const pageStyle = page.pageStyle ?? notebook.pageStyle ?? "plain";
-  const strokes = normalizeNotebookStrokes(page.strokeData?.strokes).slice(0, 10);
-  const textBlocks = page.textBlocks.slice(0, 3);
-  const inkSvg = page.inkData?.svg;
-
-  return (
-    <div
-      className={`relative aspect-[900/1240] overflow-hidden rounded-[0.6rem] shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
-      style={getNotebookPageStyleBackground(pageColor, pageStyle)}
-    >
-      {backgroundUrl && backgroundFile?.fileType.startsWith("image/") ? (
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 bg-contain bg-center bg-no-repeat"
-          style={{ backgroundImage: `url("${backgroundUrl}")` }}
-        />
-      ) : null}
-      {backgroundFile?.fileType === "application/pdf" &&
-      backgroundFile.storagePath ? (
-        <NotebookPdfPage
-          aria-hidden="true"
-          storagePath={backgroundFile.storagePath}
-          pageIndex={page.pdfPageIndex ?? 0}
-          lazy
-          maxPixelRatio={1.25}
-          className="absolute inset-0"
-        />
-      ) : null}
-      {inkSvg ? (
-        <Image
-          alt=""
-          aria-hidden="true"
-          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(inkSvg)}`}
-          fill
-          unoptimized
-          sizes="10rem"
-          className="object-fill"
-        />
-      ) : null}
-      <svg
-        aria-hidden="true"
-        viewBox={`0 0 ${CANVAS_WIDTH} ${CANVAS_HEIGHT}`}
-        className="absolute inset-0 h-full w-full"
-        preserveAspectRatio="none"
-      >
-        {orderNotebookStrokesForRendering(strokes).map((stroke, index) =>
-          stroke.points.length === 1 ? (
-            <circle
-              key={`${page.id}-stroke-${index}`}
-              cx={stroke.points[0].x}
-              cy={stroke.points[0].y}
-              r={Math.max(3, stroke.width * 1.7)}
-              fill={getNotebookStrokePaintColorForPage(stroke, pageColor)}
-              opacity={stroke.tool === "highlighter" ? 0.32 : 0.72}
-            />
-          ) : (
-            <polyline
-              key={`${page.id}-stroke-${index}`}
-              points={buildNotebookThumbnailPoints(stroke.points)}
-              fill="none"
-              stroke={getNotebookStrokePaintColorForPage(stroke, pageColor)}
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={Math.max(5, stroke.width * 2.3)}
-              opacity={stroke.tool === "highlighter" ? 0.32 : 0.72}
-            />
-          )
-        )}
-      </svg>
-      <div className="absolute inset-0">
-        {textBlocks.map((block) => (
-          <div
-            key={`${page.id}-${block.id}`}
-            className={`absolute overflow-hidden rounded-sm border-[0.5px] px-1 text-[0.34rem] font-semibold leading-tight ${
-              pageColor === "black" ? "text-[#f8fafc]/80" : "text-slate-950/75"
-            } ${
-              block.outlineVisible
-                ? pageColor === "black"
-                  ? "border-white/25"
-                  : "border-slate-950/20"
-                : "border-transparent"
-            }`}
-            style={{
-              left: `${(block.x / CANVAS_WIDTH) * 100}%`,
-              top: `${(block.y / CANVAS_HEIGHT) * 100}%`,
-              width: `${(block.width / CANVAS_WIDTH) * 100}%`,
-              maxHeight: `${(block.height / CANVAS_HEIGHT) * 100}%`,
-            }}
-          >
-            {block.text.trim().slice(0, 34)}
-          </div>
-        ))}
-      </div>
-      <div
-        className={`absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-[0.62rem] font-semibold leading-none tabular-nums backdrop-blur-sm ${
-          pageColor === "black"
-            ? "bg-white/15 text-[#f8fafc]"
-            : "bg-slate-950/55 text-white"
-        }`}
-      >
-        {page.pageNumber}
-      </div>
-    </div>
-  );
-}
-
-// Full-size, non-interactive render of a page's saved content (style, background
-// file, ink SVG, text blocks). Used as the swipe preview so the real adjacent
-// page is visible while dragging, instead of a blank placeholder that only fills
-// in after the editor remounts.
-const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
-  page,
-  notebook,
-  backgroundFile,
-  backgroundUrl,
-}: {
-  page: NotebookPage;
-  notebook: Notebook | null;
-  backgroundFile: NotebookFile | null;
-  backgroundUrl?: string;
-}) {
-  const pageColor = page.pageColor ?? notebook?.pageColor ?? "white";
-  const pageStyle = page.pageStyle ?? notebook?.pageStyle ?? "plain";
-  const inkSvg =
-    page.inkData?.svg ??
-    legacyStrokesToJsDrawSvg(
-      normalizeNotebookStrokes(page.strokeData?.strokes),
-      CANVAS_WIDTH,
-      CANVAS_HEIGHT
-    );
-  const hasInk =
-    Boolean(page.inkData?.svg) || (page.strokeData?.strokes?.length ?? 0) > 0;
-  return (
-    <>
-      <div
-        aria-hidden="true"
-        className="absolute inset-0"
-        style={getNotebookPageStyleBackground(pageColor, pageStyle)}
-      />
-      {backgroundFile?.fileType.startsWith("image/") && backgroundUrl ? (
-        <div
-          aria-hidden="true"
-          className="absolute inset-0 bg-contain bg-center bg-no-repeat"
-          style={{ backgroundImage: `url("${backgroundUrl}")` }}
-        />
-      ) : null}
-      {backgroundFile?.fileType === "application/pdf" && backgroundFile.storagePath ? (
-        <NotebookPdfPage
-          aria-hidden="true"
-          storagePath={backgroundFile.storagePath}
-          pageIndex={page.pdfPageIndex ?? 0}
-          lazy={false}
-          fadeIn={false}
-          className="absolute inset-0"
-        />
-      ) : null}
-      {hasInk ? (
-        <Image
-          alt=""
-          aria-hidden="true"
-          src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(inkSvg)}`}
-          fill
-          unoptimized
-          sizes="48rem"
-          className="object-fill"
-        />
-      ) : null}
-      {page.textBlocks.map((block) => (
-        <div
-          key={block.id}
-          aria-hidden="true"
-          className={`absolute overflow-hidden rounded-[0.45rem] border bg-transparent ${
-            block.outlineVisible
-              ? pageColor === "black"
-                ? "border-white/30"
-                : "border-slate-950/25"
-              : "border-transparent"
-          }`}
-          style={{
-            left: `${(block.x / CANVAS_WIDTH) * 100}%`,
-            top: `${(block.y / CANVAS_HEIGHT) * 100}%`,
-            width: `${(block.width / CANVAS_WIDTH) * 100}%`,
-            height: `${(block.height / CANVAS_HEIGHT) * 100}%`,
-          }}
-        >
-          <div
-            className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-[0.45rem] p-2 pr-10 text-sm font-medium leading-6 ${
-              pageColor === "black" ? "text-[#f8fafc]" : "text-slate-950"
-            }`}
-          >
-            {block.text}
-          </div>
-        </div>
-      ))}
-    </>
-  );
-});
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
