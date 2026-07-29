@@ -1,5 +1,5 @@
 import type { Deck } from "@/services/study/decks";
-import type { Card } from "@/lib/study/cards";
+import type { Card, CardReviewValueUpdates } from "@/lib/study/cards";
 import type { CardRating } from "@/lib/study/scheduler";
 
 const SNAPSHOT_PREFIX = "jami:offline-study:snapshot:";
@@ -25,7 +25,7 @@ export type OfflineQueuedReview = {
   folderIds?: string[];
   durationMs?: number;
   sessionKind: "daily-required" | "daily-optional" | "custom";
-  cardUpdates: Record<string, number | string>;
+  cardUpdates: CardReviewValueUpdates;
   clearMemoryRiskOverrideDayKey?: boolean;
 };
 
