@@ -1,6 +1,5 @@
-import { deleteField, doc, updateDoc } from "firebase/firestore";
-import { db } from "@/services/firebase/client";
 import { recordStudyReview } from "@/services/study/activity";
+import { updateCardAfterReview } from "@/services/study/cards";
 import {
   markDailyReviewCardComplete,
   recordDailyReviewWeakAttempt,
@@ -11,16 +10,7 @@ import { isStruggleRating } from "@/lib/study/scheduler";
 import {
   getOfflineQueuedReviews,
   removeOfflineQueuedReviews,
-  type OfflineQueuedReview,
 } from "@/lib/study/offline-study";
-
-function buildCardUpdates(review: OfflineQueuedReview) {
-  const updates: Record<string, unknown> = { ...review.cardUpdates };
-  if (review.clearMemoryRiskOverrideDayKey) {
-    updates.memoryRiskOverrideDayKey = deleteField();
-  }
-  return updates;
-}
 
 export async function syncOfflineStudyReviews(userId: string) {
   const reviews = getOfflineQueuedReviews(userId);
@@ -29,7 +19,6 @@ export async function syncOfflineStudyReviews(userId: string) {
 
   for (const review of reviews) {
     try {
-      const cardUpdates = buildCardUpdates(review);
       const tasks: Promise<unknown>[] = [
         recordStudyReview(userId, review.reviewedAt, {
           isCorrect: review.isCorrect,
@@ -43,8 +32,17 @@ export async function syncOfflineStudyReviews(userId: string) {
         }),
       ];
 
-      if (Object.keys(cardUpdates).length > 0) {
-        tasks.push(updateDoc(doc(db, "cards", review.cardId), cardUpdates));
+      if (
+        Object.keys(review.cardUpdates).length > 0 ||
+        review.clearMemoryRiskOverrideDayKey
+      ) {
+        tasks.push(
+          updateCardAfterReview(review.cardId, {
+            values: review.cardUpdates,
+            clearMemoryRiskOverrideDayKey:
+              review.clearMemoryRiskOverrideDayKey,
+          })
+        );
       }
 
       if (review.studyDayKey === currentStudyDayKey) {
