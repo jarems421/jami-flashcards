@@ -11,6 +11,7 @@ import {
   buildDailyReviewQueues,
   DAILY_REVIEW_MAX_WEAK_ATTEMPTS,
   DAILY_REVIEW_STATE_DOC_ID,
+  getCardsByIds,
   getRemainingCarryoverRequiredCards,
   getRemainingFreshRequiredCards,
   sortCardsByStudyPriority,
@@ -240,11 +241,6 @@ function StudyHomeStat({ value, label }: { value: number; label: string }) {
       <div className="mt-1.5 text-xs font-medium text-text-muted">{label}</div>
     </div>
   );
-}
-
-function getCardsByIds(cards: Card[], ids: string[]) {
-  const cardsById = new Map(cards.map((card) => [card.id, card]));
-  return ids.map((id) => cardsById.get(id) ?? null).filter((card): card is Card => card !== null);
 }
 
 function buildCustomReviewCards(cards: Card[], selectedDeckIds: string[], selectedTopicIds: string[]) {
