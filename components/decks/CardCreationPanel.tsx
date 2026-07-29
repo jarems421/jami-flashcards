@@ -11,6 +11,7 @@ import {
   type ImportedCardDraft,
 } from "@/lib/study/cards";
 import { downloadTextFile } from "@/lib/app/download";
+import type { Feedback } from "@/lib/app/feedback";
 import type { Topic } from "@/lib/practice/topics";
 import {
   CardBatchCreateError,
@@ -25,7 +26,6 @@ import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import { Button, Input, SectionHeader, StudyText, Textarea } from "@/components/ui";
 
 type CreationMode = "single" | "list";
-type Feedback = { type: "success" | "error"; message: string };
 
 type CardCreationPanelProps = {
   userId: string;

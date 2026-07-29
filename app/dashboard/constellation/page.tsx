@@ -21,6 +21,7 @@ import {
   setConstellationBackgroundConstellationId,
   setConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
+import type { Feedback } from "@/lib/app/feedback";
 import {
   clampPercentage,
   spreadBackfilledStars,
@@ -37,8 +38,6 @@ import AppPage from "@/components/layout/AppPage";
 import { Button, Card, EmptyState, FeedbackBanner, Input, PageHero, SectionHeader, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
-
-type Feedback = { type: "success" | "error"; message: string };
 
 function getConstellationProgressPercent(constellation: Constellation | null) {
   if (!constellation || constellation.maxStars <= 0) return 0;

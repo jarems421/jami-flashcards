@@ -13,6 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { useUser } from "@/lib/auth/user-context";
+import type { Feedback } from "@/lib/app/feedback";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getCustomStudyHref, getDeckStudyHref } from "@/lib/app/routes";
 import type { Source } from "@/lib/practice/sources";
@@ -59,7 +60,6 @@ import {
 } from "@/components/ui";
 import { useDashboardData } from "@/hooks/useDashboardData";
 
-type Feedback = { type: "success" | "error"; message: string };
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
 function formatTooltipNumber(value: unknown, suffix = "") {

@@ -6,6 +6,7 @@ import {
   getActiveConstellation,
   type Constellation,
 } from "@/lib/constellation/constellations";
+import type { Feedback } from "@/lib/app/feedback";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
   getGoalAccuracy,
@@ -32,7 +33,6 @@ import {
 import type { Topic } from "@/lib/practice/topics";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 
-type Feedback = { type: "success" | "error"; message: string };
 type GoalPreset = "today-10" | "week-20";
 
 function getDateInputValue(date: Date) {

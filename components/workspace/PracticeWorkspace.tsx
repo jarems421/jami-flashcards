@@ -11,6 +11,7 @@ import {
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
+import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/lib/auth/user-context";
 import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
@@ -23,8 +24,6 @@ import CreateFolderDialog from "./CreateFolderDialog";
 import FolderObjectCard from "./FolderObjectCard";
 import NotebookEditorDialog from "./NotebookEditorDialog";
 import { NotebookObjectCard } from "./NotebookObjectCard";
-
-type Feedback = { type: "success" | "error"; message: string };
 
 function notebookTypeLabel(type: Notebook["type"]) {
   if (type === "uploaded_file") return "Uploaded file notebook";

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useUser } from "@/lib/auth/user-context";
+import type { Feedback as DashboardFeedback } from "@/lib/app/feedback";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { FirebaseError } from "firebase/app";
 import type { Goal } from "@/lib/study/goals";
@@ -42,7 +43,6 @@ import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getGoals } from "@/services/study/goals";
 import { usePersistentDisclosure } from "@/lib/app/disclosure-preference";
 
-type DashboardFeedback = { type: "success" | "error"; message: string };
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
 const GETTING_STARTED_OPEN_STORAGE_KEY = "jami:getting-started-open";
 const PROGRESS_VISITED_KEY = "jami:progress-visited";

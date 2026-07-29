@@ -14,6 +14,7 @@ import {
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import { loadUserCards } from "@/services/study/cards";
 import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
+import type { Feedback } from "@/lib/app/feedback";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
@@ -21,8 +22,6 @@ import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable"
 import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import { useDashboardData } from "@/hooks/useDashboardData";
-
-type Feedback = { type: "success" | "error"; message: string };
 
 export default function DecksPage() {
   const { user } = useUser();
