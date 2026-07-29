@@ -83,6 +83,7 @@ import {
   Skeleton,
   Textarea,
 } from "@/components/ui";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import styles from "./page.module.css";
 
 type LibraryMobileTab = "sources" | "source";
@@ -107,7 +108,6 @@ export default function LibraryPage() {
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [showAddSource, setShowAddSource] = useState(false);
   const [feedback, setFeedback] = useState<SourceWorkspaceFeedback | null>(null);
   const [draftingKind, setDraftingKind] = useState<SourceDraftKind | null>(null);
@@ -186,28 +186,6 @@ export default function LibraryPage() {
     window.addEventListener("popstate", applyUrlState);
     return () => window.removeEventListener("popstate", applyUrlState);
   }, []);
-
-  useEffect(() => {
-    if (loading || sourceComposerPrefillHandledRef.current) return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get("create") !== "1") return;
-
-    sourceComposerPrefillHandledRef.current = true;
-    const requestedFolderId = params.get("folderId")?.trim() ?? "";
-    if (requestedFolderId && folders.some((folder) => folder.id === requestedFolderId)) {
-      setSelectedFolderIds([requestedFolderId]);
-    }
-    setShowAddSource(true);
-
-    params.delete("create");
-    params.delete("folderId");
-    const nextSearch = params.toString();
-    window.history.replaceState(
-      window.history.state,
-      "",
-      `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
-    );
-  }, [folders, loading]);
 
   useEffect(() => {
     if (!urlStateReady) return;
@@ -304,6 +282,90 @@ export default function LibraryPage() {
     [selectedDraftId, sourceDrafts]
   );
 
+  const loadLibraryData = useCallback(async () => {
+    const [nextSources, nextTopics, nextFolders, nextDecks, nextNotebooks, nextDrafts] =
+      await Promise.all([
+        getSources(user.uid),
+        getActiveTopics(user.uid),
+        getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
+        getDecks(user.uid),
+        getActiveNotebooks(user.uid),
+        getGeneratedContentDrafts(user.uid),
+      ]);
+    return {
+      sources: nextSources,
+      topics: nextTopics,
+      folders: nextFolders,
+      decks: nextDecks,
+      notebooks: nextNotebooks,
+      drafts: nextDrafts,
+    };
+  }, [user.uid]);
+
+  const applyLibraryData = useCallback(
+    (data: Awaited<ReturnType<typeof loadLibraryData>>) => {
+      setSources(data.sources);
+      setTopics(data.topics);
+      setFolders(data.folders);
+      setDecks(data.decks);
+      setNotebooks(data.notebooks);
+      setDrafts(data.drafts);
+      setSelectedSourceId((current) =>
+        current && data.sources.some((source) => source.id === current)
+          ? current
+          : null
+      );
+    },
+    []
+  );
+
+  const handleLibraryLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setSources([]);
+    setTopics([]);
+    setFolders([]);
+    setDecks([]);
+    setNotebooks([]);
+    setDrafts([]);
+    if (!isFirebasePermissionDenied(error)) {
+      setFeedback({ type: "error", message: "Failed to load Sources." });
+    }
+  }, []);
+
+  const handleLibraryLoadStart = useCallback(() => {
+    setFeedback(null);
+  }, []);
+
+  const { loading, reload: loadAll } = useDashboardData({
+    requestKey: user.uid,
+    load: loadLibraryData,
+    apply: applyLibraryData,
+    onError: handleLibraryLoadError,
+    onLoadStart: handleLibraryLoadStart,
+  });
+
+  useEffect(() => {
+    if (loading || sourceComposerPrefillHandledRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("create") !== "1") return;
+
+    sourceComposerPrefillHandledRef.current = true;
+    const requestedFolderId = params.get("folderId")?.trim() ?? "";
+    if (requestedFolderId && folders.some((folder) => folder.id === requestedFolderId)) {
+      setSelectedFolderIds([requestedFolderId]);
+    }
+    setShowAddSource(true);
+
+    params.delete("create");
+    params.delete("folderId");
+    const nextSearch = params.toString();
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
+    );
+  }, [folders, loading]);
+
   useEffect(() => {
     if (loading) return;
     if (selectedSourceId && selectedSourceId !== selectedSource?.id) {
@@ -314,49 +376,6 @@ export default function LibraryPage() {
       setActivePanel(null);
     }
   }, [loading, selectedSource, selectedSourceId]);
-
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    setFeedback(null);
-    try {
-      const [nextSources, nextTopics, nextFolders, nextDecks, nextNotebooks, nextDrafts] = await Promise.all([
-        getSources(user.uid),
-        getActiveTopics(user.uid),
-        getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
-        getDecks(user.uid),
-        getActiveNotebooks(user.uid),
-        getGeneratedContentDrafts(user.uid),
-      ]);
-      setSources(nextSources);
-      setTopics(nextTopics);
-      setFolders(nextFolders);
-      setDecks(nextDecks);
-      setNotebooks(nextNotebooks);
-      setDrafts(nextDrafts);
-      setSelectedSourceId((current) =>
-        current && nextSources.some((source) => source.id === current)
-          ? current
-          : null
-      );
-    } catch (error) {
-      console.error(error);
-      setSources([]);
-      setTopics([]);
-      setFolders([]);
-      setDecks([]);
-      setNotebooks([]);
-      setDrafts([]);
-      if (!isFirebasePermissionDenied(error)) {
-        setFeedback({ type: "error", message: "Failed to load Sources." });
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [user.uid]);
-
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
 
   useEffect(() => {
     if (decks[0]?.id) {
