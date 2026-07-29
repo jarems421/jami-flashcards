@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { deleteDoc, doc, updateDoc, writeBatch } from "firebase/firestore";
+import { doc, writeBatch } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
@@ -25,7 +25,7 @@ import {
   normalizeCardContentInput,
   type Card,
 } from "@/lib/study/cards";
-import { loadUserCards } from "@/services/study/cards";
+import { deleteCard, loadUserCards, updateCardContent } from "@/services/study/cards";
 import type { Source } from "@/lib/practice/sources";
 import {
   getTopicNameKey,
@@ -372,11 +372,10 @@ export default function CardsSearchPage() {
     setFeedback(null);
 
     try {
-      await updateDoc(doc(db, "cards", cardId), {
+      await updateCardContent(cardId, {
         front: nextFront,
         back: nextBack,
         topicIds: editingTopicIds,
-        tags: [],
       });
 
       setCards((prev) =>
@@ -406,7 +405,7 @@ export default function CardsSearchPage() {
     setFeedback(null);
 
     try {
-      await deleteDoc(doc(db, "cards", cardId));
+      await deleteCard(cardId);
       setCards((prev) => prev.filter((card) => card.id !== cardId));
       setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
       if (expandedCardId === cardId) cancelEditing();

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import { deleteDoc, doc, updateDoc, writeBatch } from "firebase/firestore";
+import { doc, writeBatch } from "firebase/firestore";
 import {
   exportCardsToSeparatedText,
   getCardContentKey,
@@ -29,7 +29,7 @@ import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
 import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
-import { getCardsForDeck } from "@/services/study/cards";
+import { deleteCard, getCardsForDeck, updateCardContent } from "@/services/study/cards";
 import { getActiveTopics } from "@/services/study/topics";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
 import { db } from "@/services/firebase/client";
@@ -243,10 +243,9 @@ export default function DeckDetailPageClient() {
     setFeedback(null);
 
     try {
-      await updateDoc(doc(db, "cards", cardId), {
+      await updateCardContent(cardId, {
         front: nextFront,
         back: nextBack,
-        tags: [],
         topicIds: nextTopicIds,
       });
 
@@ -283,7 +282,7 @@ export default function DeckDetailPageClient() {
     setFeedback(null);
 
     try {
-      await deleteDoc(doc(db, "cards", cardId));
+      await deleteCard(cardId);
       setCards((prev) => prev.filter((card) => card.id !== cardId));
       setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
       if (editingCardId === cardId) {
