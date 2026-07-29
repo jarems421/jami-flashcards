@@ -16,3 +16,21 @@ export async function loadUserCards(userId: string): Promise<Card[]> {
     mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
   );
 }
+
+/** Cards in one deck, unsorted; callers order them for their own display. */
+export async function getCardsForDeck(
+  userId: string,
+  deckId: string
+): Promise<Card[]> {
+  const snapshot = await getDocs(
+    query(
+      collection(db, "cards"),
+      where("deckId", "==", deckId),
+      where("userId", "==", userId)
+    )
+  );
+
+  return snapshot.docs.map((cardDoc) =>
+    mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
+  );
+}

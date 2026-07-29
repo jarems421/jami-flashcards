@@ -3,20 +3,10 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
-import {
-  collection,
-  deleteDoc,
-  doc,
-  getDocs,
-  query,
-  updateDoc,
-  where,
-  writeBatch,
-} from "firebase/firestore";
+import { deleteDoc, doc, updateDoc, writeBatch } from "firebase/firestore";
 import {
   exportCardsToSeparatedText,
   getCardContentKey,
-  mapCardData,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
   normalizeCardContentInput,
@@ -39,6 +29,7 @@ import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
 import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { getDeckById, type Deck } from "@/services/study/decks";
+import { getCardsForDeck } from "@/services/study/cards";
 import { getActiveTopics } from "@/services/study/topics";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
 import { db } from "@/services/firebase/client";
@@ -111,13 +102,8 @@ export default function DeckDetailPageClient() {
           return;
         }
 
-        const deckCardsQuery = query(
-          collection(db, "cards"),
-          where("deckId", "==", deckId),
-          where("userId", "==", user.uid)
-        );
-        const [snapshot, nextTopics] = await Promise.all([
-          getDocs(deckCardsQuery),
+        const [deckCards, nextTopics] = await Promise.all([
+          getCardsForDeck(user.uid, deckId),
           getActiveTopics(user.uid).catch(() => []),
         ]);
 
@@ -125,9 +111,7 @@ export default function DeckDetailPageClient() {
           return;
         }
 
-        const nextCards = snapshot.docs.map((cardDoc) =>
-          mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
-        );
+        const nextCards = [...deckCards];
         nextCards.sort((left, right) => right.createdAt - left.createdAt);
 
         setDeck(ownedDeck);
