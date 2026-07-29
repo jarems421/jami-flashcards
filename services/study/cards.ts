@@ -1,9 +1,11 @@
 import {
   addDoc,
   collection,
+  deleteField,
   deleteDoc,
   doc,
   getDocs,
+  increment,
   query,
   updateDoc,
   where,
@@ -15,6 +17,8 @@ import {
   mapCardData,
   normalizeCardContentInput,
   type Card,
+  type CardReviewCounterUpdates,
+  type CardReviewValueUpdates,
   type ImportedCardDraft,
 } from "@/lib/study/cards";
 
@@ -44,6 +48,12 @@ type CardWrite = Pick<
   Card,
   "deckId" | "userId" | "front" | "back" | "tags" | "topicIds" | "createdAt"
 >;
+
+export type CardReviewUpdateCommand = {
+  values?: CardReviewValueUpdates;
+  increments?: CardReviewCounterUpdates;
+  clearMemoryRiskOverrideDayKey?: boolean;
+};
 
 export class CardBatchCreateError extends Error {
   readonly createdCards: Card[];
@@ -176,6 +186,52 @@ export async function deleteCards(cardIds: readonly string[]) {
     });
     await batch.commit();
   }
+}
+
+export async function updateCardAfterReview(
+  cardId: string,
+  command: CardReviewUpdateCommand
+) {
+  const updates: Record<string, unknown> = {};
+
+  for (const [key, value] of Object.entries(command.values ?? {})) {
+    if (value !== undefined) {
+      updates[key] = value;
+    }
+  }
+
+  for (const [key, amount] of Object.entries(command.increments ?? {})) {
+    if (typeof amount === "number" && amount !== 0) {
+      updates[key] = increment(amount);
+    }
+  }
+
+  if (command.clearMemoryRiskOverrideDayKey) {
+    updates.memoryRiskOverrideDayKey = deleteField();
+  }
+
+  if (Object.keys(updates).length === 0) {
+    return;
+  }
+
+  await updateDoc(doc(db, "cards", cardId), updates);
+}
+
+export async function recordSimpleStudyResult(
+  cardId: string,
+  result: "correct" | "wrong",
+  reviewedAt: number
+) {
+  await updateCardAfterReview(cardId, {
+    values: {
+      simpleStudyLastResult: result,
+      simpleStudyLastReviewedAt: reviewedAt,
+    },
+    increments:
+      result === "correct"
+        ? { simpleStudyCorrectCount: 1 }
+        : { simpleStudyWrongCount: 1 },
+  });
 }
 
 export async function createCard(input: CreateCardInput): Promise<Card> {

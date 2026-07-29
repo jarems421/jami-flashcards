@@ -4,8 +4,10 @@ const firestoreMock = vi.hoisted(() => ({
   addDoc: vi.fn(),
   collection: vi.fn(),
   deleteDoc: vi.fn(),
+  deleteField: vi.fn(() => "DELETE_FIELD"),
   doc: vi.fn(),
   getDocs: vi.fn(),
+  increment: vi.fn((value: number) => ({ increment: value })),
   query: vi.fn(),
   updateDoc: vi.fn(),
   where: vi.fn(),
@@ -26,6 +28,8 @@ const {
   CardBatchCreateError,
   createCard,
   createCardsInBatches,
+  recordSimpleStudyResult,
+  updateCardAfterReview,
 } = await import("@/services/study/cards");
 
 type BatchMock = {
@@ -54,10 +58,13 @@ beforeEach(() => {
   nextCardId = 0;
   batches = [];
   firestoreMock.collection.mockReturnValue({ path: "cards" });
-  firestoreMock.doc.mockImplementation(() => ({
-    id: `card-${++nextCardId}`,
-  }));
+  firestoreMock.doc.mockImplementation((...args: unknown[]) =>
+    args.length >= 3
+      ? { id: String(args[2]) }
+      : { id: `card-${++nextCardId}` }
+  );
   firestoreMock.addDoc.mockResolvedValue({ id: "single-card" });
+  firestoreMock.updateDoc.mockResolvedValue(undefined);
   firestoreMock.writeBatch.mockImplementation(() => makeBatch());
 });
 
@@ -214,5 +221,59 @@ describe("cards service creation", () => {
       createdCards: [],
       cause: "offline",
     });
+  });
+
+  it("translates review values, increments, and field clearing in the service", async () => {
+    await updateCardAfterReview("review-card", {
+      values: {
+        reps: 4,
+        memoryRiskOverrideDayKey: "tomorrow",
+      },
+      increments: {
+        customStruggleCount: 1,
+        simpleStudyWrongCount: 1,
+      },
+      clearMemoryRiskOverrideDayKey: true,
+    });
+
+    expect(firestoreMock.updateDoc).toHaveBeenCalledWith(
+      { id: "review-card" },
+      {
+        reps: 4,
+        customStruggleCount: { increment: 1 },
+        simpleStudyWrongCount: { increment: 1 },
+        memoryRiskOverrideDayKey: "DELETE_FIELD",
+      }
+    );
+  });
+
+  it("records Simple Study results with the matching atomic counter", async () => {
+    await recordSimpleStudyResult("correct-card", "correct", 2_000);
+    await recordSimpleStudyResult("wrong-card", "wrong", 3_000);
+
+    expect(firestoreMock.updateDoc).toHaveBeenNthCalledWith(
+      1,
+      { id: "correct-card" },
+      {
+        simpleStudyLastResult: "correct",
+        simpleStudyLastReviewedAt: 2_000,
+        simpleStudyCorrectCount: { increment: 1 },
+      }
+    );
+    expect(firestoreMock.updateDoc).toHaveBeenNthCalledWith(
+      2,
+      { id: "wrong-card" },
+      {
+        simpleStudyLastResult: "wrong",
+        simpleStudyLastReviewedAt: 3_000,
+        simpleStudyWrongCount: { increment: 1 },
+      }
+    );
+  });
+
+  it("skips empty review updates", async () => {
+    await updateCardAfterReview("unchanged-card", {});
+
+    expect(firestoreMock.updateDoc).not.toHaveBeenCalled();
   });
 });

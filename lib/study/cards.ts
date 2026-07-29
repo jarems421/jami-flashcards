@@ -42,6 +42,41 @@ export type Card = {
   simpleStudyLastReviewedAt?: number;
 };
 
+export type CardReviewValueUpdates = Partial<
+  Pick<
+    Card,
+    | "interval"
+    | "repetitions"
+    | "easeFactor"
+    | "dueDate"
+    | "stability"
+    | "difficulty"
+    | "fsrsState"
+    | "lapses"
+    | "reps"
+    | "lastReview"
+    | "scheduledDays"
+    | "elapsedDays"
+    | "lastStruggleAt"
+    | "lastStruggleStudyDayKey"
+    | "memoryRiskOverrideDayKey"
+    | "customStruggleCount"
+    | "simpleStudyWrongCount"
+    | "simpleStudyCorrectCount"
+    | "simpleStudyLastResult"
+    | "simpleStudyLastReviewedAt"
+  >
+>;
+
+export type CardReviewCounterUpdates = Partial<
+  Record<
+    | "customStruggleCount"
+    | "simpleStudyWrongCount"
+    | "simpleStudyCorrectCount",
+    number
+  >
+>;
+
 export type ImportedCardDraft = {
   front: string;
   back: string;
