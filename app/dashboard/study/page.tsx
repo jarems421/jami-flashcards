@@ -79,7 +79,12 @@ type SessionStats = StudySessionStats;
 type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
 type FocusedFilterKind = "decks" | "topics";
 const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
-type AnswerFeedback = { tone: "error" | "warm" | "good" | "calm"; message: string };
+type AnswerFeedback = {
+  tone: "error" | "warm" | "good" | "calm";
+  message: string;
+  /** Overrides the usual dismiss delay, so a reward is not gone before it is read. */
+  holdMs?: number;
+};
 type FocusedReviewRecents = {
   deckIds: string[];
   topicIds: string[];
@@ -152,6 +157,36 @@ function getAnswerFeedback(rating: CardRating, sessionKind: SessionKind, parked:
   }
 
   return { tone: "good" as const, message: "That one felt easy." };
+}
+
+/**
+ * Says so when a review finished a goal.
+ *
+ * A star was being awarded mid-session with nothing said about it: the card
+ * feedback carried on as normal and the reward only turned up later on the
+ * Stars page. Folding it into the same line keeps the moment where the student
+ * is already looking, and holds it a little longer than a recall note.
+ */
+function withGoalReward(
+  feedback: AnswerFeedback,
+  progress: { completedGoals: number; starsEarned: number }
+): AnswerFeedback {
+  if (progress.completedGoals <= 0) return feedback;
+
+  const goals =
+    progress.completedGoals === 1
+      ? "Goal complete."
+      : `${progress.completedGoals} goals complete.`;
+  const reward =
+    progress.starsEarned > 0
+      ? ` You earned ${progress.starsEarned === 1 ? "a star" : `${progress.starsEarned} stars`}.`
+      : "";
+
+  return {
+    tone: "good",
+    message: `${feedback.message} ${goals}${reward}`,
+    holdMs: 5_000,
+  };
 }
 
 function getSimpleStudyFeedback(result: SimpleStudyResult) {
@@ -423,7 +458,10 @@ export default function StudyPage() {
 
   useEffect(() => {
     if (!answerFeedback) return;
-    const timeout = window.setTimeout(() => setAnswerFeedback(null), 2400);
+    const timeout = window.setTimeout(
+      () => setAnswerFeedback(null),
+      answerFeedback.holdMs ?? 2400
+    );
     return () => window.clearTimeout(timeout);
   }, [answerFeedback]);
 
@@ -1500,7 +1538,12 @@ export default function StudyPage() {
       }
       bumpSessionRevision();
       setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals + goalProgress.completedGoals, starsEarned: prev.starsEarned + goalProgress.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
-      setAnswerFeedback(getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)));
+      setAnswerFeedback(
+        withGoalReward(
+          getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)),
+          goalProgress
+        )
+      );
       if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
         requeueCurrentCard(nextCard);
       } else {
