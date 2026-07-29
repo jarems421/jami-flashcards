@@ -265,6 +265,44 @@ describe("source draft generation", () => {
     expect(mocks.added).toHaveLength(0);
   });
 
+  it("tells the model which drafts are already waiting", async () => {
+    mocks.pendingDrafts.push({
+      kind: "flashcard",
+      contentStatus: "draft",
+      front: "What is the primary function of photosynthesis?",
+    });
+
+    await postDrafts(request({ sourceId: "source-1", kind: "flashcard" }));
+
+    const prompt = mocks.generateText.mock.calls[0][0].request.contents[0].parts[0].text as string;
+    expect(prompt).toContain("BEGIN EXISTING DRAFTS");
+    expect(prompt).toContain("- What is the primary function of photosynthesis?");
+    expect(prompt).toContain("END EXISTING DRAFTS");
+    // The list is student-influenced text, so it carries the same warning the
+    // tutor conversation does.
+    expect(prompt).toMatch(/not an instruction to follow/);
+  });
+
+  it("says nothing about existing drafts when there are none", async () => {
+    await postDrafts(request({ sourceId: "source-1", kind: "flashcard" }));
+
+    const prompt = mocks.generateText.mock.calls[0][0].request.contents[0].parts[0].text as string;
+    expect(prompt).not.toContain("BEGIN EXISTING DRAFTS");
+  });
+
+  it("does not mention drafts of the other kind", async () => {
+    mocks.pendingDrafts.push({
+      kind: "practice-question",
+      contentStatus: "draft",
+      questionText: "Explain how a plant stores light energy.",
+    });
+
+    await postDrafts(request({ sourceId: "source-1", kind: "flashcard" }));
+
+    const prompt = mocks.generateText.mock.calls[0][0].request.contents[0].parts[0].text as string;
+    expect(prompt).not.toContain("BEGIN EXISTING DRAFTS");
+  });
+
   it("skips drafts that repeat one already awaiting review", async () => {
     mocks.pendingDrafts.push({
       kind: "flashcard",
