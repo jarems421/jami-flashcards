@@ -85,7 +85,7 @@ vi.mock("@/services/firebase/admin", () => ({
   getAdminStorageBucket: () => ({}),
 }));
 
-const { resolveJamiAssistantContext } = await import("@/lib/ai/assistant-context.server");
+const { resolveJamiAssistantContext } = await import("@/services/ai/assistant-context");
 
 async function resolveLearn(phase: "question" | "answer" = "question") {
   return resolveJamiAssistantContext({

@@ -31,7 +31,7 @@ vi.mock("@/services/firebase/admin", () => ({
   }),
 }));
 
-vi.mock("@/lib/ai/assistant-context.server", () => ({
+vi.mock("@/services/ai/assistant-context", () => ({
   JamiAssistantContextError: mocks.ContextError,
   resolveJamiAssistantContext: mocks.resolveContext,
 }));

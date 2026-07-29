@@ -1,23 +1,12 @@
 import "server-only";
 
 import type { Part } from "@google/generative-ai";
-import {
-  JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES,
-  type JamiAssistantContext,
-} from "@/lib/ai/jami-assistant";
-import { mapSourceData, type Source } from "@/lib/practice/sources";
-import {
-  mapNotebookData,
-  mapNotebookPageData,
-} from "@/lib/workspace/notebooks";
-import { getAdminDb } from "@/services/firebase/admin";
+import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
+import type { Source } from "@/lib/practice/sources";
 
-const MAX_SOURCE_METADATA_CANDIDATES = 200;
 const MAX_RELATED_SOURCES = 5;
 
-type AdminDb = ReturnType<typeof getAdminDb>;
-
-type SourceRelations = {
+export type SourceRelations = {
   currentSourceIds: string[];
   directSourceIds: string[];
   folderIds: string[];
@@ -43,11 +32,11 @@ export class JamiAssistantContextError extends Error {
   }
 }
 
-function normalizeString(value: unknown, maxLength: number) {
+export function normalizeString(value: unknown, maxLength: number) {
   return typeof value === "string" ? value.trim().slice(0, maxLength) : "";
 }
 
-function normalizeIds(value: unknown, maxItems = 30) {
+export function normalizeIds(value: unknown, maxItems = 30) {
   if (!Array.isArray(value)) return [];
   return Array.from(
     new Set(
@@ -59,15 +48,12 @@ function normalizeIds(value: unknown, maxItems = 30) {
   ).slice(0, maxItems);
 }
 
-const LEARN_RELATED_CARD_SCAN_LIMIT = 20;
-const LEARN_MAX_RELATED_CARDS = 6;
-
 /**
  * Describes how well the student knows this card, from the FSRS state already
  * stored on the card document, so the tutor can scale how much scaffolding it
  * gives. Read server-side rather than trusted from the request.
  */
-function describeMemoryProfile(cardData: Record<string, unknown>) {
+export function describeMemoryProfile(cardData: Record<string, unknown>) {
   const asNumber = (value: unknown) => (typeof value === "number" ? value : undefined);
   const difficulty = asNumber(cardData.difficulty);
   const reps = asNumber(cardData.reps) ?? 0;
@@ -91,52 +77,6 @@ function describeMemoryProfile(cardData: Record<string, unknown>) {
 - Days since last review window: ${asNumber(cardData.elapsedDays) ?? 0}
 
 If this profile looks shaky (hard card, repeated struggles, short review gaps), give more scaffolding, point out likely confusion, and prefer compact memory hooks. If it looks stable, keep the answer concise and avoid overexplaining.`;
-}
-
-/**
- * Nearby cards from the same deck, so the tutor can spot the mix-ups and
- * contrasts a student is most likely to hit.
- *
- * Scoped to the deck rather than scanning a slice of the whole collection:
- * an unordered limit over every card returns an arbitrary window, so genuine
- * matches outside it are missed at random.
- */
-async function loadRelatedCards(input: {
-  db: AdminDb;
-  uid: string;
-  deckId: string;
-  cardId: string;
-  topicIds: readonly string[];
-}) {
-  if (!input.deckId) return "";
-
-  const snapshot = await input.db
-    .collection("cards")
-    .where("userId", "==", input.uid)
-    .where("deckId", "==", input.deckId)
-    .limit(LEARN_RELATED_CARD_SCAN_LIMIT)
-    .get();
-
-  const related = snapshot.docs
-    .filter((doc) => doc.id !== input.cardId)
-    .map((doc) => {
-      const data = doc.data();
-      return {
-        front: normalizeString(data.front, 140),
-        back: normalizeString(data.back, 220),
-        overlap: countOverlap(normalizeIds(data.topicIds), input.topicIds),
-      };
-    })
-    .filter((card) => card.front && card.back)
-    .sort((left, right) => right.overlap - left.overlap)
-    .slice(0, LEARN_MAX_RELATED_CARDS);
-
-  if (related.length === 0) return "";
-
-  return `Nearby cards in the same deck:
-${related.map((card) => `- Q: ${card.front}\n  A: ${card.back}`).join("\n")}
-
-Use these only to infer likely mix-ups or useful contrasts. Never answer as though the student asked about one of them.`;
 }
 
 function getSearchTerms(value: string) {
@@ -165,7 +105,7 @@ function getSearchTerms(value: string) {
   ).slice(0, 20);
 }
 
-function countOverlap(left: readonly string[], right: readonly string[]) {
+export function countOverlap(left: readonly string[], right: readonly string[]) {
   const rightSet = new Set(right);
   return left.reduce((count, value) => count + Number(rightSet.has(value)), 0);
 }
@@ -228,7 +168,7 @@ export function rankJamiAssistantSources(input: {
     .slice(0, MAX_RELATED_SOURCES);
 }
 
-function assertSnapshotMime(input: {
+export function assertSnapshotMime(input: {
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   dataBase64: string;
 }) {
@@ -264,262 +204,4 @@ function assertSnapshotMime(input: {
       "invalid_snapshot"
     );
   }
-}
-
-async function loadSourcesById(db: AdminDb, uid: string, sourceIds: string[]) {
-  const sourceCollection = db.collection("users").doc(uid).collection("sources");
-  const snapshots = await Promise.all(
-    sourceIds.map((sourceId) => sourceCollection.doc(sourceId).get())
-  );
-  return snapshots
-    .filter((snapshot) => snapshot.exists)
-    .map((snapshot) => mapSourceData(snapshot.id, snapshot.data() ?? {}));
-}
-
-async function selectSources(input: {
-  db: AdminDb;
-  uid: string;
-  relations: SourceRelations;
-  message: string;
-  includeRelated: boolean;
-}) {
-  const requiredIds = Array.from(
-    new Set([
-      ...input.relations.currentSourceIds,
-      ...(input.includeRelated ? input.relations.directSourceIds : []),
-    ])
-  );
-  const required = await loadSourcesById(input.db, input.uid, requiredIds);
-
-  if (!input.includeRelated) {
-    return rankJamiAssistantSources({
-      sources: required,
-      relations: {
-        ...input.relations,
-        directSourceIds: [],
-        folderIds: [],
-        topicIds: [],
-      },
-      message: input.message,
-    });
-  }
-
-  const snapshot = await input.db
-    .collection("users")
-    .doc(input.uid)
-    .collection("sources")
-    .limit(MAX_SOURCE_METADATA_CANDIDATES)
-    .get();
-  const candidates = new Map<string, Source>();
-  snapshot.docs.forEach((sourceDoc) => {
-    candidates.set(
-      sourceDoc.id,
-      mapSourceData(sourceDoc.id, sourceDoc.data() ?? {})
-    );
-  });
-  required.forEach((source) => candidates.set(source.id, source));
-
-  return rankJamiAssistantSources({
-    sources: Array.from(candidates.values()),
-    relations: input.relations,
-    message: input.message,
-  });
-}
-
-async function resolveLearnContext(input: {
-  db: AdminDb;
-  uid: string;
-  context: Extract<JamiAssistantContext, { surface: "learn" }>;
-}) {
-  const cardSnapshot = await input.db.collection("cards").doc(input.context.cardId).get();
-  const cardData = cardSnapshot.data() ?? {};
-  const owner = normalizeString(cardData.userId ?? cardData.uid, 160);
-  if (!cardSnapshot.exists || owner !== input.uid) {
-    throw new JamiAssistantContextError("This card could not be found.");
-  }
-
-  const deckId = normalizeString(cardData.deckId, 160);
-  let deckName = "Unknown deck";
-  let folderIds: string[] = [];
-  if (deckId) {
-    const deckSnapshot = await input.db.collection("decks").doc(deckId).get();
-    const deckData = deckSnapshot.data() ?? {};
-    const deckOwner = normalizeString(deckData.userId ?? deckData.uid, 160);
-    if (deckSnapshot.exists && deckOwner === input.uid) {
-      deckName = normalizeString(deckData.name, 160) || deckName;
-      folderIds = normalizeIds(deckData.folderIds, 12);
-    }
-  }
-
-  const front = normalizeString(cardData.front, 500);
-  const back = normalizeString(cardData.back, 2_000);
-  const topicIds = normalizeIds(cardData.topicIds);
-  const relatedCardsText = await loadRelatedCards({
-    db: input.db,
-    uid: input.uid,
-    deckId,
-    cardId: cardSnapshot.id,
-    topicIds,
-  });
-
-  /*
-   * The answer is withheld until the student has flipped the card.
-   *
-   * Telling the model to avoid spoiling it was never a real guarantee: it held
-   * the answer and was instructed to hand it over if asked plainly, so the
-   * hinting was decorative. Not sending it makes the constraint structural.
-   * A student who wants the answer flips the card, which is the point of a
-   * flashcard, and the related cards below still let the tutor spot likely
-   * mix-ups without seeing this card's answer.
-   */
-  const answerIsVisibleToStudent = input.context.phase === "answer";
-
-  const parts: Part[] = [
-    {
-      text: [
-        `Learn phase: ${input.context.phase}`,
-        `Deck: ${deckName}`,
-        `Card front: ${front || "(empty)"}`,
-        answerIsVisibleToStudent
-          ? `Card answer: ${back || "(empty)"}`
-          : "Card answer: withheld. The student has not flipped this card yet, so you have not been given it. Help them recall it themselves. If they ask for it outright, say you cannot see it and suggest they flip the card.",
-        "",
-        describeMemoryProfile(cardData),
-        ...(relatedCardsText ? ["", relatedCardsText] : []),
-      ].join("\n"),
-    },
-  ];
-  return {
-    currentId: cardSnapshot.id,
-    currentLabel: "Current card",
-    currentParts: parts,
-    relations: {
-      currentSourceIds: [],
-      directSourceIds: normalizeIds(cardData.sourceIds),
-      folderIds,
-      topicIds,
-    } satisfies SourceRelations,
-  };
-}
-
-async function resolveSourcesContext(input: {
-  db: AdminDb;
-  uid: string;
-  context: Extract<JamiAssistantContext, { surface: "sources" }>;
-}) {
-  const sources = await loadSourcesById(input.db, input.uid, input.context.sourceIds);
-  if (sources.length !== input.context.sourceIds.length) {
-    throw new JamiAssistantContextError("One or more sources could not be found.");
-  }
-
-  return {
-    currentId: sources[0]?.id ?? "sources",
-    currentLabel: sources.length === 1 ? "Current source" : "Selected sources",
-    currentParts: [
-      {
-        text: `The student is asking from Sources. Their current selection is: ${sources
-          .map((source) => source.title)
-          .join(", ")}.`,
-      },
-    ] satisfies Part[],
-    relations: {
-      currentSourceIds: input.context.sourceIds,
-      directSourceIds: [],
-      folderIds: Array.from(new Set(sources.flatMap((source) => source.folderIds))),
-      topicIds: Array.from(new Set(sources.flatMap((source) => source.topicIds))),
-    } satisfies SourceRelations,
-  };
-}
-
-async function resolveNotebookContext(input: {
-  db: AdminDb;
-  uid: string;
-  context: Extract<JamiAssistantContext, { surface: "notebook" }>;
-}) {
-  const userRef = input.db.collection("users").doc(input.uid);
-  const [notebookSnapshot, pageSnapshot] = await Promise.all([
-    userRef.collection("notebooks").doc(input.context.notebookId).get(),
-    userRef.collection("notebookPages").doc(input.context.pageId).get(),
-  ]);
-  if (!notebookSnapshot.exists || !pageSnapshot.exists) {
-    throw new JamiAssistantContextError("This notebook page could not be found.");
-  }
-
-  const notebook = mapNotebookData(
-    notebookSnapshot.id,
-    notebookSnapshot.data() ?? {}
-  );
-  const page = mapNotebookPageData(pageSnapshot.id, pageSnapshot.data() ?? {});
-  if (page.notebookId !== notebook.id) {
-    throw new JamiAssistantContextError("This notebook page could not be found.");
-  }
-
-  const typedText =
-    input.context.typedText ||
-    [page.typedContent, ...page.textBlocks.map((block) => block.text)]
-      .filter(Boolean)
-      .join("\n\n")
-      .slice(0, 12_000);
-  const questionPrompt = input.context.questionPrompt || page.questionPrompt || "";
-  const currentParts: Part[] = [
-    {
-      text: `Notebook: ${notebook.title}\nPage: ${page.pageNumber}${
-        questionPrompt ? `\nQuestion prompt: ${questionPrompt}` : ""
-      }${typedText ? `\nTyped page content:\n${typedText}` : ""}`,
-    },
-  ];
-  if (input.context.snapshot) {
-    assertSnapshotMime(input.context.snapshot);
-    currentParts.push({
-      inlineData: {
-        mimeType: input.context.snapshot.mimeType,
-        data: input.context.snapshot.dataBase64,
-      },
-    });
-  }
-
-  return {
-    currentId: page.id,
-    currentLabel: "Current page",
-    currentParts,
-    relations: {
-      currentSourceIds: [],
-      directSourceIds: notebook.sourceIds,
-      folderIds: notebook.folderId ? [notebook.folderId] : [],
-      topicIds: notebook.topicIds,
-    } satisfies SourceRelations,
-  };
-}
-
-export async function resolveJamiAssistantContext(input: {
-  uid: string;
-  message: string;
-  context: JamiAssistantContext;
-  useRelatedSources: boolean;
-}): Promise<ResolvedJamiAssistantContext> {
-  const uid = input.uid.trim();
-  if (!uid) {
-    throw new JamiAssistantContextError("Unauthorized", 401, "unauthorized");
-  }
-  const db = getAdminDb();
-  const resolved =
-    input.context.surface === "learn"
-      ? await resolveLearnContext({ db, uid, context: input.context })
-      : input.context.surface === "sources"
-        ? await resolveSourcesContext({ db, uid, context: input.context })
-        : await resolveNotebookContext({ db, uid, context: input.context });
-  const sources = await selectSources({
-    db,
-    uid,
-    relations: resolved.relations,
-    message: input.message,
-    includeRelated: input.useRelatedSources,
-  });
-
-  return {
-    currentId: resolved.currentId,
-    currentLabel: resolved.currentLabel,
-    currentParts: resolved.currentParts,
-    sources,
-  };
 }
