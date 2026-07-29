@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useUser } from "@/lib/auth/user-context";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import {
   getActiveConstellation,
   type Constellation,
@@ -171,7 +172,6 @@ export default function GoalsPage() {
   const [targetAccuracy, setTargetAccuracy] = useState("");
   const [deadlineDate, setDeadlineDate] = useState("");
   const [deadlineTime, setDeadlineTime] = useState("");
-  const [isLoadingGoals, setIsLoadingGoals] = useState(true);
   const [isCreatingGoal, setIsCreatingGoal] = useState(false);
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [cancellingGoalId, setCancellingGoalId] = useState<string | null>(null);
@@ -185,38 +185,54 @@ export default function GoalsPage() {
 
   const lastForegroundRefreshAtRef = useRef(0);
 
-  const loadGoals = useCallback(async (uid: string) => {
-    setIsLoadingGoals(true);
-    try {
-      setGoals(await getGoalsWithCurrentStatuses(uid));
-    } catch (error) {
-      console.error(error);
-      setGoals([]);
-    } finally {
-      setIsLoadingGoals(false);
-    }
-  }, []);
-
-  const loadConstellationSummary = useCallback(async (uid: string) => {
-    try {
-      const constellations = await ensureConstellationSetup(uid);
-      setActiveConstellation(getActiveConstellation(constellations));
-    } catch (error) {
-      console.error(error);
-      setActiveConstellation(null);
-    }
-  }, []);
-
-  const loadAll = useCallback(
-    async (uid: string) => {
-      await Promise.all([loadGoals(uid), loadConstellationSummary(uid)]);
-    },
-    [loadGoals, loadConstellationSummary]
+  const loadGoalData = useCallback(
+    () => getGoalsWithCurrentStatuses(user.uid),
+    [user.uid]
   );
 
-  useEffect(() => {
-    void loadAll(user.uid);
-  }, [user.uid, loadAll]);
+  const applyGoalData = useCallback((nextGoals: Goal[]) => {
+    setGoals(nextGoals);
+  }, []);
+
+  const handleGoalLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setGoals([]);
+  }, []);
+
+  const { loading: isLoadingGoals, reload: reloadGoals } = useDashboardData({
+    requestKey: user.uid,
+    load: loadGoalData,
+    apply: applyGoalData,
+    onError: handleGoalLoadError,
+  });
+
+  const loadConstellationSummaryData = useCallback(
+    () => ensureConstellationSetup(user.uid),
+    [user.uid]
+  );
+
+  const applyConstellationSummaryData = useCallback(
+    (constellations: Constellation[]) => {
+      setActiveConstellation(getActiveConstellation(constellations));
+    },
+    []
+  );
+
+  const handleConstellationSummaryLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setActiveConstellation(null);
+  }, []);
+
+  const { reload: reloadConstellationSummary } = useDashboardData({
+    requestKey: user.uid,
+    load: loadConstellationSummaryData,
+    apply: applyConstellationSummaryData,
+    onError: handleConstellationSummaryLoadError,
+  });
+
+  const reloadGoalWorkspace = useCallback(async () => {
+    await Promise.all([reloadGoals(), reloadConstellationSummary()]);
+  }, [reloadConstellationSummary, reloadGoals]);
 
   useEffect(() => {
     let cancelled = false;
@@ -243,7 +259,7 @@ export default function GoalsPage() {
         now - lastForegroundRefreshAtRef.current > 15_000
       ) {
         lastForegroundRefreshAtRef.current = now;
-        void loadAll(user.uid);
+        void reloadGoalWorkspace();
       }
     };
 
@@ -254,17 +270,17 @@ export default function GoalsPage() {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
     };
-  }, [user.uid, loadAll]);
+  }, [reloadGoalWorkspace]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     setFeedback(null);
     try {
-      await loadAll(user.uid);
+      await reloadGoalWorkspace();
     } finally {
       setRefreshing(false);
     }
-  }, [user.uid, loadAll]);
+  }, [reloadGoalWorkspace]);
 
   const completedGoalsCount = goals.filter(
     (goal) => goal.status === "completed"

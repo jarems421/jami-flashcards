@@ -22,6 +22,7 @@ import {
   setConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
 import type { Feedback } from "@/lib/app/feedback";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import {
   clampPercentage,
   spreadBackfilledStars,
@@ -51,7 +52,6 @@ export default function ConstellationDashboardPage() {
   const [allStars, setAllStars] = useState<NormalizedStar[]>([]);
   const [goalsById, setGoalsById] = useState<Record<string, Goal>>({});
   const [selectedConstellationId, setSelectedConstellationId] = useState("");
-  const [isLoading, setIsLoading] = useState(true);
   const [draggingStarId, setDraggingStarId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const [feedback, setFeedback] = useState<Feedback | null>(null);
@@ -72,60 +72,71 @@ export default function ConstellationDashboardPage() {
     setBackgroundConstellationId(readConstellationBackgroundConstellationId());
   }, []);
 
-  const loadAll = useCallback(async (uid: string) => {
-    setIsLoading(true);
-    try {
-      const nextConstellations = await ensureConstellationSetup(uid);
-      const [stars, goals] = await Promise.all([
-        getStars(uid),
-        getGoals(uid),
-      ]);
-      const adjustedStars = spreadBackfilledStars(
-        stars
-      ).sort((left, right) => right.createdAt - left.createdAt);
-      const fallbackConstellation = getFallbackConstellation(nextConstellations);
+  const loadConstellationData = useCallback(async () => {
+    const nextConstellations = await ensureConstellationSetup(user.uid);
+    const [stars, goals] = await Promise.all([
+      getStars(user.uid),
+      getGoals(user.uid),
+    ]);
+    let adjustedStars = spreadBackfilledStars(stars).sort(
+      (left, right) => right.createdAt - left.createdAt
+    );
 
-      setConstellations(nextConstellations);
-      setAllStars(adjustedStars);
-      setGoalsById(
-        Object.fromEntries(
-          goals.map((goal) => [goal.id, goal])
-        )
+    if (adjustedStars.some((star) => star.needsBackfill)) {
+      await backfillStarPositions(user.uid, adjustedStars);
+      adjustedStars = adjustedStars.map((star) =>
+        star.needsBackfill ? { ...star, needsBackfill: false } : star
       );
+    }
+
+    return {
+      constellations: nextConstellations,
+      stars: adjustedStars,
+      goalsById: Object.fromEntries(goals.map((goal) => [goal.id, goal])),
+      fallbackConstellationId:
+        getFallbackConstellation(nextConstellations)?.id ?? "",
+    };
+  }, [user.uid]);
+
+  const applyConstellationData = useCallback(
+    (data: Awaited<ReturnType<typeof loadConstellationData>>) => {
+      setConstellations(data.constellations);
+      setAllStars(data.stars);
+      setGoalsById(data.goalsById);
       setSelectedConstellationId((currentId) => {
-        if (currentId && nextConstellations.some((constellation) => constellation.id === currentId)) {
+        if (
+          currentId &&
+          data.constellations.some(
+            (constellation) => constellation.id === currentId
+          )
+        ) {
           return currentId;
         }
 
-        return fallbackConstellation?.id ?? "";
+        return data.fallbackConstellationId;
       });
+    },
+    []
+  );
 
-      if (adjustedStars.some((star) => star.needsBackfill)) {
-        await backfillStarPositions(uid, adjustedStars);
-        setAllStars((prev) =>
-          prev.map((star) =>
-            star.needsBackfill ? { ...star, needsBackfill: false } : star
-          )
-        );
-      }
-    } catch (error) {
-      console.error(error);
-      setConstellations([]);
-      setAllStars([]);
-      setGoalsById({});
-      setSelectedConstellationId("");
-      setFeedback({
-        type: "error",
-        message: "Failed to load your constellation.",
-      });
-    } finally {
-      setIsLoading(false);
-    }
+  const handleConstellationLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setConstellations([]);
+    setAllStars([]);
+    setGoalsById({});
+    setSelectedConstellationId("");
+    setFeedback({
+      type: "error",
+      message: "Failed to load your constellation.",
+    });
   }, []);
 
-  useEffect(() => {
-    void loadAll(user.uid);
-  }, [loadAll, user.uid]);
+  const { loading: isLoading, reload: loadAll } = useDashboardData({
+    requestKey: user.uid,
+    load: loadConstellationData,
+    apply: applyConstellationData,
+    onError: handleConstellationLoadError,
+  });
 
   useEffect(() => {
     const handleFocus = () => {
@@ -135,7 +146,7 @@ export default function ConstellationDashboardPage() {
         now - lastForegroundRefreshAtRef.current > 15_000
       ) {
         lastForegroundRefreshAtRef.current = now;
-        void loadAll(user.uid);
+        void loadAll();
       }
     };
 
@@ -146,17 +157,17 @@ export default function ConstellationDashboardPage() {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
     };
-  }, [loadAll, user.uid]);
+  }, [loadAll]);
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
     setFeedback(null);
     try {
-      await loadAll(user.uid);
+      await loadAll();
     } finally {
       setRefreshing(false);
     }
-  }, [loadAll, user.uid]);
+  }, [loadAll]);
 
   const selectedConstellation = useMemo(
     () =>
@@ -281,7 +292,7 @@ export default function ConstellationDashboardPage() {
     try {
       await createConstellation(user.uid, trimmedName);
       setConstellationName("");
-      await loadAll(user.uid);
+      await loadAll();
       setFeedback({
         type: "success",
         message: `Created constellation ${trimmedName}.`,
@@ -310,7 +321,7 @@ export default function ConstellationDashboardPage() {
 
     try {
       await finishConstellation(user.uid, activeConstellation.id);
-      await loadAll(user.uid);
+      await loadAll();
       setFeedback({
         type: "success",
         message: `${activeConstellation.name} is now finished.`,
