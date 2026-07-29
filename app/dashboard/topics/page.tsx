@@ -38,6 +38,7 @@ import {
   getActiveTopics,
   updateTopic,
 } from "@/services/study/topics";
+import { useDashboardData } from "@/hooks/useDashboardData";
 
 const RECENT_TOPIC_COUNT = 3;
 const TOPIC_BROWSE_PAGE_SIZE = 30;
@@ -122,36 +123,48 @@ export default function TopicsPage() {
   const [savingTopicId, setSavingTopicId] = useState<string | null>(null);
   const [topicPendingDelete, setTopicPendingDelete] = useState<Topic | null>(null);
   const [deletingTopicId, setDeletingTopicId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const loadAll = useCallback(async () => {
-    setLoading(true);
-    try {
-      const [nextTopics, nextCards, nextNotebooks, nextSources, nextDrafts] =
-        await Promise.all([
-          getActiveTopics(user.uid),
-          loadUserCards(user.uid),
-          getActiveNotebooks(user.uid),
-          getActiveSources(user.uid),
-          getGeneratedContentDrafts(user.uid),
-        ]);
-      setTopics(nextTopics);
-      setCards(nextCards);
-      setNotebooks(nextNotebooks);
-      setSources(nextSources);
-      setDrafts(nextDrafts);
-    } catch (error) {
-      console.error(error);
-      setFeedback({ type: "error", message: "Could not load Topics." });
-    } finally {
-      setLoading(false);
-    }
+  const loadTopicsData = useCallback(async () => {
+    const [nextTopics, nextCards, nextNotebooks, nextSources, nextDrafts] =
+      await Promise.all([
+        getActiveTopics(user.uid),
+        loadUserCards(user.uid),
+        getActiveNotebooks(user.uid),
+        getActiveSources(user.uid),
+        getGeneratedContentDrafts(user.uid),
+      ]);
+    return {
+      topics: nextTopics,
+      cards: nextCards,
+      notebooks: nextNotebooks,
+      sources: nextSources,
+      drafts: nextDrafts,
+    };
   }, [user.uid]);
 
-  useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+  const applyTopicsData = useCallback(
+    (data: Awaited<ReturnType<typeof loadTopicsData>>) => {
+      setTopics(data.topics);
+      setCards(data.cards);
+      setNotebooks(data.notebooks);
+      setSources(data.sources);
+      setDrafts(data.drafts);
+    },
+    []
+  );
+
+  const handleTopicsLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setFeedback({ type: "error", message: "Could not load Topics." });
+  }, []);
+
+  const { loading } = useDashboardData({
+    requestKey: user.uid,
+    load: loadTopicsData,
+    apply: applyTopicsData,
+    onError: handleTopicsLoadError,
+  });
 
   const summaries = useMemo(
     () => buildTopicSummaries({ topics, cards, notebooks, sources, drafts }),
