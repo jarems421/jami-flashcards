@@ -36,7 +36,7 @@ vi.mock("@/lib/ai/assistant-context.server", () => ({
   resolveJamiAssistantContext: mocks.resolveContext,
 }));
 
-vi.mock("@/lib/ai/budgets", () => ({
+vi.mock("@/services/ai/budgets", () => ({
   checkAiBudget: mocks.checkBudget,
   getAiTokenCap: () => 8_000,
 }));

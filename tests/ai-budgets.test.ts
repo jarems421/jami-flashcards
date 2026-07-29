@@ -49,7 +49,8 @@ vi.mock("@/services/firebase/admin", () => ({
   getAdminDb: () => mocks.db,
 }));
 
-const { AI_BUDGETS, checkAiBudget, getAiTokenCap } = await import("@/lib/ai/budgets");
+const { AI_BUDGETS, getAiTokenCap } = await import("@/lib/ai/budgets");
+const { checkAiBudget } = await import("@/services/ai/budgets");
 
 beforeEach(() => {
   mocks.store.clear();

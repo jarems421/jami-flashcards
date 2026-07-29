@@ -46,7 +46,7 @@ vi.mock("@/services/firebase/admin", () => ({
   getAdminDb: () => mocks.db,
 }));
 
-vi.mock("@/lib/ai/budgets", () => ({
+vi.mock("@/services/ai/budgets", () => ({
   checkAiBudget: mocks.checkBudget,
   getAiTokenCap: () => 900,
 }));

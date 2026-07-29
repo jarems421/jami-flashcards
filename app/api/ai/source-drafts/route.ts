@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { checkAiBudget } from "@/lib/ai/budgets";
+import { checkAiBudget } from "@/services/ai/budgets";
 import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { CARD_TEXT_FORMAT_PROMPT } from "@/lib/ai/response-format";

@@ -1,7 +1,7 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { checkAiBudget, getAiTokenCap } from "@/lib/ai/budgets";
+import { checkAiBudget, getAiTokenCap } from "@/services/ai/budgets";
 import { generateGeminiText, isGeminiTimeoutError } from "@/lib/ai/gemini";
 import {
   cleanGeneratedCardBack,
