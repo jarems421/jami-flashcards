@@ -22,10 +22,11 @@ import {
   type NotebookInkEditorHandle,
 } from "@/components/workspace/NotebookInkEditor";
 import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
-import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
+import NotebookPageBackground, {
+  PAGE_COLOR_CLASS,
+} from "@/components/workspace/NotebookPageBackground";
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
 import NotebookPageThumbnail from "@/components/workspace/NotebookPageThumbnail";
-import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
 import NotebookSaveIndicator, {
   type SaveStatus,
 } from "@/components/workspace/NotebookSaveIndicator";
@@ -4710,80 +4711,60 @@ export default function NotebookEditorPage() {
             activeContent={
               selectedPage && pageFit.width > 0 ? (
                 <>
-                  <div
-                    aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 z-0"
-                    style={getNotebookPageStyleBackground(pageColor, pageStyle)}
+                  <NotebookPageBackground
+                    pageColor={pageColor}
+                    pageStyle={pageStyle}
+                    pageStyleClassName="pointer-events-none absolute inset-0 z-0"
+                    backgroundFile={activeNotebookFile}
+                    backgroundUrl={activeNotebookFileUrl}
+                    pageIndex={selectedPage.pdfPageIndex ?? 0}
+                    fileLayerClassName="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden"
+                    imageStrategy="next-image"
+                    imageRenderKey={
+                      activeNotebookFile
+                        ? `${selectedPage.id}:${activeNotebookFile.id}:image`
+                        : undefined
+                    }
+                    imageOnSettled={markActivePageBackgroundSettled}
+                    imageLoadingLabel="Loading file..."
+                    imageSizes="48rem"
+                    imageClassName="object-contain"
+                    pdfRenderKey={activePdfRenderKey ?? undefined}
+                    pdfAriaHidden={false}
+                    pdfAriaLabel={
+                      activeNotebookFile
+                        ? `Notebook file: ${activeNotebookFile.fileName}, page ${
+                            (selectedPage.pdfPageIndex ?? 0) + 1
+                          }`
+                        : undefined
+                    }
+                    pdfFadeIn={pageSwipeMotion?.phase !== "handoff"}
+                    pdfOnRenderStateChange={
+                      handleActivePdfRenderStateChange
+                    }
+                    pdfOnCanvasReady={(canvas) => {
+                      if (canvas && activePdfRenderKey) {
+                        activePdfCanvasRef.current = canvas;
+                        activePdfCanvasKeyRef.current = activePdfRenderKey;
+                        return;
+                      }
+                      if (
+                        activePdfCanvasKeyRef.current === activePdfRenderKey
+                      ) {
+                        activePdfCanvasRef.current = null;
+                        activePdfCanvasKeyRef.current = null;
+                      }
+                    }}
+                    inkSvg={
+                      !inkReady &&
+                      (selectedPage.inkData?.svg ||
+                        (selectedPage.strokeData?.strokes?.length ?? 0) > 0)
+                        ? selectedPageInkSvg
+                        : undefined
+                    }
+                    inkSizes="48rem"
+                    inkClassName="pointer-events-none absolute inset-0 z-[12] object-fill"
                   />
-                  {activeNotebookFile ? (
-                    <div className="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden">
-                      {activeNotebookFile.fileType.startsWith("image/") ? (
-                        activeNotebookFileUrl ? (
-                          <Image
-                            key={`${selectedPage.id}:${activeNotebookFile.id}:image`}
-                            alt=""
-                            aria-hidden="true"
-                            src={activeNotebookFileUrl}
-                            fill
-                            unoptimized
-                            sizes="48rem"
-                            className="object-contain"
-                            onLoad={markActivePageBackgroundSettled}
-                            onError={markActivePageBackgroundSettled}
-                          />
-                        ) : (
-                          <div className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-1 text-xs font-semibold text-text-secondary">
-                            Loading file...
-                          </div>
-                        )
-                      ) : activeNotebookFile.fileType === "application/pdf" &&
-                        activeNotebookFile.storagePath ? (
-                          <NotebookPdfPage
-                            key={`${selectedPage.id}:${activeNotebookFile.id}:${
-                              selectedPage.pdfPageIndex ?? 0
-                            }`}
-                            aria-label={`Notebook file: ${activeNotebookFile.fileName}, page ${
-                              (selectedPage.pdfPageIndex ?? 0) + 1
-                            }`}
-                            storagePath={activeNotebookFile.storagePath}
-                            pageIndex={selectedPage.pdfPageIndex ?? 0}
-                            fadeIn={pageSwipeMotion?.phase !== "handoff"}
-                            onRenderStateChange={handleActivePdfRenderStateChange}
-                            onCanvasReady={(canvas) => {
-                              if (canvas && activePdfRenderKey) {
-                                activePdfCanvasRef.current = canvas;
-                                activePdfCanvasKeyRef.current = activePdfRenderKey;
-                                return;
-                              }
-                              if (
-                                activePdfCanvasKeyRef.current === activePdfRenderKey
-                              ) {
-                                activePdfCanvasRef.current = null;
-                                activePdfCanvasKeyRef.current = null;
-                              }
-                            }}
-                            className="absolute inset-0"
-                          />
-                      ) : (
-                        null
-                      )}
-                    </div>
-                  ) : null}
-                  {!inkReady &&
-                  (selectedPage.inkData?.svg ||
-                    (selectedPage.strokeData?.strokes?.length ?? 0) > 0) ? (
-                    <Image
-                      alt=""
-                      aria-hidden="true"
-                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-                        selectedPageInkSvg
-                      )}`}
-                      fill
-                      unoptimized
-                      sizes="48rem"
-                      className="pointer-events-none absolute inset-0 z-[12] object-fill"
-                    />
-                  ) : null}
                   <NotebookInkEditor
                     ref={inkEditorRef}
                     key={`${selectedPage.id}:${inkEditorMountRevision}`}
