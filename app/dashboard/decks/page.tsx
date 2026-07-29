@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckFolders, updateDeckStyle, type Deck } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
@@ -13,7 +12,8 @@ import {
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
-import { db } from "@/services/firebase/client";
+import { loadUserCards } from "@/services/study/cards";
+import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
@@ -21,7 +21,6 @@ import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable"
 import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 
-type DeckCounts = Record<string, { due: number; total: number }>;
 type Feedback = { type: "success" | "error"; message: string };
 
 export default function DecksPage() {
@@ -49,29 +48,16 @@ export default function DecksPage() {
   const loadAll = useCallback(async () => {
     setIsLoadingDecks(true);
     try {
-      const [nextDecks, nextFolders, cardsSnapshot] = await Promise.all([
+      const [nextDecks, nextFolders, nextCards] = await Promise.all([
         getDecks(user.uid),
         getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
-        getDocs(query(collection(db, "cards"), where("userId", "==", user.uid))),
+        loadUserCards(user.uid),
       ]);
-      const nextCounts: DeckCounts = {};
-      const now = Date.now();
-
-      for (const deck of nextDecks) {
-        nextCounts[deck.id] = { due: 0, total: 0 };
-      }
-
-      for (const cardDoc of cardsSnapshot.docs) {
-        const data = cardDoc.data() as { deckId?: unknown; dueDate?: unknown };
-        if (typeof data.deckId !== "string" || !nextCounts[data.deckId]) {
-          continue;
-        }
-
-        nextCounts[data.deckId].total += 1;
-        if (typeof data.dueDate !== "number" || data.dueDate <= now) {
-          nextCounts[data.deckId].due += 1;
-        }
-      }
+      const nextCounts = getDeckCardCounts(
+        nextDecks.map((deck) => deck.id),
+        nextCards,
+        Date.now()
+      );
 
       setDecks(nextDecks);
       setFolders(nextFolders);
