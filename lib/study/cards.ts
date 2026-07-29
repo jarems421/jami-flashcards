@@ -77,6 +77,12 @@ export type CardReviewCounterUpdates = Partial<
   >
 >;
 
+export type CardReviewUpdateCommand = {
+  values?: CardReviewValueUpdates;
+  increments?: CardReviewCounterUpdates;
+  clearMemoryRiskOverrideDayKey?: boolean;
+};
+
 export type ImportedCardDraft = {
   front: string;
   back: string;
