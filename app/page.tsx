@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { signInWithGoogle, handleGoogleRedirectResult } from "@/services/auth";
 import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
-import { listenToAuth } from "@/lib/auth/auth-listener";
+import { listenToAuth } from "@/services/auth/auth-listener";
 import { BrandMark } from "@/components/ui";
 import Button from "@/components/ui/Button";
 

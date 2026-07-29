@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import { User } from "firebase/auth";
-import { listenToAuth } from "@/lib/auth/auth-listener";
+import { listenToAuth } from "@/services/auth/auth-listener";
 
 type UserContextValue = {
   user: User;

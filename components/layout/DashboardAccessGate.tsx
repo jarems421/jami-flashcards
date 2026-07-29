@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import InAppNotice from "@/components/layout/InAppNotice";
 import TabBar from "@/components/layout/TabBar";
 import TopicMigrationGate from "@/components/topics/TopicMigrationGate";
-import { listenToAuth } from "@/lib/auth/auth-listener";
+import { listenToAuth } from "@/services/auth/auth-listener";
 import UserProvider from "@/lib/auth/user-context";
 import {
   readSidebarHiddenPreference,

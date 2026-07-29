@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { User } from "firebase/auth";
-import { listenToAuth } from "@/lib/auth/auth-listener";
+import { listenToAuth } from "@/services/auth/auth-listener";
 import {
   getResolvedBackgroundConstellation,
   type Constellation,

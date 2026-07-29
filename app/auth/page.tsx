@@ -9,7 +9,7 @@ import {
   sendPasswordReset,
   signUpWithEmail,
 } from "@/services/auth";
-import { listenToAuth } from "@/lib/auth/auth-listener";
+import { listenToAuth } from "@/services/auth/auth-listener";
 import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, Input, PageHero } from "@/components/ui";
