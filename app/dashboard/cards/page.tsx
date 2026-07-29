@@ -913,19 +913,17 @@ export default function CardsSearchPage() {
                   <div className="space-y-4">
                     <div className="flex items-center justify-between gap-3">
                       <CardDifficultyBadge card={card} compact />
-                      {true ? (
-                        <label className="flex h-10 w-10 cursor-pointer items-center justify-center" title="Select card">
-                          <span className="sr-only">Select card</span>
-                          <input
-                            type="checkbox"
-                            aria-label={`Select card: ${card.front}`}
-                            checked={selectedCardIdSet.has(card.id)}
-                            onClick={(event) => handleCheckboxClick(card.id, event)}
-                            onChange={() => undefined}
-                            className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
-                          />
-                        </label>
-                      ) : null}
+                      <label className="flex h-10 w-10 cursor-pointer items-center justify-center" title="Select card">
+                        <span className="sr-only">Select card</span>
+                        <input
+                          type="checkbox"
+                          aria-label={`Select card: ${card.front}`}
+                          checked={selectedCardIdSet.has(card.id)}
+                          onClick={(event) => handleCheckboxClick(card.id, event)}
+                          onChange={() => undefined}
+                          className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
+                        />
+                      </label>
                     </div>
                     <CardQualityWarnings
                       warnings={getCardQualityWarnings(
@@ -1002,19 +1000,17 @@ export default function CardsSearchPage() {
                         />
                       </div>
                       <div className="flex shrink-0 items-center gap-0.5">
-                        {true ? (
-                          <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
-                            <span className="sr-only">Select card</span>
-                            <input
-                              type="checkbox"
-                              aria-label={`Select card: ${card.front}`}
-                              checked={selectedCardIdSet.has(card.id)}
-                              onClick={(event) => handleCheckboxClick(card.id, event)}
-                              onChange={() => undefined}
-                              className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
-                            />
-                          </label>
-                        ) : null}
+                        <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
+                          <span className="sr-only">Select card</span>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select card: ${card.front}`}
+                            checked={selectedCardIdSet.has(card.id)}
+                            onClick={(event) => handleCheckboxClick(card.id, event)}
+                            onChange={() => undefined}
+                            className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
+                          />
+                        </label>
                         <CardActionsMenu
                           deleting={deletingCardId === card.id}
                           disabled={deletingCardId === card.id}
@@ -1133,20 +1129,18 @@ export default function CardsSearchPage() {
                 </span>
               ))}
             </div>
-            {true ? (
-              <div className="mt-5 flex justify-end">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    setPreviewCardId(null);
-                    startEditing(previewCard);
-                  }}
-                >
-                  Edit card
-                </Button>
-              </div>
-            ) : null}
+            <div className="mt-5 flex justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setPreviewCardId(null);
+                  startEditing(previewCard);
+                }}
+              >
+                Edit card
+              </Button>
+            </div>
           </section>
         </div>
       ) : null}

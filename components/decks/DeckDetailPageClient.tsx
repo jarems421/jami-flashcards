@@ -599,22 +599,20 @@ export default function DeckDetailPageClient() {
             value={searchTerm}
             onChange={(event) => setSearchTerm(event.target.value)}
           />
-          {true ? (
-            <BulkTopicToolbar
-              userId={user.uid}
-              selectedCount={selectedCardIds.length}
-              visibleCount={filteredCards.length}
-              topicIds={bulkTopicIds}
-              topics={topics}
-              maxTopicsToAdd={bulkTopicCapacity}
-              disabled={applyingBulkTopics}
-              onSelectAll={selectVisibleCards}
-              onTopicIdsChange={setBulkTopicIds}
-              onTopicsChange={setTopics}
-              onApply={() => void handleAddTopicsToSelectedCards()}
-              onClearSelection={clearSelection}
-            />
-          ) : null}
+          <BulkTopicToolbar
+            userId={user.uid}
+            selectedCount={selectedCardIds.length}
+            visibleCount={filteredCards.length}
+            topicIds={bulkTopicIds}
+            topics={topics}
+            maxTopicsToAdd={bulkTopicCapacity}
+            disabled={applyingBulkTopics}
+            onSelectAll={selectVisibleCards}
+            onTopicIdsChange={setBulkTopicIds}
+            onTopicsChange={setTopics}
+            onApply={() => void handleAddTopicsToSelectedCards()}
+            onClearSelection={clearSelection}
+          />
 
           {filteredCards.length === 0 ? (
             <EmptyState
@@ -639,19 +637,17 @@ export default function DeckDetailPageClient() {
                     <div className="space-y-4">
                       <div className="flex items-center justify-between gap-3">
                         <CardDifficultyBadge card={card} compact />
-                        {true ? (
-                          <label className="flex h-10 w-10 cursor-pointer items-center justify-center" title="Select card">
-                            <span className="sr-only">Select card</span>
-                            <input
-                              type="checkbox"
-                              aria-label={`Select card: ${card.front}`}
-                              checked={selectedCardIdSet.has(card.id)}
-                              onClick={(event) => handleCheckboxClick(card.id, event)}
-                              onChange={() => undefined}
-                              className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
-                            />
-                          </label>
-                        ) : null}
+                        <label className="flex h-10 w-10 cursor-pointer items-center justify-center" title="Select card">
+                          <span className="sr-only">Select card</span>
+                          <input
+                            type="checkbox"
+                            aria-label={`Select card: ${card.front}`}
+                            checked={selectedCardIdSet.has(card.id)}
+                            onClick={(event) => handleCheckboxClick(card.id, event)}
+                            onChange={() => undefined}
+                            className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
+                          />
+                        </label>
                       </div>
                       <CardQualityWarnings
                         warnings={getCardQualityWarnings(
@@ -728,19 +724,17 @@ export default function DeckDetailPageClient() {
                           />
                         </div>
                         <div className="flex shrink-0 items-center gap-0.5">
-                          {true ? (
-                            <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
-                              <span className="sr-only">Select card</span>
-                              <input
-                                type="checkbox"
-                                aria-label={`Select card: ${card.front}`}
-                                checked={selectedCardIdSet.has(card.id)}
-                                onClick={(event) => handleCheckboxClick(card.id, event)}
-                                onChange={() => undefined}
-                                className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
-                              />
-                            </label>
-                          ) : null}
+                          <label className="flex h-10 w-8 cursor-pointer items-center justify-center" title="Select card">
+                            <span className="sr-only">Select card</span>
+                            <input
+                              type="checkbox"
+                              aria-label={`Select card: ${card.front}`}
+                              checked={selectedCardIdSet.has(card.id)}
+                              onClick={(event) => handleCheckboxClick(card.id, event)}
+                              onChange={() => undefined}
+                              className="h-[1.1rem] w-[1.1rem] accent-[var(--color-accent)]"
+                            />
+                          </label>
                           <CardActionsMenu
                             deleting={deletingCardId === card.id}
                             disabled={deletingCardId === card.id}
@@ -817,20 +811,18 @@ export default function DeckDetailPageClient() {
                 );
               })}
             </div>
-            {true ? (
-              <div className="mt-5 flex justify-end">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  onClick={() => {
-                    setPreviewCardId(null);
-                    startEditingCard(previewCard);
-                  }}
-                >
-                  Edit card
-                </Button>
-              </div>
-            ) : null}
+            <div className="mt-5 flex justify-end">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => {
+                  setPreviewCardId(null);
+                  startEditingCard(previewCard);
+                }}
+              >
+                Edit card
+              </Button>
+            </div>
           </section>
         </div>
       ) : null}

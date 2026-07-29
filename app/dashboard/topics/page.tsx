@@ -323,24 +323,22 @@ export default function TopicsPage() {
               Topics bring related cards, notebooks, sources, and drafts together.
             </p>
           </div>
-          {true ? (
-            <div className="flex w-full max-w-lg gap-2">
-              <Input
-                aria-label="New Topic name"
-                placeholder="New Topic"
-                value={newTopicName}
-                onChange={(event) => setNewTopicName(event.target.value)}
-                containerClassName="min-w-0 flex-1"
-              />
-              <Button
-                type="button"
-                disabled={creating || !newTopicName.trim()}
-                onClick={() => void createTopic()}
-              >
-                {creating ? "Creating..." : "Create"}
-              </Button>
-            </div>
-          ) : null}
+          <div className="flex w-full max-w-lg gap-2">
+            <Input
+              aria-label="New Topic name"
+              placeholder="New Topic"
+              value={newTopicName}
+              onChange={(event) => setNewTopicName(event.target.value)}
+              containerClassName="min-w-0 flex-1"
+            />
+            <Button
+              type="button"
+              disabled={creating || !newTopicName.trim()}
+              onClick={() => void createTopic()}
+            >
+              {creating ? "Creating..." : "Create"}
+            </Button>
+          </div>
         </div>
       </Card>
 
@@ -468,15 +466,13 @@ export default function TopicsPage() {
                           </div>
                         ) : null}
                       </Link>
-                      {true ? (
-                        <TopicActionsMenu
-                          topic={summary.topic}
-                          onRename={() => startRenaming(summary.topic)}
-                          onDelete={() =>
-                            setTopicPendingDelete(summary.topic)
-                          }
-                        />
-                      ) : null}
+                      <TopicActionsMenu
+                        topic={summary.topic}
+                        onRename={() => startRenaming(summary.topic)}
+                        onDelete={() =>
+                          setTopicPendingDelete(summary.topic)
+                        }
+                      />
                     </>
                   )}
                 </section>
