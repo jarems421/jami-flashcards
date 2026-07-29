@@ -2,6 +2,7 @@ import {
   cleanGeneratedCardBack,
   cleanGeneratedCardText,
 } from "@/lib/ai/card-autocomplete";
+import { extractJsonArray } from "@/lib/ai/model-json";
 import {
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
@@ -25,16 +26,6 @@ function clampGeneratedCardCount(value: unknown) {
 
 export function getGeneratedCardCount(value: unknown) {
   return clampGeneratedCardCount(value);
-}
-
-function extractJsonArray(text: string) {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("[")) {
-    return trimmed;
-  }
-
-  const match = trimmed.match(/\[[\s\S]*\]/);
-  return match ? match[0] : trimmed;
 }
 
 function normalizeGeneratedDraft(value: unknown): GeneratedCardDraft | null {

@@ -1,4 +1,5 @@
 import { cleanGeneratedCardText } from "@/lib/ai/card-autocomplete";
+import { extractJsonArray } from "@/lib/ai/model-json";
 
 export const MAX_SOURCE_QUESTION_DRAFTS = 5;
 
@@ -7,13 +8,6 @@ export type GeneratedQuestionDraft = {
   answerText?: string;
   solutionText?: string;
 };
-
-function extractJsonArray(text: string) {
-  const trimmed = text.trim();
-  if (trimmed.startsWith("[")) return trimmed;
-  const match = trimmed.match(/\[[\s\S]*\]/);
-  return match ? match[0] : trimmed;
-}
 
 function normalizeQuestionDraft(value: unknown): GeneratedQuestionDraft | null {
   if (!value || typeof value !== "object") return null;
