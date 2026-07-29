@@ -2,12 +2,6 @@
 
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
-  addDoc,
-  collection,
-  doc,
-  writeBatch,
-} from "firebase/firestore";
-import {
   getCardContentKey,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
@@ -18,7 +12,11 @@ import {
 } from "@/lib/study/cards";
 import { downloadTextFile } from "@/lib/app/download";
 import type { Topic } from "@/lib/practice/topics";
-import { db } from "@/services/firebase/client";
+import {
+  CardBatchCreateError,
+  createCard,
+  createCardsInBatches,
+} from "@/services/study/cards";
 import type { Deck } from "@/services/study/decks";
 import { featureFlags } from "@/lib/app/feature-flags";
 import TopicPicker from "@/components/topics/TopicPicker";
@@ -48,8 +46,6 @@ type CardCreationPanelProps = {
   ) => void;
   onFeedback: (feedback: Feedback) => void;
 };
-
-const CARD_CREATE_BATCH_SIZE = 450;
 
 function getNewDraftSummary(
   drafts: ImportedCardDraft[],
@@ -156,64 +152,6 @@ export default function CardCreationPanel({
     [existingKeysByDeckId, listDeckId, listSummary.cards]
   );
 
-  const createCardsFromDrafts = async (
-    drafts: ImportedCardDraft[],
-    deckId: string,
-    topicIds: string[] = [],
-    onProgress?: (completed: number, total: number) => void
-  ) => {
-    const createdCards: Card[] = [];
-    const createdAtBase = Date.now();
-    const cardsCollection = collection(db, "cards");
-
-    try {
-      for (let start = 0; start < drafts.length; start += CARD_CREATE_BATCH_SIZE) {
-        const batch = writeBatch(db);
-        const chunk = drafts.slice(start, start + CARD_CREATE_BATCH_SIZE);
-        const chunkCards: Card[] = [];
-
-        chunk.forEach((draft, index) => {
-          const cardIndex = start + index;
-          const cardRef = doc(cardsCollection);
-          const createdAt = createdAtBase - cardIndex;
-          const front = normalizeCardContentInput(draft.front);
-          const back = normalizeCardContentInput(draft.back);
-          const card: Card = {
-            id: cardRef.id,
-            deckId,
-            userId,
-            front,
-            back,
-            tags: [],
-            topicIds,
-            createdAt,
-          };
-
-          batch.set(cardRef, {
-            deckId,
-            userId,
-            front,
-            back,
-            tags: [],
-            topicIds,
-            createdAt,
-          });
-          chunkCards.push(card);
-        });
-
-        await batch.commit();
-        createdCards.push(...chunkCards);
-        onProgress?.(createdCards.length, drafts.length);
-      }
-
-      return createdCards;
-    } catch (error) {
-      const nextError = error instanceof Error ? error : new Error("Failed to create cards.");
-      (nextError as Error & { createdCards?: Card[] }).createdCards = createdCards;
-      throw nextError;
-    }
-  };
-
   const renderDeckSelect = (
     value: string,
     onChange: (value: string) => void,
@@ -268,26 +206,13 @@ export default function CardCreationPanel({
     setAddingSingleCard(true);
 
     try {
-      const createdAt = Date.now();
-      const ref = await addDoc(collection(db, "cards"), {
+      const card = await createCard({
         deckId: singleDeckId,
         userId,
         front,
         back,
-        tags: [],
         topicIds: singleTopicIds,
-        createdAt,
       });
-      const card: Card = {
-        id: ref.id,
-        deckId: singleDeckId,
-        userId,
-        front,
-        back,
-        tags: [],
-        topicIds: singleTopicIds,
-        createdAt,
-      };
 
       setSingleFront("");
       setSingleBack("");
@@ -347,10 +272,13 @@ export default function CardCreationPanel({
     setListProgress({ completed: 0, total: listDraftSummary.newDrafts.length });
 
     try {
-      const createdCards = await createCardsFromDrafts(
-        listDraftSummary.newDrafts,
-        listDeckId,
-        listTopicIds,
+      const createdCards = await createCardsInBatches(
+        {
+          drafts: listDraftSummary.newDrafts,
+          deckId: listDeckId,
+          userId,
+          topicIds: listTopicIds,
+        },
         (completed, total) => setListProgress({ completed, total })
       );
       const duplicateMessage =
@@ -370,9 +298,7 @@ export default function CardCreationPanel({
     } catch (error) {
       console.error(error);
       const createdCards =
-        error instanceof Error
-          ? ((error as Error & { createdCards?: Card[] }).createdCards ?? [])
-          : [];
+        error instanceof CardBatchCreateError ? error.createdCards : [];
       if (createdCards.length > 0) {
         onCardsCreated(createdCards, { source: "list", selectCreated: true });
       }
