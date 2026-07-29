@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@/lib/auth/user-context";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import { getDecks, type Deck } from "@/services/study/decks";
@@ -55,6 +55,7 @@ import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
 import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
+import { useDashboardData } from "@/hooks/useDashboardData";
 import Link from "next/link";
 
 const CARD_RESULT_PAGE_SIZE = 50;
@@ -69,7 +70,6 @@ export default function CardsSearchPage() {
   const [sources, setSources] = useState<Source[]>([]);
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
-  const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [debouncedTerm, setDebouncedTerm] = useState("");
   const [visibleResultLimit, setVisibleResultLimit] = useState(CARD_RESULT_PAGE_SIZE);
@@ -166,44 +166,49 @@ export default function CardsSearchPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [previewCardId]);
 
-  // Load all user cards + decks
-  useEffect(() => {
-    let cancelled = false;
+  const loadCardsData = useCallback(async () => {
+    const [userDecks, userCards, userSources, userFolders, userTopics] =
+      await Promise.all([
+        getDecks(user.uid),
+        loadUserCards(user.uid),
+        getActiveSources(user.uid),
+        getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
+        getActiveTopics(user.uid),
+      ]);
 
-    void (async () => {
-      setLoading(true);
-      try {
-        const [userDecks, userCards, userSources, userFolders, userTopics] = await Promise.all([
-          getDecks(user.uid),
-          loadUserCards(user.uid),
-          getActiveSources(user.uid),
-          getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
-          getActiveTopics(user.uid),
-        ]);
-
-        if (cancelled) return;
-
-        const allCards = sortByCreatedAtNewest(userCards, (card) => card.createdAt);
-
-        setDecks(userDecks);
-        setCards(allCards);
-        setSources(userSources);
-        setFolders(userFolders);
-        setTopics(userTopics);
-      } catch (error) {
-        console.error(error);
-        if (!isFirebasePermissionDenied(error)) {
-          setFeedback({ type: "error", message: "Failed to load cards." });
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
+    return {
+      decks: userDecks,
+      cards: sortByCreatedAtNewest(userCards, (card) => card.createdAt),
+      sources: userSources,
+      folders: userFolders,
+      topics: userTopics,
     };
   }, [user.uid]);
+
+  const applyCardsData = useCallback(
+    (data: Awaited<ReturnType<typeof loadCardsData>>) => {
+      setDecks(data.decks);
+      setCards(data.cards);
+      setSources(data.sources);
+      setFolders(data.folders);
+      setTopics(data.topics);
+    },
+    []
+  );
+
+  const handleCardsLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    if (!isFirebasePermissionDenied(error)) {
+      setFeedback({ type: "error", message: "Failed to load cards." });
+    }
+  }, []);
+
+  const { loading } = useDashboardData({
+    requestKey: user.uid,
+    load: loadCardsData,
+    apply: applyCardsData,
+    onError: handleCardsLoadError,
+  });
 
   useEffect(() => {
     if (!legacyTagFilter || topics.length === 0) return;
