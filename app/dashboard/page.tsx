@@ -493,6 +493,12 @@ export default function DashboardHome() {
         hasActiveStudySession: Boolean(activeSessionResult.session),
       });
       lastForegroundRefreshAtRef.current = Date.now();
+    } catch (error) {
+      console.error("Failed to load Today.", error);
+      setFeedback({
+        type: "error",
+        message: "Failed to load Today. Try refreshing in a moment.",
+      });
     } finally {
       setIsLoading(false);
     }
