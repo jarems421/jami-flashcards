@@ -183,7 +183,7 @@ export function sortCardsByStudyPriority(cards: Card[], now = Date.now()) {
   return [...neverReviewedCards, ...weakCards, ...mediumCards, ...easyCards];
 }
 
-function getCardsByIds(cards: Card[], ids: string[]) {
+export function getCardsByIds(cards: Card[], ids: string[]) {
   const cardsById = new Map(cards.map((card) => [card.id, card]));
   return Array.from(new Set(ids))
     .map((id) => cardsById.get(id) ?? null)
