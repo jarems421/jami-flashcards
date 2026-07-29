@@ -10,6 +10,13 @@ const notebookPageSource = readFileSync(
   join(process.cwd(), "app/dashboard/notebooks/[notebookId]/page.tsx"),
   "utf8"
 );
+const notebookToolbarSource = readFileSync(
+  join(
+    process.cwd(),
+    "components/workspace/NotebookToolbarIconButton.tsx"
+  ),
+  "utf8"
+);
 
 describe("notebook ink viewport integration", () => {
   it("suppresses js-draw's internal export boundary on every rerender", () => {
@@ -117,7 +124,7 @@ describe("notebook ink viewport integration", () => {
     expect(pointerMoveStart).toBeGreaterThan(pointerDownStart);
     expect(pointerLeaveStart).toBeGreaterThan(pointerMoveStart);
     expect(finishStart).toBeGreaterThan(pointerLeaveStart);
-    expect(notebookPageSource).toContain(
+    expect(notebookToolbarSource).toContain(
       'data-notebook-toolbar-action="true"'
     );
     expect(notebookPageSource).toContain(
