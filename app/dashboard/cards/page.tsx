@@ -1,9 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { doc, writeBatch } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
-import { db } from "@/services/firebase/client";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import { getDecks, type Deck } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
@@ -25,7 +23,14 @@ import {
   normalizeCardContentInput,
   type Card,
 } from "@/lib/study/cards";
-import { deleteCard, loadUserCards, updateCardContent } from "@/services/study/cards";
+import {
+  deleteCard,
+  deleteCards,
+  loadUserCards,
+  moveCardsToDeck,
+  setCardTopicsInBulk,
+  updateCardContent,
+} from "@/services/study/cards";
 import type { Source } from "@/lib/practice/sources";
 import {
   getTopicNameKey,
@@ -466,17 +471,7 @@ export default function CardsSearchPage() {
     setFeedback(null);
 
     try {
-      for (let start = 0; start < cardsToUpdate.length; start += 450) {
-        const batch = writeBatch(db);
-        const chunk = cardsToUpdate.slice(start, start + 450);
-        for (const card of chunk) {
-          batch.update(doc(db, "cards", card.id), {
-            topicIds: card.topicIds,
-            tags: [],
-          });
-        }
-        await batch.commit();
-      }
+      await setCardTopicsInBulk(cardsToUpdate);
 
       const topicIdsByCardId = new Map(
         cardsToUpdate.map((card) => [card.id, card.topicIds])
@@ -514,13 +509,7 @@ export default function CardsSearchPage() {
     setApplyingBulkAction("move");
     setFeedback(null);
     try {
-      for (let start = 0; start < selectedCardIds.length; start += 450) {
-        const batch = writeBatch(db);
-        selectedCardIds.slice(start, start + 450).forEach((cardId) => {
-          batch.update(doc(db, "cards", cardId), { deckId: bulkMoveDeckId });
-        });
-        await batch.commit();
-      }
+      await moveCardsToDeck(selectedCardIds, bulkMoveDeckId);
       const movedIds = new Set(selectedCardIds);
       setCards((current) =>
         current.map((card) =>
@@ -547,13 +536,7 @@ export default function CardsSearchPage() {
     setApplyingBulkAction("delete");
     setFeedback(null);
     try {
-      for (let start = 0; start < selectedCardIds.length; start += 450) {
-        const batch = writeBatch(db);
-        selectedCardIds.slice(start, start + 450).forEach((cardId) => {
-          batch.delete(doc(db, "cards", cardId));
-        });
-        await batch.commit();
-      }
+      await deleteCards(selectedCardIds);
       const deletedIds = new Set(selectedCardIds);
       const deletedCount = selectedCardIds.length;
       setCards((current) => current.filter((card) => !deletedIds.has(card.id)));
