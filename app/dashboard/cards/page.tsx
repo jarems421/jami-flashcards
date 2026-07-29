@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, deleteDoc, doc, getDocs, query, updateDoc, where, writeBatch } from "firebase/firestore";
+import { deleteDoc, doc, updateDoc, writeBatch } from "firebase/firestore";
 import { useUser } from "@/lib/auth/user-context";
 import { db } from "@/services/firebase/client";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
@@ -20,12 +20,12 @@ import {
 } from "@/lib/study/card-browser-navigation";
 import {
   getCardContentKey,
-  mapCardData,
   MAX_BACK_LENGTH,
   MAX_FRONT_LENGTH,
   normalizeCardContentInput,
   type Card,
 } from "@/lib/study/cards";
+import { loadUserCards } from "@/services/study/cards";
 import type { Source } from "@/lib/practice/sources";
 import {
   getTopicNameKey,
@@ -168,14 +168,9 @@ export default function CardsSearchPage() {
     void (async () => {
       setLoading(true);
       try {
-        const [userDecks, cardsSnapshot, userSources, userFolders, userTopics] = await Promise.all([
+        const [userDecks, userCards, userSources, userFolders, userTopics] = await Promise.all([
           getDecks(user.uid),
-          getDocs(
-            query(
-              collection(db, "cards"),
-              where("userId", "==", user.uid)
-            )
-          ),
+          loadUserCards(user.uid),
           getActiveSources(user.uid),
           getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
           getActiveTopics(user.uid),
@@ -183,12 +178,7 @@ export default function CardsSearchPage() {
 
         if (cancelled) return;
 
-        const allCards = sortByCreatedAtNewest(
-          cardsSnapshot.docs.map((cardDoc) =>
-            mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
-          ),
-          (card) => card.createdAt
-        );
+        const allCards = sortByCreatedAtNewest(userCards, (card) => card.createdAt);
 
         setDecks(userDecks);
         setCards(allCards);

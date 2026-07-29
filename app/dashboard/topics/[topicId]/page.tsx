@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import AppPage from "@/components/layout/AppPage";
@@ -20,7 +20,8 @@ import { useUser } from "@/lib/auth/user-context";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
 import type { Source } from "@/lib/practice/sources";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
-import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
+import type { Card as StudyCard } from "@/lib/study/cards";
+import { loadUserCards } from "@/services/study/cards";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { db } from "@/services/firebase/client";
 import { getDecks, type Deck } from "@/services/study/decks";
@@ -68,21 +69,17 @@ export default function TopicDetailPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextTopics, cardSnapshot, nextDecks, nextNotebooks, nextSources, nextDrafts] =
+      const [nextTopics, nextCards, nextDecks, nextNotebooks, nextSources, nextDrafts] =
         await Promise.all([
           getActiveTopics(user.uid),
-          getDocs(query(collection(db, "cards"), where("userId", "==", user.uid))),
+          loadUserCards(user.uid),
           getDecks(user.uid),
           getActiveNotebooks(user.uid),
           getActiveSources(user.uid),
           getGeneratedContentDrafts(user.uid),
         ]);
       setTopics(nextTopics);
-      setCards(
-        cardSnapshot.docs.map((snapshot) =>
-          mapCardData(snapshot.id, snapshot.data() as Record<string, unknown>)
-        )
-      );
+      setCards(nextCards);
       setDecks(nextDecks);
       setNotebooks(nextNotebooks);
       setSources(nextSources);

@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { collection, getDocs, query, where } from "firebase/firestore";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AppPage from "@/components/layout/AppPage";
@@ -23,10 +22,10 @@ import {
   shouldShowSmartSearchResults,
   textMatchesSmartSearch,
 } from "@/lib/study/card-search";
-import { mapCardData, type Card as StudyCard } from "@/lib/study/cards";
+import type { Card as StudyCard } from "@/lib/study/cards";
+import { loadUserCards } from "@/services/study/cards";
 import type { Source } from "@/lib/practice/sources";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import { db } from "@/services/firebase/client";
 import {
   getGeneratedContentDrafts,
   type GeneratedContentDraft,
@@ -129,20 +128,16 @@ export default function TopicsPage() {
   const loadAll = useCallback(async () => {
     setLoading(true);
     try {
-      const [nextTopics, cardSnapshot, nextNotebooks, nextSources, nextDrafts] =
+      const [nextTopics, nextCards, nextNotebooks, nextSources, nextDrafts] =
         await Promise.all([
           getActiveTopics(user.uid),
-          getDocs(query(collection(db, "cards"), where("userId", "==", user.uid))),
+          loadUserCards(user.uid),
           getActiveNotebooks(user.uid),
           getActiveSources(user.uid),
           getGeneratedContentDrafts(user.uid),
         ]);
       setTopics(nextTopics);
-      setCards(
-        cardSnapshot.docs.map((snapshot) =>
-          mapCardData(snapshot.id, snapshot.data() as Record<string, unknown>)
-        )
-      );
+      setCards(nextCards);
       setNotebooks(nextNotebooks);
       setSources(nextSources);
       setDrafts(nextDrafts);
