@@ -70,6 +70,29 @@ export type NotebookSnapshotPaperPattern = {
   verticalLines: readonly number[];
 };
 
+export function readBlobAsBase64(blob: Blob) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => {
+      reject(
+        new Error("This browser could not prepare the notebook page for Jami.")
+      );
+    };
+    reader.onload = () => {
+      const dataUrl = typeof reader.result === "string" ? reader.result : "";
+      const separatorIndex = dataUrl.indexOf(",");
+      if (separatorIndex < 0 || separatorIndex === dataUrl.length - 1) {
+        reject(
+          new Error("This browser could not prepare the notebook page for Jami.")
+        );
+        return;
+      }
+      resolve(dataUrl.slice(separatorIndex + 1));
+    };
+    reader.readAsDataURL(blob);
+  });
+}
+
 type DecodedCanvasSource = {
   height: number;
   release(): void;
