@@ -52,7 +52,10 @@ import {
   type StudySessionStats,
 } from "@/lib/study/session";
 import { ensureDailyReviewState, ensureStudyStateSetup, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
-import { loadUserCards } from "@/services/study/cards";
+import {
+  loadUserCards,
+  recordSimpleStudyResult,
+} from "@/services/study/cards";
 import { syncOfflineStudyReviews } from "@/services/study/offline";
 import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
@@ -1406,13 +1409,7 @@ export default function StudyPage() {
     setFlipped(false);
 
     try {
-      await updateDoc(doc(db, "cards", current.id), {
-        simpleStudyLastResult: result,
-        simpleStudyLastReviewedAt: now,
-        ...(result === "correct"
-          ? { simpleStudyCorrectCount: increment(1) }
-          : { simpleStudyWrongCount: increment(1) }),
-      });
+      await recordSimpleStudyResult(current.id, result, now);
     } catch (error) {
       console.warn("Failed to save Simple Study result.", error);
       setOfflineMode(true);
