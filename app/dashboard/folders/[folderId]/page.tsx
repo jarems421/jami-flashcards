@@ -44,7 +44,10 @@ import {
   type NotebookPageColor,
   type NotebookPageStyle,
 } from "@/lib/workspace/notebooks";
-import type { StudyFolder } from "@/lib/workspace/study-folders";
+import {
+  MAX_STUDY_FOLDER_SUBJECT_LENGTH,
+  type StudyFolder,
+} from "@/lib/workspace/study-folders";
 import { getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
 import { archiveStudyFolder, getStudyFolderById, updateStudyFolder } from "@/services/study/folders";
 import {
@@ -120,6 +123,7 @@ export default function FolderDetailPage() {
   );
   const [showEditFolder, setShowEditFolder] = useState(false);
   const [editFolderName, setEditFolderName] = useState("");
+  const [editFolderSubject, setEditFolderSubject] = useState("");
   const [editFolderColor, setEditFolderColor] = useState<ObjectColorId>("sky");
   const [editFolderIcon, setEditFolderIcon] = useState<ObjectIconId>("none");
   const [savingFolder, setSavingFolder] = useState(false);
@@ -279,6 +283,7 @@ export default function FolderDetailPage() {
   const openEditFolder = () => {
     if (!folder) return;
     setEditFolderName(folder.name);
+    setEditFolderSubject(folder.subject ?? "");
     setEditFolderColor(normalizeObjectColor(folder.color));
     setEditFolderIcon(normalizeObjectIcon(folder.icon));
     setShowEditFolder(true);
@@ -371,12 +376,23 @@ export default function FolderDetailPage() {
     try {
       await updateStudyFolder(user.uid, folder.id, {
         name: editFolderName,
+        subject: editFolderSubject,
         color: editFolderColor,
         icon: editFolderIcon,
       });
+      const nextSubject = editFolderSubject.trim();
       setFolder((current) =>
         current
-          ? { ...current, name: editFolderName.trim() || current.name, color: editFolderColor, icon: editFolderIcon, updatedAt: Date.now() }
+          ? {
+              ...current,
+              name: editFolderName.trim() || current.name,
+              // Cleared deliberately when emptied, so the detail can be removed
+              // as well as corrected.
+              subject: nextSubject || undefined,
+              color: editFolderColor,
+              icon: editFolderIcon,
+              updatedAt: Date.now(),
+            }
           : current
       );
       setShowEditFolder(false);
@@ -854,16 +870,24 @@ export default function FolderDetailPage() {
             <div className="text-center sm:text-left">
               <div className="text-sm font-semibold text-text-primary">Edit folder</div>
               <p className="mt-0.5 text-xs text-text-muted">
-                Update the folder name, colour, or icon.
+                Update the folder name, subject detail, colour, or icon.
               </p>
             </div>
             <div className="mx-auto mt-4 grid max-w-[28rem] gap-3 sm:grid-cols-[minmax(0,18rem)_8.5rem] sm:items-start">
-              <Input
-                label="Folder name"
-                value={editFolderName}
-                onChange={(event) => setEditFolderName(event.target.value)}
-                containerClassName="w-full max-w-[18rem]"
-              />
+              <div className="grid w-full max-w-[18rem] gap-3">
+                <Input
+                  label="Folder name"
+                  value={editFolderName}
+                  onChange={(event) => setEditFolderName(event.target.value)}
+                />
+                <Input
+                  label="Subject detail"
+                  value={editFolderSubject}
+                  placeholder="Optional"
+                  maxLength={MAX_STUDY_FOLDER_SUBJECT_LENGTH}
+                  onChange={(event) => setEditFolderSubject(event.target.value)}
+                />
+              </div>
               <div className="app-subtle-panel rounded-[1rem] p-2">
                 <FolderObjectCard
                   title={editFolderName.trim() || "Folder preview"}
