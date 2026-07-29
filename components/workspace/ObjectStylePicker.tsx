@@ -2,16 +2,13 @@
 
 import ObjectIcon from "@/components/workspace/ObjectIcon";
 import IconBubble from "@/components/ui/IconBubble";
+import { cx } from "@/lib/app/class-names";
 import {
   OBJECT_COLOR_PRESETS,
   OBJECT_ICON_PICKER_PRESETS,
   type ObjectColorId,
   type ObjectIconId,
 } from "@/lib/workspace/object-card-styles";
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
 
 type ObjectStylePickerProps = {
   color: string;

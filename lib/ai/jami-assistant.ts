@@ -1,5 +1,6 @@
 import type { Part } from "@google/generative-ai";
 
+import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-normalize";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 
 export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
@@ -170,10 +171,6 @@ export function getJamiAssistantResponseGuidance(input: {
     instruction: `${modeInstruction} ${surfaceInstruction} Start with the answer. Do not restate the question, add a generic introduction, repeat the conclusion, or use unnecessary headings.`.trim(),
     followUps: followUps.slice(0, 2),
   };
-}
-
-function normalizeId(value: unknown) {
-  return typeof value === "string" ? value.trim().slice(0, 160) : "";
 }
 
 function normalizeOptionalText(value: unknown, maxLength: number) {

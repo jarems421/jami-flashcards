@@ -3,6 +3,12 @@ import type {
   JamiAssistantFollowUp,
   JamiAssistantUsedContext,
 } from "@/lib/ai/jami-assistant";
+import {
+  normalizeAssistantId as normalizeId,
+  normalizeAssistantText as normalizeText,
+  normalizeFollowUps,
+  normalizeUsedContext,
+} from "@/lib/ai/jami-assistant-normalize";
 
 export const JAMI_ASSISTANT_MAX_SAVED_THREADS = 50;
 export const JAMI_ASSISTANT_MAX_THREAD_TITLE_LENGTH = 80;
@@ -47,16 +53,6 @@ export type JamiAssistantStoredMessage = {
   createdAt: number;
 };
 
-function normalizeText(value: unknown, maxLength: number) {
-  return typeof value === "string"
-    ? value.trim().slice(0, maxLength)
-    : "";
-}
-
-function normalizeId(value: unknown) {
-  return normalizeText(value, 160);
-}
-
 function normalizeStringArray(value: unknown, maxItems: number) {
   if (!Array.isArray(value)) return [];
   return Array.from(
@@ -83,39 +79,6 @@ function normalizeSavedContext(value: unknown): JamiAssistantSavedContext | null
       : null;
   }
   return null;
-}
-
-function normalizeUsedContext(value: unknown): JamiAssistantUsedContext[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((candidate) => {
-      if (!candidate || typeof candidate !== "object") return [];
-      const item = candidate as Record<string, unknown>;
-      const kind: JamiAssistantUsedContext["kind"] | null =
-        item.kind === "current-context" ||
-        item.kind === "source" ||
-        item.kind === "general-knowledge"
-          ? item.kind
-          : null;
-      const label = normalizeText(item.label, 160);
-      if (!kind || !label) return [];
-      const id = normalizeId(item.id);
-      return [{ kind, label, ...(id ? { id } : {}) }];
-    })
-    .slice(0, 8);
-}
-
-function normalizeFollowUps(value: unknown): JamiAssistantFollowUp[] {
-  if (!Array.isArray(value)) return [];
-  return value
-    .flatMap((candidate) => {
-      if (!candidate || typeof candidate !== "object") return [];
-      const item = candidate as Record<string, unknown>;
-      const label = normalizeText(item.label, 40);
-      const prompt = normalizeText(item.prompt, 240);
-      return label && prompt ? [{ label, prompt }] : [];
-    })
-    .slice(0, 2);
 }
 
 export function getJamiAssistantSavedContext(
@@ -200,7 +163,7 @@ export function mapJamiAssistantStoredMessage(
     data.role === "user" || data.role === "assistant" ? data.role : null;
   const text = normalizeText(data.text, JAMI_ASSISTANT_MAX_SAVED_MESSAGE_LENGTH);
   if (!threadId || !role || !text) return null;
-  const used = normalizeUsedContext(data.used);
+  const used = normalizeUsedContext(data.used, { maxItems: 8 });
   const followUps = normalizeFollowUps(data.followUps);
   return {
     id,

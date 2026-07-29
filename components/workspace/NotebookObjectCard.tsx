@@ -5,11 +5,8 @@ import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
 import { createPortal } from "react-dom";
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
 import ObjectIcon from "@/components/workspace/ObjectIcon";
+import { cx } from "@/lib/app/class-names";
 import { getObjectColorPreset } from "@/lib/workspace/object-card-styles";
-
-function cx(...classes: Array<string | false | null | undefined>) {
-  return classes.filter(Boolean).join(" ");
-}
 
 export type NotebookObjectCardProps = {
   title: string;

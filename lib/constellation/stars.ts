@@ -39,7 +39,7 @@ function clampNumber(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function clampPercentage(value: number) {
+export function clampPercentage(value: number) {
   return Math.max(0, Math.min(100, value));
 }
 
