@@ -20,6 +20,21 @@
  * English word are recovered.
  */
 
+/**
+ * Pulls the JSON array out of a model response that may have wrapped it in
+ * prose or a code fence. Returns the input unchanged when no array is found,
+ * so the caller's JSON.parse reports the original text.
+ */
+export function extractJsonArray(text: string) {
+  const trimmed = text.trim();
+  if (trimmed.startsWith("[")) {
+    return trimmed;
+  }
+
+  const match = trimmed.match(/\[[\s\S]*\]/);
+  return match ? match[0] : trimmed;
+}
+
 const JSON_ESCAPE_CHARS = new Set(['"', "\\", "/", "b", "f", "n", "r", "t", "u"]);
 
 /** Escapes that must be preserved: unambiguous, or a unicode sequence. */
