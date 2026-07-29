@@ -96,8 +96,11 @@ import {
 } from "@/lib/workspace/notebook-eraser";
 import {
   clearNotebookNativeSelection,
+  isTextResizeHandleTarget,
   isNotebookTextEditingTarget,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
+  safelyReleasePointerCapture,
+  safelySetPointerCapture,
   shouldSuppressNotebookStylusTouch,
   shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
@@ -134,7 +137,10 @@ import {
   type PointerClientSample,
 } from "@/lib/workspace/notebook-inking";
 import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
-import { renderNotebookPageSnapshot } from "@/lib/workspace/notebook-page-snapshot";
+import {
+  readBlobAsBase64,
+  renderNotebookPageSnapshot,
+} from "@/lib/workspace/notebook-page-snapshot";
 import {
   createNotebookPage,
   deleteNotebookPage,
@@ -361,29 +367,6 @@ const TEXT_BLOCK_RESIZE_HANDLES: Array<{
   },
 ];
 
-function readBlobAsBase64(blob: Blob) {
-  return new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => {
-      reject(
-        new Error("This browser could not prepare the notebook page for Jami.")
-      );
-    };
-    reader.onload = () => {
-      const dataUrl = typeof reader.result === "string" ? reader.result : "";
-      const separatorIndex = dataUrl.indexOf(",");
-      if (separatorIndex < 0 || separatorIndex === dataUrl.length - 1) {
-        reject(
-          new Error("This browser could not prepare the notebook page for Jami.")
-        );
-        return;
-      }
-      resolve(dataUrl.slice(separatorIndex + 1));
-    };
-    reader.readAsDataURL(blob);
-  });
-}
-
 function NotebookPageThumbnail({
   page,
   notebook,
@@ -593,31 +576,6 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
     </>
   );
 });
-
-function safelySetPointerCapture(element: HTMLElement, pointerId: number) {
-  try {
-    if (!element.hasPointerCapture(pointerId)) {
-      element.setPointerCapture(pointerId);
-    }
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function safelyReleasePointerCapture(element: HTMLElement, pointerId: number) {
-  try {
-    if (element.hasPointerCapture(pointerId)) {
-      element.releasePointerCapture(pointerId);
-    }
-  } catch {
-    // Safari can drop capture during rapid stylus re-contact; cleanup should continue.
-  }
-}
-
-function isTextResizeHandleTarget(target: EventTarget | null) {
-  return target instanceof Element && Boolean(target.closest("[data-text-resize-handle='true']"));
-}
 
 type NotebookIconName =
   | "back"

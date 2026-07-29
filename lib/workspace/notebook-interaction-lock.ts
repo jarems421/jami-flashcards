@@ -46,6 +46,40 @@ export function isNotebookStylusActionTarget(target: EventTarget | null) {
   return Boolean(target.closest(NOTEBOOK_STYLUS_ACTION_SELECTOR));
 }
 
+export function isTextResizeHandleTarget(target: EventTarget | null) {
+  return (
+    target instanceof Element &&
+    Boolean(target.closest("[data-text-resize-handle='true']"))
+  );
+}
+
+export function safelySetPointerCapture(
+  element: HTMLElement,
+  pointerId: number
+) {
+  try {
+    if (!element.hasPointerCapture(pointerId)) {
+      element.setPointerCapture(pointerId);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function safelyReleasePointerCapture(
+  element: HTMLElement,
+  pointerId: number
+) {
+  try {
+    if (element.hasPointerCapture(pointerId)) {
+      element.releasePointerCapture(pointerId);
+    }
+  } catch {
+    // Safari can drop capture during rapid stylus re-contact; cleanup should continue.
+  }
+}
+
 export function shouldSuppressNotebookStylusTouch(input: {
   inkInteractionActive: boolean;
   stylusTouch: boolean;
