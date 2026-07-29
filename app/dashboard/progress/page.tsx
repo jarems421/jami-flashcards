@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   Bar,
   BarChart,
@@ -57,6 +57,7 @@ import {
   Skeleton,
   StatTile,
 } from "@/components/ui";
+import { useDashboardData } from "@/hooks/useDashboardData";
 
 type Feedback = { type: "success" | "error"; message: string };
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
@@ -95,7 +96,7 @@ export default function ProgressPage() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [range, setRange] = useState<ProgressTimeRange>("30d");
-  const [loading, setLoading] = useState(true);
+  const [dataLoadedAt, setDataLoadedAt] = useState(() => Date.now());
   const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   useEffect(() => {
@@ -104,59 +105,72 @@ export default function ProgressPage() {
     } catch {
       // Local dashboard checklist only.
     }
+  }, [user.uid]);
 
-    let cancelled = false;
-    void (async () => {
-      setLoading(true);
-      setFeedback(null);
-      try {
-        await ensureStudyStateSetup(user.uid);
-        const [
-          nextCards,
-          nextDrafts,
-          nextSources,
-          nextNotebooks,
-          nextDecks,
-          nextTopics,
-          nextStudyActivity,
-          nextGoals,
-        ] = await Promise.all([
-          loadUserCards(user.uid),
-          getGeneratedContentDrafts(user.uid).catch(() => [] as GeneratedContentDraft[]),
-          getActiveSources(user.uid).catch(() => [] as Source[]),
-          getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
-          getDecks(user.uid).catch(() => [] as Deck[]),
-          getActiveTopics(user.uid).catch(() => [] as Topic[]),
-          loadStudyActivity(user.uid).catch(() => [] as DailyStudyActivity[]),
-          getGoals(user.uid).catch(() => null),
-        ]);
-
-        if (!cancelled) {
-          setCards(nextCards);
-          setDrafts(nextDrafts);
-          setSources(nextSources);
-          setNotebooks(nextNotebooks);
-          setDecks(nextDecks);
-          setTopics(nextTopics);
-          setStudyActivity(nextStudyActivity);
-          setGoals(nextGoals ?? []);
-        }
-      } catch (error) {
-        console.error(error);
-        if (!cancelled) {
-          setFeedback({ type: "error", message: "Failed to load Progress." });
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
-      }
-    })();
-
-    return () => {
-      cancelled = true;
+  const loadProgressData = useCallback(async () => {
+    await ensureStudyStateSetup(user.uid);
+    const [
+      nextCards,
+      nextDrafts,
+      nextSources,
+      nextNotebooks,
+      nextDecks,
+      nextTopics,
+      nextStudyActivity,
+      nextGoals,
+    ] = await Promise.all([
+      loadUserCards(user.uid),
+      getGeneratedContentDrafts(user.uid).catch(() => [] as GeneratedContentDraft[]),
+      getActiveSources(user.uid).catch(() => [] as Source[]),
+      getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
+      getDecks(user.uid).catch(() => [] as Deck[]),
+      getActiveTopics(user.uid).catch(() => [] as Topic[]),
+      loadStudyActivity(user.uid).catch(() => [] as DailyStudyActivity[]),
+      getGoals(user.uid).catch(() => null),
+    ]);
+    return {
+      cards: nextCards,
+      drafts: nextDrafts,
+      sources: nextSources,
+      notebooks: nextNotebooks,
+      decks: nextDecks,
+      topics: nextTopics,
+      studyActivity: nextStudyActivity,
+      goals: nextGoals ?? [],
     };
   }, [user.uid]);
+
+  const applyProgressData = useCallback(
+    (data: Awaited<ReturnType<typeof loadProgressData>>) => {
+      setCards(data.cards);
+      setDrafts(data.drafts);
+      setSources(data.sources);
+      setNotebooks(data.notebooks);
+      setDecks(data.decks);
+      setTopics(data.topics);
+      setStudyActivity(data.studyActivity);
+      setGoals(data.goals);
+      setDataLoadedAt(Date.now());
+    },
+    []
+  );
+
+  const handleProgressLoadError = useCallback((error: unknown) => {
+    console.error(error);
+    setFeedback({ type: "error", message: "Failed to load Progress." });
+  }, []);
+
+  const handleProgressLoadStart = useCallback(() => {
+    setFeedback(null);
+  }, []);
+
+  const { loading } = useDashboardData({
+    requestKey: user.uid,
+    load: loadProgressData,
+    apply: applyProgressData,
+    onError: handleProgressLoadError,
+    onLoadStart: handleProgressLoadStart,
+  });
 
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
@@ -210,14 +224,17 @@ export default function ProgressPage() {
     [drafts, goals, notebooks, sources]
   );
   const deckHealth = useMemo(() => {
-    const now = Date.now();
-    const currentStudyDayStart = getStudyDayWindow(now).start;
+    const currentStudyDayStart = getStudyDayWindow(dataLoadedAt).start;
     return decks
       .map((deck) => {
         const deckCards = cards.filter((card) => card.deckId === deck.id);
-        const risks = deckCards.map((card) => getMemoryRiskInfo(card, now));
+        const risks = deckCards.map((card) =>
+          getMemoryRiskInfo(card, dataLoadedAt)
+        );
         const weakCount = risks.filter((risk) => risk.tier === "high").length;
-        const dueCount = deckCards.filter((card) => isCardDue(card, now)).length;
+        const dueCount = deckCards.filter((card) =>
+          isCardDue(card, dataLoadedAt)
+        ).length;
         const overdueCount = deckCards.filter(
           (card) =>
             typeof card.dueDate === "number" &&
@@ -259,7 +276,7 @@ export default function ProgressPage() {
           left.holdingPercent - right.holdingPercent
         );
       });
-  }, [cards, decks]);
+  }, [cards, dataLoadedAt, decks]);
   const decksNeedingReview = deckHealth.filter(
     (summary) => summary.status !== "healthy"
   ).length;
@@ -269,7 +286,7 @@ export default function ProgressPage() {
   // never been reviewed has no dueDate and is due now. Counting only scheduled
   // cards here made Progress report fewer due cards than Decks and Learn, and
   // made the overdue figure below equal the total rather than a portion of it.
-  const cardsDue = cards.filter((card) => isCardDue(card, Date.now())).length;
+  const cardsDue = cards.filter((card) => isCardDue(card, dataLoadedAt)).length;
 
   if (!featureFlags.enableMasteryProgress) {
     return (
