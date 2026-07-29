@@ -22,6 +22,7 @@ import {
   setConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
 import {
+  clampPercentage,
   spreadBackfilledStars,
   type NormalizedStar,
 } from "@/lib/constellation/stars";
@@ -38,10 +39,6 @@ import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 
 type Feedback = { type: "success" | "error"; message: string };
-
-function clampPercentage(value: number) {
-  return Math.max(0, Math.min(100, value));
-}
 
 function getConstellationProgressPercent(constellation: Constellation | null) {
   if (!constellation || constellation.maxStars <= 0) return 0;

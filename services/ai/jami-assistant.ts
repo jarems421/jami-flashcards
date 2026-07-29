@@ -1,10 +1,12 @@
 import type {
-  JamiAssistantFollowUp,
   JamiAssistantRequest,
   JamiAssistantResponse,
   JamiAssistantSourceFailure,
-  JamiAssistantUsedContext,
 } from "@/lib/ai/jami-assistant";
+import {
+  normalizeFollowUps,
+  normalizeUsedContext,
+} from "@/lib/ai/jami-assistant-normalize";
 import { auth } from "@/services/firebase/client";
 
 function getFriendlyAssistantError(status: number, message?: string) {
@@ -15,32 +17,6 @@ function getFriendlyAssistantError(status: number, message?: string) {
   if (status === 503) return "Jami AI is not configured in this deployment yet.";
   if (status >= 500) return message || "Jami could not answer just now. Try again in a moment.";
   return message || "Jami could not answer that just now.";
-}
-
-function normalizeUsedContext(value: unknown): JamiAssistantUsedContext[] {
-  if (!Array.isArray(value)) return [];
-  const normalized: JamiAssistantUsedContext[] = [];
-  for (const candidate of value) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const item = candidate as Record<string, unknown>;
-    const kind =
-      item.kind === "current-context" ||
-      item.kind === "source" ||
-      item.kind === "general-knowledge"
-        ? item.kind
-        : null;
-    const label =
-      typeof item.label === "string" ? item.label.trim().slice(0, 160) : "";
-    if (!kind || !label) continue;
-    normalized.push({
-      kind,
-      label,
-      ...(typeof item.id === "string" && item.id.trim()
-        ? { id: item.id.trim().slice(0, 160) }
-        : {}),
-    });
-  }
-  return normalized;
 }
 
 function normalizeSourceFailures(value: unknown): JamiAssistantSourceFailure[] {
@@ -57,21 +33,6 @@ function normalizeSourceFailures(value: unknown): JamiAssistantSourceFailure[] {
     if (id && title && reason) normalized.push({ id, title, reason });
   }
   return normalized;
-}
-
-function normalizeFollowUps(value: unknown): JamiAssistantFollowUp[] {
-  if (!Array.isArray(value)) return [];
-  const normalized: JamiAssistantFollowUp[] = [];
-  for (const candidate of value) {
-    if (!candidate || typeof candidate !== "object") continue;
-    const item = candidate as Record<string, unknown>;
-    const label =
-      typeof item.label === "string" ? item.label.trim().slice(0, 40) : "";
-    const prompt =
-      typeof item.prompt === "string" ? item.prompt.trim().slice(0, 240) : "";
-    if (label && prompt) normalized.push({ label, prompt });
-  }
-  return normalized.slice(0, 2);
 }
 
 /**
