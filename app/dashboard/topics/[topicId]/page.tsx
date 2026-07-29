@@ -378,36 +378,34 @@ export default function TopicDetailPage() {
               </h1>
             )}
           </div>
-          {true ? (
-            <details className="relative">
-              <summary className="app-button-secondary inline-flex min-h-11 cursor-pointer list-none items-center rounded-full px-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
-                Manage
-              </summary>
-              <div className="app-panel absolute right-0 top-[calc(100%+0.5rem)] z-30 grid min-w-48 gap-1 rounded-[1rem] p-2 shadow-shell">
-                <button
-                  type="button"
-                  className="rounded-xl px-3 py-2 text-left text-sm text-text-secondary hover:bg-[var(--color-glass-subtle)]"
-                  onClick={(event) => {
-                    event.currentTarget.closest("details")?.removeAttribute("open");
-                    setRenameValue(topic.name);
-                    setEditingName(true);
-                  }}
-                >
-                  Rename Topic
-                </button>
-                <button
-                  type="button"
-                  className="rounded-xl px-3 py-2 text-left text-sm font-semibold text-[var(--color-error-text)] hover:bg-[var(--color-error-muted)]"
-                  onClick={(event) => {
-                    event.currentTarget.closest("details")?.removeAttribute("open");
-                    setDeleteOpen(true);
-                  }}
-                >
-                  Delete Topic
-                </button>
-              </div>
-            </details>
-          ) : null}
+          <details className="relative">
+            <summary className="app-button-secondary inline-flex min-h-11 cursor-pointer list-none items-center rounded-full px-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
+              Manage
+            </summary>
+            <div className="app-panel absolute right-0 top-[calc(100%+0.5rem)] z-30 grid min-w-48 gap-1 rounded-[1rem] p-2 shadow-shell">
+              <button
+                type="button"
+                className="rounded-xl px-3 py-2 text-left text-sm text-text-secondary hover:bg-[var(--color-glass-subtle)]"
+                onClick={(event) => {
+                  event.currentTarget.closest("details")?.removeAttribute("open");
+                  setRenameValue(topic.name);
+                  setEditingName(true);
+                }}
+              >
+                Rename Topic
+              </button>
+              <button
+                type="button"
+                className="rounded-xl px-3 py-2 text-left text-sm font-semibold text-[var(--color-error-text)] hover:bg-[var(--color-error-muted)]"
+                onClick={(event) => {
+                  event.currentTarget.closest("details")?.removeAttribute("open");
+                  setDeleteOpen(true);
+                }}
+              >
+                Delete Topic
+              </button>
+            </div>
+          </details>
         </div>
       </Card>
 
@@ -488,17 +486,15 @@ export default function TopicDetailPage() {
                     </div>
                     <div className="mt-1 text-xs text-text-muted">{item.detail}</div>
                   </Link>
-                  {true ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant={item.linked ? "ghost" : "secondary"}
-                      disabled={busyId === `${section.slice(0, -1)}:${item.id}`}
-                      onClick={item.toggle}
-                    >
-                      {item.linked ? "Remove" : "Add"}
-                    </Button>
-                  ) : null}
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant={item.linked ? "ghost" : "secondary"}
+                    disabled={busyId === `${section.slice(0, -1)}:${item.id}`}
+                    onClick={item.toggle}
+                  >
+                    {item.linked ? "Remove" : "Add"}
+                  </Button>
                 </div>
               ))
             ) : (
