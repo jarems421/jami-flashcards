@@ -10,6 +10,7 @@ import {
   type NotificationMode,
   type NotificationPreferences,
 } from "@/lib/app/notifications";
+import type { Feedback as AppFeedback } from "@/lib/app/feedback";
 import {
   getCurrentDevicePushSubscription,
   loadNotificationPreferences,
@@ -23,9 +24,7 @@ import { Button, Card } from "@/components/ui";
 
 type FeedbackSection = "install" | "notifications";
 
-type Feedback = {
-  type: "error" | "success";
-  message: string;
+type Feedback = AppFeedback & {
   section: FeedbackSection;
 };
 

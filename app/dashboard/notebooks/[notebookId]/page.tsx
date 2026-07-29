@@ -46,6 +46,7 @@ import {
   FeedbackBanner,
   Skeleton,
 } from "@/components/ui";
+import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/lib/auth/user-context";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
@@ -184,7 +185,6 @@ import {
   type NotebookToolbarDock,
 } from "@/lib/workspace/notebook-toolbar";
 
-type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
 type EditorTool = NotebookStrokeTool | "text" | "select";
 type TextBlockDragState = {

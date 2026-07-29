@@ -27,6 +27,7 @@ import {
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
+import type { Feedback } from "@/lib/app/feedback";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckHref } from "@/lib/app/routes";
 import { useUser } from "@/lib/auth/user-context";
@@ -61,7 +62,6 @@ import { getActiveSources, updateSource } from "@/services/study/sources";
 import { getActiveTopics } from "@/services/study/topics";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 
-type Feedback = { type: "success" | "error"; message: string };
 function resultValue<T>(result: PromiseSettledResult<T>, fallback: T) {
   return result.status === "fulfilled" ? result.value : fallback;
 }

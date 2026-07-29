@@ -1,4 +1,3 @@
-export type SourceWorkspaceFeedback = {
-  type: "success" | "error";
-  message: string;
-};
+import type { Feedback } from "@/lib/app/feedback";
+
+export type SourceWorkspaceFeedback = Feedback;
