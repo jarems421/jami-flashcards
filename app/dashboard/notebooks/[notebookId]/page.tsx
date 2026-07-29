@@ -14,7 +14,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type ReactNode,
   type TransitionEvent as ReactTransitionEvent,
 } from "react";
 import AppPage from "@/components/layout/AppPage";
@@ -23,7 +22,15 @@ import {
   NotebookInkEditor,
   type NotebookInkEditorHandle,
 } from "@/components/workspace/NotebookInkEditor";
+import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
 import NotebookPdfPage from "@/components/workspace/NotebookPdfPage";
+import NotebookSaveIndicator, {
+  type SaveStatus,
+} from "@/components/workspace/NotebookSaveIndicator";
+import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
+import ToolbarIconButton, {
+  NotebookIcon,
+} from "@/components/workspace/NotebookToolbarIconButton";
 import NotebookViewport, {
   type NotebookViewportPreview,
 } from "@/components/workspace/NotebookViewport";
@@ -34,7 +41,6 @@ import {
   ConfirmDialog,
   EmptyState,
   FeedbackBanner,
-  JamiSparklesIcon,
   Skeleton,
 } from "@/components/ui";
 import { useUser } from "@/lib/auth/user-context";
@@ -56,7 +62,6 @@ import {
   MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
-  normalizeNotebookStrokeColor,
   resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
 import {
@@ -181,7 +186,6 @@ import {
 
 type Feedback = { type: "success" | "error"; message: string };
 type Point = { x: number; y: number };
-type SaveStatus = "saved" | "unsaved" | "saving" | "failed";
 type EditorTool = NotebookStrokeTool | "text" | "select";
 type TextBlockDragState = {
   id: string;
@@ -576,324 +580,6 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
     </>
   );
 });
-
-type NotebookIconName =
-  | "back"
-  | "pages"
-  | "text"
-  | "pen"
-  | "highlighter"
-  | "eraser"
-  | "undo"
-  | "redo"
-  | "ai"
-  | "chevron"
-  | "options"
-  | "trash"
-  | "plus"
-  | "check"
-  | "alert"
-  | "close";
-
-// Hand-drawn on a consistent 24px grid with a uniform 1.8 stroke, rounded
-// caps/joins, and shared optical margins, so the set reads as one family.
-function NotebookIcon({ name }: { name: NotebookIconName }) {
-  if (name === "ai") {
-    return <JamiSparklesIcon className="h-[1.125rem] w-[1.125rem]" />;
-  }
-
-  const common = {
-    fill: "none",
-    stroke: "currentColor",
-    strokeLinecap: "round" as const,
-    strokeLinejoin: "round" as const,
-    strokeWidth: 1.8,
-  };
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[1.125rem] w-[1.125rem]">
-      {name === "back" ? <path {...common} d="M14.5 17.5 9 12l5.5-5.5" /> : null}
-      {name === "pages" ? (
-        <>
-          <rect {...common} x="8" y="3.8" width="11.2" height="14.4" rx="2.2" />
-          <path {...common} d="M4.8 8.1v9.7a2.7 2.7 0 0 0 2.7 2.7h7.7" />
-        </>
-      ) : null}
-      {name === "text" ? (
-        <path {...common} d="M6 7.4V5.4h12v2M12 5.4v13.2M9.5 18.6h5" />
-      ) : null}
-      {name === "pen" ? (
-        <>
-          <path {...common} d="m4.9 19.1 1-3.9L16 5.1a2.05 2.05 0 0 1 2.9 2.9L8.8 18.1l-3.9 1Z" />
-          <path {...common} d="m13.9 7.2 2.9 2.9" />
-        </>
-      ) : null}
-      {name === "highlighter" ? (
-        <>
-          <path {...common} d="M5.6 17.9 14.7 8.8l1.7-1.7a1.95 1.95 0 0 1 2.75 0l.35.35a1.95 1.95 0 0 1 0 2.75L17.8 11.9l-9.1 9.1H5.6v-3.1Z" />
-          <path {...common} d="M4.6 21h9.2" />
-        </>
-      ) : null}
-      {name === "eraser" ? (
-        <>
-          <path {...common} d="M13.6 5.7 5.5 13.8a2 2 0 0 0 0 2.85l2.15 2.15a2 2 0 0 0 1.4.6h3.25l6.1-6.1a2 2 0 0 0 0-2.85l-2.9-2.9a2 2 0 0 0-2.85 0Z" />
-          <path {...common} d="m9.3 10 4.9 4.9M12.7 19.4h6.7" />
-        </>
-      ) : null}
-      {name === "undo" ? (
-        <>
-          <path {...common} d="M9 13.6 4.5 9.1 9 4.6" />
-          <path {...common} d="M4.5 9.1h9.6a5.35 5.35 0 0 1 0 10.7H9.2" />
-        </>
-      ) : null}
-      {name === "redo" ? (
-        <>
-          <path {...common} d="M15 13.6l4.5-4.5L15 4.6" />
-          <path {...common} d="M19.5 9.1H9.9a5.35 5.35 0 0 0 0 10.7h4.9" />
-        </>
-      ) : null}
-      {name === "chevron" ? <path {...common} d="m7 10.4 5 5 5-5" /> : null}
-      {name === "options" ? (
-        <>
-          <circle cx="5" cy="12" r="1.35" fill="currentColor" />
-          <circle cx="12" cy="12" r="1.35" fill="currentColor" />
-          <circle cx="19" cy="12" r="1.35" fill="currentColor" />
-        </>
-      ) : null}
-      {name === "trash" ? (
-        <>
-          <path {...common} d="M4.5 6.6h15M9.5 6.6V5.2a1.6 1.6 0 0 1 1.6-1.6h1.8a1.6 1.6 0 0 1 1.6 1.6v1.4" />
-          <path {...common} d="m18.3 6.6-.85 12a2 2 0 0 1-2 1.85H8.55a2 2 0 0 1-2-1.85l-.85-12" />
-          <path {...common} d="M10.1 10.6v5.8M13.9 10.6v5.8" />
-        </>
-      ) : null}
-      {name === "plus" ? <path {...common} d="M12 5.5v13M5.5 12h13" /> : null}
-      {name === "check" ? <path {...common} d="m5.5 12.6 4.2 4.2 8.8-9.4" /> : null}
-      {name === "alert" ? (
-        <>
-          <circle {...common} cx="12" cy="12" r="8.25" />
-          <path {...common} d="M12 8v4.6M12 15.9h.01" />
-        </>
-      ) : null}
-      {name === "close" ? <path {...common} d="m6.5 6.5 11 11M17.5 6.5l-11 11" /> : null}
-    </svg>
-  );
-}
-
-function ToolbarIconButton({
-  label,
-  icon,
-  active = false,
-  disabled = false,
-  onClick,
-  children,
-}: {
-  label: string;
-  icon: NotebookIconName;
-  active?: boolean;
-  disabled?: boolean;
-  onClick?: () => void;
-  children?: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      aria-label={label}
-      title={label}
-      disabled={disabled}
-      data-notebook-toolbar-action="true"
-      onClick={onClick}
-      className={`relative inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-full border text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
-        active
-          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-[var(--color-selected-text)] shadow-[0_0_0_3px_rgba(143,125,232,0.18),0_8px_18px_rgba(0,0,0,0.16)]"
-          : "border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] text-[var(--button-secondary-text)] hover:-translate-y-0.5 hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)] active:translate-y-0 active:scale-95"
-      }`}
-    >
-      <NotebookIcon name={icon} />
-      {children}
-    </button>
-  );
-}
-
-// Icon-only autosave state so the header never shifts as the status changes.
-// The failed state is the exception: it becomes an explicit retry action.
-function NotebookSaveIndicator({
-  status,
-  onRetry,
-}: {
-  status: SaveStatus;
-  onRetry: () => void;
-}) {
-  if (status === "failed") {
-    return (
-      <button
-        type="button"
-        onClick={onRetry}
-        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--color-error-text)]/40 bg-[var(--color-error-text)]/10 px-2 py-0.5 text-[0.68rem] font-semibold text-[var(--color-error-text)] transition hover:bg-[var(--color-error-text)]/20 [&_svg]:h-3.5 [&_svg]:w-3.5"
-      >
-        <NotebookIcon name="alert" />
-        Retry save
-      </button>
-    );
-  }
-
-  const label =
-    status === "saving"
-      ? "Saving..."
-      : status === "unsaved"
-        ? "Unsaved changes"
-        : "All changes saved";
-  return (
-    <span
-      role="status"
-      aria-label={label}
-      title={label}
-      className="inline-grid h-5 w-5 shrink-0 place-items-center text-text-muted [&_svg]:h-3.5 [&_svg]:w-3.5"
-    >
-      {status === "saving" ? (
-        <span
-          aria-hidden="true"
-          className="h-3 w-3 animate-spin rounded-full border-[1.5px] border-current border-t-transparent"
-        />
-      ) : status === "unsaved" ? (
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 rounded-full bg-[var(--color-selected-border)]"
-        />
-      ) : (
-        <NotebookIcon name="check" />
-      )}
-    </span>
-  );
-}
-
-function ThicknessSlider({
-  label,
-  percent,
-  color,
-  previewWidth,
-  onChange,
-}: {
-  label: string;
-  percent: number;
-  color: string;
-  previewWidth: number;
-  onChange: (value: number) => void;
-}) {
-  const clampedPercent = clampNotebookThicknessPercent(percent);
-  const sliderId = `${label.toLowerCase().replace(/\s+/g, "-")}-slider`;
-  const previewDot = Math.max(4, Math.min(24, previewWidth * 2));
-  return (
-    <div>
-      <div className="flex items-baseline justify-between gap-3 px-0.5">
-        <label className="text-xs font-semibold text-text-secondary" htmlFor={sliderId}>
-          {label}
-        </label>
-        <span className="text-[0.68rem] font-semibold tabular-nums text-text-muted">
-          {clampedPercent}%
-        </span>
-      </div>
-      <div className="mt-1 flex items-center gap-3">
-        <div className="relative flex h-8 flex-1 items-center">
-          <div
-            aria-hidden="true"
-            className="pointer-events-none absolute inset-x-0 top-1/2 h-2.5 -translate-y-1/2 bg-[var(--color-border)]"
-            style={{
-              clipPath: "polygon(0 43%, 100% 12%, 100% 88%, 0 57%)",
-              borderRadius: "999px",
-            }}
-          />
-          <input
-            id={sliderId}
-            type="range"
-            min={0}
-            max={100}
-            step={1}
-            value={clampedPercent}
-            aria-label={label}
-            onChange={(event) => onChange(Number(event.target.value))}
-            className="notebook-thickness-slider relative z-10 h-8 w-full cursor-pointer bg-transparent"
-          />
-        </div>
-        <span className="inline-grid h-8 w-8 shrink-0 place-items-center">
-          <span
-            aria-hidden="true"
-            className="rounded-full"
-            style={{
-              backgroundColor: color,
-              width: `${previewDot}px`,
-              height: `${previewDot}px`,
-            }}
-          />
-        </span>
-      </div>
-    </div>
-  );
-}
-
-function InkColorPicker({
-  label,
-  value,
-  presets,
-  getPresetColor,
-  onPresetSelect,
-  onCustomColorChange,
-}: {
-  label: string;
-  value: NotebookStrokeColor;
-  presets: NotebookStrokeColor[];
-  getPresetColor: (color: NotebookStrokeColor) => string;
-  onPresetSelect: (color: NotebookStrokeColor) => void;
-  onCustomColorChange: (color: NotebookStrokeColor) => void;
-}) {
-  const currentColor = getNotebookStrokePaintColor(value, label === "Highlighter color" ? "highlighter" : "pen");
-  const colorInputId = `${label.toLowerCase().replace(/\s+/g, "-")}-custom`;
-  const customActive = !presets.includes(value);
-  const selectedRing =
-    "ring-2 ring-[var(--color-selected-border)] ring-offset-2 ring-offset-transparent";
-  return (
-    <div className="flex flex-wrap items-center gap-2.5 px-0.5">
-      {presets.map((color) => (
-        <button
-          key={color}
-          type="button"
-          aria-label={`${color} ${label.toLowerCase()}`}
-          onClick={() => onPresetSelect(color)}
-          className={`h-8 w-8 rounded-full border border-black/15 transition hover:scale-105 ${
-            value === color ? selectedRing : ""
-          }`}
-          style={{ backgroundColor: getPresetColor(color) }}
-        />
-      ))}
-      <label
-        htmlFor={colorInputId}
-        title="Custom color"
-        className={`relative ml-1 grid h-8 w-8 cursor-pointer place-items-center rounded-full transition hover:scale-105 ${
-          customActive ? selectedRing : ""
-        }`}
-        style={{
-          background:
-            "conic-gradient(from 180deg, #f43f5e, #fbbf24, #22c55e, #38bdf8, #818cf8, #e879f9, #f43f5e)",
-        }}
-      >
-        <span
-          aria-hidden="true"
-          className="h-[0.95rem] w-[0.95rem] rounded-full border border-black/25"
-          style={{ backgroundColor: customActive ? currentColor : "transparent" }}
-        />
-      </label>
-      <input
-        id={colorInputId}
-        type="color"
-        aria-label={`Custom ${label.toLowerCase()}`}
-        value={currentColor}
-        onChange={(event) => {
-          onCustomColorChange(normalizeNotebookStrokeColor(event.target.value));
-        }}
-        className="sr-only"
-      />
-    </div>
-  );
-}
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
