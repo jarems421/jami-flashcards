@@ -4,6 +4,8 @@ import { withTimeout } from "@/services/firebase/firestore";
 import {
   buildFlashcardDraftCardData,
   buildPracticeQuestionDraftNotebookPageData,
+  type GeneratedContentDraft,
+  type GeneratedContentKind,
 } from "@/lib/practice/generated-content";
 import { createNotebookPage, getNotebookById, getNotebookPages, updateNotebook } from "@/services/study/notebooks";
 import {
@@ -11,40 +13,10 @@ import {
   isContentStatus,
   normalizeOptionalString,
   normalizeStringArray,
-  type ContentOrigin,
-  type ContentStatus,
 } from "@/lib/practice/content";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
-
-export type GeneratedContentKind =
-  | "flashcard"
-  | "practice-question"
-  | "topic-suggestion"
-  | "summary"
-  | "misconception-label"
-  | "similar-question";
-
-export type GeneratedContentDraft = {
-  id: string;
-  kind: GeneratedContentKind;
-  title: string;
-  front?: string;
-  back?: string;
-  questionText?: string;
-  answerText?: string;
-  solutionText?: string;
-  topicIds: string[];
-  origin: ContentOrigin;
-  contentStatus: ContentStatus;
-  reviewedAt?: number;
-  reviewedBy?: string;
-  sourceType?: "card" | "question" | "tutor" | "manual" | "source";
-  sourceId?: string;
-  createdAt: number;
-  updatedAt: number;
-};
 
 function draftsCollection(userId: string) {
   return collection(db, "users", userId, "generatedContentDrafts");

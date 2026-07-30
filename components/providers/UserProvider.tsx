@@ -8,7 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import { useRouter } from "next/navigation";
-import { User } from "firebase/auth";
+import type { User } from "firebase/auth";
 import { listenToAuth } from "@/services/auth/auth-listener";
 
 type UserContextValue = {
@@ -18,9 +18,11 @@ type UserContextValue = {
 const UserContext = createContext<UserContextValue | null>(null);
 
 export function useUser(): UserContextValue {
-  const ctx = useContext(UserContext);
-  if (!ctx) throw new Error("useUser() must be used inside <UserProvider>");
-  return ctx;
+  const context = useContext(UserContext);
+  if (!context) {
+    throw new Error("useUser() must be used inside <UserProvider>");
+  }
+  return context;
 }
 
 export default function UserProvider({ children }: { children: ReactNode }) {
@@ -40,9 +42,8 @@ export default function UserProvider({ children }: { children: ReactNode }) {
     if (checked && !user) {
       router.replace("/");
     }
-  }, [checked, user, router]);
+  }, [checked, router, user]);
 
-  // Still resolving auth - show nothing yet.
   if (!checked || !user) {
     return (
       <div className="flex min-h-screen items-center justify-center">

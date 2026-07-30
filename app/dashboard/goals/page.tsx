@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import {
   getActiveConstellation,
@@ -23,7 +23,8 @@ import AppPage from "@/components/layout/AppPage";
 import { Button, Card, EmptyState, FeedbackBanner, Input, ProgressBar, SectionHeader, Skeleton } from "@/components/ui";
 import ConstellationStar from "@/components/constellation/ConstellationStar";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
-import { getDecks, type Deck } from "@/services/study/decks";
+import { getDecks } from "@/services/study/decks";
+import type { Deck } from "@/lib/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import {

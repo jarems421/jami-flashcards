@@ -1,4 +1,4 @@
-import type { GeneratedContentDraft } from "@/services/study/generated-content";
+import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
 import type { Source } from "@/lib/practice/sources";
 import {
   getTopicNameKey,

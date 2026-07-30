@@ -47,7 +47,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import type { Feedback } from "@/lib/app/feedback";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
   Notebook,

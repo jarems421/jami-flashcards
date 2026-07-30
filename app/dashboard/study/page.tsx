@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
+import type { Feedback } from "@/lib/app/feedback";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
   buildDailyReviewQueues,
@@ -63,7 +64,8 @@ import { syncOfflineStudyReviews } from "@/services/study/offline";
 import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
 import { recordStudyReview } from "@/services/study/activity";
-import { getDecks, type Deck } from "@/services/study/decks";
+import { getDecks } from "@/services/study/decks";
+import type { Deck } from "@/lib/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
 import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
@@ -360,7 +362,7 @@ export default function StudyPage() {
   const [jamiAssistantOpen, setJamiAssistantOpen] = useState(false);
   const [savingRating, setSavingRating] = useState<CardRating | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>(createEmptySessionStats());
-  const [feedback, setFeedback] = useState<{ type: "error" | "success"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null);
   const [starReward, setStarReward] = useState<StarReward | null>(null);
   const handleStarRewardDone = useCallback(() => setStarReward(null), []);

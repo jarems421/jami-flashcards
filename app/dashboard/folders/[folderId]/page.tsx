@@ -30,9 +30,10 @@ import {
 import type { Feedback } from "@/lib/app/feedback";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckHref } from "@/lib/app/routes";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
 import type { Source } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
+import type { Deck } from "@/lib/study/decks";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import {
   buildFolderTabSearch,
@@ -49,7 +50,7 @@ import {
   MAX_STUDY_FOLDER_SUBJECT_LENGTH,
   type StudyFolder,
 } from "@/lib/workspace/study-folders";
-import { getDecks, updateDeckFolders, type Deck } from "@/services/study/decks";
+import { getDecks, updateDeckFolders } from "@/services/study/decks";
 import { archiveStudyFolder, getStudyFolderById, updateStudyFolder } from "@/services/study/folders";
 import {
   createNotebook,

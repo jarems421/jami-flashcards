@@ -1,7 +1,7 @@
 "use client";
 
 import { auth } from "@/services/firebase/client";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged, type User } from "firebase/auth";
 
 export const listenToAuth = (
   callback: (user: User | null) => void | Promise<void>

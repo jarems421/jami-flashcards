@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useUser } from "@/lib/auth/user-context";
-import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckFolders, updateDeckStyle, type Deck } from "@/services/study/decks";
+import { useUser } from "@/components/providers/UserProvider";
+import type { Deck } from "@/lib/study/decks";
+import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckFolders, updateDeckStyle } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import {

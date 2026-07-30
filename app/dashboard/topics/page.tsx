@@ -14,9 +14,11 @@ import {
   Skeleton,
 } from "@/components/ui";
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
+import type { Feedback } from "@/lib/app/feedback";
 import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
+import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
 import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
 import {
   shouldShowSmartSearchResults,
@@ -26,10 +28,7 @@ import type { Card as StudyCard } from "@/lib/study/cards";
 import { loadUserCards } from "@/services/study/cards";
 import type { Source } from "@/lib/practice/sources";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import {
-  getGeneratedContentDrafts,
-  type GeneratedContentDraft,
-} from "@/services/study/generated-content";
+import { getGeneratedContentDrafts } from "@/services/study/generated-content";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getActiveSources } from "@/services/study/sources";
 import {
@@ -123,7 +122,7 @@ export default function TopicsPage() {
   const [savingTopicId, setSavingTopicId] = useState<string | null>(null);
   const [topicPendingDelete, setTopicPendingDelete] = useState<Topic | null>(null);
   const [deletingTopicId, setDeletingTopicId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const loadTopicsData = useCallback(async () => {
     const [nextTopics, nextCards, nextNotebooks, nextSources, nextDrafts] =

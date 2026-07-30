@@ -18,7 +18,7 @@ import {
   createCard,
   createCardsInBatches,
 } from "@/services/study/cards";
-import type { Deck } from "@/services/study/decks";
+import type { Deck } from "@/lib/study/decks";
 import { featureFlags } from "@/lib/app/feature-flags";
 import TopicPicker from "@/components/topics/TopicPicker";
 import CardBackEditor from "@/components/decks/CardBackEditor";

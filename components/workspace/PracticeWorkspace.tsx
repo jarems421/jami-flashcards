@@ -12,7 +12,7 @@ import {
   Skeleton,
 } from "@/components/ui";
 import type { Feedback } from "@/lib/app/feedback";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
 import type { Topic } from "@/lib/practice/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";

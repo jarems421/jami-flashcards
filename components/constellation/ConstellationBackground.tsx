@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { User } from "firebase/auth";
+import type { User } from "firebase/auth";
 import { listenToAuth } from "@/services/auth/auth-listener";
 import {
   getResolvedBackgroundConstellation,

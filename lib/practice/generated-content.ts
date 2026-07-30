@@ -1,3 +1,36 @@
+import type {
+  ContentOrigin,
+  ContentStatus,
+} from "@/lib/practice/content";
+
+export type GeneratedContentKind =
+  | "flashcard"
+  | "practice-question"
+  | "topic-suggestion"
+  | "summary"
+  | "misconception-label"
+  | "similar-question";
+
+export type GeneratedContentDraft = {
+  id: string;
+  kind: GeneratedContentKind;
+  title: string;
+  front?: string;
+  back?: string;
+  questionText?: string;
+  answerText?: string;
+  solutionText?: string;
+  topicIds: string[];
+  origin: ContentOrigin;
+  contentStatus: ContentStatus;
+  reviewedAt?: number;
+  reviewedBy?: string;
+  sourceType?: "card" | "question" | "tutor" | "manual" | "source";
+  sourceId?: string;
+  createdAt: number;
+  updatedAt: number;
+};
+
 export type FlashcardDraftCardData = {
   deckId: string;
   userId: string;
