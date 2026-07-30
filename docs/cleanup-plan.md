@@ -81,16 +81,29 @@ Already verified green; it should not sit uncommitted while new work starts.
 
 ## Phase 1 — low-coupling work (no persistence, no ink)
 
-**Batch 1.2 — memoize the hot input path** *(do first: cheapest, user-visible)*
+**Batch 1.2 — memoize the hot input path** — *folded into 1.1, 2.3, and 2.5.*
 
-Lines 2581–3159 declare ~15 handlers as **plain functions, not `useCallback`** —
-including `handlePagePointerDown/Move/Up/Cancel` and `handlePageSwipeMove` (100
-lines). They are recreated every render and passed straight into `NotebookViewport`
-and `NotebookLivePageLayers`, neither of which is memoized. Lines 4128/4131 also
-pass inline arrows on pointer props.
+Lines 2581–3159 declare ~15 handlers as plain functions rather than `useCallback`,
+recreated every render and passed into `NotebookViewport` and
+`NotebookLivePageLayers`, neither memoized. This cannot be fixed as a standalone
+batch: the handlers form a forward-reference chain spanning ~1,500 lines —
 
-This is on the stylus hot path — the same class of win as the compositor-only
-toolbar drag. Wrap the handlers, memoize the two children, confirm on the iPad.
+```
+useNotebookTextBlockController (1345)
+  → handleTouchPointerDown/Move/End (1784–1868)
+      → handleStopPageSwipe (2895)
+          → createBlankPageAtEnd (2659) → saveCurrentPage (2048) → persistence
+```
+
+Lines 1347 and 1356–1359 pass inline arrows purely to defer references that are in
+the temporal dead zone at the call site — which also means the text block
+controller's internal `useCallback`s are currently defeated and its memoization
+does nothing. Fixing this in place needs either a ~1,100-line reorder or several
+new forward-reference refs, i.e. the exact indirection Batch 2.0 removes.
+
+Memoization is a **consequence** of the extractions, not a precursor. The pinch
+handlers become stable in 1.1, the swipe handlers in 2.3, and Batch 2.5 then does
+the short dispatcher/`React.memo` pass once it can actually take effect.
 
 **Batch 1.1 — `useNotebookViewportController`** (lines 516–943, ~430 lines)
 
@@ -151,6 +164,14 @@ Retires `maybeFinishPageHandoffRef`, `pageSwipeRef`, `pageSwipeInkSnapshotRef`.
 
 Ink editor handle, dual undo/redo stacks (`undoStackRef` + `inkUndoDepth`), ink UI
 sync, eraser mode.
+
+**Batch 2.5 — memoization pass** *(the deferred Batch 1.2)*
+
+With pinch, swipe, persistence, and ink all behind stable controller interfaces,
+the remaining `handlePagePointer*` dispatchers become memoizable and the inline
+arrows at 1347, 1356–1359, 4128, and 4131 can be removed. Add `React.memo` to
+`NotebookViewport` and `NotebookLivePageLayers` — pointless before this batch,
+since changing handler props would defeat it every render. Confirm on the iPad.
 
 ---
 
@@ -248,15 +269,15 @@ removing this one.
 ```
 0.1  land in-flight text-block controller        ← now
 6.1  audit historical .env                       ← now, 5 min
-1.2  memoize hot input path                      ← cheap, user-visible
-1.1  viewport controller
+1.1  viewport controller          (absorbs pinch memoization)
 1.3  study-loop e2e
      ── physical iPad / Pencil gate ──
 2.0  NotebookPageState + reducer                 ← gates everything after
 2.1  persistence controller
 2.2  hydration controller
-2.3  page navigation controller
+2.3  page navigation controller   (absorbs swipe memoization)
 2.4  ink controller
+2.5  memoization pass             (the deferred 1.2)
 ★    FIX THE INK PIPELINE                        ← the actual goal
 3.1  NotebookToolbar
 3.2  NotebookPagesDrawer

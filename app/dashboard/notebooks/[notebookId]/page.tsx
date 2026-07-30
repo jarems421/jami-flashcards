@@ -45,6 +45,7 @@ import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
+import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
   Notebook,
@@ -88,10 +89,6 @@ import {
   type NotebookPageDraft,
 } from "@/lib/workspace/notebook-drafts";
 import {
-  createNotebookPinchFrameQueue,
-  getNotebookViewportLayout,
-} from "@/lib/workspace/notebook-viewport";
-import {
   type NotebookEraserMode,
   type NotebookEraserSize,
 } from "@/lib/workspace/notebook-eraser";
@@ -120,21 +117,17 @@ import {
   getNotebookCreatePagePull,
   getNotebookPageDragIntent,
   getNotebookPageIndexAfterSwipe,
-  getNotebookLivePinchTransform,
   getNotebookSwipeDragOffset,
   getNotebookSwipeDirection,
   getNotebookSwipeReleaseDecision,
   getNotebookSwipeSettleDuration,
   getNotebookSwipeVelocity,
-  getNotebookPageZoomAfterPinch,
   getPenWidthFromPercent,
   shouldCreateNotebookPageOnRelease,
-  getPinchDistance,
   mapClientPointToNotebookPage,
   shouldPointerSwipePages,
   shouldSuppressTouchAfterStylus,
   type NotebookPageDragIntent,
-  type PointerClientSample,
 } from "@/lib/workspace/notebook-inking";
 import {
   readBlobAsBase64,
@@ -188,26 +181,6 @@ type PageSwipeState = {
   axis: "horizontal" | "vertical" | null;
   intent: NotebookPageDragIntent | null;
   completed: boolean;
-};
-type PinchZoomState = {
-  startDistance: number;
-  startZoom: number;
-  startCenterX: number;
-  startCenterY: number;
-  lastCenterX: number;
-  lastCenterY: number;
-  /** Pinch anchor as a fraction of the page, so the page point under the
-   * fingers stays under the fingers while zooming. */
-  anchorFx: number;
-  anchorFy: number;
-  /** Committed pan at gesture start; the live transform builds on top of it. */
-  basePanX: number;
-  basePanY: number;
-  frameHeight: number;
-  frameWidth: number;
-  pendingZoom: number;
-  startPageHeight: number;
-  startPageWidth: number;
 };
 type PageFrameSize = { width: number; height: number };
 type NotebookUndoAction = {
@@ -385,7 +358,6 @@ export default function NotebookEditorPage() {
   const pageTrackOffsetRef = useRef(0);
   const pageTrackPendingOffsetRef = useRef(0);
   const pageTrackAnimationFrameRef = useRef<number | null>(null);
-  const pinchCommitPendingRef = useRef(false);
   const pageTrackTransitionResolverRef = useRef<(() => void) | null>(null);
   const pagePreviewDirectionRef = useRef<"next" | "previous" | null>(null);
   const pageSwipeInkSnapshotRef = useRef<{
@@ -404,7 +376,6 @@ export default function NotebookEditorPage() {
   const createPageAffordanceRef = useRef<HTMLDivElement | null>(null);
   const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
-  const pagePanLiveRef = useRef<NotebookPagePan>({ x: 0, y: 0 });
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const autosaveTimerRef = useRef<number | null>(null);
   const draftTimerRef = useRef<number | null>(null);
@@ -433,8 +404,6 @@ export default function NotebookEditorPage() {
   const pageColorRef = useRef<NotebookPageColor>("white");
   const pageStyleRef = useRef<NotebookPageStyle>("plain");
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
-  const touchPointersRef = useRef<Map<number, PointerClientSample>>(new Map());
-  const pinchZoomRef = useRef<PinchZoomState | null>(null);
   const undoStackRef = useRef<NotebookUndoAction[]>([]);
   const redoStackRef = useRef<NotebookUndoAction[]>([]);
   const editorRevisionRef = useRef(0);
@@ -446,15 +415,6 @@ export default function NotebookEditorPage() {
   const hydratedPageIdRef = useRef<string | null>(null);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
   const toolRef = useRef<EditorTool>("pen");
-  const pinchZoomFrameQueue = useMemo(
-    () =>
-      createNotebookPinchFrameQueue({
-        requestFrame: (callback) => window.requestAnimationFrame(callback),
-        cancelFrame: (frameId) => window.cancelAnimationFrame(frameId),
-      }),
-    []
-  );
-
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
     [pages, selectedPageId]
@@ -533,82 +493,46 @@ export default function NotebookEditorPage() {
   );
   const trackPreviousBackground = resolvePageBackground(trackPreviousPage);
   const trackNextBackground = resolvePageBackground(trackNextPage);
-  const viewportLayout = useMemo(
-    () =>
-      getNotebookViewportLayout({
-        frameWidth: frameSize.width,
-        frameHeight: frameSize.height,
-        pageWidth: CANVAS_WIDTH,
-        pageHeight: CANVAS_HEIGHT,
-        zoom: pageZoom,
-        pan: pagePan,
+  const {
+    layout: viewportLayout,
+    pageFit,
+    pageWidthPx,
+    pageHeightPx,
+    pageTrackTravelDistance,
+    pageCanPanHorizontally,
+    pageCanPanVertically,
+    pagePanLiveRef,
+    isPinchActive,
+    cancelPinchAnimationFrame: cancelPinchZoomAnimationFrame,
+    resetPageSurfaceTransform,
+    cancelActivePinch,
+    resetViewportGestures,
+    handleTouchPointerDown,
+    handleTouchPointerMove,
+    handleTouchPointerEnd,
+  } = useNotebookViewportController({
+    frameSize,
+    pageZoom,
+    pagePan,
+    pageWidth: CANVAS_WIDTH,
+    pageHeight: CANVAS_HEIGHT,
+    setPageZoom,
+    setPagePan,
+    pageSurfaceRef,
+    pageFrameRef,
+    isNavigationLocked: () => pageNavigationLockedRef.current,
+    isStylusSuppressingTouch: () =>
+      shouldSuppressTouchAfterStylus({
+        stylusActive: stylusInteractionRef.current,
+        cooldownUntil: stylusCooldownUntilRef.current,
+        now: Date.now(),
       }),
-    [frameSize, pagePan, pageZoom]
-  );
-  const pageFit = viewportLayout.fitSize;
-  const pageWidthPx = viewportLayout.pageSize.width;
-  const pageHeightPx = viewportLayout.pageSize.height;
-  const pageTrackTravelDistance = viewportLayout.swipeTravel;
-  const pageCanPanHorizontally =
-    viewportLayout.panBounds.maxX - viewportLayout.panBounds.minX > 0.5;
-  const pageCanPanVertically =
-    viewportLayout.panBounds.maxY - viewportLayout.panBounds.minY > 0.5;
-
-  const cancelPinchZoomAnimationFrame = useCallback(() => {
-    pinchZoomFrameQueue.cancel();
-  }, [pinchZoomFrameQueue]);
-
-  const writeLivePinchTransform = useCallback((pinch: PinchZoomState) => {
-    const surface = pageSurfaceRef.current;
-    if (!surface) return null;
-    const liveTransform = getNotebookLivePinchTransform({
-      anchorFx: pinch.anchorFx,
-      anchorFy: pinch.anchorFy,
-      basePanX: pinch.basePanX,
-      basePanY: pinch.basePanY,
-      currentCenterX: pinch.lastCenterX,
-      currentCenterY: pinch.lastCenterY,
-      frameHeight: pinch.frameHeight,
-      frameWidth: pinch.frameWidth,
-      nextZoom: pinch.pendingZoom,
-      startCenterX: pinch.startCenterX,
-      startCenterY: pinch.startCenterY,
-      startPageHeight: pinch.startPageHeight,
-      startPageWidth: pinch.startPageWidth,
-      startZoom: pinch.startZoom,
-    });
-    surface.style.transformOrigin = "0 0";
-    surface.style.transform = `translate3d(${liveTransform.x}px, ${
-      liveTransform.y
-    }px, 0) scale(${liveTransform.scaleRatio})`;
-    return liveTransform;
-  }, []);
-
-  const queueLivePinchTransform = useCallback(() => {
-    pinchZoomFrameQueue.queue(() => {
-      const pinch = pinchZoomRef.current;
-      if (pinch) writeLivePinchTransform(pinch);
-    });
-  }, [pinchZoomFrameQueue, writeLivePinchTransform]);
-
-  const resetPageSurfaceTransform = useCallback(() => {
-    pinchCommitPendingRef.current = false;
-    const surface = pageSurfaceRef.current;
-    if (!surface) return;
-    surface.style.transformOrigin = "0 0";
-    surface.style.transform = `translate3d(${pagePanLiveRef.current.x}px, ${
-      pagePanLiveRef.current.y
-    }px, 0)`;
-    surface.style.willChange = "";
-  }, []);
-
-  // Keep the last compositor pinch matrix in place until React has committed
-  // the matching page dimensions. Resetting the scale before that commit
-  // briefly renders the old-sized sheet at the new origin on iPad.
-  useLayoutEffect(() => {
-    if (!pinchCommitPendingRef.current) return;
-    resetPageSurfaceTransform();
-  }, [pagePan, pageZoom, resetPageSurfaceTransform]);
+    onPinchTakeover: () => cancelPageSwipeForPinch(),
+    onClearSwipeCandidate: () => {
+      pageSwipeRef.current = null;
+    },
+    onSwipeEnd: (event, options) => handleStopPageSwipe(event, options),
+  });
 
   const updatePageSwipeMotion = useCallback((next: PageSwipeMotion | null) => {
     pageSwipeMotionRef.current = next;
@@ -1100,7 +1024,7 @@ export default function NotebookEditorPage() {
 
   useEffect(() => {
     pagePanLiveRef.current = pagePan;
-  }, [pagePan]);
+  }, [pagePan, pagePanLiveRef]);
 
   const pushUndoAction = useCallback((action: NotebookUndoAction) => {
     undoStackRef.current = [...undoStackRef.current.slice(-39), action];
@@ -1298,12 +1222,8 @@ export default function NotebookEditorPage() {
 
   const cancelCompetingPageGestures = useCallback(() => {
     pageSwipeRef.current = null;
-    if (pinchZoomRef.current) {
-      cancelPinchZoomAnimationFrame();
-      resetPageSurfaceTransform();
-    }
-    pinchZoomRef.current = null;
-  }, [cancelPinchZoomAnimationFrame, resetPageSurfaceTransform]);
+    cancelActivePinch();
+  }, [cancelActivePinch]);
 
   const handleTextBlockLimitReached = useCallback((maximum: number) => {
     setFeedback({
@@ -1366,10 +1286,7 @@ export default function NotebookEditorPage() {
     }
 
     setLoading(true);
-    cancelPinchZoomAnimationFrame();
-    pinchZoomRef.current = null;
-    touchPointersRef.current.clear();
-    pagePanLiveRef.current = { x: 0, y: 0 };
+    resetViewportGestures();
     setPageZoom(1);
     setPagePan({ x: 0, y: 0 });
     hydratedPageIdRef.current = null;
@@ -1462,7 +1379,7 @@ export default function NotebookEditorPage() {
     } finally {
       setLoading(false);
     }
-  }, [cancelPinchZoomAnimationFrame, notebookId, user?.uid]);
+  }, [notebookId, resetViewportGestures, user?.uid]);
 
   useEffect(() => {
     void loadNotebook();
@@ -1625,14 +1542,11 @@ export default function NotebookEditorPage() {
       finishActiveTextBlockGesture();
       stylusInteractionRef.current = false;
       stylusCooldownUntilRef.current = Date.now() + 180;
-      touchPointersRef.current.clear();
-      if (pinchZoomRef.current) {
-        // A pinch was interrupted (blur/app switch): drop its live transform
-        // back to the last committed pan.
-        cancelPinchZoomAnimationFrame();
-        resetPageSurfaceTransform();
-      }
-      pinchZoomRef.current = null;
+      // A pinch was interrupted (blur/app switch): drop its live transform
+      // back to the last committed pan.
+      cancelActivePinch({ clearPointers: true });
+      // Teardown always resyncs pan, pinch or not, so an interrupted drag
+      // cannot leave the committed pan behind the live one.
       setPagePan(pagePanLiveRef.current);
       if (
         pageSwipeRef.current ||
@@ -1688,7 +1602,9 @@ export default function NotebookEditorPage() {
       cancelPinchZoomAnimationFrame();
     };
   }, [
+    cancelActivePinch,
     cancelPinchZoomAnimationFrame,
+    pagePanLiveRef,
     finishActiveTextBlockGesture,
     resetPageSurfaceTransform,
     resolvePageTrackTransition,
@@ -1697,174 +1613,24 @@ export default function NotebookEditorPage() {
     writePageTrackOffset,
   ]);
 
-  const updateTouchPointer = (event: ReactPointerEvent<HTMLElement>) => {
-    touchPointersRef.current.set(event.pointerId, {
-      clientX: event.clientX,
-      clientY: event.clientY,
-      pressure: 0.5,
-      time: Math.max(0, Math.round(event.nativeEvent.timeStamp ?? 0)),
-    });
-  };
-
-  const startPinchZoom = () => {
-    const [first, second] = Array.from(touchPointersRef.current.values());
-    if (!first || !second) return;
-    cancelPinchZoomAnimationFrame();
-    if (pageSwipeRef.current) {
-      if (pageTrackAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(pageTrackAnimationFrameRef.current);
-        pageTrackAnimationFrameRef.current = null;
-      }
-      const track = pageTrackRef.current;
-      if (track) track.style.transition = "none";
-      writePageTrackOffset(0);
-      setPagePreviewVisibility(false);
-      createPageActiveRef.current = false;
-      setCreatePageActive(false);
-      setCreatePageProgress(0);
-      pageSwipeRef.current = null;
+  /**
+   * A second finger landed mid-swipe. Unwind the page track so the pinch
+   * starts from a settled sheet instead of a half-committed swipe.
+   */
+  const cancelPageSwipeForPinch = () => {
+    if (!pageSwipeRef.current) return;
+    if (pageTrackAnimationFrameRef.current !== null) {
+      window.cancelAnimationFrame(pageTrackAnimationFrameRef.current);
+      pageTrackAnimationFrameRef.current = null;
     }
-    const surface = pageSurfaceRef.current;
-    const frameRect = pageFrameRef.current?.getBoundingClientRect();
-    const rect = surface?.getBoundingClientRect();
-    if (
-      !surface ||
-      !frameRect ||
-      !rect ||
-      rect.width <= 0 ||
-      rect.height <= 0
-    ) {
-      return;
-    }
-    const centerX = (first.clientX + second.clientX) / 2;
-    const centerY = (first.clientY + second.clientY) / 2;
-    surface.style.willChange = "transform";
-    surface.style.transformOrigin = "0 0";
-    pinchZoomRef.current = {
-      startDistance: getPinchDistance(first, second),
-      startZoom: viewportLayout.zoom,
-      startCenterX: centerX,
-      startCenterY: centerY,
-      lastCenterX: centerX,
-      lastCenterY: centerY,
-      anchorFx: (centerX - rect.left) / rect.width,
-      anchorFy: (centerY - rect.top) / rect.height,
-      // Read the rendered origin so a ResizeObserver/state update cannot make
-      // the first live pinch frame jump after rotation or viewport resizing.
-      basePanX: rect.left - frameRect.left,
-      basePanY: rect.top - frameRect.top,
-      frameHeight: frameRect.height,
-      frameWidth: frameRect.width,
-      pendingZoom: viewportLayout.zoom,
-      startPageHeight: rect.height,
-      startPageWidth: rect.width,
-    };
-  };
-
-  // Ends an anchored pinch: commits the final zoom to layout and computes the
-  // pan that keeps the page point that was under the fingers exactly where
-  // the fingers left it, clamped to the frame.
-  const finalizePinchCommit = (pinch: PinchZoomState) => {
-    cancelPinchZoomAnimationFrame();
-    const surface = pageSurfaceRef.current;
-    if (!surface) return;
-    const nextZoom = pinch.pendingZoom;
-    // Flush the newest touch sample and commit that exact bounded transform.
-    // Live and settled geometry must be identical or the page visibly shifts
-    // as soon as the second finger lifts.
-    const finalTransform = writeLivePinchTransform(pinch);
-    if (!finalTransform) return;
-    const nextPan = { x: finalTransform.x, y: finalTransform.y };
-    pagePanLiveRef.current = nextPan;
-    pinchCommitPendingRef.current = true;
-    setPageZoom(nextZoom);
-    setPagePan(nextPan);
-  };
-
-  const handleTouchPointerDown = (event: ReactPointerEvent<HTMLElement>) => {
-    if (event.pointerType !== "touch") return false;
-    if (pageNavigationLockedRef.current) {
-      event.preventDefault();
-      event.stopPropagation();
-      return true;
-    }
-    if (
-      shouldSuppressTouchAfterStylus({
-        stylusActive: stylusInteractionRef.current,
-        cooldownUntil: stylusCooldownUntilRef.current,
-        now: Date.now(),
-      })
-    ) {
-      event.preventDefault();
-      event.stopPropagation();
-      return true;
-    }
-    updateTouchPointer(event);
-    if (!event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.setPointerCapture(event.pointerId);
-    }
-    if (touchPointersRef.current.size >= 2) {
-      startPinchZoom();
-      event.preventDefault();
-      event.stopPropagation();
-      return true;
-    }
-    return false;
-  };
-
-  const handleTouchPointerMove = (event: ReactPointerEvent<HTMLElement>) => {
-    if (event.pointerType !== "touch" || !touchPointersRef.current.has(event.pointerId)) {
-      return false;
-    }
-    updateTouchPointer(event);
-    const pinch = pinchZoomRef.current;
-    if (!pinch || touchPointersRef.current.size < 2) return false;
-
-    const [first, second] = Array.from(touchPointersRef.current.values());
-    if (first && second) {
-      const centerX = (first.clientX + second.clientX) / 2;
-      const centerY = (first.clientY + second.clientY) / 2;
-      const nextZoom = getNotebookPageZoomAfterPinch({
-        startDistance: pinch.startDistance,
-        currentDistance: getPinchDistance(first, second),
-        startZoom: pinch.startZoom,
-      });
-      pinch.pendingZoom = nextZoom;
-      pinch.lastCenterX = centerX;
-      pinch.lastCenterY = centerY;
-      // Pointer events can outpace iPad paint. Keep only the latest two-finger
-      // sample and write one anchored compositor transform per animation frame.
-      queueLivePinchTransform();
-    }
+    const track = pageTrackRef.current;
+    if (track) track.style.transition = "none";
+    writePageTrackOffset(0);
+    setPagePreviewVisibility(false);
+    createPageActiveRef.current = false;
+    setCreatePageActive(false);
+    setCreatePageProgress(0);
     pageSwipeRef.current = null;
-    event.preventDefault();
-    event.stopPropagation();
-    return true;
-  };
-
-  const handleTouchPointerEnd = (
-    event: ReactPointerEvent<HTMLElement>,
-    options: { allowTextTap?: boolean; cancelled?: boolean } = {}
-  ) => {
-    if (event.pointerType !== "touch") return false;
-    const wasPinching = Boolean(pinchZoomRef.current) || touchPointersRef.current.size >= 2;
-    touchPointersRef.current.delete(event.pointerId);
-    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (wasPinching) {
-      const pinch = pinchZoomRef.current;
-      if (pinch) {
-        finalizePinchCommit(pinch);
-      }
-      pinchZoomRef.current = null;
-      pageSwipeRef.current = null;
-      event.preventDefault();
-      event.stopPropagation();
-      return true;
-    }
-    handleStopPageSwipe(event, options);
-    return true;
   };
 
   const getNotebookPointFromEvent = (
@@ -2304,13 +2070,7 @@ export default function NotebookEditorPage() {
   );
 
   useEffect(() => {
-    if (pinchZoomRef.current) {
-      cancelPinchZoomAnimationFrame();
-      resetPageSurfaceTransform();
-      pinchZoomRef.current = null;
-      touchPointersRef.current.clear();
-      setPagePan(pagePanLiveRef.current);
-    }
+    cancelActivePinch({ clearPointers: true, commitPan: true });
     const motion = pageSwipeMotionRef.current;
     if (motion?.phase === "handoff" && motion.direction) {
       const targetOffset =
@@ -2332,6 +2092,7 @@ export default function NotebookEditorPage() {
     }
     clearPageTrackMotion();
   }, [
+    cancelActivePinch,
     cancelPinchZoomAnimationFrame,
     clearPageTrackMotion,
     frameSize.height,
@@ -3029,7 +2790,7 @@ export default function NotebookEditorPage() {
       !fullNotebookEditingEnabled ||
       pageSwipeRef.current?.completed ||
       pageSwipeRef.current?.intent === "pan" ||
-      pinchZoomRef.current
+      isPinchActive()
     ) {
       return;
     }

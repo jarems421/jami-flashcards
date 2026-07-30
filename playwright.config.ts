@@ -22,7 +22,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   retries: 0,
-  timeout: 180_000,
+  // The desktop flow now drives text blocks, ink, autosave, page navigation,
+  // reload persistence, and a cross-route return. On a loaded machine that
+  // lands near three minutes, so the per-test budget has headroom over it.
+  timeout: 300_000,
   expect: {
     timeout: 20_000,
   },
