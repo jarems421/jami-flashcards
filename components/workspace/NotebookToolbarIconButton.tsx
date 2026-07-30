@@ -163,6 +163,9 @@ export default function ToolbarIconButton({
       title={label}
       disabled={disabled}
       data-notebook-toolbar-action="true"
+      // Selection is otherwise only visible in the class string; expose it so
+      // tests and browser smokes can read state without matching on styling.
+      data-active={active ? "true" : undefined}
       onClick={onClick}
       className={`relative inline-flex h-11 min-w-11 cursor-pointer items-center justify-center rounded-full border text-sm font-semibold transition duration-200 disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:saturate-[0.82] ${
         active

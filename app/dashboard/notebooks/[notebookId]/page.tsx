@@ -20,6 +20,9 @@ import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayer
 import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
 import NotebookPageThumbnail from "@/components/workspace/NotebookPageThumbnail";
+import NotebookDrawingToolbar, {
+  type NotebookToolMenu,
+} from "@/components/workspace/NotebookDrawingToolbar";
 import NotebookSaveIndicator from "@/components/workspace/NotebookSaveIndicator";
 import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
 import NotebookTextBlockOptions from "@/components/workspace/NotebookTextBlockOptions";
@@ -138,7 +141,6 @@ import {
   type NotebookPdfCanvasTracking,
 } from "@/lib/workspace/notebook-pdf-canvas";
 import {
-  isNotebookToolbarSideDock,
   type NotebookToolbarDock,
 } from "@/lib/workspace/notebook-toolbar";
 
@@ -187,15 +189,6 @@ const NOTEBOOK_ASSISTANT_QUICK_ACTIONS = [
       "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
   },
 ] as const;
-const NOTEBOOK_TOOLBAR_DOCK_CLASS: Record<NotebookToolbarDock, string> = {
-  top: "left-1/2 top-[0.9rem] -translate-x-1/2",
-  right:
-    "right-[calc(env(safe-area-inset-right,0px)+0.9rem)] top-1/2 -translate-y-1/2",
-  bottom:
-    "bottom-[var(--notebook-control-bottom-inset)] left-1/2 -translate-x-1/2",
-  left:
-    "left-[calc(env(safe-area-inset-left,0px)+0.9rem)] top-1/2 -translate-y-1/2",
-};
 const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
   NotebookToolbarDock,
   string
@@ -2321,6 +2314,58 @@ export default function NotebookEditorPage() {
     setEraserMenuOpen(false);
   }, []);
 
+  /** Which tool options popover is showing. The three are mutually exclusive. */
+  const openToolMenu: NotebookToolMenu = penMenuOpen
+    ? "pen"
+    : highlighterMenuOpen
+      ? "highlighter"
+      : eraserMenuOpen
+        ? "eraser"
+        : null;
+
+  const setToolMenuOpen = useCallback(
+    (menu: Exclude<NotebookToolMenu, null>, open: boolean) => {
+      setPenMenuOpen(menu === "pen" && open);
+      setHighlighterMenuOpen(menu === "highlighter" && open);
+      setEraserMenuOpen(menu === "eraser" && open);
+    },
+    []
+  );
+
+  /** Selecting an inactive tool switches to it; the active one toggles options. */
+  const handleSelectDrawingTool = useCallback(
+    (nextTool: "pen" | "highlighter" | "eraser") => {
+      if (pageState.read().tool !== nextTool) {
+        switchNotebookTool(nextTool);
+        closeDrawingToolMenus();
+        return;
+      }
+      setToolMenuOpen(nextTool, openToolMenu !== nextTool);
+    },
+    [
+      closeDrawingToolMenus,
+      openToolMenu,
+      pageState,
+      setToolMenuOpen,
+      switchNotebookTool,
+    ]
+  );
+
+  const handleToggleTextTool = useCallback(() => {
+    closeDrawingToolMenus();
+    switchNotebookTool(pageState.read().tool === "text" ? "select" : "text");
+  }, [closeDrawingToolMenus, pageState, switchNotebookTool]);
+
+  const handleToolbarUndo = useCallback(() => {
+    closeDrawingToolMenus();
+    handleUndo();
+  }, [closeDrawingToolMenus, handleUndo]);
+
+  const handleToolbarRedo = useCallback(() => {
+    closeDrawingToolMenus();
+    handleRedo();
+  }, [closeDrawingToolMenus, handleRedo]);
+
   const {
     dock: toolbarDock,
     toolbarRef: drawingToolbarRef,
@@ -3240,145 +3285,21 @@ export default function NotebookEditorPage() {
               </div>
             ) : null}
             {fullNotebookEditingEnabled ? (
-              <div
-                className={`pointer-events-none absolute z-40 ${NOTEBOOK_TOOLBAR_DOCK_CLASS[toolbarDock]}`}
-              >
-                <div
-                  ref={drawingToolbarRef}
-                  role="toolbar"
-                  aria-label="Drawing tools"
-                  aria-orientation={
-                    isNotebookToolbarSideDock(toolbarDock)
-                      ? "vertical"
-                      : "horizontal"
-                  }
-                  title="Drag the toolbar to dock it to another edge"
-                  data-toolbar-dock={toolbarDock}
-                  {...toolbarBindings}
-                  className={`notebook-dockable-toolbar notebook-floating-control pointer-events-auto flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1.5 ${
-                    isNotebookToolbarSideDock(toolbarDock)
-                      ? "flex-col"
-                      : "flex-row"
-                  } cursor-grab data-[toolbar-dragging=true]:cursor-grabbing data-[toolbar-dragging=true]:border-[var(--color-border-strong)]`}
-                >
-                  <div className="relative">
-                    <ToolbarIconButton
-                      label="Pen (P)"
-                      icon="pen"
-                      active={tool === "pen" || penMenuOpen}
-                      onClick={() => {
-                        setHighlighterMenuOpen(false);
-                        setEraserMenuOpen(false);
-                        if (tool !== "pen") {
-                          switchNotebookTool("pen");
-                          setPenMenuOpen(false);
-                          return;
-                        }
-                        setPenMenuOpen((value) => !value);
-                      }}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
-                        style={{
-                          backgroundColor: getNotebookStrokePaintColor(
-                            penColor,
-                            "pen"
-                          ),
-                        }}
-                      />
-                    </ToolbarIconButton>
-                  </div>
-                  <div className="relative">
-                    <ToolbarIconButton
-                      label="Highlighter (H)"
-                      icon="highlighter"
-                      active={tool === "highlighter" || highlighterMenuOpen}
-                      onClick={() => {
-                        setPenMenuOpen(false);
-                        setEraserMenuOpen(false);
-                        if (tool !== "highlighter") {
-                          switchNotebookTool("highlighter");
-                          setHighlighterMenuOpen(false);
-                          return;
-                        }
-                        setHighlighterMenuOpen((value) => !value);
-                      }}
-                    >
-                      <span
-                        aria-hidden="true"
-                        className="pointer-events-none absolute bottom-[0.35rem] left-1/2 h-[3px] w-4 -translate-x-1/2 rounded-full"
-                        style={{
-                          backgroundColor: getNotebookStrokePaintColor(
-                            highlighterColor,
-                            "highlighter"
-                          ),
-                        }}
-                      />
-                    </ToolbarIconButton>
-                  </div>
-                  <div className="relative">
-                    <ToolbarIconButton
-                      label="Eraser (E)"
-                      icon="eraser"
-                      active={tool === "eraser" || eraserMenuOpen}
-                      onClick={() => {
-                        setPenMenuOpen(false);
-                        setHighlighterMenuOpen(false);
-                        if (tool !== "eraser") {
-                          switchNotebookTool("eraser");
-                          setEraserMenuOpen(false);
-                          return;
-                        }
-                        setEraserMenuOpen((value) => !value);
-                      }}
-                    />
-                  </div>
-                  <ToolbarIconButton
-                    label="Text box (T)"
-                    icon="text"
-                    active={tool === "text"}
-                    onClick={() => {
-                      setPenMenuOpen(false);
-                      setHighlighterMenuOpen(false);
-                      setEraserMenuOpen(false);
-                      switchNotebookTool(
-                        pageState.read().tool === "text" ? "select" : "text"
-                      );
-                    }}
-                  />
-                  <span
-                    aria-hidden="true"
-                    className={`shrink-0 rounded-full bg-[var(--color-border)] ${
-                      isNotebookToolbarSideDock(toolbarDock)
-                        ? "my-0.5 h-px w-6"
-                        : "mx-0.5 h-6 w-px"
-                    }`}
-                  />
-                  <ToolbarIconButton
-                    label="Undo (Ctrl+Z)"
-                    icon="undo"
-                    disabled={undoDepth === 0}
-                    onClick={() => {
-                      setPenMenuOpen(false);
-                      setHighlighterMenuOpen(false);
-                      setEraserMenuOpen(false);
-                      handleUndo();
-                    }}
-                  />
-                  <ToolbarIconButton
-                    label="Redo (Ctrl+Shift+Z)"
-                    icon="redo"
-                    disabled={redoDepth === 0}
-                    onClick={() => {
-                      setPenMenuOpen(false);
-                      setHighlighterMenuOpen(false);
-                      setEraserMenuOpen(false);
-                      handleRedo();
-                    }}
-                  />
-                </div>
-              </div>
+              <NotebookDrawingToolbar
+                dock={toolbarDock}
+                toolbarRef={drawingToolbarRef}
+                dockBindings={toolbarBindings}
+                tool={tool}
+                penColor={penColor}
+                highlighterColor={highlighterColor}
+                openMenu={openToolMenu}
+                onSelectDrawingTool={handleSelectDrawingTool}
+                onToggleTextTool={handleToggleTextTool}
+                undoDepth={undoDepth}
+                redoDepth={redoDepth}
+                onUndo={handleToolbarUndo}
+                onRedo={handleToolbarRedo}
+              />
             ) : null}
             <div
               className={`notebook-floating-control absolute right-3 z-20 flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1 md:right-4 ${
