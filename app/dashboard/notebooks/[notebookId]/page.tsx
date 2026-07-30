@@ -42,6 +42,10 @@ import {
 import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
+import {
+  useNotebookPersistenceController,
+  type NotebookPageSaveResult,
+} from "@/hooks/useNotebookPersistenceController";
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
@@ -51,14 +55,12 @@ import type {
   NotebookFile,
   NotebookPage,
   NotebookPageColor,
-  NotebookPageStyle,
   NotebookStrokeColor,
   NotebookStrokeTool,
   NotebookTextBlock,
   NotebookTextBlockResizeEdge,
 } from "@/lib/workspace/notebooks";
 import {
-  buildTypedContentFromTextBlocks,
   MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
@@ -67,7 +69,6 @@ import {
   applyNotebookDraftToPage,
   getNotebookPageStyleBackground,
   getNotebookStrokePaintColor,
-  getNotebookWorkingPageStatus,
   normalizeNotebookStrokes,
 } from "@/lib/workspace/notebook-page-content";
 import {
@@ -81,10 +82,8 @@ import {
   createNotebookPageDraft,
   deleteNotebookPageDraft,
   getNotebookDraftDecision,
-  NOTEBOOK_DRAFT_IDLE_MS,
   readNotebookPageDraft,
   writeNotebookPageDraft,
-  writeNotebookPageDraftSync,
   type NotebookPageDraft,
 } from "@/lib/workspace/notebook-drafts";
 import {
@@ -101,12 +100,7 @@ import {
   shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
 import {
-  NOTEBOOK_AUTOSAVE_IDLE_MS,
   NOTEBOOK_INK_UI_SYNC_IDLE_MS,
-  isNotebookSaveCompletionCurrent,
-  shouldDiscardNotebookInkExport,
-  shouldNotebookSaveReplaceStoredPageContent,
-  shouldNotebookSaveUpdateLivePage,
 } from "@/lib/workspace/notebook-autosave";
 import {
   clampNotebookPagePan,
@@ -138,8 +132,6 @@ import {
   getNotebookById,
   getNotebookFiles,
   getNotebookPages,
-  NotebookPageConflictError,
-  saveNotebookPageSnapshot,
 } from "@/services/study/notebooks";
 import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
 import {
@@ -148,7 +140,6 @@ import {
 } from "@/services/study/notebook-files";
 import {
   legacyStrokesToJsDrawSvg,
-  makeNotebookInkData,
 } from "@/lib/workspace/notebook-ink-data";
 import {
   buildNotebookPageSearch,
@@ -382,21 +373,12 @@ export default function NotebookEditorPage() {
   const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
-  const autosaveTimerRef = useRef<number | null>(null);
-  const draftTimerRef = useRef<number | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
   const recoveredDraftRef = useRef<{
     pageId: string;
     localRevision: number;
   } | null>(null);
-  const draftPersistenceErrorShownRef = useRef(false);
-  const persistCurrentPageDraftRef = useRef<(() => Promise<void>) | null>(null);
   const inkInteractionActiveRef = useRef(false);
-  const saveOperationRef = useRef<Promise<boolean> | null>(null);
-  const saveCurrentPageRef = useRef<
-    ((options?: { flush?: boolean }) => Promise<boolean>) | null
-  >(null);
-  const saveQueuedRef = useRef(false);
   const pendingInkUiRef = useRef<{
     hasContent: boolean;
     redoDepth: number;
@@ -406,7 +388,6 @@ export default function NotebookEditorPage() {
   const undoStackRef = useRef<NotebookUndoAction[]>([]);
   const redoStackRef = useRef<NotebookUndoAction[]>([]);
   const editorRevisionRef = useRef(0);
-  const latestSaveIdRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
   const touchInkHintTimeoutRef = useRef<number | null>(null);
   const stylusInteractionRef = useRef(false);
@@ -1054,149 +1035,76 @@ export default function NotebookEditorPage() {
     }, NOTEBOOK_INK_UI_SYNC_IDLE_MS);
   }, [cancelInkUiSync, flushInkUiSync]);
 
-  const scheduleNotebookAutosave = useCallback(() => {
-    if (autosaveTimerRef.current !== null) {
-      window.clearTimeout(autosaveTimerRef.current);
-    }
-    autosaveTimerRef.current = window.setTimeout(() => {
-      autosaveTimerRef.current = null;
-      if (
-        inkInteractionActiveRef.current ||
-        inkEditorRef.current?.isInteracting()
-      ) {
-        scheduleNotebookAutosave();
-        return;
-      }
-      void saveCurrentPageRef.current?.();
-    }, NOTEBOOK_AUTOSAVE_IDLE_MS);
+  const handlePageSaved = useCallback((result: NotebookPageSaveResult) => {
+    setPages((current) =>
+      current.map((page) =>
+        page.id === result.pageId
+          ? {
+              ...page,
+              typedContent: result.typedContent.trim() || undefined,
+              textBlocks: result.replaceStoredContent
+                ? result.textBlocks
+                : page.textBlocks,
+              inkData: result.replaceStoredContent
+                ? result.inkData
+                : page.inkData,
+              strokeData: result.replaceStoredContent
+                ? undefined
+                : page.strokeData,
+              pageColor: result.replaceStoredContent
+                ? result.pageColor
+                : page.pageColor,
+              pageStyle: result.replaceStoredContent
+                ? result.pageStyle
+                : page.pageStyle,
+              status: result.status,
+              contentRevision: result.contentRevision,
+              updatedAt: result.updatedAt,
+            }
+          : page
+      )
+    );
+    setNotebook((current) =>
+      current
+        ? {
+            ...current,
+            previewInkSvg:
+              result.inkSvg.length <= 120_000 ? result.inkSvg : undefined,
+            previewPageId: result.pageId,
+            updatedAt: result.updatedAt,
+          }
+        : current
+    );
   }, []);
 
-  const persistCurrentPageDraft = useCallback(async () => {
-    const page = pageState.read().selectedPage;
-    const inkEditor = inkEditorRef.current;
-    if (
-      !page ||
-      !user?.uid ||
-      editorRevisionRef.current <= 0 ||
+  const isInkInteracting = useCallback(
+    () =>
       inkInteractionActiveRef.current ||
-      inkEditor?.isInteracting()
-    ) {
-      return;
-    }
+      Boolean(inkEditorRef.current?.isInteracting()),
+    []
+  );
 
-    try {
-      const inkSvg = inkEditor ? await inkEditor.serializeAsync() : selectedPageInkSvg;
-      if (pageState.read().selectedPage?.id !== page.id || inkSvg === null) return;
-      const typedContent = buildTypedContentFromTextBlocks(pageState.read().textBlocks) ?? "";
-      const draft = createNotebookPageDraft({
-        userId: user.uid,
-        notebookId: page.notebookId,
-        pageId: page.id,
-        baseContentRevision: pageState.read().contentRevision,
-        remoteUpdatedAt: page.updatedAt,
-        localRevision: editorRevisionRef.current,
-        textBlocks: pageState.read().textBlocks,
-        inkSvg,
-        pageColor: pageState.read().pageColor,
-        pageStyle: pageState.read().pageStyle,
-        status: getNotebookWorkingPageStatus({
-          typedContent,
-          hasInk: inkEditor?.hasInk() ?? Boolean(page.inkData?.svg),
-        }),
-      });
-      await writeNotebookPageDraft(draft);
-      draftPersistenceErrorShownRef.current = false;
-    } catch (error) {
-      if (draftPersistenceErrorShownRef.current) return;
-      draftPersistenceErrorShownRef.current = true;
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "This device could not store a recovery copy of the page.",
-      });
-    }
-  }, [pageState, selectedPageInkSvg, user?.uid]);
-
-  useEffect(() => {
-    persistCurrentPageDraftRef.current = persistCurrentPageDraft;
-    return () => {
-      if (persistCurrentPageDraftRef.current === persistCurrentPageDraft) {
-        persistCurrentPageDraftRef.current = null;
-      }
-    };
-  }, [persistCurrentPageDraft]);
-
-  const scheduleNotebookDraft = useCallback(() => {
-    if (draftTimerRef.current !== null) {
-      window.clearTimeout(draftTimerRef.current);
-    }
-    draftTimerRef.current = window.setTimeout(() => {
-      draftTimerRef.current = null;
-      if (
-        inkInteractionActiveRef.current ||
-        inkEditorRef.current?.isInteracting()
-      ) {
-        scheduleNotebookDraft();
-        return;
-      }
-      void persistCurrentPageDraftRef.current?.();
-    }, NOTEBOOK_DRAFT_IDLE_MS);
-  }, []);
-
-  const persistCurrentPageDraftSync = useCallback(() => {
-    const page = pageState.read().selectedPage;
-    const inkEditor = inkEditorRef.current;
-    if (!page || !user?.uid || editorRevisionRef.current <= 0) return false;
-    try {
-      const inkSvg = inkEditor ? inkEditor.serialize() : selectedPageInkSvg;
-      if (inkSvg === null) return false;
-      const typedContent = buildTypedContentFromTextBlocks(pageState.read().textBlocks) ?? "";
-      const draft = createNotebookPageDraft({
-        userId: user.uid,
-        notebookId: page.notebookId,
-        pageId: page.id,
-        baseContentRevision: pageState.read().contentRevision,
-        remoteUpdatedAt: page.updatedAt,
-        localRevision: editorRevisionRef.current,
-        textBlocks: pageState.read().textBlocks,
-        inkSvg,
-        pageColor: pageState.read().pageColor,
-        pageStyle: pageState.read().pageStyle,
-        status: getNotebookWorkingPageStatus({
-          typedContent,
-          hasInk: inkEditor?.hasInk() ?? Boolean(page.inkData?.svg),
-        }),
-      });
-      return writeNotebookPageDraftSync(draft);
-    } catch {
-      return false;
-    }
-  }, [pageState, selectedPageInkSvg, user?.uid]);
-
-  const markPageUnsaved = useCallback((options?: {
-    deferUi?: boolean;
-    scheduleUi?: boolean;
-  }) => {
-    editorRevisionRef.current += 1;
-    setSaveStatus("unsaved", { deferRender: true });
-    scheduleNotebookAutosave();
-    scheduleNotebookDraft();
-    if (options?.deferUi) {
-      if (options.scheduleUi !== false) {
-        scheduleInkUiSync();
-      }
-      return;
-    }
-    flushInkUiSync();
-  }, [
-    flushInkUiSync,
-    scheduleInkUiSync,
-    scheduleNotebookAutosave,
-    scheduleNotebookDraft,
-    setSaveStatus,
-  ]);
+  const {
+    markPageUnsaved,
+    saveCurrentPage,
+    queueCurrentPageSaveForExit,
+    persistCurrentPageDraftSync,
+    schedulePendingWork,
+    cancelScheduledWork: cancelScheduledPersistence,
+    resetSaveTracking,
+    hasSaveInFlight,
+  } = useNotebookPersistenceController({
+    pageState,
+    userId: user?.uid,
+    inkEditorRef,
+    editorRevisionRef,
+    isInkInteracting,
+    fallbackInkSvg: selectedPageInkSvg,
+    onPageSaved: handlePageSaved,
+    onFeedback: setFeedback,
+    commitUi: flushInkUiSync,
+    scheduleUiCommit: scheduleInkUiSync,
+  });
 
   // With js-draw as the single ink engine, switching tools only updates the
   // desired style; NotebookInkEditor defers applying it while a pointer is
@@ -1282,7 +1190,7 @@ export default function NotebookEditorPage() {
     setPagePan({ x: 0, y: 0 });
     pageState.resetHydration();
     editorRevisionRef.current = 0;
-    latestSaveIdRef.current = 0;
+    resetSaveTracking();
     pageState.setContentRevision(0);
     recoveredDraftRef.current = null;
     setDraftConflict(null);
@@ -1370,7 +1278,13 @@ export default function NotebookEditorPage() {
     } finally {
       setLoading(false);
     }
-  }, [notebookId, pageState, resetViewportGestures, user?.uid]);
+  }, [
+    notebookId,
+    pageState,
+    resetSaveTracking,
+    resetViewportGestures,
+    user?.uid,
+  ]);
 
   useEffect(() => {
     void loadNotebook();
@@ -1437,8 +1351,7 @@ export default function NotebookEditorPage() {
         type: "success",
         message: "Recovered unsaved work from this device. Syncing it now.",
       });
-      scheduleNotebookAutosave();
-      scheduleNotebookDraft();
+      schedulePendingWork();
     } else {
       editorRevisionRef.current = 0;
       setSaveStatus("saved");
@@ -1450,8 +1363,7 @@ export default function NotebookEditorPage() {
     notebook?.pageStyle,
     pageState,
     resetTextBlockInteraction,
-    scheduleNotebookAutosave,
-    scheduleNotebookDraft,
+    schedulePendingWork,
     selectedPage,
     setPageColor,
     setPageStyle,
@@ -1663,331 +1575,12 @@ export default function NotebookEditorPage() {
     });
   }, [pageSurfaceReady, selectedPage?.id]);
 
-  const savePageSnapshot = useCallback(
-    async (input: {
-      page: NotebookPage;
-      textBlocks: NotebookTextBlock[];
-      inkSvg: string;
-      hasInk: boolean;
-      pageColor: NotebookPageColor;
-      pageStyle: NotebookPageStyle;
-      saveId: number;
-      saveRevision: number;
-      baseContentRevision: number;
-    }) => {
-      if (!user?.uid) return false;
-      setSaveStatus("saving");
-      try {
-        const persistedTextBlocks = input.textBlocks;
-        const typedContent = buildTypedContentFromTextBlocks(persistedTextBlocks) ?? "";
-        const status = getNotebookWorkingPageStatus({
-          typedContent,
-          hasInk: input.hasInk,
-        });
-        const inkData = makeNotebookInkData(input.inkSvg);
-        const saveResult = await saveNotebookPageSnapshot(user.uid, {
-          notebookId: input.page.notebookId,
-          pageId: input.page.id,
-          typedContent,
-          textBlocks: persistedTextBlocks,
-          inkData,
-          pageColor: input.pageColor,
-          pageStyle: input.pageStyle,
-          status,
-          baseContentRevision: input.baseContentRevision,
-        });
-        if (pageState.read().selectedPage?.id === input.page.id) {
-          pageState.setContentRevision(saveResult.contentRevision);
-        }
-        const currentRevision = editorRevisionRef.current;
-        const selectedPageId = pageState.read().selectedPage?.id ?? null;
-        const canUpdateLivePage = shouldNotebookSaveUpdateLivePage({
-          pageId: input.page.id,
-          selectedPageId,
-          saveRevision: input.saveRevision,
-          currentRevision,
-        });
-        const canReplaceStoredContent = shouldNotebookSaveReplaceStoredPageContent({
-          pageId: input.page.id,
-          selectedPageId,
-          saveRevision: input.saveRevision,
-          currentRevision,
-        });
-        setPages((current) =>
-          current.map((page) =>
-            page.id === input.page.id
-              ? {
-                  ...page,
-                  typedContent: typedContent.trim() || undefined,
-                  textBlocks: canReplaceStoredContent ? persistedTextBlocks : page.textBlocks,
-                  inkData: canReplaceStoredContent ? inkData : page.inkData,
-                  strokeData: canReplaceStoredContent ? undefined : page.strokeData,
-                  pageColor: canReplaceStoredContent ? input.pageColor : page.pageColor,
-                  pageStyle: canReplaceStoredContent ? input.pageStyle : page.pageStyle,
-                  status,
-                  contentRevision: saveResult.contentRevision,
-                  updatedAt: saveResult.updatedAt,
-                }
-              : page
-          )
-        );
-        setNotebook((current) =>
-          current
-            ? {
-                ...current,
-                previewInkSvg:
-                  input.inkSvg.length <= 120_000
-                    ? input.inkSvg
-                    : undefined,
-                previewPageId: input.page.id,
-                updatedAt: saveResult.updatedAt,
-              }
-            : current
-        );
-        if (canUpdateLivePage) {
-          setTextBlocks(persistedTextBlocks);
-        }
-        if (
-          isNotebookSaveCompletionCurrent({
-            saveId: input.saveId,
-            saveRevision: input.saveRevision,
-            currentRevision,
-            latestSaveId: latestSaveIdRef.current,
-          })
-        ) {
-          setSaveStatus("saved");
-          setFeedback((current) =>
-            current?.message === "Could not autosave this page." ? null : current
-          );
-        }
-        void deleteNotebookPageDraft(
-          {
-            userId: user.uid,
-            notebookId: input.page.notebookId,
-            pageId: input.page.id,
-          },
-          input.saveRevision
-        );
-        return true;
-      } catch (error) {
-        if (
-          isNotebookSaveCompletionCurrent({
-            saveId: input.saveId,
-            saveRevision: input.saveRevision,
-            currentRevision: editorRevisionRef.current,
-            latestSaveId: latestSaveIdRef.current,
-          })
-        ) {
-          setSaveStatus("failed");
-          setFeedback({
-            type: "error",
-            message:
-              error instanceof NotebookPageConflictError
-                ? error.message
-                : error instanceof Error
-                  ? error.message
-                  : "Could not autosave this page.",
-          });
-        }
-        return false;
-      }
-    },
-    [pageState, setSaveStatus, setTextBlocks, user?.uid]
-  );
-
-  const saveCurrentPage = useCallback(
-    async function saveCurrentPage(
-      options: { flush?: boolean } = {}
-    ): Promise<boolean> {
-      const activeSaveOperation = saveOperationRef.current;
-      if (activeSaveOperation) {
-        if (!options.flush) {
-          saveQueuedRef.current = true;
-          return true;
-        }
-        await activeSaveOperation;
-        if (
-          saveOperationRef.current &&
-          saveOperationRef.current !== activeSaveOperation
-        ) {
-          return saveCurrentPage({ ...options, flush: true });
-        }
-        if (
-          pageState.read().saveStatus === "unsaved" ||
-          pageState.read().saveStatus === "failed"
-        ) {
-          return saveCurrentPage({ ...options, flush: true });
-        }
-        return true;
-      }
-
-      const page = pageState.read().selectedPage;
-      if (!page || !user?.uid) return false;
-      if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) {
-        return false;
-      }
-
-      const operation = (async () => {
-        const saveId = latestSaveIdRef.current + 1;
-        latestSaveIdRef.current = saveId;
-        const saveRevision = editorRevisionRef.current;
-        const inkEditor = inkEditorRef.current;
-        const inkSvg = inkEditor
-          ? await inkEditor.serializeAsync()
-          : selectedPageInkSvg;
-
-        if (
-          shouldDiscardNotebookInkExport({
-            svgAvailable: inkSvg !== null,
-            inkInteractionActive:
-              Boolean(inkEditorRef.current?.isInteracting()) ||
-              inkInteractionActiveRef.current,
-            saveRevision,
-            currentRevision: editorRevisionRef.current,
-          })
-        ) {
-          return false;
-        }
-
-        if (inkSvg === null) return false;
-
-        return savePageSnapshot({
-          page,
-          textBlocks: pageState.read().textBlocks,
-          inkSvg,
-          hasInk: inkEditorRef.current?.hasInk() ?? false,
-          pageColor: pageState.read().pageColor,
-          pageStyle: pageState.read().pageStyle,
-          saveId,
-          saveRevision,
-          baseContentRevision: pageState.read().contentRevision,
-        });
-      })();
-
-      saveOperationRef.current = operation;
-      let saved = false;
-      try {
-        saved = await operation;
-      } finally {
-        if (saveOperationRef.current === operation) {
-          saveOperationRef.current = null;
-        }
-      }
-
-      const stillDirty =
-        pageState.read().saveStatus === "unsaved" || pageState.read().saveStatus === "failed";
-      if (options.flush && stillDirty) {
-        if (pageState.read().saveStatus === "failed") return false;
-        if (
-          inkInteractionActiveRef.current ||
-          inkEditorRef.current?.isInteracting()
-        ) {
-          return false;
-        }
-        return saveCurrentPage({ ...options, flush: true });
-      }
-
-      const shouldRunQueuedSave =
-        saveQueuedRef.current && !inkInteractionActiveRef.current && stillDirty;
-      saveQueuedRef.current = false;
-      if (shouldRunQueuedSave) {
-        void saveCurrentPage();
-      }
-      return saved;
-    },
-    [pageState, savePageSnapshot, selectedPageInkSvg, user?.uid]
-  );
-
-  const queueCurrentPageSaveForExit = useCallback(() => {
-    const page = pageState.read().selectedPage;
-    const inkEditor = inkEditorRef.current;
-    if (
-      !page ||
-      !user?.uid ||
-      inkInteractionActiveRef.current ||
-      inkEditor?.isInteracting()
-    ) {
-      return false;
-    }
-
-    // Capture the editor before the route unmounts it. The synchronous export
-    // only covers local serialization; the slower Firebase acknowledgement is
-    // deliberately allowed to finish after the Link starts navigating.
-    const saveRevision = editorRevisionRef.current;
-    let inkSvg: string | null;
-    try {
-      inkSvg = inkEditor ? inkEditor.serialize() : selectedPageInkSvg;
-    } catch {
-      return false;
-    }
-    if (
-      shouldDiscardNotebookInkExport({
-        svgAvailable: inkSvg !== null,
-        inkInteractionActive:
-          Boolean(inkEditorRef.current?.isInteracting()) ||
-          inkInteractionActiveRef.current,
-        saveRevision,
-        currentRevision: editorRevisionRef.current,
-      }) ||
-      inkSvg === null
-    ) {
-      return false;
-    }
-
-    const saveId = latestSaveIdRef.current + 1;
-    latestSaveIdRef.current = saveId;
-    const snapshot = {
-      page,
-      textBlocks: pageState.read().textBlocks,
-      inkSvg,
-      hasInk: inkEditor?.hasInk() ?? false,
-      pageColor: pageState.read().pageColor,
-      pageStyle: pageState.read().pageStyle,
-      saveId,
-      saveRevision,
-      baseContentRevision: pageState.read().contentRevision,
-    };
-    const precedingSave = saveOperationRef.current;
-    const operation = (async () => {
-      if (precedingSave) {
-        try {
-          await precedingSave;
-        } catch {
-          // The final captured snapshot still needs a chance to save even if
-          // an older serialization or write failed.
-        }
-      }
-      return savePageSnapshot({
-        ...snapshot,
-        baseContentRevision: pageState.read().contentRevision,
-      });
-    })();
-
-    saveOperationRef.current = operation;
-    const clearCompletedExitSave = () => {
-      if (saveOperationRef.current === operation) {
-        saveOperationRef.current = null;
-      }
-    };
-    void operation.then(clearCompletedExitSave, clearCompletedExitSave);
-    return true;
-  }, [pageState, savePageSnapshot, selectedPageInkSvg, user?.uid]);
-
-  useEffect(() => {
-    saveCurrentPageRef.current = saveCurrentPage;
-    return () => {
-      if (saveCurrentPageRef.current === saveCurrentPage) {
-        saveCurrentPageRef.current = null;
-      }
-    };
-  }, [saveCurrentPage]);
-
   const prepareCurrentPageForNavigation = useCallback(async () => {
     if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) {
       return false;
     }
     if (
-      saveOperationRef.current ||
+      hasSaveInFlight() ||
       pageState.read().saveStatus === "saving" ||
       pageState.read().saveStatus === "unsaved" ||
       pageState.read().saveStatus === "failed"
@@ -1995,7 +1588,7 @@ export default function NotebookEditorPage() {
       return saveCurrentPage({ flush: true });
     }
     return true;
-  }, [pageState, saveCurrentPage]);
+  }, [hasSaveInFlight, pageState, saveCurrentPage]);
 
   const selectPageById = useCallback(
     async (pageId: string) => {
@@ -2283,12 +1876,6 @@ export default function NotebookEditorPage() {
 
   useEffect(
     () => () => {
-      if (autosaveTimerRef.current !== null) {
-        window.clearTimeout(autosaveTimerRef.current);
-      }
-      if (draftTimerRef.current !== null) {
-        window.clearTimeout(draftTimerRef.current);
-      }
       cancelInkUiSync();
     },
     [cancelInkUiSync]
@@ -3815,18 +3402,13 @@ export default function NotebookEditorPage() {
                           setPagesDrawerOpen(false);
                           clearTextBlockSelection();
                           cancelInkUiSync();
-                          if (autosaveTimerRef.current !== null) {
-                            window.clearTimeout(
-                              autosaveTimerRef.current
-                            );
-                            autosaveTimerRef.current = null;
-                          }
+                          cancelScheduledPersistence();
                         } else {
                           if (pendingInkUiRef.current) {
                             scheduleInkUiSync();
                           }
                           if (pageState.read().saveStatus === "unsaved") {
-                            scheduleNotebookAutosave();
+                            schedulePendingWork();
                           }
                         }
                       },
