@@ -3,6 +3,20 @@
 Continues the notebook decomposition track started in `da3d9c7` → `4fc3ebb`, merged
 with a codebase-wide review. Written 2026-07-30.
 
+## Status
+
+| Batch | State |
+|---|---|
+| 0.1 text block controller | done — `1a123fd` |
+| 6.1 historical `.env` audit | done — credential was real but the database is already deleted, so it is inert |
+| 1.1 viewport controller | done — `fa67b1e` |
+| 1.2 memoisation | folded into 1.1, 2.3, and 2.5 (see below) |
+| 1.3 study loop e2e | done — `3738ae4` |
+| **iPad / Pencil gate** | **blocked — needs a physical device, gates all of Phase 2** |
+| 2.0 onward | not started |
+
+---
+
 ## Working method (unchanged)
 
 Every numbered batch below is **one isolated commit**, fully verified before the next
