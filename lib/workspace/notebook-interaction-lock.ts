@@ -94,6 +94,77 @@ export function shouldSuppressNotebookStylusTouch(input: {
   return input.inkInteractionActive || input.stylusTouch;
 }
 
+export function isNotebookStylusTouchEvent(
+  event: Pick<TouchEvent, "touches" | "changedTouches">
+) {
+  const touches =
+    event.touches.length > 0 ? event.touches : event.changedTouches;
+  for (let index = 0; index < touches.length; index += 1) {
+    if ((touches[index] as Touch & { touchType?: string }).touchType === "stylus") {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Installs the non-passive capture listeners required to stop iPadOS Safari
+ * from turning bare-page Pencil movement into a native navigation gesture.
+ * Text editors and interactive controls remain native through
+ * shouldSuppressNotebookStylusTouch.
+ */
+export function installNotebookStylusTouchListeners(input: {
+  surface: EventTarget;
+  getInkInteractionActive: () => boolean;
+}) {
+  const suppressStylusGesture: EventListener = (event) => {
+    if (
+      typeof TouchEvent === "undefined" ||
+      !(event instanceof TouchEvent) ||
+      !event.cancelable
+    ) {
+      return;
+    }
+    if (
+      shouldSuppressNotebookStylusTouch({
+        inkInteractionActive: input.getInkInteractionActive(),
+        stylusTouch: isNotebookStylusTouchEvent(event),
+        target: event.target,
+      })
+    ) {
+      event.preventDefault();
+    }
+  };
+  const listenerOptions: AddEventListenerOptions = {
+    passive: false,
+    capture: true,
+  };
+
+  input.surface.addEventListener(
+    "touchstart",
+    suppressStylusGesture,
+    listenerOptions
+  );
+  input.surface.addEventListener(
+    "touchmove",
+    suppressStylusGesture,
+    listenerOptions
+  );
+
+  return () => {
+    input.surface.removeEventListener(
+      "touchstart",
+      suppressStylusGesture,
+      listenerOptions
+    );
+    input.surface.removeEventListener(
+      "touchmove",
+      suppressStylusGesture,
+      listenerOptions
+    );
+  };
+}
+
 export function shouldSuppressNotebookNativeEvent(target: EventTarget | null) {
   return !isNotebookTextEditingTarget(target);
 }

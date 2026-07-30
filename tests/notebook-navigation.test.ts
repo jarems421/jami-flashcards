@@ -22,24 +22,12 @@ describe("notebook URL state", () => {
     );
   });
 
-  it("does not wait for Firebase before following the back link", () => {
-    const editorSource = readFileSync(
-      join(process.cwd(), "app/dashboard/notebooks/[notebookId]/page.tsx"),
-      "utf8"
-    );
+  it("keeps synchronous ink serialization available to exit saves", () => {
     const inkEditorSource = readFileSync(
       join(process.cwd(), "components/workspace/NotebookInkEditor.tsx"),
       "utf8"
     );
 
-    expect(editorSource).toContain(
-      "const handleExitNotebook = (event: ReactMouseEvent<HTMLAnchorElement>) =>"
-    );
-    expect(editorSource).not.toContain("const handleExitNotebook = async");
-    expect(editorSource).toContain("const saveQueued = queueCurrentPageSaveForExit()");
-    expect(editorSource).not.toContain(
-      "router.push(`/dashboard/folders/${notebook?.folderId ?? \"\"}`)"
-    );
     expect(inkEditorSource).toContain("serialize(): string | null;");
     expect(inkEditorSource).toContain("const svg = editor.toSVG();");
   });

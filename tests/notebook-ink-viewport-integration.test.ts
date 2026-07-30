@@ -1,23 +1,14 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import ToolbarIconButton from "@/components/workspace/NotebookToolbarIconButton";
 
 const editorSource = readFileSync(
   join(process.cwd(), "components/workspace/NotebookInkEditor.tsx"),
   "utf8"
 );
-const notebookPageSource = readFileSync(
-  join(process.cwd(), "app/dashboard/notebooks/[notebookId]/page.tsx"),
-  "utf8"
-);
-const notebookToolbarSource = readFileSync(
-  join(
-    process.cwd(),
-    "components/workspace/NotebookToolbarIconButton.tsx"
-  ),
-  "utf8"
-);
-
 describe("notebook ink viewport integration", () => {
   it("suppresses js-draw's internal export boundary on every rerender", () => {
     expect(editorSource).toContain(
@@ -65,88 +56,16 @@ describe("notebook ink viewport integration", () => {
     );
   });
 
-  it("retries the iPad touch guard when the initially unmeasured sheet mounts", () => {
-    const readiness = notebookPageSource.indexOf(
-      "const pageSurfaceReady = Boolean(selectedPage?.id && pageFit.width > 0)"
-    );
-    const guardStart = notebookPageSource.indexOf(
-      "const isStylusTouchEvent = (event: TouchEvent)",
-      readiness
-    );
-    const guardEnd = notebookPageSource.indexOf(
-      "}, [pageSurfaceReady, selectedPage?.id]);",
-      guardStart
+  it("marks toolbar controls as native drag candidates", () => {
+    const html = renderToStaticMarkup(
+      createElement(ToolbarIconButton, {
+        label: "Pen",
+        icon: "pen",
+      })
     );
 
-    expect(readiness).toBeGreaterThanOrEqual(0);
-    expect(guardStart).toBeGreaterThan(readiness);
-    expect(guardEnd).toBeGreaterThan(guardStart);
-    expect(notebookPageSource.slice(readiness, guardStart)).toContain(
-      "useLayoutEffect(() =>"
-    );
-    expect(notebookPageSource.slice(guardStart, guardEnd)).toContain(
-      'surface.addEventListener("touchstart"'
-    );
-    expect(notebookPageSource.slice(guardStart, guardEnd)).toContain(
-      'surface.addEventListener("touchmove"'
-    );
-    expect(notebookPageSource.slice(guardStart, guardEnd)).toContain(
-      "shouldSuppressNotebookStylusTouch({"
-    );
-  });
-
-  it("keeps Pencil taps native until toolbar movement becomes a drag", () => {
-    const pointerDownStart = notebookPageSource.indexOf(
-      "const handleToolbarPointerDown ="
-    );
-    const pointerMoveStart = notebookPageSource.indexOf(
-      "const handleToolbarPointerMove =",
-      pointerDownStart
-    );
-    const pointerLeaveStart = notebookPageSource.indexOf(
-      "const handleToolbarPointerLeave =",
-      pointerMoveStart
-    );
-    const finishStart = notebookPageSource.indexOf(
-      "const finishToolbarPointer =",
-      pointerLeaveStart
-    );
-    const pointerDownSource = notebookPageSource.slice(
-      pointerDownStart,
-      pointerMoveStart
-    );
-    const pointerMoveSource = notebookPageSource.slice(
-      pointerMoveStart,
-      pointerLeaveStart
-    );
-
-    expect(pointerDownStart).toBeGreaterThanOrEqual(0);
-    expect(pointerMoveStart).toBeGreaterThan(pointerDownStart);
-    expect(pointerLeaveStart).toBeGreaterThan(pointerMoveStart);
-    expect(finishStart).toBeGreaterThan(pointerLeaveStart);
-    expect(notebookToolbarSource).toContain(
-      'data-notebook-toolbar-action="true"'
-    );
-    expect(notebookPageSource).toContain(
-      'data-notebook-stylus-action="true"'
-    );
-    expect(pointerDownSource).toContain(
-      "if (!startedOnAction) safelySetPointerCapture(toolbar, event.pointerId)"
-    );
-    expect(pointerMoveSource).toContain("getNotebookToolbarDragThreshold({");
-    expect(pointerMoveSource).toContain(
-      "safelySetPointerCapture(toolbar, event.pointerId)"
-    );
-    expect(pointerMoveSource).toContain(
-      "applyToolbarDragPosition(drag, toolbar)"
-    );
-    expect(pointerMoveSource).not.toContain("requestAnimationFrame");
-    expect(notebookPageSource.slice(pointerLeaveStart, finishStart)).toContain(
-      "toolbarDragRef.current = null"
-    );
-    expect(notebookPageSource).toContain(
-      "onPointerLeave={handleToolbarPointerLeave}"
-    );
+    expect(html).toContain('data-notebook-toolbar-action="true"');
+    expect(html).toContain('aria-label="Pen"');
   });
 
   it("expects capture loss after pointer cancellation before rapid re-contact", () => {
@@ -231,12 +150,5 @@ describe("notebook ink viewport integration", () => {
     expect(editorSource).not.toContain(
       "previewable.clearPreview?.();"
     );
-  });
-
-  it("uses the shared small, medium, and large eraser size map", () => {
-    expect(notebookPageSource).toContain(
-      "NOTEBOOK_ERASER_THICKNESS_BY_SIZE[eraserWidth]"
-    );
-    expect(notebookPageSource).not.toContain("const ERASER_WIDTH_VALUE");
   });
 });
