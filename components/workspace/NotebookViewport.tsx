@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  memo,
   forwardRef,
   type PointerEventHandler,
   type ReactNode,
@@ -103,7 +104,7 @@ type Props = {
   trackRef: Ref<HTMLDivElement>;
 };
 
-export default function NotebookViewport({
+function NotebookViewport({
   activeClassName,
   activeContent,
   activeRef,
@@ -181,3 +182,9 @@ export default function NotebookViewport({
 }
 
 export { NOTEBOOK_SHEET_BASE_CLASS };
+
+/**
+ * Memoised: this subtree sits under the stylus and its props are now
+ * stable, so a parent render no longer forces it to re-render.
+ */
+export default memo(NotebookViewport);
