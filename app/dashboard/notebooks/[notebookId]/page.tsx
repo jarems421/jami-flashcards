@@ -25,7 +25,7 @@ import NotebookDrawingToolbar, {
 } from "@/components/workspace/NotebookDrawingToolbar";
 import NotebookSaveIndicator from "@/components/workspace/NotebookSaveIndicator";
 import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
-import NotebookTextBlockOptions from "@/components/workspace/NotebookTextBlockOptions";
+import NotebookTextBlockLayer from "@/components/workspace/NotebookTextBlockLayer";
 import ToolbarIconButton, {
   NotebookIcon,
 } from "@/components/workspace/NotebookToolbarIconButton";
@@ -58,14 +58,11 @@ import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
   NotebookFile,
   NotebookPage,
-  NotebookPageColor,
   NotebookStrokeColor,
   NotebookStrokeTool,
   NotebookTextBlock,
-  NotebookTextBlockResizeEdge,
 } from "@/lib/workspace/notebooks";
 import {
-  MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
 } from "@/lib/workspace/notebooks";
@@ -201,43 +198,8 @@ const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
   left:
     "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-1/2 -translate-y-1/2",
 };
-const TEXT_COLOR_CLASS: Record<NotebookPageColor, string> = {
-  white: "text-slate-950 placeholder:text-slate-400",
-  black: "text-[#f8fafc] placeholder:text-slate-500",
-};
 // Each edge keeps a generous 32px invisible hit area, but the visible
 // affordance is a slim grip bar sitting on the border, not a bubble.
-const TEXT_BLOCK_RESIZE_HANDLES: Array<{
-  edge: NotebookTextBlockResizeEdge;
-  label: string;
-  positionClass: string;
-  gripClass: string;
-}> = [
-  {
-    edge: "top",
-    label: "Resize text box from top edge",
-    positionClass: "left-1/2 top-0 h-8 w-8 -translate-x-1/2 -translate-y-1/2",
-    gripClass: "h-[3px] w-4",
-  },
-  {
-    edge: "right",
-    label: "Resize text box from right edge",
-    positionClass: "right-0 top-1/2 h-8 w-8 -translate-y-1/2 translate-x-1/2",
-    gripClass: "h-4 w-[3px]",
-  },
-  {
-    edge: "bottom",
-    label: "Resize text box from bottom edge",
-    positionClass: "bottom-0 left-1/2 h-8 w-8 -translate-x-1/2 translate-y-1/2",
-    gripClass: "h-[3px] w-4",
-  },
-  {
-    edge: "left",
-    label: "Resize text box from left edge",
-    positionClass: "left-0 top-1/2 h-8 w-8 -translate-x-1/2 -translate-y-1/2",
-    gripClass: "h-4 w-[3px]",
-  },
-];
 
 export default function NotebookEditorPage() {
   const { user } = useUser();
@@ -2377,6 +2339,13 @@ export default function NotebookEditorPage() {
     setShowAddPagesDialog(true);
   }, []);
 
+  const handleTextBlockTextChange = useCallback(
+    (blockId: string, text: string) => {
+      updateTextBlock(blockId, { text });
+    },
+    [updateTextBlock]
+  );
+
   const handleRequestDeletePage = useCallback((page: NotebookPage) => {
     setConfirmDialog({ kind: "delete-page", page });
   }, []);
@@ -3019,137 +2988,29 @@ export default function NotebookEditorPage() {
                       onPointerCancel: handlePagePointerCancel,
                     }}
                   />
-                  <div className="pointer-events-none absolute inset-0 z-30">
-                    {textBlocks.map((block) => {
-                      const selected = selectedTextBlockId === block.id;
-                      const editing = editingTextBlockId === block.id;
-                      const gesturing = activeTextGestureId === block.id;
-                      const displayText = block.text.trim() ? block.text : selected ? "Tap again to type" : "";
-                      const frameBorderClass =
-                        pageColor === "black" ? "border-white/55" : "border-slate-950/40";
-                      const idleBorderClass = block.outlineVisible
-                        ? pageColor === "black"
-                          ? "border-white/30"
-                          : "border-slate-950/25"
-                        : "border-transparent";
-                      const optionsOpen = openTextBlockOptionsId === block.id;
-                      const optionsOpenAbove =
-                        block.y + block.height / 2 > CANVAS_HEIGHT / 2;
-                      const optionsAlignFromLeft = block.x + block.width < 420;
-                      return (
-                        <div
-                          key={block.id}
-                          className={`notebook-text-object pointer-events-auto absolute rounded-[0.45rem] border bg-transparent transition-[border-color,box-shadow] duration-150 ${
-                            editing
-                              ? `cursor-text ${frameBorderClass} shadow-[0_2px_12px_rgba(0,0,0,0.12)]`
-                              : selected
-                                ? `cursor-grab touch-none select-none ${frameBorderClass} active:cursor-grabbing`
-                                : `cursor-grab touch-none select-none ${idleBorderClass} active:cursor-grabbing`
-                          }`}
-                          style={{
-                            left: `${(block.x / CANVAS_WIDTH) * 100}%`,
-                            top: `${(block.y / CANVAS_HEIGHT) * 100}%`,
-                            width: `${(block.width / CANVAS_WIDTH) * 100}%`,
-                            height: `${(block.height / CANVAS_HEIGHT) * 100}%`,
-                          }}
-                          onPointerDown={(event) =>
-                            handleTextBlockPointerDown(block, event)
-                          }
-                          onPointerMove={(event) =>
-                            handleTextBlockPointerMove(block, event)
-                          }
-                          onPointerUp={(event) =>
-                            handleTextBlockPointerUp(block, event)
-                          }
-                          onPointerCancel={(event) =>
-                            handleTextBlockPointerCancel(block, event)
-                          }
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            selectTextBlock(block.id);
-                          }}
-                        >
-                          {selected && fullNotebookEditingEnabled && !gesturing ? (
-                            <>
-                              <NotebookTextBlockOptions
-                                blockId={block.id}
-                                open={optionsOpen}
-                                outlineVisible={block.outlineVisible}
-                                openAbove={optionsOpenAbove}
-                                alignFromLeft={optionsAlignFromLeft}
-                                onOpenChange={(open) =>
-                                  setTextBlockOptionsOpen(block.id, open)
-                                }
-                                onToggleOutline={() =>
-                                  toggleTextBlockOutline(block.id)
-                                }
-                                onDelete={() => deleteTextBlock(block.id)}
-                                onKeyDown={(event) =>
-                                  handleTextBlockOptionsKeyDown(
-                                    block.id,
-                                    event
-                                  )
-                                }
-                              />
-                              {TEXT_BLOCK_RESIZE_HANDLES.map((handle) => (
-                                <button
-                                  key={handle.edge}
-                                  type="button"
-                                  data-text-resize-handle="true"
-                                  aria-label={handle.label}
-                                  title={handle.label}
-                                  className={`group absolute z-20 inline-grid touch-none place-items-center focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${handle.positionClass}`}
-                                  onPointerDown={(event) =>
-                                    startTextBlockResize(block, handle.edge, event)
-                                  }
-                                  onPointerMove={resizeTextBlock}
-                                  onPointerUp={stopTextBlockResize}
-                                  onPointerCancel={stopTextBlockResize}
-                                >
-                                  <span
-                                    aria-hidden="true"
-                                    className={`rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition group-hover:scale-110 ${
-                                      pageColor === "black" ? "bg-white/75" : "bg-slate-950/55"
-                                    } ${handle.gripClass}`}
-                                  />
-                                </button>
-                              ))}
-                            </>
-                          ) : null}
-                          {editing && fullNotebookEditingEnabled ? (
-                            <textarea
-                              value={block.text}
-                              maxLength={MAX_NOTEBOOK_TEXT_BLOCK_TEXT}
-                              autoFocus
-                              onPointerDown={(event) => event.stopPropagation()}
-                              onPointerMove={(event) => event.stopPropagation()}
-                              onPointerUp={(event) => event.stopPropagation()}
-                              onClick={(event) => event.stopPropagation()}
-                              onKeyDown={(event) => {
-                                if (event.key === "Escape") {
-                                  event.stopPropagation();
-                                  stopEditingTextBlock();
-                                }
-                              }}
-                              onFocus={() => selectTextBlock(block.id)}
-                              onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
-                              placeholder="Type here..."
-                              data-notebook-text-editor="true"
-                              className={`notebook-text-editor h-full w-full resize-none rounded-[0.45rem] bg-transparent p-2 pr-16 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
-                            />
-                          ) : (
-                            <div
-                              className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-[0.45rem] p-2 pr-10 text-sm font-medium leading-6 ${
-                                pageColor === "black" ? "text-[#f8fafc]" : "text-slate-950"
-                              } ${block.text.trim() ? "" : "opacity-60"}`}
-                            >
-                              {displayText}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
+                  <NotebookTextBlockLayer
+                    textBlocks={textBlocks}
+                    pageColor={pageColor}
+                    editingEnabled={fullNotebookEditingEnabled}
+                    selectedTextBlockId={selectedTextBlockId}
+                    editingTextBlockId={editingTextBlockId}
+                    activeTextGestureId={activeTextGestureId}
+                    openTextBlockOptionsId={openTextBlockOptionsId}
+                    onPointerDown={handleTextBlockPointerDown}
+                    onPointerMove={handleTextBlockPointerMove}
+                    onPointerUp={handleTextBlockPointerUp}
+                    onPointerCancel={handleTextBlockPointerCancel}
+                    onSelect={selectTextBlock}
+                    onSetOptionsOpen={setTextBlockOptionsOpen}
+                    onToggleOutline={toggleTextBlockOutline}
+                    onDelete={deleteTextBlock}
+                    onOptionsKeyDown={handleTextBlockOptionsKeyDown}
+                    onStartResize={startTextBlockResize}
+                    onResize={resizeTextBlock}
+                    onStopResize={stopTextBlockResize}
+                    onChangeText={handleTextBlockTextChange}
+                    onStopEditing={stopEditingTextBlock}
+                  />
                 </>
               ) : null
             }
