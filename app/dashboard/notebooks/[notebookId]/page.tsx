@@ -4209,6 +4209,11 @@ export default function NotebookEditorPage() {
   return (
     <main
       data-app-surface="true"
+      data-testid="notebook-editor"
+      data-notebook-id={notebook.id}
+      data-notebook-selected-page-id={selectedPage?.id ?? ""}
+      data-notebook-ink-ready={inkReady ? "true" : "false"}
+      data-notebook-has-ink={inkHasContent ? "true" : "false"}
       className="notebook-editor-shell fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
