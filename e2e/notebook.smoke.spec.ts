@@ -52,13 +52,17 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
     textSurfaceBox!.x + textSurfaceBox!.width * 0.52,
     textSurfaceBox!.y + textSurfaceBox!.height * 0.42
   );
-  await page.locator("[data-notebook-text-editor='true']").fill(E2E_TEXT_MARKER);
+  const textEditor = page.locator("[data-notebook-text-editor='true']");
+  await textEditor.fill(E2E_TEXT_MARKER);
   await expect(
     page.getByRole("status", { name: "Unsaved changes" })
   ).toBeVisible();
   await expect(
     page.getByRole("status", { name: "All changes saved" })
   ).toBeVisible({ timeout: 15_000 });
+  await expect(textEditor).toBeVisible();
+  await expect(textEditor).toBeFocused();
+  await expect(textEditor).toHaveValue(E2E_TEXT_MARKER);
 
   await page.getByRole("button", { name: "Next page" }).click();
   await expect(editor).toHaveAttribute(
@@ -161,9 +165,116 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
     "data-notebook-selected-page-id",
     E2E_PAGE_IDS[0]
   );
+  const persistedTextBlock = page
+    .locator(".notebook-text-object")
+    .filter({ hasText: E2E_TEXT_MARKER });
+  const textBlockOptionsTrigger = page.getByRole("button", {
+    name: "Text box options",
+  });
+  const textBlockOptionsMenu = page.getByRole("menu", {
+    name: "Text box options",
+  });
+  const resizeHandles = page.locator("[data-text-resize-handle='true']");
+  const clickPersistedTextBlockBody = async () => {
+    const box = await persistedTextBlock.boundingBox();
+    expect(box).not.toBeNull();
+    await page.mouse.click(
+      box!.x + Math.min(24, box!.width / 4),
+      box!.y + box!.height / 2
+    );
+  };
+
+  await expect(persistedTextBlock).toBeVisible();
+  await expect(textEditor).toHaveCount(0);
+
+  await clickPersistedTextBlockBody();
+  await expect(textEditor).toHaveCount(0);
+  await expect(textBlockOptionsTrigger).toBeVisible();
+  await expect(resizeHandles).toHaveCount(4);
+
+  await clickPersistedTextBlockBody();
+  await expect(textEditor).toBeVisible();
+  await expect(textEditor).toBeFocused();
+  await textEditor.press("Escape");
+  await expect(textEditor).toHaveCount(0);
+  await expect(textBlockOptionsTrigger).toBeVisible();
+
+  await textBlockOptionsTrigger.click();
+  const outlineOption = page.getByRole("menuitemcheckbox", {
+    name: "Show outline",
+  });
+  const deleteTextBlockOption = page.getByRole("menuitem", {
+    name: "Delete text box",
+  });
+  await expect(textBlockOptionsMenu).toBeVisible();
+  await expect(outlineOption).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(deleteTextBlockOption).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(textBlockOptionsMenu).toBeHidden();
+  await expect(textBlockOptionsTrigger).toBeFocused();
+
+  const originalTextBlockBox = await persistedTextBlock.boundingBox();
+  const rightResizeHandle = page.getByRole("button", {
+    name: "Resize text box from right edge",
+  });
+  const rightResizeHandleBox = await rightResizeHandle.boundingBox();
+  expect(originalTextBlockBox).not.toBeNull();
+  expect(rightResizeHandleBox).not.toBeNull();
+  await page.mouse.move(
+    rightResizeHandleBox!.x + rightResizeHandleBox!.width / 2,
+    rightResizeHandleBox!.y + rightResizeHandleBox!.height / 2
+  );
+  await page.mouse.down();
+  await page.mouse.move(
+    rightResizeHandleBox!.x + rightResizeHandleBox!.width / 2 + 56,
+    rightResizeHandleBox!.y + rightResizeHandleBox!.height / 2,
+    { steps: 6 }
+  );
+  await page.mouse.up();
+  await expect
+    .poll(async () => (await persistedTextBlock.boundingBox())?.width ?? 0)
+    .toBeGreaterThan(originalTextBlockBox!.width + 20);
+
+  const undoButton = page.getByRole("button", { name: "Undo (Ctrl+Z)" });
+  await expect(undoButton).toBeEnabled();
+  await undoButton.click();
+  await expect
+    .poll(async () => {
+      const box = await persistedTextBlock.boundingBox();
+      return Math.abs((box?.width ?? 0) - originalTextBlockBox!.width);
+    })
+    .toBeLessThan(2);
   await expect(
-    page.locator(".notebook-text-object").filter({ hasText: E2E_TEXT_MARKER })
-  ).toBeVisible();
+    page.getByRole("status", { name: "All changes saved" })
+  ).toBeVisible({ timeout: 15_000 });
+
+  await clickPersistedTextBlockBody();
+  await clickPersistedTextBlockBody();
+  await expect(textEditor).toBeVisible();
+  await textBlockOptionsTrigger.click();
+  await expect(textBlockOptionsMenu).toBeVisible();
+  await expect(resizeHandles).toHaveCount(4);
+
+  const nextPageButton = page.getByRole("button", { name: "Next page" });
+  await nextPageButton.focus();
+  await expect(textBlockOptionsMenu).toBeVisible();
+  await nextPageButton.press("Enter");
+  await expect(editor).toHaveAttribute(
+    "data-notebook-selected-page-id",
+    E2E_PAGE_IDS[1]
+  );
+  await expect(editor).toHaveAttribute("data-notebook-ink-ready", "true");
+  await expect(textEditor).toHaveCount(0);
+  await expect(textBlockOptionsMenu).toHaveCount(0);
+  await expect(resizeHandles).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Previous page" }).click();
+  await expect(editor).toHaveAttribute(
+    "data-notebook-selected-page-id",
+    E2E_PAGE_IDS[0]
+  );
+  await expect(persistedTextBlock).toBeVisible();
 
   await page.getByRole("link", { name: "Back to folder" }).click();
   await expect(page).toHaveURL(`/dashboard/folders/${E2E_FOLDER_ID}`, {

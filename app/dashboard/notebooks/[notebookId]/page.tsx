@@ -9,7 +9,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
   type TransitionEvent as ReactTransitionEvent,
@@ -44,6 +43,7 @@ import {
 } from "@/components/ui";
 import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
+import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
@@ -59,20 +59,15 @@ import type {
 } from "@/lib/workspace/notebooks";
 import {
   buildTypedContentFromTextBlocks,
-  MAX_NOTEBOOK_TEXT_BLOCKS,
   MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
-  resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
 import {
   applyNotebookDraftToPage,
-  clampNotebookTextBlock,
   getNotebookPageStyleBackground,
   getNotebookStrokePaintColor,
-  getNotebookTextBlockOptionsElementId,
   getNotebookWorkingPageStatus,
-  makeNotebookTextBlockId,
   normalizeNotebookStrokes,
 } from "@/lib/workspace/notebook-page-content";
 import {
@@ -103,7 +98,6 @@ import {
 import {
   clearNotebookNativeSelection,
   installNotebookStylusTouchListeners,
-  isTextResizeHandleTarget,
   isNotebookTextEditingTarget,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
   safelyReleasePointerCapture,
@@ -181,33 +175,6 @@ import {
 
 type Point = { x: number; y: number };
 type EditorTool = NotebookStrokeTool | "text" | "select";
-type TextBlockDragState = {
-  id: string;
-  startX: number;
-  startY: number;
-  originX: number;
-  originY: number;
-  pageWidth: number;
-  pageHeight: number;
-  previousTextBlocks: NotebookTextBlock[];
-  /** Whether the block was already selected when the pointer went down —
-   * a motionless release on an already-selected block enters text editing. */
-  wasSelected: boolean;
-};
-type TextBlockResizeState = {
-  id: string;
-  edge: NotebookTextBlockResizeEdge;
-  startX: number;
-  startY: number;
-  originX: number;
-  originY: number;
-  originWidth: number;
-  originHeight: number;
-  originText: string;
-  pageWidth: number;
-  pageHeight: number;
-  previousTextBlocks: NotebookTextBlock[];
-};
 type PageSwipeState = {
   pointerId: number;
   startX: number;
@@ -355,11 +322,6 @@ export default function NotebookEditorPage() {
   >({});
   const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   const [textBlocks, setTextBlocks] = useState<NotebookTextBlock[]>([]);
-  const [selectedTextBlockId, setSelectedTextBlockId] = useState<string | null>(null);
-  const [editingTextBlockId, setEditingTextBlockId] = useState<string | null>(null);
-  const [openTextBlockOptionsId, setOpenTextBlockOptionsId] = useState<string | null>(
-    null
-  );
   const [pageColor, setPageColor] = useState<NotebookPageColor>("white");
   const [pageStyle, setPageStyle] = useState<NotebookPageStyle>("plain");
   const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
@@ -409,10 +371,7 @@ export default function NotebookEditorPage() {
   const [creatingPage, setCreatingPage] = useState(false);
   const [createPageBounce, setCreatePageBounce] = useState(false);
   const [inkReady, setInkReady] = useState(false);
-  const [activeTextGestureId, setActiveTextGestureId] = useState<string | null>(null);
   const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
-  const textBlockDragRef = useRef<TextBlockDragState | null>(null);
-  const textBlockResizeRef = useRef<TextBlockResizeState | null>(null);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
   const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
@@ -1330,6 +1289,76 @@ export default function NotebookEditorPage() {
     setTool(nextTool);
   }, []);
 
+  const commitTextBlockHistory = useCallback(
+    (previous: NotebookTextBlock[], next: NotebookTextBlock[]) => {
+      pushUndoAction({ type: "textBlocks", previous, next });
+    },
+    [pushUndoAction]
+  );
+
+  const cancelCompetingPageGestures = useCallback(() => {
+    pageSwipeRef.current = null;
+    if (pinchZoomRef.current) {
+      cancelPinchZoomAnimationFrame();
+      resetPageSurfaceTransform();
+    }
+    pinchZoomRef.current = null;
+  }, [cancelPinchZoomAnimationFrame, resetPageSurfaceTransform]);
+
+  const handleTextBlockLimitReached = useCallback((maximum: number) => {
+    setFeedback({
+      type: "error",
+      message: `A page can contain up to ${maximum} text boxes. Move or delete one before adding another.`,
+    });
+  }, []);
+
+  const handleTextBlockCreated = useCallback(() => {
+    // The text tool places exactly one box per activation.
+    switchNotebookTool("select");
+  }, [switchNotebookTool]);
+
+  const {
+    selectedTextBlockId,
+    editingTextBlockId,
+    openTextBlockOptionsId,
+    activeTextGestureId,
+    resetTextBlockInteraction,
+    finishActiveTextBlockGesture,
+    clearTextBlockSelection,
+    selectTextBlock,
+    stopEditingTextBlock,
+    setTextBlockOptionsOpen,
+    createTextBlockAtPoint,
+    updateTextBlock,
+    toggleTextBlockOutline,
+    deleteTextBlock,
+    handleTextBlockOptionsKeyDown,
+    startTextBlockResize,
+    resizeTextBlock,
+    stopTextBlockResize,
+    handleTextBlockPointerDown,
+    handleTextBlockPointerMove,
+    handleTextBlockPointerUp,
+    handleTextBlockPointerCancel,
+    handlePageSurfaceTextGestureMove,
+    handlePageSurfaceTextGestureStop,
+  } = useNotebookTextBlockController({
+    editingEnabled: fullNotebookEditingEnabled,
+    isNavigationLocked: () => pageNavigationLockedRef.current,
+    textBlocksRef,
+    setTextBlocks,
+    pageSurfaceRef,
+    onChange: markPageUnsaved,
+    onHistoryCommit: commitTextBlockHistory,
+    onGestureStart: cancelCompetingPageGestures,
+    onCreateLimitReached: handleTextBlockLimitReached,
+    onCreateComplete: handleTextBlockCreated,
+    onTouchPointerDown: (event) => handleTouchPointerDown(event),
+    onTouchPointerMove: (event) => handleTouchPointerMove(event),
+    onTouchPointerEnd: (event, options) =>
+      handleTouchPointerEnd(event, options),
+  });
+
   const loadNotebook = useCallback(async () => {
     if (!user?.uid || !notebookId) {
       setLoading(false);
@@ -1450,48 +1479,9 @@ export default function NotebookEditorPage() {
   }, []);
 
   useEffect(() => {
-    if (
-      openTextBlockOptionsId &&
-      openTextBlockOptionsId !== selectedTextBlockId
-    ) {
-      setOpenTextBlockOptionsId(null);
-    }
-  }, [openTextBlockOptionsId, selectedTextBlockId]);
-
-  useEffect(() => {
-    if (!openTextBlockOptionsId || typeof window === "undefined") return;
-
-    const focusFrame = window.requestAnimationFrame(() => {
-      const menu = document.getElementById(
-        getNotebookTextBlockOptionsElementId(openTextBlockOptionsId, "menu")
-      );
-      menu
-        ?.querySelector<HTMLElement>('[role="menuitemcheckbox"]')
-        ?.focus({ preventScroll: true });
-    });
-    const handleOutsidePointerDown = (event: PointerEvent) => {
-      if (
-        event.target instanceof Element &&
-        event.target.closest("[data-text-block-options-root]")
-      ) {
-        return;
-      }
-      setOpenTextBlockOptionsId(null);
-    };
-
-    document.addEventListener("pointerdown", handleOutsidePointerDown, true);
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      document.removeEventListener("pointerdown", handleOutsidePointerDown, true);
-    };
-  }, [openTextBlockOptionsId]);
-
-  useEffect(() => {
     if (!selectedPage) {
       setTextBlocks([]);
-      setSelectedTextBlockId(null);
-      setEditingTextBlockId(null);
-      setOpenTextBlockOptionsId(null);
+      resetTextBlockInteraction();
       undoStackRef.current = [];
       redoStackRef.current = [];
       setUndoDepth(0);
@@ -1502,7 +1492,6 @@ export default function NotebookEditorPage() {
       inkInteractionActiveRef.current = false;
       pendingInkUiRef.current = null;
       cancelInkUiSync();
-      setActiveTextGestureId(null);
       hydratedPageIdRef.current = null;
       return;
     }
@@ -1512,9 +1501,7 @@ export default function NotebookEditorPage() {
     }
 
     setTextBlocks(selectedPage.textBlocks);
-    setSelectedTextBlockId(null);
-    setEditingTextBlockId(null);
-    setOpenTextBlockOptionsId(null);
+    resetTextBlockInteraction();
     undoStackRef.current = [];
     redoStackRef.current = [];
     setUndoDepth(0);
@@ -1527,7 +1514,6 @@ export default function NotebookEditorPage() {
     inkInteractionActiveRef.current = false;
     pendingInkUiRef.current = null;
     cancelInkUiSync();
-    setActiveTextGestureId(null);
     setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
     setPageStyle(selectedPage.pageStyle ?? notebook?.pageStyle ?? "plain");
     hydratedPageIdRef.current = selectedPage.id;
@@ -1557,6 +1543,7 @@ export default function NotebookEditorPage() {
     cancelInkUiSync,
     notebook?.pageColor,
     notebook?.pageStyle,
+    resetTextBlockInteraction,
     scheduleNotebookAutosave,
     scheduleNotebookDraft,
     selectedPage,
@@ -1635,6 +1622,7 @@ export default function NotebookEditorPage() {
 
   useEffect(() => {
     const clearActiveInteractions = () => {
+      finishActiveTextBlockGesture();
       stylusInteractionRef.current = false;
       stylusCooldownUntilRef.current = Date.now() + 180;
       touchPointersRef.current.clear();
@@ -1701,6 +1689,7 @@ export default function NotebookEditorPage() {
     };
   }, [
     cancelPinchZoomAnimationFrame,
+    finishActiveTextBlockGesture,
     resetPageSurfaceTransform,
     resolvePageTrackTransition,
     setPagePreviewVisibility,
@@ -1890,38 +1879,6 @@ export default function NotebookEditorPage() {
       width: CANVAS_WIDTH,
       height: CANVAS_HEIGHT,
     });
-  };
-
-  const createTextBlockAtPoint = (point: Point) => {
-    if (textBlocksRef.current.length >= MAX_NOTEBOOK_TEXT_BLOCKS) {
-      setFeedback({
-        type: "error",
-        message: `A page can contain up to ${MAX_NOTEBOOK_TEXT_BLOCKS} text boxes. Move or delete one before adding another.`,
-      });
-      return;
-    }
-    const block = clampNotebookTextBlock({
-      id: makeNotebookTextBlockId(),
-      x: point.x - 120,
-      y: point.y - 36,
-      width: 300,
-      height: 96,
-      text: "",
-      outlineVisible: true,
-    });
-    setTextBlocks((current) => {
-      const next = [...current, block];
-      pushUndoAction({ type: "textBlocks", previous: current, next });
-      return next;
-    });
-    setSelectedTextBlockId(block.id);
-    setEditingTextBlockId(block.id);
-    setOpenTextBlockOptionsId(null);
-    markPageUnsaved();
-    // The text tool places exactly one box per activation: hand control back
-    // to the select tool so tapping elsewhere deselects instead of dropping
-    // another box.
-    switchNotebookTool("select");
   };
 
   const pageSurfaceReady = Boolean(selectedPage?.id && pageFit.width > 0);
@@ -3099,9 +3056,7 @@ export default function NotebookEditorPage() {
     setPenMenuOpen(false);
     setHighlighterMenuOpen(false);
     setEraserMenuOpen(false);
-    setOpenTextBlockOptionsId(null);
-    setSelectedTextBlockId(null);
-    setEditingTextBlockId(null);
+    clearTextBlockSelection();
     if (handleTouchPointerDown(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStartPageSwipe(event);
@@ -3154,320 +3109,6 @@ export default function NotebookEditorPage() {
     }
   };
 
-  const updateTextBlock = (blockId: string, updates: Partial<NotebookTextBlock>) => {
-    setTextBlocks((current) =>
-      current.map((block) =>
-        block.id === blockId
-          ? clampNotebookTextBlock({ ...block, ...updates })
-          : block
-      )
-    );
-    markPageUnsaved();
-  };
-
-  const toggleTextBlockOutline = (blockId: string) => {
-    setTextBlocks((current) => {
-      const next = current.map((block) =>
-        block.id === blockId
-          ? { ...block, outlineVisible: !block.outlineVisible }
-          : block
-      );
-      if (next.some((block, index) => block !== current[index])) {
-        pushUndoAction({ type: "textBlocks", previous: current, next });
-      }
-      return next;
-    });
-    markPageUnsaved();
-  };
-
-  const deleteTextBlock = (blockId: string) => {
-    setTextBlocks((current) => {
-      const next = current.filter((block) => block.id !== blockId);
-      if (next.length !== current.length) {
-        pushUndoAction({ type: "textBlocks", previous: current, next });
-      }
-      return next;
-    });
-    setSelectedTextBlockId((current) => (current === blockId ? null : current));
-    setEditingTextBlockId((current) => (current === blockId ? null : current));
-    setOpenTextBlockOptionsId((current) => (current === blockId ? null : current));
-    markPageUnsaved();
-  };
-
-  const handleTextBlockOptionsKeyDown = (
-    blockId: string,
-    event: ReactKeyboardEvent<HTMLDivElement>
-  ) => {
-    if (event.key === "Tab") {
-      setOpenTextBlockOptionsId(null);
-      return;
-    }
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.stopPropagation();
-      setOpenTextBlockOptionsId(null);
-      window.requestAnimationFrame(() => {
-        document
-          .getElementById(
-            getNotebookTextBlockOptionsElementId(blockId, "trigger")
-          )
-          ?.focus({ preventScroll: true });
-      });
-      return;
-    }
-    if (
-      event.key !== "ArrowDown" &&
-      event.key !== "ArrowUp" &&
-      event.key !== "Home" &&
-      event.key !== "End"
-    ) {
-      return;
-    }
-
-    const menuItems = Array.from(
-      event.currentTarget.querySelectorAll<HTMLButtonElement>(
-        '[role="menuitemcheckbox"], [role="menuitem"]'
-      )
-    );
-    if (menuItems.length === 0) return;
-    event.preventDefault();
-    const currentIndex = menuItems.indexOf(document.activeElement as HTMLButtonElement);
-    const nextIndex =
-      event.key === "Home"
-        ? 0
-        : event.key === "End"
-          ? menuItems.length - 1
-          : event.key === "ArrowUp"
-            ? (currentIndex - 1 + menuItems.length) % menuItems.length
-            : (currentIndex + 1) % menuItems.length;
-    menuItems[nextIndex]?.focus({ preventScroll: true });
-  };
-
-  const startTextBlockDrag = (
-    block: NotebookTextBlock,
-    event: ReactPointerEvent<HTMLElement>
-  ) => {
-    if (!fullNotebookEditingEnabled || pageNavigationLockedRef.current) return;
-    if (isTextResizeHandleTarget(event.target)) return;
-    setOpenTextBlockOptionsId(null);
-    const pageElement = event.currentTarget.closest<HTMLElement>("[data-notebook-page-surface]");
-    if (!pageElement) return;
-    const rect = pageElement.getBoundingClientRect();
-    textBlockDragRef.current = {
-      id: block.id,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: block.x,
-      originY: block.y,
-      pageWidth: rect.width,
-      pageHeight: rect.height,
-      previousTextBlocks: textBlocksRef.current,
-      wasSelected: selectedTextBlockId === block.id,
-    };
-    pageSwipeRef.current = null;
-    if (pinchZoomRef.current) {
-      cancelPinchZoomAnimationFrame();
-      resetPageSurfaceTransform();
-    }
-    pinchZoomRef.current = null;
-    setActiveTextGestureId(block.id);
-    setSelectedTextBlockId(block.id);
-    setEditingTextBlockId(null);
-    safelySetPointerCapture(event.currentTarget, event.pointerId);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const dragTextBlock = (event: ReactPointerEvent<HTMLElement>) => {
-    const drag = textBlockDragRef.current;
-    if (!drag) return;
-    const dx = ((event.clientX - drag.startX) / drag.pageWidth) * CANVAS_WIDTH;
-    const dy = ((event.clientY - drag.startY) / drag.pageHeight) * CANVAS_HEIGHT;
-    updateTextBlock(drag.id, {
-      x: drag.originX + dx,
-      y: drag.originY + dy,
-    });
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const stopTextBlockDrag = (event: ReactPointerEvent<HTMLElement>) => {
-    const drag = textBlockDragRef.current;
-    if (drag && event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (drag && pageSurfaceRef.current) {
-      safelyReleasePointerCapture(pageSurfaceRef.current, event.pointerId);
-    }
-    if (drag) {
-      const next = textBlocksRef.current;
-      const previousBlock = drag.previousTextBlocks.find((block) => block.id === drag.id);
-      const nextBlock = next.find((block) => block.id === drag.id);
-      if (
-        previousBlock &&
-        nextBlock &&
-        (previousBlock.x !== nextBlock.x || previousBlock.y !== nextBlock.y)
-      ) {
-        pushUndoAction({ type: "textBlocks", previous: drag.previousTextBlocks, next });
-      }
-      // Tap-again-to-type: a motionless release on an already-selected block
-      // opens the text editor, so no separate edit button is needed.
-      const movedX = Math.abs(event.clientX - drag.startX);
-      const movedY = Math.abs(event.clientY - drag.startY);
-      if (
-        drag.wasSelected &&
-        event.type === "pointerup" &&
-        movedX < 6 &&
-        movedY < 6
-      ) {
-        setEditingTextBlockId(drag.id);
-      }
-    }
-    textBlockDragRef.current = null;
-    setActiveTextGestureId(null);
-    event.stopPropagation();
-  };
-
-  const startTextBlockResize = (
-    block: NotebookTextBlock,
-    edge: NotebookTextBlockResizeEdge,
-    event: ReactPointerEvent<HTMLElement>
-  ) => {
-    if (!fullNotebookEditingEnabled || pageNavigationLockedRef.current) return;
-    setOpenTextBlockOptionsId(null);
-    const pageElement = event.currentTarget.closest<HTMLElement>("[data-notebook-page-surface]");
-    if (!pageElement) return;
-    const rect = pageElement.getBoundingClientRect();
-    textBlockResizeRef.current = {
-      id: block.id,
-      edge,
-      startX: event.clientX,
-      startY: event.clientY,
-      originX: block.x,
-      originY: block.y,
-      originWidth: block.width,
-      originHeight: block.height,
-      originText: block.text,
-      pageWidth: rect.width,
-      pageHeight: rect.height,
-      previousTextBlocks: textBlocksRef.current,
-    };
-    pageSwipeRef.current = null;
-    if (pinchZoomRef.current) {
-      cancelPinchZoomAnimationFrame();
-      resetPageSurfaceTransform();
-    }
-    pinchZoomRef.current = null;
-    textBlockDragRef.current = null;
-    setActiveTextGestureId(block.id);
-    setSelectedTextBlockId(block.id);
-    safelySetPointerCapture(event.currentTarget, event.pointerId);
-    if (pageElement) {
-      safelySetPointerCapture(pageElement, event.pointerId);
-    }
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const resizeTextBlock = (event: ReactPointerEvent<HTMLElement>) => {
-    const resize = textBlockResizeRef.current;
-    if (!resize) return;
-    const dx = ((event.clientX - resize.startX) / resize.pageWidth) * CANVAS_WIDTH;
-    const dy = ((event.clientY - resize.startY) / resize.pageHeight) * CANVAS_HEIGHT;
-    const currentBlock = textBlocksRef.current.find((block) => block.id === resize.id);
-    const nextBlock = resizeNotebookTextBlockFromEdge({
-      block: {
-        id: resize.id,
-        x: resize.originX,
-        y: resize.originY,
-        width: resize.originWidth,
-        height: resize.originHeight,
-        text: currentBlock?.text ?? resize.originText,
-        outlineVisible: currentBlock?.outlineVisible ?? true,
-      },
-      edge: resize.edge,
-      deltaX: dx,
-      deltaY: dy,
-    });
-    updateTextBlock(resize.id, nextBlock);
-    event.preventDefault();
-    event.stopPropagation();
-  };
-
-  const handleTextBlockPointerMove = (
-    block: NotebookTextBlock,
-    event: ReactPointerEvent<HTMLElement>
-  ) => {
-    if (textBlockResizeRef.current?.id === block.id) {
-      resizeTextBlock(event);
-      return;
-    }
-    if (!editingTextBlockId || editingTextBlockId !== block.id) {
-      dragTextBlock(event);
-    }
-  };
-
-  const handleTextBlockPointerUp = (
-    block: NotebookTextBlock,
-    event: ReactPointerEvent<HTMLElement>
-  ) => {
-    if (textBlockResizeRef.current?.id === block.id) {
-      stopTextBlockResize(event);
-      return;
-    }
-    if (!editingTextBlockId || editingTextBlockId !== block.id) {
-      stopTextBlockDrag(event);
-    }
-  };
-
-  const stopTextBlockResize = (event: ReactPointerEvent<HTMLElement>) => {
-    const resize = textBlockResizeRef.current;
-    if (resize && event.currentTarget.hasPointerCapture(event.pointerId)) {
-      event.currentTarget.releasePointerCapture(event.pointerId);
-    }
-    if (resize && pageSurfaceRef.current) {
-      safelyReleasePointerCapture(pageSurfaceRef.current, event.pointerId);
-    }
-    if (resize) {
-      const next = textBlocksRef.current;
-      const previousBlock = resize.previousTextBlocks.find((block) => block.id === resize.id);
-      const nextBlock = next.find((block) => block.id === resize.id);
-      if (
-        previousBlock &&
-        nextBlock &&
-        (previousBlock.x !== nextBlock.x ||
-          previousBlock.y !== nextBlock.y ||
-          previousBlock.width !== nextBlock.width ||
-          previousBlock.height !== nextBlock.height)
-      ) {
-        pushUndoAction({ type: "textBlocks", previous: resize.previousTextBlocks, next });
-      }
-    }
-    textBlockResizeRef.current = null;
-    setActiveTextGestureId(null);
-    event.stopPropagation();
-  };
-
-  const handlePageSurfaceTextGestureMove = (event: ReactPointerEvent<HTMLElement>) => {
-    if (textBlockResizeRef.current) {
-      resizeTextBlock(event);
-      return;
-    }
-    if (textBlockDragRef.current) {
-      dragTextBlock(event);
-    }
-  };
-
-  const handlePageSurfaceTextGestureStop = (event: ReactPointerEvent<HTMLElement>) => {
-    if (textBlockResizeRef.current) {
-      stopTextBlockResize(event);
-      return;
-    }
-    if (textBlockDragRef.current) {
-      stopTextBlockDrag(event);
-    }
-  };
-
   const handleDeletePage = async (page: NotebookPage) => {
     if (!user?.uid || !notebook || !fullNotebookEditingEnabled) return;
     if (pages.length <= 1) {
@@ -3503,8 +3144,7 @@ export default function NotebookEditorPage() {
       hydratedPageIdRef.current = null;
       setPages(nextPages);
       setSelectedPageId(nextSelectedPage?.id ?? null);
-      setSelectedTextBlockId(null);
-      setEditingTextBlockId(null);
+      resetTextBlockInteraction();
       setFeedback({ type: "success", message: `Page ${page.pageNumber} deleted.` });
     } catch (error) {
       setFeedback({
@@ -3605,11 +3245,9 @@ export default function NotebookEditorPage() {
 
     textBlocksRef.current = action.previous;
     setTextBlocks(action.previous);
-    setSelectedTextBlockId(null);
-    setEditingTextBlockId(null);
-    setActiveTextGestureId(null);
+    resetTextBlockInteraction();
     markPageUnsaved();
-  }, [markPageUnsaved]);
+  }, [markPageUnsaved, resetTextBlockInteraction]);
 
   const handleRedo = useCallback(() => {
     if ((inkEditorRef.current?.getHistoryState().redoDepth ?? 0) > 0) {
@@ -3625,11 +3263,9 @@ export default function NotebookEditorPage() {
 
     textBlocksRef.current = action.next;
     setTextBlocks(action.next);
-    setSelectedTextBlockId(null);
-    setEditingTextBlockId(null);
-    setActiveTextGestureId(null);
+    resetTextBlockInteraction();
     markPageUnsaved();
-  }, [markPageUnsaved]);
+  }, [markPageUnsaved, resetTextBlockInteraction]);
 
   const performClearCurrentPage = () => {
     inkEditorRef.current?.clear();
@@ -3676,9 +3312,7 @@ export default function NotebookEditorPage() {
         setPenMenuOpen(false);
         setHighlighterMenuOpen(false);
         setEraserMenuOpen(false);
-        setOpenTextBlockOptionsId(null);
-        setSelectedTextBlockId(null);
-        setEditingTextBlockId(null);
+        clearTextBlockSelection();
       }
     };
 
@@ -3688,6 +3322,7 @@ export default function NotebookEditorPage() {
     fullNotebookEditingEnabled,
     handleRedo,
     handleUndo,
+    clearTextBlockSelection,
     switchNotebookTool,
   ]);
 
@@ -4434,8 +4069,7 @@ export default function NotebookEditorPage() {
                           setHighlighterMenuOpen(false);
                           setEraserMenuOpen(false);
                           setPagesDrawerOpen(false);
-                          setSelectedTextBlockId(null);
-                          setEditingTextBlockId(null);
+                          clearTextBlockSelection();
                           cancelInkUiSync();
                           if (autosaveTimerRef.current !== null) {
                             window.clearTimeout(
@@ -4491,37 +4125,21 @@ export default function NotebookEditorPage() {
                             width: `${(block.width / CANVAS_WIDTH) * 100}%`,
                             height: `${(block.height / CANVAS_HEIGHT) * 100}%`,
                           }}
-                          onPointerDown={(event) => {
-                            if (event.pointerType === "touch" && !selected && !editing) {
-                              handleTouchPointerDown(event);
-                              return;
-                            }
-                            if (!editing) startTextBlockDrag(block, event);
-                          }}
-                          onPointerMove={(event) => {
-                            if (event.pointerType === "touch" && !selected && !editing) {
-                              handleTouchPointerMove(event);
-                              return;
-                            }
-                            handleTextBlockPointerMove(block, event);
-                          }}
-                          onPointerUp={(event) => {
-                            if (event.pointerType === "touch" && !selected && !editing) {
-                              handleTouchPointerEnd(event);
-                              return;
-                            }
-                            handleTextBlockPointerUp(block, event);
-                          }}
-                          onPointerCancel={(event) => {
-                            if (event.pointerType === "touch" && !selected && !editing) {
-                              handleTouchPointerEnd(event, { cancelled: true });
-                              return;
-                            }
-                            handleTextBlockPointerUp(block, event);
-                          }}
+                          onPointerDown={(event) =>
+                            handleTextBlockPointerDown(block, event)
+                          }
+                          onPointerMove={(event) =>
+                            handleTextBlockPointerMove(block, event)
+                          }
+                          onPointerUp={(event) =>
+                            handleTextBlockPointerUp(block, event)
+                          }
+                          onPointerCancel={(event) =>
+                            handleTextBlockPointerCancel(block, event)
+                          }
                           onClick={(event) => {
                             event.stopPropagation();
-                            setSelectedTextBlockId(block.id);
+                            selectTextBlock(block.id);
                           }}
                         >
                           {selected && fullNotebookEditingEnabled && !gesturing ? (
@@ -4533,9 +4151,7 @@ export default function NotebookEditorPage() {
                                 openAbove={optionsOpenAbove}
                                 alignFromLeft={optionsAlignFromLeft}
                                 onOpenChange={(open) =>
-                                  setOpenTextBlockOptionsId(
-                                    open ? block.id : null
-                                  )
+                                  setTextBlockOptionsOpen(block.id, open)
                                 }
                                 onToggleOutline={() =>
                                   toggleTextBlockOutline(block.id)
@@ -4585,10 +4201,10 @@ export default function NotebookEditorPage() {
                               onKeyDown={(event) => {
                                 if (event.key === "Escape") {
                                   event.stopPropagation();
-                                  setEditingTextBlockId(null);
+                                  stopEditingTextBlock();
                                 }
                               }}
-                              onFocus={() => setSelectedTextBlockId(block.id)}
+                              onFocus={() => selectTextBlock(block.id)}
                               onChange={(event) => updateTextBlock(block.id, { text: event.target.value })}
                               placeholder="Type here..."
                               data-notebook-text-editor="true"
