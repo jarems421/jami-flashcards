@@ -7,21 +7,21 @@ import {
   useRef,
   useState,
 } from "react";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
 import type { Source, SourceType } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
+import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
+import type {
+  SourceDraftDepth,
+  SourceDraftKind,
+} from "@/lib/ai/source-draft-quality";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import type { Deck } from "@/services/study/decks";
+import type { Deck } from "@/lib/study/decks";
 import {
   getGeneratedContentDrafts,
   updateGeneratedContentDraftStatus,
-  type GeneratedContentDraft,
 } from "@/services/study/generated-content";
-import {
-  generateSourceDrafts,
-  type SourceDraftDepth,
-  type SourceDraftKind,
-} from "@/services/ai/source-drafts";
+import { generateSourceDrafts } from "@/services/ai/source-drafts";
 import {
   getJamiAssistantThreadMessages,
   getJamiAssistantThreads,

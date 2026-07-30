@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
+import type { Feedback } from "@/lib/app/feedback";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
-import { getDecks, type Deck } from "@/services/study/decks";
+import { getDecks } from "@/services/study/decks";
+import type { Deck } from "@/lib/study/decks";
 import { getActiveSources } from "@/services/study/sources";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
@@ -98,10 +100,7 @@ export default function CardsSearchPage() {
   );
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   // Debounce search input
   useEffect(() => {

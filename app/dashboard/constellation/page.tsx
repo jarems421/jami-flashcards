@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
 import {
   getActiveConstellation,
   getFallbackConstellation,

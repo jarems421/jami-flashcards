@@ -1,5 +1,5 @@
-import type { Deck } from "@/services/study/decks";
 import type { Card, CardReviewValueUpdates } from "@/lib/study/cards";
+import type { Deck } from "@/lib/study/decks";
 import type { CardRating } from "@/lib/study/scheduler";
 
 const SNAPSHOT_PREFIX = "jami:offline-study:snapshot:";

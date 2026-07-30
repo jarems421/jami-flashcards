@@ -1,10 +1,13 @@
 "use client";
 
+import type {
+  SourceDraftDepth,
+  SourceDraftKind,
+} from "@/lib/ai/source-draft-quality";
+import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
 import type { Topic } from "@/lib/practice/topics";
+import type { Deck } from "@/lib/study/decks";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import type { Deck } from "@/services/study/decks";
-import type { GeneratedContentDraft } from "@/services/study/generated-content";
-import type { SourceDraftDepth, SourceDraftKind } from "@/services/ai/source-drafts";
 import { FeedbackBanner } from "@/components/ui";
 import SourceDraftEditor from "./SourceDraftEditor";
 import SourceCreatePanel, { type SourceMadeCounts } from "./SourceCreatePanel";

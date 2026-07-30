@@ -15,18 +15,20 @@ import {
   Skeleton,
   StatTile,
 } from "@/components/ui";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
+import type { Feedback } from "@/lib/app/feedback";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
 import type { Source } from "@/lib/practice/sources";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
 import type { Card as StudyCard } from "@/lib/study/cards";
+import type { Deck } from "@/lib/study/decks";
+import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
 import { loadUserCards, updateCardTopics } from "@/services/study/cards";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import { getDecks, type Deck } from "@/services/study/decks";
+import { getDecks } from "@/services/study/decks";
 import {
   getGeneratedContentDrafts,
   updateGeneratedContentDraftContent,
-  type GeneratedContentDraft,
 } from "@/services/study/generated-content";
 import { getActiveNotebooks, updateNotebook } from "@/services/study/notebooks";
 import { getActiveSources, updateSource } from "@/services/study/sources";
@@ -62,7 +64,7 @@ export default function TopicDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [feedback, setFeedback] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
 
   const loadTopicData = useCallback(async () => {
     const [nextTopics, nextCards, nextDecks, nextNotebooks, nextSources, nextDrafts] =

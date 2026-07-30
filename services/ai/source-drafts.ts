@@ -1,8 +1,9 @@
 import { auth } from "@/services/firebase/client";
-import type { GeneratedContentDraft } from "@/services/study/generated-content";
-
-export type SourceDraftKind = "flashcard" | "practice-question";
-export type SourceDraftDepth = "low" | "medium" | "high";
+import type {
+  SourceDraftDepth,
+  SourceDraftKind,
+} from "@/lib/ai/source-draft-quality";
+import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
 
 function friendlyError(status: number, message?: string) {
   if (status === 429) return "Jami has reached today's draft limit. Try again tomorrow.";

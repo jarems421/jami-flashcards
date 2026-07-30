@@ -12,7 +12,9 @@ import {
   type Card,
 } from "@/lib/study/cards";
 import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
+import type { Feedback } from "@/lib/app/feedback";
+import type { Deck } from "@/lib/study/decks";
 import AppPage from "@/components/layout/AppPage";
 import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import CardActionsMenu from "@/components/decks/CardActionsMenu";
@@ -27,7 +29,7 @@ import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useCardSelection } from "@/components/decks/useCardSelection";
 import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
-import { getDeckById, type Deck } from "@/services/study/decks";
+import { getDeckById } from "@/services/study/decks";
 import {
   deleteCard,
   getCardsForDeck,
@@ -53,10 +55,7 @@ export default function DeckDetailPageClient() {
   const [cards, setCards] = useState<Card[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
-  const [feedback, setFeedback] = useState<{
-    type: "success" | "error";
-    message: string;
-  } | null>(null);
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");

@@ -11,6 +11,7 @@ import {
   type DeckColorPresetId,
   type DeckIconPresetId,
 } from "@/lib/study/deck-style";
+import type { Deck } from "@/lib/study/decks";
 import {
   addDoc,
   collection,
@@ -25,17 +26,6 @@ import {
   type DocumentSnapshot,
   type QueryDocumentSnapshot,
 } from "firebase/firestore";
-
-export type Deck = {
-  id: string;
-  name: string;
-  userId: string;
-  createdAt: number;
-  colorPreset: DeckColorPresetId;
-  iconPreset: DeckIconPresetId;
-  styleVersion?: string;
-  folderIds: string[];
-};
 
 type DeckDoc = {
   name?: string;

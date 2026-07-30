@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import type { SourceDraftDepth, SourceDraftKind } from "@/services/ai/source-drafts";
+import type {
+  SourceDraftDepth,
+  SourceDraftKind,
+} from "@/lib/ai/source-draft-quality";
 import { Button } from "@/components/ui";
 
 export type SourceMadeCounts = {

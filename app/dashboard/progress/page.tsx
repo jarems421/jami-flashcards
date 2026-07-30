@@ -12,18 +12,20 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
 import type { Feedback } from "@/lib/app/feedback";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getCustomStudyHref, getDeckStudyHref } from "@/lib/app/routes";
 import type { Source } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
+import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
 import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
 import { computeStudyStreak, type DailyStudyActivity } from "@/lib/study/activity";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import { isCardDue } from "@/lib/study/daily-review";
 import { getStudyDayWindow } from "@/lib/study/day";
 import type { Goal } from "@/lib/study/goals";
+import type { Deck } from "@/lib/study/decks";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import {
   buildAccuracySeries,
@@ -38,9 +40,9 @@ import {
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { ensureStudyStateSetup } from "@/services/study/daily-review";
 import { loadUserCards } from "@/services/study/cards";
-import { getGeneratedContentDrafts, type GeneratedContentDraft } from "@/services/study/generated-content";
+import { getGeneratedContentDrafts } from "@/services/study/generated-content";
 import { loadStudyActivity } from "@/services/study/activity";
-import { getDecks, type Deck } from "@/services/study/decks";
+import { getDecks } from "@/services/study/decks";
 import { getActiveSources } from "@/services/study/sources";
 import { getActiveNotebooks } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";

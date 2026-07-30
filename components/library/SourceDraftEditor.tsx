@@ -2,15 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
 import type { Topic } from "@/lib/practice/topics";
+import type { Deck } from "@/lib/study/decks";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import type { Deck } from "@/services/study/decks";
 import {
   convertFlashcardDraftToCard,
   convertPracticeQuestionDraftToNotebookPage,
   updateGeneratedContentDraftContent,
   updateGeneratedContentDraftStatus,
-  type GeneratedContentDraft,
 } from "@/services/study/generated-content";
 import TopicPicker from "@/components/topics/TopicPicker";
 import { Button, StudyText, Textarea } from "@/components/ui";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type ReactNode } from "react";
-import { useUser } from "@/lib/auth/user-context";
+import { useUser } from "@/components/providers/UserProvider";
 import { migrateCardTagsToTopics } from "@/services/study/topics";
 
 export default function TopicMigrationGate({ children }: { children: ReactNode }) {

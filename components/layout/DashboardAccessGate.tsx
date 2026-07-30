@@ -7,7 +7,7 @@ import InAppNotice from "@/components/layout/InAppNotice";
 import TabBar from "@/components/layout/TabBar";
 import TopicMigrationGate from "@/components/topics/TopicMigrationGate";
 import { listenToAuth } from "@/services/auth/auth-listener";
-import UserProvider from "@/lib/auth/user-context";
+import UserProvider from "@/components/providers/UserProvider";
 import {
   readSidebarHiddenPreference,
   saveSidebarHiddenPreference,
