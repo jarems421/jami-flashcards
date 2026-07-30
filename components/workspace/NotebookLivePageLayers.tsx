@@ -1,10 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import type {
-  ComponentPropsWithoutRef,
-  Ref,
-} from "react";
+import { memo, type ComponentPropsWithoutRef, type Ref } from "react";
 import {
   NotebookInkEditor,
   type NotebookInkEditorHandle,
@@ -56,7 +53,7 @@ export type NotebookLivePageLayersProps = {
   swipeInkSnapshot: NotebookSwipeInkSnapshot | null;
 };
 
-export default function NotebookLivePageLayers({
+export function NotebookLivePageLayers({
   backgroundProps,
   editingEnabled,
   eraserWidth,
@@ -117,3 +114,9 @@ export default function NotebookLivePageLayers({
     </>
   );
 }
+
+/**
+ * Memoised: this subtree sits under the stylus and its props are now
+ * stable, so a parent render no longer forces it to re-render.
+ */
+export default memo(NotebookLivePageLayers);

@@ -297,6 +297,10 @@ export default function NotebookEditorPage() {
   });
 
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
+  const isPageNavigationLocked = useCallback(
+    () => pageNavigationLockedRef.current,
+    []
+  );
 
   const {
     inkReadyRef,
@@ -505,7 +509,7 @@ export default function NotebookEditorPage() {
     setPagePan,
     pageSurfaceRef,
     pageFrameRef,
-    isNavigationLocked: () => pageNavigationLockedRef.current,
+    isNavigationLocked: isPageNavigationLocked,
     isStylusSuppressingTouch: () =>
       shouldSuppressTouchAfterStylus({
         stylusActive: stylusInteractionRef.current,
@@ -946,7 +950,7 @@ export default function NotebookEditorPage() {
     handlePageSurfaceTextGestureStop,
   } = useNotebookTextBlockController({
     editingEnabled: fullNotebookEditingEnabled,
-    isNavigationLocked: () => pageNavigationLockedRef.current,
+    isNavigationLocked: isPageNavigationLocked,
     pageState,
     pageSurfaceRef,
     onChange: markPageUnsaved,
@@ -954,10 +958,9 @@ export default function NotebookEditorPage() {
     onGestureStart: cancelCompetingPageGestures,
     onCreateLimitReached: handleTextBlockLimitReached,
     onCreateComplete: handleTextBlockCreated,
-    onTouchPointerDown: (event) => handleTouchPointerDown(event),
-    onTouchPointerMove: (event) => handleTouchPointerMove(event),
-    onTouchPointerEnd: (event, options) =>
-      handleTouchPointerEnd(event, options),
+    onTouchPointerDown: handleTouchPointerDown,
+    onTouchPointerMove: handleTouchPointerMove,
+    onTouchPointerEnd: handleTouchPointerEnd,
   });
 
   useEffect(() => {
@@ -1172,7 +1175,7 @@ export default function NotebookEditorPage() {
    * A second finger landed mid-swipe. Unwind the page track so the pinch
    * starts from a settled sheet instead of a half-committed swipe.
    */
-  const cancelPageSwipeForPinch = () => {
+  const cancelPageSwipeForPinch = useCallback(() => {
     if (!pageSwipeRef.current) return;
     cancelQueuedPageTrackOffset();
     const track = pageTrackRef.current;
@@ -1183,7 +1186,11 @@ export default function NotebookEditorPage() {
     setCreatePageActive(false);
     setCreatePageProgress(0);
     pageSwipeRef.current = null;
-  };
+  }, [
+    cancelQueuedPageTrackOffset,
+    setPagePreviewVisibility,
+    writePageTrackOffset,
+  ]);
 
   const getNotebookPointFromEvent = (
     event: ReactPointerEvent<HTMLElement>
@@ -1605,7 +1612,7 @@ export default function NotebookEditorPage() {
     void saveCurrentPage({ flush: true });
   };
 
-  const createBlankPageAtEnd = async (velocityX = -2) => {
+  const createBlankPageAtEnd = useCallback(async (velocityX = -2) => {
     if (
       pageNavigationLockedRef.current ||
       pageCreationInFlightRef.current ||
@@ -1710,9 +1717,22 @@ export default function NotebookEditorPage() {
       setCreatePageProgress(0);
       return false;
     }
-  };
+  }, [
+    animatePageTrackTo,
+    beginPageHandoff,
+    notebook,
+    pageTrackOffsetRef,
+    pageTrackTravelDistance,
+    pages,
+    prefersReducedNotebookMotion,
+    prepareCurrentPageForNavigation,
+    returnPageTrackToSource,
+    selectedPage,
+    setPages,
+    user?.uid,
+  ]);
 
-  const handleStartPageSwipe = (event: ReactPointerEvent<HTMLElement>) => {
+  const handleStartPageSwipe = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (
       !fullNotebookEditingEnabled ||
       !shouldPointerSwipePages(event.pointerType) ||
@@ -1739,9 +1759,15 @@ export default function NotebookEditorPage() {
       completed: false,
     };
     safelySetPointerCapture(event.currentTarget, event.pointerId);
-  };
+  }, [
+    activeTextGestureId,
+    fullNotebookEditingEnabled,
+    inkInteractionActiveRef,
+    pagePanLiveRef,
+    viewportLayout.pageOrigin,
+  ]);
 
-  const handlePageSwipeMove = (event: ReactPointerEvent<HTMLElement>) => {
+  const handlePageSwipeMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     const swipe = pageSwipeRef.current;
     if (!swipe || swipe.pointerId !== event.pointerId || swipe.completed) return;
 
@@ -1839,9 +1865,25 @@ export default function NotebookEditorPage() {
       })
     );
     event.preventDefault();
-  };
+  }, [
+    capturePageSwipeInkSnapshot,
+    frameSize.height,
+    frameSize.width,
+    pageCanPanHorizontally,
+    pageCanPanVertically,
+    pageHeightPx,
+    pagePanLiveRef,
+    pageWidthPx,
+    pages.length,
+    queuePageTrackOffset,
+    selectedPageIndex,
+    setPagePreviewDirection,
+    setPagePreviewVisibility,
+    viewportLayout.zoom,
+    writeCreatePageProgress,
+  ]);
 
-  const handleStopPageSwipe = (
+  const handleStopPageSwipe = useCallback((
     event: ReactPointerEvent<HTMLElement>,
     options: { allowTextTap?: boolean; cancelled?: boolean } = {}
   ) => {
@@ -1969,9 +2011,21 @@ export default function NotebookEditorPage() {
         if (point) createTextBlockAtPoint(point);
       }
     }
-  };
+  }, [
+    createBlankPageAtEnd,
+    createTextBlockAtPoint,
+    pageCanPanHorizontally,
+    pagePanLiveRef,
+    pageTrackOffsetRef,
+    pages,
+    returnPageTrackToSource,
+    runPageTrackNavigation,
+    selectedPageIndex,
+    setPagePreviewVisibility,
+    tool,
+  ]);
 
-  const maybeShowIgnoredTouchInkHint = (event: ReactPointerEvent<HTMLElement>) => {
+  const maybeShowIgnoredTouchInkHint = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (
       event.pointerType !== "touch" ||
       tool === "text" ||
@@ -1993,9 +2047,13 @@ export default function NotebookEditorPage() {
       setTouchInkHintVisible(false);
       touchInkHintTimeoutRef.current = null;
     }, 2600);
-  };
+  }, [
+    fullNotebookEditingEnabled,
+    isPinchActive,
+    tool,
+  ]);
 
-  const handlePagePointerDown = (event: ReactPointerEvent<HTMLElement>) => {
+  const handlePagePointerDown = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (!fullNotebookEditingEnabled) return;
     if (pageNavigationLockedRef.current) {
       event.preventDefault();
@@ -2021,16 +2079,26 @@ export default function NotebookEditorPage() {
     const point = getNotebookPointFromEvent(event);
     if (!point) return;
     createTextBlockAtPoint(point);
-  };
+  }, [
+    clearTextBlockSelection,
+    createTextBlockAtPoint,
+    fullNotebookEditingEnabled,
+    handleStartPageSwipe,
+    handleTouchPointerDown,
+    tool,
+  ]);
 
-  const handlePagePointerMove = (event: ReactPointerEvent<HTMLElement>) => {
+  const handlePagePointerMove = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (handleTouchPointerMove(event)) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handlePageSwipeMove(event);
     }
-  };
+  }, [
+    handlePageSwipeMove,
+    handleTouchPointerMove,
+  ]);
 
-  const handlePagePointerUp = (event: ReactPointerEvent<HTMLElement>) => {
+  const handlePagePointerUp = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (event.pointerType === "touch") {
       const swipe = pageSwipeRef.current;
       const direction = swipe
@@ -2049,14 +2117,21 @@ export default function NotebookEditorPage() {
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStopPageSwipe(event, { allowTextTap: true });
     }
-  };
+  }, [
+    handleStopPageSwipe,
+    handleTouchPointerEnd,
+    maybeShowIgnoredTouchInkHint,
+  ]);
 
-  const handlePagePointerCancel = (event: ReactPointerEvent<HTMLElement>) => {
+  const handlePagePointerCancel = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (handleTouchPointerEnd(event, { cancelled: true })) return;
     if (shouldPointerSwipePages(event.pointerType)) {
       handleStopPageSwipe(event, { cancelled: true });
     }
-  };
+  }, [
+    handleStopPageSwipe,
+    handleTouchPointerEnd,
+  ]);
 
   const handleDeletePage = async (page: NotebookPage) => {
     if (!user?.uid || !notebook || !fullNotebookEditingEnabled) return;

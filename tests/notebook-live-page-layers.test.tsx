@@ -36,7 +36,8 @@ vi.mock("@/components/workspace/NotebookInkEditor", () => ({
   ),
 }));
 
-import NotebookLivePageLayers, {
+import {
+  NotebookLivePageLayers,
   type NotebookLivePageLayersProps,
 } from "@/components/workspace/NotebookLivePageLayers";
 
