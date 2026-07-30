@@ -3,17 +3,32 @@
 Continues the notebook decomposition track started in `da3d9c7` → `4fc3ebb`, merged
 with a codebase-wide review. Written 2026-07-30.
 
-## Status
+## Status — Phases 0 to 3 complete
 
-| Batch | State |
+Fourteen gated commits. The notebook page went **4,525 → 3,189 lines**; the
+Vitest suite went **704 → 809**; the browser suite went from one notebook spec
+to five signed-in flows across notebook and study.
+
+The plan existed to make the dual ink pipeline fixable. That shipped in
+`f98c8f5` and was verified on an iPad on 2026-07-31: undo now steps whichever
+of ink or text happened most recently, instead of draining all ink first.
+
+| Phase | State |
 |---|---|
-| 0.1 text block controller | done — `1a123fd` |
-| 6.1 historical `.env` audit | done — credential was real but the database is already deleted, so it is inert |
-| 1.1 viewport controller | done — `fa67b1e` |
-| 1.2 memoisation | folded into 1.1, 2.3, and 2.5 (see below) |
-| 1.3 study loop e2e | done — `3738ae4` |
-| **iPad / Pencil gate** | **blocked — needs a physical device, gates all of Phase 2** |
-| 2.0 onward | not started |
+| 0 — land in-flight work | done |
+| 1 — low-coupling extractions | done |
+| 2 — the coupled core | done (2.3b deliberately not extracted) |
+| ★ ink pipeline fix | **done, iPad-verified** |
+| 3 — JSX decomposition | done |
+| 4 — offline e2e + component tests | **next** |
+| 5 — shared list-workspace primitives | not started; slow and deliberate by request |
+
+**Where the remaining lines are.** The page is now a composition root: seven
+controllers, three extracted components, and the orchestration that coordinates
+them. The original ~1,100-line target was a bad estimate — it counted the
+`NotebookViewport` call and its render props as extractable JSX when they are
+composition, and it assumed navigation orchestration would extract, which it
+should not.
 
 ---
 
@@ -46,42 +61,16 @@ riskiest extraction from becoming the widest one.
 
 ---
 
-## Current state
+## Notebook page today
 
-`app/dashboard/notebooks/[notebookId]/page.tsx` — **4,525 lines**, 51 `useState`,
-57 `useRef`. Logic runs to line 3442; JSX is lines 3443–4525 (**1,083 lines**).
+Seven controllers in `hooks/`: page state, loader, persistence, viewport, page
+track, ink, text blocks, plus toolbar docking. Three components in
+`components/workspace/`: drawing toolbar, pages drawer, text block layer.
 
-Extracted so far: `useNotebookToolbarDocking` (519 lines, 10 tests),
-`useNotebookTextBlockController` (776 lines, 14 tests).
-
-Remaining notebook clusters, by line range:
-
-| Lines | ~Size | Cluster |
-|---|---|---|
-| 316–515 | 200 | state + ref declarations |
-| 516–943 | 430 | viewport transform: pinch, pan, track offset, preview layer |
-| 944–1104 | 160 | assorted sync effects |
-| 1105–1480 | 375 | undo stack, ink UI sync, autosave scheduling, draft persistence |
-| 1481–1911 | 430 | page hydration + layout effect |
-| 1912–2234 | 320 | `savePageSnapshot`, `saveCurrentPage`, exit-save queue |
-| 2235–2550 | 315 | page navigation, handoff, track animation |
-| 2551–2658 | 110 | exit-save effect, save retry, draft-conflict resolution |
-| 2659–2765 | 105 | `createBlankPageAtEnd` |
-| 2766–3024 | 260 | page-swipe pointer handlers |
-| 3025–3178 | 155 | touch/pointer handlers, delete page |
-| 3179–3442 | 265 | add file, undo/redo, tool menus |
-| 3443–4525 | 1,083 | JSX |
-
-**Honest targets.** The notebook page lands at **~1,100–1,200 lines**, not under 800:
-after every extraction there remain ~200 lines of state declarations, ~265 of
-menu/undo handlers, ~200 of composition JSX, and ~75 of new wiring. That is still a
-76% cut and it stops being a god component, which is the actual goal.
-
-**Total repo size will grow, not shrink.** The text-block extraction removed 384
-lines from the page and added 1,098 across the hook and its test — net **+714**.
-Expect ~72k → ~83k lines across source and tests. That is the correct trade: one
-unreadable file becomes many readable ones plus the tests that were previously
-impossible to write.
+**Total repo size grew, and that is correct.** The text block extraction alone
+removed 384 lines from the page and added 1,098 across the hook and its test.
+One unreadable file became many readable ones plus the tests that were
+previously impossible to write.
 
 ---
 
@@ -194,24 +183,32 @@ Notebook/page/file loading, `hydratedPageIdRef`, file URL and image resolution, 
 `useLayoutEffect` at 1886. After 2.1, because hydration and save both write
 `selectedPageRef` / `textBlocksRef`.
 
-**Batch 2.3 — `useNotebookPageNavigationController`** (lines 2235–2550, 2659–3024;
-~625 lines)
+**Batch 2.3 — split.** The navigation surface needed 20+ inputs, which breaks
+the seam-width rule, so it was cut in two.
 
-Page selection, handoff, track navigation, swipe gestures, `createBlankPageAtEnd`.
-Retires `maybeFinishPageHandoffRef`, `pageSwipeRef`, `pageSwipeInkSnapshotRef`.
+**2.3a — `useNotebookPageTrack`** — **done.** Track transform, swipe preview
+layer, frozen ink snapshot, create-page progress. Everything writes to the DOM
+directly rather than through React state, because a swipe must stay on the
+compositor. Retires seven refs. Page: 3,640 → 3,505.
 
-**Batch 2.4 — `useNotebookInkController`**
+**2.3b — navigation orchestration — deliberately NOT extracted.**
+`runPageTrackNavigation`, `beginPageHandoff`, `createBlankPageAtEnd`, and the
+swipe handlers coordinate track, persistence, loader, and ink. That is
+orchestration, and orchestration belongs in a composition root. Forcing it into
+a hook would build exactly the wire harness the seam-width rule exists to
+prevent. Revisit only if it starts causing problems.
 
-Ink editor handle, dual undo/redo stacks (`undoStackRef` + `inkUndoDepth`), ink UI
-sync, eraser mode.
+**Batch 2.4 — `useNotebookInkController`** — **done.** Ink editor handle, both
+undo histories, stylus cooldown, editor UI batching. Page: 3,505 → 3,404.
 
-**Batch 2.5 — memoization pass** *(the deferred Batch 1.2)*
+**Batch 2.5 — memoization pass** *(the deferred Batch 1.2)* — **done.**
 
-With pinch, swipe, persistence, and ink all behind stable controller interfaces,
-the remaining `handlePagePointer*` dispatchers become memoizable and the inline
-arrows at 1347, 1356–1359, 4128, and 4131 can be removed. Add `React.memo` to
-`NotebookViewport` and `NotebookLivePageLayers` — pointless before this batch,
-since changing handler props would defeat it every render. Confirm on the iPad.
+Ten pointer-path handlers wrapped, `React.memo` on `NotebookViewport` and
+`NotebookLivePageLayers`, inline arrows removed at the controller call sites.
+Ordering fell out once each subsystem owned its state, exactly as predicted.
+
+Dependency arrays were filled from the linter's own analysis, not by hand: a
+missing entry there is a stale closure at runtime, not a compile error.
 
 ---
 
@@ -307,22 +304,24 @@ removing this one.
 ## Ordering
 
 ```
-0.1  land in-flight text-block controller        ← now
-6.1  audit historical .env                       ← now, 5 min
-1.1  viewport controller          (absorbs pinch memoization)
-1.3  study-loop e2e
-     ── physical iPad / Pencil gate ──
-2.0  NotebookPageState + reducer                 ← gates everything after
-2.1  persistence controller
-2.2  hydration controller
-2.3  page navigation controller   (absorbs swipe memoization)
-2.4  ink controller
-2.5  memoization pass             (the deferred 1.2)
-★    FIX THE INK PIPELINE                        ← the actual goal
-3.1  NotebookToolbar
-3.2  NotebookPagesDrawer
-3.3  NotebookPageSurface
-4.1  offline replay e2e
+0.1  text-block controller                 done  1a123fd
+6.1  audit historical .env                 done  (database already deleted)
+1.1  viewport controller                   done  fa67b1e
+1.3  study-loop e2e                        done  3738ae4
+     ── iPad / Pencil gate ── passed
+2.0  NotebookPageState store               done  ef963e2
+2.1  persistence controller                done  8c8eee5
+2.2  notebook loader                       done  6dc1eab
+     emulator port preflight               done  da5d59b
+2.3a page track                            done  5453c8f
+2.3b navigation orchestration              not extracted, by decision
+2.4  ink controller                        done  f98c8f5
+★    INK PIPELINE FIXED                    done  f98c8f5, iPad-verified
+2.5  memoization pass                      done  777786e
+3.1  NotebookDrawingToolbar         done  b8809a0
+3.2  NotebookPagesDrawer            done  78c7635
+3.3  NotebookTextBlockLayer         done  d7c07e2
+4.1  offline replay e2e             ← next
 4.2  component tests for untested middle
 5.1  useFeedback
 5.2  useMultiSelect
