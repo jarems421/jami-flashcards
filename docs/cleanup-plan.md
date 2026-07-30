@@ -139,16 +139,29 @@ Batch 5.4.
 
 ## Phase 2 — the coupled core (iPad gate required first)
 
-**Batch 2.0 — `NotebookPageState` + reducer** *(new; gates everything after it)*
+**Batch 2.0 — `NotebookPageState` + reducer** *(new; gates everything after it)* — **done**
 
-Not a refactor — a type. Collapse the ~15 shared refs (`selectedPageRef`,
-`textBlocksRef`, `saveStatusRef`, `pageColorRef`, `pageStyleRef`,
-`hydratedPageIdRef`, …) into one state object with a reducer, so later controllers
-take `pageState` + `dispatch` instead of twenty-field options objects.
+Collapsed eight duplicated state/ref pairs (`selectedPage`, `textBlocks`,
+`pageColor`, `pageStyle`, `saveStatus`, `tool`, `contentRevision`,
+`hydratedPageId`) into `useNotebookPageState`, backed by a pure reducer in
+`lib/workspace/notebook-page-state.ts`. Later controllers take `pageState`
+instead of a ref-and-setter pair per field.
 
-Without this, Batch 2.1's interface is 20+ fields and the plan's widest seam lands
-on its riskiest batch. This is the single most likely way the whole plan ends with
-six controllers that each know too much about the page.
+The duplication was real: `saveStatusRef.current = x` sat next to `setSaveStatus(x)`
+in **seven** places, plus a resync at the ink flush. Writes now go through one
+dispatch that moves the ref and the rendered state together.
+
+Two things this surfaced:
+
+- **Deferred rendering is load-bearing.** `markPageUnsaved` deliberately wrote the
+  ref *without* re-rendering so a burst of strokes did not schedule a render per
+  stroke, then reconciled in `flushInkUiSync`. The store keeps that as an explicit
+  `setSaveStatus(status, { deferRender: true })` + `flushPendingRender()` pair
+  rather than silently regressing the ink hot path.
+- **`SaveStatus` lived in a component.** `lib/` may not import from `components/`
+  (enforced by `no-restricted-imports`), so the type moved to
+  `lib/workspace/notebook-page-state.ts` as `NotebookSaveStatus`, with
+  `NotebookSaveIndicator` re-exporting the old name.
 
 **Batch 2.1 — `useNotebookPersistenceController`** (lines 1105–1480, 1912–2234,
 2551–2658; ~800 lines)

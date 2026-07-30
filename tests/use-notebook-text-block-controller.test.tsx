@@ -2,10 +2,8 @@
 
 import {
   act,
-  useEffect,
   useLayoutEffect,
   useRef,
-  useState,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -20,6 +18,7 @@ import {
   vi,
 } from "vitest";
 import NotebookTextBlockOptions from "@/components/workspace/NotebookTextBlockOptions";
+import { useNotebookPageState } from "@/hooks/useNotebookPageState";
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { getNotebookTextBlockOptionsElementId } from "@/lib/workspace/notebook-page-content";
 import {
@@ -129,17 +128,16 @@ function ControllerHarness({
   onTouchPointerMove,
   expose,
 }: HarnessProps) {
-  const [textBlocks, setTextBlocks] = useState<NotebookTextBlock[]>(() =>
-    cloneBlocks(initialBlocks)
-  );
-  const textBlocksRef = useRef<NotebookTextBlock[]>(
-    cloneBlocks(initialBlocks)
-  );
+  const { store: pageState, state: pageSnapshot } = useNotebookPageState();
+  const textBlocks = pageSnapshot.textBlocks;
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
+  const seededRef = useRef(false);
 
-  useEffect(() => {
-    textBlocksRef.current = textBlocks;
-  }, [textBlocks]);
+  useLayoutEffect(() => {
+    if (seededRef.current) return;
+    seededRef.current = true;
+    pageState.setTextBlocks(cloneBlocks(initialBlocks));
+  }, [initialBlocks, pageState]);
 
   const controller = useNotebookTextBlockController({
     editingEnabled,
@@ -153,8 +151,7 @@ function ControllerHarness({
     onTouchPointerEnd,
     onTouchPointerMove,
     pageSurfaceRef,
-    setTextBlocks,
-    textBlocksRef,
+    pageState,
   });
 
   useLayoutEffect(() => {
