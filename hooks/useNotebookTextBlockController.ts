@@ -5,16 +5,15 @@ import {
   useEffect,
   useRef,
   useState,
-  type Dispatch,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
   type RefObject,
-  type SetStateAction,
 } from "react";
 import type {
   NotebookTextBlock,
   NotebookTextBlockResizeEdge,
 } from "@/lib/workspace/notebooks";
+import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
 import {
   MAX_NOTEBOOK_TEXT_BLOCKS,
   NOTEBOOK_PAGE_COORDINATE_HEIGHT,
@@ -76,8 +75,8 @@ type TouchEndOptions = {
 type UseNotebookTextBlockControllerOptions = {
   editingEnabled: boolean;
   isNavigationLocked: () => boolean;
-  textBlocksRef: RefObject<NotebookTextBlock[]>;
-  setTextBlocks: Dispatch<SetStateAction<NotebookTextBlock[]>>;
+  /** Single source of truth for the page content this controller edits. */
+  pageState: NotebookPageStore;
   pageSurfaceRef: RefObject<HTMLDivElement | null>;
   onChange: () => void;
   onHistoryCommit: (
@@ -116,8 +115,7 @@ function releaseTextBlockGestureCapture(
 export function useNotebookTextBlockController({
   editingEnabled,
   isNavigationLocked,
-  textBlocksRef,
-  setTextBlocks,
+  pageState,
   pageSurfaceRef,
   onChange,
   onHistoryCommit,
@@ -228,7 +226,7 @@ export function useNotebookTextBlockController({
 
   const createTextBlockAtPoint = useCallback(
     (point: Point) => {
-      if (textBlocksRef.current.length >= MAX_NOTEBOOK_TEXT_BLOCKS) {
+      if (pageState.read().textBlocks.length >= MAX_NOTEBOOK_TEXT_BLOCKS) {
         onCreateLimitReached(MAX_NOTEBOOK_TEXT_BLOCKS);
         return;
       }
@@ -242,7 +240,7 @@ export function useNotebookTextBlockController({
         text: "",
         outlineVisible: true,
       });
-      setTextBlocks((current) => {
+      pageState.setTextBlocks((current) => {
         const next = [...current, block];
         onHistoryCommit(current, next);
         return next;
@@ -258,14 +256,13 @@ export function useNotebookTextBlockController({
       onCreateComplete,
       onCreateLimitReached,
       onHistoryCommit,
-      setTextBlocks,
-      textBlocksRef,
+      pageState,
     ]
   );
 
   const updateTextBlock = useCallback(
     (blockId: string, updates: Partial<NotebookTextBlock>) => {
-      setTextBlocks((current) =>
+      pageState.setTextBlocks((current) =>
         current.map((block) =>
           block.id === blockId
             ? clampNotebookTextBlock({ ...block, ...updates })
@@ -274,12 +271,12 @@ export function useNotebookTextBlockController({
       );
       onChange();
     },
-    [onChange, setTextBlocks]
+    [onChange, pageState]
   );
 
   const toggleTextBlockOutline = useCallback(
     (blockId: string) => {
-      setTextBlocks((current) => {
+      pageState.setTextBlocks((current) => {
         const next = current.map((block) =>
           block.id === blockId
             ? { ...block, outlineVisible: !block.outlineVisible }
@@ -292,12 +289,12 @@ export function useNotebookTextBlockController({
       });
       onChange();
     },
-    [onChange, onHistoryCommit, setTextBlocks]
+    [onChange, onHistoryCommit, pageState]
   );
 
   const deleteTextBlock = useCallback(
     (blockId: string) => {
-      setTextBlocks((current) => {
+      pageState.setTextBlocks((current) => {
         const next = current.filter((block) => block.id !== blockId);
         if (next.length !== current.length) {
           onHistoryCommit(current, next);
@@ -315,7 +312,7 @@ export function useNotebookTextBlockController({
       );
       onChange();
     },
-    [onChange, onHistoryCommit, setTextBlocks]
+    [onChange, onHistoryCommit, pageState]
   );
 
   const handleTextBlockOptionsKeyDown = useCallback(
@@ -371,7 +368,7 @@ export function useNotebookTextBlockController({
 
   const commitCompletedTextBlockDrag = useCallback(
     (drag: TextBlockDragState) => {
-      const next = textBlocksRef.current;
+      const next = pageState.read().textBlocks;
       const previousBlock = drag.previousTextBlocks.find(
         (block) => block.id === drag.id
       );
@@ -384,12 +381,12 @@ export function useNotebookTextBlockController({
         onHistoryCommit(drag.previousTextBlocks, next);
       }
     },
-    [onHistoryCommit, textBlocksRef]
+    [onHistoryCommit, pageState]
   );
 
   const commitCompletedTextBlockResize = useCallback(
     (resize: TextBlockResizeState) => {
-      const next = textBlocksRef.current;
+      const next = pageState.read().textBlocks;
       const previousBlock = resize.previousTextBlocks.find(
         (block) => block.id === resize.id
       );
@@ -405,7 +402,7 @@ export function useNotebookTextBlockController({
         onHistoryCommit(resize.previousTextBlocks, next);
       }
     },
-    [onHistoryCommit, textBlocksRef]
+    [onHistoryCommit, pageState]
   );
 
   const finishActiveTextBlockGesture = useCallback(() => {
@@ -452,7 +449,7 @@ export function useNotebookTextBlockController({
         originY: block.y,
         pageWidth: rect.width,
         pageHeight: rect.height,
-        previousTextBlocks: textBlocksRef.current,
+        previousTextBlocks: pageState.read().textBlocks,
         wasSelected: selectedTextBlockId === block.id,
       };
       onGestureStart();
@@ -468,7 +465,7 @@ export function useNotebookTextBlockController({
       isNavigationLocked,
       onGestureStart,
       selectedTextBlockId,
-      textBlocksRef,
+      pageState,
     ]
   );
 
@@ -545,7 +542,7 @@ export function useNotebookTextBlockController({
         originText: block.text,
         pageWidth: rect.width,
         pageHeight: rect.height,
-        previousTextBlocks: textBlocksRef.current,
+        previousTextBlocks: pageState.read().textBlocks,
       };
       onGestureStart();
       setActiveTextGestureId(block.id);
@@ -559,7 +556,7 @@ export function useNotebookTextBlockController({
       editingEnabled,
       isNavigationLocked,
       onGestureStart,
-      textBlocksRef,
+      pageState,
     ]
   );
 
@@ -573,7 +570,7 @@ export function useNotebookTextBlockController({
       const dy =
         ((event.clientY - resize.startY) / resize.pageHeight) *
         NOTEBOOK_PAGE_COORDINATE_HEIGHT;
-      const currentBlock = textBlocksRef.current.find(
+      const currentBlock = pageState.read().textBlocks.find(
         (block) => block.id === resize.id
       );
       const nextBlock = resizeNotebookTextBlockFromEdge({
@@ -594,7 +591,7 @@ export function useNotebookTextBlockController({
       event.preventDefault();
       event.stopPropagation();
     },
-    [textBlocksRef, updateTextBlock]
+    [pageState, updateTextBlock]
   );
 
   const stopTextBlockResize = useCallback(

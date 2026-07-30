@@ -2,7 +2,10 @@
 
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 
-export type SaveStatus = "saved" | "unsaved" | "saving" | "failed";
+import type { NotebookSaveStatus } from "@/lib/workspace/notebook-page-state";
+
+/** Component-facing alias for the domain type. */
+export type SaveStatus = NotebookSaveStatus;
 
 // Icon-only autosave state so the header never shifts as the status changes.
 // The failed state is the exception: it becomes an explicit retry action.
