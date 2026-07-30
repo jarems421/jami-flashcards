@@ -163,17 +163,30 @@ Two things this surfaced:
   `lib/workspace/notebook-page-state.ts` as `NotebookSaveStatus`, with
   `NotebookSaveIndicator` re-exporting the old name.
 
-**Batch 2.1 — `useNotebookPersistenceController`** (lines 1105–1480, 1912–2234,
-2551–2658; ~800 lines)
+**Batch 2.1 — `useNotebookPersistenceController`** — **done**
 
-Autosave scheduling, draft write/read, `savePageSnapshot`, `saveCurrentPage`,
-exit-save, retry, draft-conflict resolution — **one commit, not two.** The page
-currently holds `saveCurrentPageRef` and `persistCurrentPageDraftRef` purely to
-break a circular reference between these two, plus `saveOperationRef` to serialise
-them. Splitting the extraction preserves that ref indirection, which is the exact
-thing making the region unreadable. Extracting together lets the ref hop be deleted.
+Autosave scheduling, draft write/read, `savePageSnapshot`, `saveCurrentPage`, and
+the exit flush, extracted as one commit rather than two.
 
-Highest-risk batch in the plan. Nothing else on the same day.
+The payoff landed as predicted: `saveCurrentPageRef` and
+`persistCurrentPageDraftRef` existed **only** so the debounce timers could reach
+functions declared ~700 lines further down. Both now live in the controller's
+scope, the timers call them directly, and the indirection is deleted. Splitting
+save from draft would have preserved it.
+
+Two duplications collapsed on the way:
+
+- `persistCurrentPageDraft` and `persistCurrentPageDraftSync` were ~40 near
+  identical lines differing only in `serializeAsync()` vs `serialize()`. They
+  share one `buildDraft` helper now.
+- The `inkInteractionActiveRef.current || inkEditorRef.current?.isInteracting()`
+  pair appeared six times; it is one injected `isInkInteracting`.
+
+`flushInkUiSync` stayed in the page on purpose — it mixes ink undo/redo depths
+with the save-status flush, and those depths belong to 2.4. Persistence takes
+`commitUi` / `scheduleUiCommit` callbacks rather than reaching into ink state.
+
+Page: 4,269 → 3,845 lines. Refs: 45 → 37.
 
 **Batch 2.2 — `useNotebookHydrationController`** (lines 1481–1911, ~430 lines)
 
