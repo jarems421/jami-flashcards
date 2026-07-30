@@ -41,6 +41,7 @@ import {
 import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
 import { useNotebookLoader } from "@/hooks/useNotebookLoader";
+import { useNotebookInkController } from "@/hooks/useNotebookInkController";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
 import { useNotebookPageTrack } from "@/hooks/useNotebookPageTrack";
 import {
@@ -91,7 +92,6 @@ import {
   shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
 import {
-  NOTEBOOK_INK_UI_SYNC_IDLE_MS,
 } from "@/lib/workspace/notebook-autosave";
 import {
   clampNotebookPagePan,
@@ -159,11 +159,6 @@ type PageSwipeState = {
   completed: boolean;
 };
 type PageFrameSize = { width: number; height: number };
-type NotebookUndoAction = {
-  type: "textBlocks";
-  previous: NotebookTextBlock[];
-  next: NotebookTextBlock[];
-};
 type NotebookConfirmRequest =
   | { kind: "clear-page" }
   | { kind: "delete-page"; page: NotebookPage };
@@ -300,17 +295,48 @@ export default function NotebookEditorPage() {
     },
     onDraftRestored: () => setInkEditorMountRevision((current) => current + 1),
   });
+
+  const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
+
+  const {
+    inkReadyRef,
+    inkInteractionActiveRef,
+    stylusInteractionRef,
+    stylusCooldownUntilRef,
+    inkReady,
+    inkHasContent,
+    undoDepth,
+    redoDepth,
+    setInkReady,
+    setInkHasContent,
+    isInteracting: isInkInteracting,
+    recordTextEdit: pushUndoAction,
+    undo: handleUndo,
+    redo: handleRedo,
+    clearHistory: clearInkHistory,
+    handleInkChange,
+    handleInkHistoryChange,
+    handleInteractionChange: handleInkInteractionChange,
+    commitUi: flushInkUiSync,
+    scheduleUiCommit: scheduleInkUiSync,
+    cancelUiCommit: cancelInkUiSync,
+  } = useNotebookInkController({
+    pageState,
+    inkEditorRef,
+    onEdit: (options) => markPageUnsaved(options),
+    resetTextBlockInteraction: () => resetTextBlockInteraction(),
+    onUiCommitted: () =>
+      setFeedback((current) =>
+        current?.message === "Could not autosave this page." ? null : current
+      ),
+  });
+
   const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
   const [penThicknessPercent, setPenThicknessPercent] = useState(50);
   const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>("yellow");
   const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
   const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
   const [eraserWidth, setEraserWidth] = useState<NotebookEraserSize>("medium");
-  const [undoDepth, setUndoDepth] = useState(0);
-  const [redoDepth, setRedoDepth] = useState(0);
-  const [inkUndoDepth, setInkUndoDepth] = useState(0);
-  const [inkRedoDepth, setInkRedoDepth] = useState(0);
-  const [inkHasContent, setInkHasContent] = useState(false);
   const [pageZoom, setPageZoom] = useState(1);
   const [pagePan, setPagePan] = useState<NotebookPagePan>({ x: 0, y: 0 });
   const [frameSize, setFrameSize] = useState<PageFrameSize>({ width: 0, height: 0 });
@@ -340,7 +366,6 @@ export default function NotebookEditorPage() {
   const [createPageProgress, setCreatePageProgress] = useState(0);
   const [creatingPage, setCreatingPage] = useState(false);
   const [createPageBounce, setCreatePageBounce] = useState(false);
-  const [inkReady, setInkReady] = useState(false);
   const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
@@ -357,28 +382,15 @@ export default function NotebookEditorPage() {
   const pageCreationInFlightRef = useRef(false);
   const maybeFinishPageHandoffRef = useRef<() => void>(() => undefined);
   const handoffFinishAnimationFrameRef = useRef<number | null>(null);
-  const inkReadyRef = useRef(false);
   const activePageBackgroundReadyRef = useRef(true);
   const createPageActiveRef = useRef(false);
   const createPageAffordanceRef = useRef<HTMLDivElement | null>(null);
   const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
-  const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
-  const inkUiSyncTimerRef = useRef<number | null>(null);
-  const inkInteractionActiveRef = useRef(false);
-  const pendingInkUiRef = useRef<{
-    hasContent: boolean;
-    redoDepth: number;
-    undoDepth: number;
-  } | null>(null);
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
-  const undoStackRef = useRef<NotebookUndoAction[]>([]);
-  const redoStackRef = useRef<NotebookUndoAction[]>([]);
   const editorRevisionRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
   const touchInkHintTimeoutRef = useRef<number | null>(null);
-  const stylusInteractionRef = useRef(false);
-  const stylusCooldownUntilRef = useRef(0);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
@@ -388,6 +400,14 @@ export default function NotebookEditorPage() {
     () => pages.findIndex((page) => page.id === selectedPage?.id),
     [pages, selectedPage?.id]
   );
+
+  // Each time the page changes, the ink editor remounts and re-deserializes the
+  // SVG. Mark ink as not-yet-ready so the static ink underlay shows until the
+  // editor paints, then NotebookInkEditor's onReady clears it — no blank flash.
+  useEffect(() => {
+    inkReadyRef.current = false;
+    setInkReady(false);
+  }, [inkReadyRef, selectedPage?.id, setInkReady]);
   const hasMappedBackgroundPages = useMemo(
     () => pages.some((page) => Boolean(page.backgroundFileId)),
     [pages]
@@ -691,6 +711,8 @@ export default function NotebookEditorPage() {
     [
       activeNotebookFile,
       activePdfRenderKey,
+      inkInteractionActiveRef,
+      inkReadyRef,
       notebook,
       pageState,
       selectedPage?.id,
@@ -713,14 +735,6 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     createPageActiveRef.current = createPageActive;
   }, [createPageActive]);
-
-  // Each time the page changes, the ink editor remounts and re-deserializes the
-  // SVG. Mark ink as not-yet-ready so the static ink underlay shows until the
-  // editor paints, then NotebookInkEditor's onReady clears it — no blank flash.
-  useEffect(() => {
-    inkReadyRef.current = false;
-    setInkReady(false);
-  }, [selectedPage?.id]);
 
   useEffect(() => {
     if (!activeNotebookFile) {
@@ -809,41 +823,6 @@ export default function NotebookEditorPage() {
     pagePanLiveRef.current = pagePan;
   }, [pagePan, pagePanLiveRef]);
 
-  const pushUndoAction = useCallback((action: NotebookUndoAction) => {
-    undoStackRef.current = [...undoStackRef.current.slice(-39), action];
-    redoStackRef.current = [];
-    setUndoDepth(undoStackRef.current.length);
-    setRedoDepth(0);
-  }, []);
-
-  const cancelInkUiSync = useCallback(() => {
-    if (inkUiSyncTimerRef.current === null) return;
-    window.clearTimeout(inkUiSyncTimerRef.current);
-    inkUiSyncTimerRef.current = null;
-  }, []);
-
-  const flushInkUiSync = useCallback(() => {
-    cancelInkUiSync();
-    const pending = pendingInkUiRef.current;
-    if (pending) {
-      pendingInkUiRef.current = null;
-      setInkHasContent(pending.hasContent);
-      setInkUndoDepth(pending.undoDepth);
-      setInkRedoDepth(pending.redoDepth);
-    }
-    pageState.flushPendingRender();
-    setFeedback((current) =>
-      current?.message === "Could not autosave this page." ? null : current
-    );
-  }, [cancelInkUiSync, pageState]);
-
-  const scheduleInkUiSync = useCallback(() => {
-    cancelInkUiSync();
-    inkUiSyncTimerRef.current = window.setTimeout(() => {
-      inkUiSyncTimerRef.current = null;
-      flushInkUiSync();
-    }, NOTEBOOK_INK_UI_SYNC_IDLE_MS);
-  }, [cancelInkUiSync, flushInkUiSync]);
 
   const handlePageSaved = useCallback((result: NotebookPageSaveResult) => {
     setPages((current) =>
@@ -887,13 +866,6 @@ export default function NotebookEditorPage() {
     );
   }, [setNotebook, setPages]);
 
-  const isInkInteracting = useCallback(
-    () =>
-      inkInteractionActiveRef.current ||
-      Boolean(inkEditorRef.current?.isInteracting()),
-    []
-  );
-
   const {
     markPageUnsaved,
     saveCurrentPage,
@@ -925,7 +897,7 @@ export default function NotebookEditorPage() {
 
   const commitTextBlockHistory = useCallback(
     (previous: NotebookTextBlock[], next: NotebookTextBlock[]) => {
-      pushUndoAction({ type: "textBlocks", previous, next });
+      pushUndoAction(previous, next);
     },
     [pushUndoAction]
   );
@@ -1002,16 +974,8 @@ export default function NotebookEditorPage() {
     if (!selectedPage) {
       setTextBlocks([]);
       resetTextBlockInteraction();
-      undoStackRef.current = [];
-      redoStackRef.current = [];
-      setUndoDepth(0);
-      setRedoDepth(0);
-      setInkUndoDepth(0);
-      setInkRedoDepth(0);
+      clearInkHistory();
       setInkHasContent(false);
-      inkInteractionActiveRef.current = false;
-      pendingInkUiRef.current = null;
-      cancelInkUiSync();
       pageState.resetHydration();
       return;
     }
@@ -1022,18 +986,10 @@ export default function NotebookEditorPage() {
 
     setTextBlocks(selectedPage.textBlocks);
     resetTextBlockInteraction();
-    undoStackRef.current = [];
-    redoStackRef.current = [];
-    setUndoDepth(0);
-    setRedoDepth(0);
-    setInkUndoDepth(0);
-    setInkRedoDepth(0);
+    clearInkHistory();
     setInkHasContent(
       Boolean(selectedPage.inkData?.svg) || (selectedPage.strokeData?.strokes.length ?? 0) > 0
     );
-    inkInteractionActiveRef.current = false;
-    pendingInkUiRef.current = null;
-    cancelInkUiSync();
     setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
     setPageStyle(selectedPage.pageStyle ?? notebook?.pageStyle ?? "plain");
     pageState.hydratePage(selectedPage.id, selectedPage.contentRevision);
@@ -1053,6 +1009,8 @@ export default function NotebookEditorPage() {
     window.requestAnimationFrame(() => maybeFinishPageHandoffRef.current());
   }, [
     cancelInkUiSync,
+    clearInkHistory,
+    setInkHasContent,
     notebook?.pageColor,
     notebook?.pageStyle,
     pageState,
@@ -1204,6 +1162,8 @@ export default function NotebookEditorPage() {
     resetPageSurfaceTransform,
     resolvePageTrackTransition,
     setPagePreviewVisibility,
+    stylusCooldownUntilRef,
+    stylusInteractionRef,
     updatePageSwipeMotion,
     writePageTrackOffset,
   ]);
@@ -1266,12 +1226,13 @@ export default function NotebookEditorPage() {
       getInkInteractionActive: () => inkInteractionActiveRef.current,
     });
   }, [
-      cancelQueuedPageTrackOffset,
-      pageSurfaceReady,
-      pageSwipeMotionRef,
-      pageTrackOffsetRef,
-      selectedPage?.id,
-    ]);
+    cancelQueuedPageTrackOffset,
+    inkInteractionActiveRef,
+    pageSurfaceReady,
+    pageSwipeMotionRef,
+    pageTrackOffsetRef,
+    selectedPage?.id,
+  ]);
 
   const prepareCurrentPageForNavigation = useCallback(async () => {
     if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) {
@@ -1286,7 +1247,7 @@ export default function NotebookEditorPage() {
       return saveCurrentPage({ flush: true });
     }
     return true;
-  }, [hasSaveInFlight, pageState, saveCurrentPage]);
+  }, [hasSaveInFlight, inkInteractionActiveRef, pageState, saveCurrentPage]);
 
   const selectPageById = useCallback(
     async (pageId: string) => {
@@ -1417,6 +1378,7 @@ export default function NotebookEditorPage() {
       setCreatingPage(false);
     });
   }, [
+    inkReadyRef,
     pageState,
     pageSwipeMotionRef,
     setPagePreviewVisibility,
@@ -1453,6 +1415,7 @@ export default function NotebookEditorPage() {
       });
     },
     [
+      inkReadyRef,
       pageTrackOffsetRef,
       resolvePageBackground,
       setSelectedPageId,
@@ -2217,40 +2180,6 @@ export default function NotebookEditorPage() {
 
   // Ink history lives entirely in js-draw; the page-level stack only tracks
   // text-block changes. Undo drains js-draw first, then falls back to text.
-  const handleUndo = useCallback(() => {
-    if ((inkEditorRef.current?.getHistoryState().undoDepth ?? 0) > 0) {
-      inkEditorRef.current?.undo();
-      return;
-    }
-    const action = undoStackRef.current.at(-1);
-    if (!action) return;
-    undoStackRef.current = undoStackRef.current.slice(0, -1);
-    redoStackRef.current = [...redoStackRef.current.slice(-39), action];
-    setUndoDepth(undoStackRef.current.length);
-    setRedoDepth(redoStackRef.current.length);
-
-    setTextBlocks(action.previous);
-    resetTextBlockInteraction();
-    markPageUnsaved();
-  }, [markPageUnsaved, resetTextBlockInteraction, setTextBlocks]);
-
-  const handleRedo = useCallback(() => {
-    if ((inkEditorRef.current?.getHistoryState().redoDepth ?? 0) > 0) {
-      inkEditorRef.current?.redo();
-      return;
-    }
-    const action = redoStackRef.current.at(-1);
-    if (!action) return;
-    redoStackRef.current = redoStackRef.current.slice(0, -1);
-    undoStackRef.current = [...undoStackRef.current.slice(-39), action];
-    setRedoDepth(redoStackRef.current.length);
-    setUndoDepth(undoStackRef.current.length);
-
-    setTextBlocks(action.next);
-    resetTextBlockInteraction();
-    markPageUnsaved();
-  }, [markPageUnsaved, resetTextBlockInteraction, setTextBlocks]);
-
   const performClearCurrentPage = () => {
     inkEditorRef.current?.clear();
     setInkHasContent(false);
@@ -3020,35 +2949,10 @@ export default function NotebookEditorPage() {
                         getHighlighterWidthFromPercent(
                           highlighterThicknessPercent
                         ),
-                      onChange: () => {
-                        const current = pendingInkUiRef.current;
-                        pendingInkUiRef.current = {
-                          hasContent:
-                            inkEditorRef.current?.hasInk() ?? false,
-                          undoDepth: current?.undoDepth ?? inkUndoDepth,
-                          redoDepth: current?.redoDepth ?? inkRedoDepth,
-                        };
-                        markPageUnsaved({ deferUi: true });
-                      },
-                      onHistoryChange: (
-                        nextUndoDepth,
-                        nextRedoDepth
-                      ) => {
-                        pendingInkUiRef.current = {
-                          hasContent:
-                            pendingInkUiRef.current?.hasContent ??
-                            (inkEditorRef.current?.hasInk() ?? false),
-                          undoDepth: nextUndoDepth,
-                          redoDepth: nextRedoDepth,
-                        };
-                        scheduleInkUiSync();
-                      },
+                      onChange: handleInkChange,
+                      onHistoryChange: handleInkHistoryChange,
                       onInteractionChange: (active) => {
-                        inkInteractionActiveRef.current = active;
-                        stylusInteractionRef.current = active;
-                        stylusCooldownUntilRef.current = active
-                          ? Number.POSITIVE_INFINITY
-                          : Date.now() + 180;
+                        handleInkInteractionChange(active);
                         if (active) {
                           setPenMenuOpen(false);
                           setHighlighterMenuOpen(false);
@@ -3058,9 +2962,7 @@ export default function NotebookEditorPage() {
                           cancelInkUiSync();
                           cancelScheduledPersistence();
                         } else {
-                          if (pendingInkUiRef.current) {
-                            scheduleInkUiSync();
-                          }
+                          scheduleInkUiSync();
                           if (pageState.read().saveStatus === "unsaved") {
                             schedulePendingWork();
                           }
@@ -3381,7 +3283,7 @@ export default function NotebookEditorPage() {
                   <ToolbarIconButton
                     label="Undo (Ctrl+Z)"
                     icon="undo"
-                    disabled={undoDepth === 0 && inkUndoDepth === 0}
+                    disabled={undoDepth === 0}
                     onClick={() => {
                       setPenMenuOpen(false);
                       setHighlighterMenuOpen(false);
@@ -3392,7 +3294,7 @@ export default function NotebookEditorPage() {
                   <ToolbarIconButton
                     label="Redo (Ctrl+Shift+Z)"
                     icon="redo"
-                    disabled={redoDepth === 0 && inkRedoDepth === 0}
+                    disabled={redoDepth === 0}
                     onClick={() => {
                       setPenMenuOpen(false);
                       setHighlighterMenuOpen(false);
