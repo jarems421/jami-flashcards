@@ -11,7 +11,6 @@ import {
   useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
-  type TransitionEvent as ReactTransitionEvent,
 } from "react";
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
@@ -43,6 +42,7 @@ import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
 import { useNotebookLoader } from "@/hooks/useNotebookLoader";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
+import { useNotebookPageTrack } from "@/hooks/useNotebookPageTrack";
 import {
   useNotebookPersistenceController,
   type NotebookPageSaveResult,
@@ -192,7 +192,6 @@ const NOTEBOOK_ASSISTANT_QUICK_ACTIONS = [
       "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
   },
 ] as const;
-const NOTEBOOK_PAGE_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const NOTEBOOK_TOOLBAR_DOCK_CLASS: Record<NotebookToolbarDock, string> = {
   top: "left-1/2 top-[0.9rem] -translate-x-1/2",
   right:
@@ -353,19 +352,9 @@ export default function NotebookEditorPage() {
     canvas: null,
     renderKey: null,
   });
-  const pageTrackOffsetRef = useRef(0);
-  const pageTrackPendingOffsetRef = useRef(0);
-  const pageTrackAnimationFrameRef = useRef<number | null>(null);
-  const pageTrackTransitionResolverRef = useRef<(() => void) | null>(null);
-  const pagePreviewDirectionRef = useRef<"next" | "previous" | null>(null);
-  const pageSwipeInkSnapshotRef = useRef<{
-    pageId: string;
-    svg: string;
-  } | null>(null);
   const pageNavigationTokenRef = useRef(0);
   const pageNavigationLockedRef = useRef(false);
   const pageCreationInFlightRef = useRef(false);
-  const pageSwipeMotionRef = useRef<PageSwipeMotion | null>(null);
   const maybeFinishPageHandoffRef = useRef<() => void>(() => undefined);
   const handoffFinishAnimationFrameRef = useRef<number | null>(null);
   const inkReadyRef = useRef(false);
@@ -510,148 +499,33 @@ export default function NotebookEditorPage() {
     onSwipeEnd: (event, options) => handleStopPageSwipe(event, options),
   });
 
-  const updatePageSwipeMotion = useCallback((next: PageSwipeMotion | null) => {
-    pageSwipeMotionRef.current = next;
-    setPageSwipeMotion(next);
-  }, []);
-
-  const setPagePreviewDirection = useCallback(
-    (direction: "next" | "previous" | null) => {
-      if (pagePreviewDirectionRef.current === direction) return;
-      pagePreviewDirectionRef.current = direction;
-      const track = pageTrackRef.current;
-      if (!track) return;
-      if (direction) {
-        track.dataset.swipeDirection = direction;
-      } else {
-        delete track.dataset.swipeDirection;
-      }
-    },
-    []
-  );
-
-  const capturePageSwipeInkSnapshot = useCallback(() => {
-    const page = pageState.read().selectedPage;
-    if (!page || pageSwipeInkSnapshotRef.current?.pageId === page.id) return;
-    const svg = inkEditorRef.current?.serialize() ?? selectedPageInkSvg;
-    const snapshot = { pageId: page.id, svg };
-    pageSwipeInkSnapshotRef.current = snapshot;
-    const track = pageTrackRef.current;
-    if (track) delete track.dataset.inkSnapshotReady;
-    setPageSwipeInkSnapshot(snapshot);
-  }, [pageState, selectedPageInkSvg]);
-
-  const markPageSwipeInkSnapshotReady = useCallback((pageId: string) => {
-    if (pageSwipeInkSnapshotRef.current?.pageId !== pageId) return;
-    const track = pageTrackRef.current;
-    if (track) track.dataset.inkSnapshotReady = "true";
-  }, []);
-
-  const setPagePreviewVisibility = useCallback((visible: boolean) => {
-    const layer = pagePreviewLayerRef.current;
-    if (layer) layer.style.visibility = visible ? "visible" : "hidden";
-    const track = pageTrackRef.current;
-    if (track) {
-      if (visible) {
-        track.dataset.swipeActive = "true";
-      } else {
-        delete track.dataset.swipeActive;
-        delete track.dataset.swipeDirection;
-        delete track.dataset.inkSnapshotReady;
-      }
-    }
-    if (!visible) {
-      pagePreviewDirectionRef.current = null;
-      pageSwipeInkSnapshotRef.current = null;
-      setPageSwipeInkSnapshot(null);
-    }
-  }, []);
-
-  const writePageTrackOffset = useCallback((offset: number) => {
-    pageTrackOffsetRef.current = offset;
-    pageTrackPendingOffsetRef.current = offset;
-    const track = pageTrackRef.current;
-    if (track) track.style.transform = `translate3d(${offset}px, 0, 0)`;
-  }, []);
-
-  const queuePageTrackOffset = useCallback(
-    (offset: number) => {
-      pageTrackOffsetRef.current = offset;
-      pageTrackPendingOffsetRef.current = offset;
-      if (pageTrackAnimationFrameRef.current !== null) return;
-      pageTrackAnimationFrameRef.current = window.requestAnimationFrame(() => {
-        pageTrackAnimationFrameRef.current = null;
-        writePageTrackOffset(pageTrackPendingOffsetRef.current);
-      });
-    },
-    [writePageTrackOffset]
-  );
-
-  const resolvePageTrackTransition = useCallback(() => {
-    const resolve = pageTrackTransitionResolverRef.current;
-    pageTrackTransitionResolverRef.current = null;
-    resolve?.();
-  }, []);
-
-  const animatePageTrackTo = useCallback(
-    (motion: PageSwipeMotion) => {
-      const previewDirection =
-        motion.direction ??
-        getNotebookSwipePreviewDirection(pageTrackOffsetRef.current);
-      if (motion.targetOffset !== 0 || pageTrackOffsetRef.current !== 0) {
-        capturePageSwipeInkSnapshot();
-      }
-      setPagePreviewDirection(previewDirection);
-      updatePageSwipeMotion(motion);
-      setPagePreviewVisibility(true);
-      if (pageTrackAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(pageTrackAnimationFrameRef.current);
-        pageTrackAnimationFrameRef.current = null;
-      }
-      const track = pageTrackRef.current;
-      if (!track) {
-        writePageTrackOffset(motion.targetOffset);
-        return Promise.resolve();
-      }
-      track.style.transition = "none";
-      track.style.transform = `translate3d(${pageTrackOffsetRef.current}px, 0, 0)`;
-      void track.getBoundingClientRect();
-
-      return new Promise<void>((resolve) => {
-        pageTrackTransitionResolverRef.current = resolve;
-        if (
-          motion.durationMs <= 0 ||
-          Math.abs(motion.targetOffset - pageTrackOffsetRef.current) < 0.5
-        ) {
-          writePageTrackOffset(motion.targetOffset);
-          queueMicrotask(resolvePageTrackTransition);
-          return;
-        }
-        track.style.transition = `transform ${motion.durationMs}ms ${NOTEBOOK_PAGE_SETTLE_EASING}`;
-        writePageTrackOffset(motion.targetOffset);
-      });
-    },
-    [
-      capturePageSwipeInkSnapshot,
-      resolvePageTrackTransition,
-      setPagePreviewDirection,
-      setPagePreviewVisibility,
-      updatePageSwipeMotion,
-      writePageTrackOffset,
-    ]
-  );
-
-  const handlePageTrackTransitionEnd = useCallback(
-    (event: ReactTransitionEvent<HTMLDivElement>) => {
-      if (
-        event.target === event.currentTarget &&
-        event.propertyName === "transform"
-      ) {
-        resolvePageTrackTransition();
-      }
-    },
-    [resolvePageTrackTransition]
-  );
+  const {
+    offsetRef: pageTrackOffsetRef,
+    motionRef: pageSwipeMotionRef,
+    updateSwipeMotion: updatePageSwipeMotion,
+    setPreviewDirection: setPagePreviewDirection,
+    setPreviewVisibility: setPagePreviewVisibility,
+    captureInkSnapshot: capturePageSwipeInkSnapshot,
+    markInkSnapshotReady: markPageSwipeInkSnapshotReady,
+    writeOffset: writePageTrackOffset,
+    queueOffset: queuePageTrackOffset,
+    animateTo: animatePageTrackTo,
+    handleTransitionEnd: handlePageTrackTransitionEnd,
+    resolveTransition: resolvePageTrackTransition,
+    cancelQueuedOffset: cancelQueuedPageTrackOffset,
+    writeCreatePageProgress,
+  } = useNotebookPageTrack({
+    trackRef: pageTrackRef,
+    previewLayerRef: pagePreviewLayerRef,
+    createPageAffordanceRef,
+    createPageIndicatorRef,
+    createPageProgressCircleRef,
+    getSelectedPageId: () => pageState.read().selectedPage?.id ?? null,
+    getInkSnapshotSvg: () =>
+      inkEditorRef.current?.serialize() ?? selectedPageInkSvg,
+    onSwipeMotionChange: setPageSwipeMotion,
+    onInkSnapshotChange: setPageSwipeInkSnapshot,
+  });
 
   const markActivePageBackgroundSettled = useCallback(() => {
     activePageBackgroundReadyRef.current = true;
@@ -822,25 +696,6 @@ export default function NotebookEditorPage() {
       selectedPage?.id,
     ]
   );
-
-  const writeCreatePageProgress = useCallback((progress: number) => {
-    const next = Math.max(0, Math.min(1, progress));
-    if (createPageAffordanceRef.current) {
-      createPageAffordanceRef.current.style.opacity = String(
-        Math.min(1, 0.2 + next * 0.8)
-      );
-    }
-    if (createPageIndicatorRef.current) {
-      createPageIndicatorRef.current.style.transform = `scale(${
-        0.72 + next * 0.28
-      })`;
-    }
-    if (createPageProgressCircleRef.current) {
-      createPageProgressCircleRef.current.style.strokeDashoffset = String(
-        2 * Math.PI * 20 * (1 - next)
-      );
-    }
-  }, []);
 
   // `selectedPage` is derived from the pages list, so the store has to be told
   // about it. Handlers read the open page through `pageState.read()`.
@@ -1294,10 +1149,7 @@ export default function NotebookEditorPage() {
         pageTrackOffsetRef.current !== 0
       ) {
         pageNavigationTokenRef.current += 1;
-        if (pageTrackAnimationFrameRef.current !== null) {
-          window.cancelAnimationFrame(pageTrackAnimationFrameRef.current);
-          pageTrackAnimationFrameRef.current = null;
-        }
+        cancelQueuedPageTrackOffset();
         if (handoffFinishAnimationFrameRef.current !== null) {
           window.cancelAnimationFrame(handoffFinishAnimationFrameRef.current);
           handoffFinishAnimationFrameRef.current = null;
@@ -1344,8 +1196,11 @@ export default function NotebookEditorPage() {
   }, [
     cancelActivePinch,
     cancelPinchZoomAnimationFrame,
-    pagePanLiveRef,
+    cancelQueuedPageTrackOffset,
     finishActiveTextBlockGesture,
+    pagePanLiveRef,
+    pageSwipeMotionRef,
+    pageTrackOffsetRef,
     resetPageSurfaceTransform,
     resolvePageTrackTransition,
     setPagePreviewVisibility,
@@ -1359,10 +1214,7 @@ export default function NotebookEditorPage() {
    */
   const cancelPageSwipeForPinch = () => {
     if (!pageSwipeRef.current) return;
-    if (pageTrackAnimationFrameRef.current !== null) {
-      window.cancelAnimationFrame(pageTrackAnimationFrameRef.current);
-      pageTrackAnimationFrameRef.current = null;
-    }
+    cancelQueuedPageTrackOffset();
     const track = pageTrackRef.current;
     if (track) track.style.transition = "none";
     writePageTrackOffset(0);
@@ -1413,7 +1265,13 @@ export default function NotebookEditorPage() {
       surface,
       getInkInteractionActive: () => inkInteractionActiveRef.current,
     });
-  }, [pageSurfaceReady, selectedPage?.id]);
+  }, [
+      cancelQueuedPageTrackOffset,
+      pageSurfaceReady,
+      pageSwipeMotionRef,
+      pageTrackOffsetRef,
+      selectedPage?.id,
+    ]);
 
   const prepareCurrentPageForNavigation = useCallback(async () => {
     if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) {
@@ -1454,10 +1312,7 @@ export default function NotebookEditorPage() {
       if (options.invalidate !== false) {
         pageNavigationTokenRef.current += 1;
       }
-      if (pageTrackAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(pageTrackAnimationFrameRef.current);
-        pageTrackAnimationFrameRef.current = null;
-      }
+      cancelQueuedPageTrackOffset();
       if (handoffFinishAnimationFrameRef.current !== null) {
         window.cancelAnimationFrame(handoffFinishAnimationFrameRef.current);
         handoffFinishAnimationFrameRef.current = null;
@@ -1479,6 +1334,7 @@ export default function NotebookEditorPage() {
       setCreatePageBounce(false);
     },
     [
+      cancelQueuedPageTrackOffset,
       resolvePageTrackTransition,
       setPagePreviewVisibility,
       updatePageSwipeMotion,
@@ -1511,9 +1367,12 @@ export default function NotebookEditorPage() {
   }, [
     cancelActivePinch,
     cancelPinchZoomAnimationFrame,
+    cancelQueuedPageTrackOffset,
     clearPageTrackMotion,
     frameSize.height,
     frameSize.width,
+    pageSwipeMotionRef,
+    pageTrackOffsetRef,
     pageTrackTravelDistance,
     resetPageSurfaceTransform,
     updatePageSwipeMotion,
@@ -1559,6 +1418,7 @@ export default function NotebookEditorPage() {
     });
   }, [
     pageState,
+    pageSwipeMotionRef,
     setPagePreviewVisibility,
     updatePageSwipeMotion,
     writePageTrackOffset,
@@ -1593,6 +1453,7 @@ export default function NotebookEditorPage() {
       });
     },
     [
+      pageTrackOffsetRef,
       resolvePageBackground,
       setSelectedPageId,
       updatePageSwipeMotion,
@@ -1620,11 +1481,12 @@ export default function NotebookEditorPage() {
       clearPageTrackMotion({ invalidate: false });
     },
     [
-      animatePageTrackTo,
-      clearPageTrackMotion,
-      pageTrackTravelDistance,
-      prefersReducedNotebookMotion,
-    ]
+        animatePageTrackTo,
+        clearPageTrackMotion,
+        pageTrackOffsetRef,
+        pageTrackTravelDistance,
+        prefersReducedNotebookMotion,
+      ]
   );
 
   const runPageTrackNavigation = useCallback(
@@ -1687,6 +1549,7 @@ export default function NotebookEditorPage() {
     [
       animatePageTrackTo,
       beginPageHandoff,
+      pageTrackOffsetRef,
       pageTrackTravelDistance,
       prefersReducedNotebookMotion,
       prepareCurrentPageForNavigation,
