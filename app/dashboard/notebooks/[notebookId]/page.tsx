@@ -41,6 +41,7 @@ import {
 } from "@/components/ui";
 import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
+import { useNotebookLoader } from "@/hooks/useNotebookLoader";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
 import {
   useNotebookPersistenceController,
@@ -51,7 +52,6 @@ import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
-  Notebook,
   NotebookFile,
   NotebookPage,
   NotebookPageColor,
@@ -66,7 +66,6 @@ import {
   NOTEBOOK_PAGE_COORDINATE_WIDTH,
 } from "@/lib/workspace/notebooks";
 import {
-  applyNotebookDraftToPage,
   getNotebookPageStyleBackground,
   getNotebookStrokePaintColor,
   normalizeNotebookStrokes,
@@ -78,14 +77,6 @@ import {
   shouldShowNotebookNewPagePreview,
   type NotebookPageSwipeMotion as PageSwipeMotion,
 } from "@/lib/workspace/notebook-carousel";
-import {
-  createNotebookPageDraft,
-  deleteNotebookPageDraft,
-  getNotebookDraftDecision,
-  readNotebookPageDraft,
-  writeNotebookPageDraft,
-  type NotebookPageDraft,
-} from "@/lib/workspace/notebook-drafts";
 import {
   type NotebookEraserMode,
   type NotebookEraserSize,
@@ -129,21 +120,16 @@ import {
 import {
   createNotebookPage,
   deleteNotebookPage,
-  getNotebookById,
-  getNotebookFiles,
-  getNotebookPages,
 } from "@/services/study/notebooks";
 import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
 import {
   getNotebookFileBytes,
-  getNotebookFileDownloadUrl,
 } from "@/services/study/notebook-files";
 import {
   legacyStrokesToJsDrawSvg,
 } from "@/lib/workspace/notebook-ink-data";
 import {
   buildNotebookPageSearch,
-  getNotebookPageIdFromSearch,
   prepareNotebookExit,
 } from "@/lib/workspace/notebook-navigation";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
@@ -181,10 +167,6 @@ type NotebookUndoAction = {
 type NotebookConfirmRequest =
   | { kind: "clear-page" }
   | { kind: "delete-page"; page: NotebookPage };
-type NotebookDraftConflict = {
-  draft: NotebookPageDraft;
-  pageId: string;
-};
 
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
@@ -276,14 +258,6 @@ export default function NotebookEditorPage() {
   const notebookId = Array.isArray(params.notebookId)
     ? params.notebookId[0]
     : params.notebookId;
-  const [notebook, setNotebook] = useState<Notebook | null>(null);
-  const [pages, setPages] = useState<NotebookPage[]>([]);
-  const [files, setFiles] = useState<NotebookFile[]>([]);
-  const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
-  const [resolvedImageFileIds, setResolvedImageFileIds] = useState<
-    Record<string, true>
-  >({});
-  const [selectedPageId, setSelectedPageId] = useState<string | null>(null);
   // Shared page state lives in one store so its committed value and its
   // render value cannot drift. Read it with `pageState.read()` inside handlers.
   const { store: pageState, state: pageSnapshot } = useNotebookPageState();
@@ -295,6 +269,38 @@ export default function NotebookEditorPage() {
     setSaveStatus,
     setTool,
   } = pageState;
+  const [feedback, setFeedback] = useState<Feedback | null>(null);
+
+  const {
+    notebook,
+    setNotebook,
+    pages,
+    setPages,
+    files,
+    setFiles,
+    fileUrls,
+    resolvedImageFileIds,
+    selectedPageId,
+    setSelectedPageId,
+    loading,
+    draftConflict,
+    takeRecoveredDraft,
+    restoreLocalDraft: handleRestoreLocalDraft,
+    keepSavedVersion: handleKeepSavedDraftVersion,
+  } = useNotebookLoader({
+    userId: user?.uid,
+    notebookId,
+    pageState,
+    onFeedback: setFeedback,
+    onBeforeLoad: () => {
+      resetViewportGestures();
+      setPageZoom(1);
+      setPagePan({ x: 0, y: 0 });
+      editorRevisionRef.current = 0;
+      resetSaveTracking();
+    },
+    onDraftRestored: () => setInkEditorMountRevision((current) => current + 1),
+  });
   const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
   const [penThicknessPercent, setPenThicknessPercent] = useState(50);
   const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>("yellow");
@@ -309,12 +315,8 @@ export default function NotebookEditorPage() {
   const [pageZoom, setPageZoom] = useState(1);
   const [pagePan, setPagePan] = useState<NotebookPagePan>({ x: 0, y: 0 });
   const [frameSize, setFrameSize] = useState<PageFrameSize>({ width: 0, height: 0 });
-  const [loading, setLoading] = useState(true);
   const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
   const [confirmDialog, setConfirmDialog] = useState<NotebookConfirmRequest | null>(null);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
-  const [draftConflict, setDraftConflict] =
-    useState<NotebookDraftConflict | null>(null);
   const [inkEditorMountRevision, setInkEditorMountRevision] = useState(0);
   const [isPhoneLayout, setIsPhoneLayout] = useState(false);
   const [phoneFullEditing, setPhoneFullEditing] = useState(false);
@@ -374,10 +376,6 @@ export default function NotebookEditorPage() {
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
   const inkEditorRef = useRef<NotebookInkEditorHandle | null>(null);
   const inkUiSyncTimerRef = useRef<number | null>(null);
-  const recoveredDraftRef = useRef<{
-    pageId: string;
-    localRevision: number;
-  } | null>(null);
   const inkInteractionActiveRef = useRef(false);
   const pendingInkUiRef = useRef<{
     hasContent: boolean;
@@ -909,49 +907,6 @@ export default function NotebookEditorPage() {
     window.history.replaceState(window.history.state, "", nextUrl);
   }, [selectedPage?.id]);
 
-  useEffect(() => {
-    let cancelled = false;
-    const loadFileUrls = async () => {
-      const entries = await Promise.all(
-        files.map(async (file) => {
-          if (
-            !file.storagePath ||
-            !file.fileType.startsWith("image/")
-          ) {
-            return [file.id, ""] as const;
-          }
-          try {
-            return [file.id, await getNotebookFileDownloadUrl(file.storagePath)] as const;
-          } catch {
-            return [file.id, ""] as const;
-          }
-        })
-      );
-      if (!cancelled) {
-        setFileUrls(
-          Object.fromEntries(entries.filter(([, url]) => Boolean(url)))
-        );
-        setResolvedImageFileIds(
-          Object.fromEntries(
-            files
-              .filter((file) => file.fileType.startsWith("image/"))
-              .map((file) => [file.id, true] as const)
-          )
-        );
-      }
-    };
-
-    if (files.length === 0) {
-      setFileUrls({});
-      setResolvedImageFileIds({});
-      return;
-    }
-    void loadFileUrls();
-    return () => {
-      cancelled = true;
-    };
-  }, [files]);
-
   // Push the precision/stroke selection straight to the ink editor whenever it
   // changes. This bypasses the deferred style application (which can stall if a
   // stale eraser pointer leaves activePointers > 0), so the chosen mode always
@@ -1075,7 +1030,7 @@ export default function NotebookEditorPage() {
           }
         : current
     );
-  }, []);
+  }, [setNotebook, setPages]);
 
   const isInkInteracting = useCallback(
     () =>
@@ -1178,118 +1133,6 @@ export default function NotebookEditorPage() {
       handleTouchPointerEnd(event, options),
   });
 
-  const loadNotebook = useCallback(async () => {
-    if (!user?.uid || !notebookId) {
-      setLoading(false);
-      return;
-    }
-
-    setLoading(true);
-    resetViewportGestures();
-    setPageZoom(1);
-    setPagePan({ x: 0, y: 0 });
-    pageState.resetHydration();
-    editorRevisionRef.current = 0;
-    resetSaveTracking();
-    pageState.setContentRevision(0);
-    recoveredDraftRef.current = null;
-    setDraftConflict(null);
-    try {
-      const nextNotebook = await getNotebookById(user.uid, notebookId);
-      let nextPages: NotebookPage[] = [];
-      let nextFiles: NotebookFile[] = [];
-
-      if (nextNotebook) {
-        const [pagesResult, filesResult] = await Promise.allSettled([
-          getNotebookPages(user.uid, notebookId),
-          getNotebookFiles(user.uid, notebookId),
-        ]);
-
-        if (pagesResult.status === "fulfilled") {
-          nextPages = pagesResult.value;
-        }
-        if (filesResult.status === "fulfilled") {
-          nextFiles = filesResult.value;
-        }
-        if (pagesResult.status === "rejected" || filesResult.status === "rejected") {
-          console.warn("Some notebook sections could not load.", {
-            pagesError: pagesResult.status === "rejected" ? pagesResult.reason : null,
-            filesError: filesResult.status === "rejected" ? filesResult.reason : null,
-          });
-          setFeedback({
-            type: "error",
-            message:
-              "This notebook opened, but pages or file details are still syncing. Refresh in a moment if something looks missing.",
-          });
-        }
-      }
-
-      const requestedPageId =
-        typeof window === "undefined"
-          ? null
-          : getNotebookPageIdFromSearch(window.location.search);
-      const nextSelectedPageId =
-        nextPages.find((page) => page.id === requestedPageId)?.id ??
-        nextPages[0]?.id ??
-        null;
-      const nextSelectedPage = nextPages.find(
-        (page) => page.id === nextSelectedPageId
-      );
-      if (nextSelectedPage && nextNotebook) {
-        const draft = await readNotebookPageDraft({
-          userId: user.uid,
-          notebookId: nextNotebook.id,
-          pageId: nextSelectedPage.id,
-        });
-        if (draft) {
-          const decision = getNotebookDraftDecision(draft, nextSelectedPage);
-          if (decision === "restore") {
-            nextPages = nextPages.map((page) =>
-              page.id === nextSelectedPage.id
-                ? applyNotebookDraftToPage(page, draft)
-                : page
-            );
-            recoveredDraftRef.current = {
-              pageId: nextSelectedPage.id,
-              localRevision: Math.max(1, draft.localRevision),
-            };
-          } else if (decision === "conflict") {
-            setDraftConflict({ draft, pageId: nextSelectedPage.id });
-          } else {
-            void deleteNotebookPageDraft({
-              userId: user.uid,
-              notebookId: nextNotebook.id,
-              pageId: nextSelectedPage.id,
-            });
-          }
-        }
-      }
-
-      setNotebook(nextNotebook);
-      setPages(nextPages);
-      setFiles(nextFiles);
-      setSelectedPageId(nextSelectedPageId);
-    } catch (error) {
-      console.error(error);
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not load this notebook.",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [
-    notebookId,
-    pageState,
-    resetSaveTracking,
-    resetViewportGestures,
-    user?.uid,
-  ]);
-
-  useEffect(() => {
-    void loadNotebook();
-  }, [loadNotebook]);
-
   useEffect(() => {
     if (typeof window === "undefined") return;
 
@@ -1339,12 +1182,8 @@ export default function NotebookEditorPage() {
     setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
     setPageStyle(selectedPage.pageStyle ?? notebook?.pageStyle ?? "plain");
     pageState.hydratePage(selectedPage.id, selectedPage.contentRevision);
-    const recoveredDraft =
-      recoveredDraftRef.current?.pageId === selectedPage.id
-        ? recoveredDraftRef.current
-        : null;
+    const recoveredDraft = takeRecoveredDraft(selectedPage.id);
     if (recoveredDraft) {
-      recoveredDraftRef.current = null;
       editorRevisionRef.current = Math.max(1, recoveredDraft.localRevision);
       setSaveStatus("unsaved");
       setFeedback({
@@ -1369,6 +1208,7 @@ export default function NotebookEditorPage() {
     setPageStyle,
     setSaveStatus,
     setTextBlocks,
+    takeRecoveredDraft,
   ]);
 
   useEffect(() => {
@@ -1599,7 +1439,7 @@ export default function NotebookEditorPage() {
       setSelectedPageId(pageId);
       return true;
     },
-    [pageState, prepareCurrentPageForNavigation]
+    [pageState, prepareCurrentPageForNavigation, setSelectedPageId]
   );
 
   const prefersReducedNotebookMotion = useCallback(
@@ -1754,6 +1594,7 @@ export default function NotebookEditorPage() {
     },
     [
       resolvePageBackground,
+      setSelectedPageId,
       updatePageSwipeMotion,
     ]
   );
@@ -1936,56 +1777,6 @@ export default function NotebookEditorPage() {
     }
     setSaveStatus("unsaved");
     void saveCurrentPage({ flush: true });
-  };
-
-  const handleRestoreLocalDraft = () => {
-    if (!draftConflict || !user?.uid) return;
-    const remotePage = pages.find((page) => page.id === draftConflict.pageId);
-    if (!remotePage) return;
-    const rebasedDraft = createNotebookPageDraft({
-      ...draftConflict.draft,
-      baseContentRevision: remotePage.contentRevision,
-      remoteUpdatedAt: remotePage.updatedAt,
-      savedAt: Date.now(),
-    });
-    recoveredDraftRef.current = {
-      pageId: remotePage.id,
-      localRevision: Math.max(1, rebasedDraft.localRevision),
-    };
-    pageState.resetHydration();
-    setInkEditorMountRevision((current) => current + 1);
-    setPages((current) =>
-      current.map((page) =>
-        page.id === remotePage.id
-          ? applyNotebookDraftToPage(page, rebasedDraft)
-          : page
-      )
-    );
-    setDraftConflict(null);
-    void writeNotebookPageDraft(rebasedDraft).catch((error) => {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "This device could not update the recovery copy.",
-      });
-    });
-  };
-
-  const handleKeepSavedDraftVersion = () => {
-    if (!draftConflict || !user?.uid) return;
-    const conflict = draftConflict;
-    setDraftConflict(null);
-    void deleteNotebookPageDraft({
-      userId: user.uid,
-      notebookId: conflict.draft.notebookId,
-      pageId: conflict.pageId,
-    });
-    setFeedback({
-      type: "success",
-      message: "Kept the latest synced version of this page.",
-    });
   };
 
   const createBlankPageAtEnd = async (velocityX = -2) => {
