@@ -1,8 +1,18 @@
 # Jami manual test script
 
-Everything on this list is live on `main` and **has never been seen running**.
-The suite passes and the build is clean, but "the tests pass" and "it looks
-right" are different claims, and only the first has been checked.
+Everything on this list is live on `main`. The unit suite, the build, and an
+emulator-backed browser suite all pass, but "the tests pass" and "it looks
+right" are different claims, and the items below only have the first.
+
+**What is already covered automatically** (do not redo these by hand):
+`npm run test:e2e` drives a signed-in browser through notebook autosave,
+drawing, toolbar docking, reload, and back-navigation, plus the study review
+loop — at desktop, tablet, and phone widths. What it cannot cover is anything
+needing an Apple Pencil, and anything where the failure is "looks wrong"
+rather than "throws".
+
+**Verified on iPad as of 2026-07-31:** notebook writing feel after the ink
+controller extraction, and undo ordering across ink and text boxes.
 
 Ordered by blast radius, not by feature. The first section can break screens
 that have nothing to do with AI, so start there even though it looks boring.
