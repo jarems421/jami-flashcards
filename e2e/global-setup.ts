@@ -6,6 +6,12 @@ import {
 } from "@/lib/workspace/notebooks";
 import { buildStudyFolderPayload } from "@/lib/workspace/study-folders";
 import {
+  E2E_CARDS,
+  E2E_DECK_ID,
+  E2E_DECK_NAME,
+  E2E_PHONE_CARDS,
+  E2E_PHONE_DECK_ID,
+  E2E_PHONE_DECK_NAME,
   E2E_FOLDER_ID,
   E2E_NOTEBOOK_ID,
   E2E_PAGE_IDS,
@@ -118,6 +124,42 @@ export default async function globalSetup() {
             payload
           )
         ),
+        // Decks and cards are top-level collections scoped by userId, unlike
+        // the notebook data above which lives under users/{uid}.
+        ...[
+          { deckId: E2E_DECK_ID, name: E2E_DECK_NAME, cards: E2E_CARDS },
+          {
+            deckId: E2E_PHONE_DECK_ID,
+            name: E2E_PHONE_DECK_NAME,
+            cards: E2E_PHONE_CARDS,
+          },
+        ].flatMap(({ deckId, name, cards }) => [
+          setDoc(doc(db, "decks", deckId), {
+            name,
+            userId,
+            createdAt: now,
+            colorPreset: "violet",
+            iconPreset: "sparkles",
+            folderIds: [E2E_FOLDER_ID],
+          }),
+          ...cards.map((card, index) =>
+            setDoc(doc(db, "cards", card.id), {
+              deckId,
+              userId,
+              front: card.front,
+              back: card.back,
+              createdAt: now + index,
+              tags: [],
+              topicIds: [],
+              // Brand new cards: no FSRS history, so the scheduler treats
+              // them as due and the session has something to hand out.
+              fsrsState: 0,
+              reps: 0,
+              lapses: 0,
+              dueDate: now,
+            })
+          ),
+        ]),
       ]);
     });
   } finally {
@@ -128,6 +170,7 @@ export default async function globalSetup() {
     "/dashboard",
     `/dashboard/folders/${E2E_FOLDER_ID}`,
     `/dashboard/notebooks/${E2E_NOTEBOOK_ID}?page=${E2E_PAGE_IDS[0]}`,
+    `/dashboard/study?mode=custom&decks=${E2E_DECK_ID}`,
   ]) {
     const abortController = new AbortController();
     const abortTimer = setTimeout(() => abortController.abort(), 60_000);
