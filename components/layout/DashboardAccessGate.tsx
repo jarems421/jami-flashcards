@@ -21,7 +21,13 @@ function DashboardSpinner() {
   );
 }
 
-function AuthenticatedDashboard({ children }: { children: ReactNode }) {
+function AuthenticatedDashboard({
+  children,
+  user,
+}: {
+  children: ReactNode;
+  user: User;
+}) {
   const [sidebarHidden, setSidebarHidden] = useState(() => readSidebarHiddenPreference());
 
   const handleSidebarHiddenChange = (hidden: boolean) => {
@@ -30,7 +36,7 @@ function AuthenticatedDashboard({ children }: { children: ReactNode }) {
   };
 
   return (
-    <UserProvider>
+    <UserProvider user={user}>
       <div
         data-dashboard-content
         className={`pb-32 transition-[padding] duration-300 md:pb-0 ${
@@ -51,7 +57,7 @@ function AuthenticatedDashboard({ children }: { children: ReactNode }) {
 export default function DashboardAccessGate({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [checked, setChecked] = useState(false);
-  const [hasUser, setHasUser] = useState(false);
+  const [user, setUser] = useState<User | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -60,14 +66,14 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
     try {
       unsubscribe = listenToAuth((nextUser: User | null) => {
         if (!active) return;
-        setHasUser(Boolean(nextUser));
+        setUser(nextUser);
         setChecked(true);
       });
     } catch (error) {
       console.error("Dashboard auth gate failed; redirecting to sign in.", error);
       queueMicrotask(() => {
         if (!active) return;
-        setHasUser(false);
+        setUser(null);
         setChecked(true);
       });
     }
@@ -79,14 +85,14 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
   }, []);
 
   useEffect(() => {
-    if (checked && !hasUser) {
+    if (checked && !user) {
       router.replace("/");
     }
-  }, [checked, hasUser, router]);
+  }, [checked, router, user]);
 
-  if (!checked || !hasUser) {
+  if (!checked || !user) {
     return <DashboardSpinner />;
   }
 
-  return <AuthenticatedDashboard>{children}</AuthenticatedDashboard>;
+  return <AuthenticatedDashboard user={user}>{children}</AuthenticatedDashboard>;
 }
