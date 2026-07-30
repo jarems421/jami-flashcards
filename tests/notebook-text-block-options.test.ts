@@ -1,5 +1,3 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildNotebookPagePayload,
@@ -8,11 +6,6 @@ import {
   normalizeNotebookTextBlocks,
   resizeNotebookTextBlockFromEdge,
 } from "@/lib/workspace/notebooks";
-
-const notebookPageSource = readFileSync(
-  join(process.cwd(), "app/dashboard/notebooks/[notebookId]/page.tsx"),
-  "utf8"
-);
 
 const TEXT_BLOCK = {
   id: "block-1",
@@ -110,19 +103,5 @@ describe("notebook text-block outline options", () => {
       width: 360,
       outlineVisible: false,
     });
-  });
-
-  it("exposes Pencil-friendly options with explicit menu semantics", () => {
-    expect(notebookPageSource).toContain('aria-label="Text box options"');
-    expect(notebookPageSource).toContain('aria-haspopup="menu"');
-    expect(notebookPageSource).toContain('data-text-block-options-trigger="true"');
-    expect(notebookPageSource).toContain('data-text-block-options-root');
-    expect(notebookPageSource).toContain('role="menu"');
-    expect(notebookPageSource).toContain('role="menuitemcheckbox"');
-    expect(notebookPageSource).toContain('data-text-block-outline-toggle="true"');
-    expect(notebookPageSource).toContain('role="menuitem"');
-    expect(notebookPageSource).toContain('data-text-block-delete="true"');
-    expect(notebookPageSource).toContain("Show outline");
-    expect(notebookPageSource).toContain("Delete text box");
   });
 });

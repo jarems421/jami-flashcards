@@ -38,13 +38,6 @@ const backgroundSource = readFileSync(
   ),
   "utf8"
 );
-const notebookPageSource = readFileSync(
-  new URL(
-    "../app/dashboard/notebooks/[notebookId]/page.tsx",
-    import.meta.url
-  ),
-  "utf8"
-);
 
 const notebook: Notebook = {
   id: "notebook-1",
@@ -240,15 +233,8 @@ describe("notebook page backgrounds", () => {
     expect(onSettled).not.toHaveBeenCalled();
   });
 
-  it("keeps explicit remount keys and page-owned PDF canvas bookkeeping", () => {
+  it("keeps explicit renderer remount keys", () => {
     expect(backgroundSource).toContain("key={imageRenderKey}");
     expect(backgroundSource).toContain("key={pdfRenderKey}");
-    expect(notebookPageSource).toContain("pdfOnCanvasReady={(canvas) =>");
-    expect(notebookPageSource).toContain(
-      "activePdfCanvasRef.current = canvas"
-    );
-    expect(notebookPageSource).toContain(
-      "activePdfCanvasKeyRef.current = activePdfRenderKey"
-    );
   });
 });

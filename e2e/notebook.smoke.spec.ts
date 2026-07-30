@@ -89,6 +89,40 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
   ).toBeVisible({ timeout: 15_000 });
 
   const toolbar = page.getByRole("toolbar", { name: "Drawing tools" });
+  expect(
+    await toolbar.getByRole("button").evaluateAll((buttons) =>
+      buttons.map((button) => button.getAttribute("aria-label"))
+    )
+  ).toEqual([
+    "Pen (P)",
+    "Highlighter (H)",
+    "Eraser (E)",
+    "Text box (T)",
+    "Undo (Ctrl+Z)",
+    "Redo (Ctrl+Shift+Z)",
+  ]);
+  const floatingControlStyles = await page
+    .locator(".notebook-floating-control")
+    .evaluateAll((controls) =>
+      controls.map((control) => {
+        const style = window.getComputedStyle(control);
+        return {
+          backdropFilter: style.backdropFilter,
+          boxShadow: style.boxShadow,
+          webkitBackdropFilter: style.getPropertyValue(
+            "-webkit-backdrop-filter"
+          ),
+        };
+      })
+    );
+  expect(floatingControlStyles).toHaveLength(2);
+  for (const style of floatingControlStyles) {
+    expect(style).toMatchObject({
+      backdropFilter: "none",
+      boxShadow: "none",
+    });
+    expect(["", "none"]).toContain(style.webkitBackdropFilter);
+  }
   const penControlBox = await page
     .getByRole("button", { name: "Pen (P)" })
     .boundingBox();
@@ -147,6 +181,38 @@ test("tablet keeps notebook controls usable", async ({ page }) => {
     page.getByRole("toolbar", { name: "Drawing tools" })
   ).toBeVisible();
   await page.getByRole("button", { name: "Pages" }).click();
+  const drawer = page.getByRole("complementary", {
+    name: "Notebook pages",
+  });
+  const pageList = page.getByRole("region", {
+    name: "Notebook page list",
+  });
+  await expect(drawer).toBeVisible();
+  await expect(pageList).toBeVisible();
+  expect(
+    await drawer.evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      return {
+        display: style.display,
+        minHeight: style.minHeight,
+      };
+    })
+  ).toEqual({
+    display: "flex",
+    minHeight: "0px",
+  });
+  expect(
+    await pageList.evaluate((element) => {
+      const style = window.getComputedStyle(element);
+      return {
+        minHeight: style.minHeight,
+        overflowY: style.overflowY,
+      };
+    })
+  ).toEqual({
+    minHeight: "0px",
+    overflowY: "auto",
+  });
   await expect(page.getByRole("button", { name: "Open page 1" })).toBeVisible();
   await expect(page.getByRole("button", { name: "New page" })).toBeVisible();
   await page.getByRole("button", { name: "Open page 1" }).click();

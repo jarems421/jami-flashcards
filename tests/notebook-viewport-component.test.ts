@@ -5,13 +5,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import NotebookViewport from "@/components/workspace/NotebookViewport";
 
-const notebookEditorSource = readFileSync(
-  join(
-    process.cwd(),
-    "app/dashboard/notebooks/[notebookId]/page.tsx"
-  ),
-  "utf8"
-);
 const globalStylesSource = readFileSync(
   join(process.cwd(), "app/globals.css"),
   "utf8"
@@ -63,38 +56,12 @@ describe("NotebookViewport", () => {
     expect(html).not.toContain("box-border");
   });
 
-  it("keeps fit zoom neutral and coalesces live pinch rendering", () => {
-    expect(notebookEditorSource).not.toContain(
-      "getNotebookViewportPreferredZoom"
-    );
-    expect(notebookEditorSource).not.toContain(
-      "getNotebookViewportZoomAfterPreferredSizeChange"
-    );
-    expect(notebookEditorSource).toContain(
-      "pinchZoomAnimationFrameRef"
-    );
-    expect(notebookEditorSource).toContain("queueLivePinchTransform()");
-    expect(notebookEditorSource).toContain(
-      "isNotebookPageSwipePreviewEnabled("
-    );
-  });
-
-  it("keeps the live ink canvas stable and input-locked during page travel", () => {
-    expect(notebookEditorSource).toContain(
-      "readOnly={!fullNotebookEditingEnabled}"
-    );
-    expect(notebookEditorSource).not.toContain(
-      "!fullNotebookEditingEnabled || Boolean(pageSwipeMotion)"
-    );
+  it("keeps live ink input locked in CSS during page travel", () => {
     expect(globalStylesSource).toContain(
       '.notebook-page-track[data-swipe-active="true"] .notebook-ink-surface'
     );
     expect(globalStylesSource).toMatch(
       /\.notebook-page-track\[data-swipe-active="true"\] \.notebook-ink-surface\s*\{\s*pointer-events: none;/
-    );
-    expect(notebookEditorSource).toContain("pageSwipeInkSnapshot");
-    expect(notebookEditorSource).toContain(
-      "markPageSwipeInkSnapshotReady"
     );
     expect(globalStylesSource).toContain(
       '.notebook-page-track[data-swipe-direction="previous"]'

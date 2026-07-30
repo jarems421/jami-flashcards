@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import Image from "next/image";
 import { useParams } from "next/navigation";
 import {
   useCallback,
@@ -17,20 +16,17 @@ import {
 } from "react";
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
-import {
-  NotebookInkEditor,
-  type NotebookInkEditorHandle,
-} from "@/components/workspace/NotebookInkEditor";
+import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
-import NotebookPageBackground, {
-  PAGE_COLOR_CLASS,
-} from "@/components/workspace/NotebookPageBackground";
+import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
+import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
 import NotebookPageThumbnail from "@/components/workspace/NotebookPageThumbnail";
 import NotebookSaveIndicator, {
   type SaveStatus,
 } from "@/components/workspace/NotebookSaveIndicator";
 import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
+import NotebookTextBlockOptions from "@/components/workspace/NotebookTextBlockOptions";
 import ToolbarIconButton, {
   NotebookIcon,
 } from "@/components/workspace/NotebookToolbarIconButton";
@@ -95,20 +91,22 @@ import {
   writeNotebookPageDraftSync,
   type NotebookPageDraft,
 } from "@/lib/workspace/notebook-drafts";
-import { getNotebookViewportLayout } from "@/lib/workspace/notebook-viewport";
 import {
-  NOTEBOOK_ERASER_THICKNESS_BY_SIZE,
+  createNotebookPinchFrameQueue,
+  getNotebookViewportLayout,
+} from "@/lib/workspace/notebook-viewport";
+import {
   type NotebookEraserMode,
   type NotebookEraserSize,
 } from "@/lib/workspace/notebook-eraser";
 import {
   clearNotebookNativeSelection,
+  installNotebookStylusTouchListeners,
   isTextResizeHandleTarget,
   isNotebookTextEditingTarget,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
   safelyReleasePointerCapture,
   safelySetPointerCapture,
-  shouldSuppressNotebookStylusTouch,
   shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
 import {
@@ -168,8 +166,13 @@ import {
 import {
   buildNotebookPageSearch,
   getNotebookPageIdFromSearch,
+  prepareNotebookExit,
 } from "@/lib/workspace/notebook-navigation";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
+import {
+  trackNotebookPdfCanvas,
+  type NotebookPdfCanvasTracking,
+} from "@/lib/workspace/notebook-pdf-canvas";
 import {
   clampNotebookToolbarDragOffset,
   getNotebookToolbarDragThreshold,
@@ -453,12 +456,15 @@ export default function NotebookEditorPage() {
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
   const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
-  const activePdfCanvasRef = useRef<HTMLCanvasElement | null>(null);
-  const activePdfCanvasKeyRef = useRef<string | null>(null);
+  const activePdfCanvasTrackingRef = useRef<
+    NotebookPdfCanvasTracking<HTMLCanvasElement>
+  >({
+    canvas: null,
+    renderKey: null,
+  });
   const pageTrackOffsetRef = useRef(0);
   const pageTrackPendingOffsetRef = useRef(0);
   const pageTrackAnimationFrameRef = useRef<number | null>(null);
-  const pinchZoomAnimationFrameRef = useRef<number | null>(null);
   const pinchCommitPendingRef = useRef(false);
   const pageTrackTransitionResolverRef = useRef<(() => void) | null>(null);
   const pagePreviewDirectionRef = useRef<"next" | "previous" | null>(null);
@@ -520,6 +526,14 @@ export default function NotebookEditorPage() {
   const hydratedPageIdRef = useRef<string | null>(null);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
   const toolRef = useRef<EditorTool>("pen");
+  const pinchZoomFrameQueue = useMemo(
+    () =>
+      createNotebookPinchFrameQueue({
+        requestFrame: (callback) => window.requestAnimationFrame(callback),
+        cancelFrame: (frameId) => window.cancelAnimationFrame(frameId),
+      }),
+    []
+  );
 
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
@@ -621,10 +635,8 @@ export default function NotebookEditorPage() {
     viewportLayout.panBounds.maxY - viewportLayout.panBounds.minY > 0.5;
 
   const cancelPinchZoomAnimationFrame = useCallback(() => {
-    if (pinchZoomAnimationFrameRef.current === null) return;
-    window.cancelAnimationFrame(pinchZoomAnimationFrameRef.current);
-    pinchZoomAnimationFrameRef.current = null;
-  }, []);
+    pinchZoomFrameQueue.cancel();
+  }, [pinchZoomFrameQueue]);
 
   const writeLivePinchTransform = useCallback((pinch: PinchZoomState) => {
     const surface = pageSurfaceRef.current;
@@ -653,13 +665,11 @@ export default function NotebookEditorPage() {
   }, []);
 
   const queueLivePinchTransform = useCallback(() => {
-    if (pinchZoomAnimationFrameRef.current !== null) return;
-    pinchZoomAnimationFrameRef.current = window.requestAnimationFrame(() => {
-      pinchZoomAnimationFrameRef.current = null;
+    pinchZoomFrameQueue.queue(() => {
       const pinch = pinchZoomRef.current;
       if (pinch) writeLivePinchTransform(pinch);
     });
-  }, [writeLivePinchTransform]);
+  }, [pinchZoomFrameQueue, writeLivePinchTransform]);
 
   const resetPageSurfaceTransform = useCallback(() => {
     pinchCommitPendingRef.current = false;
@@ -925,11 +935,12 @@ export default function NotebookEditorPage() {
         activeNotebookFile?.fileType === "application/pdf" &&
         activeNotebookFile.storagePath
       ) {
-        const pdfCanvas = activePdfCanvasRef.current;
+        const pdfCanvasTracking = activePdfCanvasTrackingRef.current;
+        const pdfCanvas = pdfCanvasTracking.canvas;
         if (
           !activePdfRenderKey ||
           !pdfCanvas ||
-          activePdfCanvasKeyRef.current !== activePdfRenderKey ||
+          pdfCanvasTracking.renderKey !== activePdfRenderKey ||
           pdfCanvas.width <= 0 ||
           pdfCanvas.height <= 0
         ) {
@@ -1015,8 +1026,10 @@ export default function NotebookEditorPage() {
   }, [selectedPage]);
 
   useEffect(() => {
-    activePdfCanvasRef.current = null;
-    activePdfCanvasKeyRef.current = null;
+    activePdfCanvasTrackingRef.current = {
+      canvas: null,
+      renderKey: null,
+    };
   }, [activePdfRenderKey]);
 
   useEffect(() => {
@@ -1990,36 +2003,10 @@ export default function NotebookEditorPage() {
     // stylus input (or while ink is being drawn) and never over a text editor
     // or an interactive control, so Pencil taps and finger navigation remain
     // native while bare-page ink still blocks Safari navigation gestures.
-    const isStylusTouchEvent = (event: TouchEvent) => {
-      const touches = event.touches.length > 0 ? event.touches : event.changedTouches;
-      for (let index = 0; index < touches.length; index += 1) {
-        if ((touches[index] as Touch & { touchType?: string }).touchType === "stylus") {
-          return true;
-        }
-      }
-      return false;
-    };
-    const suppressStylusGesture: EventListener = (event) => {
-      if (!(event instanceof TouchEvent) || !event.cancelable) return;
-      if (
-        shouldSuppressNotebookStylusTouch({
-          inkInteractionActive: inkInteractionActiveRef.current,
-          stylusTouch: isStylusTouchEvent(event),
-          target: event.target,
-        })
-      ) {
-        event.preventDefault();
-      }
-    };
-
-    const listenerOptions = { passive: false, capture: true };
-    surface.addEventListener("touchstart", suppressStylusGesture, listenerOptions);
-    surface.addEventListener("touchmove", suppressStylusGesture, listenerOptions);
-
-    return () => {
-      surface.removeEventListener("touchstart", suppressStylusGesture, listenerOptions);
-      surface.removeEventListener("touchmove", suppressStylusGesture, listenerOptions);
-    };
+    return installNotebookStylusTouchListeners({
+      surface,
+      getInkInteractionActive: () => inkInteractionActiveRef.current,
+    });
   }, [pageSurfaceReady, selectedPage?.id]);
 
   const savePageSnapshot = useCallback(
@@ -2692,19 +2679,17 @@ export default function NotebookEditorPage() {
   }, [persistCurrentPageDraftSync, saveCurrentPage]);
 
   const handleExitNotebook = (event: ReactMouseEvent<HTMLAnchorElement>) => {
-    if (
-      saveStatusRef.current === "unsaved" ||
-      saveStatusRef.current === "failed"
-    ) {
-      persistCurrentPageDraftSync();
-      const saveQueued = queueCurrentPageSaveForExit();
-      if (!saveQueued) {
-        event.preventDefault();
-        setFeedback({
-          type: "error",
-          message: "Could not autosave before leaving the notebook.",
-        });
-      }
+    const exitDecision = prepareNotebookExit({
+      saveStatus: saveStatusRef.current,
+      persistDraftSync: persistCurrentPageDraftSync,
+      queueSaveForExit: queueCurrentPageSaveForExit,
+    });
+    if (exitDecision.shouldPreventNavigation) {
+      event.preventDefault();
+      setFeedback({
+        type: "error",
+        message: "Could not autosave before leaving the notebook.",
+      });
     }
   };
 
@@ -4580,7 +4565,10 @@ export default function NotebookEditorPage() {
         />
 
         {pagesDrawerOpen ? (
-          <aside className="notebook-drawer-in notebook-drawer-surface absolute bottom-0 left-0 top-0 z-50 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]">
+          <aside
+            aria-label="Notebook pages"
+            className="notebook-drawer-in notebook-drawer-surface absolute bottom-0 left-0 top-0 z-50 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]"
+          >
             <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-2">
               <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Pages
@@ -4616,7 +4604,11 @@ export default function NotebookEditorPage() {
                 Import PDF or image
               </Button>
             </div>
-            <div className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pr-1">
+            <div
+              role="region"
+              aria-label="Notebook page list"
+              className="min-h-0 flex-1 space-y-2 overflow-y-auto overscroll-contain pb-[calc(env(safe-area-inset-bottom,0px)+1rem)] pr-1"
+            >
               {pages.length > 0 ? (
                 pages.map((page) => {
                   const selected = page.id === selectedPage?.id;
@@ -4716,169 +4708,142 @@ export default function NotebookEditorPage() {
             activeContent={
               selectedPage && pageFit.width > 0 ? (
                 <>
-                  <NotebookPageBackground
-                    pageColor={pageColor}
-                    pageStyle={pageStyle}
-                    pageStyleClassName="pointer-events-none absolute inset-0 z-0"
-                    backgroundFile={activeNotebookFile}
-                    backgroundUrl={activeNotebookFileUrl}
-                    pageIndex={selectedPage.pdfPageIndex ?? 0}
-                    fileLayerClassName="pointer-events-none absolute inset-0 z-[1] flex items-center justify-center overflow-hidden"
-                    imageStrategy="next-image"
-                    imageRenderKey={
-                      activeNotebookFile
-                        ? `${selectedPage.id}:${activeNotebookFile.id}:image`
-                        : undefined
-                    }
-                    imageOnSettled={markActivePageBackgroundSettled}
-                    imageLoadingLabel="Loading file..."
-                    imageSizes="48rem"
-                    imageClassName="object-contain"
-                    pdfRenderKey={activePdfRenderKey ?? undefined}
-                    pdfAriaHidden={false}
-                    pdfAriaLabel={
-                      activeNotebookFile
-                        ? `Notebook file: ${activeNotebookFile.fileName}, page ${
-                            (selectedPage.pdfPageIndex ?? 0) + 1
-                          }`
-                        : undefined
-                    }
-                    pdfFadeIn={pageSwipeMotion?.phase !== "handoff"}
-                    pdfOnRenderStateChange={
-                      handleActivePdfRenderStateChange
-                    }
-                    pdfOnCanvasReady={(canvas) => {
-                      if (canvas && activePdfRenderKey) {
-                        activePdfCanvasRef.current = canvas;
-                        activePdfCanvasKeyRef.current = activePdfRenderKey;
-                        return;
-                      }
-                      if (
-                        activePdfCanvasKeyRef.current === activePdfRenderKey
-                      ) {
-                        activePdfCanvasRef.current = null;
-                        activePdfCanvasKeyRef.current = null;
-                      }
-                    }}
-                    inkSvg={
-                      !inkReady &&
-                      (selectedPage.inkData?.svg ||
-                        (selectedPage.strokeData?.strokes?.length ?? 0) > 0)
-                        ? selectedPageInkSvg
-                        : undefined
-                    }
-                    inkSizes="48rem"
-                    inkClassName="pointer-events-none absolute inset-0 z-[12] object-fill"
-                  />
-                  <NotebookInkEditor
-                    ref={inkEditorRef}
-                    key={`${selectedPage.id}:${inkEditorMountRevision}`}
+                  <NotebookLivePageLayers
                     pageId={selectedPage.id}
                     pageWidth={CANVAS_WIDTH}
                     pageHeight={CANVAS_HEIGHT}
-                    initialSvg={selectedPageInkSvg}
-                    onReady={() => {
-                      inkReadyRef.current = true;
-                      setInkReady(true);
-                      window.requestAnimationFrame(() =>
-                        maybeFinishPageHandoffRef.current()
-                      );
-                    }}
-                    onReadyError={() => {
-                      inkReadyRef.current = true;
-                      setFeedback({
-                        type: "error",
-                        message:
-                          "This page opened, but the ink editor could not start. Your saved writing is still visible.",
-                      });
-                      window.requestAnimationFrame(() =>
-                        maybeFinishPageHandoffRef.current()
-                      );
-                    }}
-                    activeTool={tool}
-                    eraserMode={eraserMode}
-                    penColor={penColor}
-                    penThickness={getPenWidthFromPercent(penThicknessPercent)}
-                    highlighterColor={highlighterColor}
-                    highlighterThickness={getHighlighterWidthFromPercent(
-                      highlighterThicknessPercent
+                    persistedInkSvg={selectedPageInkSvg}
+                    hasPersistedInk={Boolean(
+                      selectedPage.inkData?.svg ||
+                        (selectedPage.strokeData?.strokes?.length ?? 0) > 0
                     )}
-                    eraserThickness={
-                      NOTEBOOK_ERASER_THICKNESS_BY_SIZE[eraserWidth]
-                    }
-                    // Keep js-draw's canvas mode stable while the compositor
-                    // moves the page. CSS blocks new input for the brief swipe
-                    // phase without forcing an iPad canvas repaint.
-                    readOnly={!fullNotebookEditingEnabled}
-                    onChange={() => {
-                      const current = pendingInkUiRef.current;
-                      pendingInkUiRef.current = {
-                        hasContent: inkEditorRef.current?.hasInk() ?? false,
-                        undoDepth: current?.undoDepth ?? inkUndoDepth,
-                        redoDepth: current?.redoDepth ?? inkRedoDepth,
-                      };
-                      markPageUnsaved({ deferUi: true });
+                    inkReady={inkReady}
+                    editingEnabled={fullNotebookEditingEnabled}
+                    eraserWidth={eraserWidth}
+                    inkEditorMountRevision={inkEditorMountRevision}
+                    inkEditorRef={inkEditorRef}
+                    swipeInkSnapshot={pageSwipeInkSnapshot}
+                    onSwipeInkSnapshotReady={markPageSwipeInkSnapshotReady}
+                    backgroundProps={{
+                      pageColor,
+                      pageStyle,
+                      backgroundFile: activeNotebookFile,
+                      backgroundUrl: activeNotebookFileUrl,
+                      pageIndex: selectedPage.pdfPageIndex ?? 0,
+                      imageStrategy: "next-image",
+                      imageRenderKey: activeNotebookFile
+                        ? `${selectedPage.id}:${activeNotebookFile.id}:image`
+                        : undefined,
+                      imageOnSettled: markActivePageBackgroundSettled,
+                      imageLoadingLabel: "Loading file...",
+                      imageSizes: "48rem",
+                      imageClassName: "object-contain",
+                      pdfRenderKey: activePdfRenderKey ?? undefined,
+                      pdfAriaHidden: false,
+                      pdfAriaLabel: activeNotebookFile
+                        ? `Notebook file: ${activeNotebookFile.fileName}, page ${
+                            (selectedPage.pdfPageIndex ?? 0) + 1
+                          }`
+                        : undefined,
+                      pdfFadeIn: pageSwipeMotion?.phase !== "handoff",
+                      pdfOnRenderStateChange:
+                        handleActivePdfRenderStateChange,
+                      pdfOnCanvasReady: (canvas) => {
+                        activePdfCanvasTrackingRef.current =
+                          trackNotebookPdfCanvas({
+                            current: activePdfCanvasTrackingRef.current,
+                            renderKey: activePdfRenderKey,
+                            canvas,
+                          });
+                      },
                     }}
-                    onHistoryChange={(nextUndoDepth, nextRedoDepth) => {
-                      pendingInkUiRef.current = {
-                        hasContent:
-                          pendingInkUiRef.current?.hasContent ??
-                          (inkEditorRef.current?.hasInk() ?? false),
-                        undoDepth: nextUndoDepth,
-                        redoDepth: nextRedoDepth,
-                      };
-                      scheduleInkUiSync();
+                    inkEditorProps={{
+                      onReady: () => {
+                        inkReadyRef.current = true;
+                        setInkReady(true);
+                        window.requestAnimationFrame(() =>
+                          maybeFinishPageHandoffRef.current()
+                        );
+                      },
+                      onReadyError: () => {
+                        inkReadyRef.current = true;
+                        setFeedback({
+                          type: "error",
+                          message:
+                            "This page opened, but the ink editor could not start. Your saved writing is still visible.",
+                        });
+                        window.requestAnimationFrame(() =>
+                          maybeFinishPageHandoffRef.current()
+                        );
+                      },
+                      activeTool: tool,
+                      eraserMode,
+                      penColor,
+                      penThickness:
+                        getPenWidthFromPercent(penThicknessPercent),
+                      highlighterColor,
+                      highlighterThickness:
+                        getHighlighterWidthFromPercent(
+                          highlighterThicknessPercent
+                        ),
+                      onChange: () => {
+                        const current = pendingInkUiRef.current;
+                        pendingInkUiRef.current = {
+                          hasContent:
+                            inkEditorRef.current?.hasInk() ?? false,
+                          undoDepth: current?.undoDepth ?? inkUndoDepth,
+                          redoDepth: current?.redoDepth ?? inkRedoDepth,
+                        };
+                        markPageUnsaved({ deferUi: true });
+                      },
+                      onHistoryChange: (
+                        nextUndoDepth,
+                        nextRedoDepth
+                      ) => {
+                        pendingInkUiRef.current = {
+                          hasContent:
+                            pendingInkUiRef.current?.hasContent ??
+                            (inkEditorRef.current?.hasInk() ?? false),
+                          undoDepth: nextUndoDepth,
+                          redoDepth: nextRedoDepth,
+                        };
+                        scheduleInkUiSync();
+                      },
+                      onInteractionChange: (active) => {
+                        inkInteractionActiveRef.current = active;
+                        stylusInteractionRef.current = active;
+                        stylusCooldownUntilRef.current = active
+                          ? Number.POSITIVE_INFINITY
+                          : Date.now() + 180;
+                        if (active) {
+                          setPenMenuOpen(false);
+                          setHighlighterMenuOpen(false);
+                          setEraserMenuOpen(false);
+                          setPagesDrawerOpen(false);
+                          setSelectedTextBlockId(null);
+                          setEditingTextBlockId(null);
+                          cancelInkUiSync();
+                          if (autosaveTimerRef.current !== null) {
+                            window.clearTimeout(
+                              autosaveTimerRef.current
+                            );
+                            autosaveTimerRef.current = null;
+                          }
+                        } else {
+                          if (pendingInkUiRef.current) {
+                            scheduleInkUiSync();
+                          }
+                          if (saveStatusRef.current === "unsaved") {
+                            scheduleNotebookAutosave();
+                          }
+                        }
+                      },
+                      onPointerDown: handlePagePointerDown,
+                      onPointerMove: handlePagePointerMove,
+                      onPointerUp: handlePagePointerUp,
+                      onPointerCancel: handlePagePointerCancel,
                     }}
-                    onInteractionChange={(active) => {
-                      inkInteractionActiveRef.current = active;
-                      stylusInteractionRef.current = active;
-                      stylusCooldownUntilRef.current = active
-                        ? Number.POSITIVE_INFINITY
-                        : Date.now() + 180;
-                      if (active) {
-                        setPenMenuOpen(false);
-                        setHighlighterMenuOpen(false);
-                        setEraserMenuOpen(false);
-                        setPagesDrawerOpen(false);
-                        setSelectedTextBlockId(null);
-                        setEditingTextBlockId(null);
-                        cancelInkUiSync();
-                        if (autosaveTimerRef.current !== null) {
-                          window.clearTimeout(autosaveTimerRef.current);
-                          autosaveTimerRef.current = null;
-                        }
-                      } else {
-                        if (pendingInkUiRef.current) {
-                          scheduleInkUiSync();
-                        }
-                        if (saveStatusRef.current === "unsaved") {
-                          scheduleNotebookAutosave();
-                        }
-                      }
-                    }}
-                    onPointerDown={handlePagePointerDown}
-                    onPointerMove={handlePagePointerMove}
-                    onPointerUp={handlePagePointerUp}
-                    onPointerCancel={handlePagePointerCancel}
                   />
-                  {pageSwipeInkSnapshot?.pageId === selectedPage.id ? (
-                    <Image
-                      alt=""
-                      aria-hidden="true"
-                      src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(
-                        pageSwipeInkSnapshot.svg
-                      )}`}
-                      fill
-                      unoptimized
-                      sizes="48rem"
-                      className="notebook-page-swipe-ink-snapshot pointer-events-none absolute inset-0 z-[25] object-fill"
-                      onLoad={() =>
-                        markPageSwipeInkSnapshotReady(
-                          pageSwipeInkSnapshot.pageId
-                        )
-                      }
-                    />
-                  ) : null}
                   <div className="pointer-events-none absolute inset-0 z-30">
                     {textBlocks.map((block) => {
                       const selected = selectedTextBlockId === block.id;
@@ -4893,14 +4858,6 @@ export default function NotebookEditorPage() {
                           : "border-slate-950/25"
                         : "border-transparent";
                       const optionsOpen = openTextBlockOptionsId === block.id;
-                      const optionsMenuId = getNotebookTextBlockOptionsElementId(
-                        block.id,
-                        "menu"
-                      );
-                      const optionsTriggerId = getNotebookTextBlockOptionsElementId(
-                        block.id,
-                        "trigger"
-                      );
                       const optionsOpenAbove =
                         block.y + block.height / 2 > CANVAS_HEIGHT / 2;
                       const optionsAlignFromLeft = block.x + block.width < 420;
@@ -4955,94 +4912,28 @@ export default function NotebookEditorPage() {
                         >
                           {selected && fullNotebookEditingEnabled && !gesturing ? (
                             <>
-                              <div
-                                data-text-block-options-root
-                                className="absolute right-1.5 top-1.5 z-30"
-                              >
-                                <button
-                                  id={optionsTriggerId}
-                                  type="button"
-                                  aria-label="Text box options"
-                                  title="Text box options"
-                                  aria-haspopup="menu"
-                                  aria-expanded={optionsOpen}
-                                  aria-controls={optionsMenuId}
-                                  data-notebook-stylus-action="true"
-                                  data-text-block-options-trigger="true"
-                                  className="inline-grid h-7 w-7 place-items-center rounded-[0.55rem] border border-black/15 bg-black/60 text-[#f8fafc] shadow-sm backdrop-blur-sm transition hover:bg-black/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#f8fafc] [&_svg]:h-4 [&_svg]:w-4"
-                                  onPointerDown={(event) => event.stopPropagation()}
-                                  onClick={(event) => {
-                                    event.stopPropagation();
-                                    setOpenTextBlockOptionsId((current) =>
-                                      current === block.id ? null : block.id
-                                    );
-                                  }}
-                                >
-                                  <NotebookIcon name="options" />
-                                </button>
-                                {optionsOpen ? (
-                                  <div
-                                    id={optionsMenuId}
-                                    role="menu"
-                                    aria-label="Text box options"
-                                    className={`absolute z-40 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${
-                                      optionsOpenAbove ? "bottom-9" : "top-9"
-                                    } ${optionsAlignFromLeft ? "left-0" : "right-0"}`}
-                                    onPointerDown={(event) => event.stopPropagation()}
-                                    onClick={(event) => event.stopPropagation()}
-                                    onKeyDown={(event) =>
-                                      handleTextBlockOptionsKeyDown(block.id, event)
-                                    }
-                                  >
-                                    <button
-                                      type="button"
-                                      role="menuitemcheckbox"
-                                      aria-checked={block.outlineVisible}
-                                      data-notebook-stylus-action="true"
-                                      data-text-block-outline-toggle="true"
-                                      className="flex w-full items-center justify-between gap-4 rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                                      onPointerDown={(event) => event.stopPropagation()}
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        toggleTextBlockOutline(block.id);
-                                      }}
-                                    >
-                                      <span>Show outline</span>
-                                      <span
-                                        aria-hidden="true"
-                                        className={`relative h-5 w-9 shrink-0 rounded-full border transition-colors ${
-                                          block.outlineVisible
-                                            ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)]"
-                                            : "border-[var(--color-border-strong)] bg-[var(--color-glass-medium)]"
-                                        }`}
-                                      >
-                                        <span
-                                          className={`absolute top-1/2 h-3.5 w-3.5 -translate-y-1/2 rounded-full shadow-sm transition-transform ${
-                                            block.outlineVisible
-                                              ? "translate-x-[1.05rem] bg-[var(--color-selected-text)]"
-                                              : "translate-x-0.5 bg-text-muted"
-                                          }`}
-                                        />
-                                      </span>
-                                    </button>
-                                    <button
-                                      type="button"
-                                      role="menuitem"
-                                      data-notebook-stylus-action="true"
-                                      data-text-block-delete="true"
-                                      className="mt-0.5 flex w-full items-center gap-2.5 rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-error [&_svg]:h-4 [&_svg]:w-4"
-                                      onPointerDown={(event) => event.stopPropagation()}
-                                      onClick={(event) => {
-                                        event.stopPropagation();
-                                        deleteTextBlock(block.id);
-                                      }}
-                                    >
-                                      <NotebookIcon name="trash" />
-                                      <span>Delete text box</span>
-                                    </button>
-                                  </div>
-                                ) : null}
-                              </div>
+                              <NotebookTextBlockOptions
+                                blockId={block.id}
+                                open={optionsOpen}
+                                outlineVisible={block.outlineVisible}
+                                openAbove={optionsOpenAbove}
+                                alignFromLeft={optionsAlignFromLeft}
+                                onOpenChange={(open) =>
+                                  setOpenTextBlockOptionsId(
+                                    open ? block.id : null
+                                  )
+                                }
+                                onToggleOutline={() =>
+                                  toggleTextBlockOutline(block.id)
+                                }
+                                onDelete={() => deleteTextBlock(block.id)}
+                                onKeyDown={(event) =>
+                                  handleTextBlockOptionsKeyDown(
+                                    block.id,
+                                    event
+                                  )
+                                }
+                              />
                               {TEXT_BLOCK_RESIZE_HANDLES.map((handle) => (
                                 <button
                                   key={handle.edge}

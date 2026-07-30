@@ -283,3 +283,59 @@ export function getNotebookInkViewportScale(input: {
     y: Math.max(0, input.displayHeight) / pageHeight,
   };
 }
+
+export type NotebookAnimationFrameScheduler = {
+  requestFrame: (callback: () => void) => number;
+  cancelFrame: (frameId: number) => void;
+};
+
+export type NotebookPinchFrameQueue = {
+  queue: (callback: () => void) => void;
+  cancel: () => void;
+  hasPendingFrame: () => boolean;
+};
+
+/**
+ * Coalesces repeated live-pinch writes into one animation frame. The queued
+ * frame runs the latest callback, while cancellation also invalidates a stale
+ * callback if a scheduler happens to deliver it after cancelFrame.
+ */
+export function createNotebookPinchFrameQueue(
+  scheduler: NotebookAnimationFrameScheduler
+): NotebookPinchFrameQueue {
+  type PendingFrame = {
+    id: number | null;
+  };
+
+  let pendingFrame: PendingFrame | null = null;
+  let latestCallback: (() => void) | null = null;
+
+  return {
+    queue(callback) {
+      latestCallback = callback;
+      if (pendingFrame) return;
+
+      const requestedFrame: PendingFrame = { id: null };
+      pendingFrame = requestedFrame;
+      requestedFrame.id = scheduler.requestFrame(() => {
+        if (pendingFrame !== requestedFrame) return;
+
+        pendingFrame = null;
+        const callbackToRun = latestCallback;
+        latestCallback = null;
+        callbackToRun?.();
+      });
+    },
+    cancel() {
+      const frameToCancel = pendingFrame;
+      pendingFrame = null;
+      latestCallback = null;
+      if (frameToCancel?.id !== null && frameToCancel?.id !== undefined) {
+        scheduler.cancelFrame(frameToCancel.id);
+      }
+    },
+    hasPendingFrame() {
+      return pendingFrame !== null;
+    },
+  };
+}
