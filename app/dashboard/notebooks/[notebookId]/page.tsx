@@ -44,6 +44,7 @@ import {
 } from "@/components/ui";
 import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
+import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
   Notebook,
@@ -174,17 +175,7 @@ import {
   type NotebookPdfCanvasTracking,
 } from "@/lib/workspace/notebook-pdf-canvas";
 import {
-  clampNotebookToolbarDragOffset,
-  getNotebookToolbarDragThreshold,
-  getNotebookToolbarDragVelocity,
-  getNotebookToolbarSettleDuration,
-  getNearestNotebookToolbarDock,
-  hasNotebookToolbarDragStarted,
   isNotebookToolbarSideDock,
-  readNotebookToolbarDockPreference,
-  saveNotebookToolbarDockPreference,
-  snapNotebookToolbarOffsetToDevicePixels,
-  type NotebookToolbarPointerSample,
   type NotebookToolbarDock,
 } from "@/lib/workspace/notebook-toolbar";
 
@@ -252,24 +243,6 @@ type PinchZoomState = {
   startPageWidth: number;
 };
 type PageFrameSize = { width: number; height: number };
-type NotebookToolbarDragState = {
-  pointerId: number;
-  startX: number;
-  startY: number;
-  lastX: number;
-  lastY: number;
-  originLeft: number;
-  originTop: number;
-  toolbarWidth: number;
-  toolbarHeight: number;
-  frameWidth: number;
-  frameHeight: number;
-  originDock: NotebookToolbarDock;
-  pointerType: string;
-  samples: NotebookToolbarPointerSample[];
-  started: boolean;
-  startedOnAction: boolean;
-};
 type NotebookUndoAction = {
   type: "textBlocks";
   previous: NotebookTextBlock[];
@@ -308,7 +281,6 @@ const NOTEBOOK_ASSISTANT_QUICK_ACTIONS = [
   },
 ] as const;
 const NOTEBOOK_PAGE_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
-const NOTEBOOK_TOOLBAR_SETTLE_EASING = "cubic-bezier(0.22, 1, 0.36, 1)";
 const NOTEBOOK_TOOLBAR_DOCK_CLASS: Record<NotebookToolbarDock, string> = {
   top: "left-1/2 top-[0.9rem] -translate-x-1/2",
   right:
@@ -404,9 +376,6 @@ export default function NotebookEditorPage() {
   const [pageZoom, setPageZoom] = useState(1);
   const [pagePan, setPagePan] = useState<NotebookPagePan>({ x: 0, y: 0 });
   const [frameSize, setFrameSize] = useState<PageFrameSize>({ width: 0, height: 0 });
-  const [toolbarDock, setToolbarDock] =
-    useState<NotebookToolbarDock>("bottom");
-  const [toolbarSnapRevision, setToolbarSnapRevision] = useState(0);
   const [tool, setTool] = useState<EditorTool>("pen");
   const [saveStatus, setSaveStatus] = useState<SaveStatus>("saved");
   const [loading, setLoading] = useState(true);
@@ -445,14 +414,6 @@ export default function NotebookEditorPage() {
   const textBlockDragRef = useRef<TextBlockDragState | null>(null);
   const textBlockResizeRef = useRef<TextBlockResizeState | null>(null);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
-  const drawingToolbarRef = useRef<HTMLDivElement | null>(null);
-  const toolbarDockRef = useRef<NotebookToolbarDock>("bottom");
-  const toolbarDragRef = useRef<NotebookToolbarDragState | null>(null);
-  const toolbarPendingSnapRectRef = useRef<DOMRect | null>(null);
-  const toolbarPendingSnapVelocityRef = useRef(0);
-  const toolbarSnapAnimationFrameRef = useRef<number | null>(null);
-  const toolbarClickResetTimerRef = useRef<number | null>(null);
-  const suppressToolbarClickRef = useRef(false);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
   const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
   const pageSurfaceRef = useRef<HTMLDivElement | null>(null);
@@ -1487,24 +1448,6 @@ export default function NotebookEditorPage() {
     mediaQuery.addEventListener("change", update);
     return () => mediaQuery.removeEventListener("change", update);
   }, []);
-
-  useEffect(() => {
-    const savedDock = readNotebookToolbarDockPreference();
-    toolbarDockRef.current = savedDock;
-    setToolbarDock(savedDock);
-  }, []);
-
-  useEffect(
-    () => () => {
-      if (toolbarSnapAnimationFrameRef.current !== null) {
-        window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
-      }
-      if (toolbarClickResetTimerRef.current !== null) {
-        window.clearTimeout(toolbarClickResetTimerRef.current);
-      }
-    },
-    []
-  );
 
   useEffect(() => {
     if (
@@ -3754,345 +3697,16 @@ export default function NotebookEditorPage() {
     setEraserMenuOpen(false);
   }, []);
 
-  const requestToolbarDockSnap = useCallback(
-    (
-      dock: NotebookToolbarDock,
-      persist: boolean,
-      releaseVelocity = 0,
-      dragDistance = 0
-    ) => {
-      const toolbar = drawingToolbarRef.current;
-      if (toolbar && dock === toolbarDockRef.current) {
-        toolbarPendingSnapRectRef.current = null;
-        toolbarPendingSnapVelocityRef.current = 0;
-        const settleDuration = getNotebookToolbarSettleDuration({
-          distance: dragDistance,
-          velocity: releaseVelocity,
-        });
-        if (prefersReducedNotebookMotion()) {
-          toolbar.style.transition = "";
-          toolbar.style.transform = "";
-        } else {
-          toolbar.style.transition = `transform ${settleDuration}ms ${NOTEBOOK_TOOLBAR_SETTLE_EASING}`;
-          toolbar.style.transform = "translate3d(0, 0, 0)";
-        }
-        if (persist) saveNotebookToolbarDockPreference(dock);
-        return;
-      }
-      if (toolbar) {
-        toolbarPendingSnapRectRef.current = toolbar.getBoundingClientRect();
-      }
-      toolbarPendingSnapVelocityRef.current = releaseVelocity;
-      toolbarDockRef.current = dock;
-      setToolbarDock(dock);
-      setToolbarSnapRevision((revision) => revision + 1);
-      if (persist) {
-        saveNotebookToolbarDockPreference(dock);
-      }
-    },
-    [prefersReducedNotebookMotion]
-  );
-
-  useLayoutEffect(() => {
-    const toolbar = drawingToolbarRef.current;
-    const draggedRect = toolbarPendingSnapRectRef.current;
-    if (!toolbar || !draggedRect) return;
-
-    toolbarPendingSnapRectRef.current = null;
-    const releaseVelocity = toolbarPendingSnapVelocityRef.current;
-    toolbarPendingSnapVelocityRef.current = 0;
-    if (toolbarSnapAnimationFrameRef.current !== null) {
-      window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
-      toolbarSnapAnimationFrameRef.current = null;
-    }
-
-    toolbar.style.transition = "none";
-    toolbar.style.transform = "translate3d(0, 0, 0)";
-    const dockedRect = toolbar.getBoundingClientRect();
-    const deltaX =
-      draggedRect.left +
-      draggedRect.width / 2 -
-      (dockedRect.left + dockedRect.width / 2);
-    const deltaY =
-      draggedRect.top +
-      draggedRect.height / 2 -
-      (dockedRect.top + dockedRect.height / 2);
-    const settleDuration = getNotebookToolbarSettleDuration({
-      distance: Math.hypot(deltaX, deltaY),
-      velocity: releaseVelocity,
-    });
-
-    if (prefersReducedNotebookMotion()) {
-      toolbar.style.transform = "translate3d(0, 0, 0)";
-      toolbar.style.transition = "";
-      return;
-    }
-
-    toolbar.style.transform = `translate3d(${deltaX}px, ${deltaY}px, 0)`;
-    void toolbar.offsetWidth;
-    toolbarSnapAnimationFrameRef.current = window.requestAnimationFrame(() => {
-      toolbarSnapAnimationFrameRef.current = null;
-      toolbar.style.transition = `transform ${settleDuration}ms ${NOTEBOOK_TOOLBAR_SETTLE_EASING}`;
-      toolbar.style.transform = "translate3d(0, 0, 0)";
-    });
-  }, [
-    prefersReducedNotebookMotion,
-    toolbarDock,
-    toolbarSnapRevision,
-  ]);
-
-  const applyToolbarDragPosition = (
-    drag: NotebookToolbarDragState,
-    toolbar: HTMLDivElement
-  ) => {
-    const offset = snapNotebookToolbarOffsetToDevicePixels(
-      clampNotebookToolbarDragOffset({
-        deltaX: drag.lastX - drag.startX,
-        deltaY: drag.lastY - drag.startY,
-        originLeft: drag.originLeft,
-        originTop: drag.originTop,
-        toolbarWidth: drag.toolbarWidth,
-        toolbarHeight: drag.toolbarHeight,
-        frameWidth: drag.frameWidth,
-        frameHeight: drag.frameHeight,
-      }),
-      window.devicePixelRatio
-    );
-    toolbar.style.transform = `translate3d(${offset.x}px, ${offset.y}px, 0)`;
-  };
-
-  const handleToolbarPointerDown = (
-    event: ReactPointerEvent<HTMLDivElement>
-  ) => {
-    if (
-      !event.isPrimary ||
-      (event.pointerType === "mouse" && event.button !== 0) ||
-      toolbarDragRef.current
-    ) {
-      return;
-    }
-
-    const frame = pageFrameRef.current;
-    const toolbar = drawingToolbarRef.current;
-    if (!frame || !toolbar) return;
-
-    if (toolbarSnapAnimationFrameRef.current !== null) {
-      window.cancelAnimationFrame(toolbarSnapAnimationFrameRef.current);
-      toolbarSnapAnimationFrameRef.current = null;
-    }
-    const liveTransform = window.getComputedStyle(toolbar).transform;
-    toolbar.style.transition = "none";
-    if (liveTransform && liveTransform !== "none") {
-      toolbar.style.transform = liveTransform;
-    }
-
-    const frameRect = frame.getBoundingClientRect();
-    const toolbarRect = toolbar.getBoundingClientRect();
-    const toolbarAction =
-      event.target instanceof Element
-        ? event.target.closest<HTMLElement>(
-            "[data-notebook-toolbar-action='true']"
-          )
-        : null;
-    const startedOnAction = Boolean(
-      toolbarAction && toolbar.contains(toolbarAction)
-    );
-    toolbarDragRef.current = {
-      pointerId: event.pointerId,
-      startX: event.clientX,
-      startY: event.clientY,
-      lastX: event.clientX,
-      lastY: event.clientY,
-      originLeft: toolbarRect.left - frameRect.left,
-      originTop: toolbarRect.top - frameRect.top,
-      toolbarWidth: toolbarRect.width,
-      toolbarHeight: toolbarRect.height,
-      frameWidth: frameRect.width,
-      frameHeight: frameRect.height,
-      originDock: toolbarDockRef.current,
-      pointerType: event.pointerType,
-      samples: [
-        {
-          x: event.clientX,
-          y: event.clientY,
-          timeStamp: event.timeStamp,
-        },
-      ],
-      started: false,
-      startedOnAction,
-    };
-    // Keep a control tap under the native button until movement proves this is
-    // a drag. Capturing it on the toolbar immediately can retarget Pencil-up
-    // and suppress Safari's click. Blank toolbar space can capture at once.
-    if (!startedOnAction) safelySetPointerCapture(toolbar, event.pointerId);
-  };
-
-  const handleToolbarPointerMove = (
-    event: ReactPointerEvent<HTMLDivElement>
-  ) => {
-    const drag = toolbarDragRef.current;
-    const toolbar = drawingToolbarRef.current;
-    if (!drag || !toolbar || drag.pointerId !== event.pointerId) return;
-
-    const nativeEvent = event.nativeEvent;
-    const coalescedEvents =
-      typeof nativeEvent.getCoalescedEvents === "function"
-        ? nativeEvent.getCoalescedEvents()
-        : [];
-    const latestInput =
-      coalescedEvents[coalescedEvents.length - 1] ?? nativeEvent;
-    drag.lastX = latestInput.clientX;
-    drag.lastY = latestInput.clientY;
-    drag.samples.push({
-      x: latestInput.clientX,
-      y: latestInput.clientY,
-      timeStamp: latestInput.timeStamp,
-    });
-    const sampleCutoff = latestInput.timeStamp - 100;
-    while (
-      drag.samples.length > 2 &&
-      drag.samples[1].timeStamp < sampleCutoff
-    ) {
-      drag.samples.shift();
-    }
-
-    const deltaX = drag.lastX - drag.startX;
-    const deltaY = drag.lastY - drag.startY;
-    if (
-      !drag.started &&
-      !hasNotebookToolbarDragStarted({
-        deltaX,
-        deltaY,
-        threshold: getNotebookToolbarDragThreshold({
-          pointerType: drag.pointerType,
-          startedOnAction: drag.startedOnAction,
-        }),
-      })
-    ) {
-      return;
-    }
-
-    if (!drag.started) {
-      drag.started = true;
-      safelySetPointerCapture(toolbar, event.pointerId);
-      toolbar.dataset.toolbarDragging = "true";
-      closeDrawingToolMenus();
-      clearNotebookNativeSelection(document);
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    // This hot path contains no layout reads. Write the compositor transform
-    // in the same pointer event so iPad does not wait an extra display frame.
-    applyToolbarDragPosition(drag, toolbar);
-  };
-
-  const handleToolbarPointerLeave = (
-    event: ReactPointerEvent<HTMLDivElement>
-  ) => {
-    const drag = toolbarDragRef.current;
-    const toolbar = drawingToolbarRef.current;
-    if (
-      !drag ||
-      !toolbar ||
-      drag.pointerId !== event.pointerId ||
-      drag.started ||
-      !drag.startedOnAction
-    ) {
-      return;
-    }
-
-    // An action candidate is intentionally not captured before the drag
-    // threshold. Clear it if the Pencil leaves the toolbar so a missed
-    // pointer-up cannot block the next interaction.
-    toolbarDragRef.current = null;
-    toolbar.style.transition = "";
-  };
-
-  const finishToolbarPointer = (
-    event: ReactPointerEvent<HTMLDivElement>,
-    cancelled: boolean
-  ) => {
-    const drag = toolbarDragRef.current;
-    const toolbar = drawingToolbarRef.current;
-    if (!drag || !toolbar || drag.pointerId !== event.pointerId) return;
-
-    if (drag.started) {
-      applyToolbarDragPosition(drag, toolbar);
-    }
-    toolbarDragRef.current = null;
-    safelyReleasePointerCapture(toolbar, event.pointerId);
-    delete toolbar.dataset.toolbarDragging;
-    if (!drag.started) {
-      toolbar.style.transition = "";
-      return;
-    }
-
-    event.preventDefault();
-    event.stopPropagation();
-    suppressToolbarClickRef.current = true;
-    if (toolbarClickResetTimerRef.current !== null) {
-      window.clearTimeout(toolbarClickResetTimerRef.current);
-    }
-    toolbarClickResetTimerRef.current = window.setTimeout(() => {
-      suppressToolbarClickRef.current = false;
-      toolbarClickResetTimerRef.current = null;
-    }, 0);
-
-    const frame = pageFrameRef.current?.getBoundingClientRect();
-    const releaseVelocity = getNotebookToolbarDragVelocity(drag.samples);
-    const nextDock =
-      cancelled || !frame
-        ? drag.originDock
-        : getNearestNotebookToolbarDock({
-            x: drag.lastX - frame.left,
-            y: drag.lastY - frame.top,
-            frameWidth: frame.width,
-            frameHeight: frame.height,
-            currentDock: drag.originDock,
-          });
-    requestToolbarDockSnap(
-      nextDock,
-      !cancelled,
-      cancelled ? 0 : releaseVelocity,
-      Math.hypot(drag.lastX - drag.startX, drag.lastY - drag.startY)
-    );
-  };
-
-  const handleToolbarClickCapture = (event: ReactMouseEvent<HTMLDivElement>) => {
-    if (!suppressToolbarClickRef.current) return;
-    event.preventDefault();
-    event.stopPropagation();
-    suppressToolbarClickRef.current = false;
-  };
-
-  const handleToolbarTransitionEnd = (
-    event: ReactTransitionEvent<HTMLDivElement>
-  ) => {
-    if (
-      event.currentTarget !== event.target ||
-      event.propertyName !== "transform"
-    ) {
-      return;
-    }
-    event.currentTarget.style.transition = "";
-    event.currentTarget.style.transform = "";
-  };
-
-  useEffect(() => {
-    const drag = toolbarDragRef.current;
-    if (!drag?.started) return;
-
-    const toolbar = drawingToolbarRef.current;
-    if (toolbar) delete toolbar.dataset.toolbarDragging;
-    toolbarDragRef.current = null;
-    suppressToolbarClickRef.current = true;
-    requestToolbarDockSnap(drag.originDock, false);
-  }, [
-    frameSize.height,
-    frameSize.width,
-    requestToolbarDockSnap,
-  ]);
+  const {
+    dock: toolbarDock,
+    toolbarRef: drawingToolbarRef,
+    toolbarBindings,
+  } = useNotebookToolbarDocking({
+    frameRef: pageFrameRef,
+    frameSize,
+    onDragStarted: closeDrawingToolMenus,
+    prefersReducedMotion: prefersReducedNotebookMotion,
+  });
 
   if (loading) {
     return (
@@ -5067,19 +4681,7 @@ export default function NotebookEditorPage() {
                   }
                   title="Drag the toolbar to dock it to another edge"
                   data-toolbar-dock={toolbarDock}
-                  onPointerDown={handleToolbarPointerDown}
-                  onPointerMove={handleToolbarPointerMove}
-                  onPointerLeave={handleToolbarPointerLeave}
-                  onPointerUp={(event) => finishToolbarPointer(event, false)}
-                  onPointerCancel={(event) =>
-                    finishToolbarPointer(event, true)
-                  }
-                  onLostPointerCapture={(event) =>
-                    finishToolbarPointer(event, true)
-                  }
-                  onClickCapture={handleToolbarClickCapture}
-                  onTransitionEnd={handleToolbarTransitionEnd}
-                  onDragStart={(event) => event.preventDefault()}
+                  {...toolbarBindings}
                   className={`notebook-dockable-toolbar notebook-floating-control pointer-events-auto flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1.5 ${
                     isNotebookToolbarSideDock(toolbarDock)
                       ? "flex-col"
