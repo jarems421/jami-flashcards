@@ -8,6 +8,9 @@
     "rules": "storage.rules"
   },
   "emulators": {
+    "auth": {
+      "port": 9099
+    },
     "firestore": {
       "port": 8085
     },
