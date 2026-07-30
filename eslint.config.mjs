@@ -70,6 +70,11 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Playwright writes bundled reporter assets and trace payloads here. They
+    // are gitignored, but without this `npm run lint` fails on generated code
+    // after any browser run.
+    "playwright-report/**",
+    "test-results/**",
   ]),
 ]);
 
