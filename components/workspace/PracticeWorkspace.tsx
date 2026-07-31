@@ -11,7 +11,7 @@ import {
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
-import type { Feedback } from "@/lib/app/feedback";
+import { useFeedback } from "@/hooks/useFeedback";
 import { useUser } from "@/components/providers/UserProvider";
 import type { Topic } from "@/lib/material/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
@@ -55,7 +55,13 @@ export default function PracticeWorkspace() {
     null
   );
   const [createFolderOpen, setCreateFolderOpen] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    showThrownError,
+    clear: clearFeedback,
+  } = useFeedback();
 
   const loadWorkspace = useCallback(async () => {
     const [nextFolders, nextNotebooks, nextTopics] = await Promise.all([
@@ -77,15 +83,12 @@ export default function PracticeWorkspace() {
 
   const handleWorkspaceLoadError = useCallback((error: unknown) => {
     console.error(error);
-    setFeedback({
-      type: "error",
-      message: "Failed to load your folders and notebooks.",
-    });
-  }, []);
+    showError("Failed to load your folders and notebooks.");
+  }, [showError]);
 
   const handleWorkspaceLoadStart = useCallback(() => {
-    setFeedback(null);
-  }, []);
+    clearFeedback();
+  }, [clearFeedback]);
 
   const { loading } = useDashboardData({
     requestKey: user.uid,
@@ -111,25 +114,16 @@ export default function PracticeWorkspace() {
     if (!notebookPendingDelete) return;
     const notebook = notebookPendingDelete;
     setDeletingNotebookId(notebook.id);
-    setFeedback(null);
+    clearFeedback();
     try {
       await updateNotebook(user.uid, notebook.id, { archived: true });
       setNotebooks((current) =>
         current.filter((item) => item.id !== notebook.id)
       );
       setNotebookPendingDelete(null);
-      setFeedback({
-        type: "success",
-        message: `${notebook.title} deleted.`,
-      });
+      success(`${notebook.title} deleted.`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not delete notebook.",
-      });
+      showThrownError(error, "Could not delete notebook.");
     } finally {
       setDeletingNotebookId(null);
     }
@@ -157,10 +151,7 @@ export default function PracticeWorkspace() {
             folder,
             ...current.filter((item) => item.id !== folder.id),
           ]);
-          setFeedback({
-            type: "success",
-            message: `“${folder.name}” is ready. Open it to add a notebook.`,
-          });
+          success(`“${folder.name}” is ready. Open it to add a notebook.`);
         }}
       />
 
@@ -191,7 +182,7 @@ export default function PracticeWorkspace() {
               )
             );
             setEditingNotebook(null);
-            setFeedback({ type: "success", message: "Notebook updated." });
+            success("Notebook updated.");
           }}
           onArchived={(notebookId) => {
             const archivedTitle = editingNotebook.title;
@@ -199,10 +190,7 @@ export default function PracticeWorkspace() {
               current.filter((item) => item.id !== notebookId)
             );
             setEditingNotebook(null);
-            setFeedback({
-              type: "success",
-              message: `${archivedTitle} archived.`,
-            });
+            success(`${archivedTitle} archived.`);
           }}
         />
       ) : null}
@@ -211,7 +199,7 @@ export default function PracticeWorkspace() {
         <FeedbackBanner
           type={feedback.type}
           message={feedback.message}
-          onDismiss={() => setFeedback(null)}
+          onDismiss={() => clearFeedback()}
         />
       ) : null}
 
