@@ -521,3 +521,59 @@ question is "does this look right".
 Nine components, not forty. That takes the untested count from 40 to 31, and
 every one of the 31 left is either presentational or already covered
 indirectly by a browser flow.
+
+## Phase 8 — large files — done
+
+| File | Before | After |
+|---|---|---|
+| `app/dashboard/notebooks/[notebookId]/page.tsx` | 3,176 | 2,933 |
+| `app/dashboard/study/page.tsx` | 2,575 | 2,121 |
+| `components/workspace/NotebookInkEditor.tsx` | 1,237 | **1,061** |
+| `app/dashboard/library/page.tsx` | 1,666 | 1,634 |
+
+The ink editor dropped under the 1,200 limit, so its size exception is gone
+rather than lowered. Three exceptions remain, each tightened to just above its
+file's current size so the next growth is deliberate.
+
+### What came out, and why those seams
+
+The extractions that paid were the ones where **pure logic was trapped inside a
+page component**. `lib/study/study-feedback.ts`, `lib/study/focused-review.ts`,
+`lib/material/source-selectors.ts` and `lib/workspace/notebook-js-draw.ts`
+between them took 58 tests that could not previously be written at all. That is
+the real return here — the line counts are a side effect.
+
+JSX extractions came second: four notebook overlays and `FocusedReviewBuilder`.
+These were self-contained subtrees with narrow prop surfaces, and each removes
+markup the coming redesign would otherwise have to navigate around.
+
+### Deliberately not extracted
+
+Three blocks were examined and left, all for the same reason — the seam is
+wider than the thing it would hide:
+
+- **Notebook page swipe navigation** (~500 lines). Needs ~15 inputs even after
+  grouping refs into objects. Already recorded as deliberate in earlier phases;
+  re-examined here and the answer did not change.
+- **Library source composer** (~210 lines). Needs ~14 props, and its
+  `filenameDerivedTitleRef` interplay spans the dialog *and* three page
+  handlers, so the state cannot move with the markup. Extracting it would buy
+  line count and cost a translation layer, on the page with the least coverage.
+- **Library async handlers** (~500 lines). Every one is glue between UI state
+  and Firebase. A hook holding them is the orchestration seam again.
+
+These are the honest floor for the current architecture. Getting past them
+means changing how the pages are structured, not moving code around — and that
+is a redesign decision, not a cleanup one.
+
+### Coverage gaps this surfaced
+
+- `app/dashboard/library/page.tsx` has exactly one browser assertion (the page
+  loads) and no component tests. The composer dialog, rename, archive, restore
+  and delete paths are unverified. This is the weakest-covered surface left.
+- The browser suite is a flaky gate. `browse.smoke` "phone keeps the browse
+  screens usable" failed on a 45s timeout waiting for a route to compile under
+  full-suite load, then passed alone. A gate that fails for reasons unrelated to
+  the change under test is weak evidence.
+- `firebase emulators:exec` leaks `java` and `node` children on Windows. Two
+  runs aborted outright until the orphans were killed by hand.
