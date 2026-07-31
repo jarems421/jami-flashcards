@@ -42,3 +42,20 @@ export const E2E_OFFLINE_CARDS = [
     back: "Offline card one back",
   },
 ] as const;
+
+/**
+ * Material the browse screens list. These smokes read and filter rather than
+ * mutate, so the data can be shared without making the suite order-dependent.
+ */
+export const E2E_TOPIC = {
+  id: "e2e-topic",
+  name: "Browser smoke topic",
+};
+export const E2E_SOURCE = {
+  id: "e2e-source",
+  title: "Browser smoke source",
+};
+export const E2E_GOAL = {
+  id: "e2e-goal",
+  name: "Browser smoke goal",
+};
