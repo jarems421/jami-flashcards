@@ -441,3 +441,68 @@ pages have smokes.
 Gate per batch as usual. `useFeedback` and `useMultiSelect` touch pages with no
 browser coverage, so typecheck and unit tests are the real net there — worth
 being deliberate about the adoption batches rather than sweeping them together.
+
+---
+
+## Phase 7 — component tests
+
+Measured 2026-07-31. Forty of eighty-three components have no test. Line count
+is the wrong way to pick between them: `SourceWorkspace` is the longest at 354
+lines and holds almost no state, while `ProfilePhotoEditor` is 199 lines with
+sixteen state hooks driving a drag-to-crop gesture.
+
+**Sort by behaviour, not size.** What follows is ordered by what breaks if the
+component is wrong.
+
+### Batch 7.1 — the ones with consequences
+
+- **`DashboardAccessGate`** (98 lines). Decides whether an unauthenticated
+  visitor reaches the dashboard. It holds a `checked` flag separate from
+  `user`, and redirects only once both settle — get that wrong and either a
+  signed-out visitor sees the dashboard for a frame, or a signed-in one is
+  bounced to the landing page mid-load. Smallest file here and the worst
+  failure.
+- **`TopicMigrationGate`** (39). Blocks the UI during a data migration.
+- **`PwaBootstrap`** (20). Registers the service worker; the emulator path
+  already has a carve-out, which is exactly the kind of branch that rots.
+
+### Batch 7.2 — gesture and draft state
+
+- **`ProfilePhotoEditor`** (199, 16 state hooks). Drag-to-reposition with
+  pointer capture, an upload, and a save. The densest state in the list.
+- **`SourceDraftEditor`** (350, 11). Editing an AI draft before it is accepted.
+- **`NotebookEditorDialog`** (251, 9) and **`CreateFolderDialog`** (173, 8).
+  Creation dialogs, where the risk is submitting twice or on an empty field.
+
+### Batch 7.3 — the workspaces
+
+- **`PracticeWorkspace`** (338, 13). The Folders destination.
+- **`JamiAssistantHistory`** (307, 6). Thread list, rename, delete.
+
+### Deliberately not tested
+
+Twenty of the forty hold no state at all: `Skeleton`, `SectionHeader`,
+`ProgressBar`, `BrandMark`, `JamiSparklesIcon`, `AppPage`, `CardFaceSummary`,
+`ObjectIcon`, `NotebookSaveIndicator`, `CardActionsMenu`, the notebook colour
+and thickness pickers, `ConstellationStar`, the source drawers, and
+`ProgressCharts`.
+
+A test for these can only assert what they render, which means asserting on
+markup and class names. **That is actively harmful right now**: the next work
+on this codebase is a visual redesign, so those tests would break on every
+styling change and be deleted rather than fixed. Leave them until their
+appearance is settled, and prefer a browser smoke over a unit test when the
+question is "does this look right".
+
+### Estimate
+
+| Batch | Components | Batches |
+|---|---|---|
+| 7.1 gates | 3 | 1 |
+| 7.2 gestures and drafts | 4 | 2 |
+| 7.3 workspaces | 2 | 1 |
+| **total** | **9** | **4** |
+
+Nine components, not forty. That takes the untested count from 40 to 31, and
+every one of the 31 left is either presentational or already covered
+indirectly by a browser flow.
