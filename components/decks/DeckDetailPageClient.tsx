@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useFeedback } from "@/hooks/useFeedback";
 import { useParams } from "next/navigation";
 import {
   exportCardsToSeparatedText,
@@ -55,7 +56,20 @@ export default function DeckDetailPageClient() {
   const [cards, setCards] = useState<Card[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [loadingCards, setLoadingCards] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    clear: clearFeedback,
+  } = useFeedback();
+
+  const handlePanelFeedback = useCallback(
+    (next: Feedback) => {
+      if (next.type === "success") success(next.message);
+      else showError(next.message);
+    },
+    [showError, success]
+  );
   const [editingCardId, setEditingCardId] = useState<string | null>(null);
   const [editingFront, setEditingFront] = useState("");
   const [editingBack, setEditingBack] = useState("");
@@ -77,10 +91,7 @@ export default function DeckDetailPageClient() {
       setCards([]);
       setTopics([]);
       setLoadingCards(false);
-      setFeedback({
-        type: "error",
-        message: "Deck not found.",
-      });
+      showError("Deck not found.");
       return;
     }
 
@@ -88,7 +99,7 @@ export default function DeckDetailPageClient() {
 
     void (async () => {
       setLoadingCards(true);
-      setFeedback(null);
+      clearFeedback();
 
       try {
         const ownedDeck = await getDeckById(user.uid, deckId);
@@ -96,10 +107,7 @@ export default function DeckDetailPageClient() {
           if (!cancelled) {
             setDeck(null);
             setCards([]);
-            setFeedback({
-              type: "error",
-              message: "Deck not found.",
-            });
+            showError("Deck not found.");
           }
           return;
         }
@@ -125,10 +133,7 @@ export default function DeckDetailPageClient() {
           setDeck(null);
           setCards([]);
           setTopics([]);
-          setFeedback({
-            type: "error",
-            message: "Failed to load cards.",
-          });
+          showError("Failed to load cards.");
         }
       } finally {
         if (!cancelled) {
@@ -140,7 +145,7 @@ export default function DeckDetailPageClient() {
     return () => {
       cancelled = true;
     };
-  }, [user.uid, deckId]);
+  }, [clearFeedback, deckId, showError, user.uid]);
 
   useEffect(() => {
     if (!previewCardId) return;
@@ -166,7 +171,7 @@ export default function DeckDetailPageClient() {
     setEditingFront(card.front);
     setEditingBack(card.back);
     setEditingTopicIds(card.topicIds ?? []);
-    setFeedback(null);
+    clearFeedback();
   };
 
   const addCreatedCardsToList = (createdCards: Card[]) => {
@@ -195,10 +200,7 @@ export default function DeckDetailPageClient() {
 
   const handleExportCards = (format: "tsv" | "csv") => {
     if (!deck || cards.length === 0) {
-      setFeedback({
-        type: "error",
-        message: "Add cards before exporting this deck.",
-      });
+      showError("Add cards before exporting this deck.");
       return;
     }
 
@@ -210,10 +212,7 @@ export default function DeckDetailPageClient() {
       text,
       format === "csv" ? "text/csv;charset=utf-8" : "text/tab-separated-values;charset=utf-8"
     );
-    setFeedback({
-      type: "success",
-      message: `Downloaded ${cards.length} cards.`,
-    });
+    success(`Downloaded ${cards.length} cards.`);
   };
 
   const handleSaveCard = async (cardId: string) => {
@@ -221,10 +220,7 @@ export default function DeckDetailPageClient() {
     const nextBack = normalizeCardContentInput(editingBack);
 
     if (!nextFront || !nextBack) {
-      setFeedback({
-        type: "error",
-        message: "Both front and back are required.",
-      });
+      showError("Both front and back are required.");
       return;
     }
 
@@ -232,17 +228,14 @@ export default function DeckDetailPageClient() {
       nextFront.length > MAX_FRONT_LENGTH ||
       nextBack.length > MAX_BACK_LENGTH
     ) {
-      setFeedback({
-        type: "error",
-        message: `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`,
-      });
+      showError(`Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`);
       return;
     }
 
     const nextTopicIds = editingTopicIds;
 
     setSavingCardId(cardId);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       await updateCardContent(cardId, {
@@ -265,23 +258,17 @@ export default function DeckDetailPageClient() {
         )
       );
       resetEditingCard();
-      setFeedback({
-        type: "success",
-        message: "Card updated.",
-      });
+      success("Card updated.");
     } catch (error) {
       console.error(error);
       setSavingCardId(null);
-      setFeedback({
-        type: "error",
-        message: "Failed to update card.",
-      });
+      showError("Failed to update card.");
     }
   };
 
   const handleDeleteCard = async (cardId: string) => {
     setDeletingCardId(cardId);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       await deleteCard(cardId);
@@ -291,16 +278,10 @@ export default function DeckDetailPageClient() {
         resetEditingCard();
       }
       setCardPendingDeleteId(null);
-      setFeedback({
-        type: "success",
-        message: "Card deleted.",
-      });
+      success("Card deleted.");
     } catch (error) {
       console.error(error);
-      setFeedback({
-        type: "error",
-        message: "Failed to delete card.",
-      });
+      showError("Failed to delete card.");
     } finally {
       setDeletingCardId(null);
     }
@@ -348,7 +329,7 @@ export default function DeckDetailPageClient() {
 
   const handleAddTopicsToSelectedCards = async () => {
     if (selectedCardIds.length === 0 || bulkTopicIds.length === 0) {
-      setFeedback({ type: "error", message: "Select cards and choose at least one Topic first." });
+      showError("Select cards and choose at least one Topic first.");
       return;
     }
 
@@ -358,10 +339,7 @@ export default function DeckDetailPageClient() {
       return current.length + additions.length > MAX_LINKED_TOPICS;
     });
     if (overLimitCard) {
-      setFeedback({
-        type: "error",
-        message: "One or more selected cards already has five Topics. Reduce its Topics before adding more.",
-      });
+      showError("One or more selected cards already has five Topics. Reduce its Topics before adding more.");
       return;
     }
     const cardsToUpdate = selectedCards.map((card) => ({
@@ -370,7 +348,7 @@ export default function DeckDetailPageClient() {
     }));
 
     setApplyingBulkTopics(true);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       await setCardTopicsInBulk(cardsToUpdate);
@@ -391,13 +369,10 @@ export default function DeckDetailPageClient() {
       );
       setBulkTopicIds([]);
       setSelectedCardIds([]);
-      setFeedback({
-        type: "success",
-        message: `Added Topics to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`,
-      });
+      success(`Added Topics to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`);
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to add Topics to the selected cards." });
+      showError("Failed to add Topics to the selected cards.");
     } finally {
       setApplyingBulkTopics(false);
     }
@@ -412,7 +387,7 @@ export default function DeckDetailPageClient() {
       contentClassName="space-y-4 sm:space-y-6"
     >
       {feedback ? (
-        <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
+        <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} />
       ) : null}
       <ConfirmDialog
         open={cardPendingDeleteId !== null}
@@ -538,7 +513,7 @@ export default function DeckDetailPageClient() {
               onTopicsChange={setTopics}
               defaultDeckId={deck.id}
               onCardsCreated={handleCardsCreated}
-              onFeedback={setFeedback}
+              onFeedback={handlePanelFeedback}
             />
           )}
 
