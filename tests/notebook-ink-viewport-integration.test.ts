@@ -9,6 +9,11 @@ const editorSource = readFileSync(
   join(process.cwd(), "components/workspace/NotebookInkEditor.tsx"),
   "utf8"
 );
+// The js-draw adapters live beside the editor rather than inside it.
+const inkAdapterSource = readFileSync(
+  join(process.cwd(), "lib/workspace/notebook-js-draw.ts"),
+  "utf8"
+);
 describe("notebook ink viewport integration", () => {
   it("suppresses js-draw's internal export boundary on every rerender", () => {
     expect(editorSource).toContain(
@@ -84,7 +89,14 @@ describe("notebook ink viewport integration", () => {
     expect(editorSource).toContain("previewBatch?.beginBatch()");
     expect(editorSource).toContain("previewBatch?.endBatch()");
     expect(editorSource).toContain("jsDraw.makeFreehandLineBuilder");
-    expect(editorSource).toContain("event.kind === jsDraw.InputEvtType.PointerMoveEvt");
+    // The precise-pen mapper re-derives each canvas position at full precision;
+    // without it, faithful polylines render js-draw's quantisation as stair-steps.
+    expect(inkAdapterSource).toContain(
+      "event.kind === jsDraw.InputEvtType.PointerMoveEvt"
+    );
+    expect(inkAdapterSource).toContain(
+      "pointer.withScreenPosition(pointer.screenPos, editor.viewport)"
+    );
   });
 
   it("routes precision erasing through the circular live gesture only", () => {
