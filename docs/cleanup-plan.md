@@ -444,7 +444,22 @@ being deliberate about the adoption batches rather than sweeping them together.
 
 ---
 
-## Phase 7 — component tests
+## Phase 7 — component tests — done
+
+All nine components covered, 84 tests across six files. Notes from doing it:
+
+- The `Input` and `Textarea` primitives bind their labels with `htmlFor`, not by
+  wrapping, and set no explicit `type`. Query by label → `htmlFor` → id.
+  `CSS.escape` does not exist in this jsdom.
+- `SourceDraftEditor`'s empty-title branch in `handleSave` is unreachable while
+  the button carries `disabled={!title.trim()}`. Same shape in
+  `NotebookEditorDialog`. Tested the guard that actually holds.
+- A row in `JamiAssistantHistory` replaces its own overflow menu while renaming
+  or deleting, so rename/delete mutual exclusion is only reachable across two
+  rows. The single-row version of that test cannot be written.
+- `PracticeWorkspace` archives on delete and leaves the title in the
+  confirmation message, so "the card is gone" has to be asserted against the
+  card, not against page text.
 
 Measured 2026-07-31. Forty of eighty-three components have no test. Line count
 is the wrong way to pick between them: `SourceWorkspace` is the longest at 354
