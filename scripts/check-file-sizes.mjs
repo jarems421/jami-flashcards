@@ -26,7 +26,7 @@ const SKIP = new Set(["node_modules", ".next", "dist", "build"]);
  * number when a file shrinks; never raise one.
  */
 const EXCEPTIONS = new Map([
-  ["app/dashboard/notebooks/[notebookId]/page.tsx", 3250],
+  ["app/dashboard/notebooks/[notebookId]/page.tsx", 2950],
   ["app/dashboard/study/page.tsx", 2600],
   ["app/dashboard/library/page.tsx", 1750],
   ["components/workspace/NotebookInkEditor.tsx", 1300],
