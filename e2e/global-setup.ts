@@ -9,6 +9,9 @@ import {
   E2E_CARDS,
   E2E_DECK_ID,
   E2E_DECK_NAME,
+  E2E_OFFLINE_CARDS,
+  E2E_OFFLINE_DECK_ID,
+  E2E_OFFLINE_DECK_NAME,
   E2E_PHONE_CARDS,
   E2E_PHONE_DECK_ID,
   E2E_PHONE_DECK_NAME,
@@ -132,6 +135,11 @@ export default async function globalSetup() {
             deckId: E2E_PHONE_DECK_ID,
             name: E2E_PHONE_DECK_NAME,
             cards: E2E_PHONE_CARDS,
+          },
+          {
+            deckId: E2E_OFFLINE_DECK_ID,
+            name: E2E_OFFLINE_DECK_NAME,
+            cards: E2E_OFFLINE_CARDS,
           },
         ].flatMap(({ deckId, name, cards }) => [
           setDoc(doc(db, "decks", deckId), {

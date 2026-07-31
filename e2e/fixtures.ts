@@ -27,3 +27,18 @@ export const E2E_PHONE_CARDS = [
     back: "Phone card one back",
   },
 ] as const;
+
+/**
+ * The offline replay check grades a card with the browser offline, so it needs
+ * a deck the other flows never touch: a shared deck would make the suite
+ * order-dependent, and a queued review that never drains would leak into them.
+ */
+export const E2E_OFFLINE_DECK_ID = "e2e-deck-offline";
+export const E2E_OFFLINE_DECK_NAME = "Browser smoke offline deck";
+export const E2E_OFFLINE_CARDS = [
+  {
+    id: "e2e-offline-card-1",
+    front: "Offline card one front",
+    back: "Offline card one back",
+  },
+] as const;
