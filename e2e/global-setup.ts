@@ -16,6 +16,9 @@ import {
   E2E_PHONE_DECK_ID,
   E2E_PHONE_DECK_NAME,
   E2E_FOLDER_ID,
+  E2E_GOAL,
+  E2E_SOURCE,
+  E2E_TOPIC,
   E2E_NOTEBOOK_ID,
   E2E_PAGE_IDS,
   E2E_PROJECT_ID,
@@ -108,6 +111,42 @@ export default async function globalSetup() {
           topicsMigrationVersion: 1,
           createdAt: now,
           updatedAt: now,
+        }),
+        // Material for the browse screens: Topics, Sources, and Goals each
+        // need one row to prove the list renders rather than the empty state.
+        setDoc(doc(db, "users", userId, "topics", E2E_TOPIC.id), {
+          name: E2E_TOPIC.name,
+          normalizedName: E2E_TOPIC.name.toLowerCase(),
+          slug: "browser-smoke-topic",
+          subject: "Testing",
+          status: "active",
+          createdBy: "user",
+          createdAt: now,
+          updatedAt: now,
+        }),
+        setDoc(doc(db, "users", userId, "sources", E2E_SOURCE.id), {
+          title: E2E_SOURCE.title,
+          type: "manual_note",
+          subject: "Testing",
+          folderIds: [E2E_FOLDER_ID],
+          topicIds: [E2E_TOPIC.id],
+          contentText: "Notes captured for the browser smoke.",
+          status: "active",
+          createdBy: "user",
+          createdAt: now,
+          updatedAt: now,
+        }),
+        setDoc(doc(db, "users", userId, "goals", E2E_GOAL.id), {
+          name: E2E_GOAL.name,
+          scope: { type: "all" },
+          targetCards: 20,
+          targetAccuracy: 80,
+          // Comfortably ahead, so the goal stays active however long the
+          // suite runs.
+          deadline: now + 30 * 24 * 60 * 60 * 1000,
+          progress: { cardsCompleted: 0, correctAnswers: 0, totalAnswers: 0 },
+          status: "active",
+          createdAt: now,
         }),
         setDoc(
           doc(db, "users", userId, "studyFolders", E2E_FOLDER_ID),
