@@ -7,6 +7,7 @@ import {
   type SourceType,
 } from "@/lib/practice/sources";
 import { getSourceFileTypeLabel } from "@/lib/practice/source-files";
+import { toggleIdSelection } from "@/lib/app/multi-select";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { Button, JamiSparklesIcon } from "@/components/ui";
 import styles from "./SourceWorkspace.module.css";
@@ -337,11 +338,7 @@ export function SourceFolderPicker({
                     checked={checked}
                     disabled={selectionLimitReached}
                     onChange={() =>
-                      onChange(
-                        checked
-                          ? selectedFolderIds.filter((id) => id !== folder.id)
-                          : [...selectedFolderIds, folder.id]
-                      )
+                      onChange(toggleIdSelection(selectedFolderIds, folder.id))
                     }
                     className="h-4 w-4 accent-[var(--color-accent)]"
                   />

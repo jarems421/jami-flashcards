@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
+import { useInlineRowEditing } from "@/hooks/useInlineRowEditing";
 import type { Deck } from "@/lib/study/decks";
 import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckFolders, updateDeckStyle } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
@@ -24,6 +25,20 @@ import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import { useDashboardData } from "@/hooks/useDashboardData";
 
+type DeckDraft = {
+  name: string;
+  colorPreset: DeckColorPresetId;
+  iconPreset: DeckIconPresetId;
+  folderId: string;
+};
+
+const EMPTY_DECK_DRAFT: DeckDraft = {
+  name: "",
+  colorPreset: "sky",
+  iconPreset: "none",
+  folderId: "",
+};
+
 export default function DecksPage() {
   const { user } = useUser();
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -32,13 +47,8 @@ export default function DecksPage() {
   const [name, setName] = useState("");
   const [createFolderId, setCreateFolderId] = useState("");
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
-  const [editingDeckId, setEditingDeckId] = useState<string | null>(null);
-  const [editingDeckName, setEditingDeckName] = useState("");
-  const [editingDeckColor, setEditingDeckColor] = useState<DeckColorPresetId>("sky");
-  const [editingDeckIcon, setEditingDeckIcon] = useState<DeckIconPresetId>("none");
-  const [editingDeckFolderId, setEditingDeckFolderId] = useState("");
-  const [savingDeckId, setSavingDeckId] = useState<string | null>(null);
-  const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
+  const rows = useInlineRowEditing<DeckDraft>();
+  const draft = rows.draft ?? EMPTY_DECK_DRAFT;
   const [deckPendingDelete, setDeckPendingDelete] = useState<Deck | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const {
@@ -120,11 +130,7 @@ export default function DecksPage() {
   }, [clearFeedback, loadAll]);
 
   const resetDeckEditing = () => {
-    setEditingDeckId(null);
-    setEditingDeckName("");
-    setEditingDeckColor("sky");
-    setEditingDeckIcon("none");
-    setEditingDeckFolderId("");
+    rows.cancelEditing();
   };
 
   const handleCreate = async () => {
@@ -147,28 +153,28 @@ export default function DecksPage() {
   };
 
   const handleDeckRename = async (deck: Deck) => {
-    setSavingDeckId(deck.id);
+    rows.setSaving(deck.id);
     clearFeedback();
     try {
-      await renameDeck(user.uid, deck.id, editingDeckName.trim());
+      await renameDeck(user.uid, deck.id, draft.name.trim());
       await updateDeckStyle(user.uid, deck.id, {
-        colorPreset: editingDeckColor,
-        iconPreset: editingDeckIcon,
+        colorPreset: draft.colorPreset,
+        iconPreset: draft.iconPreset,
       });
-      await updateDeckFolders(user.uid, deck.id, editingDeckFolderId ? [editingDeckFolderId] : []);
+      await updateDeckFolders(user.uid, deck.id, draft.folderId ? [draft.folderId] : []);
       await loadAll();
       resetDeckEditing();
-      success(`Saved changes to ${editingDeckName.trim()}`);
+      success(`Saved changes to ${draft.name.trim()}`);
     } catch (error) {
       console.error(error);
       showError("Failed to rename deck.");
     } finally {
-      setSavingDeckId(null);
+      rows.setSaving(null);
     }
   };
 
   const handleDeckDelete = async (deck: Deck) => {
-    setDeletingDeckId(deck.id);
+    rows.setDeleting(deck.id);
     clearFeedback();
     try {
       await deleteDeck(user.uid, deck.id);
@@ -179,7 +185,7 @@ export default function DecksPage() {
       console.error(error);
       showError("Failed to delete deck.");
     } finally {
-      setDeletingDeckId(null);
+      rows.setDeleting(null);
     }
   };
 
@@ -201,7 +207,7 @@ export default function DecksPage() {
           confirmLabel="Delete deck"
           busy={
             deckPendingDelete !== null &&
-            deletingDeckId === deckPendingDelete.id
+            rows.isDeleting(deckPendingDelete.id)
           }
           onClose={() => setDeckPendingDelete(null)}
           onConfirm={() => {
@@ -310,19 +316,19 @@ export default function DecksPage() {
                 >
                   <div className="flex flex-wrap items-start justify-between gap-3">
                     <div className="min-w-0 basis-full">
-                      {editingDeckId === deck.id ? (
+                      {rows.isEditing(deck.id) ? (
                         <div className="space-y-3">
                           <div className="app-subtle-panel space-y-3 rounded-[1.4rem] p-3">
                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Deck cover</div>
                             <div className="app-chip flex flex-wrap items-center gap-3 rounded-[1rem] p-3 sm:flex-nowrap">
                               <DeckCoverIcon
-                                colorPreset={editingDeckColor}
-                                iconPreset={editingDeckIcon}
+                                colorPreset={draft.colorPreset}
+                                iconPreset={draft.iconPreset}
                                 className="h-12 w-12"
                               />
                               <div className="min-w-0">
                                 <div className="truncate text-sm font-medium text-text-primary">
-                                  {editingDeckName.trim() || "Deck preview"}
+                                  {draft.name.trim() || "Deck preview"}
                                 </div>
                                 <div className="text-xs text-text-muted">
                                   Updates as you style it
@@ -332,15 +338,15 @@ export default function DecksPage() {
                             <div className="grid gap-3 sm:grid-cols-2">
                               <Input
                                 label="Deck name"
-                                value={editingDeckName}
-                                onChange={(event) => setEditingDeckName(event.target.value)}
+                                value={draft.name}
+                                onChange={(event) => rows.updateDraft({ name: event.target.value })}
                                 placeholder="Deck name"
                               />
                               <label className="block">
                                 <span className="mb-2 block text-sm font-medium text-text-secondary">Folder</span>
                                 <select
-                                  value={editingDeckFolderId}
-                                  onChange={(event) => setEditingDeckFolderId(event.target.value)}
+                                  value={draft.folderId}
+                                  onChange={(event) => rows.updateDraft({ folderId: event.target.value })}
                                   className="app-field min-h-[2.75rem] w-full rounded-2xl px-3 text-sm outline-none"
                                 >
                                   <option value="">No folder</option>
@@ -353,10 +359,10 @@ export default function DecksPage() {
                               </label>
                             </div>
                             <ObjectStylePicker
-                              color={editingDeckColor}
-                              icon={editingDeckIcon}
-                              onColorChange={setEditingDeckColor}
-                              onIconChange={setEditingDeckIcon}
+                              color={draft.colorPreset}
+                              icon={draft.iconPreset}
+                              onColorChange={(colorPreset) => rows.updateDraft({ colorPreset })}
+                              onIconChange={(iconPreset) => rows.updateDraft({ iconPreset })}
                               colorLabel="Deck colour"
                               iconLabel="Deck icon"
                               compact
@@ -367,18 +373,18 @@ export default function DecksPage() {
                               type="button"
                               variant="danger"
                               disabled={
-                                savingDeckId === deck.id ||
-                                deletingDeckId === deck.id
+                                rows.isSaving(deck.id) ||
+                                rows.isDeleting(deck.id)
                               }
                               onClick={() => setDeckPendingDelete(deck)}
                               className="w-full sm:w-auto"
                             >
-                              {deletingDeckId === deck.id ? "Deleting..." : "Delete deck"}
+                              {rows.isDeleting(deck.id) ? "Deleting..." : "Delete deck"}
                             </Button>
                             <div className="flex flex-col gap-2 sm:flex-row">
                               <Button
                                 type="button"
-                                disabled={savingDeckId === deck.id}
+                                disabled={rows.isSaving(deck.id)}
                                 onClick={resetDeckEditing}
                                 variant="ghost"
                                 className="w-full sm:w-auto"
@@ -387,11 +393,11 @@ export default function DecksPage() {
                               </Button>
                               <Button
                                 type="button"
-                                disabled={savingDeckId === deck.id || !editingDeckName.trim()}
+                                disabled={rows.isSaving(deck.id) || !draft.name.trim()}
                                 onClick={() => void handleDeckRename(deck)}
                                 className="w-full sm:w-auto"
                               >
-                                {savingDeckId === deck.id ? "Saving..." : "Save deck"}
+                                {rows.isSaving(deck.id) ? "Saving..." : "Save deck"}
                               </Button>
                             </div>
                           </div>
@@ -410,7 +416,7 @@ export default function DecksPage() {
                       )}
                     </div>
 
-                    {editingDeckId === deck.id ? null : (
+                    {rows.isEditing(deck.id) ? null : (
                       <div className="flex w-full flex-wrap gap-2">
                         <ButtonLink
                           href={getDeckStudyHref(deck.id)}
@@ -425,7 +431,7 @@ export default function DecksPage() {
                         >
                           Add card
                         </Link>
-                        <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setEditingDeckFolderId(deck.folderIds[0] ?? ""); clearFeedback(); }} variant="secondary" className="flex-1 sm:flex-none">
+                        <Button type="button" disabled={rows.isDeleting(deck.id)} onClick={() => { rows.startEditing(deck.id, { name: deck.name, colorPreset: deck.colorPreset, iconPreset: deck.iconPreset, folderId: deck.folderIds[0] ?? "" }); clearFeedback(); }} variant="secondary" className="flex-1 sm:flex-none">
                           Edit
                         </Button>
                       </div>

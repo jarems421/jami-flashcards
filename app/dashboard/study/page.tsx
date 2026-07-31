@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
+import { toggleIdSelection } from "@/lib/app/multi-select";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
   buildDailyReviewQueues,
@@ -833,20 +834,12 @@ export default function StudyPage() {
   }, [focusedReviewRecents.topicIds, topics]);
 
   const toggleDeckFilter = useCallback((deckId: string) => {
-    setSelectedDeckIds((prev) =>
-      prev.includes(deckId)
-        ? prev.filter((currentId) => currentId !== deckId)
-        : [...prev, deckId]
-    );
+    setSelectedDeckIds((prev) => toggleIdSelection(prev, deckId));
     clearFeedback();
   }, [clearFeedback]);
 
   const toggleTopicFilter = useCallback((topicId: string) => {
-    setSelectedTopicIds((prev) =>
-      prev.includes(topicId)
-        ? prev.filter((currentTopicId) => currentTopicId !== topicId)
-        : [...prev, topicId]
-    );
+    setSelectedTopicIds((prev) => toggleIdSelection(prev, topicId));
     clearFeedback();
   }, [clearFeedback]);
 
