@@ -2,7 +2,7 @@ import "server-only";
 
 import type { Part } from "@google/generative-ai";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
-import type { Source } from "@/lib/practice/sources";
+import type { Source } from "@/lib/material/sources";
 
 const MAX_RELATED_SOURCES = 5;
 

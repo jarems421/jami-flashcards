@@ -17,12 +17,12 @@ import {
 } from "@/components/ui";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
-import { buildTopicSummaries } from "@/lib/practice/topic-management";
-import type { Source } from "@/lib/practice/sources";
-import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
+import { buildTopicSummaries } from "@/lib/material/topic-management";
+import type { Source } from "@/lib/material/sources";
+import { MAX_LINKED_TOPICS, type Topic } from "@/lib/material/topics";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import type { Deck } from "@/lib/study/decks";
-import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import { loadUserCards, updateCardTopics } from "@/services/study/cards";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { getDecks } from "@/services/study/decks";

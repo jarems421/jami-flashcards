@@ -1,7 +1,7 @@
 "use client";
 
-import { MAX_SOURCE_FOLDER_IDS, type Source } from "@/lib/practice/sources";
-import type { Topic } from "@/lib/practice/topics";
+import { MAX_SOURCE_FOLDER_IDS, type Source } from "@/lib/material/sources";
+import type { Topic } from "@/lib/material/topics";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import TopicPicker from "@/components/topics/TopicPicker";
 import { FeedbackBanner } from "@/components/ui";

@@ -1,7 +1,7 @@
 import type {
   ContentOrigin,
   ContentStatus,
-} from "@/lib/practice/content";
+} from "@/lib/material/content";
 
 export type GeneratedContentKind =
   | "flashcard"

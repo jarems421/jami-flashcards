@@ -68,7 +68,7 @@ import { recordStudyReview } from "@/services/study/activity";
 import { getDecks } from "@/services/study/decks";
 import type { Deck } from "@/lib/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
-import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
+import { getTopicNameKey, type Topic } from "@/lib/material/topics";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
 import AppPage from "@/components/layout/AppPage";
 import StarRewardOverlay, {

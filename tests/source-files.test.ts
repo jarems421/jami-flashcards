@@ -5,7 +5,7 @@ import {
   getSourceFileTypeLabel,
   resolveSourceFileMimeType,
   validateSourceFile,
-} from "@/lib/practice/source-files";
+} from "@/lib/material/source-files";
 
 describe("Library source files", () => {
   it("classifies supported study files", () => {

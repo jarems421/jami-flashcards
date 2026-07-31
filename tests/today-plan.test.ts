@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildTodayPlan } from "@/lib/dashboard/today-plan";
 import type { Card } from "@/lib/study/cards";
 import type { Goal } from "@/lib/study/goals";
-import type { Topic } from "@/lib/practice/topics";
+import type { Topic } from "@/lib/material/topics";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
 

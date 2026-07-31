@@ -18,16 +18,16 @@ import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import { useInlineRowEditing } from "@/hooks/useInlineRowEditing";
 import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
-import { buildTopicSummaries } from "@/lib/practice/topic-management";
-import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
-import { getTopicNameKey, type Topic } from "@/lib/practice/topics";
+import { buildTopicSummaries } from "@/lib/material/topic-management";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
+import { getTopicNameKey, type Topic } from "@/lib/material/topics";
 import {
   shouldShowSmartSearchResults,
   textMatchesSmartSearch,
 } from "@/lib/study/card-search";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import { loadUserCards } from "@/services/study/cards";
-import type { Source } from "@/lib/practice/sources";
+import type { Source } from "@/lib/material/sources";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { getGeneratedContentDrafts } from "@/services/study/generated-content";
 import { getActiveNotebooks } from "@/services/study/notebooks";

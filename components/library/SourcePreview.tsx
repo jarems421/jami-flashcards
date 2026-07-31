@@ -2,11 +2,11 @@
 
 import { useState } from "react";
 import Image from "next/image";
-import type { Source } from "@/lib/practice/sources";
+import type { Source } from "@/lib/material/sources";
 import {
   getSourceFileKind,
   getSourceFileTypeLabel,
-} from "@/lib/practice/source-files";
+} from "@/lib/material/source-files";
 
 type SourcePreviewProps = {
   source: Source;

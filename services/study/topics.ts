@@ -20,12 +20,12 @@ import {
   normalizeTopicSubject,
   slugifyTopicName,
   type Topic,
-} from "@/lib/practice/topics";
+} from "@/lib/material/topics";
 import {
   buildMigratedTopicIds,
   chunkTopicWrites,
   collectMissingTopicNames,
-} from "@/lib/practice/topic-management";
+} from "@/lib/material/topic-management";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;

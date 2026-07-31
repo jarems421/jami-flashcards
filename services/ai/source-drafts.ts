@@ -3,7 +3,7 @@ import type {
   SourceDraftDepth,
   SourceDraftKind,
 } from "@/lib/ai/source-draft-quality";
-import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 
 function friendlyError(status: number, message?: string) {
   if (status === 429) return "Jami has reached today's draft limit. Try again tomorrow.";

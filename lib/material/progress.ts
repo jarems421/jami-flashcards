@@ -1,8 +1,8 @@
 import type { Card } from "@/lib/study/cards";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
-import type { MasteryEvent } from "@/lib/practice/mastery";
-import type { Source } from "@/lib/practice/sources";
-import type { Topic } from "@/lib/practice/topics";
+import type { MasteryEvent } from "@/lib/material/mastery";
+import type { Source } from "@/lib/material/sources";
+import type { Topic } from "@/lib/material/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 
 export type TopicProgressSummary = {

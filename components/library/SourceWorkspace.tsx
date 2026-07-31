@@ -5,8 +5,8 @@ import {
   MAX_SOURCE_FOLDER_IDS,
   type Source,
   type SourceType,
-} from "@/lib/practice/sources";
-import { getSourceFileTypeLabel } from "@/lib/practice/source-files";
+} from "@/lib/material/sources";
+import { getSourceFileTypeLabel } from "@/lib/material/source-files";
 import { toggleIdSelection } from "@/lib/app/multi-select";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { Button, JamiSparklesIcon } from "@/components/ui";

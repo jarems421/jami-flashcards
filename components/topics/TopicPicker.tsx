@@ -1,11 +1,11 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Topic } from "@/lib/practice/topics";
+import type { Topic } from "@/lib/material/topics";
 import {
   MAX_LINKED_TOPICS,
   getTopicNameKey,
-} from "@/lib/practice/topics";
+} from "@/lib/material/topics";
 import { createOrGetTopic } from "@/services/study/topics";
 import { Button, Input } from "@/components/ui";
 

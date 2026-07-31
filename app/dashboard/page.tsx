@@ -20,7 +20,7 @@ import { getActiveTopics } from "@/services/study/topics";
 import { getMasteryEvents } from "@/services/study/mastery";
 import { getGeneratedContentDrafts } from "@/services/study/generated-content";
 import { getActiveSources } from "@/services/study/sources";
-import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import {
   ensureDailyReviewState,
@@ -34,9 +34,9 @@ import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable"
 import { loadInAppUsername } from "@/services/profile";
 import { getStudyDayKey } from "@/lib/study/day";
 import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
-import type { Topic } from "@/lib/practice/topics";
-import type { MasteryEvent } from "@/lib/practice/mastery";
-import type { Source } from "@/lib/practice/sources";
+import type { Topic } from "@/lib/material/topics";
+import type { MasteryEvent } from "@/lib/material/mastery";
+import type { Source } from "@/lib/material/sources";
 import { buildTodayPlan, type TodayPlan } from "@/lib/dashboard/today-plan";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";

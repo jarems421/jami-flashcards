@@ -1,6 +1,6 @@
 "use client";
 
-import type { Topic } from "@/lib/practice/topics";
+import type { Topic } from "@/lib/material/topics";
 import TopicPicker from "@/components/topics/TopicPicker";
 import { Button } from "@/components/ui";
 

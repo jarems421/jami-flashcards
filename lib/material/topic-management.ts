@@ -1,14 +1,14 @@
-import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
-import type { Source } from "@/lib/practice/sources";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
+import type { Source } from "@/lib/material/sources";
 import {
   getTopicNameKey,
   normalizeTopicName,
   type Topic,
-} from "@/lib/practice/topics";
+} from "@/lib/material/topics";
 import type { Card } from "@/lib/study/cards";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import { MAX_LINKED_TOPICS } from "@/lib/practice/topics";
+import { MAX_LINKED_TOPICS } from "@/lib/material/topics";
 
 export type TopicSummary = {
   topic: Topic;

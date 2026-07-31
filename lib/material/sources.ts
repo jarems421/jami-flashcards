@@ -1,4 +1,4 @@
-import { normalizeOptionalString, normalizeStringArray } from "@/lib/practice/content";
+import { normalizeOptionalString, normalizeStringArray } from "@/lib/material/content";
 
 export type SourceType = "pasted_text" | "manual_note" | "link" | "file";
 export type SourceStatus = "active" | "archived";

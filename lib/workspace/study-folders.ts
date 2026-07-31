@@ -1,7 +1,7 @@
 import {
   normalizeOptionalString,
   normalizeStringArray,
-} from "@/lib/practice/content";
+} from "@/lib/material/content";
 
 export type StudyFolder = {
   id: string;

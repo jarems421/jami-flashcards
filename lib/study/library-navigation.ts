@@ -1,4 +1,4 @@
-import type { SourceStatus, SourceType } from "@/lib/practice/sources";
+import type { SourceStatus, SourceType } from "@/lib/material/sources";
 
 export type LibrarySourceTypeFilter = SourceType | "all";
 export type LibrarySourceStatusFilter = SourceStatus | "all";

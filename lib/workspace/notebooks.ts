@@ -1,7 +1,7 @@
 import {
   normalizeOptionalString,
   normalizeStringArray,
-} from "@/lib/practice/content";
+} from "@/lib/material/content";
 import { normalizeInkPressure, normalizeInkTime } from "@/lib/workspace/notebook-ink-engine";
 import type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
 

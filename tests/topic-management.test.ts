@@ -5,8 +5,8 @@ import {
   chunkTopicWrites,
   collectMissingTopicNames,
   getBulkTopicCapacity,
-} from "@/lib/practice/topic-management";
-import type { Topic } from "@/lib/practice/topics";
+} from "@/lib/material/topic-management";
+import type { Topic } from "@/lib/material/topics";
 import type { Card } from "@/lib/study/cards";
 
 describe("Topic migration helpers", () => {

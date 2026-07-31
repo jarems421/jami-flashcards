@@ -1,24 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Line,
-  LineChart,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
+import dynamic from "next/dynamic";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getCustomStudyHref, getDeckStudyHref } from "@/lib/app/routes";
-import type { Source } from "@/lib/practice/sources";
-import type { Topic } from "@/lib/practice/topics";
-import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
+import type { Source } from "@/lib/material/sources";
+import type { Topic } from "@/lib/material/topics";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
 import { computeStudyStreak, type DailyStudyActivity } from "@/lib/study/activity";
 import type { Card as StudyCard } from "@/lib/study/cards";
@@ -64,16 +54,6 @@ import { useDashboardData } from "@/hooks/useDashboardData";
 
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
-function formatTooltipNumber(value: unknown, suffix = "") {
-  if (typeof value === "number" && Number.isFinite(value)) {
-    return `${value}${suffix}`;
-  }
-  if (typeof value === "string" && value.trim()) {
-    return `${value}${suffix}`;
-  }
-  return `0${suffix}`;
-}
-
 function HeroMetric({ label, value }: { label: string; value: string | number }) {
   return (
     <div className="app-chip rounded-[1rem] px-3 py-3 text-center">
@@ -86,6 +66,19 @@ function HeroMetric({ label, value }: { label: string; value: string | number })
     </div>
   );
 }
+
+const CHART_FALLBACK = (
+  <div className="h-full w-full animate-pulse rounded-[1rem] bg-[var(--color-glass-subtle)]" />
+);
+
+const AccuracyChart = dynamic(
+  () => import("@/components/stats/ProgressCharts").then((m) => m.AccuracyChart),
+  { ssr: false, loading: () => CHART_FALLBACK }
+);
+const StudyTimeChart = dynamic(
+  () => import("@/components/stats/ProgressCharts").then((m) => m.StudyTimeChart),
+  { ssr: false, loading: () => CHART_FALLBACK }
+);
 
 export default function ProgressPage() {
   const { user } = useUser();
@@ -401,22 +394,10 @@ export default function ProgressPage() {
                     aria-label={`Accuracy chart for ${PROGRESS_TIME_RANGE_OPTIONS.find((option) => option.value === range)?.label}`}
                   >
                     {selectedHasReviews ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <LineChart data={accuracyData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                          <XAxis dataKey="day" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                          <YAxis domain={[0, 100]} tick={{ fontSize: 11 }} tickFormatter={(value: number) => `${value}%`} />
-                          <Tooltip formatter={(value: unknown) => [formatTooltipNumber(value, "%"), "Accuracy"]} />
-                          <Line
-                            type="monotone"
-                            dataKey="accuracy"
-                            stroke="var(--color-accent)"
-                            strokeWidth={2.5}
-                            dot={range === "7d"}
-                            activeDot={{ r: 5 }}
-                          />
-                        </LineChart>
-                      </ResponsiveContainer>
+                      <AccuracyChart
+                        data={accuracyData}
+                        showDots={range === "7d"}
+                      />
                     ) : (
                       <div className="flex h-full items-center justify-center">
                         <EmptyState
@@ -443,15 +424,7 @@ export default function ProgressPage() {
                     aria-label={`Study time chart for ${PROGRESS_TIME_RANGE_OPTIONS.find((option) => option.value === range)?.label}`}
                   >
                     {selectedHasTime ? (
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={studyTimeData}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="var(--color-border)" />
-                          <XAxis dataKey="day" tick={{ fontSize: 11 }} interval="preserveStartEnd" />
-                          <YAxis tick={{ fontSize: 11 }} tickFormatter={(value: number) => `${value}m`} />
-                          <Tooltip formatter={(value: unknown) => [formatTooltipNumber(value, " min"), "Time"]} />
-                          <Bar dataKey="minutes" fill="var(--color-accent)" radius={[7, 7, 0, 0]} />
-                        </BarChart>
-                      </ResponsiveContainer>
+                      <StudyTimeChart data={studyTimeData} />
                     ) : (
                       <div className="flex h-full items-center justify-center">
                         <EmptyState

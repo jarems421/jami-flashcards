@@ -4,8 +4,8 @@ import type {
   SourceDraftDepth,
   SourceDraftKind,
 } from "@/lib/ai/source-draft-quality";
-import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
-import type { Topic } from "@/lib/practice/topics";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
+import type { Topic } from "@/lib/material/topics";
 import type { Deck } from "@/lib/study/decks";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { FeedbackBanner } from "@/components/ui";

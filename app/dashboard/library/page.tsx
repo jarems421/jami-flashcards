@@ -9,9 +9,9 @@ import {
 } from "react";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
-import type { Source, SourceType } from "@/lib/practice/sources";
-import type { Topic } from "@/lib/practice/topics";
-import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
+import type { Source, SourceType } from "@/lib/material/sources";
+import type { Topic } from "@/lib/material/topics";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type {
   SourceDraftDepth,
   SourceDraftKind,
