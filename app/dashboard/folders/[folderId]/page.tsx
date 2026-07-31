@@ -27,10 +27,10 @@ import {
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
-import type { Feedback } from "@/lib/app/feedback";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckHref } from "@/lib/app/routes";
 import { useUser } from "@/components/providers/UserProvider";
+import { useFeedback } from "@/hooks/useFeedback";
 import type { Source } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
 import type { Deck } from "@/lib/study/decks";
@@ -103,7 +103,13 @@ export default function FolderDetailPage() {
     null
   );
   const [loading, setLoading] = useState(true);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    showThrownError,
+    clear: clearFeedback,
+  } = useFeedback();
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [showNotebookForm, setShowNotebookForm] = useState(false);
   const [notebookTitle, setNotebookTitle] = useState("");
@@ -185,11 +191,7 @@ export default function FolderDetailPage() {
 
       if (optionalErrors.length > 0) {
         console.warn("Some folder sections could not load.", optionalErrors);
-        setFeedback({
-          type: "error",
-          message:
-            "This folder opened, but one section is still syncing. Refresh in a moment if something looks missing.",
-        });
+        showError("This folder opened, but one section is still syncing. Refresh in a moment if something looks missing.");
       }
 
       const nextFolder = folderResult.value;
@@ -201,16 +203,13 @@ export default function FolderDetailPage() {
       setTopics(nextTopics);
     } catch (error) {
       console.error(error);
-      setFeedback({
-        type: "error",
-        message: isFirebasePermissionDenied(error)
+      showError(isFirebasePermissionDenied(error)
           ? "Could not open this folder yet. Refresh once the workspace has finished syncing."
-          : "Could not load this folder. Try refreshing in a moment.",
-      });
+          : "Could not load this folder. Try refreshing in a moment.");
     } finally {
       setLoading(false);
     }
-  }, [folderId, user?.uid]);
+  }, [folderId, showError, user?.uid]);
 
   useEffect(() => {
     void loadFolder();
@@ -231,15 +230,12 @@ export default function FolderDetailPage() {
         }
       } catch (error) {
         console.error(error);
-        setFeedback({
-          type: "error",
-          message: `Could not load this folder’s ${tab}. Try again in a moment.`,
-        });
+        showError(`Could not load this folder’s ${tab}. Try again in a moment.`);
       } finally {
         setLoadingAssetTab((current) => (current === tab ? null : current));
       }
     },
-    [decksLoaded, sourcesLoaded, user?.uid]
+    [decksLoaded, showError, sourcesLoaded, user?.uid]
   );
 
   useEffect(() => {
@@ -300,17 +296,11 @@ export default function FolderDetailPage() {
       setDecks((current) =>
         current.map((item) => (item.id === deck.id ? { ...item, folderIds } : item))
       );
-      setFeedback({
-        type: "success",
-        message: shouldLink
+      success(shouldLink
           ? `${deck.name} now appears in ${folder.name}`
-          : `${deck.name} was removed from ${folder.name}`,
-      });
+          : `${deck.name} was removed from ${folder.name}`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update deck folder link.",
-      });
+      showThrownError(error, "Could not update deck folder link.");
     } finally {
       setBusyAssetId(null);
     }
@@ -326,17 +316,11 @@ export default function FolderDetailPage() {
       setSources((current) =>
         current.map((item) => (item.id === source.id ? { ...item, folderIds } : item))
       );
-      setFeedback({
-        type: "success",
-        message: shouldLink
+      success(shouldLink
           ? `${source.title} now appears in ${folder.name}`
-          : `${source.title} was removed from ${folder.name}`,
-      });
+          : `${source.title} was removed from ${folder.name}`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update source folder link.",
-      });
+      showThrownError(error, "Could not update source folder link.");
     } finally {
       setBusyAssetId(null);
     }
@@ -346,25 +330,16 @@ export default function FolderDetailPage() {
     if (!user?.uid || !notebookPendingDelete) return;
     const notebook = notebookPendingDelete;
     setDeletingNotebookId(notebook.id);
-    setFeedback(null);
+    clearFeedback();
     try {
       await updateNotebook(user.uid, notebook.id, { archived: true });
       setNotebooks((current) =>
         current.filter((item) => item.id !== notebook.id)
       );
       setNotebookPendingDelete(null);
-      setFeedback({
-        type: "success",
-        message: `${notebook.title} deleted.`,
-      });
+      success(`${notebook.title} deleted.`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not delete notebook.",
-      });
+      showThrownError(error, "Could not delete notebook.");
     } finally {
       setDeletingNotebookId(null);
     }
@@ -373,7 +348,7 @@ export default function FolderDetailPage() {
   const handleSaveFolder = async () => {
     if (!user?.uid || !folder) return;
     setSavingFolder(true);
-    setFeedback(null);
+    clearFeedback();
     try {
       await updateStudyFolder(user.uid, folder.id, {
         name: editFolderName,
@@ -397,12 +372,9 @@ export default function FolderDetailPage() {
           : current
       );
       setShowEditFolder(false);
-      setFeedback({ type: "success", message: "Folder updated." });
+      success("Folder updated.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update folder.",
-      });
+      showThrownError(error, "Could not update folder.");
     } finally {
       setSavingFolder(false);
     }
@@ -417,14 +389,11 @@ export default function FolderDetailPage() {
     setSavingFolder(true);
     try {
       await archiveStudyFolder(user.uid, folder.id);
-      setFeedback({ type: "success", message: "Folder archived. Decks and sources were not deleted." });
+      success("Folder archived. Decks and sources were not deleted.");
       setShowEditFolder(false);
       router.push("/dashboard/folders");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not archive folder.",
-      });
+      showThrownError(error, "Could not archive folder.");
     } finally {
       setSavingFolder(false);
     }
@@ -450,12 +419,9 @@ export default function FolderDetailPage() {
       );
       setSelectedDeckIds([]);
       setShowDeckPicker(false);
-      setFeedback({ type: "success", message: "Decks added to this folder." });
+      success("Decks added to this folder.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not add decks.",
-      });
+      showThrownError(error, "Could not add decks.");
     } finally {
       setBusyAssetId(null);
     }
@@ -483,12 +449,9 @@ export default function FolderDetailPage() {
       );
       setSelectedSourceIds([]);
       setShowSourcePicker(false);
-      setFeedback({ type: "success", message: "Sources added to this folder." });
+      success("Sources added to this folder.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not add sources.",
-      });
+      showThrownError(error, "Could not add sources.");
     } finally {
       setBusyAssetId(null);
     }
@@ -498,7 +461,7 @@ export default function FolderDetailPage() {
     if (!user?.uid || !folder) return;
     const title = notebookTitle.trim();
     if (!title) {
-      setFeedback({ type: "error", message: "Name the notebook before creating it." });
+      showError("Name the notebook before creating it.");
       return;
     }
     setCreatingNotebook(true);
@@ -524,10 +487,7 @@ export default function FolderDetailPage() {
         setNotebookFile(null);
         setNotebookTopicIds([]);
         setShowNotebookForm(false);
-        setFeedback({
-          type: "success",
-          message: `${imported.notebook.title} created with ${imported.pages.length} ${imported.pages.length === 1 ? "page" : "pages"}.`,
-        });
+        success(`${imported.notebook.title} created with ${imported.pages.length} ${imported.pages.length === 1 ? "page" : "pages"}.`);
         return;
       }
 
@@ -560,15 +520,9 @@ export default function FolderDetailPage() {
       setNotebookFile(null);
       setNotebookTopicIds([]);
       setShowNotebookForm(false);
-      setFeedback({
-        type: "success",
-        message: `${notebook.title} created. Open it to type or draw on page 1.`,
-      });
+      success(`${notebook.title} created. Open it to type or draw on page 1.`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not create notebook.",
-      });
+      showThrownError(error, "Could not create notebook.");
     } finally {
       setCreatingNotebook(false);
       setNotebookUploadProgress(null);
@@ -638,7 +592,7 @@ export default function FolderDetailPage() {
           <FeedbackBanner
             type={feedback.type}
             message={feedback.message}
-            onDismiss={() => setFeedback(null)}
+            onDismiss={() => clearFeedback()}
           />
         ) : null}
 
@@ -669,7 +623,7 @@ export default function FolderDetailPage() {
                 )
               );
               setEditingNotebook(null);
-              setFeedback({ type: "success", message: "Notebook updated." });
+              success("Notebook updated.");
             }}
             onArchived={(notebookId) => {
               const archivedTitle = editingNotebook.title;
@@ -677,10 +631,7 @@ export default function FolderDetailPage() {
                 current.filter((item) => item.id !== notebookId)
               );
               setEditingNotebook(null);
-              setFeedback({
-                type: "success",
-                message: `${archivedTitle} archived.`,
-              });
+              success(`${archivedTitle} archived.`);
             }}
           />
         ) : null}

@@ -2,12 +2,12 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
+import { useFeedback } from "@/hooks/useFeedback";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import {
   getActiveConstellation,
   type Constellation,
 } from "@/lib/constellation/constellations";
-import type { Feedback } from "@/lib/app/feedback";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
   getGoalAccuracy,
@@ -177,7 +177,12 @@ export default function GoalsPage() {
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [cancellingGoalId, setCancellingGoalId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    clear: clearFeedback,
+  } = useFeedback();
   const [activeConstellation, setActiveConstellation] =
     useState<Constellation | null>(null);
   const [decks, setDecks] = useState<Deck[]>([]);
@@ -275,13 +280,13 @@ export default function GoalsPage() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    setFeedback(null);
+    clearFeedback();
     try {
       await reloadGoalWorkspace();
     } finally {
       setRefreshing(false);
     }
-  }, [reloadGoalWorkspace]);
+  }, [clearFeedback, reloadGoalWorkspace]);
 
   const completedGoalsCount = goals.filter(
     (goal) => goal.status === "completed"
@@ -386,7 +391,7 @@ export default function GoalsPage() {
 
     setEditingGoalId(null);
     setShowGoalComposer(true);
-    setFeedback(null);
+    clearFeedback();
   };
 
   const startEditingGoal = (goal: Goal) => {
@@ -409,7 +414,7 @@ export default function GoalsPage() {
       setDeadlineDate("");
       setDeadlineTime("");
     }
-    setFeedback(null);
+    clearFeedback();
     window.requestAnimationFrame(() => {
       document.getElementById("new-goal")?.scrollIntoView({
         behavior: "smooth",
@@ -434,15 +439,12 @@ export default function GoalsPage() {
       (deadlineDate &&
         (!Number.isFinite(parsedDeadline) || parsedDeadline <= Date.now()))
     ) {
-      setFeedback({
-        type: "error",
-        message: "Name the goal, choose its study scope, and enter valid targets.",
-      });
+      showError("Name the goal, choose its study scope, and enter valid targets.");
       return;
     }
 
     setIsCreatingGoal(true);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       const goalUpdates = {
@@ -467,7 +469,7 @@ export default function GoalsPage() {
             goal.id === editingGoalId ? { ...goal, ...goalUpdates } : goal
           )
         );
-        setFeedback({ type: "success", message: "Goal saved." });
+        success("Goal saved.");
       } else {
         const createdAt = Date.now();
         const newGoal = {
@@ -479,16 +481,13 @@ export default function GoalsPage() {
         const createdGoal = await createGoal(user.uid, newGoal);
 
         setGoals((prev) => [createdGoal, ...prev]);
-        setFeedback({ type: "success", message: "Goal created." });
+        success("Goal created.");
       }
 
       resetGoalForm();
     } catch (error) {
       console.error(error);
-      setFeedback({
-        type: "error",
-        message: editingGoalId ? "Failed to save goal." : "Failed to create goal.",
-      });
+      showError(editingGoalId ? "Failed to save goal." : "Failed to create goal.");
     } finally {
       setIsCreatingGoal(false);
     }
@@ -504,7 +503,7 @@ export default function GoalsPage() {
     }
 
     setCancellingGoalId(goal.id);
-    setFeedback(null);
+    clearFeedback();
     try {
       await updateGoal(user.uid, goal.id, {
         status: "cancelled",
@@ -515,10 +514,10 @@ export default function GoalsPage() {
         )
       );
       if (editingGoalId === goal.id) resetGoalForm();
-      setFeedback({ type: "success", message: "Goal moved to history." });
+      success("Goal moved to history.");
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to cancel goal." });
+      showError("Failed to cancel goal.");
     } finally {
       setCancellingGoalId(null);
     }
@@ -543,7 +542,7 @@ export default function GoalsPage() {
         contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? (
-          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
+          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} />
         ) : null}
 
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
@@ -558,7 +557,7 @@ export default function GoalsPage() {
               onClick={() => {
                 setEditingGoalId(null);
                 setShowGoalComposer(true);
-                setFeedback(null);
+                clearFeedback();
               }}
             >
               New goal

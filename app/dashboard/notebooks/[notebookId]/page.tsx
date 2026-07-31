@@ -43,6 +43,7 @@ import {
 } from "@/components/ui";
 import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
+import { useFeedback } from "@/hooks/useFeedback";
 import { useNotebookLoader } from "@/hooks/useNotebookLoader";
 import { useNotebookInkController } from "@/hooks/useNotebookInkController";
 import { useNotebookPageState } from "@/hooks/useNotebookPageState";
@@ -218,7 +219,28 @@ export default function NotebookEditorPage() {
     setSaveStatus,
     setTool,
   } = pageState;
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    showThrownError,
+    clear: clearFeedback,
+    clearIfShowing: clearFeedbackIfShowing,
+  } = useFeedback();
+
+  /** The loader reports a whole notice; route it to the right method. */
+  const applyFeedback = useCallback(
+    (next: Feedback | null) => {
+      if (!next) {
+        clearFeedback();
+      } else if (next.type === "success") {
+        success(next.message);
+      } else {
+        showError(next.message);
+      }
+    },
+    [clearFeedback, showError, success]
+  );
 
   const {
     notebook,
@@ -240,7 +262,7 @@ export default function NotebookEditorPage() {
     userId: user?.uid,
     notebookId,
     pageState,
-    onFeedback: setFeedback,
+    onFeedback: applyFeedback,
     onBeforeLoad: () => {
       resetViewportGestures();
       setPageZoom(1);
@@ -285,9 +307,7 @@ export default function NotebookEditorPage() {
     onEdit: (options) => markPageUnsaved(options),
     resetTextBlockInteraction: () => resetTextBlockInteraction(),
     onUiCommitted: () =>
-      setFeedback((current) =>
-        current?.message === "Could not autosave this page." ? null : current
-      ),
+      clearFeedbackIfShowing("Could not autosave this page."),
   });
 
   const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
@@ -842,7 +862,8 @@ export default function NotebookEditorPage() {
     isInkInteracting,
     fallbackInkSvg: selectedPageInkSvg,
     onPageSaved: handlePageSaved,
-    onFeedback: setFeedback,
+    onError: showError,
+    onClearError: clearFeedbackIfShowing,
     commitUi: flushInkUiSync,
     scheduleUiCommit: scheduleInkUiSync,
   });
@@ -867,11 +888,8 @@ export default function NotebookEditorPage() {
   }, [cancelActivePinch]);
 
   const handleTextBlockLimitReached = useCallback((maximum: number) => {
-    setFeedback({
-      type: "error",
-      message: `A page can contain up to ${maximum} text boxes. Move or delete one before adding another.`,
-    });
-  }, []);
+    showError(`A page can contain up to ${maximum} text boxes. Move or delete one before adding another.`);
+  }, [showError]);
 
   const handleTextBlockCreated = useCallback(() => {
     // The text tool places exactly one box per activation.
@@ -955,10 +973,7 @@ export default function NotebookEditorPage() {
     if (recoveredDraft) {
       editorRevisionRef.current = Math.max(1, recoveredDraft.localRevision);
       setSaveStatus("unsaved");
-      setFeedback({
-        type: "success",
-        message: "Recovered unsaved work from this device. Syncing it now.",
-      });
+      success("Recovered unsaved work from this device. Syncing it now.");
       schedulePendingWork();
     } else {
       editorRevisionRef.current = 0;
@@ -968,17 +983,18 @@ export default function NotebookEditorPage() {
   }, [
     cancelInkUiSync,
     clearInkHistory,
-    setInkHasContent,
     notebook?.pageColor,
     notebook?.pageStyle,
     pageState,
     resetTextBlockInteraction,
     schedulePendingWork,
     selectedPage,
+    setInkHasContent,
     setPageColor,
     setPageStyle,
     setSaveStatus,
     setTextBlocks,
+    success,
     takeRecoveredDraft,
   ]);
 
@@ -1451,13 +1467,7 @@ export default function NotebookEditorPage() {
         [ready] = await Promise.all([readyPromise, settlePromise]);
       } catch (error) {
         console.error("Could not prepare the notebook page change.", error);
-        setFeedback({
-          type: "error",
-          message:
-            error instanceof Error
-              ? error.message
-              : "Could not save this page before changing pages.",
-        });
+        showThrownError(error, "Could not save this page before changing pages.");
         if (pageNavigationTokenRef.current === token) {
           await returnPageTrackToSource(velocityX, token);
         }
@@ -1479,6 +1489,7 @@ export default function NotebookEditorPage() {
       prefersReducedNotebookMotion,
       prepareCurrentPageForNavigation,
       returnPageTrackToSource,
+      showThrownError,
     ]
   );
 
@@ -1548,10 +1559,7 @@ export default function NotebookEditorPage() {
     });
     if (exitDecision.shouldPreventNavigation) {
       event.preventDefault();
-      setFeedback({
-        type: "error",
-        message: "Could not autosave before leaving the notebook.",
-      });
+      showError("Could not autosave before leaving the notebook.");
     }
   };
 
@@ -1657,10 +1665,7 @@ export default function NotebookEditorPage() {
     } catch (error) {
       pageCreationInFlightRef.current = false;
       console.error("Could not add a notebook page.", error);
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not add a new page.",
-      });
+      showThrownError(error, "Could not add a new page.");
       if (pageNavigationTokenRef.current === token) {
         await returnPageTrackToSource(velocityX, token);
       } else {
@@ -1684,6 +1689,7 @@ export default function NotebookEditorPage() {
     returnPageTrackToSource,
     selectedPage,
     setPages,
+    showThrownError,
     user?.uid,
   ]);
 
@@ -2091,7 +2097,7 @@ export default function NotebookEditorPage() {
   const handleDeletePage = async (page: NotebookPage) => {
     if (!user?.uid || !notebook || !fullNotebookEditingEnabled) return;
     if (pages.length <= 1) {
-      setFeedback({ type: "error", message: "A notebook needs at least one page." });
+      showError("A notebook needs at least one page.");
       return;
     }
 
@@ -2101,16 +2107,13 @@ export default function NotebookEditorPage() {
     ) {
       const saved = await saveCurrentPage({ flush: true });
       if (!saved) {
-        setFeedback({
-          type: "error",
-          message: "Could not autosave before deleting the page.",
-        });
+        showError("Could not autosave before deleting the page.");
         return;
       }
     }
 
     setDeletingPageId(page.id);
-    setFeedback(null);
+    clearFeedback();
     try {
       const deletedIndex = pages.findIndex((candidate) => candidate.id === page.id);
       const nextPages = await deleteNotebookPage(user.uid, notebook.id, page.id);
@@ -2124,12 +2127,9 @@ export default function NotebookEditorPage() {
       setPages(nextPages);
       setSelectedPageId(nextSelectedPage?.id ?? null);
       resetTextBlockInteraction();
-      setFeedback({ type: "success", message: `Page ${page.pageNumber} deleted.` });
+      success(`Page ${page.pageNumber} deleted.`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not delete this page.",
-      });
+      showThrownError(error, "Could not delete this page.");
     } finally {
       setDeletingPageId(null);
     }
@@ -2159,7 +2159,7 @@ export default function NotebookEditorPage() {
     if (!user?.uid || !notebook || !notebookFile) return;
     setAddingNotebookFile(true);
     setNotebookUploadProgress(null);
-    setFeedback(null);
+    clearFeedback();
     try {
       const appended = await appendUploadedFileToNotebook({
         userId: user.uid,
@@ -2188,20 +2188,11 @@ export default function NotebookEditorPage() {
       setNotebookFile(null);
       setNotebookUploadProgress(null);
       setShowAddPagesDialog(false);
-      setFeedback({
-        type: "success",
-        message: `${appended.pages.length} ${
+      success(`${appended.pages.length} ${
           appended.pages.length === 1 ? "page" : "pages"
-        } added to ${notebook.title}`,
-      });
+        } added to ${notebook.title}`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not add these pages to the notebook.",
-      });
+      showThrownError(error, "Could not add these pages to the notebook.");
     } finally {
       setAddingNotebookFile(false);
       setNotebookUploadProgress(null);
@@ -2667,7 +2658,7 @@ export default function NotebookEditorPage() {
             <FeedbackBanner
               type={feedback.type}
               message={feedback.message}
-              onDismiss={() => setFeedback(null)}
+              onDismiss={() => clearFeedback()}
             />
           </div>
         ) : null}
@@ -2944,11 +2935,7 @@ export default function NotebookEditorPage() {
                       },
                       onReadyError: () => {
                         inkReadyRef.current = true;
-                        setFeedback({
-                          type: "error",
-                          message:
-                            "This page opened, but the ink editor could not start. Your saved writing is still visible.",
-                        });
+                        showError("This page opened, but the ink editor could not start. Your saved writing is still visible.");
                         window.requestAnimationFrame(() =>
                           maybeFinishPageHandoffRef.current()
                         );

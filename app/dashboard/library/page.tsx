@@ -8,6 +8,7 @@ import {
   useState,
 } from "react";
 import { useUser } from "@/components/providers/UserProvider";
+import { useFeedback } from "@/hooks/useFeedback";
 import type { Source, SourceType } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
 import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
@@ -71,7 +72,6 @@ import {
   SourceFolderPicker,
   SourceTypeIcon,
 } from "@/components/library/SourceWorkspace";
-import type { SourceWorkspaceFeedback } from "@/components/library/source-workspace-types";
 import TopicPicker from "@/components/topics/TopicPicker";
 import WorkspaceActionDialog from "@/components/workspace/WorkspaceActionDialog";
 import {
@@ -109,7 +109,13 @@ export default function LibraryPage() {
   const [drafts, setDrafts] = useState<GeneratedContentDraft[]>([]);
   const [selectedSourceId, setSelectedSourceId] = useState<string | null>(null);
   const [showAddSource, setShowAddSource] = useState(false);
-  const [feedback, setFeedback] = useState<SourceWorkspaceFeedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    showThrownError,
+    clear: clearFeedback,
+  } = useFeedback();
   const [draftingKind, setDraftingKind] = useState<SourceDraftKind | null>(null);
   // Off by default: drafting should cover the source evenly unless the student
   // asks for the slant of whatever they last discussed.
@@ -328,13 +334,13 @@ export default function LibraryPage() {
     setNotebooks([]);
     setDrafts([]);
     if (!isFirebasePermissionDenied(error)) {
-      setFeedback({ type: "error", message: "Failed to load Sources." });
+      showError("Failed to load Sources.");
     }
-  }, []);
+  }, [showError]);
 
   const handleLibraryLoadStart = useCallback(() => {
-    setFeedback(null);
-  }, []);
+    clearFeedback();
+  }, [clearFeedback]);
 
   const { loading, reload: loadAll } = useDashboardData({
     requestKey: user.uid,
@@ -445,12 +451,12 @@ export default function LibraryPage() {
   const createNextSource = async () => {
     setBusyAction("create-source");
     setUploadProgress(null);
-    setFeedback(null);
+    clearFeedback();
     let createdSourceId = "";
     let uploadedStoragePath = "";
     try {
       if (sourceType === "file" && !sourceFile) {
-        setFeedback({ type: "error", message: "Choose a file to upload." });
+        showError("Choose a file to upload.");
         return;
       }
       const validatedFileType = sourceFile
@@ -498,7 +504,7 @@ export default function LibraryPage() {
       await loadAll();
       setSelectedSourceId(sourceId);
       setMobileTab("source");
-      setFeedback({ type: "success", message: sourceType === "file" ? "File uploaded to Sources." : "Source saved." });
+      success(sourceType === "file" ? "File uploaded to Sources." : "Source saved.");
     } catch (error) {
       if (uploadedStoragePath) {
         await deleteSourceFile(uploadedStoragePath).catch(() => undefined);
@@ -506,7 +512,7 @@ export default function LibraryPage() {
       if (createdSourceId) {
         await deleteSource(user.uid, createdSourceId).catch(() => undefined);
       }
-      setFeedback({ type: "error", message: error instanceof Error ? error.message : "Could not save source." });
+      showThrownError(error, "Could not save source.");
     } finally {
       setBusyAction(null);
       setUploadProgress(null);
@@ -530,7 +536,7 @@ export default function LibraryPage() {
 
   const openSourceComposer = (kind: SourceComposerKind = "text") => {
     changeComposerKind(kind);
-    setFeedback(null);
+    clearFeedback();
     setShowAddSource(true);
   };
 
@@ -543,13 +549,9 @@ export default function LibraryPage() {
       });
       await loadAll();
       setRenameOpen(false);
-      setFeedback({ type: "success", message: "Source renamed." });
+      success("Source renamed.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error ? error.message : "Could not rename source.",
-      });
+      showThrownError(error, "Could not rename source.");
     } finally {
       setBusyAction(null);
     }
@@ -562,16 +564,9 @@ export default function LibraryPage() {
       await updateSource(user.uid, selectedSource.id, { status: "archived" });
       setManagementAction(null);
       await loadAll();
-      setFeedback({
-        type: "success",
-        message: "Source archived. Its folders and original file were kept.",
-      });
+      success("Source archived. Its folders and original file were kept.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error ? error.message : "Could not archive source.",
-      });
+      showThrownError(error, "Could not archive source.");
     } finally {
       setBusyAction(null);
     }
@@ -584,13 +579,9 @@ export default function LibraryPage() {
       await updateSource(user.uid, selectedSource.id, { status: "active" });
       await loadAll();
       setStatusFilter("active");
-      setFeedback({ type: "success", message: "Source restored." });
+      success("Source restored.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error ? error.message : "Could not restore source.",
-      });
+      showThrownError(error, "Could not restore source.");
     } finally {
       setBusyAction(null);
     }
@@ -611,16 +602,9 @@ export default function LibraryPage() {
       }
       setManagementAction(null);
       await loadAll();
-      setFeedback({
-        type: "success",
-        message: "Source deleted from Sources and its folders.",
-      });
+      success("Source deleted from Sources and its folders.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error ? error.message : "Could not delete source.",
-      });
+      showThrownError(error, "Could not delete source.");
     } finally {
       setBusyAction(null);
     }
@@ -640,13 +624,13 @@ export default function LibraryPage() {
   const openWorkspacePanel = (
     panel: Exclude<SourceWorkspacePanel, null | "tutor">
   ) => {
-    setFeedback(null);
+    clearFeedback();
     setActivePanel(panel);
   };
 
   const openTutorForSelectedSource = () => {
     if (!selectedSource) return;
-    setFeedback(null);
+    clearFeedback();
     setActivePanel("tutor");
   };
 
@@ -690,7 +674,7 @@ export default function LibraryPage() {
     if (sourceDrafts.length === 0 || rejectingAllDrafts) return;
 
     setRejectingAllDrafts(true);
-    setFeedback(null);
+    clearFeedback();
     try {
       await Promise.all(
         sourceDrafts.map((draft) =>
@@ -699,12 +683,9 @@ export default function LibraryPage() {
       );
       setDrafts(await getGeneratedContentDrafts(user.uid));
       setSelectedDraftId(null);
-      setFeedback({
-        type: "success",
-        message: `Cleared ${sourceDrafts.length} draft${sourceDrafts.length === 1 ? "" : "s"}.`,
-      });
+      success(`Cleared ${sourceDrafts.length} draft${sourceDrafts.length === 1 ? "" : "s"}.`);
     } catch {
-      setFeedback({ type: "error", message: "Could not clear these drafts just now." });
+      showError("Could not clear these drafts just now.");
     } finally {
       setRejectingAllDrafts(false);
     }
@@ -735,7 +716,7 @@ export default function LibraryPage() {
     if (!selectedSource || draftingKind) return;
 
     setDraftingKind(kind);
-    setFeedback(null);
+    clearFeedback();
     try {
       const focus =
         useConversationFocus && sourceThreadId ? await buildConversationFocus() : "";
@@ -749,19 +730,11 @@ export default function LibraryPage() {
       setDrafts(await getGeneratedContentDrafts(user.uid));
       setSelectedDraftId(created[0]?.id ?? null);
       setActivePanel("drafts");
-      setFeedback({
-        type: "success",
-        message:
-          removedDraftCount > 0
+      success(removedDraftCount > 0
             ? `Drafted ${created.length} for review. ${removedDraftCount} weaker one${removedDraftCount === 1 ? " was" : "s were"} discarded.`
-            : `Drafted ${created.length} for review.`,
-      });
+            : `Drafted ${created.length} for review.`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error ? error.message : "Jami could not generate drafts just now.",
-      });
+      showThrownError(error, "Jami could not generate drafts just now.");
     } finally {
       setDraftingKind(null);
     }
@@ -787,13 +760,7 @@ export default function LibraryPage() {
         )
       );
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not update source Topics.",
-      });
+      showThrownError(error, "Could not update source Topics.");
     } finally {
       setBusyAction(null);
     }
@@ -815,20 +782,14 @@ export default function LibraryPage() {
         )
       );
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Could not update source folders.",
-      });
+      showThrownError(error, "Could not update source folders.");
     } finally {
       setBusyAction(null);
     }
   };
 
   const handleDraftSaved = async (message: string) => {
-    setFeedback({ type: "success", message });
+    success(message);
     await loadAll();
   };
 
@@ -869,7 +830,7 @@ export default function LibraryPage() {
         <FeedbackBanner
           type={feedback.type}
           message={feedback.message}
-          onDismiss={() => setFeedback(null)}
+          onDismiss={() => clearFeedback()}
         />
       ) : null}
 
@@ -887,7 +848,7 @@ export default function LibraryPage() {
               type={feedback.type}
               message={feedback.message}
               autoDismissMs={0}
-              onDismiss={() => setFeedback(null)}
+              onDismiss={() => clearFeedback()}
             />
           </div>
         ) : null}
@@ -1096,7 +1057,7 @@ export default function LibraryPage() {
               type={feedback.type}
               message={feedback.message}
               autoDismissMs={0}
-              onDismiss={() => setFeedback(null)}
+              onDismiss={() => clearFeedback()}
             />
           </div>
         ) : null}
@@ -1196,7 +1157,7 @@ export default function LibraryPage() {
         feedback={feedback}
         busyAction={busyAction}
         onClose={closeWorkspacePanel}
-        onDismissFeedback={() => setFeedback(null)}
+        onDismissFeedback={() => clearFeedback()}
         onToggleFolder={(folderId) => void toggleSourceFolder(folderId)}
         onUpdateTopics={(topicIds) =>
           void updateSelectedSourceTopics(topicIds)
@@ -1225,7 +1186,7 @@ export default function LibraryPage() {
         userId={user.uid}
         feedback={feedback}
         onClose={closeWorkspacePanel}
-        onDismissFeedback={() => setFeedback(null)}
+        onDismissFeedback={() => clearFeedback()}
         onSelectDraft={setSelectedDraftId}
         onDeckChange={(draftId, deckId) =>
           setDeckIdByDraft((current) => ({
@@ -1628,7 +1589,7 @@ export default function LibraryPage() {
                             className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                             onClick={(event) => {
                               closeDisclosureAndFocusTrigger(event.currentTarget);
-                              setFeedback(null);
+                              clearFeedback();
                               setRenameTitle(selectedSource.title);
                               setRenameOpen(true);
                             }}

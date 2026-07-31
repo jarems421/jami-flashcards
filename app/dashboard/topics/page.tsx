@@ -15,7 +15,7 @@ import {
 } from "@/components/ui";
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
 import { useUser } from "@/components/providers/UserProvider";
-import type { Feedback } from "@/lib/app/feedback";
+import { useFeedback } from "@/hooks/useFeedback";
 import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
 import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
@@ -122,7 +122,8 @@ export default function TopicsPage() {
   const [savingTopicId, setSavingTopicId] = useState<string | null>(null);
   const [topicPendingDelete, setTopicPendingDelete] = useState<Topic | null>(null);
   const [deletingTopicId, setDeletingTopicId] = useState<string | null>(null);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const { feedback, success, showError, showThrownError, clear: clearFeedback } =
+    useFeedback();
 
   const loadTopicsData = useCallback(async () => {
     const [nextTopics, nextCards, nextNotebooks, nextSources, nextDrafts] =
@@ -153,10 +154,13 @@ export default function TopicsPage() {
     []
   );
 
-  const handleTopicsLoadError = useCallback((error: unknown) => {
-    console.error(error);
-    setFeedback({ type: "error", message: "Could not load Topics." });
-  }, []);
+  const handleTopicsLoadError = useCallback(
+    (error: unknown) => {
+      console.error(error);
+      showError("Could not load Topics.");
+    },
+    [showError]
+  );
 
   const { loading } = useDashboardData({
     requestKey: user.uid,
@@ -199,7 +203,7 @@ export default function TopicsPage() {
   const createTopic = async () => {
     if (!newTopicName.trim()) return;
     setCreating(true);
-    setFeedback(null);
+    clearFeedback();
     try {
       const topic = await createOrGetTopic(user.uid, newTopicName);
       setTopics((current) =>
@@ -208,13 +212,10 @@ export default function TopicsPage() {
           : [...current, topic]
       );
       setNewTopicName("");
-      setFeedback({ type: "success", message: `${topic.name} is ready.` });
+      success(`${topic.name} is ready.`);
       router.push(`/dashboard/topics/${encodeURIComponent(topic.id)}`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not create Topic.",
-      });
+      showThrownError(error, "Could not create Topic.");
     } finally {
       setCreating(false);
     }
@@ -223,7 +224,7 @@ export default function TopicsPage() {
   const startRenaming = (topic: Topic) => {
     setEditingTopicId(topic.id);
     setRenameValue(topic.name);
-    setFeedback(null);
+    clearFeedback();
   };
 
   const cancelRenaming = () => {
@@ -235,7 +236,7 @@ export default function TopicsPage() {
     const nextName = renameValue.trim();
     if (!nextName) return;
     setSavingTopicId(topic.id);
-    setFeedback(null);
+    clearFeedback();
     try {
       await updateTopic(user.uid, topic.id, { name: nextName });
       setTopics((current) =>
@@ -251,13 +252,9 @@ export default function TopicsPage() {
         )
       );
       cancelRenaming();
-      setFeedback({ type: "success", message: "Topic renamed." });
+      success("Topic renamed.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error ? error.message : "Could not rename Topic.",
-      });
+      showThrownError(error, "Could not rename Topic.");
     } finally {
       setSavingTopicId(null);
     }
@@ -267,19 +264,15 @@ export default function TopicsPage() {
     if (!topicPendingDelete) return;
     const topic = topicPendingDelete;
     setDeletingTopicId(topic.id);
-    setFeedback(null);
+    clearFeedback();
     try {
       await deleteTopicEverywhere(user.uid, topic.id);
       setTopics((current) => current.filter((item) => item.id !== topic.id));
       if (editingTopicId === topic.id) cancelRenaming();
       setTopicPendingDelete(null);
-      setFeedback({ type: "success", message: `${topic.name} was deleted.` });
+      success(`${topic.name} was deleted.`);
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error ? error.message : "Could not delete Topic.",
-      });
+      showThrownError(error, "Could not delete Topic.");
     } finally {
       setDeletingTopicId(null);
     }
@@ -297,7 +290,7 @@ export default function TopicsPage() {
         <FeedbackBanner
           type={feedback.type}
           message={feedback.message}
-          onDismiss={() => setFeedback(null)}
+          onDismiss={clearFeedback}
         />
       ) : null}
       <ConfirmDialog

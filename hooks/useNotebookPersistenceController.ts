@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useRef, type RefObject } from "react";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import type { NotebookPageStore } from "@/hooks/useNotebookPageState";
-import type { Feedback } from "@/lib/app/feedback";
 import {
   isNotebookSaveCompletionCurrent,
   NOTEBOOK_AUTOSAVE_IDLE_MS,
@@ -80,7 +79,9 @@ type UseNotebookPersistenceControllerOptions = {
   fallbackInkSvg: string | null;
   /** Apply a completed save to the page list and notebook preview. */
   onPageSaved: (result: NotebookPageSaveResult) => void;
-  onFeedback: (update: (current: Feedback | null) => Feedback | null) => void;
+  onError: (message: string) => void;
+  /** Clears a notice only while it is still the one on screen. */
+  onClearError: (message: string) => void;
   /** Commit any batched editor UI immediately. */
   commitUi: () => void;
   /** Commit any batched editor UI after the current burst settles. */
@@ -119,7 +120,8 @@ export function useNotebookPersistenceController({
   isInkInteracting,
   fallbackInkSvg,
   onPageSaved,
-  onFeedback,
+  onError,
+  onClearError,
   commitUi,
   scheduleUiCommit,
 }: UseNotebookPersistenceControllerOptions): NotebookPersistenceController {
@@ -134,7 +136,8 @@ export function useNotebookPersistenceController({
   const latestRef = useRef({
     fallbackInkSvg,
     isInkInteracting,
-    onFeedback,
+    onError,
+    onClearError,
     onPageSaved,
     commitUi,
     scheduleUiCommit,
@@ -144,7 +147,8 @@ export function useNotebookPersistenceController({
     latestRef.current = {
       fallbackInkSvg,
       isInkInteracting,
-      onFeedback,
+      onError,
+      onClearError,
       onPageSaved,
       commitUi,
       scheduleUiCommit,
@@ -154,7 +158,8 @@ export function useNotebookPersistenceController({
     commitUi,
     fallbackInkSvg,
     isInkInteracting,
-    onFeedback,
+    onError,
+    onClearError,
     onPageSaved,
     scheduleUiCommit,
     userId,
@@ -213,13 +218,11 @@ export function useNotebookPersistenceController({
     } catch (error) {
       if (draftErrorShownRef.current) return;
       draftErrorShownRef.current = true;
-      latestRef.current.onFeedback(() => ({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "This device could not store a recovery copy of the page.",
-      }));
+      latestRef.current.onError(
+        error instanceof Error
+          ? error.message
+          : "This device could not store a recovery copy of the page."
+      );
     }
   }, [buildDraft, draftTarget, inkEditorRef, pageState]);
 
@@ -242,7 +245,7 @@ export function useNotebookPersistenceController({
 
   const savePageSnapshot = useCallback(
     async (input: PageSnapshotInput) => {
-      const { userId: currentUserId, onFeedback: feedback } = latestRef.current;
+      const { userId: currentUserId } = latestRef.current;
       if (!currentUserId) return false;
       pageState.setSaveStatus("saving");
       try {
@@ -306,9 +309,7 @@ export function useNotebookPersistenceController({
           })
         ) {
           pageState.setSaveStatus("saved");
-          feedback((current) =>
-            current?.message === "Could not autosave this page." ? null : current
-          );
+          latestRef.current.onClearError("Could not autosave this page.");
         }
 
         void deleteNotebookPageDraft(
@@ -330,15 +331,13 @@ export function useNotebookPersistenceController({
           })
         ) {
           pageState.setSaveStatus("failed");
-          feedback(() => ({
-            type: "error",
-            message:
-              error instanceof NotebookPageConflictError
+          latestRef.current.onError(
+            error instanceof NotebookPageConflictError
+              ? error.message
+              : error instanceof Error
                 ? error.message
-                : error instanceof Error
-                  ? error.message
-                  : "Could not autosave this page.",
-          }));
+                : "Could not autosave this page."
+          );
         }
         return false;
       }
