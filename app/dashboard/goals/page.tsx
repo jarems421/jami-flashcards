@@ -32,7 +32,7 @@ import {
   getGoalsWithCurrentStatuses,
   updateGoal,
 } from "@/services/study/goals";
-import type { Topic } from "@/lib/practice/topics";
+import type { Topic } from "@/lib/material/topics";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 
 type GoalPreset = "today-10" | "week-20";

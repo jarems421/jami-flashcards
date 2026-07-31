@@ -1,5 +1,5 @@
 import { normalizeStudyTextInput } from "@/lib/study/display-text";
-import { normalizeStringArray } from "@/lib/practice/content";
+import { normalizeStringArray } from "@/lib/material/content";
 
 export const MAX_FRONT_LENGTH = 400;
 export const MAX_BACK_LENGTH = 2_000;

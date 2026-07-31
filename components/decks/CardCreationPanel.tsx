@@ -12,7 +12,7 @@ import {
 } from "@/lib/study/cards";
 import { downloadTextFile } from "@/lib/app/download";
 import type { Feedback } from "@/lib/app/feedback";
-import type { Topic } from "@/lib/practice/topics";
+import type { Topic } from "@/lib/material/topics";
 import {
   CardBatchCreateError,
   createCard,

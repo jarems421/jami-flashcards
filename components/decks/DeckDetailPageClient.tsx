@@ -20,7 +20,7 @@ import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import CardActionsMenu from "@/components/decks/CardActionsMenu";
 import CardFaceSummary from "@/components/decks/CardFaceSummary";
 import BulkTopicToolbar from "@/components/topics/BulkTopicToolbar";
-import { getBulkTopicCapacity } from "@/lib/practice/topic-management";
+import { getBulkTopicCapacity } from "@/lib/material/topic-management";
 import TopicPicker from "@/components/topics/TopicPicker";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
@@ -37,7 +37,7 @@ import {
   updateCardContent,
 } from "@/services/study/cards";
 import { getActiveTopics } from "@/services/study/topics";
-import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
+import { MAX_LINKED_TOPICS, type Topic } from "@/lib/material/topics";
 import { getDeckStudyHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";
 import {

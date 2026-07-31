@@ -13,7 +13,7 @@ import {
 } from "@/components/ui";
 import type { Feedback } from "@/lib/app/feedback";
 import { useUser } from "@/components/providers/UserProvider";
-import type { Topic } from "@/lib/practice/topics";
+import type { Topic } from "@/lib/material/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { getActiveStudyFolders } from "@/services/study/folders";

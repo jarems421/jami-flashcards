@@ -13,7 +13,7 @@ import {
   type SourceRelations,
 } from "@/lib/ai/assistant-context.server";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
-import { mapSourceData, type Source } from "@/lib/practice/sources";
+import { mapSourceData, type Source } from "@/lib/material/sources";
 import {
   mapNotebookData,
   mapNotebookPageData,

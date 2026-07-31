@@ -9,7 +9,7 @@ import {
 import {
   resolveSourceFileMimeType,
   validateSourceFile,
-} from "@/lib/practice/source-files";
+} from "@/lib/material/source-files";
 
 export function validateSourceUploadFile(file: File) {
   const fileType = resolveSourceFileMimeType(file.name, file.type);

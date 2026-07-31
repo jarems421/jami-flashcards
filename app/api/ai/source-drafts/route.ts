@@ -18,7 +18,7 @@ import {
   type SourceDraftDepth,
   type SourceDraftKind,
 } from "@/lib/ai/source-draft-quality";
-import { mapSourceData } from "@/lib/practice/sources";
+import { mapSourceData } from "@/lib/material/sources";
 
 export const runtime = "nodejs";
 

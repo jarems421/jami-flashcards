@@ -1,0 +1,87 @@
+#!/usr/bin/env node
+/**
+ * Fails when a source file grows past the point where it stops being
+ * reviewable.
+ *
+ * The notebook editor page reached 4,525 lines before anyone noticed, and
+ * unpicking it took a long run of careful commits. This is the cheap check
+ * that would have flagged it years earlier.
+ *
+ * Existing files over the limit are listed as exceptions rather than being
+ * grandfathered silently, so the list is a visible backlog. Do not add to it
+ * without a reason; shrink an entry and tighten its number instead.
+ */
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
+import { dirname } from "node:path";
+
+const LIMIT = 1200;
+const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
+const SEARCH = ["app", "components", "hooks", "lib", "services", "e2e"];
+const SKIP = new Set(["node_modules", ".next", "dist", "build"]);
+
+/**
+ * Files already over the limit, with the size they must stay under. Lower a
+ * number when a file shrinks; never raise one.
+ */
+const EXCEPTIONS = new Map([
+  ["app/dashboard/notebooks/[notebookId]/page.tsx", 3250],
+  ["app/dashboard/study/page.tsx", 2600],
+  ["app/dashboard/library/page.tsx", 1750],
+  ["components/workspace/NotebookInkEditor.tsx", 1300],
+]);
+
+function* sourceFiles(dir) {
+  for (const entry of readdirSync(dir)) {
+    if (SKIP.has(entry)) continue;
+    const full = join(dir, entry);
+    if (statSync(full).isDirectory()) {
+      yield* sourceFiles(full);
+    } else if (/\.(ts|tsx)$/.test(entry)) {
+      yield full;
+    }
+  }
+}
+
+const failures = [];
+const shrunk = [];
+
+for (const dir of SEARCH) {
+  const base = join(ROOT, dir);
+  try {
+    statSync(base);
+  } catch {
+    continue;
+  }
+  for (const file of sourceFiles(base)) {
+    const key = relative(ROOT, file).split(sep).join("/");
+    const lines = readFileSync(file, "utf8").split("\n").length;
+    const allowed = EXCEPTIONS.get(key) ?? LIMIT;
+    if (lines > allowed) {
+      failures.push({ key, lines, allowed });
+    } else if (EXCEPTIONS.has(key) && lines <= LIMIT) {
+      shrunk.push({ key, lines });
+    }
+  }
+}
+
+for (const { key, lines } of shrunk) {
+  console.log(
+    `${key} is down to ${lines} lines and no longer needs an exception.`
+  );
+}
+
+if (failures.length > 0) {
+  console.error("\nFiles past their size limit:\n");
+  for (const { key, lines, allowed } of failures) {
+    console.error(`  ${key}: ${lines} lines (limit ${allowed})`);
+  }
+  console.error(
+    `\nSplit the file, or if it is already listed as an exception, do not raise` +
+      ` its number.\n`
+  );
+  process.exit(1);
+}
+
+console.log(`No source file over ${LIMIT} lines outside the known exceptions.`);

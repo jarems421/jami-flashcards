@@ -32,8 +32,8 @@ import { getDeckHref } from "@/lib/app/routes";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
 import { toggleIdSelection } from "@/lib/app/multi-select";
-import type { Source } from "@/lib/practice/sources";
-import type { Topic } from "@/lib/practice/topics";
+import type { Source } from "@/lib/material/sources";
+import type { Topic } from "@/lib/material/topics";
 import type { Deck } from "@/lib/study/decks";
 import { addFolderId, removeFolderId } from "@/lib/workspace/folder-links";
 import {

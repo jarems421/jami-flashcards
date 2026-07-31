@@ -12,7 +12,7 @@ import {
   rankJamiAssistantSources,
   scoreJamiAssistantSource,
 } from "@/lib/ai/assistant-context.server";
-import type { Source } from "@/lib/practice/sources";
+import type { Source } from "@/lib/material/sources";
 
 function source(
   id: string,

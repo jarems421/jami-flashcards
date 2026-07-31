@@ -6,12 +6,12 @@ import type { Part } from "@google/generative-ai";
 import mammoth from "mammoth";
 import { load } from "cheerio";
 import { OfficeParser } from "officeparser";
-import type { Source } from "@/lib/practice/sources";
+import type { Source } from "@/lib/material/sources";
 import {
   MAX_SOURCE_FILE_SIZE,
   getSourceFileKind,
   isSourceFileMimeType,
-} from "@/lib/practice/source-files";
+} from "@/lib/material/source-files";
 
 const SOURCE_CACHE_TTL_MS = 10 * 60 * 1000;
 const SOURCE_CACHE_MAX_BYTES = 24 * 1024 * 1024;

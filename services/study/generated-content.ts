@@ -6,14 +6,14 @@ import {
   buildPracticeQuestionDraftNotebookPageData,
   type GeneratedContentDraft,
   type GeneratedContentKind,
-} from "@/lib/practice/generated-content";
+} from "@/lib/material/generated-content";
 import { createNotebookPage, getNotebookById, getNotebookPages, updateNotebook } from "@/services/study/notebooks";
 import {
   isContentOrigin,
   isContentStatus,
   normalizeOptionalString,
   normalizeStringArray,
-} from "@/lib/practice/content";
+} from "@/lib/material/content";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;

@@ -9,7 +9,7 @@ import {
   FeedbackBanner,
   Input,
 } from "@/components/ui";
-import type { Topic } from "@/lib/practice/topics";
+import type { Topic } from "@/lib/material/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import { updateNotebook } from "@/services/study/notebooks";
 import { NotebookObjectCard } from "./NotebookObjectCard";

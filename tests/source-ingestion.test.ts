@@ -1,5 +1,5 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
-import type { Source } from "@/lib/practice/sources";
+import type { Source } from "@/lib/material/sources";
 
 vi.mock("server-only", () => ({}));
 

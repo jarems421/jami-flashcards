@@ -1,7 +1,7 @@
 import {
   normalizeOptionalString,
   normalizeStringArray,
-} from "@/lib/practice/content";
+} from "@/lib/material/content";
 
 export type TopicStatus = "active" | "archived" | "merged";
 export type TopicCreatedBy = "user" | "system" | "ai-suggested";

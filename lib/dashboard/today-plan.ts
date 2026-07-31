@@ -1,11 +1,11 @@
 import { getCustomStudyHref } from "@/lib/app/routes";
-import { buildTopicProgress, type TopicProgressSummary } from "@/lib/practice/progress";
-import type { MasteryEvent } from "@/lib/practice/mastery";
-import type { Topic } from "@/lib/practice/topics";
+import { buildTopicProgress, type TopicProgressSummary } from "@/lib/material/progress";
+import type { MasteryEvent } from "@/lib/material/mastery";
+import type { Topic } from "@/lib/material/topics";
 import { getGoalDisplayName, type Goal } from "@/lib/study/goals";
 import type { Card } from "@/lib/study/cards";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
-import type { Source } from "@/lib/practice/sources";
+import type { Source } from "@/lib/material/sources";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
 

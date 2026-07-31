@@ -7,14 +7,14 @@ import {
   getDeckStudyRouteHref,
 } from "@/lib/app/routes";
 import { mapCardData } from "@/lib/study/cards";
-import { getMasteryScoreDelta } from "@/lib/practice/mastery";
-import { buildTopicProgress } from "@/lib/practice/progress";
-import { mapTopicData, slugifyTopicName } from "@/lib/practice/topics";
+import { getMasteryScoreDelta } from "@/lib/material/mastery";
+import { buildTopicProgress } from "@/lib/material/progress";
+import { mapTopicData, slugifyTopicName } from "@/lib/material/topics";
 import {
   buildFlashcardDraftCardData,
   buildPracticeQuestionDraftNotebookPageData,
-} from "@/lib/practice/generated-content";
-import { buildSourcePayload, mapSourceData } from "@/lib/practice/sources";
+} from "@/lib/material/generated-content";
+import { buildSourcePayload, mapSourceData } from "@/lib/material/sources";
 import {
   buildStudyFolderPayload,
   mapStudyFolderData,

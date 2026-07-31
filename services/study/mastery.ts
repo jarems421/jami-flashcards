@@ -6,7 +6,7 @@ import {
   type MasteryEvent,
   type MasteryEventSourceType,
   type MasteryEventWeight,
-} from "@/lib/practice/mastery";
+} from "@/lib/material/mastery";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;

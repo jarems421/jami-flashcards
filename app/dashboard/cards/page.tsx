@@ -35,13 +35,13 @@ import {
   setCardTopicsInBulk,
   updateCardContent,
 } from "@/services/study/cards";
-import type { Source } from "@/lib/practice/sources";
+import type { Source } from "@/lib/material/sources";
 import {
   getTopicNameKey,
   MAX_LINKED_TOPICS,
   type Topic,
-} from "@/lib/practice/topics";
-import { getBulkTopicCapacity } from "@/lib/practice/topic-management";
+} from "@/lib/material/topics";
+import { getBulkTopicCapacity } from "@/lib/material/topic-management";
 import { getCardContentDuplicateCounts, getCardQualityWarnings } from "@/lib/study/card-quality";
 import { getDeckHref } from "@/lib/app/routes";
 import { featureFlags } from "@/lib/app/feature-flags";

@@ -15,7 +15,7 @@ import {
   mapSourceData,
   type Source,
   type SourceType,
-} from "@/lib/practice/sources";
+} from "@/lib/material/sources";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
