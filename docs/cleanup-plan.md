@@ -3,11 +3,11 @@
 Continues the notebook decomposition track started in `da3d9c7` → `4fc3ebb`, merged
 with a codebase-wide review. Written 2026-07-30.
 
-## Status — Phases 0 to 3 complete
+## Status — all phases complete
 
-Fourteen gated commits. The notebook page went **4,525 → 3,189 lines**; the
-Vitest suite went **704 → 809**; the browser suite went from one notebook spec
-to five signed-in flows across notebook and study.
+The notebook page went **4,525 → 2,933 lines**; the Vitest suite went
+**704 → 1,008**; the browser suite went from one notebook spec to fourteen
+signed-in flows across notebook, study, browse, and offline replay.
 
 The plan existed to make the dual ink pipeline fixable. That shipped in
 `f98c8f5` and was verified on an iPad on 2026-07-31: undo now steps whichever
@@ -20,8 +20,15 @@ of ink or text happened most recently, instead of draining all ink first.
 | 2 — the coupled core | done (2.3b deliberately not extracted) |
 | ★ ink pipeline fix | **done, iPad-verified** |
 | 3 — JSX decomposition | done |
-| 4 — offline e2e + component tests | **next** |
-| 5 — shared list-workspace primitives | not started; slow and deliberate by request |
+| 4 — offline e2e + component tests | done |
+| 5 — shared list-workspace primitives | done |
+| 6 — feedback / selection / row-editing hooks | done |
+| 7 — component tests | done (9 components, 84 tests) |
+| 8 — large files | done (3 of 4 reduced; 1 exception deleted) |
+
+**Not done, and deliberately so:** three blocks failed the seam-width rule and
+are recorded with reasons under Phase 8. Getting past them is a redesign
+decision, not a cleanup one.
 
 **Where the remaining lines are.** The page is now a composition root: seven
 controllers, three extracted components, and the orchestration that coordinates
