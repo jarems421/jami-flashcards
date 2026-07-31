@@ -31,6 +31,7 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckHref } from "@/lib/app/routes";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
+import { toggleIdSelection } from "@/lib/app/multi-select";
 import type { Source } from "@/lib/practice/sources";
 import type { Topic } from "@/lib/practice/topics";
 import type { Deck } from "@/lib/study/decks";
@@ -1009,7 +1010,7 @@ export default function FolderDetailPage() {
                           type="button"
                           onClick={() =>
                             setSelectedDeckIds((current) =>
-                              selected ? current.filter((id) => id !== deck.id) : [...current, deck.id]
+                              toggleIdSelection(current, deck.id)
                             )
                           }
                           className={`rounded-[1rem] border px-3 py-3 text-left text-sm transition ${
@@ -1102,7 +1103,7 @@ export default function FolderDetailPage() {
                           type="button"
                           onClick={() =>
                             setSelectedSourceIds((current) =>
-                              selected ? current.filter((id) => id !== source.id) : [...current, source.id]
+                              toggleIdSelection(current, source.id)
                             )
                           }
                           className={`rounded-[1rem] border px-3 py-3 text-left text-sm transition ${

@@ -16,6 +16,7 @@ import {
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
+import { useInlineRowEditing } from "@/hooks/useInlineRowEditing";
 import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
 import type { GeneratedContentDraft } from "@/lib/practice/generated-content";
@@ -117,11 +118,9 @@ export default function TopicsPage() {
   );
   const [newTopicName, setNewTopicName] = useState("");
   const [creating, setCreating] = useState(false);
-  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
-  const [renameValue, setRenameValue] = useState("");
-  const [savingTopicId, setSavingTopicId] = useState<string | null>(null);
+  const rows = useInlineRowEditing<{ name: string }>();
   const [topicPendingDelete, setTopicPendingDelete] = useState<Topic | null>(null);
-  const [deletingTopicId, setDeletingTopicId] = useState<string | null>(null);
+
   const { feedback, success, showError, showThrownError, clear: clearFeedback } =
     useFeedback();
 
@@ -222,20 +221,19 @@ export default function TopicsPage() {
   };
 
   const startRenaming = (topic: Topic) => {
-    setEditingTopicId(topic.id);
-    setRenameValue(topic.name);
+
+    rows.startEditing(topic.id, { name: topic.name });
     clearFeedback();
   };
 
   const cancelRenaming = () => {
-    setEditingTopicId(null);
-    setRenameValue("");
+    rows.cancelEditing();
   };
 
   const saveTopicName = async (topic: Topic) => {
-    const nextName = renameValue.trim();
+    const nextName = (rows.draft?.name ?? "").trim();
     if (!nextName) return;
-    setSavingTopicId(topic.id);
+    rows.setSaving(topic.id);
     clearFeedback();
     try {
       await updateTopic(user.uid, topic.id, { name: nextName });
@@ -256,25 +254,25 @@ export default function TopicsPage() {
     } catch (error) {
       showThrownError(error, "Could not rename Topic.");
     } finally {
-      setSavingTopicId(null);
+      rows.setSaving(null);
     }
   };
 
   const deleteTopic = async () => {
     if (!topicPendingDelete) return;
     const topic = topicPendingDelete;
-    setDeletingTopicId(topic.id);
+    rows.setDeleting(topic.id);
     clearFeedback();
     try {
       await deleteTopicEverywhere(user.uid, topic.id);
       setTopics((current) => current.filter((item) => item.id !== topic.id));
-      if (editingTopicId === topic.id) cancelRenaming();
+      if (rows.isEditing(topic.id)) cancelRenaming();
       setTopicPendingDelete(null);
       success(`${topic.name} was deleted.`);
     } catch (error) {
       showThrownError(error, "Could not delete Topic.");
     } finally {
-      setDeletingTopicId(null);
+      rows.setDeleting(null);
     }
   };
 
@@ -304,7 +302,7 @@ export default function TopicsPage() {
         confirmLabel="Delete Topic"
         busy={
           topicPendingDelete !== null &&
-          deletingTopicId === topicPendingDelete.id
+          rows.isDeleting(topicPendingDelete.id)
         }
         onClose={() => setTopicPendingDelete(null)}
         onConfirm={() => void deleteTopic()}
@@ -375,7 +373,7 @@ export default function TopicsPage() {
             value={search}
             onChange={(event) => {
               setSearch(event.target.value);
-              if (editingTopicId) cancelRenaming();
+              if (rows.editingId) cancelRenaming();
             }}
           />
         </div>
@@ -394,7 +392,7 @@ export default function TopicsPage() {
             className="grid auto-rows-fr gap-3 sm:grid-cols-2 xl:grid-cols-4"
           >
             {visibleSummaries.map((summary) => {
-              const editing = editingTopicId === summary.topic.id;
+              const editing = rows.isEditing(summary.topic.id);
               return (
                 <section
                   key={summary.topic.id}
@@ -406,21 +404,21 @@ export default function TopicsPage() {
                     <div className="p-4">
                       <Input
                         label="Topic name"
-                        value={renameValue}
-                        onChange={(event) => setRenameValue(event.target.value)}
-                        disabled={savingTopicId === summary.topic.id}
+                        value={rows.draft?.name ?? ""}
+                        onChange={(event) => rows.updateDraft({ name: event.target.value })}
+                        disabled={rows.isSaving(summary.topic.id)}
                       />
                       <div className="mt-4 flex flex-wrap gap-2">
                         <Button
                           type="button"
                           size="sm"
                           disabled={
-                            savingTopicId === summary.topic.id ||
-                            !renameValue.trim()
+                            rows.isSaving(summary.topic.id) ||
+                            !(rows.draft?.name ?? "").trim()
                           }
                           onClick={() => void saveTopicName(summary.topic)}
                         >
-                          {savingTopicId === summary.topic.id
+                          {rows.isSaving(summary.topic.id)
                             ? "Saving..."
                             : "Save Topic"}
                         </Button>
@@ -428,7 +426,7 @@ export default function TopicsPage() {
                           type="button"
                           size="sm"
                           variant="ghost"
-                          disabled={savingTopicId === summary.topic.id}
+                          disabled={rows.isSaving(summary.topic.id)}
                           onClick={cancelRenaming}
                         >
                           Cancel

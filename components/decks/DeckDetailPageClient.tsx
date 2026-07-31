@@ -27,7 +27,7 @@ import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
-import { useCardSelection } from "@/components/decks/useCardSelection";
+import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { getDeckById } from "@/services/study/decks";
 import {
@@ -325,14 +325,14 @@ export default function DeckDetailPageClient() {
   }, [cards, searchTerm, topicsById]);
   const visibleCardIds = useMemo(() => filteredCards.map((card) => card.id), [filteredCards]);
   const {
-    selectedCardIdSet,
-    selectVisibleCards,
+    selectedIdSet: selectedCardIdSet,
+    selectVisible: selectVisibleCards,
     clearSelection,
     handleCheckboxClick,
-  } = useCardSelection({
-    visibleCardIds,
-    selectedCardIds,
-    setSelectedCardIds,
+  } = useMultiSelect({
+    visibleIds: visibleCardIds,
+    selectedIds: selectedCardIds,
+    setSelectedIds: setSelectedCardIds,
     disabled: false,
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);

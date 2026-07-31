@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
+import { useInlineRowEditing } from "@/hooks/useInlineRowEditing";
 import type { Feedback } from "@/lib/app/feedback";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import { getDecks } from "@/services/study/decks";
@@ -56,7 +57,7 @@ import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
-import { useCardSelection } from "@/components/decks/useCardSelection";
+import { useMultiSelect } from "@/hooks/useMultiSelect";
 import { Button, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import Link from "next/link";
@@ -64,6 +65,10 @@ import Link from "next/link";
 const CARD_RESULT_PAGE_SIZE = 50;
 const RECENT_CARD_COUNT = 4;
 type CardStatusFilter = "all" | "due" | "weak" | "new";
+
+type CardDraft = { front: string; back: string; topicIds: string[] };
+
+const EMPTY_CARD_DRAFT: CardDraft = { front: "", back: "", topicIds: [] };
 
 export default function CardsSearchPage() {
   const { user } = useUser();
@@ -78,7 +83,7 @@ export default function CardsSearchPage() {
   const [visibleResultLimit, setVisibleResultLimit] = useState(CARD_RESULT_PAGE_SIZE);
   const [visibleBrowseLimit, setVisibleBrowseLimit] = useState(CARD_RESULT_PAGE_SIZE);
   const [showAllCards, setShowAllCards] = useState(false);
-  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
+
   const [previewCardId, setPreviewCardId] = useState<string | null>(null);
   const [deckFilter, setDeckFilter] = useState("");
   const [folderFilter, setFolderFilter] = useState("");
@@ -86,11 +91,8 @@ export default function CardsSearchPage() {
   const [legacyTagFilter, setLegacyTagFilter] = useState("");
   const [statusFilter, setStatusFilter] = useState<CardStatusFilter>("all");
   const [urlStateReady, setUrlStateReady] = useState(false);
-  const [editingFront, setEditingFront] = useState("");
-  const [editingBack, setEditingBack] = useState("");
-  const [editingTopicIds, setEditingTopicIds] = useState<string[]>([]);
-  const [savingCardId, setSavingCardId] = useState<string | null>(null);
-  const [deletingCardId, setDeletingCardId] = useState<string | null>(null);
+  const rows = useInlineRowEditing<CardDraft>();
+  const draft = rows.draft ?? EMPTY_CARD_DRAFT;
   const [selectedCardIds, setSelectedCardIds] = useState<string[]>([]);
   const [bulkTopicIds, setBulkTopicIds] = useState<string[]>([]);
   const [applyingBulkTopics, setApplyingBulkTopics] = useState(false);
@@ -328,14 +330,14 @@ export default function CardsSearchPage() {
   const hasMore =
     remainingHiddenCards > 0 && (shouldShowCardResults || showAllCards);
   const {
-    selectedCardIdSet,
-    selectVisibleCards,
+    selectedIdSet: selectedCardIdSet,
+    selectVisible: selectVisibleCards,
     clearSelection,
     handleCheckboxClick,
-  } = useCardSelection({
-    visibleCardIds,
-    selectedCardIds,
-    setSelectedCardIds,
+  } = useMultiSelect({
+    visibleIds: visibleCardIds,
+    selectedIds: selectedCardIds,
+    setSelectedIds: setSelectedCardIds,
     disabled: false,
   });
   const duplicateCounts = useMemo(() => getCardContentDuplicateCounts(cards), [cards]);
@@ -359,24 +361,22 @@ export default function CardsSearchPage() {
   };
 
   const startEditing = (card: Card) => {
-    setExpandedCardId(card.id);
-    setEditingFront(card.front);
-    setEditingBack(card.back);
-    setEditingTopicIds(card.topicIds ?? []);
+    rows.startEditing(card.id, {
+      front: card.front,
+      back: card.back,
+      topicIds: card.topicIds ?? [],
+    });
     clearFeedback();
   };
 
   const cancelEditing = () => {
-    setExpandedCardId(null);
-    setEditingFront("");
-    setEditingBack("");
-    setEditingTopicIds([]);
-    setSavingCardId(null);
+    rows.cancelEditing();
+    rows.setSaving(null);
   };
 
   const handleSaveCard = async (cardId: string) => {
-    const nextFront = normalizeCardContentInput(editingFront);
-    const nextBack = normalizeCardContentInput(editingBack);
+    const nextFront = normalizeCardContentInput(draft.front);
+    const nextBack = normalizeCardContentInput(draft.back);
 
     if (!nextFront || !nextBack) {
       showError("Both front and back are required.");
@@ -388,14 +388,14 @@ export default function CardsSearchPage() {
       return;
     }
 
-    setSavingCardId(cardId);
+    rows.setSaving(cardId);
     clearFeedback();
 
     try {
       await updateCardContent(cardId, {
         front: nextFront,
         back: nextBack,
-        topicIds: editingTopicIds,
+        topicIds: draft.topicIds,
       });
 
       setCards((prev) =>
@@ -405,7 +405,7 @@ export default function CardsSearchPage() {
                 ...card,
                 front: nextFront,
                 back: nextBack,
-                topicIds: editingTopicIds,
+                topicIds: draft.topicIds,
                 tags: [],
               }
             : card
@@ -415,27 +415,27 @@ export default function CardsSearchPage() {
       success("Card updated.");
     } catch (error) {
       console.error(error);
-      setSavingCardId(null);
+      rows.setSaving(null);
       showError("Failed to update card.");
     }
   };
 
   const handleDeleteCard = async (cardId: string) => {
-    setDeletingCardId(cardId);
+    rows.setDeleting(cardId);
     clearFeedback();
 
     try {
       await deleteCard(cardId);
       setCards((prev) => prev.filter((card) => card.id !== cardId));
       setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
-      if (expandedCardId === cardId) cancelEditing();
+      if (rows.isEditing(cardId)) cancelEditing();
       setCardPendingDeleteId(null);
       success("Card deleted.");
     } catch (error) {
       console.error(error);
       showError("Failed to delete card.");
     } finally {
-      setDeletingCardId(null);
+      rows.setDeleting(null);
     }
   };
 
@@ -575,7 +575,7 @@ export default function CardsSearchPage() {
         confirmLabel="Delete card"
         busy={
           cardPendingDeleteId !== null &&
-          deletingCardId === cardPendingDeleteId
+          rows.isDeleting(cardPendingDeleteId)
         }
         onClose={() => setCardPendingDeleteId(null)}
         onConfirm={() => {
@@ -875,7 +875,7 @@ export default function CardsSearchPage() {
               <section
                 key={card.id}
                 className={`app-panel min-w-0 overflow-visible p-3 transition duration-fast ease-spring has-[details[open]]:z-40 hover:-translate-y-0.5 hover:shadow-shell ${
-                  expandedCardId === card.id
+                  rows.isEditing(card.id)
                     ? "sm:col-span-2"
                     : "min-h-[8.5rem]"
                 } ${
@@ -884,7 +884,7 @@ export default function CardsSearchPage() {
                     : ""
                 }`}
               >
-                {expandedCardId === card.id ? (
+                {rows.isEditing(card.id) ? (
                   <div className="space-y-4">
                     <div className="flex items-center justify-between gap-3">
                       <CardDifficultyBadge card={card} compact />
@@ -902,36 +902,36 @@ export default function CardsSearchPage() {
                     </div>
                     <CardQualityWarnings
                       warnings={getCardQualityWarnings(
-                        { front: editingFront, back: editingBack, topicIds: editingTopicIds },
+                        { front: draft.front, back: draft.back, topicIds: draft.topicIds },
                         { duplicateCount: duplicateCounts.get(getCardContentKey(card.front, card.back)) }
                       )}
                     />
                     <Input
                       label="Front"
-                      value={editingFront}
-                      onChange={(e) => setEditingFront(e.target.value)}
+                      value={draft.front}
+                      onChange={(e) => rows.updateDraft({ front: e.target.value })}
                       maxLength={MAX_FRONT_LENGTH}
                     />
                     <CardBackEditor
                       label="Back"
-                      value={editingBack}
-                      onChange={setEditingBack}
+                      value={draft.back}
+                      onChange={(back) => rows.updateDraft({ back })}
                       maxLength={MAX_BACK_LENGTH}
                       rows={6}
-                      disabled={savingCardId === card.id}
+                      disabled={rows.isSaving(card.id)}
                       action={
                         featureFlags.enableFlashcardAi ? (
                           <CardBackAutocomplete
-                            front={editingFront}
-                            currentBack={editingBack}
+                            front={draft.front}
+                            currentBack={draft.back}
                             deckId={card.deckId}
                             deckName={deckNamesById[card.deckId]}
-                            topics={editingTopicIds
+                            topics={draft.topicIds
                               .map((topicId) => topicNamesById[topicId])
                               .filter((name): name is string => Boolean(name))}
-                            topicIds={editingTopicIds}
-                            disabled={savingCardId === card.id}
-                            onApply={setEditingBack}
+                            topicIds={draft.topicIds}
+                            disabled={rows.isSaving(card.id)}
+                            onApply={(back) => rows.updateDraft({ back })}
                           />
                         ) : null
                       }
@@ -939,23 +939,23 @@ export default function CardsSearchPage() {
                     <TopicPicker
                       userId={user.uid}
                       topics={topics}
-                      selectedTopicIds={editingTopicIds}
-                      onChange={setEditingTopicIds}
+                      selectedTopicIds={draft.topicIds}
+                      onChange={(topicIds) => rows.updateDraft({ topicIds })}
                       onTopicsChange={setTopics}
-                      disabled={savingCardId === card.id}
+                      disabled={rows.isSaving(card.id)}
                     />
                     <div className="grid gap-2 sm:flex sm:flex-wrap">
                       <Button
                         type="button"
-                        disabled={savingCardId === card.id}
+                        disabled={rows.isSaving(card.id)}
                         onClick={() => void handleSaveCard(card.id)}
                         className="w-full sm:w-auto"
                       >
-                        {savingCardId === card.id ? "Saving..." : "Save card"}
+                        {rows.isSaving(card.id) ? "Saving..." : "Save card"}
                       </Button>
                       <Button
                         type="button"
-                        disabled={savingCardId === card.id}
+                        disabled={rows.isSaving(card.id)}
                         onClick={cancelEditing}
                         variant="secondary"
                         className="w-full sm:w-auto"
@@ -987,8 +987,8 @@ export default function CardsSearchPage() {
                           />
                         </label>
                         <CardActionsMenu
-                          deleting={deletingCardId === card.id}
-                          disabled={deletingCardId === card.id}
+                          deleting={rows.isDeleting(card.id)}
+                          disabled={rows.isDeleting(card.id)}
                           onEdit={() => startEditing(card)}
                           onDelete={() => setCardPendingDeleteId(card.id)}
                         />
