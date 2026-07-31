@@ -18,6 +18,31 @@ import {
   type DailyReviewState,
 } from "@/lib/study/daily-review";
 import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
+import {
+  buildCustomReviewCards,
+  EMPTY_FOCUSED_REVIEW_RECENTS,
+  FOCUSED_REVIEW_RECENT_LIMIT,
+  getFocusedReviewRecentsKey,
+  mergeRecentValues,
+  normalizeFocusedReviewRecents,
+  parseIdsParam,
+  type FocusedReviewRecents,
+} from "@/lib/study/focused-review";
+import {
+  formatResetCountdown,
+  getAnswerFeedback,
+  getSessionLabel,
+  getSimpleStudyFeedback,
+  RATING_LABELS,
+  RATING_STYLES,
+  withGoalReward,
+  type AnswerFeedback,
+} from "@/lib/study/study-feedback";
+import InlineStudyFeedback from "@/components/study/InlineStudyFeedback";
+import FocusedReviewBuilder, {
+  type FocusedFilterKind,
+} from "@/components/study/FocusedReviewBuilder";
+import StudyHomeStat from "@/components/study/StudyHomeStat";
 import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
 import type { Card } from "@/lib/study/cards";
 import {
@@ -81,7 +106,6 @@ import {
   Card as SurfaceCard,
   EmptyState,
   FeedbackBanner,
-  Input,
   JamiSparklesIcon,
   ProgressBar,
   Skeleton,
@@ -89,235 +113,11 @@ import {
 } from "@/components/ui";
 
 type SessionKind = StudySessionKind;
+
+/** Refreshing on every tab focus hammered Firestore on a busy desk. */
+const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
 type SessionStats = StudySessionStats;
 type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
-type FocusedFilterKind = "decks" | "topics";
-const RATING_LABELS: Record<CardRating, string> = { again: "Again", hard: "Hard", good: "Good", easy: "Easy" };
-type AnswerFeedback = {
-  tone: "error" | "warm" | "good" | "calm";
-  message: string;
-  /** Overrides the usual dismiss delay, so a reward is not gone before it is read. */
-  holdMs?: number;
-};
-type FocusedReviewRecents = {
-  deckIds: string[];
-  topicIds: string[];
-  legacyTags?: string[];
-};
-
-const FOCUSED_REVIEW_RECENTS_PREFIX = "jami:focused-review-recents:";
-const EMPTY_FOCUSED_REVIEW_RECENTS: FocusedReviewRecents = {
-  deckIds: [],
-  topicIds: [],
-};
-const FOCUSED_REVIEW_RECENT_LIMIT = 3;
-const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
-
-const RATING_STYLES: Record<CardRating, { hint: string; shortcut: string; classes: string }> = {
-  again: {
-    hint: "Missed it",
-    shortcut: "1",
-    classes: "app-danger hover:border-border-strong",
-  },
-  hard: {
-    hint: "Barely recalled",
-    shortcut: "2",
-    classes: "app-warning hover:border-border-strong",
-  },
-  good: {
-    hint: "Recalled",
-    shortcut: "3",
-    classes: "app-chip hover:border-border-strong hover:bg-[var(--color-glass-medium)]",
-  },
-  easy: {
-    hint: "Instant",
-    shortcut: "4",
-    classes: "app-success hover:border-border-strong",
-  },
-};
-
-function getSessionLabel(kind: SessionKind | null) {
-  if (kind === "simple") return "Simple Study";
-  if (kind === "custom") return "Focused Review";
-  if (kind === "daily-optional") return "Easy Extras";
-  return "Daily Review";
-}
-
-function getAnswerFeedback(rating: CardRating, sessionKind: SessionKind, parked: boolean) {
-  if (rating === "again") {
-    return {
-      tone: "error" as const,
-      message: parked
-        ? "Moved to tomorrow so you do not get stuck."
-        : sessionKind === "daily-required"
-          ? "Back in the queue for another try."
-          : "We will bring this back tomorrow.",
-    };
-  }
-
-  if (rating === "hard") {
-    return {
-      tone: "warm" as const,
-      message: parked
-        ? "Parked for tomorrow after a rough stretch."
-        : sessionKind === "daily-required"
-          ? "Back in the queue for one steadier pass."
-          : "Worth another look tomorrow.",
-    };
-  }
-
-  if (rating === "good") {
-    return { tone: "good" as const, message: "Nice recall." };
-  }
-
-  return { tone: "good" as const, message: "That one felt easy." };
-}
-
-/**
- * Says so when a review finished a goal without earning a star.
- *
- * A star gets the overlay instead, which shows the star itself. This covers the
- * quieter case, where a goal completes but the constellation is already full,
- * so the completion is still acknowledged rather than passing in silence.
- */
-function withGoalReward(
-  feedback: AnswerFeedback,
-  progress: { completedGoals: number; starsEarned: number }
-): AnswerFeedback {
-  if (progress.completedGoals <= 0 || progress.starsEarned > 0) return feedback;
-
-  const goals =
-    progress.completedGoals === 1
-      ? "Goal complete."
-      : `${progress.completedGoals} goals complete.`;
-
-  return {
-    tone: "good",
-    message: `${feedback.message} ${goals}`,
-    holdMs: 5_000,
-  };
-}
-
-function getSimpleStudyFeedback(result: SimpleStudyResult) {
-  return result === "correct"
-    ? { tone: "good" as const, message: "Cleared from Simple Study." }
-    : { tone: "warm" as const, message: "Moved to the back for another pass." };
-}
-
-function InlineStudyFeedback({ feedback }: { feedback: AnswerFeedback | null }) {
-  if (!feedback) return null;
-
-  const toneClass =
-    feedback.tone === "error"
-      ? "app-danger"
-      : feedback.tone === "warm"
-        ? "app-warning"
-        : feedback.tone === "good"
-          ? "app-success"
-          : "app-chip";
-
-  return (
-    <div
-      className={`mx-auto w-fit rounded-full border px-3.5 py-2 text-sm font-semibold shadow-[0_12px_24px_rgba(8,2,26,0.18)] animate-fade-in ${toneClass}`}
-      role="status"
-      aria-live="polite"
-    >
-      {feedback.message}
-    </div>
-  );
-}
-
-function parseIdsParam(value: string | null) {
-  if (!value) return [];
-  return Array.from(new Set(value.split(",").map((entry) => entry.trim()).filter(Boolean)));
-}
-
-function formatResetCountdown(ms: number) {
-  if (ms <= 0) return "now";
-  const totalMinutes = Math.max(1, Math.ceil(ms / 60_000));
-  const hours = Math.floor(totalMinutes / 60);
-  const minutes = totalMinutes % 60;
-  if (hours <= 0) return `${minutes}m`;
-  if (minutes === 0) return `${hours}h`;
-  return `${hours}h ${minutes}m`;
-}
-
-function StudyHomeStat({ value, label }: { value: number; label: string }) {
-  return (
-    <div className="min-w-[5.25rem]">
-      <div className="text-xl font-semibold leading-none tabular-nums text-text-primary sm:text-2xl">
-        {value}
-      </div>
-      <div className="mt-1.5 text-xs font-medium text-text-muted">{label}</div>
-    </div>
-  );
-}
-
-function buildCustomReviewCards(cards: Card[], selectedDeckIds: string[], selectedTopicIds: string[]) {
-  const selectedDeckIdSet = new Set(selectedDeckIds);
-  const selectedTopicIdSet = new Set(selectedTopicIds);
-  const filteredCards =
-    selectedDeckIds.length === 0 && selectedTopicIds.length === 0
-      ? cards
-      : cards.filter((card) => {
-          const matchesDeck =
-            selectedDeckIdSet.size > 0 && selectedDeckIdSet.has(card.deckId);
-          const matchesTopic =
-            selectedTopicIdSet.size > 0 &&
-            (card.topicIds ?? []).some((topicId) => selectedTopicIdSet.has(topicId));
-          return matchesDeck || matchesTopic;
-        });
-
-  return sortCardsByStudyPriority(filteredCards);
-}
-
-function getFocusedReviewRecentsKey(userId: string) {
-  return `${FOCUSED_REVIEW_RECENTS_PREFIX}${userId}`;
-}
-
-function normalizeFocusedReviewRecents(value: unknown): FocusedReviewRecents {
-  if (!value || typeof value !== "object") {
-    return EMPTY_FOCUSED_REVIEW_RECENTS;
-  }
-
-  const data = value as { deckIds?: unknown; topicIds?: unknown; tags?: unknown };
-  return {
-    deckIds: Array.isArray(data.deckIds)
-      ? data.deckIds.filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim())).slice(0, FOCUSED_REVIEW_RECENT_LIMIT)
-      : [],
-    topicIds: Array.isArray(data.topicIds)
-      ? data.topicIds.filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim())).slice(0, FOCUSED_REVIEW_RECENT_LIMIT)
-      : [],
-    ...(Array.isArray(data.tags)
-      ? {
-          legacyTags: data.tags
-            .filter((entry): entry is string => typeof entry === "string" && Boolean(entry.trim()))
-            .slice(0, FOCUSED_REVIEW_RECENT_LIMIT),
-        }
-      : {}),
-  };
-}
-
-function mergeRecentValues(current: string[], nextValues: string[], getKey = (value: string) => value) {
-  const seen = new Set<string>();
-  const merged: string[] = [];
-
-  for (const value of [...nextValues, ...current]) {
-    const trimmed = value.trim();
-    const key = getKey(trimmed);
-    if (!trimmed || !key || seen.has(key)) {
-      continue;
-    }
-
-    seen.add(key);
-    merged.push(trimmed);
-    if (merged.length >= FOCUSED_REVIEW_RECENT_LIMIT) {
-      break;
-    }
-  }
-
-  return merged;
-}
 
 export default function StudyPage() {
   const searchParams = useSearchParams();
@@ -1972,291 +1772,35 @@ export default function StudyPage() {
                 </section>
               ) : null}
               {hasCards && focusedReviewOpen ? (
-                <SurfaceCard
-                  id="focused-review-builder"
-                  padding="lg"
-                  className="relative space-y-5"
-                >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                    <div className="max-w-2xl">
-                      <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                        Focused Review setup
-                      </div>
-                      <h3 className="mt-2 text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
-                        Build a focused session
-                      </h3>
-                      <p className="mt-2 text-sm leading-6 text-text-secondary">
-                        Choose any combination of decks and Topics. With nothing selected, every card is included.
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={closeFocusedReviewBuilder}
-                      className="w-full sm:w-auto"
-                    >
-                      Close setup
-                    </Button>
-                  </div>
-                  {hasCustomFilters ? (
-                    <div className="border-y border-[var(--color-border)] py-4">
-                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
-                            Selected
-                          </div>
-                          <div className="mt-2 flex flex-wrap gap-2">
-                            {selectedDeckIds.map((deckId) => {
-                              const deckName = deckNamesById[deckId] ?? "Deck";
-                              return (
-                                <button
-                                  key={deckId}
-                                  type="button"
-                                  aria-label={`Remove deck ${deckName}`}
-                                  onClick={() => toggleDeckFilter(deckId)}
-                                  className="app-selected inline-flex min-h-10 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
-                                >
-                                  <span>{deckName}</span>
-                                  <span aria-hidden="true">×</span>
-                                </button>
-                              );
-                            })}
-                            {selectedTopicIds.map((topicId) => {
-                              const topicName = topicNamesById[topicId] ?? "Topic";
-                              return (
-                                <button
-                                  key={topicId}
-                                  type="button"
-                                  aria-label={`Remove Topic ${topicName}`}
-                                  onClick={() => toggleTopicFilter(topicId)}
-                                  className="app-selected inline-flex min-h-10 items-center gap-2 rounded-full px-3 py-1.5 text-xs font-medium transition duration-fast hover:border-border-strong"
-                                >
-                                  <span>{topicName}</span>
-                                  <span aria-hidden="true">×</span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={clearCustomFilters}
-                          className="w-full shrink-0 sm:w-auto"
-                        >
-                          Clear selection
-                        </Button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  <div className="space-y-4">
-                    <div
-                      role="group"
-                      aria-label="Focused Review filter type"
-                      className="app-subtle-panel inline-flex w-full rounded-full p-1 sm:w-auto"
-                    >
-                      {(["decks", "topics"] as FocusedFilterKind[]).map(
-                        (kind) => {
-                          const selected = focusedFilterKind === kind;
-                          return (
-                            <button
-                              key={kind}
-                              type="button"
-                              aria-pressed={selected}
-                              onClick={() => setFocusedFilterKind(kind)}
-                              className={`min-h-10 flex-1 rounded-full px-4 text-sm font-semibold transition sm:flex-none ${
-                                selected
-                                  ? "bg-[var(--color-selected-bg)] text-[var(--color-selected-text)] shadow-sm"
-                                  : "text-text-muted hover:text-text-primary"
-                              }`}
-                            >
-                              {kind === "decks" ? "Decks" : "Topics"}
-                            </button>
-                          );
-                        }
-                      )}
-                    </div>
-
-                    <div id="focused-review-options" className="space-y-4">
-                      {focusedFilterKind === "decks" ? (
-                        <Input
-                          label="Search decks"
-                          placeholder="Type a deck name"
-                          value={deckSearch}
-                          onChange={(event) => setDeckSearch(event.target.value)}
-                        />
-                      ) : (
-                        <Input
-                          label="Search Topics"
-                          placeholder="Type a Topic name"
-                          value={topicSearch}
-                          onChange={(event) => setTopicSearch(event.target.value)}
-                        />
-                      )}
-
-                      {focusedFilterKind === "decks" ? (
-                        deckSearch.trim() ? (
-                          deckSearchResults.length > 0 ? (
-                            <div className="grid gap-2 sm:grid-cols-2">
-                              {deckSearchResults.map((deck) => {
-                                const selected = selectedDeckIds.includes(deck.id);
-                                return (
-                                  <button
-                                    key={deck.id}
-                                    type="button"
-                                    aria-pressed={selected}
-                                    onClick={() => toggleDeckFilter(deck.id)}
-                                    className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
-                                  >
-                                    <span className="min-w-0">
-                                      <span className="block truncate">{deck.name}</span>
-                                      <span className="mt-0.5 block text-xs text-text-muted">
-                                        {deckCardCounts.get(deck.id) ?? 0} cards
-                                      </span>
-                                    </span>
-                                    <span className="shrink-0 text-xs text-text-muted">
-                                      {selected ? "Selected" : "Add"}
-                                    </span>
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="text-sm text-text-muted">
-                              No decks match that search.
-                            </p>
-                          )
-                        ) : (
-                          <div>
-                            <div className="text-sm font-medium text-text-primary">
-                              Recent decks
-                            </div>
-                            {recentDecks.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-2">
-                                {recentDecks.map((deck) => {
-                                  const selected = selectedDeckIds.includes(deck.id);
-                                  return (
-                                    <button
-                                      key={deck.id}
-                                      type="button"
-                                      aria-pressed={selected}
-                                      onClick={() => toggleDeckFilter(deck.id)}
-                                      className={`min-h-10 rounded-full px-3.5 py-2 text-sm font-medium transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
-                                    >
-                                      {deck.name} · {deckCardCounts.get(deck.id) ?? 0}
-                                    </button>
-                                  );
-                                })}
-                              </div>
-                            ) : (
-                              <p className="mt-2 text-sm leading-6 text-text-muted">
-                                Search for a deck to build your first focused session.
-                              </p>
-                            )}
-                          </div>
-                        )
-                      ) : topicSearch.trim() ? (
-                        topicSearchResults.length > 0 ? (
-                          <div className="grid gap-2 sm:grid-cols-2">
-                            {topicSearchResults.map((topic) => {
-                              const selected = selectedTopicIds.includes(topic.id);
-                              return (
-                                <button
-                                  key={topic.id}
-                                  type="button"
-                                  aria-pressed={selected}
-                                  onClick={() => toggleTopicFilter(topic.id)}
-                                  className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
-                                >
-                                  <span className="min-w-0">
-                                    <span className="block truncate">{topic.name}</span>
-                                    <span className="mt-0.5 block text-xs text-text-muted">
-                                      {topicCardCounts.get(topic.id) ?? 0} cards
-                                    </span>
-                                  </span>
-                                  <span className="shrink-0 text-xs text-text-muted">
-                                    {selected ? "Selected" : "Add"}
-                                  </span>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        ) : (
-                          <p className="text-sm text-text-muted">
-                            No Topics match that search.
-                          </p>
-                        )
-                      ) : (
-                        <div>
-                          <div className="text-sm font-medium text-text-primary">
-                            Recent Topics
-                          </div>
-                          {recentTopics.length > 0 ? (
-                            <div className="mt-2 flex flex-wrap gap-2">
-                              {recentTopics.map((topic) => {
-                                const selected = selectedTopicIds.includes(topic.id);
-                                return (
-                                  <button
-                                    key={topic.id}
-                                    type="button"
-                                    aria-pressed={selected}
-                                    onClick={() => toggleTopicFilter(topic.id)}
-                                    className={`min-h-10 rounded-full px-3.5 py-2 text-sm font-medium transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
-                                  >
-                                    {topic.name} · {topicCardCounts.get(topic.id) ?? 0}
-                                  </button>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <p className="mt-2 text-sm leading-6 text-text-muted">
-                              Search for a Topic to narrow this session.
-                            </p>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-4 border-t border-[var(--color-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
-                    <div aria-live="polite">
-                      <div className="text-base font-semibold text-text-primary">
-                        {customSelectionEmpty
-                          ? "No cards match this selection"
-                          : `${customPreviewCards.length} ${customPreviewCards.length === 1 ? "card" : "cards"} ready`}
-                      </div>
-                      <p className="mt-1 text-sm leading-6 text-text-muted">
-                        {customSelectionEmpty
-                          ? "Clear a filter or choose something different."
-                          : hasCustomFilters
-                            ? "Your selected decks and Topics will be mixed into one session."
-                            : "No filters are selected, so this session will use every card."}
-                      </p>
-                    </div>
-                    <div className="flex w-full shrink-0 flex-col gap-2 sm:w-auto sm:flex-row">
-                      {customSelectionEmpty ? (
-                        <Link
-                          href="/dashboard/cards"
-                          className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl border border-[var(--button-secondary-border)] bg-[var(--button-secondary-bg)] px-4 py-2 text-sm font-medium text-[var(--button-secondary-text)] shadow-[var(--button-secondary-shadow)] transition duration-fast hover:border-[var(--button-secondary-border-hover)] hover:bg-[var(--button-secondary-bg-hover)]"
-                        >
-                          Edit cards
-                        </Link>
-                      ) : (
-                        <Button
-                          type="button"
-                          onClick={handleCustomReviewClick}
-                          size="lg"
-                          className="w-full sm:w-auto"
-                        >
-                          Start Focused Review
-                        </Button>
-                      )}
-                    </div>
-                  </div>
-                </SurfaceCard>
+                <FocusedReviewBuilder
+                  filterKind={focusedFilterKind}
+                  onFilterKindChange={setFocusedFilterKind}
+                  decks={{
+                    search: deckSearch,
+                    onSearchChange: setDeckSearch,
+                    searchResults: deckSearchResults,
+                    recents: recentDecks,
+                    selectedIds: selectedDeckIds,
+                    namesById: deckNamesById,
+                    cardCounts: deckCardCounts,
+                    onToggle: toggleDeckFilter,
+                  }}
+                  topics={{
+                    search: topicSearch,
+                    onSearchChange: setTopicSearch,
+                    searchResults: topicSearchResults,
+                    recents: recentTopics,
+                    selectedIds: selectedTopicIds,
+                    namesById: topicNamesById,
+                    cardCounts: topicCardCounts,
+                    onToggle: toggleTopicFilter,
+                  }}
+                  previewCount={customPreviewCards.length}
+                  selectionEmpty={customSelectionEmpty}
+                  onClearFilters={clearCustomFilters}
+                  onClose={closeFocusedReviewBuilder}
+                  onStart={handleCustomReviewClick}
+                />
               ) : null}
             </>
           ) : null}
