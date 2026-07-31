@@ -344,3 +344,100 @@ product decision rather than a refactor and does not belong in this plan.
 
 **Not in scope:** visual polish, until the structural work is done, so it never gets
 mixed into a refactor commit.
+
+---
+
+## Phase 5A — shared list-workspace primitives
+
+Measured 2026-07-31, not estimated. Nine dashboard pages hold the same three
+patterns; the pure logic for one of them already exists and is tested.
+
+**Split from 5B on purpose.** 5A migrates call sites in place and is mechanical
+and unit-testable. 5B decomposes four pages totalling ~6,600 lines and needs a
+browser safety net that does not exist yet (see the prerequisite below). 5A is
+roughly a quarter of the work and carries most of the duplication value.
+
+### Batch 5.1 — `useFeedback`
+
+**160 `setFeedback` calls across nine pages.** Only three shapes exist:
+`setFeedback(null)`, an error object, and a success object. Sixteen of them
+repeat `error instanceof Error ? error.message : "fallback"` by hand across four
+pages.
+
+```ts
+const feedback = useFeedback();
+feedback.success("Deck renamed.");
+feedback.error("Could not rename this deck.");
+feedback.fromError(error, "Could not rename this deck."); // the repeated idiom
+feedback.clear();
+```
+
+Returns `{ feedback, success, error, fromError, clear }` so the existing
+`<FeedbackBanner …/>` render stays as it is.
+
+- **5.1a** — build the hook plus tests, adopt on **`topics`** only (13 calls,
+  smallest page with the full pattern). **Stop here for review**: this API
+  reaches nine pages, and getting it wrong is expensive to unwind.
+- **5.1b** — adopt on decks, goals, cards (52 calls).
+- **5.1c** — adopt on library, folders, study, constellation, progress (94 calls).
+
+### Batch 5.2 — `useMultiSelect` *(smaller than first estimated)*
+
+`components/decks/useCardSelection.ts` **already is this hook**, backed by
+tested pure logic in `lib/study/card-selection.ts` (toggle, add, shift-range).
+It is card-typed and lives under `components/decks`, so only `cards` and
+`DeckDetailPageClient` use it. `library`, `folders`, and `study` each roll their
+own selection by hand.
+
+Work is generalise-and-move, not build:
+
+- **5.2a** — rename ids from card-specific to generic, move to
+  `hooks/useMultiSelect.ts` and the logic to `lib/app/multi-select.ts`, keep the
+  two current callers working. Pure refactor, existing tests carry over.
+- **5.2b** — adopt in library, folders, study (**69 `selected*Ids` references**),
+  which also gives those pages shift-range selection they do not have today.
+
+### Batch 5.3 — `useInlineRowEditing` *(less uniform than first estimated)*
+
+The `editingId` / `savingId` / `deletingId` triplet is genuine, but only
+`topics` is clean. `decks` carries three draft fields alongside it
+(`editingDeckName`, `editingDeckColor`, `editingDeckFolderId`), `cards` carries
+three more, and `folders` only has `deletingNotebookId`.
+
+So the primitive is the triplet plus a generic draft slot:
+
+```ts
+const rows = useInlineRowEditing<DeckDraft>();
+rows.startEditing(deck.id, { name, color, folderId });
+rows.draft            // DeckDraft | null
+rows.isSaving(deck.id)
+rows.isDeleting(deck.id)
+```
+
+- **5.3a** — build against `topics` (the clean case).
+- **5.3b** — adopt in decks and cards, which is where the draft slot earns its
+  place. **`folders` is deliberately skipped**: one delete-id is not a triplet,
+  and forcing it in would be worse than leaving it.
+
+### Prerequisite that blocks 5B, not 5A
+
+`library`, `cards`, `topics`, and `decks` have **no browser coverage at all**;
+`folders` appears only incidentally when the notebook smoke navigates back. The
+notebook work was safe partly because the browser suite caught a `selectedPage`
+that unit tests could not see. 5A changes call sites in place and is covered by
+typecheck plus unit tests, so it can proceed. 5B cannot, safely, until those
+pages have smokes.
+
+### Estimate
+
+| Batch | Scope | Batches |
+|---|---|---|
+| 5.1 useFeedback | 160 calls, 9 pages | 3 |
+| 5.2 useMultiSelect | generalise + 3 pages | 2 |
+| 5.3 useInlineRowEditing | build + 2 pages | 2 |
+| 6.2 lazy recharts + 6.4 CI size guard | trivial, bundled | 1 |
+| **5A total** | | **8** |
+
+Gate per batch as usual. `useFeedback` and `useMultiSelect` touch pages with no
+browser coverage, so typecheck and unit tests are the real net there — worth
+being deliberate about the adoption batches rather than sweeping them together.
