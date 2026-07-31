@@ -15,7 +15,6 @@ import {
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
-import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
 import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
 import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
@@ -23,8 +22,11 @@ import NotebookPagesDrawer from "@/components/workspace/NotebookPagesDrawer";
 import NotebookDrawingToolbar, {
   type NotebookToolMenu,
 } from "@/components/workspace/NotebookDrawingToolbar";
+import NotebookAddPagesDialog from "@/components/workspace/NotebookAddPagesDialog";
+import NotebookDraftConflictBanner from "@/components/workspace/NotebookDraftConflictBanner";
+import NotebookPhoneLayoutNotice from "@/components/workspace/NotebookPhoneLayoutNotice";
 import NotebookSaveIndicator from "@/components/workspace/NotebookSaveIndicator";
-import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
+import NotebookToolSettingsPopover from "@/components/workspace/NotebookToolSettingsPopover";
 import NotebookTextBlockLayer from "@/components/workspace/NotebookTextBlockLayer";
 import ToolbarIconButton, {
   NotebookIcon,
@@ -33,7 +35,6 @@ import NotebookViewport, {
   type NotebookViewportPreview,
 } from "@/components/workspace/NotebookViewport";
 import {
-  Button,
   ButtonLink,
   Card,
   ConfirmDialog,
@@ -69,7 +70,6 @@ import {
 } from "@/lib/workspace/notebooks";
 import {
   getNotebookPageStyleBackground,
-  getNotebookStrokePaintColor,
   normalizeNotebookStrokes,
 } from "@/lib/workspace/notebook-page-content";
 import {
@@ -138,9 +138,6 @@ import {
   trackNotebookPdfCanvas,
   type NotebookPdfCanvasTracking,
 } from "@/lib/workspace/notebook-pdf-canvas";
-import {
-  type NotebookToolbarDock,
-} from "@/lib/workspace/notebook-toolbar";
 
 type Point = { x: number; y: number };
 type EditorTool = NotebookStrokeTool | "text" | "select";
@@ -187,18 +184,6 @@ const NOTEBOOK_ASSISTANT_QUICK_ACTIONS = [
       "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
   },
 ] as const;
-const NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS: Record<
-  NotebookToolbarDock,
-  string
-> = {
-  top: "left-1/2 top-[4.85rem] -translate-x-1/2",
-  right:
-    "right-[calc(env(safe-area-inset-right,0px)+4.85rem)] top-1/2 -translate-y-1/2",
-  bottom:
-    "bottom-[calc(var(--notebook-control-bottom-inset)+3.95rem)] left-1/2 -translate-x-1/2",
-  left:
-    "left-[calc(env(safe-area-inset-left,0px)+4.85rem)] top-1/2 -translate-y-1/2",
-};
 // Each edge keeps a generous 32px invisible hit area, but the visible
 // affordance is a slim grip bar sitting on the border, not a bubble.
 
@@ -2504,154 +2489,53 @@ export default function NotebookEditorPage() {
           </div>
         </header>
         <div className="relative isolate min-h-0 flex-1 overflow-hidden">
-        {penMenuOpen || highlighterMenuOpen || eraserMenuOpen ? (
-            <div
-              className={`notebook-toolbar-popover-in notebook-drawer-surface absolute z-50 w-[min(92vw,22rem)] rounded-[1.25rem] border border-[var(--color-border)] p-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.32)] ${NOTEBOOK_TOOLBAR_POPOVER_DOCK_CLASS[toolbarDock]}`}
-            >
-              {penMenuOpen ? (
-                <div className="space-y-3">
-                  <InkColorPicker
-                    label="Pen color"
-                    value={penColor}
-                    presets={["black", "white", "red", "green"]}
-                    getPresetColor={(color) =>
-                      getNotebookStrokePaintColor(color, "pen")
-                    }
-                    onPresetSelect={(color) => {
-                      setPenColor(color);
-                      switchNotebookTool("pen");
-                    }}
-                    onCustomColorChange={(color) => {
-                      setPenColor(color);
-                      switchNotebookTool("pen");
-                    }}
-                  />
-                  <ThicknessSlider
-                    label="Pen thickness"
-                    percent={penThicknessPercent}
-                    color={getNotebookStrokePaintColor(penColor, "pen")}
-                    previewWidth={getPenWidthFromPercent(penThicknessPercent)}
-                    onChange={(value) => {
-                      setPenThicknessPercent(clampNotebookThicknessPercent(value));
-                      switchNotebookTool("pen");
-                    }}
-                  />
-                </div>
-              ) : null}
-              {highlighterMenuOpen ? (
-                <div className="space-y-3">
-                  <InkColorPicker
-                    label="Highlighter color"
-                    value={highlighterColor}
-                    presets={["yellow", "green", "pink"]}
-                    getPresetColor={(color) =>
-                      getNotebookStrokePaintColor(color, "highlighter")
-                    }
-                    onPresetSelect={(color) => {
-                      setHighlighterColor(color);
-                      switchNotebookTool("highlighter");
-                    }}
-                    onCustomColorChange={(color) => {
-                      setHighlighterColor(color);
-                      switchNotebookTool("highlighter");
-                    }}
-                  />
-                  <ThicknessSlider
-                    label="Highlighter thickness"
-                    percent={highlighterThicknessPercent}
-                    color={getNotebookStrokePaintColor(highlighterColor, "highlighter")}
-                    previewWidth={getHighlighterWidthFromPercent(highlighterThicknessPercent) / 2}
-                    onChange={(value) => {
-                      setHighlighterThicknessPercent(clampNotebookThicknessPercent(value));
-                      switchNotebookTool("highlighter");
-                    }}
-                  />
-                </div>
-              ) : null}
-              {eraserMenuOpen ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div>
-                    <div className="text-xs font-semibold text-text-secondary">
-                      Eraser mode
-                    </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      {(["precision", "stroke"] as NotebookEraserMode[]).map((mode) => (
-                        <button
-                          key={mode}
-                          type="button"
-                          aria-label={`${mode} eraser mode`}
-                          onClick={() => {
-                            setEraserMode(mode);
-                            switchNotebookTool("eraser");
-                          }}
-                          className={`min-h-11 rounded-full border px-3 py-2 text-xs font-semibold capitalize transition ${
-                            eraserMode === mode ? "app-selected" : "app-chip"
-                          }`}
-                        >
-                          {mode}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-xs font-semibold text-text-secondary">
-                      Eraser size
-                    </div>
-                    <div className="mt-2 grid grid-cols-3 gap-2">
-                      {(["small", "medium", "large"] as NotebookEraserSize[]).map((width) => (
-                        <button
-                          key={width}
-                          type="button"
-                          aria-label={`${width} eraser`}
-                          title={`${width[0].toUpperCase()}${width.slice(1)} eraser`}
-                          onClick={() => {
-                            setEraserWidth(width);
-                            switchNotebookTool("eraser");
-                          }}
-                          className={`grid h-11 place-items-center rounded-full border transition ${
-                            eraserWidth === width ? "app-selected" : "app-chip"
-                          }`}
-                        >
-                          <span
-                            aria-hidden="true"
-                            className="rounded-full border-2 border-current"
-                            style={{
-                              width:
-                                width === "small"
-                                  ? "0.7rem"
-                                  : width === "medium"
-                                    ? "1rem"
-                                    : "1.35rem",
-                              height:
-                                width === "small"
-                                  ? "0.7rem"
-                                  : width === "medium"
-                                    ? "1rem"
-                                    : "1.35rem",
-                            }}
-                          />
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="border-t border-[var(--color-border)] pt-2 sm:col-span-2">
-                    <button
-                      type="button"
-                      disabled={!inkHasContent}
-                      onClick={() => {
-                        setEraserMenuOpen(false);
-                        setConfirmDialog({ kind: "clear-page" });
-                      }}
-                      className="inline-flex min-h-[2.25rem] w-full items-center justify-center gap-1.5 rounded-full px-3 text-xs font-semibold text-[var(--color-error-text)] transition hover:bg-[var(--color-error-text)]/10 disabled:cursor-not-allowed disabled:opacity-40"
-                    >
-                      <NotebookIcon name="trash" />
-                      Clear ink from this page
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </div>
-          ) : null}
+        <NotebookToolSettingsPopover
+          dock={toolbarDock}
+          openMenu={openToolMenu}
+          pen={{
+            color: penColor,
+            thicknessPercent: penThicknessPercent,
+            onColorChange: (color) => {
+              setPenColor(color);
+              switchNotebookTool("pen");
+            },
+            onThicknessChange: (value) => {
+              setPenThicknessPercent(clampNotebookThicknessPercent(value));
+              switchNotebookTool("pen");
+            },
+          }}
+          highlighter={{
+            color: highlighterColor,
+            thicknessPercent: highlighterThicknessPercent,
+            onColorChange: (color) => {
+              setHighlighterColor(color);
+              switchNotebookTool("highlighter");
+            },
+            onThicknessChange: (value) => {
+              setHighlighterThicknessPercent(
+                clampNotebookThicknessPercent(value)
+              );
+              switchNotebookTool("highlighter");
+            },
+          }}
+          eraser={{
+            mode: eraserMode,
+            size: eraserWidth,
+            onModeChange: (mode) => {
+              setEraserMode(mode);
+              switchNotebookTool("eraser");
+            },
+            onSizeChange: (size) => {
+              setEraserWidth(size);
+              switchNotebookTool("eraser");
+            },
+            canClearPage: inkHasContent,
+            onClearPage: () => {
+              setEraserMenuOpen(false);
+              setConfirmDialog({ kind: "clear-page" });
+            },
+          }}
+        />
 
         {feedback ? (
           <div className="absolute left-3 right-3 top-3 z-50 mx-auto max-w-2xl">
@@ -2663,158 +2547,30 @@ export default function NotebookEditorPage() {
           </div>
         ) : null}
 
-        {draftConflict && draftConflict.pageId === selectedPage?.id ? (
-          <div
-            className={`absolute left-3 right-3 z-50 mx-auto max-w-2xl ${
-              feedback ? "top-24" : "top-3"
-            }`}
-          >
-            <Card
-              padding="sm"
-              role="alert"
-              className="border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-[var(--shadow-shell)]"
-            >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-text-primary">
-                    Unsaved work found on this device
-                  </p>
-                  <p className="mt-1 text-xs leading-5 text-text-muted">
-                    The synced page changed after this recovery copy was made. Choose which version to keep.
-                  </p>
-                </div>
-                <div className="flex shrink-0 flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    size="sm"
-                    variant="secondary"
-                    onClick={handleKeepSavedDraftVersion}
-                  >
-                    Keep synced
-                  </Button>
-                  <Button
-                    type="button"
-                    size="sm"
-                    onClick={handleRestoreLocalDraft}
-                  >
-                    Restore mine
-                  </Button>
-                </div>
-              </div>
-            </Card>
-          </div>
-        ) : null}
+        <NotebookDraftConflictBanner
+          open={Boolean(
+            draftConflict && draftConflict.pageId === selectedPage?.id
+          )}
+          belowFeedback={Boolean(feedback)}
+          onKeepSynced={handleKeepSavedDraftVersion}
+          onRestoreLocal={handleRestoreLocalDraft}
+        />
 
-        {showAddPagesDialog ? (
-          <div className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-3 backdrop-blur-sm sm:items-center sm:p-4">
-            <Card
-              padding="sm"
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="add-notebook-pages-title"
-              aria-describedby="add-notebook-pages-description"
-              className="my-4 w-full max-w-lg"
-            >
-              <div>
-                <div
-                  id="add-notebook-pages-title"
-                  className="text-sm font-semibold text-text-primary"
-                >
-                  Add PDF or image pages
-                </div>
-                <p
-                  id="add-notebook-pages-description"
-                  className="mt-0.5 text-xs leading-5 text-text-muted"
-                >
-                  The new pages will be added after the current last page.
-                </p>
-              </div>
-              <label className="mt-4 block">
-                <span className="sr-only">PDF or image</span>
-                <input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png,image/webp"
-                  disabled={addingNotebookFile}
-                  onChange={(event) =>
-                    setNotebookFile(event.target.files?.[0] ?? null)
-                  }
-                  className="block min-h-[2.75rem] w-full rounded-xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed"
-                />
-              </label>
-              {addingNotebookFile && notebookUploadProgress !== null ? (
-                <div
-                  role="progressbar"
-                  aria-label="Notebook file upload progress"
-                  aria-valuemin={0}
-                  aria-valuemax={100}
-                  aria-valuenow={notebookUploadProgress}
-                  className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
-                >
-                  <div
-                    className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
-                    style={{ width: `${notebookUploadProgress}%` }}
-                  />
-                </div>
-              ) : null}
-              <div className="mt-4 flex flex-wrap justify-end gap-2 border-t border-[var(--color-border)] pt-3">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={addingNotebookFile}
-                  onClick={closeAddPagesDialog}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={!notebookFile || addingNotebookFile}
-                  onClick={() => void handleAddNotebookFile()}
-                >
-                  {addingNotebookFile
-                    ? notebookUploadProgress !== null
-                      ? `Adding ${notebookUploadProgress}%`
-                      : "Adding pages..."
-                    : "Add pages"}
-                </Button>
-              </div>
-            </Card>
-          </div>
-        ) : null}
+        <NotebookAddPagesDialog
+          open={showAddPagesDialog}
+          file={notebookFile}
+          adding={addingNotebookFile}
+          progress={notebookUploadProgress}
+          onFileChange={setNotebookFile}
+          onCancel={closeAddPagesDialog}
+          onConfirm={() => void handleAddNotebookFile()}
+        />
 
-        {isPhoneLayout ? (
-          <div className="absolute left-3 right-3 top-3 z-30 mx-auto max-w-2xl">
-          <Card tone="warm" padding="sm">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <div className="text-sm font-semibold text-text-primary">
-                  Notebook editing works best on iPad or desktop.
-                </div>
-                <p className="mt-1 text-sm text-text-secondary">
-                  View pages and edit text here, or continue anyway for full controls.
-                </p>
-              </div>
-              <div className="flex flex-wrap gap-2">
-                <Button
-                  type="button"
-                  size="sm"
-                  variant={phoneFullEditing ? "secondary" : "primary"}
-                  onClick={() => setPhoneFullEditing((value) => !value)}
-                >
-                  {phoneFullEditing ? "Use light mode" : "Continue anyway"}
-                </Button>
-                <Link
-                  href="/dashboard/study"
-                  className="app-button-secondary inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl px-4 py-2 text-sm font-medium transition duration-fast"
-                >
-                  Go to flashcards
-                </Link>
-              </div>
-            </div>
-          </Card>
-          </div>
-        ) : null}
+        <NotebookPhoneLayoutNotice
+          open={isPhoneLayout}
+          fullEditing={phoneFullEditing}
+          onToggleFullEditing={() => setPhoneFullEditing((value) => !value)}
+        />
 
         <JamiAssistantDrawer
           open={assistantOpen}
