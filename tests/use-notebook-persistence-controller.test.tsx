@@ -71,7 +71,8 @@ function Harness() {
     onPageSaved: useCallback((result: NotebookPageSaveResult) => {
       saved.push(result);
     }, []),
-    onFeedback: useCallback(() => undefined, []),
+    onError: useCallback(() => undefined, []),
+    onClearError: useCallback(() => undefined, []),
     commitUi,
     scheduleUiCommit,
   });

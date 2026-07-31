@@ -16,7 +16,7 @@ import {
   StatTile,
 } from "@/components/ui";
 import { useUser } from "@/components/providers/UserProvider";
-import type { Feedback } from "@/lib/app/feedback";
+import { useFeedback } from "@/hooks/useFeedback";
 import { buildTopicSummaries } from "@/lib/practice/topic-management";
 import type { Source } from "@/lib/practice/sources";
 import { MAX_LINKED_TOPICS, type Topic } from "@/lib/practice/topics";
@@ -64,7 +64,13 @@ export default function TopicDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    showThrownError,
+    clear: clearFeedback,
+  } = useFeedback();
 
   const loadTopicData = useCallback(async () => {
     const [nextTopics, nextCards, nextDecks, nextNotebooks, nextSources, nextDrafts] =
@@ -100,8 +106,8 @@ export default function TopicDetailPage() {
 
   const handleTopicLoadError = useCallback((error: unknown) => {
     console.error(error);
-    setFeedback({ type: "error", message: "Could not load this Topic." });
-  }, []);
+    showError("Could not load this Topic.");
+  }, [showError]);
 
   const { loading } = useDashboardData({
     requestKey: user.uid,
@@ -141,12 +147,9 @@ export default function TopicDetailPage() {
         )
       );
       setEditingName(false);
-      setFeedback({ type: "success", message: "Topic renamed." });
+      success("Topic renamed.");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not rename Topic.",
-      });
+      showThrownError(error, "Could not rename Topic.");
     } finally {
       setBusyId(null);
     }
@@ -155,7 +158,7 @@ export default function TopicDetailPage() {
   const toggleCard = async (card: StudyCard) => {
     const linked = card.topicIds?.includes(topicId) ?? false;
     if (!linked && (card.topicIds?.length ?? 0) >= MAX_LINKED_TOPICS) {
-      setFeedback({ type: "error", message: "This card already has five Topics. Remove one before adding another." });
+      showError("This card already has five Topics. Remove one before adding another.");
       return;
     }
     const topicIds = addOrRemoveTopic(card.topicIds ?? [], topicId, !linked);
@@ -166,10 +169,7 @@ export default function TopicDetailPage() {
         current.map((item) => (item.id === card.id ? { ...item, topicIds, tags: [] } : item))
       );
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update this card.",
-      });
+      showThrownError(error, "Could not update this card.");
     } finally {
       setBusyId(null);
     }
@@ -178,7 +178,7 @@ export default function TopicDetailPage() {
   const toggleNotebook = async (notebook: Notebook) => {
     const linked = notebook.topicIds.includes(topicId);
     if (!linked && notebook.topicIds.length >= MAX_LINKED_TOPICS) {
-      setFeedback({ type: "error", message: "This notebook already has five Topics. Remove one before adding another." });
+      showError("This notebook already has five Topics. Remove one before adding another.");
       return;
     }
     const topicIds = addOrRemoveTopic(notebook.topicIds, topicId, !linked);
@@ -189,10 +189,7 @@ export default function TopicDetailPage() {
         current.map((item) => (item.id === notebook.id ? { ...item, topicIds } : item))
       );
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update this notebook.",
-      });
+      showThrownError(error, "Could not update this notebook.");
     } finally {
       setBusyId(null);
     }
@@ -201,7 +198,7 @@ export default function TopicDetailPage() {
   const toggleSource = async (source: Source) => {
     const linked = source.topicIds.includes(topicId);
     if (!linked && source.topicIds.length >= MAX_LINKED_TOPICS) {
-      setFeedback({ type: "error", message: "This source already has five Topics. Remove one before adding another." });
+      showError("This source already has five Topics. Remove one before adding another.");
       return;
     }
     const topicIds = addOrRemoveTopic(source.topicIds, topicId, !linked);
@@ -212,10 +209,7 @@ export default function TopicDetailPage() {
         current.map((item) => (item.id === source.id ? { ...item, topicIds } : item))
       );
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update this source.",
-      });
+      showThrownError(error, "Could not update this source.");
     } finally {
       setBusyId(null);
     }
@@ -224,7 +218,7 @@ export default function TopicDetailPage() {
   const toggleDraft = async (draft: GeneratedContentDraft) => {
     const linked = draft.topicIds.includes(topicId);
     if (!linked && draft.topicIds.length >= MAX_LINKED_TOPICS) {
-      setFeedback({ type: "error", message: "This draft already has five Topics. Remove one before adding another." });
+      showError("This draft already has five Topics. Remove one before adding another.");
       return;
     }
     const topicIds = addOrRemoveTopic(draft.topicIds, topicId, !linked);
@@ -235,10 +229,7 @@ export default function TopicDetailPage() {
         current.map((item) => (item.id === draft.id ? { ...item, topicIds } : item))
       );
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not update this draft.",
-      });
+      showThrownError(error, "Could not update this draft.");
     } finally {
       setBusyId(null);
     }
@@ -251,10 +242,7 @@ export default function TopicDetailPage() {
       await deleteTopicEverywhere(user.uid, topic.id);
       router.push("/dashboard/topics");
     } catch (error) {
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Could not delete Topic.",
-      });
+      showThrownError(error, "Could not delete Topic.");
       setBusyId(null);
       setDeleteOpen(false);
     }
@@ -348,7 +336,7 @@ export default function TopicDetailPage() {
         <FeedbackBanner
           type={feedback.type}
           message={feedback.message}
-          onDismiss={() => setFeedback(null)}
+          onDismiss={() => clearFeedback()}
         />
       ) : null}
       <ConfirmDialog

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
+import { useFeedback } from "@/hooks/useFeedback";
 import {
   getActiveConstellation,
   getFallbackConstellation,
@@ -21,7 +22,6 @@ import {
   setConstellationBackgroundConstellationId,
   setConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
-import type { Feedback } from "@/lib/app/feedback";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import {
   clampPercentage,
@@ -54,7 +54,13 @@ export default function ConstellationDashboardPage() {
   const [selectedConstellationId, setSelectedConstellationId] = useState("");
   const [draggingStarId, setDraggingStarId] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    showThrownError,
+    clear: clearFeedback,
+  } = useFeedback();
   const [constellationName, setConstellationName] = useState("");
   const [isCreatingConstellation, setIsCreatingConstellation] = useState(false);
   const [isFinishingConstellation, setIsFinishingConstellation] = useState(false);
@@ -125,11 +131,8 @@ export default function ConstellationDashboardPage() {
     setAllStars([]);
     setGoalsById({});
     setSelectedConstellationId("");
-    setFeedback({
-      type: "error",
-      message: "Failed to load your constellation.",
-    });
-  }, []);
+    showError("Failed to load your constellation.");
+  }, [showError]);
 
   const { loading: isLoading, reload: loadAll } = useDashboardData({
     requestKey: user.uid,
@@ -161,13 +164,13 @@ export default function ConstellationDashboardPage() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    setFeedback(null);
+    clearFeedback();
     try {
       await loadAll();
     } finally {
       setRefreshing(false);
     }
-  }, [loadAll]);
+  }, [clearFeedback, loadAll]);
 
   const selectedConstellation = useMemo(
     () =>
@@ -287,25 +290,16 @@ export default function ConstellationDashboardPage() {
     }
 
     setIsCreatingConstellation(true);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       await createConstellation(user.uid, trimmedName);
       setConstellationName("");
       await loadAll();
-      setFeedback({
-        type: "success",
-        message: `Created constellation ${trimmedName}.`,
-      });
+      success(`Created constellation ${trimmedName}.`);
     } catch (error) {
       console.error(error);
-      setFeedback({
-        type: "error",
-        message:
-          error instanceof Error
-            ? error.message
-            : "Failed to create constellation.",
-      });
+      showThrownError(error, "Failed to create constellation.");
     } finally {
       setIsCreatingConstellation(false);
     }
@@ -317,21 +311,15 @@ export default function ConstellationDashboardPage() {
     }
 
     setIsFinishingConstellation(true);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       await finishConstellation(user.uid, activeConstellation.id);
       await loadAll();
-      setFeedback({
-        type: "success",
-        message: `${activeConstellation.name} is now finished.`,
-      });
+      success(`${activeConstellation.name} is now finished.`);
     } catch (error) {
       console.error(error);
-      setFeedback({
-        type: "error",
-        message: "Failed to finish constellation.",
-      });
+      showError("Failed to finish constellation.");
     } finally {
       setIsFinishingConstellation(false);
     }
@@ -358,10 +346,7 @@ export default function ConstellationDashboardPage() {
       setRenameValue("");
     } catch (error) {
       console.error(error);
-      setFeedback({
-        type: "error",
-        message: error instanceof Error ? error.message : "Failed to rename constellation.",
-      });
+      showThrownError(error, "Failed to rename constellation.");
     }
   };
 
@@ -386,7 +371,7 @@ export default function ConstellationDashboardPage() {
         contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? (
-          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
+          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} />
         ) : null}
 
         {!isLoading && activeConstellation ? (

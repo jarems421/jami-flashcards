@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useUser } from "@/components/providers/UserProvider";
+import { useFeedback } from "@/hooks/useFeedback";
 import type { Feedback as DashboardFeedback } from "@/lib/app/feedback";
 import { runDashboardDataRequest } from "@/lib/app/dashboard-data";
 import { getDecks } from "@/services/study/decks";
@@ -481,7 +482,12 @@ export default function DashboardHome() {
   const [hasActiveStudySession, setHasActiveStudySession] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [feedback, setFeedback] = useState<DashboardFeedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    clear: clearFeedback,
+  } = useFeedback();
   const [inAppUsername, setInAppUsername] = useState<string | null>(null);
   const lastForegroundRefreshAtRef = useRef(0);
   const dashboardRequestIdRef = useRef(0);
@@ -517,20 +523,18 @@ export default function DashboardHome() {
           dashboardSnapshotCache.set(uid, snapshot);
           lastForegroundRefreshAtRef.current = snapshot.fetchedAt;
           if (loadFeedback) {
-            setFeedback(loadFeedback);
+            if (loadFeedback.type === "success") success(loadFeedback.message);
+            else showError(loadFeedback.message);
           }
         },
         onError: (error) => {
           console.error("Failed to load Today.", error);
-          setFeedback({
-            type: "error",
-            message: "Failed to load Today. Try refreshing in a moment.",
-          });
+          showError("Failed to load Today. Try refreshing in a moment.");
         },
         onSettled: () => setIsLoading(false),
       });
     },
-    [applySnapshot]
+    [applySnapshot, showError, success]
   );
 
   useEffect(() => {
@@ -578,13 +582,13 @@ export default function DashboardHome() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    setFeedback(null);
+    clearFeedback();
     try {
       await loadAll(user.uid);
     } finally {
       setRefreshing(false);
     }
-  }, [user.uid, loadAll]);
+  }, [clearFeedback, loadAll, user.uid]);
 
   const todayReviews = useMemo(
     () => countTodayReviews(studyActivity),
@@ -689,7 +693,7 @@ export default function DashboardHome() {
         contentClassName="space-y-4 sm:space-y-6"
       >
         {feedback ? (
-          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
+          <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} />
         ) : null}
 
         <PageHero

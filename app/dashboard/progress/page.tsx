@@ -13,7 +13,7 @@ import {
   YAxis,
 } from "recharts";
 import { useUser } from "@/components/providers/UserProvider";
-import type { Feedback } from "@/lib/app/feedback";
+import { useFeedback } from "@/hooks/useFeedback";
 import { featureFlags } from "@/lib/app/feature-flags";
 import { getCustomStudyHref, getDeckStudyHref } from "@/lib/app/routes";
 import type { Source } from "@/lib/practice/sources";
@@ -99,7 +99,11 @@ export default function ProgressPage() {
   const [studyActivity, setStudyActivity] = useState<DailyStudyActivity[]>([]);
   const [range, setRange] = useState<ProgressTimeRange>("30d");
   const [dataLoadedAt, setDataLoadedAt] = useState(() => Date.now());
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    showError,
+    clear: clearFeedback,
+  } = useFeedback();
 
   useEffect(() => {
     try {
@@ -159,12 +163,12 @@ export default function ProgressPage() {
 
   const handleProgressLoadError = useCallback((error: unknown) => {
     console.error(error);
-    setFeedback({ type: "error", message: "Failed to load Progress." });
-  }, []);
+    showError("Failed to load Progress.");
+  }, [showError]);
 
   const handleProgressLoadStart = useCallback(() => {
-    setFeedback(null);
-  }, []);
+    clearFeedback();
+  }, [clearFeedback]);
 
   const { loading } = useDashboardData({
     requestKey: user.uid,
@@ -315,7 +319,7 @@ export default function ProgressPage() {
         <FeedbackBanner
           type={feedback.type}
           message={feedback.message}
-          onDismiss={() => setFeedback(null)}
+          onDismiss={() => clearFeedback()}
         />
       ) : null}
 

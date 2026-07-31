@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
+import { useFeedback } from "@/hooks/useFeedback";
 import type { Feedback } from "@/lib/app/feedback";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import { getDecks } from "@/services/study/decks";
@@ -100,7 +101,20 @@ export default function CardsSearchPage() {
   );
   const [bulkDeletePending, setBulkDeletePending] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    clear: clearFeedback,
+  } = useFeedback();
+
+  const handlePanelFeedback = useCallback(
+    (next: Feedback) => {
+      if (next.type === "success") success(next.message);
+      else showError(next.message);
+    },
+    [showError, success]
+  );
 
   // Debounce search input
   useEffect(() => {
@@ -198,9 +212,9 @@ export default function CardsSearchPage() {
   const handleCardsLoadError = useCallback((error: unknown) => {
     console.error(error);
     if (!isFirebasePermissionDenied(error)) {
-      setFeedback({ type: "error", message: "Failed to load cards." });
+      showError("Failed to load cards.");
     }
-  }, []);
+  }, [showError]);
 
   const { loading } = useDashboardData({
     requestKey: user.uid,
@@ -349,7 +363,7 @@ export default function CardsSearchPage() {
     setEditingFront(card.front);
     setEditingBack(card.back);
     setEditingTopicIds(card.topicIds ?? []);
-    setFeedback(null);
+    clearFeedback();
   };
 
   const cancelEditing = () => {
@@ -365,20 +379,17 @@ export default function CardsSearchPage() {
     const nextBack = normalizeCardContentInput(editingBack);
 
     if (!nextFront || !nextBack) {
-      setFeedback({ type: "error", message: "Both front and back are required." });
+      showError("Both front and back are required.");
       return;
     }
 
     if (nextFront.length > MAX_FRONT_LENGTH || nextBack.length > MAX_BACK_LENGTH) {
-      setFeedback({
-        type: "error",
-        message: `Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`,
-      });
+      showError(`Cards must stay under ${MAX_FRONT_LENGTH} characters on the front and ${MAX_BACK_LENGTH} on the back.`);
       return;
     }
 
     setSavingCardId(cardId);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       await updateCardContent(cardId, {
@@ -401,17 +412,17 @@ export default function CardsSearchPage() {
         )
       );
       cancelEditing();
-      setFeedback({ type: "success", message: "Card updated." });
+      success("Card updated.");
     } catch (error) {
       console.error(error);
       setSavingCardId(null);
-      setFeedback({ type: "error", message: "Failed to update card." });
+      showError("Failed to update card.");
     }
   };
 
   const handleDeleteCard = async (cardId: string) => {
     setDeletingCardId(cardId);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       await deleteCard(cardId);
@@ -419,10 +430,10 @@ export default function CardsSearchPage() {
       setSelectedCardIds((prev) => prev.filter((selectedId) => selectedId !== cardId));
       if (expandedCardId === cardId) cancelEditing();
       setCardPendingDeleteId(null);
-      setFeedback({ type: "success", message: "Card deleted." });
+      success("Card deleted.");
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to delete card." });
+      showError("Failed to delete card.");
     } finally {
       setDeletingCardId(null);
     }
@@ -450,7 +461,7 @@ export default function CardsSearchPage() {
 
   const handleAddTopicsToSelectedCards = async () => {
     if (selectedCardIds.length === 0 || bulkTopicIds.length === 0) {
-      setFeedback({ type: "error", message: "Select cards and choose at least one Topic first." });
+      showError("Select cards and choose at least one Topic first.");
       return;
     }
 
@@ -460,10 +471,7 @@ export default function CardsSearchPage() {
       return current.length + additions.length > MAX_LINKED_TOPICS;
     });
     if (overLimitCard) {
-      setFeedback({
-        type: "error",
-        message: "One or more selected cards already has five Topics. Reduce its Topics before adding more.",
-      });
+      showError("One or more selected cards already has five Topics. Reduce its Topics before adding more.");
       return;
     }
     const cardsToUpdate = selectedCards.map((card) => ({
@@ -472,7 +480,7 @@ export default function CardsSearchPage() {
     }));
 
     setApplyingBulkTopics(true);
-    setFeedback(null);
+    clearFeedback();
 
     try {
       await setCardTopicsInBulk(cardsToUpdate);
@@ -493,13 +501,10 @@ export default function CardsSearchPage() {
       );
       setBulkTopicIds([]);
       setSelectedCardIds([]);
-      setFeedback({
-        type: "success",
-        message: `Added Topics to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`,
-      });
+      success(`Added Topics to ${cardsToUpdate.length} card${cardsToUpdate.length === 1 ? "" : "s"}.`);
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to add Topics to the selected cards." });
+      showError("Failed to add Topics to the selected cards.");
     } finally {
       setApplyingBulkTopics(false);
     }
@@ -507,11 +512,11 @@ export default function CardsSearchPage() {
 
   const handleMoveSelectedCards = async () => {
     if (!bulkMoveDeckId || selectedCardIds.length === 0) {
-      setFeedback({ type: "error", message: "Select cards and choose a destination deck." });
+      showError("Select cards and choose a destination deck.");
       return;
     }
     setApplyingBulkAction("move");
-    setFeedback(null);
+    clearFeedback();
     try {
       await moveCardsToDeck(selectedCardIds, bulkMoveDeckId);
       const movedIds = new Set(selectedCardIds);
@@ -523,13 +528,10 @@ export default function CardsSearchPage() {
       const movedCount = selectedCardIds.length;
       setSelectedCardIds([]);
       setBulkMoveDeckId("");
-      setFeedback({
-        type: "success",
-        message: `Moved ${movedCount} card${movedCount === 1 ? "" : "s"}.`,
-      });
+      success(`Moved ${movedCount} card${movedCount === 1 ? "" : "s"}.`);
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to move the selected cards." });
+      showError("Failed to move the selected cards.");
     } finally {
       setApplyingBulkAction(null);
     }
@@ -538,7 +540,7 @@ export default function CardsSearchPage() {
   const handleDeleteSelectedCards = async () => {
     if (selectedCardIds.length === 0) return;
     setApplyingBulkAction("delete");
-    setFeedback(null);
+    clearFeedback();
     try {
       await deleteCards(selectedCardIds);
       const deletedIds = new Set(selectedCardIds);
@@ -546,13 +548,10 @@ export default function CardsSearchPage() {
       setCards((current) => current.filter((card) => !deletedIds.has(card.id)));
       setSelectedCardIds([]);
       setBulkDeletePending(false);
-      setFeedback({
-        type: "success",
-        message: `Deleted ${deletedCount} card${deletedCount === 1 ? "" : "s"}.`,
-      });
+      success(`Deleted ${deletedCount} card${deletedCount === 1 ? "" : "s"}.`);
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to delete the selected cards." });
+      showError("Failed to delete the selected cards.");
     } finally {
       setApplyingBulkAction(null);
     }
@@ -567,7 +566,7 @@ export default function CardsSearchPage() {
       contentClassName="space-y-4 sm:space-y-6"
     >
       {feedback ? (
-        <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} />
+        <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} />
       ) : null}
       <ConfirmDialog
         open={cardPendingDeleteId !== null}
@@ -640,7 +639,7 @@ export default function CardsSearchPage() {
         topics={topics}
         onTopicsChange={setTopics}
         onCardsCreated={handleCardsCreated}
-        onFeedback={setFeedback}
+        onFeedback={handlePanelFeedback}
       />
 
       <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">

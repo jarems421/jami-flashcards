@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
-import type { Feedback } from "@/lib/app/feedback";
+import { useFeedback } from "@/hooks/useFeedback";
 import { ensureConstellationSetup } from "@/services/constellation/constellations";
 import {
   buildDailyReviewQueues,
@@ -362,7 +362,12 @@ export default function StudyPage() {
   const [jamiAssistantOpen, setJamiAssistantOpen] = useState(false);
   const [savingRating, setSavingRating] = useState<CardRating | null>(null);
   const [sessionStats, setSessionStats] = useState<SessionStats>(createEmptySessionStats());
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    clear: clearFeedback,
+  } = useFeedback();
   const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null);
   const [starReward, setStarReward] = useState<StarReward | null>(null);
   const handleStarRewardDone = useCallback(() => setStarReward(null), []);
@@ -476,7 +481,7 @@ export default function StudyPage() {
     if (!options.keepSessionMounted) {
       setLoaded(false);
     }
-    setFeedback(null);
+    clearFeedback();
     try {
       const setupResults = await Promise.allSettled([
         ensureStudyStateSetup(user.uid),
@@ -524,7 +529,7 @@ export default function StudyPage() {
       if (options.keepSessionMounted && latestPersistedSessionRef.current) {
         setOfflineMode(true);
         setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
-        setFeedback({ type: "success", message: "Still using your current study session. New data will refresh when the connection settles." });
+        success("Still using your current study session. New data will refresh when the connection settles.");
         return;
       }
 
@@ -552,20 +557,20 @@ export default function StudyPage() {
         });
         setOfflineMode(true);
         setOfflineSnapshotAt(snapshot.savedAt);
-        setFeedback({ type: "success", message: "Using your offline study cache. Answers will sync when you are back online." });
+        success("Using your offline study cache. Answers will sync when you are back online.");
       } else {
         setDecks([]);
         setCards([]);
         setTopics([]);
         setDailyReviewState(null);
-        setFeedback({ type: "error", message: "Failed to load your study queue." });
+        showError("Failed to load your study queue.");
       }
     } finally {
       if (requestId === loadRequestIdRef.current) {
         setLoaded(true);
       }
     }
-  }, [user.uid]);
+  }, [clearFeedback, showError, success, user.uid]);
 
   useEffect(() => {
     void loadAll();
@@ -700,16 +705,13 @@ export default function StudyPage() {
     setPendingOfflineReviews(result.remaining);
 
     if (result.synced > 0) {
-      setFeedback({
-        type: "success",
-        message: `Synced ${result.synced} offline review${result.synced === 1 ? "" : "s"}.`,
-      });
+      success(`Synced ${result.synced} offline review${result.synced === 1 ? "" : "s"}.`);
       if (latestPersistedSessionRef.current) {
         return;
       }
       await loadAll({ keepSessionMounted: true });
     }
-  }, [loadAll, user.uid]);
+  }, [loadAll, success, user.uid]);
 
   useEffect(() => {
     refreshPendingOfflineReviews();
@@ -836,8 +838,8 @@ export default function StudyPage() {
         ? prev.filter((currentId) => currentId !== deckId)
         : [...prev, deckId]
     );
-    setFeedback(null);
-  }, []);
+    clearFeedback();
+  }, [clearFeedback]);
 
   const toggleTopicFilter = useCallback((topicId: string) => {
     setSelectedTopicIds((prev) =>
@@ -845,8 +847,8 @@ export default function StudyPage() {
         ? prev.filter((currentTopicId) => currentTopicId !== topicId)
         : [...prev, topicId]
     );
-    setFeedback(null);
-  }, []);
+    clearFeedback();
+  }, [clearFeedback]);
 
   const startSession = useCallback(
     (kind: SessionKind, requiredScope: DailyRequiredSessionScope = "all") => {
@@ -892,7 +894,7 @@ export default function StudyPage() {
       setFlipped(false);
       setSavingRating(null);
       setAnswerFeedback(null);
-      setFeedback(null);
+      clearFeedback();
       savePersistedStudySession(nextSession);
       void saveRemoteActiveStudySession(nextSession).catch((error) => {
         console.warn("Failed to save active study session.", error);
@@ -902,36 +904,48 @@ export default function StudyPage() {
         pushFocusedReviewRecents(selectedDeckIds, selectedTopicIds);
       }
     },
-    [customPreviewCards, pushFocusedReviewRecents, remainingCarryoverRequiredCards, remainingFreshRequiredCards, remainingOptionalCards, remainingRequiredCards, selectedDeckIds, selectedTopicIds, simpleStudyQueue.cards, user.uid]
+    [
+      clearFeedback,
+      customPreviewCards,
+      pushFocusedReviewRecents,
+      remainingCarryoverRequiredCards,
+      remainingFreshRequiredCards,
+      remainingOptionalCards,
+      remainingRequiredCards,
+      selectedDeckIds,
+      selectedTopicIds,
+      simpleStudyQueue.cards,
+      user.uid,
+    ]
   );
 
   const handleCustomReviewClick = useCallback(() => {
     if (!hasCards) {
-      setFeedback({
-        type: "error",
-        message: "Create at least one card first, then Focused Review will be ready.",
-      });
+      showError("Create at least one card first, then Focused Review will be ready.");
       return;
     }
 
     if (customPreviewCards.length === 0) {
-      setFeedback({
-        type: "error",
-        message: hasCustomFilters
+      showError(hasCustomFilters
           ? "No cards match those filters. Clear them or choose a different deck or Topic."
-          : "Add cards first, then Focused Review will be ready.",
-      });
+          : "Add cards first, then Focused Review will be ready.");
       return;
     }
 
     startSession("custom");
-  }, [customPreviewCards.length, hasCards, hasCustomFilters, startSession]);
+  }, [
+    customPreviewCards.length,
+    hasCards,
+    hasCustomFilters,
+    showError,
+    startSession,
+  ]);
 
   const clearCustomFilters = useCallback(() => {
     setSelectedDeckIds([]);
     setSelectedTopicIds([]);
-    setFeedback(null);
-  }, []);
+    clearFeedback();
+  }, [clearFeedback]);
 
   const closeFocusedReviewBuilder = useCallback(() => {
     setFocusedReviewOpen(false);
@@ -1084,7 +1098,7 @@ export default function StudyPage() {
       setFlipped(false);
       setSavingRating(null);
       setAnswerFeedback(null);
-      setFeedback(null);
+      clearFeedback();
 
       if (restoredSession.kind === "custom") {
         setSelectedDeckIds(restoredSession.selectedDeckIds);
@@ -1100,7 +1114,17 @@ export default function StudyPage() {
     return () => {
       cancelled = true;
     };
-  }, [cards, dailyReviewState, loaded, requestedDeckIds, requestedMode, requestedTopicIds, topics, user.uid]);
+  }, [
+    cards,
+    clearFeedback,
+    dailyReviewState,
+    loaded,
+    requestedDeckIds,
+    requestedMode,
+    requestedTopicIds,
+    topics,
+    user.uid,
+  ]);
 
   useEffect(() => {
     if (!loaded || !sessionRestoreReady || autoStartHandledRef.current) return;
@@ -1375,7 +1399,7 @@ export default function StudyPage() {
     setOfflineMode(true);
     setSessionStats((prev) => ({ reviewedCards: prev.reviewedCards + 1, correctAnswers: prev.correctAnswers + (isCorrect ? 1 : 0), completedGoals: prev.completedGoals, starsEarned: prev.starsEarned, ratings: { ...prev.ratings, [rating]: prev.ratings[rating] + 1 } }));
     setAnswerFeedback(getAnswerFeedback(rating, sessionKind, Boolean(retryResult?.parked)));
-    setFeedback({ type: "success", message: "Saved offline. This answer will sync when you are back online." });
+    success("Saved offline. This answer will sync when you are back online.");
 
     if (sessionKind === "daily-required" && isStruggle && retryResult && !retryResult.parked) {
       requeueCurrentCard(nextCard);
@@ -1392,7 +1416,7 @@ export default function StudyPage() {
     const nextCardsSnapshot = cards.map((card) => (card.id === current.id ? nextCard : card));
     const ratingForStats: CardRating = result === "correct" ? "good" : "again";
     setSavingRating(ratingForStats);
-    setFeedback(null);
+    clearFeedback();
 
     setCards(nextCardsSnapshot);
     saveOfflineStudySnapshot(user.uid, { cards: nextCardsSnapshot, decks });
@@ -1418,10 +1442,7 @@ export default function StudyPage() {
     } catch (error) {
       console.warn("Failed to save Simple Study result.", error);
       setOfflineMode(true);
-      setFeedback({
-        type: "success",
-        message: "Kept this Simple Study answer in your current session. It will refresh when your connection settles.",
-      });
+      success("Kept this Simple Study answer in your current session. It will refresh when your connection settles.");
     } finally {
       setSavingRating(null);
     }
@@ -1434,7 +1455,7 @@ export default function StudyPage() {
       return;
     }
     setSavingRating(rating);
-    setFeedback(null);
+    clearFeedback();
     try {
       if (offlineMode || (typeof navigator !== "undefined" && !navigator.onLine)) {
         await handleOfflineRating(rating);
@@ -1547,7 +1568,7 @@ export default function StudyPage() {
       }
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to save that answer. Please try again." });
+      showError("Failed to save that answer. Please try again.");
     } finally {
       setSavingRating(null);
     }
@@ -1689,7 +1710,7 @@ export default function StudyPage() {
       width={sessionKind === null ? "2xl" : "study"}
       contentClassName="space-y-4 sm:space-y-6"
     >
-      {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
+      {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} /> : null}
       {offlineMode || pendingOfflineReviews > 0 ? (
         <div className="rounded-[1.5rem] border border-warm-border bg-warm-glow p-4 text-sm text-text-secondary">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
+import { useFeedback } from "@/hooks/useFeedback";
 import type { Deck } from "@/lib/study/decks";
 import { createDeck, deleteDeck, getDecks, renameDeck, updateDeckFolders, updateDeckStyle } from "@/services/study/decks";
 import { getActiveStudyFolders } from "@/services/study/folders";
@@ -15,7 +16,6 @@ import {
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import { loadUserCards } from "@/services/study/cards";
 import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
-import type { Feedback } from "@/lib/app/feedback";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
@@ -41,7 +41,12 @@ export default function DecksPage() {
   const [deletingDeckId, setDeletingDeckId] = useState<string | null>(null);
   const [deckPendingDelete, setDeckPendingDelete] = useState<Deck | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  const [feedback, setFeedback] = useState<Feedback | null>(null);
+  const {
+    feedback,
+    success,
+    showError,
+    clear: clearFeedback,
+  } = useFeedback();
   const nameInputRef = useRef<HTMLInputElement>(null);
   const lastForegroundRefreshAtRef = useRef(0);
 
@@ -76,9 +81,9 @@ export default function DecksPage() {
     setDecks([]);
     setDeckCounts({});
     if (!isFirebasePermissionDenied(error)) {
-      setFeedback({ type: "error", message: "Failed to load decks." });
+      showError("Failed to load decks.");
     }
-  }, []);
+  }, [showError]);
 
   const { loading: isLoadingDecks, reload: loadAll } = useDashboardData({
     requestKey: user.uid,
@@ -106,13 +111,13 @@ export default function DecksPage() {
 
   const handleRefresh = useCallback(async () => {
     setRefreshing(true);
-    setFeedback(null);
+    clearFeedback();
     try {
       await loadAll();
     } finally {
       setRefreshing(false);
     }
-  }, [loadAll]);
+  }, [clearFeedback, loadAll]);
 
   const resetDeckEditing = () => {
     setEditingDeckId(null);
@@ -126,16 +131,16 @@ export default function DecksPage() {
     const deckName = name.trim();
     if (!deckName) return;
     setIsCreatingDeck(true);
-    setFeedback(null);
+    clearFeedback();
     try {
       await createDeck(user.uid, deckName, { folderIds: createFolderId ? [createFolderId] : [] });
       setName("");
       setCreateFolderId("");
       await loadAll();
-      setFeedback({ type: "success", message: `Created deck ${deckName}` });
+      success(`Created deck ${deckName}`);
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Error creating deck. Please try again." });
+      showError("Error creating deck. Please try again.");
     } finally {
       setIsCreatingDeck(false);
     }
@@ -143,7 +148,7 @@ export default function DecksPage() {
 
   const handleDeckRename = async (deck: Deck) => {
     setSavingDeckId(deck.id);
-    setFeedback(null);
+    clearFeedback();
     try {
       await renameDeck(user.uid, deck.id, editingDeckName.trim());
       await updateDeckStyle(user.uid, deck.id, {
@@ -153,10 +158,10 @@ export default function DecksPage() {
       await updateDeckFolders(user.uid, deck.id, editingDeckFolderId ? [editingDeckFolderId] : []);
       await loadAll();
       resetDeckEditing();
-      setFeedback({ type: "success", message: `Saved changes to ${editingDeckName.trim()}` });
+      success(`Saved changes to ${editingDeckName.trim()}`);
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to rename deck." });
+      showError("Failed to rename deck.");
     } finally {
       setSavingDeckId(null);
     }
@@ -164,15 +169,15 @@ export default function DecksPage() {
 
   const handleDeckDelete = async (deck: Deck) => {
     setDeletingDeckId(deck.id);
-    setFeedback(null);
+    clearFeedback();
     try {
       await deleteDeck(user.uid, deck.id);
       await loadAll();
       setDeckPendingDelete(null);
-      setFeedback({ type: "success", message: `Deleted deck ${deck.name}` });
+      success(`Deleted deck ${deck.name}`);
     } catch (error) {
       console.error(error);
-      setFeedback({ type: "error", message: "Failed to delete deck." });
+      showError("Failed to delete deck.");
     } finally {
       setDeletingDeckId(null);
     }
@@ -188,7 +193,7 @@ export default function DecksPage() {
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
         contentClassName="space-y-4 sm:space-y-6"
       >
-        {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => setFeedback(null)} /> : null}
+        {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} /> : null}
         <ConfirmDialog
           open={deckPendingDelete !== null}
           title={`Delete ${deckPendingDelete?.name ?? "this deck"}?`}
@@ -420,7 +425,7 @@ export default function DecksPage() {
                         >
                           Add card
                         </Link>
-                        <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setEditingDeckFolderId(deck.folderIds[0] ?? ""); setFeedback(null); }} variant="secondary" className="flex-1 sm:flex-none">
+                        <Button type="button" disabled={deletingDeckId === deck.id} onClick={() => { setEditingDeckId(deck.id); setEditingDeckName(deck.name); setEditingDeckColor(deck.colorPreset); setEditingDeckIcon(deck.iconPreset); setEditingDeckFolderId(deck.folderIds[0] ?? ""); clearFeedback(); }} variant="secondary" className="flex-1 sm:flex-none">
                           Edit
                         </Button>
                       </div>
