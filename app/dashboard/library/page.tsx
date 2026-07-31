@@ -12,6 +12,12 @@ import { useFeedback } from "@/hooks/useFeedback";
 import type { Source, SourceType } from "@/lib/material/sources";
 import type { Topic } from "@/lib/material/topics";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
+import {
+  filterSources,
+  getPendingSourceDrafts,
+  getSourceMadeCounts,
+  resolveSelected,
+} from "@/lib/material/source-selectors";
 import type {
   SourceDraftDepth,
   SourceDraftKind,
@@ -220,71 +226,32 @@ export default function LibraryPage() {
       : composerKind === "link"
         ? "link"
         : "file";
-  const filteredSources = useMemo(() => {
-    const normalizedSearch = searchTerm.trim().toLowerCase();
-
-    return sources.filter((source) => {
-      if (statusFilter !== "all" && source.status !== statusFilter) return false;
-      if (typeFilter !== "all" && source.type !== typeFilter) return false;
-      if (folderFilter && !source.folderIds.includes(folderFilter)) return false;
-      if (!normalizedSearch) return true;
-
-      return [
-        source.title,
-        source.contentText,
-        source.externalUrl,
-        source.fileName,
-      ].some((value) => value?.toLowerCase().includes(normalizedSearch));
-    });
-  }, [
-    folderFilter,
-    searchTerm,
-    sources,
-    statusFilter,
-    typeFilter,
-  ]);
+  const filteredSources = useMemo(
+    () =>
+      filterSources(sources, {
+        search: searchTerm,
+        folderId: folderFilter,
+        type: typeFilter,
+        status: statusFilter,
+      }),
+    [folderFilter, searchTerm, sources, statusFilter, typeFilter]
+  );
 
   const selectedSource = useMemo(
-    () =>
-      filteredSources.find((source) => source.id === selectedSourceId) ??
-      filteredSources[0] ??
-      null,
+    () => resolveSelected(filteredSources, selectedSourceId),
     [filteredSources, selectedSourceId]
   );
   const selectedSourceFileUrl = selectedSource ? sourceFileUrls[selectedSource.id] : undefined;
   const sourceDrafts = useMemo(
-    () =>
-      drafts.filter(
-        (draft) =>
-          draft.contentStatus === "draft" &&
-          draft.sourceType === "source" &&
-          selectedSource &&
-          draft.sourceId === selectedSource.id
-      ),
+    () => getPendingSourceDrafts(drafts, selectedSource?.id ?? null),
     [drafts, selectedSource]
   );
-
-  // What this source has actually produced, as opposed to what is still
-  // waiting. Approved drafts have already become cards or notebook pages.
-  const sourceMadeCounts = useMemo(() => {
-    const approved = drafts.filter(
-      (draft) =>
-        draft.contentStatus === "approved" &&
-        draft.sourceType === "source" &&
-        selectedSource &&
-        draft.sourceId === selectedSource.id
-    );
-
-    return {
-      flashcards: approved.filter((draft) => draft.kind === "flashcard").length,
-      questions: approved.filter((draft) => draft.kind !== "flashcard").length,
-    };
-  }, [drafts, selectedSource]);
+  const sourceMadeCounts = useMemo(
+    () => getSourceMadeCounts(drafts, selectedSource?.id ?? null),
+    [drafts, selectedSource]
+  );
   const selectedDraft = useMemo(
-    () =>
-      sourceDrafts.find((draft) => draft.id === selectedDraftId) ??
-      sourceDrafts[0] ??
-      null,
+    () => resolveSelected(sourceDrafts, selectedDraftId),
     [selectedDraftId, sourceDrafts]
   );
 
