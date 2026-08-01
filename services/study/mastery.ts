@@ -1,6 +1,7 @@
 import { addDoc, collection, getDocs, orderBy, query } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
   mapMasteryEventData,
   type MasteryEvent,
@@ -44,6 +45,7 @@ export async function recordMasteryEvent(
     WRITE_MS,
     "Record mastery event"
   );
+  invalidateDashboardData(userId);
 
   return docRef.id;
 }

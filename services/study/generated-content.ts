@@ -1,13 +1,30 @@
-import { addDoc, collection, getDoc, getDocs, orderBy, query, updateDoc, doc } from "firebase/firestore";
+import {
+  addDoc,
+  collection,
+  doc,
+  getDoc,
+  getDocs,
+  limit,
+  orderBy,
+  query,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
   buildFlashcardDraftCardData,
   buildPracticeQuestionDraftNotebookPageData,
   type GeneratedContentDraft,
   type GeneratedContentKind,
 } from "@/lib/material/generated-content";
-import { createNotebookPage, getNotebookById, getNotebookPages, updateNotebook } from "@/services/study/notebooks";
+import {
+  createNotebookPage,
+  getNextNotebookPageNumber,
+  getNotebookById,
+  updateNotebook,
+} from "@/services/study/notebooks";
 import {
   isContentOrigin,
   isContentStatus,
@@ -80,6 +97,29 @@ export async function getGeneratedContentDrafts(userId: string) {
   );
 }
 
+export async function getPendingGeneratedContentDrafts(
+  userId: string,
+  maximum = 4
+) {
+  const safeMaximum = Math.max(1, Math.min(20, Math.floor(maximum)));
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        draftsCollection(userId),
+        where("contentStatus", "==", "draft"),
+        orderBy("createdAt", "desc"),
+        limit(safeMaximum)
+      )
+    ),
+    LOAD_MS,
+    "Load pending generated content drafts"
+  );
+
+  return snapshot.docs.map((draftDoc) =>
+    mapGeneratedContentDraftData(draftDoc.id, draftDoc.data() as Record<string, unknown>)
+  );
+}
+
 export async function createFlashcardDraft(
   userId: string,
   input: {
@@ -108,6 +148,7 @@ export async function createFlashcardDraft(
     WRITE_MS,
     "Create flashcard draft"
   );
+  invalidateDashboardData(userId);
 
   return docRef.id;
 }
@@ -147,6 +188,7 @@ export async function createPracticeQuestionDraft(
     WRITE_MS,
     "Create practice question draft"
   );
+  invalidateDashboardData(userId);
 
   return docRef.id;
 }
@@ -166,6 +208,7 @@ export async function updateGeneratedContentDraftStatus(
     WRITE_MS,
     "Update generated content draft"
   );
+  invalidateDashboardData(userId);
 }
 
 export async function updateGeneratedContentDraftContent(
@@ -195,6 +238,7 @@ export async function updateGeneratedContentDraftContent(
     WRITE_MS,
     "Update generated draft content"
   );
+  invalidateDashboardData(userId);
 }
 
 export async function convertFlashcardDraftToCard(
@@ -267,6 +311,7 @@ export async function convertFlashcardDraftToCard(
     WRITE_MS,
     "Approve flashcard draft"
   );
+  invalidateDashboardData(normalizedUserId);
 
   return cardRef.id;
 }
@@ -313,12 +358,15 @@ export async function convertPracticeQuestionDraftToNotebookPage(
     draftSnapshot.data() as Record<string, unknown>
   );
   const pageData = buildPracticeQuestionDraftNotebookPageData(draft);
-  const existingPages = await getNotebookPages(normalizedUserId, notebookId);
+  const nextPageNumber = await getNextNotebookPageNumber(
+    normalizedUserId,
+    notebookId
+  );
 
   const page = await createNotebookPage(normalizedUserId, {
     notebookId,
     folderId: notebook.folderId,
-    pageNumber: existingPages.length + 1,
+    pageNumber: nextPageNumber,
     title: pageData.title,
     pageType: pageData.pageType,
     questionPrompt: pageData.questionPrompt,
@@ -343,6 +391,7 @@ export async function convertPracticeQuestionDraftToNotebookPage(
     WRITE_MS,
     "Approve practice question draft"
   );
+  invalidateDashboardData(normalizedUserId);
 
   return page.id;
 }

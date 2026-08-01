@@ -81,12 +81,12 @@ async function inventoryUserCollections(uid: string) {
   const snapshots = await Promise.all(
     collections.map(async (collection) => ({
       path: collection.path,
-      snapshot: await collection.select().get(),
+      snapshot: await collection.count().get(),
     }))
   );
 
   return Object.fromEntries(
-    snapshots.map(({ path, snapshot }) => [path, snapshot.size])
+    snapshots.map(({ path, snapshot }) => [path, snapshot.data().count])
   );
 }
 

@@ -1,6 +1,11 @@
 import { db } from "../firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
+import {
+  invalidateLegacyActiveRecords,
+  loadCachedLegacyActiveRecords,
+} from "@/services/study/active-compatibility";
 import { normalizeFolderIds } from "@/lib/workspace/folder-links";
 import {
   DEFAULT_DECK_COLOR_PRESET,
@@ -17,9 +22,13 @@ import {
   collection,
   deleteDoc,
   doc,
+  documentId,
   getDoc,
   getDocs,
+  limit,
+  orderBy,
   query,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
@@ -43,15 +52,11 @@ const CREATE_MS = 30_000;
 const UPDATE_MS = 30_000;
 const DELETE_MS = 30_000;
 const BATCH_DELETE_LIMIT = 400;
+const DECKS_COLLECTION = "decks";
 
 type DeckSnapshot = QueryDocumentSnapshot | DocumentSnapshot;
 
-function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
-  if (!docSnap.exists()) {
-    return null;
-  }
-
-  const data = docSnap.data() as DeckDoc;
+function deckDataToDeck(id: string, data: DeckDoc): Deck | null {
   const owner = (data.userId ?? data.uid ?? "").trim();
   if (!owner) return null;
 
@@ -73,7 +78,7 @@ function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
     : [];
 
   return {
-    id: docSnap.id,
+    id,
     name,
     userId: owner,
     createdAt,
@@ -84,9 +89,38 @@ function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
   };
 }
 
+function snapshotToDeck(docSnap: DeckSnapshot): Deck | null {
+  if (!docSnap.exists()) {
+    return null;
+  }
+  return deckDataToDeck(docSnap.id, docSnap.data() as DeckDoc);
+}
+
+function compareFolderDecks(left: Deck, right: Deck) {
+  const createdAtDifference = right.createdAt - left.createdAt;
+  if (createdAtDifference !== 0) return createdAtDifference;
+  return right.id.localeCompare(left.id);
+}
+
+function isDeckAfterFolderCursor(
+  deck: Deck,
+  cursor: DeckFolderPageCursor
+) {
+  return (
+    deck.createdAt < cursor.createdAt ||
+    (deck.createdAt === cursor.createdAt && deck.id < cursor.id)
+  );
+}
+
+function invalidateDeckCaches(userId: string) {
+  invalidateDashboardData(userId);
+  invalidateLegacyActiveRecords(userId, DECKS_COLLECTION);
+}
+
 async function deleteSnapshotsInBatches(
   snapshots: QueryDocumentSnapshot[],
-  label: string
+  label: string,
+  onCommitted?: () => void
 ) {
   if (snapshots.length === 0) {
     return;
@@ -100,6 +134,7 @@ async function deleteSnapshotsInBatches(
     }
 
     await withTimeout(batch.commit(), DELETE_MS, label);
+    onCommitted?.();
   }
 }
 
@@ -137,14 +172,22 @@ async function requireOwnedDeck(userId: string, deckId: string): Promise<Deck> {
   return deck;
 }
 
-async function deleteUserDeckHistory(userId: string, deckId: string): Promise<void> {
+async function deleteUserDeckHistory(
+  userId: string,
+  deckId: string,
+  onCommitted?: () => void
+): Promise<void> {
   const attemptsSnapshot = await withTimeout(
     getDocs(collection(db, "users", userId, "decks", deckId, "attempts")),
     LOAD_MS,
     "Load deck attempts for deletion"
   );
 
-  await deleteSnapshotsInBatches(attemptsSnapshot.docs, "Delete deck attempts");
+  await deleteSnapshotsInBatches(
+    attemptsSnapshot.docs,
+    "Delete deck attempts",
+    onCommitted
+  );
 
   await withTimeout(
     deleteDoc(doc(db, "users", userId, "decks", deckId)),
@@ -183,6 +226,7 @@ export const createDeck = async (
     CREATE_MS,
     "Create deck"
   );
+  invalidateDeckCaches(normalizedUserId);
 
   return {
     id: docRef.id,
@@ -259,8 +303,128 @@ export const renameDeck = async (
     UPDATE_MS,
     "Rename deck"
   );
+  invalidateDeckCaches(userId);
 
   return deckName;
+};
+
+export type DeckFolderPageCursor = { createdAt: number; id: string };
+
+export const getDecksForFolderPage = async (
+  userId: string,
+  folderId: string,
+  options: { cursor?: DeckFolderPageCursor | null; pageSize?: number } = {}
+) => {
+  const normalizedUserId = userId.trim();
+  const normalizedFolderId = folderId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId");
+  if (!normalizedFolderId) throw new Error("Missing folderId");
+  const pageSize = Math.max(1, Math.min(100, options.pageSize ?? 30));
+
+  const decksCollection = collection(db, "decks");
+  const buildFolderPageQuery = (ownerField: "userId" | "uid") =>
+    query(
+      decksCollection,
+      where(ownerField, "==", normalizedUserId),
+      where("folderIds", "array-contains", normalizedFolderId),
+      orderBy("createdAt", "desc"),
+      orderBy(documentId(), "desc"),
+      ...(options.cursor
+        ? [startAfter(options.cursor.createdAt, options.cursor.id)]
+        : []),
+      limit(pageSize + 1)
+    );
+  const [current, legacy] = await Promise.all([
+    withTimeout(
+      getDocs(buildFolderPageQuery("userId")),
+      LOAD_MS,
+      "Load folder deck page"
+    ),
+    withTimeout(
+      getDocs(buildFolderPageQuery("uid")),
+      LOAD_MS,
+      "Load legacy folder deck page"
+    ).catch((error: unknown) => {
+      if (isFirebasePermissionDenied(error)) {
+        console.warn(
+          "Legacy folder deck lookup was denied; continuing with current userId decks."
+        );
+        return null;
+      }
+      throw error;
+    }),
+  ]);
+  const legacyWithoutCreatedAt = await loadCachedLegacyActiveRecords(
+    normalizedUserId,
+    `${DECKS_COLLECTION}:folder:${normalizedFolderId}`,
+    async () => {
+      const buildCompatibilityQuery = (ownerField: "userId" | "uid") =>
+        query(
+          decksCollection,
+          where(ownerField, "==", normalizedUserId),
+          where("folderIds", "array-contains", normalizedFolderId)
+        );
+      const [currentCompatibility, legacyCompatibility] = await Promise.all([
+        withTimeout(
+          getDocs(buildCompatibilityQuery("userId")),
+          LOAD_MS,
+          "Load folder deck compatibility records"
+        ),
+        withTimeout(
+          getDocs(buildCompatibilityQuery("uid")),
+          LOAD_MS,
+          "Load legacy folder deck compatibility records"
+        ).catch((error: unknown) => {
+          if (isFirebasePermissionDenied(error)) return null;
+          throw error;
+        }),
+      ]);
+
+      return [currentCompatibility, legacyCompatibility]
+        .filter(
+          (value): value is typeof currentCompatibility => value !== null
+        )
+        .flatMap((snapshot) => snapshot.docs)
+        .filter((deckDoc) => typeof deckDoc.data().createdAt !== "number")
+        .map((deckDoc) => ({
+          id: deckDoc.id,
+          data: deckDoc.data() as Record<string, unknown>,
+        }));
+    }
+  );
+  const merged = new Map<string, Deck>();
+  for (const snapshot of [current, legacy].filter(
+    (value): value is typeof current => value !== null
+  )) {
+    snapshot.docs.forEach((deckDoc) => {
+      const deck = snapshotToDeck(deckDoc);
+      if (deck?.userId === normalizedUserId) merged.set(deck.id, deck);
+    });
+  }
+  legacyWithoutCreatedAt.forEach((record) => {
+    const deck = deckDataToDeck(record.id, record.data as DeckDoc);
+    if (
+      deck?.userId === normalizedUserId &&
+      (!options.cursor || isDeckAfterFolderCursor(deck, options.cursor))
+    ) {
+      merged.set(deck.id, deck);
+    }
+  });
+  const mergedItems = Array.from(merged.values()).sort(compareFolderDecks);
+  const items = mergedItems.slice(0, pageSize);
+  const finalItem = items.at(-1);
+  const hasMore =
+    current.docs.length > pageSize ||
+    (legacy?.docs.length ?? 0) > pageSize ||
+    mergedItems.length > pageSize;
+
+  return {
+    items,
+    nextCursor:
+      hasMore && finalItem
+        ? { createdAt: finalItem.createdAt, id: finalItem.id }
+        : null,
+  };
 };
 
 export const updateDeckStyle = async (
@@ -283,6 +447,7 @@ export const updateDeckStyle = async (
     UPDATE_MS,
     "Update deck style"
   );
+  invalidateDeckCaches(userId);
 };
 
 export const updateDeckFolders = async (
@@ -308,6 +473,7 @@ export const updateDeckFolders = async (
     UPDATE_MS,
     "Update deck folders"
   );
+  invalidateDeckCaches(userId);
 };
 
 export const deleteDeck = async (
@@ -326,26 +492,56 @@ export const deleteDeck = async (
 
   await requireOwnedDeck(normalizedUserId, normalizedDeckId);
 
-  const cardsSnapshot = await withTimeout(
-    getDocs(
-      query(
-        collection(db, "cards"),
-        where("deckId", "==", normalizedDeckId),
-        where("userId", "==", normalizedUserId)
-      )
+  const [currentCardsSnapshot, legacyCardsSnapshot] = await Promise.all([
+    withTimeout(
+      getDocs(
+        query(
+          collection(db, "cards"),
+          where("deckId", "==", normalizedDeckId),
+          where("userId", "==", normalizedUserId)
+        )
+      ),
+      DELETE_MS,
+      "Load deck cards for deletion"
     ),
-    DELETE_MS,
-    "Load deck cards for deletion"
+    withTimeout(
+      getDocs(
+        query(
+          collection(db, "cards"),
+          where("deckId", "==", normalizedDeckId),
+          where("uid", "==", normalizedUserId)
+        )
+      ),
+      DELETE_MS,
+      "Load legacy deck cards for deletion"
+    ),
+  ]);
+  const cardDocuments = Array.from(
+    new Map(
+      [...currentCardsSnapshot.docs, ...legacyCardsSnapshot.docs].map(
+        (cardDoc) => [cardDoc.id, cardDoc]
+      )
+    ).values()
+  );
+  const invalidateDeckData = () => invalidateDeckCaches(normalizedUserId);
+
+  await deleteSnapshotsInBatches(
+    cardDocuments,
+    "Delete deck cards",
+    invalidateDeckData
   );
 
-  await deleteSnapshotsInBatches(cardsSnapshot.docs, "Delete deck cards");
-
-  await deleteUserDeckHistory(normalizedUserId, normalizedDeckId);
+  await deleteUserDeckHistory(
+    normalizedUserId,
+    normalizedDeckId,
+    invalidateDeckData
+  );
 
   await withTimeout(
     deleteDoc(doc(db, "decks", normalizedDeckId)),
     DELETE_MS,
     "Delete deck"
   );
+  invalidateDeckData();
 };
 

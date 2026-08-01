@@ -61,7 +61,7 @@ export async function uploadProfilePhoto(
   if (!ALLOWED_TYPES.includes(file.type)) {
     throw new Error("Only JPEG, PNG, and WebP images are allowed.");
   }
-  if (file.size > MAX_FILE_SIZE) {
+  if (file.size >= MAX_FILE_SIZE) {
     throw new Error("Image must be under 5 MB.");
   }
 

@@ -48,6 +48,7 @@ function readJson<T>(key: string, fallback: T): T {
     const raw = window.localStorage.getItem(key);
     return raw ? (JSON.parse(raw) as T) : fallback;
   } catch {
+    // Corrupt or unavailable device storage falls back to the server snapshot.
     return fallback;
   }
 }

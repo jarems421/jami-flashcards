@@ -3,18 +3,28 @@ import {
   collection,
   deleteDoc,
   doc,
+  documentId,
   getDoc,
   getDocs,
   increment,
+  limit,
   orderBy,
   query,
   runTransaction,
+  startAfter,
   updateDoc,
   where,
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
+import {
+  invalidateLegacyActiveRecords,
+  isAfterActiveCursor,
+  loadCachedLegacyActiveRecords,
+  mergeActiveItems,
+} from "@/services/study/active-compatibility";
 import {
   buildNotebookPagePayload,
   buildNotebookPayload,
@@ -67,26 +77,112 @@ function notebookFilesCollection(userId: string) {
   return collection(db, "users", userId, "notebookFiles");
 }
 
-export async function getNotebooks(userId: string): Promise<Notebook[]> {
+const NOTEBOOKS_COLLECTION = "notebooks";
+
+async function getLegacyActiveNotebooks(userId: string) {
+  const records = await loadCachedLegacyActiveRecords(
+    userId,
+    NOTEBOOKS_COLLECTION,
+    async () => {
+      const snapshot = await withTimeout(
+        getDocs(notebooksCollection(userId)),
+        LOAD_MS,
+        "Load legacy notebooks"
+      );
+      return snapshot.docs
+        .map((notebookDoc) => ({
+          id: notebookDoc.id,
+          data: notebookDoc.data() as Record<string, unknown>,
+        }))
+        .filter(({ data }) => typeof data.archived !== "boolean");
+    }
+  );
+  return records.map(({ id, data }) => mapNotebookData(id, data));
+}
+
+async function getLegacyActiveNotebooksForFolder(
+  userId: string,
+  folderId: string
+) {
+  const records = await loadCachedLegacyActiveRecords(
+    userId,
+    `${NOTEBOOKS_COLLECTION}:folder:${folderId}`,
+    async () => {
+      const snapshot = await withTimeout(
+        getDocs(
+          query(
+            notebooksCollection(userId),
+            where("folderId", "==", folderId)
+          )
+        ),
+        LOAD_MS,
+        "Load legacy folder notebooks"
+      );
+      return snapshot.docs
+        .map((notebookDoc) => ({
+          id: notebookDoc.id,
+          data: notebookDoc.data() as Record<string, unknown>,
+        }))
+        .filter(({ data }) => typeof data.archived !== "boolean");
+    }
+  );
+  return records.map(({ id, data }) => mapNotebookData(id, data));
+}
+
+export async function getActiveNotebooks(userId: string) {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) {
     throw new Error("Missing userId.");
   }
 
-  const snapshot = await withTimeout(
-    getDocs(query(notebooksCollection(normalizedUserId), orderBy("updatedAt", "desc"))),
-    LOAD_MS,
-    "Load notebooks"
-  );
+  const [snapshot, legacyItems] = await Promise.all([
+    withTimeout(
+      getDocs(
+        query(
+          notebooksCollection(normalizedUserId),
+          where("archived", "==", false),
+          orderBy("updatedAt", "desc")
+        )
+      ),
+      LOAD_MS,
+      "Load active notebooks"
+    ),
+    getLegacyActiveNotebooks(normalizedUserId),
+  ]);
 
-  return snapshot.docs.map((notebookDoc) =>
+  const currentItems = snapshot.docs.map((notebookDoc) =>
     mapNotebookData(notebookDoc.id, notebookDoc.data() as Record<string, unknown>)
   );
+  return mergeActiveItems(currentItems, legacyItems);
 }
 
-export async function getActiveNotebooks(userId: string) {
-  const notebooks = await getNotebooks(userId);
-  return notebooks.filter((notebook) => !notebook.archived);
+export async function getRecentActiveNotebooks(
+  userId: string,
+  maximum = 3
+) {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  const safeMaximum = Math.max(1, Math.min(20, Math.floor(maximum)));
+  const [snapshot, legacyItems] = await Promise.all([
+    withTimeout(
+      getDocs(
+        query(
+          notebooksCollection(normalizedUserId),
+          where("archived", "==", false),
+          orderBy("updatedAt", "desc"),
+          limit(safeMaximum)
+        )
+      ),
+      LOAD_MS,
+      "Load recent active notebooks"
+    ),
+    getLegacyActiveNotebooks(normalizedUserId),
+  ]);
+
+  const currentItems = snapshot.docs.map((notebookDoc) =>
+    mapNotebookData(notebookDoc.id, notebookDoc.data() as Record<string, unknown>)
+  );
+  return mergeActiveItems(currentItems, legacyItems, safeMaximum);
 }
 
 export async function getNotebookById(
@@ -115,7 +211,16 @@ export async function getNotebookById(
   return mapNotebookData(snapshot.id, snapshot.data() as Record<string, unknown>);
 }
 
-export async function getNotebooksForFolder(userId: string, folderId: string) {
+export type NotebookFolderPageCursor = {
+  updatedAt: number;
+  id: string;
+};
+
+export async function getNotebooksForFolderPage(
+  userId: string,
+  folderId: string,
+  options: { cursor?: NotebookFolderPageCursor | null; pageSize?: number } = {}
+) {
   const normalizedUserId = userId.trim();
   const normalizedFolderId = folderId.trim();
   if (!normalizedUserId) {
@@ -125,23 +230,47 @@ export async function getNotebooksForFolder(userId: string, folderId: string) {
     throw new Error("Missing folderId.");
   }
 
-  const snapshot = await withTimeout(
-    getDocs(
-      query(
-        notebooksCollection(normalizedUserId),
-        where("folderId", "==", normalizedFolderId)
-      )
+  const pageSize = Math.max(1, Math.min(100, options.pageSize ?? 30));
+  const constraints = [
+    where("folderId", "==", normalizedFolderId),
+    where("archived", "==", false),
+    orderBy("updatedAt", "desc"),
+    orderBy(documentId(), "desc"),
+    ...(options.cursor
+      ? [startAfter(options.cursor.updatedAt, options.cursor.id)]
+      : []),
+    limit(pageSize + 1),
+  ];
+  const [snapshot, legacyItemsForFolder] = await Promise.all([
+    withTimeout(
+      getDocs(
+        query(notebooksCollection(normalizedUserId), ...constraints)
+      ),
+      LOAD_MS,
+      "Load folder notebook page"
     ),
-    LOAD_MS,
-    "Load folder notebooks"
-  );
+    getLegacyActiveNotebooksForFolder(normalizedUserId, normalizedFolderId),
+  ]);
 
-  return snapshot.docs
-    .map((notebookDoc) =>
-      mapNotebookData(notebookDoc.id, notebookDoc.data() as Record<string, unknown>)
-    )
-    .filter((notebook) => !notebook.archived)
-    .sort((a, b) => b.updatedAt - a.updatedAt);
+  const currentItems = snapshot.docs.map((notebookDoc) =>
+    mapNotebookData(notebookDoc.id, notebookDoc.data() as Record<string, unknown>)
+  );
+  const legacyItems = legacyItemsForFolder.filter((notebook) =>
+      options.cursor
+        ? isAfterActiveCursor(notebook, options.cursor)
+        : true
+    );
+  const mergedItems = mergeActiveItems(currentItems, legacyItems);
+  const items = mergedItems.slice(0, pageSize);
+  const finalItem = items.at(-1);
+
+  return {
+    items,
+    nextCursor:
+      mergedItems.length > pageSize && finalItem
+        ? { updatedAt: finalItem.updatedAt, id: finalItem.id }
+        : null,
+  };
 }
 
 export async function createNotebook(
@@ -174,6 +303,8 @@ export async function createNotebook(
     WRITE_MS,
     "Create notebook"
   );
+  invalidateDashboardData(normalizedUserId);
+  invalidateLegacyActiveRecords(normalizedUserId, NOTEBOOKS_COLLECTION);
 
   return mapNotebookData(docRef.id, payload);
 }
@@ -237,6 +368,8 @@ export async function updateNotebook(
     WRITE_MS,
     "Update notebook"
   );
+  invalidateDashboardData(normalizedUserId);
+  invalidateLegacyActiveRecords(normalizedUserId, NOTEBOOKS_COLLECTION);
 }
 
 export async function getNotebookPages(
@@ -268,6 +401,37 @@ export async function getNotebookPages(
       mapNotebookPageData(pageDoc.id, pageDoc.data() as Record<string, unknown>)
     )
     .sort((a, b) => a.pageNumber - b.pageNumber);
+}
+
+export async function getNextNotebookPageNumber(
+  userId: string,
+  notebookId: string
+) {
+  const normalizedUserId = userId.trim();
+  const normalizedNotebookId = notebookId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (!normalizedNotebookId) throw new Error("Missing notebookId.");
+
+  const snapshot = await withTimeout(
+    getDocs(
+      query(
+        notebookPagesCollection(normalizedUserId),
+        where("notebookId", "==", normalizedNotebookId),
+        orderBy("pageNumber", "desc"),
+        limit(1)
+      )
+    ),
+    LOAD_MS,
+    "Load final notebook page"
+  );
+  const finalPage = snapshot.docs[0];
+  if (!finalPage) return 1;
+  return (
+    mapNotebookPageData(
+      finalPage.id,
+      finalPage.data() as Record<string, unknown>
+    ).pageNumber + 1
+  );
 }
 
 export async function createNotebookPage(
@@ -304,6 +468,7 @@ export async function createNotebookPage(
     WRITE_MS,
     "Create notebook page"
   );
+  invalidateDashboardData(normalizedUserId);
 
   return mapNotebookPageData(docRef.id, payload);
 }
@@ -336,6 +501,7 @@ export async function createNotebookPages(
     return { id: pageRef.id, payload };
   });
   await withTimeout(batch.commit(), WRITE_MS, "Create notebook pages");
+  invalidateDashboardData(normalizedUserId);
   return entries.map(({ id, payload }) => mapNotebookPageData(id, payload));
 }
 
@@ -425,6 +591,7 @@ export async function updateNotebookPage(
     WRITE_MS,
     "Update notebook page"
   );
+  invalidateDashboardData(normalizedUserId);
 }
 
 export async function saveNotebookPageSnapshot(
@@ -458,7 +625,7 @@ export async function saveNotebookPageSnapshot(
   const pageRef = doc(db, "users", normalizedUserId, "notebookPages", pageId);
   const notebookRef = doc(db, "users", normalizedUserId, "notebooks", notebookId);
 
-  return withTimeout(
+  const result = await withTimeout(
     runTransaction(db, async (transaction) => {
       const pageDocument = await transaction.get(pageRef);
       if (!pageDocument.exists()) throw new Error("This notebook page no longer exists.");
@@ -499,6 +666,9 @@ export async function saveNotebookPageSnapshot(
     WRITE_MS,
     "Save notebook page"
   );
+  invalidateDashboardData(normalizedUserId);
+  invalidateLegacyActiveRecords(normalizedUserId, NOTEBOOKS_COLLECTION);
+  return result;
 }
 
 export async function deleteNotebookPage(
@@ -546,6 +716,8 @@ export async function deleteNotebookPage(
   });
 
   await withTimeout(batch.commit(), WRITE_MS, "Delete notebook page");
+  invalidateDashboardData(normalizedUserId);
+  invalidateLegacyActiveRecords(normalizedUserId, NOTEBOOKS_COLLECTION);
 
   return nextPages.map((page) => ({ ...page, updatedAt: now }));
 }
@@ -598,6 +770,7 @@ export async function createNotebookFileMetadata(
     WRITE_MS,
     "Create notebook file metadata"
   );
+  invalidateDashboardData(normalizedUserId);
 
   return mapNotebookFileData(docRef.id, payload);
 }
@@ -632,6 +805,8 @@ export async function deleteNotebookImportRecords(
     doc(db, "users", normalizedUserId, "notebooks", normalizedNotebookId)
   );
   await withTimeout(batch.commit(), WRITE_MS, "Clean up notebook import");
+  invalidateDashboardData(normalizedUserId);
+  invalidateLegacyActiveRecords(normalizedUserId, NOTEBOOKS_COLLECTION);
 }
 
 export async function deleteNotebookRecord(userId: string, notebookId: string) {
@@ -640,6 +815,8 @@ export async function deleteNotebookRecord(userId: string, notebookId: string) {
     WRITE_MS,
     "Delete notebook"
   );
+  invalidateDashboardData(userId);
+  invalidateLegacyActiveRecords(userId, NOTEBOOKS_COLLECTION);
 }
 
 export async function deleteNotebookFileRecord(userId: string, fileId: string) {
@@ -653,6 +830,7 @@ export async function deleteNotebookFileRecord(userId: string, fileId: string) {
     WRITE_MS,
     "Delete notebook file metadata"
   );
+  invalidateDashboardData(normalizedUserId);
 }
 
 export async function deleteNotebookPageRecords(
@@ -669,4 +847,5 @@ export async function deleteNotebookPageRecords(
     batch.delete(doc(db, "users", normalizedUserId, "notebookPages", pageId));
   });
   await withTimeout(batch.commit(), WRITE_MS, "Clean up notebook pages");
+  invalidateDashboardData(normalizedUserId);
 }

@@ -13,6 +13,8 @@ import {
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { invalidateAllDashboardData, invalidateDashboardData } from "@/services/dashboard/cache";
+import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import {
   mapCardData,
   normalizeCardContentInput,
@@ -90,15 +92,38 @@ function getCardWrite(card: Card): CardWrite {
 }
 
 export async function loadUserCards(userId: string): Promise<Card[]> {
-  const snapshot = await withTimeout(
-    getDocs(query(collection(db, "cards"), where("userId", "==", userId))),
-    LOAD_MS,
-    "Load study cards"
-  );
-
-  return snapshot.docs.map((cardDoc) =>
-    mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
-  );
+  const cards = collection(db, "cards");
+  const [current, legacy] = await Promise.all([
+    withTimeout(
+      getDocs(query(cards, where("userId", "==", userId))),
+      LOAD_MS,
+      "Load study cards"
+    ),
+    withTimeout(
+      getDocs(query(cards, where("uid", "==", userId))),
+      LOAD_MS,
+      "Load legacy study cards"
+    ).catch((error: unknown) => {
+      if (isFirebasePermissionDenied(error)) {
+        console.warn(
+          "Legacy card lookup was denied; continuing with current userId cards."
+        );
+        return null;
+      }
+      throw error;
+    }),
+  ]);
+  const merged = new Map<string, Card>();
+  [current, legacy].forEach((snapshot) => {
+    snapshot?.docs.forEach((cardDoc) => {
+      const card = mapCardData(
+        cardDoc.id,
+        cardDoc.data() as Record<string, unknown>
+      );
+      if (card.userId === userId) merged.set(card.id, card);
+    });
+  });
+  return Array.from(merged.values());
 }
 
 /** Cards in one deck, unsorted; callers order them for their own display. */
@@ -106,17 +131,29 @@ export async function getCardsForDeck(
   userId: string,
   deckId: string
 ): Promise<Card[]> {
-  const snapshot = await getDocs(
-    query(
-      collection(db, "cards"),
-      where("deckId", "==", deckId),
-      where("userId", "==", userId)
-    )
-  );
-
-  return snapshot.docs.map((cardDoc) =>
-    mapCardData(cardDoc.id, cardDoc.data() as Record<string, unknown>)
-  );
+  const cards = collection(db, "cards");
+  const [current, legacy] = await Promise.all([
+    getDocs(
+      query(cards, where("deckId", "==", deckId), where("userId", "==", userId))
+    ),
+    getDocs(
+      query(cards, where("deckId", "==", deckId), where("uid", "==", userId))
+    ).catch((error: unknown) => {
+      if (isFirebasePermissionDenied(error)) return null;
+      throw error;
+    }),
+  ]);
+  const merged = new Map<string, Card>();
+  [current, legacy].forEach((snapshot) => {
+    snapshot?.docs.forEach((cardDoc) => {
+      const card = mapCardData(
+        cardDoc.id,
+        cardDoc.data() as Record<string, unknown>
+      );
+      if (card.userId === userId) merged.set(card.id, card);
+    });
+  });
+  return Array.from(merged.values());
 }
 
 /**
@@ -133,28 +170,37 @@ export async function updateCardContent(
     topicIds: input.topicIds,
     tags: [],
   });
+  invalidateAllDashboardData();
 }
 
 export async function updateCardTopics(cardId: string, topicIds: string[]) {
   await updateDoc(doc(db, "cards", cardId), { topicIds, tags: [] });
+  invalidateAllDashboardData();
 }
 
 export async function deleteCard(cardId: string) {
   await deleteDoc(doc(db, "cards", cardId));
+  invalidateAllDashboardData();
 }
 
 export async function setCardTopicsInBulk(
   updates: ReadonlyArray<{ id: string; topicIds: string[] }>
 ) {
-  for (let start = 0; start < updates.length; start += CARD_WRITE_BATCH_SIZE) {
-    const batch = writeBatch(db);
-    for (const card of updates.slice(start, start + CARD_WRITE_BATCH_SIZE)) {
-      batch.update(doc(db, "cards", card.id), {
-        topicIds: card.topicIds,
-        tags: [],
-      });
+  let committed = false;
+  try {
+    for (let start = 0; start < updates.length; start += CARD_WRITE_BATCH_SIZE) {
+      const batch = writeBatch(db);
+      for (const card of updates.slice(start, start + CARD_WRITE_BATCH_SIZE)) {
+        batch.update(doc(db, "cards", card.id), {
+          topicIds: card.topicIds,
+          tags: [],
+        });
+      }
+      await batch.commit();
+      committed = true;
     }
-    await batch.commit();
+  } finally {
+    if (committed) invalidateAllDashboardData();
   }
 }
 
@@ -162,22 +208,34 @@ export async function moveCardsToDeck(
   cardIds: readonly string[],
   deckId: string
 ) {
-  for (let start = 0; start < cardIds.length; start += CARD_WRITE_BATCH_SIZE) {
-    const batch = writeBatch(db);
-    cardIds.slice(start, start + CARD_WRITE_BATCH_SIZE).forEach((cardId) => {
-      batch.update(doc(db, "cards", cardId), { deckId });
-    });
-    await batch.commit();
+  let committed = false;
+  try {
+    for (let start = 0; start < cardIds.length; start += CARD_WRITE_BATCH_SIZE) {
+      const batch = writeBatch(db);
+      cardIds.slice(start, start + CARD_WRITE_BATCH_SIZE).forEach((cardId) => {
+        batch.update(doc(db, "cards", cardId), { deckId });
+      });
+      await batch.commit();
+      committed = true;
+    }
+  } finally {
+    if (committed) invalidateAllDashboardData();
   }
 }
 
 export async function deleteCards(cardIds: readonly string[]) {
-  for (let start = 0; start < cardIds.length; start += CARD_WRITE_BATCH_SIZE) {
-    const batch = writeBatch(db);
-    cardIds.slice(start, start + CARD_WRITE_BATCH_SIZE).forEach((cardId) => {
-      batch.delete(doc(db, "cards", cardId));
-    });
-    await batch.commit();
+  let committed = false;
+  try {
+    for (let start = 0; start < cardIds.length; start += CARD_WRITE_BATCH_SIZE) {
+      const batch = writeBatch(db);
+      cardIds.slice(start, start + CARD_WRITE_BATCH_SIZE).forEach((cardId) => {
+        batch.delete(doc(db, "cards", cardId));
+      });
+      await batch.commit();
+      committed = true;
+    }
+  } finally {
+    if (committed) invalidateAllDashboardData();
   }
 }
 
@@ -208,6 +266,7 @@ export async function updateCardAfterReview(
   }
 
   await updateDoc(doc(db, "cards", cardId), updates);
+  invalidateAllDashboardData();
 }
 
 export async function recordSimpleStudyResult(
@@ -232,6 +291,7 @@ export async function createCard(input: CreateCardInput): Promise<Card> {
   const cardsCollection = collection(db, "cards");
   const write = buildNewCard(input, "", createdAt);
   const cardRef = await addDoc(cardsCollection, getCardWrite(write));
+  invalidateDashboardData(input.userId);
 
   return {
     ...write,
@@ -281,8 +341,10 @@ export async function createCardsInBatches(
       onProgress?.(createdCards.length, input.drafts.length);
     }
 
+    if (createdCards.length > 0) invalidateDashboardData(input.userId);
     return createdCards;
   } catch (error) {
+    if (createdCards.length > 0) invalidateDashboardData(input.userId);
     throw new CardBatchCreateError(
       error instanceof Error ? error.message : "Failed to create cards.",
       createdCards,

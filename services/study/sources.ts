@@ -3,13 +3,25 @@ import {
   collection,
   deleteDoc,
   doc,
+  documentId,
+  getDoc,
   getDocs,
+  limit,
   orderBy,
   query,
+  startAfter,
   updateDoc,
+  where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
+import {
+  invalidateLegacyActiveRecords,
+  isAfterActiveCursor,
+  loadCachedLegacyActiveRecords,
+  mergeActiveItems,
+} from "@/services/study/active-compatibility";
 import {
   buildSourcePayload,
   mapSourceData,
@@ -22,6 +34,62 @@ const WRITE_MS = 30_000;
 
 function sourcesCollection(userId: string) {
   return collection(db, "users", userId, "sources");
+}
+
+const SOURCES_COLLECTION = "sources";
+
+async function getLegacyActiveSources(userId: string) {
+  const records = await loadCachedLegacyActiveRecords(
+    userId,
+    SOURCES_COLLECTION,
+    async () => {
+      const snapshot = await withTimeout(
+        getDocs(sourcesCollection(userId)),
+        LOAD_MS,
+        "Load legacy sources"
+      );
+      return snapshot.docs
+        .map((sourceDoc) => ({
+          id: sourceDoc.id,
+          data: sourceDoc.data() as Record<string, unknown>,
+        }))
+        .filter(
+          ({ data }) => data.status !== "active" && data.status !== "archived"
+        );
+    }
+  );
+  return records.map(({ id, data }) => mapSourceData(id, data));
+}
+
+async function getLegacyActiveSourcesForFolder(
+  userId: string,
+  folderId: string
+) {
+  const records = await loadCachedLegacyActiveRecords(
+    userId,
+    `${SOURCES_COLLECTION}:folder:${folderId}`,
+    async () => {
+      const snapshot = await withTimeout(
+        getDocs(
+          query(
+            sourcesCollection(userId),
+            where("folderIds", "array-contains", folderId)
+          )
+        ),
+        LOAD_MS,
+        "Load legacy folder sources"
+      );
+      return snapshot.docs
+        .map((sourceDoc) => ({
+          id: sourceDoc.id,
+          data: sourceDoc.data() as Record<string, unknown>,
+        }))
+        .filter(
+          ({ data }) => data.status !== "active" && data.status !== "archived"
+        );
+    }
+  );
+  return records.map(({ id, data }) => mapSourceData(id, data));
 }
 
 export async function getSources(userId: string): Promise<Source[]> {
@@ -37,8 +105,129 @@ export async function getSources(userId: string): Promise<Source[]> {
 }
 
 export async function getActiveSources(userId: string): Promise<Source[]> {
-  const sources = await getSources(userId);
-  return sources.filter((source) => source.status === "active");
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  const [snapshot, legacyItems] = await Promise.all([
+    withTimeout(
+      getDocs(
+        query(
+          sourcesCollection(normalizedUserId),
+          where("status", "==", "active"),
+          orderBy("updatedAt", "desc")
+        )
+      ),
+      LOAD_MS,
+      "Load active sources"
+    ),
+    getLegacyActiveSources(normalizedUserId),
+  ]);
+
+  const currentItems = snapshot.docs.map((sourceDoc) =>
+    mapSourceData(sourceDoc.id, sourceDoc.data() as Record<string, unknown>)
+  );
+  return mergeActiveItems(currentItems, legacyItems);
+}
+
+export type SourceFolderPageCursor = {
+  updatedAt: number;
+  id: string;
+};
+
+export async function getActiveSourcesForFolderPage(
+  userId: string,
+  folderId: string,
+  options: { cursor?: SourceFolderPageCursor | null; pageSize?: number } = {}
+) {
+  const normalizedUserId = userId.trim();
+  const normalizedFolderId = folderId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (!normalizedFolderId) throw new Error("Missing folderId.");
+  const pageSize = Math.max(1, Math.min(100, options.pageSize ?? 30));
+  const constraints = [
+    where("status", "==", "active"),
+    where("folderIds", "array-contains", normalizedFolderId),
+    orderBy("updatedAt", "desc"),
+    orderBy(documentId(), "desc"),
+    ...(options.cursor
+      ? [startAfter(options.cursor.updatedAt, options.cursor.id)]
+      : []),
+    limit(pageSize + 1),
+  ];
+  const [snapshot, legacyItemsForFolder] = await Promise.all([
+    withTimeout(
+      getDocs(query(sourcesCollection(normalizedUserId), ...constraints)),
+      LOAD_MS,
+      "Load active folder source page"
+    ),
+    getLegacyActiveSourcesForFolder(normalizedUserId, normalizedFolderId),
+  ]);
+
+  const currentItems = snapshot.docs.map((sourceDoc) =>
+    mapSourceData(sourceDoc.id, sourceDoc.data() as Record<string, unknown>)
+  );
+  const legacyItems = legacyItemsForFolder.filter((source) =>
+      options.cursor ? isAfterActiveCursor(source, options.cursor) : true
+    );
+  const mergedItems = mergeActiveItems(currentItems, legacyItems);
+  const items = mergedItems.slice(0, pageSize);
+  const finalItem = items.at(-1);
+
+  return {
+    items,
+    nextCursor:
+      mergedItems.length > pageSize && finalItem
+        ? { updatedAt: finalItem.updatedAt, id: finalItem.id }
+        : null,
+  };
+}
+
+export async function getActiveSourcesForDashboard(
+  userId: string,
+  sourceIds: readonly string[]
+): Promise<Source[]> {
+  const normalizedUserId = userId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  const uniqueIds = Array.from(
+    new Set(sourceIds.map((sourceId) => sourceId.trim()).filter(Boolean))
+  ).slice(0, 4);
+  const exactSnapshots = await Promise.all(
+    uniqueIds.map((sourceId) =>
+      withTimeout(
+        getDoc(doc(sourcesCollection(normalizedUserId), sourceId)),
+        LOAD_MS,
+        "Load dashboard draft source"
+      )
+    )
+  );
+  const exactSources = exactSnapshots
+    .filter((snapshot) => snapshot.exists())
+    .map((snapshot) =>
+      mapSourceData(
+        snapshot.id,
+        snapshot.data() as Record<string, unknown>
+      )
+    )
+    .filter((source) => source.status === "active");
+  if (exactSources.length > 0) return exactSources;
+
+  const [existenceSnapshot, legacyItems] = await Promise.all([
+    withTimeout(
+      getDocs(
+        query(
+          sourcesCollection(normalizedUserId),
+          where("status", "==", "active"),
+          limit(1)
+        )
+      ),
+      LOAD_MS,
+      "Check for an active dashboard source"
+    ),
+    getLegacyActiveSources(normalizedUserId),
+  ]);
+  const currentItems = existenceSnapshot.docs.map((sourceDoc) =>
+    mapSourceData(sourceDoc.id, sourceDoc.data() as Record<string, unknown>)
+  );
+  return mergeActiveItems(currentItems, legacyItems, 1);
 }
 
 export async function createSource(
@@ -62,6 +251,8 @@ export async function createSource(
     WRITE_MS,
     "Create source"
   );
+  invalidateDashboardData(userId);
+  invalidateLegacyActiveRecords(userId, SOURCES_COLLECTION);
 
   return docRef.id;
 }
@@ -106,6 +297,8 @@ export async function updateSource(
     WRITE_MS,
     "Update source"
   );
+  invalidateDashboardData(userId);
+  invalidateLegacyActiveRecords(userId, SOURCES_COLLECTION);
 }
 
 export async function deleteSource(userId: string, sourceId: string) {
@@ -114,4 +307,6 @@ export async function deleteSource(userId: string, sourceId: string) {
     WRITE_MS,
     "Delete source"
   );
+  invalidateDashboardData(userId);
+  invalidateLegacyActiveRecords(userId, SOURCES_COLLECTION);
 }

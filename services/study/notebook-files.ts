@@ -37,7 +37,7 @@ export function validateNotebookUploadFile(file: File) {
   if (!ALLOWED_NOTEBOOK_FILE_TYPES.includes(file.type as (typeof ALLOWED_NOTEBOOK_FILE_TYPES)[number])) {
     throw new Error("Upload a PDF, JPEG, PNG, or WebP file.");
   }
-  if (file.size > MAX_NOTEBOOK_FILE_SIZE) {
+  if (file.size >= MAX_NOTEBOOK_FILE_SIZE) {
     throw new Error("Notebook files must be under 20 MB.");
   }
 }
@@ -136,6 +136,7 @@ export async function getNotebookFileBytes(storagePath: string) {
       }
     );
     if (!response.ok) {
+      // Proxy failures are not guaranteed to return JSON; status remains useful.
       const body = (await response.json().catch(() => null)) as {
         error?: unknown;
       } | null;
@@ -146,7 +147,7 @@ export async function getNotebookFileBytes(storagePath: string) {
       );
     }
     const bytes = await response.arrayBuffer();
-    if (bytes.byteLength > MAX_NOTEBOOK_FILE_SIZE) {
+    if (bytes.byteLength >= MAX_NOTEBOOK_FILE_SIZE) {
       throw new Error("Notebook files must be under 20 MB.");
     }
     return new Uint8Array(bytes);

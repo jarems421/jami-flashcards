@@ -4,6 +4,9 @@ This document describes the boundaries that should remain stable while Jami adds
 new workflows. It is a map for implementation, not a proposal to change routes or
 stored data.
 
+The current collection-read inventory and deliberately retained full-input
+calculations are recorded in [data-access-audit.md](./data-access-audit.md).
+
 ## Dependency direction
 
 ```text
@@ -63,7 +66,8 @@ silently migrate user data.
 
 ## Compatibility rules
 
-- Preserve `/dashboard/practise` while `/dashboard/practice` remains its alias.
+- Keep `/dashboard/practice` canonical and preserve `/dashboard/practise` as a
+  permanent compatibility redirect.
 - Treat Firestore collection paths and stored fields as public persistence
   contracts. Remove a compatibility reader only after an explicit migration and
   production count check.
