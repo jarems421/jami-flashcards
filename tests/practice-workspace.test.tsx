@@ -7,18 +7,20 @@ import PracticeWorkspace from "@/components/workspace/PracticeWorkspace";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 
-const getActiveStudyFolders = vi.fn();
-const getActiveNotebooks = vi.fn();
+const getActiveStudyFoldersPage = vi.fn();
+const getRecentActiveNotebooks = vi.fn();
 const getActiveTopics = vi.fn();
 const updateNotebook = vi.fn();
 
 vi.mock("@/services/study/folders", () => ({
-  getActiveStudyFolders: (...a: unknown[]) => getActiveStudyFolders(...a),
+  getActiveStudyFoldersPage: (...a: unknown[]) =>
+    getActiveStudyFoldersPage(...a),
   createStudyFolder: vi.fn(),
 }));
 
 vi.mock("@/services/study/notebooks", () => ({
-  getActiveNotebooks: (...a: unknown[]) => getActiveNotebooks(...a),
+  getRecentActiveNotebooks: (...a: unknown[]) =>
+    getRecentActiveNotebooks(...a),
   updateNotebook: (...a: unknown[]) => updateNotebook(...a),
 }));
 
@@ -50,8 +52,11 @@ async function render() {
 const text = () => container.textContent ?? "";
 
 beforeEach(() => {
-  getActiveStudyFolders.mockReset().mockResolvedValue([folder("f1", "Physics")]);
-  getActiveNotebooks.mockReset().mockResolvedValue([]);
+  getActiveStudyFoldersPage.mockReset().mockResolvedValue({
+    items: [folder("f1", "Physics")],
+    nextCursor: null,
+  });
+  getRecentActiveNotebooks.mockReset().mockResolvedValue([]);
   getActiveTopics.mockReset().mockResolvedValue([]);
   updateNotebook.mockReset().mockResolvedValue(undefined);
   container = document.createElement("div");
@@ -73,23 +78,51 @@ describe("PracticeWorkspace", () => {
     expect(text()).toContain("Physics");
   });
 
-  it("still opens when notebooks or topics fail to load", async () => {
-    getActiveNotebooks.mockRejectedValue(new Error("offline"));
-    getActiveTopics.mockRejectedValue(new Error("offline"));
+  it("cursor-loads another folder page on demand", async () => {
+    getActiveStudyFoldersPage
+      .mockResolvedValueOnce({
+        items: [folder("f1", "Physics")],
+        nextCursor: { updatedAt: 1, id: "f1" },
+      })
+      .mockResolvedValueOnce({
+        items: [folder("f2", "Chemistry")],
+        nextCursor: null,
+      });
+    await render();
+
+    const loadMore = [...container.querySelectorAll("button")].find((button) =>
+      /load more folders/i.test(button.textContent ?? "")
+    );
+    expect(loadMore).toBeDefined();
+    await act(async () => {
+      loadMore!.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    });
+
+    expect(text()).toContain("Physics");
+    expect(text()).toContain("Chemistry");
+    expect(getActiveStudyFoldersPage).toHaveBeenLastCalledWith("user-1", {
+      cursor: { updatedAt: 1, id: "f1" },
+    });
+  });
+
+  it("still opens when recent notebooks fail to load", async () => {
+    getRecentActiveNotebooks.mockRejectedValue(new Error("offline"));
     await render();
     // Folders are the point of this screen; a failing side query must not
     // take the whole page down with it.
     expect(text()).toContain("Physics");
+    expect(text()).toContain("Recent notebooks are unavailable");
+    expect(text()).not.toContain("Your first notebook starts inside a folder");
   });
 
   it("reports a failure to load folders rather than showing an empty desk", async () => {
-    getActiveStudyFolders.mockRejectedValue(new Error("offline"));
+    getActiveStudyFoldersPage.mockRejectedValue(new Error("offline"));
     await render();
     expect(text()).toContain("Failed to load your folders and notebooks.");
   });
 
   it("shows only the three most recently touched notebooks, newest first", async () => {
-    getActiveNotebooks.mockResolvedValue([
+    getRecentActiveNotebooks.mockResolvedValue([
       notebook("n1", "Oldest notebook", 1),
       notebook("n2", "Middle notebook", 5),
       notebook("n3", "Newest notebook", 9),
@@ -108,7 +141,7 @@ describe("PracticeWorkspace", () => {
   });
 
   it("archives rather than destroys a deleted notebook", async () => {
-    getActiveNotebooks.mockResolvedValue([notebook("n1", "Waves", 5)]);
+    getRecentActiveNotebooks.mockResolvedValue([notebook("n1", "Waves", 5)]);
     await render();
 
     // Delete sits behind the card's actions menu.
@@ -158,7 +191,7 @@ describe("PracticeWorkspace", () => {
   });
 
   it("offers a way to create the first folder", async () => {
-    getActiveStudyFolders.mockResolvedValue([]);
+    getActiveStudyFoldersPage.mockResolvedValue({ items: [], nextCursor: null });
     await render();
     const create = [...container.querySelectorAll("button")].find((b) =>
       /create folder/i.test(b.textContent ?? "")
