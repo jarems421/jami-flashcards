@@ -1,21 +1,16 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+import jsxA11y from "eslint-plugin-jsx-a11y";
 
 const eslintConfig = defineConfig([
   ...nextVitals,
   ...nextTs,
   {
     files: [
-      "app/dashboard/page.tsx",
-      "app/dashboard/library/**/*.tsx",
-      "app/dashboard/notebooks/**/*.tsx",
-      "app/dashboard/goals/**/*.tsx",
-      "app/dashboard/progress/**/*.tsx",
-      "app/dashboard/constellation/**/*.tsx",
-      "components/constellation/**/*.tsx",
-      "components/library/**/*.tsx",
-      "components/sources/**/*.tsx",
+      "app/dashboard/**/*.{ts,tsx}",
+      "components/**/*.{ts,tsx}",
+      "hooks/**/*.{ts,tsx}",
     ],
     rules: {
       "no-restricted-imports": [
@@ -39,26 +34,49 @@ const eslintConfig = defineConfig([
               message: "Pages and components should depend on domain services, not the Storage client.",
             },
           ],
+          patterns: [
+            {
+              group: [
+                "**/services/firebase/client-db",
+                "**/services/firebase/client-storage",
+              ],
+              message: "UI code should depend on domain services, not Firebase client adapters.",
+            },
+          ],
         },
       ],
     },
   },
   {
-    files: [
-      "lib/app/**/*.{ts,tsx}",
-      "lib/constellation/**/*.{ts,tsx}",
-      "lib/workspace/**/*.{ts,tsx}",
-    ],
+    files: ["lib/**/*.{ts,tsx}"],
     rules: {
       "no-restricted-imports": [
         "error",
         {
           patterns: [
             {
-              group: ["@/components/**", "@/services/**"],
+              group: [
+                "@/components/**",
+                "@/services/**",
+                "**/components/**",
+                "**/services/**",
+              ],
               message: "Keep this domain layer pure; pass external data in from a page or service.",
             },
           ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["app/**/*.{jsx,tsx}", "components/**/*.{jsx,tsx}"],
+    rules: {
+      ...jsxA11y.flatConfigs.recommended.rules,
+      "jsx-a11y/alt-text": [
+        "error",
+        {
+          elements: ["img"],
+          img: ["Image"],
         },
       ],
     },
