@@ -14,13 +14,12 @@ const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const storageRules = readFileSync(path.join(rootDir, "storage.rules"), "utf8");
 
 let testEnv: RulesTestEnvironment;
-const describeStorageRules = process.env.FIREBASE_STORAGE_EMULATOR_HOST ? describe : describe.skip;
 
 function blob(type: string, content = "notebook-file") {
   return new Blob([content], { type });
 }
 
-describeStorageRules("Storage security rules", () => {
+describe("Storage security rules", () => {
   beforeAll(async () => {
     testEnv = await initializeTestEnvironment({
       projectId: "demo-jami-flashcards-storage",
@@ -47,6 +46,23 @@ describeStorageRules("Storage security rules", () => {
 
     await assertSucceeds(uploadBytes(fileRef, blob("application/pdf")));
     await assertSucceeds(getBytes(fileRef));
+    await assertSucceeds(deleteObject(fileRef));
+  });
+
+  it("blocks other users and demo sessions from deleting notebook files", async () => {
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    const demoStorage = testEnv
+      .authenticatedContext("alice", { demo: true })
+      .storage();
+    const filePath =
+      "users/alice/notebookFiles/notebook-1/file-1-biology-notes.pdf";
+
+    await assertSucceeds(
+      uploadBytes(ref(aliceStorage, filePath), blob("application/pdf"))
+    );
+    await assertFails(deleteObject(ref(bobStorage, filePath)));
+    await assertFails(deleteObject(ref(demoStorage, filePath)));
   });
 
   it("blocks other users and guests from notebook files", async () => {

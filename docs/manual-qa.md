@@ -24,7 +24,7 @@ Practice sets, papers, AI-created drills, uploaded papers, and blank working boo
 
 ## Notebook-First Practice
 
-1. Open `/dashboard/practise`.
+1. Open `/dashboard/practice`.
 2. Confirm user-facing copy says `Practice`, not `Practise`.
 3. Confirm the visible default sections are `Continue working` and `Folders`.
 4. Confirm there is no old question bank, topic drill, standalone Add question form, answer field, working field, confidence block, old Tutor attempt panel, or tiny scratchpad side feature.

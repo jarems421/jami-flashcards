@@ -297,10 +297,10 @@ the only security item in this plan — do it first.**
 **6.2 — Lazy-load `recharts`.** [progress/page.tsx:14](../app/dashboard/progress/page.tsx#L14)
 imports it statically while js-draw, pdfjs, and katex are all behind `await import()`.
 
-**6.3 — Resolve the three meanings of "practice."** The route is
-`/dashboard/practise`, its nav label is **"Folders"**, and `lib/practice/` holds
-topics and sources. Compatibility explains the route, not the label mismatch.
-`lib/practice/` is imported by 20 files, so it is load-bearing, not dead.
+**6.3 — Resolve the three meanings of "practice."** Done: the canonical route
+and nav label use **Practice** at `/dashboard/practice`, while
+`/dashboard/practise` remains a permanent compatibility redirect. The
+`lib/practice/` name remains load-bearing domain terminology rather than dead code.
 
 **6.4 — CI file-size guard.** Fail the build on any file over 1,200 lines. Nothing
 currently stops the next 4,000-line file from appearing, and this plan spends weeks

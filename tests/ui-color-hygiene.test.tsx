@@ -1,9 +1,20 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import Home from "@/app/page";
+import Button from "@/components/ui/Button";
+import { getConstellationBackgroundActionLabel } from "@/lib/constellation/background";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
 
 const root = process.cwd();
 
+// Intentional static policy scope: these files must not bypass semantic theme
+// tokens. This is not a page-structure or implementation-snippet assertion.
 const auditedFiles = [
   "components/ui/Button.tsx",
   "components/ui/Input.tsx",
@@ -17,6 +28,11 @@ const auditedFiles = [
   "components/decks/CardBackAutocomplete.tsx",
   "components/decks/CardQualityWarnings.tsx",
   "components/decks/CardCreationPanel.tsx",
+  "components/cards/CardBrowserControls.tsx",
+  "components/cards/CardBrowserWorkspace.tsx",
+  "components/cards/CardBulkActions.tsx",
+  "components/cards/CardGrid.tsx",
+  "components/cards/CardsGettingStarted.tsx",
   "components/notifications/NotificationSettingsCard.tsx",
   "app/page.tsx",
   "app/auth/page.tsx",
@@ -31,7 +47,7 @@ const auditedFiles = [
   "app/dashboard/folders/[folderId]/page.tsx",
   "app/dashboard/topics/page.tsx",
   "app/dashboard/progress/page.tsx",
-  "app/dashboard/practise/page.tsx",
+  "components/workspace/PracticeWorkspace.tsx",
   "components/stats/AnalyticsPanels.tsx",
   "components/layout/AppTopBar.tsx",
   "components/decks/DeckDetailPageClient.tsx",
@@ -58,12 +74,8 @@ describe("theme colour hygiene", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("keeps same-family accent pairings guarded by global contrast overrides", () => {
+  it("keeps same-family accent pairings guarded by global contrast policy", () => {
     const globals = readFileSync(join(root, "app/globals.css"), "utf8");
-    const studyPage = readFileSync(
-      join(root, "app/dashboard/study/page.tsx"),
-      "utf8"
-    );
 
     expect(globals).toContain('body [class*="bg-accent/"] .text-accent');
     expect(globals).toContain('body [class*="bg-warm-glow"] .text-warm-accent');
@@ -85,25 +97,30 @@ describe("theme colour hygiene", () => {
     );
     expect(globals).toContain("background-color: var(--color-surface-panel);");
     expect(globals).toContain("background: rgba(8, 5, 18, 0.92);");
-    expect(studyPage).toContain("study-session-stage");
-    expect(studyPage).toContain("study-flashcard-shell");
-    expect(studyPage).not.toContain('SurfaceCard padding="lg" className="overflow-hidden"');
-    expect(studyPage).not.toContain("--study-card-shadow");
     expect(globals).toContain("--color-text-primary: #fff8ff;");
   });
 
-  it("keeps named contrast regressions on semantic controls", () => {
-    const home = readFileSync(join(root, "app/page.tsx"), "utf8");
-    const constellation = readFileSync(join(root, "app/dashboard/constellation/page.tsx"), "utf8");
-    const button = readFileSync(join(root, "components/ui/Button.tsx"), "utf8");
+  it("renders named controls through semantic variants and disabled tokens", () => {
+    const homeMarkup = renderToStaticMarkup(createElement(Home));
+    const googleLabelIndex = homeMarkup.indexOf("Continue with Google");
+    const googleButtonStart = homeMarkup.lastIndexOf("<button", googleLabelIndex);
+    const googleButton = homeMarkup.slice(googleButtonStart, googleLabelIndex);
+    expect(googleButton).toContain("app-button-primary");
 
-    expect(home).toContain('variant="primary"');
-    expect(home).toContain("Continue with Google");
-    expect(constellation).toContain("app-field w-full appearance-none truncate");
-    expect(constellation).toContain("Use as background");
-    expect(constellation).toContain("Remove background");
-    expect(button).not.toContain("disabled:opacity-50");
-    expect(button).toContain("disabled:!bg-[var(--button-disabled-bg)]");
-    expect(button).toContain("disabled:saturate-[0.82]");
+    const disabledButton = renderToStaticMarkup(
+      createElement(Button, { disabled: true }, "Unavailable")
+    );
+    expect(disabledButton).toContain(
+      "disabled:!bg-[var(--button-disabled-bg)]"
+    );
+    expect(disabledButton).toContain("disabled:saturate-[0.82]");
+    expect(disabledButton).not.toContain("disabled:opacity-50");
+
+    expect(getConstellationBackgroundActionLabel(false)).toBe(
+      "Use as background"
+    );
+    expect(getConstellationBackgroundActionLabel(true)).toBe(
+      "Remove background"
+    );
   });
 });

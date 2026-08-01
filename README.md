@@ -35,8 +35,8 @@ The dashboard keeps eleven stable destinations:
 - **Stars** visualises earned constellation rewards.
 - **Account** manages profile data, authentication, and account deletion.
 
-`/dashboard/practise` remains the compatibility route for the user-facing Folders
-workspace. `/dashboard/practice` redirects to it.
+`/dashboard/practice` is the canonical notebook-first Practice workspace.
+`/dashboard/practise` remains available as a permanent compatibility redirect.
 
 ## Technology
 
@@ -100,15 +100,18 @@ The variable names and safe placeholders are documented in
 | `npm run dev:clean` | Clean and start the development server |
 | `npm run typecheck` | Run strict TypeScript checks, including unused code checks |
 | `npm run lint` | Lint the complete repository |
+| `npm run check:sizes` | Enforce source-file size limits |
 | `npm test` | Run the Vitest suite once |
 | `npm run test:rules` | Run Firestore and Storage rules tests in emulators |
+| `npm run test:e2e` | Run the signed-in Playwright suite in Firebase emulators |
 | `npm run emulators:rules` | Start the Firestore and Storage emulators |
 | `npm run build` | Create a production build |
-| `npm run check` | Run typecheck, lint, and tests |
+| `npm run check` | Run typecheck, lint, file-size checks, and Vitest |
+| `npm run verify:all` | Run the complete local quality, build, rules, and browser matrix |
 | `npm run firebase:rules:deploy` | Deploy Firestore and Storage rules |
 
-Pull requests and pushes to `main` run typecheck, lint, tests, and a production
-build in GitHub Actions.
+Pull requests and pushes to `main` run typecheck, lint, file-size checks, tests,
+a production build, Firebase rules tests, and browser smoke tests in GitHub Actions.
 
 ## Verification
 
@@ -116,8 +119,7 @@ Run focused tests while iterating, then use the complete quality gate before a
 release:
 
 ```bash
-npm run check
-npm run build
+npm run verify:all
 ```
 
 Notebook and responsive UI changes also require manual desktop, iPad, and phone

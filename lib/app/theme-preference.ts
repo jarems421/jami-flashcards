@@ -56,6 +56,25 @@ export const APP_THEME_OPTIONS: Array<{
   },
 ];
 
+export const APP_THEME_CLASS_NAMES = [
+  ...APP_THEME_OPTIONS.map((option) => `app-theme-${option.value}`),
+  // A stale class may still be stamped on a document restored from an older
+  // Jami session, so cleanup must continue to know about it.
+  "app-theme-purple-pink",
+  "app-theme-light",
+];
+
+export function getActiveAppThemeClassNames(
+  value: AppThemePreference
+): string[] {
+  return [
+    `app-theme-${value}`,
+    ...(value === "paper-white" || value === "pink"
+      ? ["app-theme-light"]
+      : []),
+  ];
+}
+
 function isAppThemePreference(value: unknown): value is AppThemePreference {
   return (
     value === "normal" ||

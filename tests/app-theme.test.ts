@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { APP_THEME_OPTIONS } from "@/lib/app/theme-preference";
+import {
+  APP_THEME_CLASS_NAMES,
+  APP_THEME_OPTIONS,
+  getActiveAppThemeClassNames,
+} from "@/lib/app/theme-preference";
 
 /**
  * A theme is three things that have to agree: an option in the picker, a block
@@ -32,11 +36,6 @@ function themeBlock(theme: string): string | null {
 
   return globalsCss.slice(open, close);
 }
-const backgroundShell = readFileSync(
-  join(root, "components/constellation/ConstellationBackgroundShell.tsx"),
-  "utf8"
-);
-
 describe("app theme options", () => {
   it("offers the expected themes", () => {
     expect(APP_THEME_OPTIONS.map((option) => option.value)).toEqual([
@@ -83,16 +82,18 @@ describe("every theme is actually implemented", () => {
     }
   });
 
-  it("toggles a class for each theme in the background shell", () => {
+  it("maps every option to its document class", () => {
     for (const option of APP_THEME_OPTIONS) {
-      expect(backgroundShell, option.value).toContain(`"app-theme-${option.value}"`);
+      expect(getActiveAppThemeClassNames(option.value), option.value).toContain(
+        `app-theme-${option.value}`
+      );
     }
   });
 
   it("still clears the retired purple-pink class", () => {
     // Older sessions may have it stamped on the element; leaving it would apply
     // purple's variables on top of whichever theme is now selected.
-    expect(backgroundShell).toContain('"app-theme-purple-pink"');
+    expect(APP_THEME_CLASS_NAMES).toContain("app-theme-purple-pink");
   });
 });
 
@@ -111,20 +112,19 @@ describe("light themes get the fixes that make them legible", () => {
     expect(globalsCss).toContain('body.app-theme-light [class*="bg-white/"]');
   });
 
-  it("marks every light theme as light in the background shell", () => {
-    const toggle = backgroundShell
-      .split('"app-theme-light"')[1]
-      ?.split(");")[0];
-
+  it("marks every light theme as light", () => {
     for (const theme of LIGHT_THEMES) {
-      expect(toggle, theme).toContain(`"${theme}"`);
+      expect(
+        getActiveAppThemeClassNames(
+          theme as (typeof APP_THEME_OPTIONS)[number]["value"]
+        ),
+        theme
+      ).toContain("app-theme-light");
     }
   });
 
-  it("clears the light class as well when unmounting", () => {
-    expect(backgroundShell.split("classList.remove")[1]).toContain(
-      '"app-theme-light"'
-    );
+  it("includes the light marker in the cleanup contract", () => {
+    expect(APP_THEME_CLASS_NAMES).toContain("app-theme-light");
   });
 
   it("gives light themes dark text, so the fixes are actually needed", () => {

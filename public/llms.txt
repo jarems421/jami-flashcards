@@ -7,7 +7,7 @@ signed-out visitor can access seeded or public dashboard data.
 Primary destinations:
 - /dashboard - Home and recommended next action
 - /dashboard/study - Learn and flashcard review
-- /dashboard/practise - Folders and notebook-first study spaces
+- /dashboard/practice - Practice, folders, and notebook-first study spaces
 - /dashboard/progress - Progress and weak areas
 - /dashboard/decks - Flashcard decks
 - /dashboard/cards - All flashcards
@@ -25,9 +25,9 @@ Additional routes:
 - /dashboard/topics/[topicId] - Topic detail
 
 Compatibility:
-- /dashboard/practice redirects to /dashboard/practise
-- User-facing copy says Folders or Practice even though the legacy `practise` path
-  is retained for route compatibility.
+- /dashboard/practise permanently redirects to /dashboard/practice
+- User-facing copy uses Practice; `practise` survives only as a legacy URL
+  retained for route compatibility.
 
 Data and privacy:
 - Persistent dashboard actions require Firebase authentication.

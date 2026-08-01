@@ -12,6 +12,7 @@ export function readDisclosurePreference(
     const storedValue = localStorage.getItem(key);
     return storedValue === null ? defaultOpen : storedValue === "true";
   } catch {
+    // Storage can be unavailable in privacy modes; keep the caller's default.
     return defaultOpen;
   }
 }
