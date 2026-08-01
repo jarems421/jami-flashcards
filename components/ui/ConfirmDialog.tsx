@@ -1,7 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import Button from "@/components/ui/Button";
+import {
+  Dialog,
+  DialogBackdrop,
+  DialogDescription,
+  DialogPanel,
+  DialogTitle,
+} from "@/components/ui/Dialog";
 
 type ConfirmDialogProps = {
   open: boolean;
@@ -27,55 +34,28 @@ export default function ConfirmDialog({
   onClose,
 }: ConfirmDialogProps) {
   const cancelButtonRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const focusFrame = window.requestAnimationFrame(() => {
-      cancelButtonRef.current?.focus();
-    });
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !busy) onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(focusFrame);
-      window.removeEventListener("keydown", handleKeyDown);
-      previousFocusRef.current?.focus();
-    };
-  }, [busy, onClose, open]);
-
-  if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[70] flex items-end justify-center p-4 sm:items-center">
-      <button
-        type="button"
-        aria-label="Close confirmation"
+    <Dialog
+      open={open}
+      dismissible={!busy}
+      initialFocusRef={cancelButtonRef}
+      className="fixed inset-0 flex items-end justify-center p-4 sm:items-center"
+      onDismiss={() => onClose()}
+    >
+      <DialogBackdrop
         className="absolute inset-0 bg-black/65 backdrop-blur-sm"
-        disabled={busy}
-        onClick={onClose}
       />
-      <div
+      <DialogPanel
         role="alertdialog"
-        aria-modal="true"
-        aria-labelledby="confirm-dialog-title"
-        aria-describedby="confirm-dialog-description"
         className="app-panel relative w-full max-w-md rounded-[1.55rem] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.5)] sm:p-6"
       >
-        <h2 id="confirm-dialog-title" className="text-xl font-semibold text-text-primary">
+        <DialogTitle className="text-xl font-semibold text-text-primary">
           {title}
-        </h2>
-        <p
-          id="confirm-dialog-description"
-          className="mt-3 text-sm leading-6 text-text-secondary"
-        >
+        </DialogTitle>
+        <DialogDescription className="mt-3 text-sm leading-6 text-text-secondary">
           {description}
-        </p>
+        </DialogDescription>
         <div className="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
           <Button
             ref={cancelButtonRef}
@@ -95,7 +75,7 @@ export default function ConfirmDialog({
             {busy ? "Working..." : confirmLabel}
           </Button>
         </div>
-      </div>
-    </div>
+      </DialogPanel>
+    </Dialog>
   );
 }

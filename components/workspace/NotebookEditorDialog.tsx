@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useId, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import TopicPicker from "@/components/topics/TopicPicker";
 import {
   Button,
-  Card,
   ConfirmDialog,
+  Dialog,
+  DialogBackdrop,
+  DialogDescription,
+  DialogPanel,
+  DialogTitle,
   FeedbackBanner,
   Input,
 } from "@/components/ui";
@@ -40,8 +44,6 @@ export default function NotebookEditorDialog({
   onSaved,
   onArchived,
 }: NotebookEditorDialogProps) {
-  const titleId = useId();
-  const descriptionId = useId();
   const titleInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState(notebook.title);
   const [topicIds, setTopicIds] = useState(notebook.topicIds);
@@ -54,18 +56,6 @@ export default function NotebookEditorDialog({
   const [saving, setSaving] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
   const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const frame = window.requestAnimationFrame(() => titleInputRef.current?.focus());
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving && !confirmArchive) onClose();
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [confirmArchive, onClose, saving]);
 
   const handleSave = async () => {
     const normalizedTitle = title.trim();
@@ -124,29 +114,26 @@ export default function NotebookEditorDialog({
 
   return (
     <>
-      <div className="fixed inset-0 z-[65] flex items-end justify-center p-3 sm:items-center sm:p-5">
-        <button
-          type="button"
-          aria-label="Close notebook editor"
+      <Dialog
+        open
+        dismissible={!saving}
+        initialFocusRef={titleInputRef}
+        className="fixed inset-0 flex items-end justify-center p-3 sm:items-center sm:p-5"
+        onDismiss={() => onClose()}
+      >
+        <DialogBackdrop
           className="absolute inset-0 bg-black/55 backdrop-blur-sm"
-          disabled={saving}
-          onClick={onClose}
         />
-        <Card
-          padding="sm"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby={titleId}
-          aria-describedby={descriptionId}
-          className="relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[44rem] overflow-y-auto rounded-[1.55rem] sm:max-h-[calc(100dvh-2.5rem)]"
+        <DialogPanel
+          className="app-panel relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[44rem] overflow-y-auto rounded-[1.55rem] p-3 backdrop-blur-md transition duration-fast sm:max-h-[calc(100dvh-2.5rem)] sm:p-4"
         >
           <div className="text-center sm:text-left">
-            <h2 id={titleId} className="text-sm font-semibold text-text-primary">
+            <DialogTitle className="text-sm font-semibold text-text-primary">
               Edit notebook
-            </h2>
-            <p id={descriptionId} className="mt-0.5 text-xs text-text-muted">
+            </DialogTitle>
+            <DialogDescription className="mt-0.5 text-xs text-text-muted">
               Update the notebook name, cover, or Topics.
-            </p>
+            </DialogDescription>
           </div>
 
           {error ? (
@@ -234,8 +221,8 @@ export default function NotebookEditorDialog({
               </Button>
             </div>
           </div>
-        </Card>
-      </div>
+        </DialogPanel>
+      </Dialog>
 
       <ConfirmDialog
         open={confirmArchive}

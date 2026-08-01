@@ -1,6 +1,13 @@
 "use client";
 
-import { Button, Card } from "@/components/ui";
+import {
+  Button,
+  Dialog,
+  DialogBackdrop,
+  DialogDescription,
+  DialogPanel,
+  DialogTitle,
+} from "@/components/ui";
 
 type NotebookAddPagesDialogProps = {
   open: boolean;
@@ -23,36 +30,31 @@ export default function NotebookAddPagesDialog({
   onCancel,
   onConfirm,
 }: NotebookAddPagesDialogProps) {
-  if (!open) return null;
-
   return (
-    <div className="absolute inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/45 p-3 backdrop-blur-sm sm:items-center sm:p-4">
-      <Card
-        padding="sm"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="add-notebook-pages-title"
-        aria-describedby="add-notebook-pages-description"
-        className="my-4 w-full max-w-lg"
+    <Dialog
+      open={open}
+      dismissible={!adding}
+      closeOnBackdrop={false}
+      className="fixed inset-0 flex items-start justify-center overflow-y-auto p-3 sm:items-center sm:p-4"
+      onDismiss={() => onCancel()}
+    >
+      <DialogBackdrop className="absolute inset-0 bg-black/45 backdrop-blur-sm" />
+      <DialogPanel
+        className="app-panel relative my-4 w-full max-w-lg overflow-hidden rounded-[1.45rem] p-3 backdrop-blur-md transition duration-fast sm:rounded-[1.9rem] sm:p-4"
       >
         <div>
-          <div
-            id="add-notebook-pages-title"
-            className="text-sm font-semibold text-text-primary"
-          >
+          <DialogTitle className="text-sm font-semibold text-text-primary">
             Add PDF or image pages
-          </div>
-          <p
-            id="add-notebook-pages-description"
-            className="mt-0.5 text-xs leading-5 text-text-muted"
-          >
+          </DialogTitle>
+          <DialogDescription className="mt-0.5 text-xs leading-5 text-text-muted">
             The new pages will be added after the current last page.
-          </p>
+          </DialogDescription>
         </div>
         <label className="mt-4 block">
           <span className="sr-only">PDF or image</span>
           <input
             type="file"
+            data-dialog-autofocus="true"
             accept="application/pdf,image/jpeg,image/png,image/webp"
             disabled={adding}
             onChange={(event) => onFileChange(event.target.files?.[0] ?? null)}
@@ -97,7 +99,7 @@ export default function NotebookAddPagesDialog({
               : "Add pages"}
           </Button>
         </div>
-      </Card>
-    </div>
+      </DialogPanel>
+    </Dialog>
   );
 }

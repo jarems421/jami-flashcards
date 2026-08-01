@@ -3,6 +3,14 @@ export { default as Button } from "./Button";
 export { ButtonLink } from "./Button";
 export { default as Card } from "./Card";
 export { default as ConfirmDialog } from "./ConfirmDialog";
+export {
+  Dialog,
+  DialogBackdrop,
+  DialogDescription,
+  DialogPanel,
+  DialogTitle,
+} from "./Dialog";
+export type { DialogDismissReason } from "./Dialog";
 export { default as EmptyState } from "./EmptyState";
 export { default as FeedbackBanner } from "./FeedbackBanner";
 export { default as IconBubble } from "./IconBubble";
