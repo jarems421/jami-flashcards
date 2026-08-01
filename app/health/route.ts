@@ -9,14 +9,6 @@ function getErrorCode(error: unknown): string | undefined {
   return undefined;
 }
 
-function getErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message;
-  }
-
-  return "Unknown health check error";
-}
-
 export async function GET() {
   const timestamp = new Date().toISOString();
 
@@ -38,7 +30,7 @@ export async function GET() {
     }
 
     validateFirebaseConfig();
-  await getDoc(doc(db, "health", "ping"));
+    await getDoc(doc(db, "health", "ping"));
 
     return Response.json({
       ok: true,
@@ -57,12 +49,16 @@ export async function GET() {
       });
     }
 
+    console.error("Firestore health check failed.", {
+      code: code ?? "unknown",
+    });
+
     return Response.json(
       {
         ok: false,
         timestamp,
         firestore: "unreachable",
-        details: getErrorMessage(error),
+        details: code ?? "unknown",
       },
       { status: 500 }
     );

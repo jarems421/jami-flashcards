@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { JamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 
 type JamiAssistantHistoryProps = {
@@ -86,6 +86,13 @@ export default function JamiAssistantHistory({
   const [deleteId, setDeleteId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editingId) {
+      renameInputRef.current?.focus();
+    }
+  }, [editingId]);
 
   const beginRename = (thread: JamiAssistantThread) => {
     setDeleteId(null);
@@ -194,8 +201,8 @@ export default function JamiAssistantHistory({
                       Chat name
                     </label>
                     <input
+                      ref={renameInputRef}
                       id={`jami-chat-title-${thread.id}`}
-                      autoFocus
                       maxLength={80}
                       value={editingTitle}
                       disabled={busy}

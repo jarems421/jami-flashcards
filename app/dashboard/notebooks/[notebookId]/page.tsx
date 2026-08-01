@@ -8,7 +8,6 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
-  useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -56,11 +55,16 @@ import {
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
+import {
+  useNotebookDrawingToolState,
+  useNotebookNavigationState,
+  useNotebookPageCreationState,
+  useNotebookPanelState,
+} from "@/hooks/useNotebookWorkspaceState";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import type {
   NotebookFile,
   NotebookPage,
-  NotebookStrokeColor,
   NotebookStrokeTool,
   NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
@@ -77,12 +81,7 @@ import {
   isNotebookPageSwipePreviewEnabled,
   resolveNotebookCarouselPages,
   shouldShowNotebookNewPagePreview,
-  type NotebookPageSwipeMotion as PageSwipeMotion,
 } from "@/lib/workspace/notebook-carousel";
-import {
-  type NotebookEraserMode,
-  type NotebookEraserSize,
-} from "@/lib/workspace/notebook-eraser";
 import {
   clearNotebookNativeSelection,
   installNotebookStylusTouchListeners,
@@ -155,11 +154,6 @@ type PageSwipeState = {
   intent: NotebookPageDragIntent | null;
   completed: boolean;
 };
-type PageFrameSize = { width: number; height: number };
-type NotebookConfirmRequest =
-  | { kind: "clear-page" }
-  | { kind: "delete-page"; page: NotebookPage };
-
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
 const NOTEBOOK_ASSISTANT_QUICK_ACTIONS = [
@@ -198,11 +192,7 @@ export default function NotebookEditorPage() {
   const { store: pageState, state: pageSnapshot } = useNotebookPageState();
   const { textBlocks, pageColor, pageStyle, saveStatus, tool } = pageSnapshot;
   const {
-    setTextBlocks,
-    setPageColor,
-    setPageStyle,
-    setSaveStatus,
-    setTool,
+    setTextBlocks, setPageColor, setPageStyle, setSaveStatus, setTool,
   } = pageState;
   const {
     feedback,
@@ -295,42 +285,33 @@ export default function NotebookEditorPage() {
       clearFeedbackIfShowing("Could not autosave this page."),
   });
 
-  const [penColor, setPenColor] = useState<NotebookStrokeColor>("black");
-  const [penThicknessPercent, setPenThicknessPercent] = useState(50);
-  const [highlighterColor, setHighlighterColor] = useState<NotebookStrokeColor>("yellow");
-  const [highlighterThicknessPercent, setHighlighterThicknessPercent] = useState(50);
-  const [eraserMode, setEraserMode] = useState<NotebookEraserMode>("precision");
-  const [eraserWidth, setEraserWidth] = useState<NotebookEraserSize>("medium");
-  const [pageZoom, setPageZoom] = useState(1);
-  const [pagePan, setPagePan] = useState<NotebookPagePan>({ x: 0, y: 0 });
-  const [frameSize, setFrameSize] = useState<PageFrameSize>({ width: 0, height: 0 });
-  const [deletingPageId, setDeletingPageId] = useState<string | null>(null);
-  const [confirmDialog, setConfirmDialog] = useState<NotebookConfirmRequest | null>(null);
-  const [inkEditorMountRevision, setInkEditorMountRevision] = useState(0);
-  const [isPhoneLayout, setIsPhoneLayout] = useState(false);
-  const [phoneFullEditing, setPhoneFullEditing] = useState(false);
-  const [showAddPagesDialog, setShowAddPagesDialog] = useState(false);
-  const [notebookFile, setNotebookFile] = useState<File | null>(null);
-  const [notebookUploadProgress, setNotebookUploadProgress] = useState<number | null>(
-    null
-  );
-  const [addingNotebookFile, setAddingNotebookFile] = useState(false);
-  const [assistantOpen, setAssistantOpen] = useState(false);
-  const [pagesDrawerOpen, setPagesDrawerOpen] = useState(false);
-  const [penMenuOpen, setPenMenuOpen] = useState(false);
-  const [highlighterMenuOpen, setHighlighterMenuOpen] = useState(false);
-  const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
-  const [pageSwipeMotion, setPageSwipeMotion] =
-    useState<PageSwipeMotion | null>(null);
-  const [pageSwipeInkSnapshot, setPageSwipeInkSnapshot] = useState<{
-    pageId: string;
-    svg: string;
-  } | null>(null);
-  const [createPageActive, setCreatePageActive] = useState(false);
-  const [createPageProgress, setCreatePageProgress] = useState(0);
-  const [creatingPage, setCreatingPage] = useState(false);
-  const [createPageBounce, setCreatePageBounce] = useState(false);
-  const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
+  const {
+    penColor, setPenColor, penThicknessPercent, setPenThicknessPercent,
+    highlighterColor, setHighlighterColor,
+    highlighterThicknessPercent, setHighlighterThicknessPercent,
+    eraserMode, setEraserMode, eraserWidth, setEraserWidth,
+    penMenuOpen, setPenMenuOpen, highlighterMenuOpen, setHighlighterMenuOpen,
+    eraserMenuOpen, setEraserMenuOpen,
+    touchInkHintVisible, setTouchInkHintVisible,
+  } = useNotebookDrawingToolState();
+  const {
+    pageZoom, setPageZoom, pagePan, setPagePan,
+    frameSize, setFrameSize, pageSwipeMotion, setPageSwipeMotion,
+    pageSwipeInkSnapshot, setPageSwipeInkSnapshot,
+  } = useNotebookNavigationState();
+  const {
+    showAddPagesDialog, setShowAddPagesDialog, notebookFile, setNotebookFile,
+    notebookUploadProgress, setNotebookUploadProgress,
+    addingNotebookFile, setAddingNotebookFile,
+    createPageActive, setCreatePageActive, createPageProgress, setCreatePageProgress,
+    creatingPage, setCreatingPage, createPageBounce, setCreatePageBounce,
+    deletingPageId, setDeletingPageId, confirmDialog, setConfirmDialog,
+    inkEditorMountRevision, setInkEditorMountRevision,
+  } = useNotebookPageCreationState();
+  const {
+    assistantOpen, setAssistantOpen, pagesDrawerOpen, setPagesDrawerOpen,
+    isPhoneLayout, setIsPhoneLayout, phoneFullEditing, setPhoneFullEditing,
+  } = useNotebookPanelState();
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
   const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
@@ -534,7 +515,13 @@ export default function NotebookEditorPage() {
       setEraserMenuOpen(false);
     }
     setAssistantOpen(open);
-  }, []);
+  }, [
+    setAssistantOpen,
+    setEraserMenuOpen,
+    setHighlighterMenuOpen,
+    setPagesDrawerOpen,
+    setPenMenuOpen,
+  ]);
 
   const getNotebookAssistantContext = useCallback(
     async (): Promise<JamiAssistantContext> => {
@@ -766,7 +753,7 @@ export default function NotebookEditorPage() {
     const observer = new ResizeObserver(updateFrameSize);
     observer.observe(frame);
     return () => observer.disconnect();
-  }, [loading, notebook?.id]);
+  }, [loading, notebook?.id, setFrameSize]);
 
   // Keep the committed pan valid whenever the zoom or frame changes: centered
   // while the page fits, clamped to the frame edges while zoomed in.
@@ -781,7 +768,7 @@ export default function NotebookEditorPage() {
       });
       return next.x === previous.x && next.y === previous.y ? previous : next;
     });
-  }, [frameSize, pageHeightPx, pageWidthPx]);
+  }, [frameSize, pageHeightPx, pageWidthPx, setPagePan]);
 
   useEffect(() => {
     pagePanLiveRef.current = pagePan;
@@ -929,7 +916,7 @@ export default function NotebookEditorPage() {
     update();
     mediaQuery.addEventListener("change", update);
     return () => mediaQuery.removeEventListener("change", update);
-  }, []);
+  }, [setIsPhoneLayout]);
 
   useEffect(() => {
     if (!selectedPage) {
@@ -989,7 +976,7 @@ export default function NotebookEditorPage() {
       if (pageColor === "white" && current === "white") return "black";
       return current;
     });
-  }, [pageColor]);
+  }, [pageColor, setPenColor]);
 
   useEffect(() => {
     if (typeof document === "undefined") return;
@@ -1120,6 +1107,11 @@ export default function NotebookEditorPage() {
     pageTrackOffsetRef,
     resetPageSurfaceTransform,
     resolvePageTrackTransition,
+    setCreatePageActive,
+    setCreatePageBounce,
+    setCreatePageProgress,
+    setCreatingPage,
+    setPagePan,
     setPagePreviewVisibility,
     stylusCooldownUntilRef,
     stylusInteractionRef,
@@ -1144,6 +1136,8 @@ export default function NotebookEditorPage() {
     pageSwipeRef.current = null;
   }, [
     cancelQueuedPageTrackOffset,
+    setCreatePageActive,
+    setCreatePageProgress,
     setPagePreviewVisibility,
     writePageTrackOffset,
   ]);
@@ -1260,6 +1254,10 @@ export default function NotebookEditorPage() {
     [
       cancelQueuedPageTrackOffset,
       resolvePageTrackTransition,
+      setCreatePageActive,
+      setCreatePageBounce,
+      setCreatePageProgress,
+      setCreatingPage,
       setPagePreviewVisibility,
       updatePageSwipeMotion,
       writePageTrackOffset,
@@ -1344,6 +1342,9 @@ export default function NotebookEditorPage() {
     inkReadyRef,
     pageState,
     pageSwipeMotionRef,
+    setCreatePageActive,
+    setCreatePageProgress,
+    setCreatingPage,
     setPagePreviewVisibility,
     updatePageSwipeMotion,
     writePageTrackOffset,
@@ -1673,6 +1674,10 @@ export default function NotebookEditorPage() {
     prepareCurrentPageForNavigation,
     returnPageTrackToSource,
     selectedPage,
+    setCreatePageActive,
+    setCreatePageBounce,
+    setCreatePageProgress,
+    setCreatingPage,
     setPages,
     showThrownError,
     user?.uid,
@@ -1823,6 +1828,8 @@ export default function NotebookEditorPage() {
     pages.length,
     queuePageTrackOffset,
     selectedPageIndex,
+    setCreatePageActive,
+    setCreatePageProgress,
     setPagePreviewDirection,
     setPagePreviewVisibility,
     viewportLayout.zoom,
@@ -1967,6 +1974,8 @@ export default function NotebookEditorPage() {
     returnPageTrackToSource,
     runPageTrackNavigation,
     selectedPageIndex,
+    setCreatePageActive,
+    setPagePan,
     setPagePreviewVisibility,
     tool,
   ]);
@@ -1996,6 +2005,7 @@ export default function NotebookEditorPage() {
   }, [
     fullNotebookEditingEnabled,
     isPinchActive,
+    setTouchInkHintVisible,
     tool,
   ]);
 
@@ -2031,6 +2041,9 @@ export default function NotebookEditorPage() {
     fullNotebookEditingEnabled,
     handleStartPageSwipe,
     handleTouchPointerDown,
+    setEraserMenuOpen,
+    setHighlighterMenuOpen,
+    setPenMenuOpen,
     tool,
   ]);
 
@@ -2243,6 +2256,9 @@ export default function NotebookEditorPage() {
     handleRedo,
     handleUndo,
     pageState,
+    setEraserMenuOpen,
+    setHighlighterMenuOpen,
+    setPenMenuOpen,
     switchNotebookTool,
   ]);
 
@@ -2250,7 +2266,7 @@ export default function NotebookEditorPage() {
     setPenMenuOpen(false);
     setHighlighterMenuOpen(false);
     setEraserMenuOpen(false);
-  }, []);
+  }, [setEraserMenuOpen, setHighlighterMenuOpen, setPenMenuOpen]);
 
   /** Which tool options popover is showing. The three are mutually exclusive. */
   const openToolMenu: NotebookToolMenu = penMenuOpen
@@ -2267,7 +2283,7 @@ export default function NotebookEditorPage() {
       setHighlighterMenuOpen(menu === "highlighter" && open);
       setEraserMenuOpen(menu === "eraser" && open);
     },
-    []
+    [setEraserMenuOpen, setHighlighterMenuOpen, setPenMenuOpen]
   );
 
   /** Selecting an inactive tool switches to it; the active one toggles options. */
@@ -2304,7 +2320,7 @@ export default function NotebookEditorPage() {
       setPagesDrawerOpen(false);
       void selectPageById(pageId);
     },
-    [selectPageById]
+    [selectPageById, setPagesDrawerOpen]
   );
 
   const handleCreatePageFromDrawer = useCallback(() => {
@@ -2313,7 +2329,7 @@ export default function NotebookEditorPage() {
 
   const handleImportPagesFromDrawer = useCallback(() => {
     setShowAddPagesDialog(true);
-  }, []);
+  }, [setShowAddPagesDialog]);
 
   const handleTextBlockTextChange = useCallback(
     (blockId: string, text: string) => {
@@ -2324,7 +2340,7 @@ export default function NotebookEditorPage() {
 
   const handleRequestDeletePage = useCallback((page: NotebookPage) => {
     setConfirmDialog({ kind: "delete-page", page });
-  }, []);
+  }, [setConfirmDialog]);
 
   const handleToolbarRedo = useCallback(() => {
     closeDrawingToolMenus();

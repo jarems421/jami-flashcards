@@ -9,7 +9,9 @@ export function createNotebookPdfDocumentCache<T>(
   const disposeEntry = (entry: CacheEntry) => {
     if (!dispose || entry.disposeRequested) return;
     entry.disposeRequested = true;
-    void entry.promise.then(dispose).catch(() => undefined);
+    void entry.promise.then(dispose).catch(() => {
+      // Disposal is best-effort after eviction; the original load owns errors.
+    });
   };
 
   return {
@@ -25,6 +27,7 @@ export function createNotebookPdfDocumentCache<T>(
       const entry: CacheEntry = { promise: pending, disposeRequested: false };
       entries.set(storagePath, entry);
       pending.catch(() => {
+        // The returned promise still rejects; only remove its failed cache entry.
         if (entries.get(storagePath) === entry) entries.delete(storagePath);
       });
 

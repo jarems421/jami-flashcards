@@ -4,9 +4,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
-import type { Feedback as DashboardFeedback } from "@/lib/app/feedback";
 import { runDashboardDataRequest } from "@/lib/app/dashboard-data";
-import { getDecks } from "@/services/study/decks";
 import type { Deck } from "@/lib/study/decks";
 import type { Goal } from "@/lib/study/goals";
 import { getCustomStudyHref } from "@/lib/app/routes";
@@ -15,24 +13,11 @@ import {
   type DailyStudyActivity,
 } from "@/lib/study/activity";
 import { predictStudyStreak } from "@/lib/study/streak-prediction";
-import { loadStudyActivity } from "@/services/study/activity";
-import { getActiveTopics } from "@/services/study/topics";
-import { getMasteryEvents } from "@/services/study/mastery";
-import { getGeneratedContentDrafts } from "@/services/study/generated-content";
-import { getActiveSources } from "@/services/study/sources";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Card as StudyCard } from "@/lib/study/cards";
-import {
-  ensureDailyReviewState,
-  ensureStudyStateSetup,
-} from "@/services/study/daily-review";
-import { loadUserCards } from "@/services/study/cards";
-import { loadRemoteActiveStudySession } from "@/services/study/session";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, Card, FeedbackBanner, IconBubble, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
-import { loadInAppUsername } from "@/services/profile";
-import { getStudyDayKey } from "@/lib/study/day";
 import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
 import type { Topic } from "@/lib/material/topics";
 import type { MasteryEvent } from "@/lib/material/mastery";
@@ -40,154 +25,16 @@ import type { Source } from "@/lib/material/sources";
 import { buildTodayPlan, type TodayPlan } from "@/lib/dashboard/today-plan";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import type { Notebook } from "@/lib/workspace/notebooks";
-import { getActiveStudyFolders } from "@/services/study/folders";
-import { getActiveNotebooks } from "@/services/study/notebooks";
-import { getGoals } from "@/services/study/goals";
 import { usePersistentDisclosure } from "@/lib/app/disclosure-preference";
-import { getFirebaseErrorCode } from "@/services/firebase/errors";
+import {
+  getCachedDashboardSnapshot,
+  loadDashboardSnapshot,
+  type DashboardSnapshot,
+} from "@/services/dashboard/today";
 
 const GETTING_STARTED_DISMISSED_KEY = "jami:getting-started-complete-dismissed";
 const GETTING_STARTED_OPEN_STORAGE_KEY = "jami:getting-started-open";
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
-const DASHBOARD_CACHE_MAX_AGE_MS = 5 * 60_000;
-
-type DashboardSnapshot = {
-  fetchedAt: number;
-  decks: Deck[];
-  dueCards: StudyCard[];
-  remainingOptionalCount: number;
-  activeGoals: Goal[];
-  hasEarnedStars: boolean;
-  studyActivity: DailyStudyActivity[];
-  cards: StudyCard[];
-  topics: Topic[];
-  masteryEvents: MasteryEvent[];
-  drafts: GeneratedContentDraft[];
-  sources: Source[];
-  studyFolders: StudyFolder[];
-  notebooks: Notebook[];
-  username: string | null;
-  hasActiveStudySession: boolean;
-};
-
-const dashboardSnapshotCache = new Map<string, DashboardSnapshot>();
-
-type DashboardLoadResult = {
-  snapshot: DashboardSnapshot;
-  feedback: DashboardFeedback | null;
-};
-
-async function loadDashboardSnapshot(uid: string): Promise<DashboardLoadResult> {
-  await ensureStudyStateSetup(uid);
-  const now = Date.now();
-  let deckFeedback: DashboardFeedback | null = null;
-  const [
-    fetchedDecks,
-    username,
-    allCards,
-    activeSessionResult,
-    goals,
-    activity,
-    nextTopics,
-    nextMasteryEvents,
-    nextDrafts,
-    nextSources,
-    nextStudyFolders,
-    nextNotebooks,
-  ] = await Promise.all([
-    getDecks(uid).catch((error) => {
-      console.error(error);
-      const code = getFirebaseErrorCode(error);
-      if (code !== "permission-denied") {
-        deckFeedback = {
-          type: "error",
-          message: code
-            ? `Failed to load decks (${code}).`
-            : "Failed to load decks.",
-        };
-      }
-      return [] as Deck[];
-    }),
-    loadInAppUsername(uid).catch(() => null),
-    loadUserCards(uid),
-    loadRemoteActiveStudySession(uid, getStudyDayKey(now), now).catch(
-      (error) => {
-        console.warn(
-          "Failed to load active study session for dashboard counts.",
-          error
-        );
-        return { session: null, foundRemoteSession: false };
-      }
-    ),
-    getGoals(uid).catch(() => null),
-    loadStudyActivity(uid).catch(() => [] as DailyStudyActivity[]),
-    getActiveTopics(uid).catch(() => [] as Topic[]),
-    getMasteryEvents(uid).catch(() => [] as MasteryEvent[]),
-    getGeneratedContentDrafts(uid).catch(
-      () => [] as GeneratedContentDraft[]
-    ),
-    getActiveSources(uid).catch(() => [] as Source[]),
-    getActiveStudyFolders(uid).catch(() => [] as StudyFolder[]),
-    getActiveNotebooks(uid).catch(() => [] as Notebook[]),
-  ]);
-
-  const dailyReviewState = await ensureDailyReviewState(uid, allCards, now, {
-    activeSession: activeSessionResult.session,
-  });
-  const completedRequiredIds = new Set(
-    dailyReviewState.completedRequiredCardIds
-  );
-  const parkedRequiredIds = new Set(dailyReviewState.parkedRequiredCardIds);
-  const cardsById = new Map(allCards.map((card) => [card.id, card]));
-  const requiredCards = dailyReviewState.requiredCardIds
-    .map((cardId) => cardsById.get(cardId) ?? null)
-    .filter((card): card is StudyCard => card !== null)
-    .filter(
-      (card) =>
-        !completedRequiredIds.has(card.id) && !parkedRequiredIds.has(card.id)
-    );
-  const completedOptionalIds = new Set(
-    dailyReviewState.completedOptionalCardIds
-  );
-  const optionalCards = dailyReviewState.optionalCardIds
-    .map((cardId) => cardsById.get(cardId) ?? null)
-    .filter((card): card is StudyCard => card !== null)
-    .filter((card) => !completedOptionalIds.has(card.id));
-
-  let activeGoals: Goal[] = [];
-  let hasEarnedStars = false;
-  if (goals) {
-    const currentTime = Date.now();
-    activeGoals = goals.filter(
-      (goal) =>
-        goal.status === "active" &&
-        (goal.deadline <= 0 || goal.deadline > currentTime)
-    );
-    hasEarnedStars = goals.some((goal) => goal.status === "completed");
-  }
-
-  return {
-    snapshot: {
-      fetchedAt: Date.now(),
-      decks: fetchedDecks,
-      dueCards: requiredCards,
-      remainingOptionalCount: optionalCards.length,
-      activeGoals,
-      hasEarnedStars,
-      studyActivity: activity,
-      cards: allCards,
-      topics: nextTopics,
-      masteryEvents: nextMasteryEvents,
-      drafts: nextDrafts,
-      sources: nextSources,
-      studyFolders: nextStudyFolders,
-      notebooks: nextNotebooks,
-      username,
-      hasActiveStudySession: Boolean(activeSessionResult.session),
-    },
-    feedback: deckFeedback,
-  };
-}
 
 type ChecklistItem = {
   label: string;
@@ -212,6 +59,8 @@ function GettingStartedChecklist({
     try {
       return sessionStorage.getItem(GETTING_STARTED_DISMISSED_KEY) === "true";
     } catch {
+      // Storage can be blocked by browser privacy settings; showing the
+      // checklist again is the safe non-persistent fallback.
       return false;
     }
   });
@@ -226,7 +75,8 @@ function GettingStartedChecklist({
       try {
         sessionStorage.setItem(GETTING_STARTED_DISMISSED_KEY, "true");
       } catch {
-        // Non-critical.
+        // The dismissal still applies for this render when browser storage is
+        // blocked; it simply cannot persist across navigation.
       }
     }, 2600);
 
@@ -478,6 +328,21 @@ export default function DashboardHome() {
   const [sources, setSources] = useState<Source[]>([]);
   const [studyFolders, setStudyFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
+  const [sectionStates, setSectionStates] = useState<DashboardSnapshot["sections"]>({
+    decks: "unavailable",
+    profile: "unavailable",
+    cards: "unavailable",
+    session: "unavailable",
+    goals: "unavailable",
+    activity: "unavailable",
+    topics: "unavailable",
+    mastery: "unavailable",
+    drafts: "unavailable",
+    sources: "unavailable",
+    folders: "unavailable",
+    notebooks: "unavailable",
+    dailyReview: "unavailable",
+  });
   const [progressVisited, setProgressVisited] = useState(false);
   const [hasActiveStudySession, setHasActiveStudySession] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
@@ -506,21 +371,21 @@ export default function DashboardHome() {
     setSources(snapshot.sources);
     setStudyFolders(snapshot.studyFolders);
     setNotebooks(snapshot.notebooks);
+    setSectionStates(snapshot.sections);
     setInAppUsername(snapshot.username);
     setHasActiveStudySession(snapshot.hasActiveStudySession);
   }, []);
 
   const loadAll = useCallback(
-    async (uid: string) => {
+    async (uid: string, options: { force?: boolean } = {}) => {
       const requestId = dashboardRequestIdRef.current + 1;
       dashboardRequestIdRef.current = requestId;
 
       return runDashboardDataRequest({
-        load: () => loadDashboardSnapshot(uid),
+        load: () => loadDashboardSnapshot(uid, options),
         isCurrent: () => requestId === dashboardRequestIdRef.current,
         apply: ({ snapshot, feedback: loadFeedback }) => {
           applySnapshot(snapshot);
-          dashboardSnapshotCache.set(uid, snapshot);
           lastForegroundRefreshAtRef.current = snapshot.fetchedAt;
           if (loadFeedback) {
             if (loadFeedback.type === "success") success(loadFeedback.message);
@@ -538,16 +403,17 @@ export default function DashboardHome() {
   );
 
   useEffect(() => {
-    const cached = dashboardSnapshotCache.get(user.uid);
-    const cacheAge = cached ? Date.now() - cached.fetchedAt : Number.POSITIVE_INFINITY;
-    if (cached && cacheAge <= DASHBOARD_CACHE_MAX_AGE_MS) {
-      applySnapshot(cached);
+    const cached = getCachedDashboardSnapshot(user.uid);
+    if (cached) {
+      applySnapshot(cached.snapshot);
       setIsLoading(false);
-      lastForegroundRefreshAtRef.current = cached.fetchedAt;
+      lastForegroundRefreshAtRef.current = cached.snapshot.fetchedAt;
     } else {
       setIsLoading(true);
     }
-    void loadAll(user.uid);
+    if (cached?.freshness !== "fresh") {
+      void loadAll(user.uid);
+    }
     return () => {
       dashboardRequestIdRef.current += 1;
     };
@@ -557,6 +423,8 @@ export default function DashboardHome() {
     try {
       setProgressVisited(localStorage.getItem(PROGRESS_VISITED_KEY) === "true");
     } catch {
+      // Treat inaccessible browser storage as no recorded visit; this only
+      // affects optional onboarding copy.
       setProgressVisited(false);
     }
   }, []);
@@ -584,7 +452,7 @@ export default function DashboardHome() {
     setRefreshing(true);
     clearFeedback();
     try {
-      await loadAll(user.uid);
+      await loadAll(user.uid, { force: true });
     } finally {
       setRefreshing(false);
     }
@@ -680,9 +548,30 @@ export default function DashboardHome() {
     todayPlan.weakTopics.length > 0 ||
     Boolean(todayPlan.goalSummary);
   const secondaryCardCount =
-    Number(todayPlan.drafts.length > 0) +
-    Number(todayPlan.weakTopics.length > 0) +
-    Number(Boolean(todayPlan.goalSummary));
+    Number(sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0) +
+    Number(
+      sectionStates.topics !== "unavailable" &&
+        sectionStates.mastery !== "unavailable" &&
+        todayPlan.weakTopics.length > 0
+    ) +
+    Number(sectionStates.goals !== "unavailable" && Boolean(todayPlan.goalSummary));
+  const planSections = [
+    "decks",
+    "cards",
+    "session",
+    "goals",
+    "activity",
+    "topics",
+    "mastery",
+    "drafts",
+    "sources",
+    "folders",
+    "notebooks",
+    "dailyReview",
+  ] as const;
+  const planUnavailable = planSections.some(
+    (section) => sectionStates[section] === "unavailable"
+  );
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -710,18 +599,32 @@ export default function DashboardHome() {
             <div className="app-subtle-panel grid w-full min-w-0 grid-cols-2 gap-3 rounded-[1.4rem] p-4 sm:min-w-[14rem] sm:grid-cols-1">
               <div>
                 <div className="text-xs text-text-muted">Reviewed today</div>
-                <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">{isLoading ? "..." : todayReviews}</div>
+                <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">
+                  {isLoading
+                    ? "..."
+                    : sectionStates.activity === "unavailable"
+                      ? "—"
+                      : todayReviews}
+                </div>
               </div>
               <div className="h-px bg-[var(--color-border)]" />
               <div>
                 <div className="text-xs text-text-muted">Due now</div>
-                <div className="mt-1 text-lg font-medium text-text-primary sm:text-xl">{isLoading ? "..." : dueCount}</div>
+                <div className="mt-1 text-lg font-medium text-text-primary sm:text-xl">
+                  {isLoading
+                    ? "..."
+                    : sectionStates.dailyReview === "unavailable"
+                      ? "—"
+                      : dueCount}
+                </div>
               </div>
             </div>
           }
         />
 
-        <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
+        {!planUnavailable ? (
+          <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
+        ) : null}
 
         {isLoading ? (
           <Card tone="warm" padding="lg">
@@ -732,7 +635,17 @@ export default function DashboardHome() {
           </Card>
         ) : (
           <>
-            <RecommendedActionCard plan={todayPlan} />
+            {planUnavailable ? (
+              <Card padding="lg">
+                <SectionHeader
+                  eyebrow="Recommended next action"
+                  title="Your complete study plan is temporarily unavailable."
+                  description="Refresh in a moment. Jami will not treat missing data as an empty study list."
+                />
+              </Card>
+            ) : (
+              <RecommendedActionCard plan={todayPlan} />
+            )}
 
             {hasSecondaryCards ? (
               <div
@@ -742,13 +655,21 @@ export default function DashboardHome() {
                     : "md:grid-cols-2 2xl:grid-cols-3"
                 }`}
               >
-                {todayPlan.drafts.length > 0 ? <DraftQueueCard plan={todayPlan} /> : null}
-                {todayPlan.weakTopics.length > 0 ? <WeakTopicsCard plan={todayPlan} /> : null}
-                {todayPlan.goalSummary ? <GoalSnapshotCard plan={todayPlan} /> : null}
+                {sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0 ? (
+                  <DraftQueueCard plan={todayPlan} />
+                ) : null}
+                {sectionStates.topics !== "unavailable" &&
+                sectionStates.mastery !== "unavailable" &&
+                todayPlan.weakTopics.length > 0 ? (
+                  <WeakTopicsCard plan={todayPlan} />
+                ) : null}
+                {sectionStates.goals !== "unavailable" && todayPlan.goalSummary ? (
+                  <GoalSnapshotCard plan={todayPlan} />
+                ) : null}
               </div>
             ) : null}
 
-            {remainingOptionalCount > 0 ? (
+            {sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0 ? (
               <StatTile
                 label="Easy extras"
                 value={remainingOptionalCount}
@@ -757,7 +678,9 @@ export default function DashboardHome() {
               />
             ) : null}
 
-            {cards.length > 0 ? (
+            {sectionStates.cards !== "unavailable" &&
+            sectionStates.activity !== "unavailable" &&
+            cards.length > 0 ? (
               <StreakPredictionPanel prediction={streakPrediction} compact />
             ) : null}
           </>

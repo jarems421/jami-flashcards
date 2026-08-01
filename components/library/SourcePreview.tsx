@@ -95,8 +95,7 @@ export default function SourcePreview({ source, fileUrl }: SourcePreviewProps) {
       <div
         role="document"
         aria-label={`${source.title} text preview`}
-        tabIndex={0}
-        className={`${readerMinHeightClass} min-h-full w-full bg-[var(--color-surface-panel-strong)] px-5 py-7 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[var(--color-selected-border)] sm:px-8 sm:py-9`}
+        className={`${readerMinHeightClass} min-h-full w-full bg-[var(--color-surface-panel-strong)] px-5 py-7 sm:px-8 sm:py-9`}
       >
         <div className="mx-auto max-w-[46rem] whitespace-pre-wrap break-words text-[0.95rem] leading-[1.8] text-text-secondary sm:text-base">
           {source.contentText}

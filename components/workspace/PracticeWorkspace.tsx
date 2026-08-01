@@ -16,8 +16,14 @@ import { useUser } from "@/components/providers/UserProvider";
 import type { Topic } from "@/lib/material/topics";
 import type { Notebook } from "@/lib/workspace/notebooks";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
-import { getActiveStudyFolders } from "@/services/study/folders";
-import { getActiveNotebooks, updateNotebook } from "@/services/study/notebooks";
+import {
+  getActiveStudyFoldersPage,
+  type StudyFolderPageCursor,
+} from "@/services/study/folders";
+import {
+  getRecentActiveNotebooks,
+  updateNotebook,
+} from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import CreateFolderDialog from "./CreateFolderDialog";
@@ -48,6 +54,11 @@ export default function PracticeWorkspace() {
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [notebooks, setNotebooks] = useState<Notebook[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [topicsLoaded, setTopicsLoaded] = useState(false);
+  const [notebooksUnavailable, setNotebooksUnavailable] = useState(false);
+  const [folderCursor, setFolderCursor] =
+    useState<StudyFolderPageCursor | null>(null);
+  const [loadingMoreFolders, setLoadingMoreFolders] = useState(false);
   const [editingNotebook, setEditingNotebook] = useState<Notebook | null>(null);
   const [notebookPendingDelete, setNotebookPendingDelete] =
     useState<Notebook | null>(null);
@@ -64,25 +75,44 @@ export default function PracticeWorkspace() {
   } = useFeedback();
 
   const loadWorkspace = useCallback(async () => {
-    const [nextFolders, nextNotebooks, nextTopics] = await Promise.all([
-      getActiveStudyFolders(user.uid),
-      getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
-      getActiveTopics(user.uid).catch(() => [] as Topic[]),
+    const [foldersResult, notebooksResult] = await Promise.allSettled([
+      getActiveStudyFoldersPage(user.uid),
+      getRecentActiveNotebooks(user.uid, 3),
     ]);
-    return { folders: nextFolders, notebooks: nextNotebooks, topics: nextTopics };
+    if (foldersResult.status === "rejected") throw foldersResult.reason;
+
+    return {
+      folders: foldersResult.value.items,
+      folderCursor: foldersResult.value.nextCursor,
+      notebooks:
+        notebooksResult.status === "fulfilled" ? notebooksResult.value : null,
+      failures: [
+        ["notebooks", notebooksResult] as const,
+      ].filter(([, result]) => result.status === "rejected"),
+    };
   }, [user.uid]);
 
   const applyWorkspace = useCallback(
     (data: Awaited<ReturnType<typeof loadWorkspace>>) => {
       setFolders(data.folders);
-      setNotebooks(data.notebooks);
-      setTopics(data.topics);
+      setFolderCursor(data.folderCursor);
+      setNotebooksUnavailable(data.notebooks === null);
+      if (data.notebooks !== null) setNotebooks(data.notebooks);
+      if (data.failures.length > 0) {
+        console.warn("Some Practice workspace sections failed to load.", {
+          sections: data.failures.map(([section]) => section),
+          errors: data.failures.map(([, result]) =>
+            result.status === "rejected" ? result.reason : undefined
+          ),
+        });
+        showError("Recent notebooks could not load. Your folders are still available.");
+      }
     },
-    []
+    [showError]
   );
 
   const handleWorkspaceLoadError = useCallback((error: unknown) => {
-    console.error(error);
+    console.error("Failed to load the Practice workspace.", error);
     showError("Failed to load your folders and notebooks.");
   }, [showError]);
 
@@ -105,6 +135,44 @@ export default function PracticeWorkspace() {
         .slice(0, 3),
     [notebooks]
   );
+
+  const handleEditNotebook = async (notebook: Notebook) => {
+    if (topicsLoaded) {
+      setEditingNotebook(notebook);
+      return;
+    }
+    clearFeedback();
+    try {
+      const nextTopics = await getActiveTopics(user.uid);
+      setTopics(nextTopics);
+      setTopicsLoaded(true);
+      setEditingNotebook(notebook);
+    } catch (error) {
+      console.error("Failed to load Topics for notebook editing.", error);
+      showError("Topics are unavailable. Refresh before editing this notebook.");
+    }
+  };
+
+  const handleLoadMoreFolders = async () => {
+    if (!folderCursor || loadingMoreFolders) return;
+    setLoadingMoreFolders(true);
+    try {
+      const nextPage = await getActiveStudyFoldersPage(user.uid, {
+        cursor: folderCursor,
+      });
+      setFolders((current) => {
+        const merged = new Map(current.map((folder) => [folder.id, folder]));
+        nextPage.items.forEach((folder) => merged.set(folder.id, folder));
+        return Array.from(merged.values());
+      });
+      setFolderCursor(nextPage.nextCursor);
+    } catch (error) {
+      console.error("Failed to load more Practice folders.", error);
+      showError("Could not load more folders. Try again in a moment.");
+    } finally {
+      setLoadingMoreFolders(false);
+    }
+  };
 
   const firstFolderHref = folders[0]
     ? `/dashboard/folders/${encodeURIComponent(folders[0].id)}`
@@ -226,7 +294,14 @@ export default function PracticeWorkspace() {
         <>
           <section className="space-y-4">
             <SectionHeader eyebrow="Continue working" title="Recent notebooks" />
-            {recentNotebooks.length > 0 ? (
+            {notebooksUnavailable ? (
+              <EmptyState
+                emoji="Notebook"
+                title="Recent notebooks are unavailable"
+                description="Your folders are still here. Refresh to try loading notebooks again."
+                variant="compact"
+              />
+            ) : recentNotebooks.length > 0 ? (
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
                 {recentNotebooks.map((notebook) => {
                   const folder = folders.find(
@@ -242,7 +317,7 @@ export default function PracticeWorkspace() {
                       icon={notebook.icon}
                       pageColor={notebook.pageColor}
                       updatedLabel={folder?.name ?? formatDate(notebook.updatedAt)}
-                      onEdit={() => setEditingNotebook(notebook)}
+                      onEdit={() => void handleEditNotebook(notebook)}
                       onDelete={() => setNotebookPendingDelete(notebook)}
                       deleting={deletingNotebookId === notebook.id}
                       compact
@@ -292,17 +367,32 @@ export default function PracticeWorkspace() {
               }
             />
             {folders.length > 0 ? (
-              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
-                {folders.map((folder) => (
-                  <FolderObjectCard
-                    key={folder.id}
-                    href={`/dashboard/folders/${encodeURIComponent(folder.id)}`}
-                    title={folder.name}
-                    color={folder.color}
-                    icon={folder.icon}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+                  {folders.map((folder) => (
+                    <FolderObjectCard
+                      key={folder.id}
+                      href={`/dashboard/folders/${encodeURIComponent(folder.id)}`}
+                      title={folder.name}
+                      color={folder.color}
+                      icon={folder.icon}
+                    />
+                  ))}
+                </div>
+                {folderCursor ? (
+                  <div className="flex justify-center">
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={loadingMoreFolders}
+                      aria-busy={loadingMoreFolders}
+                      onClick={() => void handleLoadMoreFolders()}
+                    >
+                      {loadingMoreFolders ? "Loading..." : "Load more folders"}
+                    </Button>
+                  </div>
+                ) : null}
+              </>
             ) : (
               <EmptyState
                 emoji="📁"

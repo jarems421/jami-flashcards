@@ -123,6 +123,7 @@ function getComponentContactRadius(input: {
             part.path.closedContainsPoint(input.eraserTo)
           );
         } catch {
+          // Unreadable legacy geometry is left intact instead of over-erased.
           return false;
         }
       })();
@@ -154,6 +155,7 @@ function isByteEquivalentReplacement(
       JSON.stringify(originalData.data) === JSON.stringify(replacementData.data)
     );
   } catch {
+    // If legacy stroke serialization is uncertain, keep the replacement action.
     return false;
   }
 }

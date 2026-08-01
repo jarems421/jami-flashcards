@@ -103,6 +103,18 @@ describe("NotebookDrawingToolbar", () => {
     expect(button("Highlighter (H)").dataset.active).not.toBe("true");
   });
 
+  it("exposes which tool settings popover is expanded", () => {
+    render({ openMenu: "highlighter" });
+    expect(button("Pen (P)").getAttribute("aria-expanded")).toBe("false");
+    expect(button("Highlighter (H)").getAttribute("aria-expanded")).toBe(
+      "true"
+    );
+    expect(button("Eraser (E)").getAttribute("aria-expanded")).toBe("false");
+    expect(button("Highlighter (H)").getAttribute("aria-controls")).toBe(
+      "notebook-tool-settings"
+    );
+  });
+
   it("disables undo and redo only when nothing is left to step", () => {
     render({ undoDepth: 0, redoDepth: 0 });
     expect(button("Undo (Ctrl+Z)").disabled).toBe(true);

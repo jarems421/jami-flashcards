@@ -14,32 +14,41 @@ import type { SourceWorkspaceFeedback } from "./source-workspace-types";
 type SourceDetailsDrawerProps = {
   open: boolean;
   source: Source | null;
-  folders: StudyFolder[];
-  topics: Topic[];
   userId: string;
-  feedback: SourceWorkspaceFeedback | null;
-  busyAction: string | null;
-  onClose: () => void;
-  onDismissFeedback: () => void;
-  onToggleFolder: (folderId: string) => void;
-  onUpdateTopics: (topicIds: string[]) => void;
-  onTopicsChange: (topics: Topic[]) => void;
+  referenceData: {
+    folders: StudyFolder[];
+    topics: Topic[];
+  };
+  status: {
+    feedback: SourceWorkspaceFeedback | null;
+    busyAction: string | null;
+  };
+  actions: {
+    onClose: () => void;
+    onDismissFeedback: () => void;
+    onToggleFolder: (folderId: string) => void;
+    onUpdateTopics: (topicIds: string[]) => void;
+    onTopicsChange: (topics: Topic[]) => void;
+  };
 };
 
 export default function SourceDetailsDrawer({
   open,
   source,
-  folders,
-  topics,
   userId,
-  feedback,
-  busyAction,
-  onClose,
-  onDismissFeedback,
-  onToggleFolder,
-  onUpdateTopics,
-  onTopicsChange,
+  referenceData,
+  status,
+  actions,
 }: SourceDetailsDrawerProps) {
+  const { folders, topics } = referenceData;
+  const { feedback, busyAction } = status;
+  const {
+    onClose,
+    onDismissFeedback,
+    onToggleFolder,
+    onUpdateTopics,
+    onTopicsChange,
+  } = actions;
   return (
     <SourceWorkspaceDrawer
       open={open}

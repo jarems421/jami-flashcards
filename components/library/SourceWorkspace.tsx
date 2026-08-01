@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import {
   MAX_SOURCE_FOLDER_IDS,
   type Source,
@@ -9,7 +9,14 @@ import {
 import { getSourceFileTypeLabel } from "@/lib/material/source-files";
 import { toggleIdSelection } from "@/lib/app/multi-select";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
-import { Button, JamiSparklesIcon } from "@/components/ui";
+import {
+  Button,
+  Dialog,
+  DialogBackdrop,
+  DialogPanel,
+  DialogTitle,
+  JamiSparklesIcon,
+} from "@/components/ui";
 import styles from "./SourceWorkspace.module.css";
 
 export type SourceActionIconName =
@@ -163,92 +170,30 @@ export function SourceWorkspaceDrawer({
   footer?: ReactNode;
   children: ReactNode;
 }) {
-  const drawerRef = useRef<HTMLDivElement>(null);
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    restoreFocusRef.current =
-      document.activeElement instanceof HTMLElement
-        ? document.activeElement
-        : null;
-    const frame = window.requestAnimationFrame(() => {
-      const autofocusTarget = drawerRef.current?.querySelector<HTMLElement>(
-        '[data-drawer-autofocus="true"]'
-      );
-      (autofocusTarget ?? closeButtonRef.current)?.focus();
-    });
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
-    };
-    const previousBodyOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = previousBodyOverflow;
-      restoreFocusRef.current?.focus();
-    };
-  }, [onClose, open]);
-
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-[75] flex justify-end">
-      <button
-        type="button"
-        aria-label={`Close ${title}`}
-        tabIndex={-1}
+    <Dialog
+      open={open}
+      className="fixed inset-0 flex justify-end"
+      onDismiss={() => onClose()}
+    >
+      <DialogBackdrop
         className="absolute inset-0 bg-black/50"
-        onClick={onClose}
       />
-      <div
-        ref={drawerRef}
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={`source-drawer-${eyebrow.toLowerCase().replaceAll(" ", "-")}`}
+      <DialogPanel
         className={`${styles.drawerPanel} relative flex h-[100dvh] max-h-[100dvh] w-full flex-col border-l border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)] ${
           wide ? "max-w-3xl" : "max-w-lg"
         }`}
-        onKeyDown={(event) => {
-          if (event.key !== "Tab") return;
-          const focusable = Array.from(
-            drawerRef.current?.querySelectorAll<HTMLElement>(
-              'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-            ) ?? []
-          ).filter(
-            (element) =>
-              !element.hasAttribute("hidden") &&
-              element.getClientRects().length > 0
-          );
-          if (focusable.length === 0) return;
-          const first = focusable[0];
-          const last = focusable[focusable.length - 1];
-          if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-          } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-          }
-        }}
       >
         <header className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-5 sm:px-7 sm:py-6">
           <div className="min-w-0">
             <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
               {eyebrow}
             </div>
-            <h2
-              id={`source-drawer-${eyebrow.toLowerCase().replaceAll(" ", "-")}`}
-              className="mt-1 truncate text-xl font-semibold text-text-primary sm:text-2xl"
-            >
+            <DialogTitle className="mt-1 truncate text-xl font-semibold text-text-primary sm:text-2xl">
               {title}
-            </h2>
+            </DialogTitle>
           </div>
           <Button
-            ref={closeButtonRef}
             type="button"
             variant="ghost"
             size="icon"
@@ -272,8 +217,8 @@ export function SourceWorkspaceDrawer({
             {footer}
           </footer>
         ) : null}
-      </div>
-    </div>
+      </DialogPanel>
+    </Dialog>
   );
 }
 

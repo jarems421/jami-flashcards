@@ -239,6 +239,8 @@ export function useNotebookPersistenceController({
         buildDraft(target.page, target.userId, inkSvg)
       );
     } catch {
+      // This lifecycle fallback cannot await IndexedDB; the normal draft/save
+      // paths surface failures and the boolean tells the caller it did not persist.
       return false;
     }
   }, [buildDraft, draftTarget, inkEditorRef]);
@@ -503,7 +505,9 @@ export function useNotebookPersistenceController({
       inkSvg = inkEditor
         ? inkEditor.serialize()
         : latestRef.current.fallbackInkSvg;
-    } catch {
+    } catch (error) {
+      console.error("Failed to serialize notebook ink before navigation.", error);
+      latestRef.current.onError("Could not prepare this page to save before leaving.");
       return false;
     }
     if (

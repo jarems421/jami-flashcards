@@ -207,7 +207,7 @@ export function useNotebookLoader({
       setFiles(nextFiles);
       setSelectedPageId(nextSelectedPageId);
     } catch (error) {
-      console.error(error);
+      console.error("Failed to load notebook content.", error);
       latestRef.current.onFeedback({
         type: "error",
         message:
@@ -245,7 +245,11 @@ export function useNotebookLoader({
               file.id,
               await getNotebookFileDownloadUrl(file.storagePath),
             ] as const;
-          } catch {
+          } catch (error) {
+            console.warn("Failed to resolve a notebook image preview.", {
+              fileId: file.id,
+              error,
+            });
             return [file.id, ""] as const;
           }
         })

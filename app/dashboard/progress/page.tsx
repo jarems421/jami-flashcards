@@ -119,13 +119,13 @@ export default function ProgressPage() {
       nextGoals,
     ] = await Promise.all([
       loadUserCards(user.uid),
-      getGeneratedContentDrafts(user.uid).catch(() => [] as GeneratedContentDraft[]),
-      getActiveSources(user.uid).catch(() => [] as Source[]),
-      getActiveNotebooks(user.uid).catch(() => [] as Notebook[]),
-      getDecks(user.uid).catch(() => [] as Deck[]),
-      getActiveTopics(user.uid).catch(() => [] as Topic[]),
-      loadStudyActivity(user.uid).catch(() => [] as DailyStudyActivity[]),
-      getGoals(user.uid).catch(() => null),
+      getGeneratedContentDrafts(user.uid),
+      getActiveSources(user.uid),
+      getActiveNotebooks(user.uid),
+      getDecks(user.uid),
+      getActiveTopics(user.uid),
+      loadStudyActivity(user.uid),
+      getGoals(user.uid),
     ]);
     return {
       cards: nextCards,
@@ -135,7 +135,7 @@ export default function ProgressPage() {
       decks: nextDecks,
       topics: nextTopics,
       studyActivity: nextStudyActivity,
-      goals: nextGoals ?? [],
+      goals: nextGoals,
     };
   }, [user.uid]);
 
@@ -155,7 +155,7 @@ export default function ProgressPage() {
   );
 
   const handleProgressLoadError = useCallback((error: unknown) => {
-    console.error(error);
+    console.error("Failed to load Progress data.", error);
     showError("Failed to load Progress.");
   }, [showError]);
 

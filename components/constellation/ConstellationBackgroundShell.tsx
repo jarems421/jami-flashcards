@@ -11,7 +11,9 @@ import {
   readConstellationBackgroundEnabled,
 } from "@/lib/constellation/background";
 import {
+  APP_THEME_CLASS_NAMES,
   APP_THEME_EVENT,
+  getActiveAppThemeClassNames,
   readAppThemePreference,
   type AppThemePreference,
 } from "@/lib/app/theme-preference";
@@ -116,38 +118,17 @@ export default function ConstellationBackgroundShell({
 
   useEffect(() => {
     const themeTargets = [document.documentElement, document.body];
+    const activeClassNames = new Set(getActiveAppThemeClassNames(appTheme));
 
     for (const target of themeTargets) {
-      target.classList.toggle("app-theme-normal", appTheme === "normal");
-      target.classList.toggle("app-theme-purple", appTheme === "purple");
-      target.classList.toggle("app-theme-pink", appTheme === "pink");
-      target.classList.toggle("app-theme-paper-white", appTheme === "paper-white");
-      target.classList.toggle("app-theme-soft-grey", appTheme === "soft-grey");
-      target.classList.toggle("app-theme-black", appTheme === "black");
-      // Components across the app hard-code white text and white/opacity
-      // backgrounds, which disappear on a pale surface. The fixes for that are
-      // keyed on lightness rather than on one theme's name, so a light theme
-      // cannot be added without them.
-      target.classList.toggle(
-        "app-theme-light",
-        appTheme === "paper-white" || appTheme === "pink"
-      );
+      for (const className of APP_THEME_CLASS_NAMES) {
+        target.classList.toggle(className, activeClassNames.has(className));
+      }
     }
 
     return () => {
       for (const target of themeTargets) {
-        target.classList.remove(
-          "app-theme-normal",
-          "app-theme-purple",
-          // Retired, but still removed so a stale class from an older session
-          // cannot linger on the element.
-          "app-theme-purple-pink",
-          "app-theme-pink",
-          "app-theme-paper-white",
-          "app-theme-soft-grey",
-          "app-theme-black",
-          "app-theme-light"
-        );
+        target.classList.remove(...APP_THEME_CLASS_NAMES);
       }
     };
   }, [appTheme]);

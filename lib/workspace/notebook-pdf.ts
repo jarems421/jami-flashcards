@@ -20,7 +20,7 @@ export function validateOwnedNotebookPdfStoragePath(
   if (
     !normalizedUserId ||
     !normalizedPath.startsWith(prefix) ||
-    pathSegments.length < 5 ||
+    pathSegments.length !== 5 ||
     pathSegments.some((segment) => !segment || segment === "." || segment === "..")
   ) {
     throw new Error("Invalid notebook PDF path.");

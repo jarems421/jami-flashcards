@@ -44,6 +44,8 @@ export default function DecksPage() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [folders, setFolders] = useState<StudyFolder[]>([]);
   const [deckCounts, setDeckCounts] = useState<DeckCounts>({});
+  const [hasSuccessfulLoad, setHasSuccessfulLoad] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [createFolderId, setCreateFolderId] = useState("");
   const [isCreatingDeck, setIsCreatingDeck] = useState(false);
@@ -63,7 +65,7 @@ export default function DecksPage() {
   const loadDeckData = useCallback(async () => {
     const [nextDecks, nextFolders, nextCards] = await Promise.all([
       getDecks(user.uid),
-      getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
+      getActiveStudyFolders(user.uid),
       loadUserCards(user.uid),
     ]);
     return {
@@ -82,18 +84,20 @@ export default function DecksPage() {
       setDecks(data.decks);
       setFolders(data.folders);
       setDeckCounts(data.counts);
+      setHasSuccessfulLoad(true);
+      setLoadError(null);
     },
     []
   );
 
   const handleDeckLoadError = useCallback((error: unknown) => {
-    console.error(error);
-    setDecks([]);
-    setDeckCounts({});
-    if (!isFirebasePermissionDenied(error)) {
-      showError("Failed to load decks.");
-    }
-  }, [showError]);
+    console.error("Failed to load decks and their workspace data.", error);
+    setLoadError(
+      isFirebasePermissionDenied(error)
+        ? "Decks are temporarily unavailable while your workspace permissions sync."
+        : "Failed to load decks. Try again in a moment."
+    );
+  }, []);
 
   const { loading: isLoadingDecks, reload: loadAll } = useDashboardData({
     requestKey: user.uid,
@@ -145,7 +149,7 @@ export default function DecksPage() {
       await loadAll();
       success(`Created deck ${deckName}`);
     } catch (error) {
-      console.error(error);
+      console.error("Failed to create a deck.", error);
       showError("Error creating deck. Please try again.");
     } finally {
       setIsCreatingDeck(false);
@@ -166,7 +170,7 @@ export default function DecksPage() {
       resetDeckEditing();
       success(`Saved changes to ${draft.name.trim()}`);
     } catch (error) {
-      console.error(error);
+      console.error("Failed to save deck changes.", error);
       showError("Failed to rename deck.");
     } finally {
       rows.setSaving(null);
@@ -182,12 +186,54 @@ export default function DecksPage() {
       setDeckPendingDelete(null);
       success(`Deleted deck ${deck.name}`);
     } catch (error) {
-      console.error(error);
+      console.error("Failed to delete a deck.", error);
       showError("Failed to delete deck.");
     } finally {
       rows.setDeleting(null);
     }
   };
+
+  if (loadError && !hasSuccessfulLoad) {
+    return (
+      <Refreshable onRefresh={handleRefresh}>
+        <AppPage
+          title="Decks"
+          backHref="/dashboard"
+          backLabel="Today"
+          width="2xl"
+          action={
+            <RefreshIconButton
+              refreshing={refreshing}
+              onClick={() => void handleRefresh()}
+            />
+          }
+          contentClassName="space-y-4 sm:space-y-6"
+        >
+          <FeedbackBanner
+            type="error"
+            message={loadError}
+            autoDismissMs={0}
+            onDismiss={() => setLoadError(null)}
+          />
+          <EmptyState
+            emoji="Deck"
+            title="Decks are unavailable"
+            description="We could not load your decks, so the workspace has not been treated as empty."
+            action={
+              <Button
+                type="button"
+                disabled={isLoadingDecks}
+                aria-busy={isLoadingDecks}
+                onClick={() => void loadAll()}
+              >
+                {isLoadingDecks ? "Trying again..." : "Try again"}
+              </Button>
+            }
+          />
+        </AppPage>
+      </Refreshable>
+    );
+  }
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -199,6 +245,14 @@ export default function DecksPage() {
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
         contentClassName="space-y-4 sm:space-y-6"
       >
+        {loadError ? (
+          <FeedbackBanner
+            type="error"
+            message={loadError}
+            autoDismissMs={0}
+            onDismiss={() => setLoadError(null)}
+          />
+        ) : null}
         {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} /> : null}
         <ConfirmDialog
           open={deckPendingDelete !== null}

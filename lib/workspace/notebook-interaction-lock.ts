@@ -63,6 +63,7 @@ export function safelySetPointerCapture(
     }
     return true;
   } catch {
+    // Pointer capture is optional and can be rejected by Safari mid-gesture.
     return false;
   }
 }

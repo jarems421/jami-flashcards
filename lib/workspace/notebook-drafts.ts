@@ -72,6 +72,7 @@ export function parseNotebookPageDraft(value: unknown): NotebookPageDraft | null
     try {
       candidate = JSON.parse(candidate) as unknown;
     } catch {
+      // Corrupt or partial recovery JSON is treated as an unusable draft.
       return null;
     }
   }
@@ -230,6 +231,7 @@ function readLocalStorageDraft(storageKey: string) {
   try {
     return parseNotebookPageDraft(window.localStorage.getItem(storageKey));
   } catch {
+    // IndexedDB remains available when localStorage is blocked or corrupted.
     return null;
   }
 }
@@ -243,6 +245,7 @@ export function writeNotebookPageDraftSync(draft: NotebookPageDraft) {
     );
     return true;
   } catch {
+    // The asynchronous IndexedDB copy is the primary recovery store.
     return false;
   }
 }
@@ -252,7 +255,9 @@ const storageOperations = new Map<string, Promise<void>>();
 function enqueueStorageOperation(key: string, operation: () => Promise<void>) {
   const previous = storageOperations.get(key) ?? Promise.resolve();
   const next = previous
-    .catch(() => undefined)
+    .catch(() => {
+      // A failed operation must not prevent a later recovery write or cleanup.
+    })
     .then(operation)
     .finally(() => {
       if (storageOperations.get(key) === next) storageOperations.delete(key);

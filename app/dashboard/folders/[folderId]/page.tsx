@@ -2,20 +2,15 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AppPage from "@/components/layout/AppPage";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
 import DeckObjectCard from "@/components/workspace/DeckObjectCard";
+import FolderEditor from "@/components/workspace/FolderEditor";
+import FolderAssetPicker from "@/components/workspace/FolderAssetPicker";
+import FolderNotebookCreator from "@/components/workspace/FolderNotebookCreator";
 import NotebookEditorDialog from "@/components/workspace/NotebookEditorDialog";
 import { NotebookObjectCard } from "@/components/workspace/NotebookObjectCard";
-import TopicPicker from "@/components/topics/TopicPicker";
-import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
-import {
-  normalizeObjectColor,
-  normalizeObjectIcon,
-  type ObjectColorId,
-  type ObjectIconId,
-} from "@/lib/workspace/object-card-styles";
 import {
   Button,
   ButtonLink,
@@ -23,7 +18,6 @@ import {
   ConfirmDialog,
   EmptyState,
   FeedbackBanner,
-  Input,
   SectionHeader,
   Skeleton,
 } from "@/components/ui";
@@ -31,7 +25,6 @@ import { featureFlags } from "@/lib/app/feature-flags";
 import { getDeckHref } from "@/lib/app/routes";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
-import { toggleIdSelection } from "@/lib/app/multi-select";
 import type { Source } from "@/lib/material/sources";
 import type { Topic } from "@/lib/material/topics";
 import type { Deck } from "@/lib/study/decks";
@@ -41,32 +34,30 @@ import {
   getFolderTabFromSearch,
   type FolderWorkspaceTab,
 } from "@/lib/workspace/folder-navigation";
+import type { Notebook } from "@/lib/workspace/notebooks";
+import type { StudyFolder } from "@/lib/workspace/study-folders";
 import {
-  NOTEBOOK_CREATION_PAGE_STYLES,
-  type Notebook,
-  type NotebookPageColor,
-  type NotebookPageStyle,
-} from "@/lib/workspace/notebooks";
+  getDecks,
+  getDecksForFolderPage,
+  type DeckFolderPageCursor,
+  updateDeckFolders,
+} from "@/services/study/decks";
+import { getStudyFolderById } from "@/services/study/folders";
 import {
-  MAX_STUDY_FOLDER_SUBJECT_LENGTH,
-  type StudyFolder,
-} from "@/lib/workspace/study-folders";
-import { getDecks, updateDeckFolders } from "@/services/study/decks";
-import { archiveStudyFolder, getStudyFolderById, updateStudyFolder } from "@/services/study/folders";
-import {
-  createNotebook,
-  createNotebookPage,
-  getNotebooksForFolder,
+  getNotebooksForFolderPage,
+  type NotebookFolderPageCursor,
   updateNotebook,
 } from "@/services/study/notebooks";
-import { importUploadedNotebook } from "@/services/study/notebook-import";
-import { getActiveSources, updateSource } from "@/services/study/sources";
+import {
+  getActiveSources,
+  getActiveSourcesForFolderPage,
+  type SourceFolderPageCursor,
+  updateSource,
+} from "@/services/study/sources";
 import { getActiveTopics } from "@/services/study/topics";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 
-function resultValue<T>(result: PromiseSettledResult<T>, fallback: T) {
-  return result.status === "fulfilled" ? result.value : fallback;
-}
+const FOLDER_ASSET_PAGE_SIZE = 30;
 
 function resultError(result: PromiseSettledResult<unknown>) {
   return result.status === "rejected" ? result.reason : null;
@@ -83,6 +74,12 @@ function formatEditedLabel(updatedAt: number) {
     day: "numeric",
     month: "short",
   }).format(updatedAt)}`;
+}
+
+function mergeUniqueById<T extends { id: string }>(current: T[], next: T[]) {
+  const items = new Map(current.map((item) => [item.id, item]));
+  next.forEach((item) => items.set(item.id, item));
+  return Array.from(items.values());
 }
 
 export default function FolderDetailPage() {
@@ -104,6 +101,13 @@ export default function FolderDetailPage() {
     null
   );
   const [loading, setLoading] = useState(true);
+  const [folderLoadState, setFolderLoadState] = useState<
+    "loading" | "ready" | "not-found" | "unavailable"
+  >("loading");
+  const [notebooksAvailability, setNotebooksAvailability] = useState<
+    "loading" | "ready" | "unavailable"
+  >("loading");
+  const [retryingNotebooks, setRetryingNotebooks] = useState(false);
   const {
     feedback,
     success,
@@ -113,35 +117,25 @@ export default function FolderDetailPage() {
   } = useFeedback();
   const [busyAssetId, setBusyAssetId] = useState<string | null>(null);
   const [showNotebookForm, setShowNotebookForm] = useState(false);
-  const [notebookTitle, setNotebookTitle] = useState("");
-  const [notebookColor, setNotebookColor] = useState<ObjectColorId>("violet");
-  const [notebookIcon, setNotebookIcon] = useState<ObjectIconId>("none");
-  const [notebookPageColor, setNotebookPageColor] = useState<NotebookPageColor>("white");
-  const [notebookPageStyle, setNotebookPageStyle] = useState<NotebookPageStyle>("plain");
-  const [notebookFile, setNotebookFile] = useState<File | null>(null);
-  const [notebookTopicIds, setNotebookTopicIds] = useState<string[]>([]);
-  const [creatingNotebook, setCreatingNotebook] = useState(false);
-  const [notebookUploadProgress, setNotebookUploadProgress] = useState<
-    number | null
-  >(null);
   const [activeTab, setActiveTab] = useState<FolderWorkspaceTab>(() =>
     typeof window === "undefined"
       ? "notebooks"
       : getFolderTabFromSearch(window.location.search)
   );
   const [showEditFolder, setShowEditFolder] = useState(false);
-  const [editFolderName, setEditFolderName] = useState("");
-  const [editFolderSubject, setEditFolderSubject] = useState("");
-  const [editFolderColor, setEditFolderColor] = useState<ObjectColorId>("sky");
-  const [editFolderIcon, setEditFolderIcon] = useState<ObjectIconId>("none");
-  const [savingFolder, setSavingFolder] = useState(false);
   const [showDeckPicker, setShowDeckPicker] = useState(false);
-  const [deckSearch, setDeckSearch] = useState("");
-  const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>([]);
   const [showSourcePicker, setShowSourcePicker] = useState(false);
-  const [sourceSearch, setSourceSearch] = useState("");
-  const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
+  const [notebookCursor, setNotebookCursor] =
+    useState<NotebookFolderPageCursor | null>(null);
+  const [deckCursor, setDeckCursor] =
+    useState<DeckFolderPageCursor | null>(null);
+  const [sourceCursor, setSourceCursor] =
+    useState<SourceFolderPageCursor | null>(null);
+  const [loadingMoreTab, setLoadingMoreTab] =
+    useState<FolderWorkspaceTab | null>(null);
+  const loadedFolderIdRef = useRef<string | null>(null);
+  const assetRequestGenerationRef = useRef({ decks: 0, sources: 0 });
 
   useEffect(() => {
     const handlePopState = () => {
@@ -168,14 +162,29 @@ export default function FolderDetailPage() {
     }
 
     setLoading(true);
-    setDecks([]);
-    setSources([]);
-    setDecksLoaded(false);
-    setSourcesLoaded(false);
+    setFolderLoadState("loading");
+    setNotebooksAvailability("loading");
+    assetRequestGenerationRef.current.decks += 1;
+    assetRequestGenerationRef.current.sources += 1;
+
+    if (loadedFolderIdRef.current !== folderId) {
+      setFolder(null);
+      setNotebooks([]);
+      setTopics([]);
+      setDecks([]);
+      setSources([]);
+      setDecksLoaded(false);
+      setSourcesLoaded(false);
+      setNotebookCursor(null);
+      setDeckCursor(null);
+      setSourceCursor(null);
+    }
     try {
       const [folderResult, notebooksResult, topicsResult] = await Promise.allSettled([
         getStudyFolderById(user.uid, folderId),
-        getNotebooksForFolder(user.uid, folderId),
+        getNotebooksForFolderPage(user.uid, folderId, {
+          pageSize: FOLDER_ASSET_PAGE_SIZE,
+        }),
         getActiveTopics(user.uid),
       ]);
 
@@ -196,14 +205,24 @@ export default function FolderDetailPage() {
       }
 
       const nextFolder = folderResult.value;
-      const nextNotebooks = resultValue<Notebook[]>(notebooksResult, []);
-      const nextTopics = resultValue<Topic[]>(topicsResult, []);
-
+      loadedFolderIdRef.current = folderId;
       setFolder(nextFolder);
-      setNotebooks(nextNotebooks);
-      setTopics(nextTopics);
+      setFolderLoadState(nextFolder ? "ready" : "not-found");
+
+      if (notebooksResult.status === "fulfilled") {
+        setNotebooks(notebooksResult.value.items);
+        setNotebookCursor(notebooksResult.value.nextCursor);
+        setNotebooksAvailability("ready");
+      } else {
+        setNotebooksAvailability("unavailable");
+      }
+
+      if (topicsResult.status === "fulfilled") {
+        setTopics(topicsResult.value);
+      }
     } catch (error) {
       console.error(error);
+      setFolderLoadState("unavailable");
       showError(isFirebasePermissionDenied(error)
           ? "Could not open this folder yet. Refresh once the workspace has finished syncing."
           : "Could not load this folder. Try refreshing in a moment.");
@@ -220,23 +239,54 @@ export default function FolderDetailPage() {
     async (tab: "decks" | "sources") => {
       if (!user?.uid) return;
       if ((tab === "decks" && decksLoaded) || (tab === "sources" && sourcesLoaded)) return;
+      if (
+        (tab === "decks" && showDeckPicker) ||
+        (tab === "sources" && showSourcePicker)
+      ) {
+        return;
+      }
+      const generation = assetRequestGenerationRef.current[tab] + 1;
+      assetRequestGenerationRef.current[tab] = generation;
       setLoadingAssetTab(tab);
       try {
         if (tab === "decks") {
-          setDecks(await getDecks(user.uid));
+          const page = await getDecksForFolderPage(user.uid, folderId ?? "", {
+            pageSize: FOLDER_ASSET_PAGE_SIZE,
+          });
+          if (assetRequestGenerationRef.current[tab] !== generation) return;
+          setDecks(page.items);
+          setDeckCursor(page.nextCursor);
           setDecksLoaded(true);
         } else {
-          setSources(await getActiveSources(user.uid));
+          const page = await getActiveSourcesForFolderPage(
+            user.uid,
+            folderId ?? "",
+            { pageSize: FOLDER_ASSET_PAGE_SIZE }
+          );
+          if (assetRequestGenerationRef.current[tab] !== generation) return;
+          setSources(page.items);
+          setSourceCursor(page.nextCursor);
           setSourcesLoaded(true);
         }
       } catch (error) {
+        if (assetRequestGenerationRef.current[tab] !== generation) return;
         console.error(error);
         showError(`Could not load this folder’s ${tab}. Try again in a moment.`);
       } finally {
-        setLoadingAssetTab((current) => (current === tab ? null : current));
+        if (assetRequestGenerationRef.current[tab] === generation) {
+          setLoadingAssetTab((current) => (current === tab ? null : current));
+        }
       }
     },
-    [decksLoaded, showError, sourcesLoaded, user?.uid]
+    [
+      decksLoaded,
+      folderId,
+      showDeckPicker,
+      showError,
+      showSourcePicker,
+      sourcesLoaded,
+      user?.uid,
+    ]
   );
 
   useEffect(() => {
@@ -244,6 +294,62 @@ export default function FolderDetailPage() {
       void loadAssetTab(activeTab);
     }
   }, [activeTab, loadAssetTab]);
+
+  const loadMore = useCallback(
+    async (tab: FolderWorkspaceTab) => {
+      if (!user?.uid || !folderId) return;
+      setLoadingMoreTab(tab);
+      try {
+        if (tab === "notebooks" && notebookCursor) {
+          const page = await getNotebooksForFolderPage(user.uid, folderId, {
+            cursor: notebookCursor,
+            pageSize: FOLDER_ASSET_PAGE_SIZE,
+          });
+          setNotebooks((current) =>
+            mergeUniqueById(current, page.items).sort(
+              (left, right) => right.updatedAt - left.updatedAt
+            )
+          );
+          setNotebookCursor(page.nextCursor);
+        } else if (tab === "decks" && deckCursor) {
+          const page = await getDecksForFolderPage(user.uid, folderId, {
+            cursor: deckCursor,
+            pageSize: FOLDER_ASSET_PAGE_SIZE,
+          });
+          setDecks((current) =>
+            mergeUniqueById(current, page.items).sort(
+              (left, right) => right.createdAt - left.createdAt
+            )
+          );
+          setDeckCursor(page.nextCursor);
+        } else if (tab === "sources" && sourceCursor) {
+          const page = await getActiveSourcesForFolderPage(user.uid, folderId, {
+            cursor: sourceCursor,
+            pageSize: FOLDER_ASSET_PAGE_SIZE,
+          });
+          setSources((current) =>
+            mergeUniqueById(current, page.items).sort(
+              (left, right) => right.updatedAt - left.updatedAt
+            )
+          );
+          setSourceCursor(page.nextCursor);
+        }
+      } catch (error) {
+        console.error(`Failed to load more folder ${tab}.`, error);
+        showError(`Could not load more ${tab}. Try again in a moment.`);
+      } finally {
+        setLoadingMoreTab((current) => (current === tab ? null : current));
+      }
+    },
+    [
+      deckCursor,
+      folderId,
+      notebookCursor,
+      showError,
+      sourceCursor,
+      user?.uid,
+    ]
+  );
 
   const folderDecks = useMemo(
     () => decks.filter((deck) => folder && deck.folderIds.includes(folder.id)),
@@ -254,10 +360,9 @@ export default function FolderDetailPage() {
       decks.filter(
         (deck) =>
           folder &&
-          !deck.folderIds.includes(folder.id) &&
-          deck.name.toLowerCase().includes(deckSearch.trim().toLowerCase())
+          !deck.folderIds.includes(folder.id)
       ),
-    [deckSearch, decks, folder]
+    [decks, folder]
   );
   const folderSources = useMemo(
     () => sources.filter((source) => folder && source.folderIds.includes(folder.id)),
@@ -268,10 +373,9 @@ export default function FolderDetailPage() {
       sources.filter(
         (source) =>
           folder &&
-          !source.folderIds.includes(folder.id) &&
-          source.title.toLowerCase().includes(sourceSearch.trim().toLowerCase())
+          !source.folderIds.includes(folder.id)
       ),
-    [folder, sourceSearch, sources]
+    [folder, sources]
   );
   const mergeFolderId = (folderIds: string[], shouldLink: boolean) => {
     if (!folder) return folderIds;
@@ -280,11 +384,73 @@ export default function FolderDetailPage() {
 
   const openEditFolder = () => {
     if (!folder) return;
-    setEditFolderName(folder.name);
-    setEditFolderSubject(folder.subject ?? "");
-    setEditFolderColor(normalizeObjectColor(folder.color));
-    setEditFolderIcon(normalizeObjectIcon(folder.icon));
     setShowEditFolder(true);
+  };
+
+  const toggleDeckPicker = async () => {
+    if (showDeckPicker) {
+      assetRequestGenerationRef.current.decks += 1;
+      setShowDeckPicker(false);
+      return;
+    }
+    if (!user?.uid) return;
+    const generation = assetRequestGenerationRef.current.decks + 1;
+    assetRequestGenerationRef.current.decks = generation;
+    setLoadingAssetTab("decks");
+    try {
+      // Firestore cannot express "folderIds does not contain this folder".
+      // Load the compatibility list only when the student explicitly opens
+      // the existing-deck picker; normal folder browsing stays membership-
+      // filtered through getDecksForFolder.
+      const nextDecks = await getDecks(user.uid);
+      if (assetRequestGenerationRef.current.decks !== generation) return;
+      setDecks(nextDecks);
+      setDeckCursor(null);
+      setDecksLoaded(true);
+      setShowDeckPicker(true);
+    } catch (error) {
+      if (assetRequestGenerationRef.current.decks !== generation) return;
+      console.error("Failed to load the existing-deck picker.", error);
+      showError("Could not load decks to add. Try again in a moment.");
+    } finally {
+      if (assetRequestGenerationRef.current.decks === generation) {
+        setLoadingAssetTab((current) =>
+          current === "decks" ? null : current
+        );
+      }
+    }
+  };
+
+  const toggleSourcePicker = async () => {
+    if (showSourcePicker) {
+      assetRequestGenerationRef.current.sources += 1;
+      setShowSourcePicker(false);
+      return;
+    }
+    if (!user?.uid) return;
+    const generation = assetRequestGenerationRef.current.sources + 1;
+    assetRequestGenerationRef.current.sources = generation;
+    setLoadingAssetTab("sources");
+    try {
+      // As with decks, negative array membership is unsupported. This full
+      // compatibility read happens only on an explicit picker action.
+      const nextSources = await getActiveSources(user.uid);
+      if (assetRequestGenerationRef.current.sources !== generation) return;
+      setSources(nextSources);
+      setSourceCursor(null);
+      setSourcesLoaded(true);
+      setShowSourcePicker(true);
+    } catch (error) {
+      if (assetRequestGenerationRef.current.sources !== generation) return;
+      console.error("Failed to load the existing-source picker.", error);
+      showError("Could not load sources to add. Try again in a moment.");
+    } finally {
+      if (assetRequestGenerationRef.current.sources === generation) {
+        setLoadingAssetTab((current) =>
+          current === "sources" ? null : current
+        );
+      }
+    }
   };
 
   const toggleDeckFolder = async (deck: Deck) => {
@@ -346,62 +512,8 @@ export default function FolderDetailPage() {
     }
   };
 
-  const handleSaveFolder = async () => {
-    if (!user?.uid || !folder) return;
-    setSavingFolder(true);
-    clearFeedback();
-    try {
-      await updateStudyFolder(user.uid, folder.id, {
-        name: editFolderName,
-        subject: editFolderSubject,
-        color: editFolderColor,
-        icon: editFolderIcon,
-      });
-      const nextSubject = editFolderSubject.trim();
-      setFolder((current) =>
-        current
-          ? {
-              ...current,
-              name: editFolderName.trim() || current.name,
-              // Cleared deliberately when emptied, so the detail can be removed
-              // as well as corrected.
-              subject: nextSubject || undefined,
-              color: editFolderColor,
-              icon: editFolderIcon,
-              updatedAt: Date.now(),
-            }
-          : current
-      );
-      setShowEditFolder(false);
-      success("Folder updated.");
-    } catch (error) {
-      showThrownError(error, "Could not update folder.");
-    } finally {
-      setSavingFolder(false);
-    }
-  };
-
-  const handleArchiveFolder = async () => {
-    if (!user?.uid || !folder) return;
-    const confirmed = window.confirm(
-      "Archive this folder? This removes the folder view, but does not delete the decks or sources inside it."
-    );
-    if (!confirmed) return;
-    setSavingFolder(true);
-    try {
-      await archiveStudyFolder(user.uid, folder.id);
-      success("Folder archived. Decks and sources were not deleted.");
-      setShowEditFolder(false);
-      router.push("/dashboard/folders");
-    } catch (error) {
-      showThrownError(error, "Could not archive folder.");
-    } finally {
-      setSavingFolder(false);
-    }
-  };
-
-  const handleAddDecksToFolder = async () => {
-    if (!user?.uid || !folder || selectedDeckIds.length === 0) return;
+  const handleAddDecksToFolder = async (selectedDeckIds: string[]) => {
+    if (!user?.uid || !folder || selectedDeckIds.length === 0) return false;
     setBusyAssetId("deck-picker");
     try {
       await Promise.all(
@@ -418,18 +530,19 @@ export default function FolderDetailPage() {
             : deck
         )
       );
-      setSelectedDeckIds([]);
       setShowDeckPicker(false);
       success("Decks added to this folder.");
+      return true;
     } catch (error) {
       showThrownError(error, "Could not add decks.");
+      return false;
     } finally {
       setBusyAssetId(null);
     }
   };
 
-  const handleAddSourcesToFolder = async () => {
-    if (!user?.uid || !folder || selectedSourceIds.length === 0) return;
+  const handleAddSourcesToFolder = async (selectedSourceIds: string[]) => {
+    if (!user?.uid || !folder || selectedSourceIds.length === 0) return false;
     setBusyAssetId("source-picker");
     try {
       await Promise.all(
@@ -448,87 +561,35 @@ export default function FolderDetailPage() {
             : source
         )
       );
-      setSelectedSourceIds([]);
       setShowSourcePicker(false);
       success("Sources added to this folder.");
+      return true;
     } catch (error) {
       showThrownError(error, "Could not add sources.");
+      return false;
     } finally {
       setBusyAssetId(null);
     }
   };
 
-  const handleCreateNotebook = async () => {
-    if (!user?.uid || !folder) return;
-    const title = notebookTitle.trim();
-    if (!title) {
-      showError("Name the notebook before creating it.");
-      return;
-    }
-    setCreatingNotebook(true);
-    setNotebookUploadProgress(null);
+  const retryNotebooks = useCallback(async () => {
+    if (!user?.uid || !folderId) return;
+    setRetryingNotebooks(true);
     try {
-      if (notebookFile) {
-        const imported = await importUploadedNotebook({
-          userId: user.uid,
-          folderId: folder.id,
-          title,
-          file: notebookFile,
-          topicIds: notebookTopicIds,
-          color: notebookColor,
-          icon: notebookIcon,
-          onProgress: setNotebookUploadProgress,
-        });
-        setNotebooks((current) => [imported.notebook, ...current]);
-        setNotebookTitle("");
-        setNotebookColor("violet");
-        setNotebookIcon("none");
-        setNotebookPageColor("white");
-        setNotebookPageStyle("plain");
-        setNotebookFile(null);
-        setNotebookTopicIds([]);
-        setShowNotebookForm(false);
-        success(`${imported.notebook.title} created with ${imported.pages.length} ${imported.pages.length === 1 ? "page" : "pages"}.`);
-        return;
-      }
-
-      const notebook = await createNotebook(user.uid, {
-        folderId: folder.id,
-        title,
-        type: "blank",
-        topicIds: notebookTopicIds,
-        color: notebookColor,
-        icon: notebookIcon,
-        pageColor: notebookPageColor,
-        pageStyle: notebookPageStyle,
+      const page = await getNotebooksForFolderPage(user.uid, folderId, {
+        pageSize: FOLDER_ASSET_PAGE_SIZE,
       });
-      await createNotebookPage(user.uid, {
-        notebookId: notebook.id,
-        folderId: folder.id,
-        pageNumber: 1,
-        pageType: "free_working",
-        title: "Page 1",
-        pageColor: notebookPageColor,
-        pageStyle: notebookPageStyle,
-      });
-
-      setNotebooks((current) => [notebook, ...current]);
-      setNotebookTitle("");
-      setNotebookColor("violet");
-      setNotebookIcon("none");
-      setNotebookPageColor("white");
-      setNotebookPageStyle("plain");
-      setNotebookFile(null);
-      setNotebookTopicIds([]);
-      setShowNotebookForm(false);
-      success(`${notebook.title} created. Open it to type or draw on page 1.`);
+      setNotebooks(page.items);
+      setNotebookCursor(page.nextCursor);
+      setNotebooksAvailability("ready");
     } catch (error) {
-      showThrownError(error, "Could not create notebook.");
+      console.error("Failed to reload this folder's notebooks.", error);
+      setNotebooksAvailability("unavailable");
+      showThrownError(error, "Could not load this folder's notebooks.");
     } finally {
-      setCreatingNotebook(false);
-      setNotebookUploadProgress(null);
+      setRetryingNotebooks(false);
     }
-  };
+  }, [folderId, showThrownError, user?.uid]);
 
   const openNotebookForm = () => {
     setShowNotebookForm(true);
@@ -561,7 +622,33 @@ export default function FolderDetailPage() {
     );
   }
 
-  if (!folder) {
+  if (!folder && folderLoadState === "unavailable") {
+    return (
+      <AppPage title="Folder" backHref="/dashboard/folders" backLabel="Folders">
+        <div className="space-y-4">
+          {feedback ? (
+            <FeedbackBanner
+              type={feedback.type}
+              message={feedback.message}
+              onDismiss={clearFeedback}
+            />
+          ) : null}
+          <EmptyState
+            emoji="Folder"
+            title="Folder unavailable"
+            description="We could not load this folder right now. Your workspace has not been treated as empty."
+            action={
+              <Button type="button" onClick={() => void loadFolder()}>
+                Try again
+              </Button>
+            }
+          />
+        </div>
+      </AppPage>
+    );
+  }
+
+  if (!folder && folderLoadState === "not-found") {
     return (
       <AppPage title="Folder" backHref="/dashboard/folders" backLabel="Folders">
         <EmptyState
@@ -575,6 +662,23 @@ export default function FolderDetailPage() {
             >
               Back to folders
             </Link>
+          }
+        />
+      </AppPage>
+    );
+  }
+
+  if (!folder) {
+    return (
+      <AppPage title="Folder" backHref="/dashboard/folders" backLabel="Folders">
+        <EmptyState
+          emoji="Folder"
+          title="Folder unavailable"
+          description="We could not finish opening this folder. Try again in a moment."
+          action={
+            <Button type="button" onClick={() => void loadFolder()}>
+              Try again
+            </Button>
           }
         />
       </AppPage>
@@ -654,9 +758,9 @@ export default function FolderDetailPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                 Study folder
               </p>
-              <h1 className="mt-1 truncate text-2xl font-semibold text-text-primary sm:text-3xl">
+              <h2 className="mt-1 truncate text-2xl font-semibold text-text-primary sm:text-3xl">
                 {folder.name}
-              </h1>
+              </h2>
               {folder.subject ? (
                 <p className="mt-1 text-sm text-text-muted">{folder.subject}</p>
               ) : null}
@@ -670,228 +774,38 @@ export default function FolderDetailPage() {
         </div>
 
         {showNotebookForm ? (
-          <Card padding="md">
-            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_8.5rem] sm:items-start">
-              <div className="min-w-0">
-                <SectionHeader
-                  eyebrow="Create notebook"
-                  title="Set up your notebook."
-                />
-                <div className="mt-4 max-w-xl">
-                  <Input
-                    label="Notebook title"
-                    value={notebookTitle}
-                    onChange={(event) => setNotebookTitle(event.target.value)}
-                  />
-                </div>
-              </div>
-              <div className="app-subtle-panel mx-auto w-full max-w-[8.5rem] rounded-[1rem] p-2 sm:mx-0">
-                <NotebookObjectCard
-                  title={notebookTitle.trim() || "Notebook preview"}
-                  color={notebookColor}
-                  icon={notebookIcon}
-                  pageColor={notebookPageColor}
-                  pageStyle={notebookPageStyle}
-                  updatedLabel="Notebook preview"
-                  compact
-                  editorPreview
-                />
-              </div>
-            </div>
-            <div className="mt-5">
-              <ObjectStylePicker
-                color={notebookColor}
-                icon={notebookIcon}
-                onColorChange={setNotebookColor}
-                onIconChange={setNotebookIcon}
-                colorLabel="Cover colour"
-                iconLabel="Cover icon"
-              />
-            </div>
-            <div className="mt-5 grid gap-4 lg:grid-cols-2">
-              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 lg:col-span-2">
-                <label className="mb-1.5 block text-sm font-medium text-text-secondary">
-                  Start with a PDF or image <span className="text-text-muted">(optional)</span>
-                </label>
-                <input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png,image/webp"
-                  disabled={creatingNotebook}
-                  onChange={(event) => setNotebookFile(event.target.files?.[0] ?? null)}
-                  className="block min-h-[2.75rem] w-full rounded-2xl border border-border bg-surface-panel-strong px-3 py-2 text-sm text-text-primary file:mr-3 file:rounded-full file:border-0 file:bg-warm-glow file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-warm-accent disabled:cursor-not-allowed disabled:saturate-[0.82]"
-                />
-              </div>
-              {!notebookFile ? (
-                <>
-                  <div>
-                    <div className="text-sm font-medium text-text-secondary">Page colour</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {(["white", "black"] as NotebookPageColor[]).map((color) => (
-                        <button
-                          key={color}
-                          type="button"
-                          onClick={() => setNotebookPageColor(color)}
-                          className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
-                            notebookPageColor === color ? "app-selected" : "app-chip"
-                          }`}
-                        >
-                          {color}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div>
-                    <div className="text-sm font-medium text-text-secondary">Page style</div>
-                    <div className="mt-2 flex flex-wrap gap-2">
-                      {NOTEBOOK_CREATION_PAGE_STYLES.map((style) => (
-                        <button
-                          key={style}
-                          type="button"
-                          onClick={() => setNotebookPageStyle(style)}
-                          className={`min-h-[2.35rem] rounded-full border px-4 text-sm font-semibold capitalize transition ${
-                            notebookPageStyle === style ? "app-selected" : "app-chip"
-                          }`}
-                        >
-                          {style}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              ) : null}
-              <div className="lg:col-span-2">
-                <TopicPicker
-                  userId={user.uid}
-                  topics={topics}
-                  selectedTopicIds={notebookTopicIds}
-                  onChange={setNotebookTopicIds}
-                  onTopicsChange={setTopics}
-                  disabled={creatingNotebook}
-                />
-              </div>
-              <div className="flex gap-2 lg:col-span-2">
-                <Button
-                  type="button"
-                  variant="secondary"
-                  disabled={creatingNotebook}
-                  onClick={() => {
-                    setShowNotebookForm(false);
-                    setNotebookTitle("");
-                    setNotebookColor("violet");
-                    setNotebookIcon("none");
-                    setNotebookPageColor("white");
-                    setNotebookPageStyle("plain");
-                    setNotebookFile(null);
-                    setNotebookTopicIds([]);
-                  }}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  disabled={creatingNotebook}
-                  onClick={() => void handleCreateNotebook()}
-                >
-                  {creatingNotebook
-                    ? notebookUploadProgress !== null
-                      ? `Adding pages ${notebookUploadProgress}%`
-                      : "Creating..."
-                    : "Create notebook"}
-                </Button>
-              </div>
-            </div>
-            {notebookFile && creatingNotebook && notebookUploadProgress !== null ? (
-              <div
-                role="progressbar"
-                aria-label="Notebook file import progress"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={notebookUploadProgress}
-                className="mt-3 h-2 overflow-hidden rounded-full bg-[var(--color-glass-subtle)]"
-              >
-                <div
-                  className="h-full rounded-full bg-[linear-gradient(90deg,var(--color-accent),var(--color-success))] transition-[width]"
-                  style={{ width: `${notebookUploadProgress}%` }}
-                />
-              </div>
-            ) : null}
-          </Card>
+          <FolderNotebookCreator
+            userId={user.uid}
+            folder={folder}
+            topics={topics}
+            onTopicsChange={setTopics}
+            onCreated={(notebook, message) => {
+              setNotebooks((current) => [notebook, ...current]);
+              setShowNotebookForm(false);
+              success(message);
+            }}
+            onCancel={() => setShowNotebookForm(false)}
+            onError={showThrownError}
+          />
         ) : null}
 
         {showEditFolder ? (
-          <Card padding="sm" className="mx-auto max-w-[44rem]">
-            <div className="text-center sm:text-left">
-              <div className="text-sm font-semibold text-text-primary">Edit folder</div>
-              <p className="mt-0.5 text-xs text-text-muted">
-                Update the folder name, subject detail, colour, or icon.
-              </p>
-            </div>
-            <div className="mx-auto mt-4 grid max-w-[28rem] gap-3 sm:grid-cols-[minmax(0,18rem)_8.5rem] sm:items-start">
-              <div className="grid w-full max-w-[18rem] gap-3">
-                <Input
-                  label="Folder name"
-                  value={editFolderName}
-                  onChange={(event) => setEditFolderName(event.target.value)}
-                />
-                <Input
-                  label="Subject detail"
-                  value={editFolderSubject}
-                  placeholder="Optional"
-                  maxLength={MAX_STUDY_FOLDER_SUBJECT_LENGTH}
-                  onChange={(event) => setEditFolderSubject(event.target.value)}
-                />
-              </div>
-              <div className="app-subtle-panel rounded-[1rem] p-2">
-                <FolderObjectCard
-                  title={editFolderName.trim() || "Folder preview"}
-                  color={editFolderColor}
-                  icon={editFolderIcon}
-                />
-              </div>
-              <div className="sm:col-span-2">
-                <ObjectStylePicker
-                  color={editFolderColor}
-                  icon={editFolderIcon}
-                  onColorChange={setEditFolderColor}
-                  onIconChange={setEditFolderIcon}
-                  colorLabel="Folder colour"
-                  iconLabel="Folder icon"
-                  compact
-                  centered
-                />
-              </div>
-            </div>
-            <div className="mt-4 flex min-h-[3.25rem] flex-wrap items-center justify-center gap-3 border-t border-[var(--color-border)] px-1 pt-3 sm:justify-between sm:px-2">
-              <Button
-                type="button"
-                variant="danger"
-                size="sm"
-                disabled={savingFolder}
-                onClick={() => void handleArchiveFolder()}
-              >
-                Archive folder
-              </Button>
-              <div className="flex flex-wrap items-center justify-center gap-2.5">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  disabled={savingFolder}
-                  onClick={() => setShowEditFolder(false)}
-                >
-                  Cancel
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  disabled={savingFolder || !editFolderName.trim()}
-                  onClick={() => void handleSaveFolder()}
-                >
-                  {savingFolder ? "Saving..." : "Save folder"}
-                </Button>
-              </div>
-            </div>
-          </Card>
+          <FolderEditor
+            userId={user.uid}
+            folder={folder}
+            onSaved={(updatedFolder) => {
+              setFolder(updatedFolder);
+              setShowEditFolder(false);
+              success("Folder updated.");
+            }}
+            onArchived={() => {
+              success("Folder archived. Decks and sources were not deleted.");
+              setShowEditFolder(false);
+              router.push("/dashboard/folders");
+            }}
+            onCancel={() => setShowEditFolder(false)}
+            onError={showThrownError}
+          />
         ) : null}
 
         <div className="flex gap-2 overflow-x-auto rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-1">
@@ -928,7 +842,33 @@ export default function FolderDetailPage() {
                 </Button>
               </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+            {notebooksAvailability === "unavailable" ? (
+              <Card
+                padding="sm"
+                className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
+              >
+                <div>
+                  <p className="text-sm font-semibold text-text-primary">
+                    Notebooks are temporarily unavailable
+                  </p>
+                  <p className="mt-1 text-sm text-text-secondary">
+                    We kept any notebooks already shown and will not treat this section as empty.
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  disabled={retryingNotebooks}
+                  aria-busy={retryingNotebooks}
+                  onClick={() => void retryNotebooks()}
+                >
+                  {retryingNotebooks ? "Retrying..." : "Retry notebooks"}
+                </Button>
+              </Card>
+            ) : null}
+            {notebooks.length > 0 || notebooksAvailability === "ready" ? (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
               {notebooks.length > 0 ? (
                 notebooks.map((notebook) => (
                   <NotebookObjectCard
@@ -962,7 +902,21 @@ export default function FolderDetailPage() {
                   />
                 </div>
               )}
-            </div>
+              </div>
+            ) : null}
+            {notebookCursor ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loadingMoreTab === "notebooks"}
+                  aria-busy={loadingMoreTab === "notebooks"}
+                  onClick={() => void loadMore("notebooks")}
+                >
+                  {loadingMoreTab === "notebooks" ? "Loading..." : "Load more notebooks"}
+                </Button>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -971,7 +925,13 @@ export default function FolderDetailPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeader eyebrow="Decks" title="Flashcard decks" />
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" onClick={() => setShowDeckPicker((value) => !value)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loadingAssetTab === "decks"}
+                  aria-busy={loadingAssetTab === "decks"}
+                  onClick={() => void toggleDeckPicker()}
+                >
                   Add existing deck
                 </Button>
               </div>
@@ -983,51 +943,12 @@ export default function FolderDetailPage() {
               </div>
             ) : null}
             {showDeckPicker ? (
-              <Card padding="sm">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <Input
-                    label="Find deck"
-                    placeholder="Search global decks"
-                    value={deckSearch}
-                    onChange={(event) => setDeckSearch(event.target.value)}
-                    containerClassName="sm:max-w-sm"
-                  />
-                  <Button
-                    type="button"
-                    disabled={selectedDeckIds.length === 0 || busyAssetId === "deck-picker"}
-                    onClick={() => void handleAddDecksToFolder()}
-                  >
-                    {busyAssetId === "deck-picker" ? "Adding..." : "Add to folder"}
-                  </Button>
-                </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  {availableDecks.length > 0 ? (
-                    availableDecks.map((deck) => {
-                      const selected = selectedDeckIds.includes(deck.id);
-                      return (
-                        <button
-                          key={deck.id}
-                          type="button"
-                          onClick={() =>
-                            setSelectedDeckIds((current) =>
-                              toggleIdSelection(current, deck.id)
-                            )
-                          }
-                          className={`rounded-[1rem] border px-3 py-3 text-left text-sm transition ${
-                            selected
-                              ? "border-warm-border bg-warm-glow text-text-primary"
-                              : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary"
-                          }`}
-                        >
-                          {deck.name}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="text-sm text-text-muted">No global decks to add.</p>
-                  )}
-                </div>
-              </Card>
+              <FolderAssetPicker
+                kind="deck"
+                items={availableDecks.map((deck) => ({ id: deck.id, label: deck.name }))}
+                busy={busyAssetId === "deck-picker"}
+                onAdd={handleAddDecksToFolder}
+              />
             ) : null}
             {loadingAssetTab !== "decks" ? (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -1051,6 +972,19 @@ export default function FolderDetailPage() {
               )}
               </div>
             ) : null}
+            {deckCursor && !showDeckPicker ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loadingMoreTab === "decks"}
+                  aria-busy={loadingMoreTab === "decks"}
+                  onClick={() => void loadMore("decks")}
+                >
+                  {loadingMoreTab === "decks" ? "Loading..." : "Load more decks"}
+                </Button>
+              </div>
+            ) : null}
           </section>
         ) : null}
 
@@ -1059,7 +993,13 @@ export default function FolderDetailPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeader eyebrow="Sources" title="Saved sources" />
               <div className="flex flex-wrap gap-2">
-                <Button type="button" variant="secondary" onClick={() => setShowSourcePicker((value) => !value)}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loadingAssetTab === "sources"}
+                  aria-busy={loadingAssetTab === "sources"}
+                  onClick={() => void toggleSourcePicker()}
+                >
                   Add existing source
                 </Button>
                 <ButtonLink
@@ -1076,51 +1016,12 @@ export default function FolderDetailPage() {
               </div>
             ) : null}
             {showSourcePicker ? (
-              <Card padding="sm">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-                  <Input
-                    label="Find source"
-                    placeholder="Search saved sources"
-                    value={sourceSearch}
-                    onChange={(event) => setSourceSearch(event.target.value)}
-                    containerClassName="sm:max-w-sm"
-                  />
-                  <Button
-                    type="button"
-                    disabled={selectedSourceIds.length === 0 || busyAssetId === "source-picker"}
-                    onClick={() => void handleAddSourcesToFolder()}
-                  >
-                    {busyAssetId === "source-picker" ? "Adding..." : "Add to folder"}
-                  </Button>
-                </div>
-                <div className="mt-4 grid gap-2 md:grid-cols-2">
-                  {availableSources.length > 0 ? (
-                    availableSources.map((source) => {
-                      const selected = selectedSourceIds.includes(source.id);
-                      return (
-                        <button
-                          key={source.id}
-                          type="button"
-                          onClick={() =>
-                            setSelectedSourceIds((current) =>
-                              toggleIdSelection(current, source.id)
-                            )
-                          }
-                          className={`rounded-[1rem] border px-3 py-3 text-left text-sm transition ${
-                            selected
-                              ? "border-warm-border bg-warm-glow text-text-primary"
-                              : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary"
-                          }`}
-                        >
-                          {source.title}
-                        </button>
-                      );
-                    })
-                  ) : (
-                    <p className="text-sm text-text-muted">No saved sources to add.</p>
-                  )}
-                </div>
-              </Card>
+              <FolderAssetPicker
+                kind="source"
+                items={availableSources.map((source) => ({ id: source.id, label: source.title }))}
+                busy={busyAssetId === "source-picker"}
+                onAdd={handleAddSourcesToFolder}
+              />
             ) : null}
             <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
               {folderSources.length > 0 ? (
@@ -1155,6 +1056,19 @@ export default function FolderDetailPage() {
                 />
               )}
             </div>
+            {sourceCursor && !showSourcePicker ? (
+              <div className="flex justify-center">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={loadingMoreTab === "sources"}
+                  aria-busy={loadingMoreTab === "sources"}
+                  onClick={() => void loadMore("sources")}
+                >
+                  {loadingMoreTab === "sources" ? "Loading..." : "Load more sources"}
+                </Button>
+              </div>
+            ) : null}
           </section>
         ) : null}
 

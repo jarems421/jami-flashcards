@@ -14,7 +14,7 @@ const dashboardRoutes = [
     purpose: "Review flashcards and inspect the learning queue.",
   },
   {
-    href: "/dashboard/practise",
+    href: "/dashboard/practice",
     label: "Practice",
     purpose: "Continue working and open folder or notebook entry points.",
   },

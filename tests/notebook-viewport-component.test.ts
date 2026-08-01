@@ -1,14 +1,7 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { createElement, createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import NotebookViewport from "@/components/workspace/NotebookViewport";
-
-const globalStylesSource = readFileSync(
-  join(process.cwd(), "app/globals.css"),
-  "utf8"
-);
 
 describe("NotebookViewport", () => {
   it("renders every carousel slot through the same sheet treatment", () => {
@@ -56,22 +49,39 @@ describe("NotebookViewport", () => {
     expect(html).not.toContain("box-border");
   });
 
-  it("keeps live ink input locked in CSS during page travel", () => {
-    expect(globalStylesSource).toContain(
-      '.notebook-page-track[data-swipe-active="true"] .notebook-ink-surface'
+  it("keeps live ink beneath the track controlled by the swipe-state hook", () => {
+    const html = renderToStaticMarkup(
+      createElement(NotebookViewport, {
+        activeClassName: "bg-white",
+        activeContent: createElement("div", {
+          className: "notebook-ink-surface",
+        }),
+        activeRef: createRef<HTMLDivElement>(),
+        frameRef: createRef<HTMLDivElement>(),
+        geometry: {
+          pageWidth: 450,
+          pageHeight: 620,
+          pageX: 100,
+          pageY: 16,
+          swipeTravel: 466,
+        },
+        onActivePointerCancel: () => undefined,
+        onActivePointerMove: () => undefined,
+        onActivePointerUp: () => undefined,
+        onTrackTransitionCancel: () => undefined,
+        onTrackTransitionEnd: () => undefined,
+        previewLayerRef: createRef<HTMLDivElement>(),
+        trackRef: createRef<HTMLDivElement>(),
+      })
     );
-    expect(globalStylesSource).toMatch(
-      /\.notebook-page-track\[data-swipe-active="true"\] \.notebook-ink-surface\s*\{\s*pointer-events: none;/
-    );
-    expect(globalStylesSource).toContain(
-      '.notebook-page-track[data-swipe-direction="previous"]'
-    );
-    expect(globalStylesSource).toContain(
-      '.notebook-page-track[data-swipe-direction="next"]'
-    );
-    expect(globalStylesSource).toContain(
-      '.notebook-page-track[data-ink-snapshot-ready="true"]'
-    );
+
+    const trackIndex = html.indexOf("notebook-page-track");
+    const inkIndex = html.indexOf("notebook-ink-surface");
+    expect(trackIndex).toBeGreaterThanOrEqual(0);
+    expect(inkIndex).toBeGreaterThan(trackIndex);
+    // useNotebookPageTrack has dedicated behavior tests for the active,
+    // direction, and snapshot-ready data attributes written to this node.
+    expect(html).toContain('aria-hidden="true"');
   });
 
   it("keeps the measurable frame mounted before a page is ready", () => {

@@ -24,12 +24,13 @@ import BulkTopicToolbar from "@/components/topics/BulkTopicToolbar";
 import { getBulkTopicCapacity } from "@/lib/material/topic-management";
 import TopicPicker from "@/components/topics/TopicPicker";
 import CardQualityWarnings from "@/components/decks/CardQualityWarnings";
+import CardPreviewDialog from "@/components/decks/CardPreviewDialog";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
 import CardBackEditor from "@/components/decks/CardBackEditor";
 import CardBackAutocomplete from "@/components/decks/CardBackAutocomplete";
 import CardDifficultyBadge from "@/components/study/CardDifficultyBadge";
 import { useMultiSelect } from "@/hooks/useMultiSelect";
-import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton, StudyText } from "@/components/ui";
+import { Button, Card as SurfaceCard, ConfirmDialog, EmptyState, FeedbackBanner, Input, Skeleton } from "@/components/ui";
 import { getDeckById } from "@/services/study/decks";
 import {
   deleteCard,
@@ -114,7 +115,13 @@ export default function DeckDetailPageClient() {
 
         const [deckCards, nextTopics] = await Promise.all([
           getCardsForDeck(user.uid, deckId),
-          getActiveTopics(user.uid).catch(() => []),
+          getActiveTopics(user.uid).catch((error) => {
+            console.error("Failed to load Topics for the deck editor.", error);
+            showError(
+              "Topics are temporarily unavailable. The deck and its cards are still shown."
+            );
+            return [];
+          }),
         ]);
 
         if (cancelled) {
@@ -146,17 +153,6 @@ export default function DeckDetailPageClient() {
       cancelled = true;
     };
   }, [clearFeedback, deckId, showError, user.uid]);
-
-  useEffect(() => {
-    if (!previewCardId) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPreviewCardId(null);
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [previewCardId]);
 
   const resetEditingCard = () => {
     setEditingCardId(null);
@@ -702,80 +698,26 @@ export default function DeckDetailPageClient() {
           )}
         </>
       ) : null}
-      {previewCard ? (
-        <div
-          role="presentation"
-          className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/60 p-4 backdrop-blur-sm"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setPreviewCardId(null);
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-label="Card preview"
-            className="w-full max-w-2xl rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.45)] sm:p-7"
-          >
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-                  Card preview
-                </div>
-                <div className="mt-2 text-sm text-text-secondary">
-                  {deck?.name ?? "Deck"}
-                </div>
-              </div>
-              <Button type="button" size="sm" variant="ghost" onClick={() => setPreviewCardId(null)}>
-                Close
-              </Button>
-            </div>
-            <div className="mt-6 grid gap-4">
-              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Front</div>
-                <StudyText as="div" text={previewCard.front} className="mt-3 whitespace-pre-wrap text-lg font-medium leading-8 text-text-primary" />
-              </div>
-              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">Back</div>
-                <StudyText as="div" text={previewCard.back} className="mt-3 whitespace-pre-wrap text-base leading-7 text-text-secondary" />
-              </div>
-            </div>
-            <div className="mt-4 flex flex-wrap items-center gap-2">
-              <CardDifficultyBadge card={previewCard} />
-              <CardQualityWarnings
-                warnings={getCardQualityWarnings(previewCard, {
-                  duplicateCount: duplicateCounts.get(
-                    getCardContentKey(previewCard.front, previewCard.back)
-                  ),
-                })}
-              />
-              {(previewCard.topicIds ?? []).map((topicId) => {
-                const topic = topicsById.get(topicId);
-                if (!topic) return null;
-                return (
-                  <span
-                    key={topicId}
-                    className="max-w-full rounded-full border border-warm-border bg-warm-glow px-3 py-1.5 text-xs font-medium text-warm-accent"
-                  >
-                    <span className="block truncate">{topic.name}</span>
-                  </span>
-                );
-              })}
-            </div>
-            <div className="mt-5 flex justify-end">
-              <Button
-                type="button"
-                variant="secondary"
-                onClick={() => {
-                  setPreviewCardId(null);
-                  startEditingCard(previewCard);
-                }}
-              >
-                Edit card
-              </Button>
-            </div>
-          </section>
-        </div>
-      ) : null}
+      <CardPreviewDialog
+        card={previewCard ?? null}
+        deckName={deck?.name ?? "Deck"}
+        duplicateCount={
+          previewCard
+            ? duplicateCounts.get(
+                getCardContentKey(previewCard.front, previewCard.back)
+              )
+            : undefined
+        }
+        topicNames={(previewCard?.topicIds ?? []).flatMap((topicId) => {
+          const topic = topicsById.get(topicId);
+          return topic ? [topic.name] : [];
+        })}
+        onClose={() => setPreviewCardId(null)}
+        onEdit={(card) => {
+          setPreviewCardId(null);
+          startEditingCard(card);
+        }}
+      />
     </AppPage>
   );
 }

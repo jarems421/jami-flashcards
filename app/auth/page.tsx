@@ -64,7 +64,9 @@ export default function AuthPage() {
         const code = getAuthErrorCode(nextError);
         setError(getFriendlyAuthError(code));
         setGoogleLoading(false);
-        console.error("Redirect result error:", nextError);
+        console.error("Google redirect sign-in failed.", {
+          code: code ?? "unknown",
+        });
       });
 
     return () => unsubscribe();
@@ -88,7 +90,6 @@ export default function AuthPage() {
         await signUpWithEmail(trimmedEmail, password);
       }
     } catch (nextError) {
-      console.error(nextError);
       const maybeCode = getAuthErrorCode(nextError);
       setError(getFriendlyAuthError(maybeCode));
     } finally {
@@ -217,7 +218,6 @@ export default function AuthPage() {
               } catch (nextError) {
                 const code = getAuthErrorCode(nextError);
                 setError(getFriendlyAuthError(code));
-                console.error(nextError);
                 setGoogleLoading(false);
               }
             }}

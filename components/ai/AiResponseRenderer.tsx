@@ -27,6 +27,7 @@ function isSafeUrl(href: string): boolean {
     const protocol = url.protocol.toLowerCase();
     return protocol === "http:" || protocol === "https:";
   } catch {
+    // Invalid assistant-provided links are rendered as plain text.
     return false;
   }
 }

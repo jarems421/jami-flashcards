@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
@@ -15,7 +15,6 @@ import {
   getRemainingCarryoverRequiredCards,
   getRemainingFreshRequiredCards,
   sortCardsByStudyPriority,
-  type DailyReviewState,
 } from "@/lib/study/daily-review";
 import { getMsUntilNextStudyBoundary, getStudyDayKey, shiftStudyDayKey } from "@/lib/study/day";
 import {
@@ -26,7 +25,6 @@ import {
   mergeRecentValues,
   normalizeFocusedReviewRecents,
   parseIdsParam,
-  type FocusedReviewRecents,
 } from "@/lib/study/focused-review";
 import {
   formatResetCountdown,
@@ -36,12 +34,9 @@ import {
   RATING_LABELS,
   RATING_STYLES,
   withGoalReward,
-  type AnswerFeedback,
 } from "@/lib/study/study-feedback";
 import InlineStudyFeedback from "@/components/study/InlineStudyFeedback";
-import FocusedReviewBuilder, {
-  type FocusedFilterKind,
-} from "@/components/study/FocusedReviewBuilder";
+import FocusedReviewBuilder from "@/components/study/FocusedReviewBuilder";
 import StudyHomeStat from "@/components/study/StudyHomeStat";
 import { isStruggleRating, isSuccessfulRating, updateCardSchedule, type CardRating } from "@/lib/study/scheduler";
 import type { Card } from "@/lib/study/cards";
@@ -78,7 +73,6 @@ import {
   savePersistedStudySession,
   type PersistedStudySession,
   type StudySessionKind,
-  type StudySessionStats,
 } from "@/lib/study/session";
 import { ensureDailyReviewState, ensureStudyStateSetup, markDailyReviewCardComplete, recordDailyReviewWeakAttempt } from "@/services/study/daily-review";
 import {
@@ -96,27 +90,19 @@ import { getActiveTopics } from "@/services/study/topics";
 import { getTopicNameKey, type Topic } from "@/lib/material/topics";
 import { getDeckColorPreset } from "@/lib/study/deck-style";
 import AppPage from "@/components/layout/AppPage";
-import StarRewardOverlay, {
-  type StarReward,
-} from "@/components/constellation/StarRewardOverlay";
+import StarRewardOverlay from "@/components/constellation/StarRewardOverlay";
+import { useFocusedReviewState, useStudyDataState, useStudySessionState } from "@/hooks/useStudyWorkspaceState";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import {
-  Button,
-  Card as SurfaceCard,
-  EmptyState,
-  FeedbackBanner,
-  JamiSparklesIcon,
-  ProgressBar,
-  Skeleton,
-  StudyText,
+  Button, Card as SurfaceCard, EmptyState, FeedbackBanner,
+  JamiSparklesIcon, ProgressBar, Skeleton, StudyText,
 } from "@/components/ui";
 
 type SessionKind = StudySessionKind;
 
 /** Refreshing on every tab focus hammered Firestore on a busy desk. */
 const STUDY_FOREGROUND_REFRESH_THROTTLE_MS = 15_000;
-type SessionStats = StudySessionStats;
 type DailyRequiredSessionScope = "all" | "carryover" | "fresh";
 
 export default function StudyPage() {
@@ -136,47 +122,37 @@ export default function StudyPage() {
     requestedDeckIds.length > 0 ||
     requestedTopicIds.length > 0 ||
     requestedLegacyTags.length > 0;
-  const [decks, setDecks] = useState<Deck[]>([]);
-  const [cards, setCards] = useState<Card[]>([]);
-  const [topics, setTopics] = useState<Topic[]>([]);
-  const [dailyReviewState, setDailyReviewState] = useState<DailyReviewState | null>(null);
-  const [selectedDeckIds, setSelectedDeckIds] = useState<string[]>(requestedDeckIds);
-  const [selectedTopicIds, setSelectedTopicIds] = useState<string[]>(requestedTopicIds);
-  const [deckSearch, setDeckSearch] = useState("");
-  const [topicSearch, setTopicSearch] = useState("");
-  const [focusedReviewOpen, setFocusedReviewOpen] = useState(
-    hasIncomingFocusedIntent
-  );
-  const [focusedFilterKind, setFocusedFilterKind] =
-    useState<FocusedFilterKind>(
-      (requestedTopicIds.length > 0 || requestedLegacyTags.length > 0) &&
-        requestedDeckIds.length === 0
-        ? "topics"
-        : "decks"
-    );
-  const [focusedReviewRecents, setFocusedReviewRecents] = useState<FocusedReviewRecents>(EMPTY_FOCUSED_REVIEW_RECENTS);
-  const [sessionKind, setSessionKind] = useState<SessionKind | null>(null);
-  const [sessionCards, setSessionCards] = useState<Card[]>([]);
-  const [loaded, setLoaded] = useState(false);
-  const [index, setIndex] = useState(0);
-  const [flipped, setFlipped] = useState(false);
-  const [jamiAssistantOpen, setJamiAssistantOpen] = useState(false);
-  const [savingRating, setSavingRating] = useState<CardRating | null>(null);
-  const [sessionStats, setSessionStats] = useState<SessionStats>(createEmptySessionStats());
   const {
-    feedback,
-    success,
-    showError,
-    clear: clearFeedback,
-  } = useFeedback();
-  const [answerFeedback, setAnswerFeedback] = useState<AnswerFeedback | null>(null);
-  const [starReward, setStarReward] = useState<StarReward | null>(null);
-  const handleStarRewardDone = useCallback(() => setStarReward(null), []);
-  const [countdownMs, setCountdownMs] = useState(getMsUntilNextStudyBoundary());
-  const [offlineMode, setOfflineMode] = useState(false);
-  const [offlineSnapshotAt, setOfflineSnapshotAt] = useState<number | null>(null);
-  const [pendingOfflineReviews, setPendingOfflineReviews] = useState(0);
-  const [sessionRestoreReady, setSessionRestoreReady] = useState(false);
+    decks, setDecks, cards, setCards, topics, setTopics,
+    dailyReviewState, setDailyReviewState, loaded, setLoaded,
+  } = useStudyDataState();
+  const {
+    selectedDeckIds, setSelectedDeckIds, selectedTopicIds, setSelectedTopicIds,
+    deckSearch, setDeckSearch, topicSearch, setTopicSearch,
+    focusedReviewOpen, setFocusedReviewOpen,
+    focusedFilterKind, setFocusedFilterKind,
+    focusedReviewRecents, setFocusedReviewRecents,
+  } = useFocusedReviewState({
+    requestedDeckIds,
+    requestedTopicIds,
+    hasRequestedLegacyTags: requestedLegacyTags.length > 0,
+    initiallyOpen: hasIncomingFocusedIntent,
+  });
+  const {
+    sessionKind, setSessionKind, sessionCards, setSessionCards,
+    index, setIndex, flipped, setFlipped,
+    jamiAssistantOpen, setJamiAssistantOpen, savingRating, setSavingRating,
+    sessionStats, setSessionStats, answerFeedback, setAnswerFeedback,
+    starReward, setStarReward, countdownMs, setCountdownMs,
+    offlineMode, setOfflineMode, offlineSnapshotAt, setOfflineSnapshotAt,
+    pendingOfflineReviews, setPendingOfflineReviews,
+    sessionRestoreReady, setSessionRestoreReady,
+  } = useStudySessionState();
+  const { feedback, success, showError, clear: clearFeedback } = useFeedback();
+  const handleStarRewardDone = useCallback(
+    () => setStarReward(null),
+    [setStarReward]
+  );
   const flipTimestampRef = useRef(0);
   const autoStartHandledRef = useRef(false);
   const sessionRestoreHandledRef = useRef(false);
@@ -216,11 +192,11 @@ export default function StudyPage() {
     remoteCloseKeyRef.current = null;
     setSessionRestoreReady(false);
   }, [
-    hasIncomingFocusedIntent,
-    requestedDeckIds,
-    requestedLegacyTags,
-    requestedMode,
-    requestedTopicIds,
+    hasIncomingFocusedIntent, requestedDeckIds, requestedLegacyTags,
+    requestedMode, requestedTopicIds, setAnswerFeedback, setFlipped,
+    setFocusedFilterKind, setFocusedReviewOpen, setIndex, setSelectedDeckIds,
+    setSelectedTopicIds, setSessionCards, setSessionKind,
+    setSessionRestoreReady, setSessionStats,
   ]);
 
   useEffect(() => {
@@ -235,7 +211,7 @@ export default function StudyPage() {
       console.warn("Failed to load focused review recents.", error);
       setFocusedReviewRecents(EMPTY_FOCUSED_REVIEW_RECENTS);
     }
-  }, [user.uid]);
+  }, [setFocusedReviewRecents, user.uid]);
 
   const pushFocusedReviewRecents = useCallback(
     (deckIds: string[], topicIds: string[]) => {
@@ -256,7 +232,7 @@ export default function StudyPage() {
         return next;
       });
     },
-    [user.uid]
+    [setFocusedReviewRecents, user.uid]
   );
 
   useEffect(() => {
@@ -265,7 +241,7 @@ export default function StudyPage() {
       30_000
     );
     return () => clearInterval(interval);
-  }, []);
+  }, [setCountdownMs]);
 
   useEffect(() => {
     if (!answerFeedback) return;
@@ -274,7 +250,7 @@ export default function StudyPage() {
       answerFeedback.holdMs ?? 2400
     );
     return () => window.clearTimeout(timeout);
-  }, [answerFeedback]);
+  }, [answerFeedback, setAnswerFeedback]);
 
   const loadAll = useCallback(async (options: { keepSessionMounted?: boolean } = {}) => {
     const requestId = loadRequestIdRef.current + 1;
@@ -304,7 +280,13 @@ export default function StudyPage() {
       const [nextDecks, nextCards, nextTopics, activeSessionResult] = await Promise.all([
         getDecks(user.uid),
         loadUserCards(user.uid),
-        getActiveTopics(user.uid).catch(() => [] as Topic[]),
+        getActiveTopics(user.uid).catch((error) => {
+          console.error("Failed to load Topics for Learn filters.", error);
+          showError(
+            "Topics are temporarily unavailable. Your card session is still usable."
+          );
+          return [] as Topic[];
+        }),
         activeSessionPromise,
       ]);
       const sortedCards = sortCardsByStudyPriority(nextCards, now);
@@ -371,11 +353,24 @@ export default function StudyPage() {
         setLoaded(true);
       }
     }
-  }, [clearFeedback, showError, success, user.uid]);
+  }, [
+    clearFeedback,
+    setCards,
+    setDailyReviewState,
+    setDecks,
+    setLoaded,
+    setOfflineMode,
+    setOfflineSnapshotAt,
+    setPendingOfflineReviews,
+    setTopics,
+    showError,
+    success,
+    user.uid,
+  ]);
 
   useEffect(() => {
     void loadAll();
-  }, [loadAll, user.uid]);
+  }, [loadAll, setOfflineMode, setPendingOfflineReviews, user.uid]);
 
   useEffect(() => {
     if (topics.length === 0 || requestedLegacyTags.length === 0) return;
@@ -399,7 +394,12 @@ export default function StudyPage() {
       "",
       `${window.location.pathname}${nextSearch ? `?${nextSearch}` : ""}${window.location.hash}`
     );
-  }, [requestedLegacyTags, requestedTopicIds, topics]);
+  }, [
+    requestedLegacyTags,
+    requestedTopicIds,
+    setSelectedTopicIds,
+    topics,
+  ]);
 
   useEffect(() => {
     if (!focusedReviewRecents.legacyTags?.length || topics.length === 0) return;
@@ -427,7 +427,7 @@ export default function StudyPage() {
     } catch (error) {
       console.warn("Failed to migrate focused review recents.", error);
     }
-  }, [focusedReviewRecents, topics, user.uid]);
+  }, [focusedReviewRecents, setFocusedReviewRecents, topics, user.uid]);
 
   useEffect(() => {
     const retryClosedSessionSync = () => {
@@ -484,11 +484,11 @@ export default function StudyPage() {
       window.removeEventListener("focus", handleFocus);
       document.removeEventListener("visibilitychange", handleFocus);
     };
-  }, [loadAll, user.uid]);
+  }, [loadAll, setOfflineMode, setPendingOfflineReviews, user.uid]);
 
   const refreshPendingOfflineReviews = useCallback(() => {
     setPendingOfflineReviews(getOfflineQueuedReviews(user.uid).length);
-  }, [user.uid]);
+  }, [setPendingOfflineReviews, user.uid]);
 
   const syncPendingOfflineReviews = useCallback(async () => {
     if (typeof navigator !== "undefined" && !navigator.onLine) {
@@ -512,7 +512,13 @@ export default function StudyPage() {
       }
       await loadAll({ keepSessionMounted: true });
     }
-  }, [loadAll, success, user.uid]);
+  }, [
+    loadAll,
+    setOfflineMode,
+    setPendingOfflineReviews,
+    success,
+    user.uid,
+  ]);
 
   useEffect(() => {
     refreshPendingOfflineReviews();
@@ -537,7 +543,11 @@ export default function StudyPage() {
       window.removeEventListener("online", handleOnline);
       window.removeEventListener("offline", handleOffline);
     };
-  }, [refreshPendingOfflineReviews, syncPendingOfflineReviews]);
+  }, [
+    refreshPendingOfflineReviews,
+    setOfflineMode,
+    syncPendingOfflineReviews,
+  ]);
 
   const optionalDailyCards = useMemo(
     () => (dailyReviewState ? getCardsByIds(cards, dailyReviewState.optionalCardIds) : []),
@@ -578,7 +588,7 @@ export default function StudyPage() {
     if (sessionKind === null && hasCustomFilters) {
       setFocusedReviewOpen(true);
     }
-  }, [hasCustomFilters, sessionKind]);
+  }, [hasCustomFilters, sessionKind, setFocusedReviewOpen]);
 
   const deckNamesById = useMemo(
     () => Object.fromEntries(decks.map((deck) => [deck.id, deck.name])),
@@ -636,12 +646,12 @@ export default function StudyPage() {
   const toggleDeckFilter = useCallback((deckId: string) => {
     setSelectedDeckIds((prev) => toggleIdSelection(prev, deckId));
     clearFeedback();
-  }, [clearFeedback]);
+  }, [clearFeedback, setSelectedDeckIds]);
 
   const toggleTopicFilter = useCallback((topicId: string) => {
     setSelectedTopicIds((prev) => toggleIdSelection(prev, topicId));
     clearFeedback();
-  }, [clearFeedback]);
+  }, [clearFeedback, setSelectedTopicIds]);
 
   const startSession = useCallback(
     (kind: SessionKind, requiredScope: DailyRequiredSessionScope = "all") => {
@@ -707,6 +717,13 @@ export default function StudyPage() {
       remainingRequiredCards,
       selectedDeckIds,
       selectedTopicIds,
+      setAnswerFeedback,
+      setFlipped,
+      setIndex,
+      setSavingRating,
+      setSessionCards,
+      setSessionKind,
+      setSessionStats,
       simpleStudyQueue.cards,
       user.uid,
     ]
@@ -738,12 +755,12 @@ export default function StudyPage() {
     setSelectedDeckIds([]);
     setSelectedTopicIds([]);
     clearFeedback();
-  }, [clearFeedback]);
+  }, [clearFeedback, setSelectedDeckIds, setSelectedTopicIds]);
 
   const closeFocusedReviewBuilder = useCallback(() => {
     setFocusedReviewOpen(false);
     window.requestAnimationFrame(() => focusedReviewToggleRef.current?.focus());
-  }, []);
+  }, [setFocusedReviewOpen]);
 
   useEffect(() => {
     if (!loaded || sessionRestoreHandledRef.current) return;
@@ -915,6 +932,16 @@ export default function StudyPage() {
     requestedDeckIds,
     requestedMode,
     requestedTopicIds,
+    setAnswerFeedback,
+    setFlipped,
+    setIndex,
+    setSavingRating,
+    setSelectedDeckIds,
+    setSelectedTopicIds,
+    setSessionCards,
+    setSessionKind,
+    setSessionRestoreReady,
+    setSessionStats,
     topics,
     user.uid,
   ]);
@@ -1374,7 +1401,7 @@ export default function StudyPage() {
     // The tutor is told whether the card is flipped, so a drawer left open
     // across the flip would be answering about the wrong phase.
     setJamiAssistantOpen(false);
-  }, [current, flipped]);
+  }, [current, flipped, setFlipped, setJamiAssistantOpen]);
 
   const getLearnAssistantContext = useCallback(async (): Promise<JamiAssistantContext> => {
     if (!current) {
@@ -1681,7 +1708,7 @@ export default function StudyPage() {
                         Focused Review
                       </div>
                       <h3 className="mt-2 text-lg font-semibold text-text-primary">
-                        Choose exactly what to practise
+                        Choose exactly what to practice
                       </h3>
                       <p className="mt-2 text-sm leading-6 text-text-secondary">
                         Pick decks or Topics for a targeted session.

@@ -54,6 +54,7 @@ export default function InkColorPicker({
             "conic-gradient(from 180deg, #f43f5e, #fbbf24, #22c55e, #38bdf8, #818cf8, #e879f9, #f43f5e)",
         }}
       >
+        <span className="sr-only">Custom {label.toLowerCase()}</span>
         <span
           aria-hidden="true"
           className="h-[0.95rem] w-[0.95rem] rounded-full border border-black/25"
@@ -65,7 +66,6 @@ export default function InkColorPicker({
       <input
         id={colorInputId}
         type="color"
-        aria-label={`Custom ${label.toLowerCase()}`}
         value={currentColor}
         onChange={(event) => {
           onCustomColorChange(normalizeNotebookStrokeColor(event.target.value));

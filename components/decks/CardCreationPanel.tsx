@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  type ChangeEvent,
+  type KeyboardEvent as ReactKeyboardEvent,
+} from "react";
 import {
   getCardContentKey,
   MAX_BACK_LENGTH,
@@ -230,6 +236,19 @@ export default function CardCreationPanel({
     }
   };
 
+  const handleSingleCardShortcut = (
+    event: ReactKeyboardEvent<HTMLInputElement | HTMLTextAreaElement>
+  ) => {
+    if (
+      (event.ctrlKey || event.metaKey) &&
+      event.key === "Enter" &&
+      !addingSingleCard
+    ) {
+      event.preventDefault();
+      void handleAddSingleCard();
+    }
+  };
+
   const handleListFileChange = async (event: ChangeEvent<HTMLInputElement>) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
@@ -315,21 +334,7 @@ export default function CardCreationPanel({
   };
 
   return (
-    <section
-      id="add-card"
-      className="app-panel p-4 sm:p-5"
-      onKeyDown={(event) => {
-        if (
-          mode === "single" &&
-          (event.ctrlKey || event.metaKey) &&
-          event.key === "Enter" &&
-          !addingSingleCard
-        ) {
-          event.preventDefault();
-          void handleAddSingleCard();
-        }
-      }}
-    >
+    <section id="add-card" className="app-panel p-4 sm:p-5">
       <SectionHeader
         eyebrow="Add cards"
         title="Create a flashcard."
@@ -363,6 +368,7 @@ export default function CardCreationPanel({
               placeholder="Front"
               value={singleFront}
               onChange={(event) => setSingleFront(event.target.value)}
+              onKeyDown={handleSingleCardShortcut}
               maxLength={MAX_FRONT_LENGTH}
               disabled={addingSingleCard}
             />
@@ -371,6 +377,7 @@ export default function CardCreationPanel({
               placeholder="Back"
               value={singleBack}
               onChange={setSingleBack}
+              onKeyDown={handleSingleCardShortcut}
               maxLength={MAX_BACK_LENGTH}
               rows={6}
               disabled={addingSingleCard}
