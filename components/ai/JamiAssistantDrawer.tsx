@@ -445,6 +445,9 @@ export default function JamiAssistantDrawer({
               ...current.filter((thread) => thread.id !== savedThread.id),
             ]);
           } catch {
+            // The answer already reached the student; only persisting it to
+            // history failed. That is reported in the drawer rather than
+            // thrown, so a history outage cannot discard a good reply.
             if (requestIdRef.current === requestId) {
               setHistoryNotice(
                 "Jami answered, but this turn could not be added to chat history."

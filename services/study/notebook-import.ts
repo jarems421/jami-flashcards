@@ -123,6 +123,9 @@ export async function importUploadedNotebook(input: {
       try {
         await deleteNotebookImportRecords(input.userId, notebookId);
       } catch {
+        // Page cleanup failed, so fall back to removing the notebook record
+        // itself. Both are best-effort: the original import error is what the
+        // student needs, and rethrowing from rollback would hide it.
         try {
           await deleteNotebookRecord(input.userId, notebookId);
         } catch {

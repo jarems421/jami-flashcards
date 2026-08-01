@@ -28,6 +28,8 @@ export async function GET(request: NextRequest) {
   try {
     userId = (await getAdminAuth().verifyIdToken(token)).uid;
   } catch {
+    // An expired, malformed and forged token must be indistinguishable in the
+    // response, so the verifier's reason is deliberately not surfaced.
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -38,6 +40,9 @@ export async function GET(request: NextRequest) {
       userId
     );
   } catch {
+    // The validator throws on any path that is not this user's own notebook
+    // PDF. Echoing why would describe the ownership rule to a caller probing
+    // for someone else's file, so the rejection stays uniform.
     return Response.json({ error: "Invalid notebook PDF path." }, { status: 400 });
   }
 

@@ -53,6 +53,8 @@ export function extractStreamingAnswer(rawBuffer: string): string {
       try {
         return JSON.parse(`"${fragment.slice(0, cut)}"`) as string;
       } catch {
+        // This cut still lands inside an escape sequence. Keep walking back;
+        // the loop ends at "" if no boundary is valid yet.
         continue;
       }
     }

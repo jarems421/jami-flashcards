@@ -114,6 +114,9 @@ export default function SourceDraftEditor({
         dirtyRef.current = false;
         setSaveState("saved");
       } catch {
+        // Autosave runs on a timer, so the student never asked for this write
+        // and has no dialog to answer. The error state is the whole report;
+        // the draft stays dirty and the next keystroke retries.
         setSaveState("error");
       }
     }, AUTOSAVE_DELAY_MS);
