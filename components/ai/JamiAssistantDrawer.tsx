@@ -8,7 +8,6 @@ import {
   type KeyboardEvent as ReactKeyboardEvent,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import {
   formatJamiAssistantUsedContext,
   JAMI_ASSISTANT_MAX_HISTORY_MESSAGES,
@@ -33,7 +32,14 @@ import {
 import { auth } from "@/services/firebase/client";
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
 import AiResponse from "@/components/ai/AiResponse";
-import { JamiSparklesIcon, StudyText } from "@/components/ui";
+import {
+  Dialog,
+  DialogBackdrop,
+  DialogPanel,
+  DialogTitle,
+  JamiSparklesIcon,
+  StudyText,
+} from "@/components/ui";
 
 /**
  * A chip offered before the conversation starts. Most send a prompt, but a
@@ -160,12 +166,10 @@ export default function JamiAssistantDrawer({
    * over it. Jami is meant to nudge you towards an answer you are looking at,
    * which does not work if opening it hides the card. Below this the page is
    * too narrow to show both, so it stays a modal sheet.
-   */
+  */
   const [sidePanel, setSidePanel] = useState(false);
-  const drawerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
-  const restoreFocusRef = useRef<HTMLElement | null>(null);
   const previousResetKeyRef = useRef(resetKey);
   const requestIdRef = useRef(0);
   const requestPendingRef = useRef(false);
@@ -248,29 +252,6 @@ export default function JamiAssistantDrawer({
     query.addEventListener("change", sync);
     return () => query.removeEventListener("change", sync);
   }, []);
-
-  useEffect(() => {
-    if (!open) return;
-
-    restoreFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    const frame = window.requestAnimationFrame(() => inputRef.current?.focus());
-    const previousBodyOverflow = document.body.style.overflow;
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onOpenChange(false);
-    };
-
-    // Only lock the page when the drawer is covering it. As a side panel the
-    // student still needs to scroll the notebook or card it sits next to.
-    if (!sidePanel) document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleEscape);
-    return () => {
-      window.cancelAnimationFrame(frame);
-      window.removeEventListener("keydown", handleEscape);
-      document.body.style.overflow = previousBodyOverflow;
-      restoreFocusRef.current?.focus();
-    };
-  }, [onOpenChange, open, sidePanel]);
 
   useEffect(() => {
     if (!open) return;
@@ -506,52 +487,19 @@ export default function JamiAssistantDrawer({
     }
   };
 
-  const handleFocusTrap = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Tab") return;
-    const focusable = Array.from(
-      drawerRef.current?.querySelectorAll<HTMLElement>(
-        'button:not([disabled]), [href], input:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'
-      ) ?? []
-    ).filter(
-      (element) =>
-        !element.hasAttribute("hidden") && element.getClientRects().length > 0
-    );
-    if (focusable.length === 0) return;
-
-    const first = focusable[0];
-    const last = focusable[focusable.length - 1];
-    if (event.shiftKey && document.activeElement === first) {
-      event.preventDefault();
-      last.focus();
-    } else if (!event.shiftKey && document.activeElement === last) {
-      event.preventDefault();
-      first.focus();
-    }
-  };
-
-  if (!open || typeof document === "undefined") return null;
-
-  return createPortal(
-    <div
-      className={`fixed inset-0 z-[80] flex justify-end ${
+  return (
+    <Dialog
+      open={open}
+      modal={!sidePanel}
+      initialFocusRef={inputRef}
+      className={`fixed inset-0 flex justify-end ${
         sidePanel ? "pointer-events-none" : ""
       }`}
+      onDismiss={() => onOpenChange(false)}
     >
-      {sidePanel ? null : (
-        <button
-          type="button"
-          aria-label="Close Jami assistant"
-          tabIndex={-1}
-          className="absolute inset-0 bg-black/55 backdrop-blur-[1px]"
-          onClick={() => onOpenChange(false)}
-        />
-      )}
-      <div
-        ref={drawerRef}
+      <DialogBackdrop className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" />
+      <DialogPanel
         data-notebook-text-editor="true"
-        role="dialog"
-        aria-modal={sidePanel ? undefined : "true"}
-        aria-labelledby="jami-assistant-title"
         className="pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)]"
         /*
           The panel colour is a few percent translucent, which reads as depth
@@ -568,7 +516,6 @@ export default function JamiAssistantDrawer({
               }
             : undefined
         }
-        onKeyDown={sidePanel ? undefined : handleFocusTrap}
       >
         <header className="border-b border-[var(--color-border)] px-4 py-3.5 sm:px-5">
           <div className="flex items-center justify-between gap-3">
@@ -577,9 +524,9 @@ export default function JamiAssistantDrawer({
                 <JamiSparklesIcon className="h-[1.1rem] w-[1.1rem]" />
               </div>
               <div className="min-w-0">
-                <h2 id="jami-assistant-title" className="text-base font-semibold leading-tight text-text-primary">
+                <DialogTitle className="text-base font-semibold leading-tight text-text-primary">
                   Jami
-                </h2>
+                </DialogTitle>
                 <p className="mt-0.5 truncate text-xs text-text-muted">
                   {historyOpen
                     ? "Chat history"
@@ -897,8 +844,7 @@ export default function JamiAssistantDrawer({
             </>
           )}
         </footer>
-      </div>
-    </div>,
-    document.body
+      </DialogPanel>
+    </Dialog>
   );
 }

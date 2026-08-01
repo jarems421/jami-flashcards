@@ -96,7 +96,19 @@ async function click(target: HTMLElement | undefined) {
 
 async function pressEscape() {
   await act(async () => {
-    window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    (document.activeElement ?? document).dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Escape", bubbles: true })
+    );
+  });
+}
+
+async function pressBackdrop() {
+  const backdrop = document.querySelector<HTMLElement>(
+    '[data-dialog-backdrop="true"]'
+  );
+  expect(backdrop).not.toBeNull();
+  await act(async () => {
+    backdrop!.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true }));
   });
 }
 
@@ -217,9 +229,7 @@ describe("NotebookEditorDialog dismissal", () => {
 
   it("closes when the backdrop is clicked", async () => {
     await render();
-    await click(
-      document.querySelector<HTMLElement>('[aria-label="Close notebook editor"]')!
-    );
+    await pressBackdrop();
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
@@ -231,11 +241,8 @@ describe("NotebookEditorDialog dismissal", () => {
     await pressEscape();
     // Closing mid-write would leave the student unsure whether it landed.
     expect(onClose).not.toHaveBeenCalled();
-    expect(
-      document.querySelector<HTMLButtonElement>(
-        '[aria-label="Close notebook editor"]'
-      )?.disabled
-    ).toBe(true);
+    await pressBackdrop();
+    expect(onClose).not.toHaveBeenCalled();
 
     await pending.release();
   });
