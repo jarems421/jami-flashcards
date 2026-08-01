@@ -41,6 +41,8 @@ export async function POST(request: NextRequest) {
     const decoded = await adminAuth.verifyIdToken(token);
     uid = decoded.uid;
   } catch {
+    // An expired, malformed and forged token must be indistinguishable in the
+    // response, so the verifier's reason is deliberately not surfaced.
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -56,6 +58,8 @@ export async function POST(request: NextRequest) {
         }
         body = parsed as Record<string, unknown>;
       } catch {
+        // Covers both malformed JSON and a non-object payload. Either way the
+        // fault is in the caller's own body, so there is nothing to log.
         return Response.json({ error: "Invalid request body" }, { status: 400 });
       }
 

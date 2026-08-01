@@ -53,6 +53,8 @@ async function getAuthenticatedUserId(request: NextRequest) {
   try {
     return (await getAdminAuth().verifyIdToken(token)).uid;
   } catch {
+    // An expired, malformed and forged token must all read as "not signed in";
+    // the caller learns nothing about which it was.
     return null;
   }
 }
@@ -73,6 +75,8 @@ export async function POST(request: NextRequest) {
   try {
     parsedRequest = parseJamiAssistantRequest(await request.json());
   } catch {
+    // Rejected before any quota is charged. The validator's message describes
+    // the caller's own payload, so there is nothing here worth logging.
     return failureResponse("Invalid request body", 400, "invalid_request");
   }
   if (!parsedRequest) {

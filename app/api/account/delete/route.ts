@@ -29,6 +29,8 @@ export async function DELETE(request: NextRequest) {
   try {
     body = (await request.json()) as { confirmation?: unknown };
   } catch {
+    // Malformed JSON is a client error with nothing to log; the parser message
+    // would only describe the caller's own payload back to them.
     return json(
       { error: "Invalid request body", code: "account/invalid-request" },
       400
@@ -64,6 +66,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
   } catch {
+    // An expired, malformed and forged token must be indistinguishable in the
+    // response, so the verifier's reason is deliberately not surfaced.
     return json({ error: "Unauthorized", code: "auth/unauthorized" }, 401);
   }
 

@@ -164,6 +164,8 @@ export async function POST(request: NextRequest) {
     const decoded = await adminAuth.verifyIdToken(token);
     uid = decoded.uid;
   } catch {
+    // An expired, malformed and forged token must be indistinguishable in the
+    // response, so the verifier's reason is deliberately not surfaced.
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -199,6 +201,8 @@ export async function POST(request: NextRequest) {
       return Response.json({ error: "front is required" }, { status: 400 });
     }
   } catch {
+    // Rejected before any quota is charged. Malformed JSON is a client error
+    // describing the caller's own payload, so there is nothing to log.
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
 

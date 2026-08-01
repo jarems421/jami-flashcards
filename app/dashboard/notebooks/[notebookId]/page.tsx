@@ -622,6 +622,8 @@ export default function NotebookEditorPage() {
         try {
           bytes = await getNotebookFileBytes(activeNotebookFile.storagePath);
         } catch {
+          // Replaced with wording the student can act on. The storage error
+          // names an internal path and would not tell them what to do next.
           throw new Error(
             "Jami could not read this page's image background. Wait a moment and try again."
           );
