@@ -10,6 +10,7 @@ import {
 } from "@/lib/study/session";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
 
 const LOAD_MS = 30_000;
 const SAVE_MS = 30_000;
@@ -110,7 +111,7 @@ export async function loadRemoteActiveStudySession(
 export async function saveRemoteActiveStudySession(session: PersistedStudySession) {
   const sessionRef = getActiveStudySessionDoc(session.userId);
 
-  return withTimeout(
+  const saved = await withTimeout(
     runTransaction(db, async (transaction) => {
       const snapshot = await transaction.get(sessionRef);
       const existingData = snapshot.exists()
@@ -136,6 +137,8 @@ export async function saveRemoteActiveStudySession(session: PersistedStudySessio
     SAVE_MS,
     "Save active study session"
   );
+  if (saved) invalidateDashboardData(session.userId);
+  return saved;
 }
 
 export async function closeRemoteStudySession(
@@ -158,7 +161,7 @@ export async function closeRemoteStudySession(
         };
   const sessionRef = getActiveStudySessionDoc(userId);
 
-  return withTimeout(
+  const saved = await withTimeout(
     runTransaction(db, async (transaction) => {
       const snapshot = await transaction.get(sessionRef);
       const existingData = snapshot.exists()
@@ -184,4 +187,6 @@ export async function closeRemoteStudySession(
     SAVE_MS,
     "Close active study session"
   );
+  if (saved) invalidateDashboardData(userId);
+  return saved;
 }

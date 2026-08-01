@@ -24,6 +24,7 @@ const UPDATE_MS = 30_000;
 export const INITIAL_CONSTELLATION_ID = "initial";
 const ACTIVE_CONSTELLATION_STATE_DOC_ID = "active";
 const MAX_NAME_LENGTH = 40;
+const initialConstellationInFlight = new Map<string, Promise<Constellation>>();
 
 function getActiveConstellationStateRef(userId: string) {
   return doc(
@@ -183,7 +184,9 @@ async function enforceSingleActiveConstellation(
   return normalizedConstellations;
 }
 
-async function createInitialConstellation(userId: string) {
+async function createInitialConstellationTransaction(
+  userId: string
+): Promise<Constellation> {
   const initialConstellation = {
     name: getDefaultConstellationName(0),
     status: "active" as const,
@@ -239,6 +242,24 @@ async function createInitialConstellation(userId: string) {
     id: initialConstellationRef.id,
     ...initialConstellation,
   };
+}
+
+async function createInitialConstellation(userId: string) {
+  const existingRequest = initialConstellationInFlight.get(userId);
+  if (existingRequest) {
+    return existingRequest;
+  }
+
+  const request = createInitialConstellationTransaction(userId);
+  initialConstellationInFlight.set(userId, request);
+
+  try {
+    return await request;
+  } finally {
+    if (initialConstellationInFlight.get(userId) === request) {
+      initialConstellationInFlight.delete(userId);
+    }
+  }
 }
 
 export async function createConstellation(userId: string, name: string) {

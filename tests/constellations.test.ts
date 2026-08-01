@@ -84,6 +84,63 @@ describe("constellations initial setup", () => {
     expect(transactionSet).toHaveBeenCalledWith(initialRef, expect.any(Object));
   });
 
+  it("deduplicates overlapping initial constellation setup", async () => {
+    const initialRef = { id: "initial" };
+    const stateRef = { id: "active" };
+    const transactionGet = vi.fn(async () => ({
+      exists: () => false,
+      data: () => ({}),
+    }));
+    const transactionSet = vi.fn();
+    let releaseTransaction: (() => void) | undefined;
+    const transactionGate = new Promise<void>((resolve) => {
+      releaseTransaction = resolve;
+    });
+
+    firestoreMock.collection.mockReturnValue({});
+    firestoreMock.doc.mockImplementation((_db, _users, _userId, path, id) => {
+      if (path === "constellations" && id === "initial") {
+        return initialRef;
+      }
+
+      if (path === "constellationState" && id === "active") {
+        return stateRef;
+      }
+
+      return { id: id ?? "unknown" };
+    });
+    firestoreMock.getDocs.mockResolvedValue({ empty: true, docs: [] });
+    firestoreMock.runTransaction.mockImplementation(async (_db, fn) => {
+      await transactionGate;
+      return fn({ get: transactionGet, set: transactionSet });
+    });
+    firestoreMock.getDoc.mockResolvedValue({
+      exists: () => true,
+      id: "initial",
+      data: () => ({
+        name: "Constellation 1",
+        status: "active",
+        maxStars: 40,
+        starCount: 0,
+        createdAt: 1,
+      }),
+    });
+
+    const { getConstellations } = await import(
+      "@/services/constellation/constellations"
+    );
+    const first = getConstellations("user-concurrent");
+    await vi.waitFor(() => expect(firestoreMock.runTransaction).toHaveBeenCalledOnce());
+    const second = getConstellations("user-concurrent");
+    await vi.waitFor(() => expect(firestoreMock.getDocs).toHaveBeenCalledTimes(2));
+
+    releaseTransaction?.();
+    const [firstResult, secondResult] = await Promise.all([first, second]);
+
+    expect(firestoreMock.runTransaction).toHaveBeenCalledOnce();
+    expect(firstResult).toEqual(secondResult);
+  });
+
   it("does not create initial doc if transaction finds it already exists", async () => {
     const initialRef = { id: "initial" };
     const stateRef = { id: "active" };

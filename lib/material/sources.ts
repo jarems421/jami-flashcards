@@ -43,6 +43,7 @@ function normalizeUrl(value: unknown) {
     const parsed = new URL(url);
     return parsed.protocol === "http:" || parsed.protocol === "https:" ? parsed.toString() : undefined;
   } catch {
+    // Invalid user-entered URLs are normalized away and rejected by validation.
     return undefined;
   }
 }

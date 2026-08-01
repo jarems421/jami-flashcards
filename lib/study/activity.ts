@@ -83,7 +83,10 @@ export function computeStudyStreak(
   const todayKey = getStudyDayKey(now.getTime());
   let streak = 0;
 
-  for (let index = 0; index < 365; index += 1) {
+  // At most one additional lookup is needed for the allowed "not yet studied
+  // today" gap, so this stays bounded by the supplied activity rather than an
+  // arbitrary calendar cap.
+  for (let index = 0; index < reviewDays.size + 1; index += 1) {
     const dayKey = shiftStudyDayKey(todayKey, -index);
 
     if (reviewDays.has(dayKey)) {

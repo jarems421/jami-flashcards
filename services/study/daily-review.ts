@@ -10,6 +10,7 @@ import {
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
   buildDailyReviewQueues,
   buildDailyReviewStateData,
@@ -127,6 +128,7 @@ export async function resetStudyActivityHistory(userId: string) {
     SAVE_MS,
     "Reset study activity history"
   );
+  invalidateDashboardData(userId);
 }
 
 export async function ensureStudyStateSetup(userId: string) {

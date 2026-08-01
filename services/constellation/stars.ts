@@ -1,7 +1,10 @@
 import {
   collection,
   doc,
+  getCountFromServer,
+  getDoc,
   getDocs,
+  limit,
   query,
   runTransaction,
   updateDoc,
@@ -57,15 +60,24 @@ export async function backfillStarPositions(
 export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
   const starsCollection = getStarsCollection(userId);
   const starRef = doc(starsCollection, goal.id);
-  const existingStarSnapshot = await withTimeout(
-    getDocs(query(starsCollection, where("goalId", "==", goal.id))),
+  const exactStarSnapshot = await withTimeout(
+    getDoc(starRef),
     QUERY_MS,
     "Load existing quest star"
   );
-
-  if (!existingStarSnapshot.empty) {
+  if (exactStarSnapshot.exists()) {
     return null;
   }
+  // Historical stars predate deterministic goal document IDs. Keep a bounded
+  // fallback until those records have all been observed and migrated.
+  const legacyStarSnapshot = await withTimeout(
+    getDocs(
+      query(starsCollection, where("goalId", "==", goal.id), limit(1))
+    ),
+    QUERY_MS,
+    "Load legacy quest star"
+  );
+  if (!legacyStarSnapshot.empty) return null;
 
   const activeConstellation = await getActiveOrCreateInitialConstellation(userId);
   if (!activeConstellation) {
@@ -80,21 +92,14 @@ export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
     activeConstellation.id
   );
 
-  const constellationStarsSnapshot = await withTimeout(
-    getDocs(
-      query(starsCollection, where("constellationId", "==", activeConstellation.id))
-    ),
-    QUERY_MS,
-    "Load constellation stars"
-  );
-  const initialConstellationStarCount = constellationStarsSnapshot.size;
+  const initialConstellationStarCount = activeConstellation.starCount;
 
   if (initialConstellationStarCount >= activeConstellation.maxStars) {
     return null;
   }
 
   const completedGoalsSnapshot = await withTimeout(
-    getDocs(
+    getCountFromServer(
       query(
         collection(db, "users", userId, "goals"),
         where("status", "==", "completed")
@@ -104,7 +109,7 @@ export async function createStarForGoalIfMissing(userId: string, goal: Goal) {
     "Load completed goals"
   );
 
-  const completedGoalsCount = completedGoalsSnapshot.size;
+  const completedGoalsCount = completedGoalsSnapshot.data().count;
   const createdAt = Date.now();
 
   const presetId = resolveStarPresetId(goal);

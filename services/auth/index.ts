@@ -221,6 +221,8 @@ export async function deleteAccount(
     body: JSON.stringify({ confirmation: ACCOUNT_DELETION_CONFIRMATION }),
   });
 
+  // Error responses are not guaranteed to contain JSON; status still drives a
+  // stable fallback message below.
   const result = (await response.json().catch(() => null)) as
     | { error?: unknown; code?: unknown }
     | null;
@@ -239,5 +241,7 @@ export async function deleteAccount(
     throw new AccountDeletionError(code, message);
   }
 
-  await signOut(auth).catch(() => undefined);
+  await signOut(auth).catch(() => {
+    // The server has already deleted the account; local auth cleanup is best-effort.
+  });
 }

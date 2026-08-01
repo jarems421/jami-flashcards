@@ -1,5 +1,6 @@
 import { deleteField, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
 
 export const MAX_USERNAME_LENGTH = 32;
 
@@ -34,6 +35,7 @@ export async function saveInAppUsername(userId: string, username: string) {
     },
     { merge: true }
   );
+  invalidateDashboardData(userId);
 
   return nextUsername || null;
 }
