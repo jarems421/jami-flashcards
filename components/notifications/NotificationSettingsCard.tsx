@@ -84,7 +84,7 @@ export default function NotificationSettingsCard({
       setCurrentSubscriptionId(subscription?.id ?? null);
       setClientStateError(null);
     } catch (error) {
-      console.error(error);
+      console.error("Failed to read this device's push subscription.", error);
       setHasSubscription(false);
       setCurrentSubscriptionId(null);
       setClientStateError(
@@ -104,7 +104,7 @@ export default function NotificationSettingsCard({
           setPreferences(nextPreferences);
         }
       } catch (error) {
-        console.error(error);
+        console.error("Failed to load notification preferences.", error);
         if (!cancelled) {
           setFeedback({
             type: "error",
@@ -208,7 +208,7 @@ export default function NotificationSettingsCard({
       });
       setPreferences(nextPreferences);
     } catch (error) {
-      console.error(error);
+      console.error("Failed to save notification preferences.", error);
       setFeedback({
         type: "error",
         message: "Failed to save notification settings.",
@@ -250,7 +250,7 @@ export default function NotificationSettingsCard({
       setInstallPromptEvent(null);
       await refreshClientState();
     } catch (error) {
-      console.error(error);
+      console.error("The browser install prompt failed.", error);
       setFeedback({
         type: "error",
         message: "The install prompt did not complete.",
@@ -274,7 +274,7 @@ export default function NotificationSettingsCard({
         section: "notifications",
       });
     } catch (error) {
-      console.error(error);
+      console.error("Failed to enable push notifications on this device.", error);
       setFeedback({
         type: "error",
         message:
@@ -301,7 +301,7 @@ export default function NotificationSettingsCard({
         section: "notifications",
       });
     } catch (error) {
-      console.error(error);
+      console.error("Failed to disable push notifications on this device.", error);
       setFeedback({
         type: "error",
         message: "Failed to disable notifications on this device.",
@@ -338,13 +338,17 @@ export default function NotificationSettingsCard({
           subscriptionId: currentSubscriptionId,
         }),
       });
+      // Proxy failures are not guaranteed to return JSON; status still drives
+      // the stable fallback below.
       const payload = (await response.json().catch(() => null)) as
         | { error?: string; sent?: number; removed?: number }
         | null;
 
       if (!response.ok) {
         if (response.status === 400) {
-          await unsubscribeCurrentDevice(userId).catch(() => undefined);
+          await unsubscribeCurrentDevice(userId).catch(() => {
+            // The stale local subscription cleanup is best-effort after rejection.
+          });
           await refreshClientState();
         }
         throw new Error(payload?.error || "Failed to send the test notification.");
@@ -359,7 +363,7 @@ export default function NotificationSettingsCard({
         section: "notifications",
       });
     } catch (error) {
-      console.error(error);
+      console.error("Failed to send a test push notification.", error);
       setFeedback({
         type: "error",
         message:

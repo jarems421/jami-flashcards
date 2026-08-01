@@ -71,7 +71,9 @@ export async function ensureServiceWorkerRegistration() {
     });
   }
 
-  await registration.update().catch(() => undefined);
+  await registration.update().catch(() => {
+    // A cached registration remains usable when the optional update check fails.
+  });
   return withTimeout(
     navigator.serviceWorker.ready,
     SERVICE_WORKER_READY_MS,
