@@ -19,6 +19,36 @@ const mocks = vi.hoisted(() => {
   const added: { path: string; data: Record<string, unknown> }[] = [];
   /** Drafts already awaiting review, which a repeat Make must not duplicate. */
   const pendingDrafts: Record<string, unknown>[] = [];
+  const pendingQueryCalls: Array<{ method: string; args: unknown[] }> = [];
+  const pendingGet = vi.fn(async () => ({
+    docs: pendingDrafts.map((data, index) => ({
+      id: `pending-${index}`,
+      data: () => data,
+    })),
+  }));
+
+  type PendingQuery = {
+    where: (...args: unknown[]) => PendingQuery;
+    orderBy: (...args: unknown[]) => PendingQuery;
+    limit: (...args: unknown[]) => PendingQuery;
+    get: () => Promise<{
+      docs: Array<{ id: string; data: () => Record<string, unknown> }>;
+    }>;
+  };
+  const pendingQuery = {} as PendingQuery;
+  pendingQuery.where = (...args) => {
+    pendingQueryCalls.push({ method: "where", args });
+    return pendingQuery;
+  };
+  pendingQuery.orderBy = (...args) => {
+    pendingQueryCalls.push({ method: "orderBy", args });
+    return pendingQuery;
+  };
+  pendingQuery.limit = (...args) => {
+    pendingQueryCalls.push({ method: "limit", args });
+    return pendingQuery;
+  };
+  pendingQuery.get = pendingGet;
 
   const sourceData: Record<string, unknown> = {
     title: "Photosynthesis notes",
@@ -31,12 +61,17 @@ const mocks = vi.hoisted(() => {
     createdAt: 1,
     updatedAt: 1,
   };
+  let sourceExists = true;
 
   const collectionFor = (path: string) => ({
     doc: (docId: string) => ({
       get: async () =>
         path.endsWith("sources")
-          ? { id: docId, exists: true, data: () => mocks.sourceData }
+          ? {
+              id: docId,
+              exists: mocks.sourceExists,
+              data: () => (mocks.sourceExists ? mocks.sourceData : undefined),
+            }
           : { id: docId, exists: false, data: () => undefined },
       collection: (name: string) => collectionFor(`${path}/${docId}/${name}`),
     }),
@@ -44,22 +79,23 @@ const mocks = vi.hoisted(() => {
       added.push({ path, data });
       return { id: `draft-${added.length}` };
     },
-    where: () => ({
-      get: async () => ({
-        docs: pendingDrafts.map((data, index) => ({
-          id: `pending-${index}`,
-          data: () => data,
-        })),
-      }),
-    }),
+    where: (...args: unknown[]) => pendingQuery.where(...args),
   });
 
   return {
     added,
     pendingDrafts,
+    pendingQueryCalls,
+    pendingGet,
     sourceData,
+    get sourceExists() {
+      return sourceExists;
+    },
+    set sourceExists(value: boolean) {
+      sourceExists = value;
+    },
     verifyIdToken: vi.fn(async () => ({ uid: "user-1" })),
-    checkBudget: vi.fn(async () => true),
+    checkBudget: vi.fn(),
     generateText: vi.fn(),
     db: { collection: (name: string) => collectionFor(name) },
   };
@@ -72,6 +108,27 @@ vi.mock("@/services/firebase/admin", () => ({
 
 vi.mock("@/services/ai/budgets", () => ({
   checkAiBudget: mocks.checkBudget,
+  createAiBudgetLimitResponse: (
+    _action: string,
+    decision: { reason: string; retryAfterSeconds: number }
+  ) =>
+    Response.json(
+      {
+        error:
+          decision.reason === "burst_limit"
+            ? "Jami is receiving requests too quickly. Try again in a moment."
+            : "AI budget reached for source drafts today.",
+        code: decision.reason,
+        retryAfterSeconds: decision.retryAfterSeconds,
+      },
+      {
+        status: 429,
+        headers:
+          decision.reason === "burst_limit"
+            ? { "Retry-After": String(decision.retryAfterSeconds) }
+            : undefined,
+      }
+    ),
 }));
 
 vi.mock("@/lib/ai/gemini", () => ({
@@ -110,10 +167,17 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.added.length = 0;
   mocks.pendingDrafts.length = 0;
+  mocks.pendingQueryCalls.length = 0;
+  mocks.pendingGet.mockClear();
   mocks.sourceData.contentText =
     "Plants convert light energy into stored chemical energy.";
+  mocks.sourceExists = true;
   mocks.verifyIdToken.mockResolvedValue({ uid: "user-1" });
-  mocks.checkBudget.mockResolvedValue(true);
+  mocks.checkBudget.mockResolvedValue({
+    allowed: true,
+    reason: null,
+    retryAfterSeconds: 0,
+  });
   mocks.generateText.mockResolvedValue(flashcards);
 });
 
@@ -133,6 +197,13 @@ describe("source draft generation", () => {
       sourceId: "source-1",
       front: "What does photosynthesis convert?",
     });
+    expect(mocks.pendingQueryCalls).toEqual([
+      { method: "where", args: ["sourceId", "==", "source-1"] },
+      { method: "where", args: ["contentStatus", "==", "draft"] },
+      { method: "where", args: ["kind", "==", "flashcard"] },
+      { method: "orderBy", args: ["createdAt", "desc"] },
+      { method: "limit", args: [24] },
+    ]);
   });
 
   it("writes practice question drafts through the same path", async () => {
@@ -163,13 +234,21 @@ describe("source draft generation", () => {
   });
 
   it("refuses once the daily budget is spent, before calling the provider", async () => {
-    mocks.checkBudget.mockResolvedValueOnce(false);
+    mocks.checkBudget.mockResolvedValueOnce({
+      allowed: false,
+      reason: "daily_limit",
+      retryAfterSeconds: 7_200,
+    });
 
     const response = await postDrafts(
       request({ sourceId: "source-1", kind: "flashcard" })
     );
 
     expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "daily_limit",
+      retryAfterSeconds: 7_200,
+    });
     expect(mocks.generateText).not.toHaveBeenCalled();
     expect(mocks.added).toHaveLength(0);
   });
@@ -251,6 +330,31 @@ describe("source draft generation", () => {
     expect(await response.json()).toMatchObject({
       error: expect.stringContaining("reference only"),
     });
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("does not charge when the owned source does not exist", async () => {
+    mocks.sourceExists = false;
+
+    const response = await postDrafts(
+      request({ sourceId: "source-1", kind: "flashcard" })
+    );
+
+    expect(response.status).toBe(404);
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("does not charge when the required pending-draft read fails", async () => {
+    mocks.pendingGet.mockRejectedValueOnce(new Error("Firestore unavailable"));
+
+    const response = await postDrafts(
+      request({ sourceId: "source-1", kind: "flashcard" })
+    );
+
+    expect(response.status).toBe(500);
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
     expect(mocks.generateText).not.toHaveBeenCalled();
   });
 
@@ -387,5 +491,40 @@ describe("source draft generation", () => {
 
     expect(response.status).toBe(401);
     expect(mocks.checkBudget).not.toHaveBeenCalled();
+  });
+
+  it("returns a retry header for a shared source burst rejection", async () => {
+    mocks.checkBudget.mockResolvedValueOnce({
+      allowed: false,
+      reason: "burst_limit",
+      retryAfterSeconds: 19,
+    });
+
+    const response = await postDrafts(
+      request({ sourceId: "source-1", kind: "practice-question" })
+    );
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("19");
+    await expect(response.json()).resolves.toMatchObject({
+      code: "burst_limit",
+      retryAfterSeconds: 19,
+    });
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when budget enforcement is unavailable", async () => {
+    mocks.checkBudget.mockRejectedValueOnce(new Error("Firestore unavailable"));
+
+    const response = await postDrafts(
+      request({ sourceId: "source-1", kind: "flashcard" })
+    );
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "budget_unavailable",
+    });
+    expect(mocks.generateText).not.toHaveBeenCalled();
+    expect(mocks.added).toHaveLength(0);
   });
 });

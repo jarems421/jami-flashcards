@@ -62,6 +62,7 @@ export function parseGeneratedQuestionDrafts(text: string) {
       .filter((draft): draft is GeneratedQuestionDraft => draft !== null)
       .slice(0, MAX_SOURCE_QUESTION_DRAFTS);
   } catch {
+    // Providers sometimes return labelled prose; parse that safe fallback.
     return parseFallbackQuestions(text).slice(0, MAX_SOURCE_QUESTION_DRAFTS);
   }
 }

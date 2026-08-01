@@ -94,6 +94,43 @@ describe("Jami assistant client service", () => {
     );
   });
 
+  it("describes a burst limit as temporary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            error: "Jami is receiving requests too quickly. Try again in a moment.",
+            code: "burst_limit",
+            retryAfterSeconds: 14,
+          },
+          { status: 429 }
+        )
+      )
+    );
+
+    await expect(sendJamiAssistantMessage(input)).rejects.toThrow(/in a moment/i);
+  });
+
+  it("surfaces a temporary budget-store outage accurately", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json(
+          {
+            error: "AI usage limits are temporarily unavailable. Try again shortly.",
+            code: "budget_unavailable",
+          },
+          { status: 503 }
+        )
+      )
+    );
+
+    await expect(sendJamiAssistantMessage(input)).rejects.toThrow(
+      /usage limits are temporarily unavailable/i
+    );
+  });
+
   it("rejects successful responses that omit transparent usage data", async () => {
     vi.stubGlobal(
       "fetch",

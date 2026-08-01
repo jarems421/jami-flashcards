@@ -31,13 +31,23 @@ const mocks = vi.hoisted(() => {
     ],
   });
 
+  const deckGet = vi.fn();
+  const deckDoc = { get: deckGet };
+  const deckCollection = { doc: vi.fn(() => deckDoc) };
+  const collection = vi.fn((name: string) =>
+    name === "decks" ? deckCollection : cardsQuery
+  );
+
   return {
     cardsQuery,
+    collection,
+    deckCollection,
+    deckGet,
     flags: { enableFolders: true, enableMasteryProgress: true, enableFlashcardAi: true },
     verifyIdToken: vi.fn(async () => ({ uid: "user-1" })),
-    checkBudget: vi.fn(async () => true),
+    checkBudget: vi.fn(),
     generateText: vi.fn(),
-    db: { collection: () => cardsQuery },
+    db: { collection },
   };
 });
 
@@ -48,6 +58,27 @@ vi.mock("@/services/firebase/admin", () => ({
 
 vi.mock("@/services/ai/budgets", () => ({
   checkAiBudget: mocks.checkBudget,
+  createAiBudgetLimitResponse: (
+    _action: string,
+    decision: { reason: string; retryAfterSeconds: number }
+  ) =>
+    Response.json(
+      {
+        error:
+          decision.reason === "burst_limit"
+            ? "Jami is receiving requests too quickly. Try again in a moment."
+            : "Jami has reached today's AI limit. Try again tomorrow.",
+        code: decision.reason,
+        retryAfterSeconds: decision.retryAfterSeconds,
+      },
+      {
+        status: 429,
+        headers:
+          decision.reason === "burst_limit"
+            ? { "Retry-After": String(decision.retryAfterSeconds) }
+            : undefined,
+      }
+    ),
   getAiTokenCap: () => 900,
 }));
 
@@ -92,7 +123,15 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.flags.enableFlashcardAi = true;
   mocks.verifyIdToken.mockResolvedValue({ uid: "user-1" });
-  mocks.checkBudget.mockResolvedValue(true);
+  mocks.checkBudget.mockResolvedValue({
+    allowed: true,
+    reason: null,
+    retryAfterSeconds: 0,
+  });
+  mocks.deckGet.mockReset().mockResolvedValue({
+    exists: true,
+    data: () => ({ userId: "user-1" }),
+  });
   mocks.cardsQuery.where.mockReturnValue(mocks.cardsQuery);
   mocks.cardsQuery.limit.mockReturnValue(mocks.cardsQuery);
   mocks.generateText.mockResolvedValue("Factorise to $x(x + 3) = 0$, so $x = 0$ or $x = -3$.");
@@ -105,6 +144,38 @@ describe("card back autocomplete", () => {
 
     expect(response.status).toBe(200);
     expect(body.back).toContain("x = 0");
+    expect(mocks.deckCollection.doc).toHaveBeenCalledWith("deck-1");
+    expect(mocks.deckGet.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.checkBudget.mock.invocationCallOrder[0]
+    );
+  });
+
+  it("does not charge when the supplied deck does not exist", async () => {
+    mocks.deckGet.mockResolvedValueOnce({
+      exists: false,
+      data: () => undefined,
+    });
+
+    const response = await postAutocomplete(request(mathsCard()));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Deck not found" });
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("does not charge when the supplied deck belongs to another user", async () => {
+    mocks.deckGet.mockResolvedValueOnce({
+      exists: true,
+      data: () => ({ userId: "user-2" }),
+    });
+
+    const response = await postAutocomplete(request(mathsCard()));
+
+    expect(response.status).toBe(404);
+    await expect(response.json()).resolves.toEqual({ error: "Deck not found" });
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
+    expect(mocks.generateText).not.toHaveBeenCalled();
   });
 
   it("does nothing when the flashcard AI flag is off", async () => {
@@ -124,6 +195,16 @@ describe("card back autocomplete", () => {
     expect(filters).toContain("userId");
     expect(filters).toContain("deckId");
     expect(mocks.cardsQuery.limit).toHaveBeenCalledWith(20);
+  });
+
+  it("does not charge when required nearby-card reads fail", async () => {
+    mocks.cardsQuery.get.mockRejectedValueOnce(new Error("Firestore unavailable"));
+
+    const response = await postAutocomplete(request(mathsCard()));
+
+    expect(response.status).toBe(500);
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
+    expect(mocks.generateText).not.toHaveBeenCalled();
   });
 
   it("skips the lookup entirely for a card with no deck", async () => {
@@ -172,15 +253,56 @@ describe("card back autocomplete", () => {
     const response = await postAutocomplete(request(mathsCard({ front: "" })));
 
     expect(response.status).toBe(400);
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
     expect(mocks.generateText).not.toHaveBeenCalled();
   });
 
   it("refuses once the daily budget is spent", async () => {
-    mocks.checkBudget.mockResolvedValueOnce(false);
+    mocks.checkBudget.mockResolvedValueOnce({
+      allowed: false,
+      reason: "daily_limit",
+      retryAfterSeconds: 3_600,
+    });
+
+    const response = await postAutocomplete(request(mathsCard()));
+    const body = await response.json();
+
+    expect(response.status).toBe(429);
+    expect(body).toMatchObject({
+      code: "daily_limit",
+      retryAfterSeconds: 3_600,
+    });
+    expect(response.headers.get("Retry-After")).toBeNull();
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("returns a retry header for a burst rejection", async () => {
+    mocks.checkBudget.mockResolvedValueOnce({
+      allowed: false,
+      reason: "burst_limit",
+      retryAfterSeconds: 27,
+    });
 
     const response = await postAutocomplete(request(mathsCard()));
 
     expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "burst_limit",
+      retryAfterSeconds: 27,
+    });
+    expect(response.headers.get("Retry-After")).toBe("27");
+    expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the budget store is unavailable", async () => {
+    mocks.checkBudget.mockRejectedValueOnce(new Error("Firestore unavailable"));
+
+    const response = await postAutocomplete(request(mathsCard()));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "budget_unavailable",
+    });
     expect(mocks.generateText).not.toHaveBeenCalled();
   });
 });

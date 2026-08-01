@@ -17,7 +17,7 @@ const mocks = vi.hoisted(() => {
     ContextError,
     verifyIdToken: vi.fn(async () => ({ uid: "user-1" })),
     resolveContext: vi.fn(),
-    checkBudget: vi.fn(async () => true),
+    checkBudget: vi.fn(),
     prepareSource: vi.fn(),
     generateText: vi.fn(),
     streamText: vi.fn(),
@@ -38,6 +38,27 @@ vi.mock("@/services/ai/assistant-context", () => ({
 
 vi.mock("@/services/ai/budgets", () => ({
   checkAiBudget: mocks.checkBudget,
+  createAiBudgetLimitResponse: (
+    _action: string,
+    decision: { reason: string; retryAfterSeconds: number }
+  ) =>
+    Response.json(
+      {
+        error:
+          decision.reason === "burst_limit"
+            ? "Jami is receiving requests too quickly. Try again in a moment."
+            : "Jami has reached today's AI limit. Try again tomorrow.",
+        code: decision.reason,
+        retryAfterSeconds: decision.retryAfterSeconds,
+      },
+      {
+        status: 429,
+        headers:
+          decision.reason === "burst_limit"
+            ? { "Retry-After": String(decision.retryAfterSeconds) }
+            : undefined,
+      }
+    ),
   getAiTokenCap: () => 8_000,
 }));
 
@@ -117,7 +138,11 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.verifyIdToken.mockResolvedValue({ uid: "user-1" });
-  mocks.checkBudget.mockResolvedValue(true);
+  mocks.checkBudget.mockResolvedValue({
+    allowed: true,
+    reason: null,
+    retryAfterSeconds: 0,
+  });
   mocks.resolveContext.mockResolvedValue({
     currentId: "card-1",
     currentLabel: "Current card",
@@ -282,7 +307,39 @@ describe("universal Jami assistant route", () => {
     const response = await postAssistant(request(validBody()));
     expect(response.status).toBe(404);
     expect(await response.json()).toMatchObject({ code: "context_not_found" });
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
     expect(mocks.streamText).not.toHaveBeenCalled();
+  });
+
+  it("rejects obviously oversized source selections before charging", async () => {
+    mocks.resolveContext.mockResolvedValueOnce({
+      currentId: "card-1",
+      currentLabel: "Current card",
+      currentParts: [{ text: "Card front and answer" }],
+      sources: [
+        {
+          id: "source-large",
+          title: "Large paper",
+          type: "file",
+          folderIds: [],
+          topicIds: [],
+          status: "active",
+          createdBy: "user-1",
+          createdAt: 1,
+          updatedAt: 1,
+          sizeBytes: 31 * 1024 * 1024,
+        },
+      ],
+    });
+
+    const response = await postAssistant(request(validBody()));
+
+    expect(response.status).toBe(413);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "sources_too_large",
+    });
+    expect(mocks.checkBudget).not.toHaveBeenCalled();
+    expect(mocks.prepareSource).not.toHaveBeenCalled();
   });
 
   it("rejects invented source references from the provider", async () => {
@@ -364,9 +421,49 @@ describe("universal Jami assistant route", () => {
   });
 
   it("enforces the transactional daily budget before provider work", async () => {
-    mocks.checkBudget.mockResolvedValueOnce(false);
+    mocks.checkBudget.mockResolvedValueOnce({
+      allowed: false,
+      reason: "daily_limit",
+      retryAfterSeconds: 4_000,
+    });
     const response = await postAssistant(request(validBody()));
     expect(response.status).toBe(429);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "daily_limit",
+      retryAfterSeconds: 4_000,
+    });
+    expect(mocks.prepareSource).not.toHaveBeenCalled();
+    expect(mocks.streamText).not.toHaveBeenCalled();
+  });
+
+  it("returns retry timing for a burst rejection", async () => {
+    mocks.checkBudget.mockResolvedValueOnce({
+      allowed: false,
+      reason: "burst_limit",
+      retryAfterSeconds: 12,
+    });
+
+    const response = await postAssistant(request(validBody()));
+
+    expect(response.status).toBe(429);
+    expect(response.headers.get("Retry-After")).toBe("12");
+    await expect(response.json()).resolves.toMatchObject({
+      code: "burst_limit",
+      retryAfterSeconds: 12,
+    });
+    expect(mocks.prepareSource).not.toHaveBeenCalled();
+    expect(mocks.streamText).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when the budget store cannot be reached", async () => {
+    mocks.checkBudget.mockRejectedValueOnce(new Error("Firestore unavailable"));
+
+    const response = await postAssistant(request(validBody()));
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      code: "budget_unavailable",
+    });
     expect(mocks.prepareSource).not.toHaveBeenCalled();
     expect(mocks.streamText).not.toHaveBeenCalled();
   });

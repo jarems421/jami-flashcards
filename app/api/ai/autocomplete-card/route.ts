@@ -1,7 +1,11 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { checkAiBudget, getAiTokenCap } from "@/services/ai/budgets";
+import {
+  checkAiBudget,
+  createAiBudgetLimitResponse,
+  getAiTokenCap,
+} from "@/services/ai/budgets";
 import { generateGeminiText, isGeminiTimeoutError } from "@/lib/ai/gemini";
 import {
   cleanGeneratedCardBack,
@@ -69,6 +73,71 @@ function isLikelyIncompleteBack(text: string, front: string) {
   return false;
 }
 
+async function loadRelatedCardsPrompt(input: {
+  adminDb: ReturnType<typeof getAdminDb>;
+  uid: string;
+  deckId?: string;
+  topicIds: string[];
+  front: string;
+}) {
+  if (!input.deckId) return "No nearby cards are available.";
+
+  // These cards are only a formatting and tone reference, so the read is
+  // scoped to the owned deck instead of scanning an arbitrary card slice.
+  const relatedCardDocuments = Array.from(
+    new Map(
+      (
+        await Promise.all(
+          (["userId", "uid"] as const).map((ownerField) =>
+            input.adminDb
+              .collection("cards")
+              .where(ownerField, "==", input.uid)
+              .where("deckId", "==", input.deckId)
+              .limit(RELATED_CARD_SCAN_LIMIT)
+              .get()
+          )
+        )
+      ).flatMap((snapshot) =>
+        snapshot.docs.map((cardDoc) => [cardDoc.id, cardDoc] as const)
+      )
+    ).values()
+  );
+  const relatedCards = relatedCardDocuments
+    .map((cardDoc) => {
+      const data = cardDoc.data();
+      const cardFront = typeof data.front === "string" ? data.front : "";
+      const cardBack = typeof data.back === "string" ? data.back : "";
+      const cardTopicIds = Array.isArray(data.topicIds)
+        ? data.topicIds.filter(
+            (topicId): topicId is string =>
+              typeof topicId === "string" && topicId.trim().length > 0
+          )
+        : [];
+      let score = 5;
+      if (input.topicIds.length > 0) {
+        score +=
+          cardTopicIds.filter((topicId) => input.topicIds.includes(topicId))
+            .length * 3;
+      }
+      if (cardFront.trim() === input.front.trim()) score -= 10;
+      return { front: cardFront, back: cardBack, score };
+    })
+    .filter((card) => card.score > 0 && card.front && card.back)
+    .sort((left, right) => right.score - left.score)
+    .slice(0, MAX_RELATED_CARDS);
+
+  return relatedCards.length
+    ? `Nearby cards for tone, level, and formatting:
+${relatedCards
+  .map(
+    (card) =>
+      `- Front: ${card.front.slice(0, 160)}
+  Back: ${card.back.slice(0, 260)}`
+  )
+  .join("\n")}`
+    : "No nearby cards are available.";
+}
+
 export async function POST(request: NextRequest) {
   if (!featureFlags.enableFlashcardAi) {
     return Response.json(
@@ -98,14 +167,6 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const allowed = await checkAiBudget({ uid, action: "autocompleteCard" });
-  if (!allowed) {
-    return Response.json(
-      { error: "Jami has reached today's AI limit. Try again tomorrow." },
-      { status: 429 },
-    );
-  }
-
   let front: string;
   let currentBack: string;
   let deckId: string | undefined;
@@ -117,7 +178,9 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as Record<string, unknown>;
     front = typeof body.front === "string" ? body.front.slice(0, 700).trim() : "";
     currentBack = typeof body.currentBack === "string" ? body.currentBack.slice(0, 1500).trim() : "";
-    deckId = typeof body.deckId === "string" && body.deckId.trim() ? body.deckId.slice(0, 120) : undefined;
+    deckId = typeof body.deckId === "string" && body.deckId.trim()
+      ? body.deckId.trim().slice(0, 120)
+      : undefined;
     deckName = typeof body.deckName === "string" && body.deckName.trim() ? body.deckName.slice(0, 120) : undefined;
     topics = Array.isArray(body.topics)
       ? body.topics
@@ -139,58 +202,65 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
 
+  let adminDb: ReturnType<typeof getAdminDb>;
   try {
-    const adminDb = getAdminDb();
+    adminDb = getAdminDb();
+    if (deckId) {
+      const deckSnapshot = await adminDb.collection("decks").doc(deckId).get();
+      const deckData = deckSnapshot.data() ?? {};
+      const deckOwner =
+        typeof deckData.userId === "string"
+          ? deckData.userId.trim()
+          : typeof deckData.uid === "string"
+            ? deckData.uid.trim()
+            : "";
+      if (!deckSnapshot.exists || deckOwner !== uid) {
+        return Response.json({ error: "Deck not found" }, { status: 404 });
+      }
+    }
+  } catch (error) {
+    console.error("Could not verify the autocomplete deck before generation.", error);
+    return Response.json(
+      { error: "This deck could not be loaded just now." },
+      { status: 500 },
+    );
+  }
 
-    // These cards are only used as a formatting and tone reference, so the
-    // query is scoped to the card's own deck rather than reading a slice of
-    // the whole collection and discarding most of it. The previous version
-    // read 120 arbitrary cards and kept only deck or topic matches, which
-    // also made it unreliable: with no ordering, matches outside that
-    // arbitrary window were missed at random.
-    const relatedCards = deckId
-      ? (
-          await adminDb
-            .collection("cards")
-            .where("userId", "==", uid)
-            .where("deckId", "==", deckId)
-            .limit(RELATED_CARD_SCAN_LIMIT)
-            .get()
-        ).docs
-          .map((cardDoc) => {
-            const data = cardDoc.data();
-            const cardFront = typeof data.front === "string" ? data.front : "";
-            const cardBack = typeof data.back === "string" ? data.back : "";
-            const cardTopicIds = Array.isArray(data.topicIds)
-              ? data.topicIds.filter((topicId): topicId is string => typeof topicId === "string" && topicId.trim().length > 0)
-              : [];
+  let relatedCardsPrompt: string;
+  try {
+    relatedCardsPrompt = await loadRelatedCardsPrompt({
+      adminDb,
+      uid,
+      deckId,
+      topicIds,
+      front,
+    });
+  } catch (error) {
+    console.error("Could not load nearby cards before autocomplete generation.", error);
+    return Response.json(
+      { error: "Nearby cards could not be loaded just now." },
+      { status: 500 }
+    );
+  }
 
-            // Same-deck cards all score alike, so shared topics break the tie
-            // towards the most closely related ones.
-            let score = 5;
-            if (topicIds.length > 0) {
-              score += cardTopicIds.filter((topicId) => topicIds.includes(topicId)).length * 3;
-            }
-            if (cardFront.trim() === front.trim()) score -= 10;
+  let budgetDecision;
+  try {
+    budgetDecision = await checkAiBudget({ uid, action: "autocompleteCard" });
+  } catch (error) {
+    console.error("Could not enforce the card autocomplete AI budget.", error);
+    return Response.json(
+      {
+        error: "AI usage limits are temporarily unavailable. Try again shortly.",
+        code: "budget_unavailable",
+      },
+      { status: 503 },
+    );
+  }
+  if (!budgetDecision.allowed) {
+    return createAiBudgetLimitResponse("autocompleteCard", budgetDecision);
+  }
 
-            return { front: cardFront, back: cardBack, score };
-          })
-          .filter((card) => card.score > 0 && card.front && card.back)
-          .sort((left, right) => right.score - left.score)
-          .slice(0, MAX_RELATED_CARDS)
-      : [];
-
-    const relatedCardsPrompt = relatedCards.length
-      ? `Nearby cards for tone, level, and formatting:
-${relatedCards
-  .map(
-    (card) =>
-      `- Front: ${card.front.slice(0, 160)}
-  Back: ${card.back.slice(0, 260)}`,
-  )
-  .join("\n")}`
-      : "No nearby cards are available.";
-
+  try {
     const subject = detectCardBackSubject({ front, deckName, topics });
     const subjectPrompt = getSubjectPrompt(subject);
     const systemPrompt = `You write the BACK side of a flashcard for a student.

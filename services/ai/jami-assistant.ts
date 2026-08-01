@@ -9,12 +9,24 @@ import {
 } from "@/lib/ai/jami-assistant-normalize";
 import { auth } from "@/services/firebase/client";
 
-function getFriendlyAssistantError(status: number, message?: string) {
+function getFriendlyAssistantError(
+  status: number,
+  message?: string,
+  code?: string
+) {
   if (status === 401) return "Sign in again to ask Jami.";
   if (status === 404) return message || "Jami could not find the current study item.";
   if (status === 413) return message || "That context is too large for Jami to read at once.";
-  if (status === 429) return "Jami has reached today's AI limit. Try again tomorrow.";
-  if (status === 503) return "Jami AI is not configured in this deployment yet.";
+  if (status === 429) {
+    return code === "burst_limit"
+      ? message || "Jami is receiving requests too quickly. Try again in a moment."
+      : "Jami has reached today's AI limit. Try again tomorrow.";
+  }
+  if (status === 503) {
+    return code === "budget_unavailable"
+      ? message || "AI usage limits are temporarily unavailable. Try again shortly."
+      : "Jami AI is not configured in this deployment yet.";
+  }
   if (status >= 500) return message || "Jami could not answer just now. Try again in a moment.";
   return message || "Jami could not answer that just now.";
 }
@@ -62,6 +74,8 @@ async function readAssistantStream(
     try {
       event = JSON.parse(trimmed) as Record<string, unknown>;
     } catch {
+      // Ignore one malformed SSE event so later valid events can still finish
+      // the streamed answer.
       return;
     }
 
@@ -116,14 +130,19 @@ export async function sendJamiAssistantMessage(
   // Everything that can fail before generation starts still answers with JSON,
   // so a non-ok response is read the same way it always was.
   if (!response.ok) {
-    const failure = (await response.json().catch(() => null)) as Record<
+    const failure = (await response.json().catch(() => {
+      // Infrastructure may replace the JSON API error body; status-based
+      // fallback copy remains actionable without exposing that payload.
+      return null;
+    })) as Record<
       string,
       unknown
     > | null;
     throw new Error(
       getFriendlyAssistantError(
         response.status,
-        typeof failure?.error === "string" ? failure.error : undefined
+        typeof failure?.error === "string" ? failure.error : undefined,
+        typeof failure?.code === "string" ? failure.code : undefined
       )
     );
   }

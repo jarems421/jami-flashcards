@@ -1,7 +1,10 @@
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
-import { checkAiBudget } from "@/services/ai/budgets";
+import {
+  checkAiBudget,
+  createAiBudgetLimitResponse,
+} from "@/services/ai/budgets";
 import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { CARD_TEXT_FORMAT_PROMPT } from "@/lib/ai/response-format";
@@ -105,16 +108,23 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Invalid request body" }, { status: 400 });
   }
 
-  const allowed = await checkAiBudget({
-    uid,
-    action: kind === "flashcard" ? "sourceFlashcardDrafts" : "sourcePracticeDrafts",
-  });
-  if (!allowed) {
-    return Response.json({ error: "AI budget reached for source drafts today." }, { status: 429 });
+  let adminDb: ReturnType<typeof getAdminDb>;
+  let sourceSnapshot;
+  try {
+    adminDb = getAdminDb();
+    sourceSnapshot = await adminDb
+      .collection("users")
+      .doc(uid)
+      .collection("sources")
+      .doc(sourceId)
+      .get();
+  } catch (error) {
+    console.error("Could not load a source before draft generation.", error);
+    return Response.json(
+      { error: "This source could not be loaded just now." },
+      { status: 500 }
+    );
   }
-
-  const adminDb = getAdminDb();
-  const sourceSnapshot = await adminDb.collection("users").doc(uid).collection("sources").doc(sourceId).get();
   if (!sourceSnapshot.exists) {
     return Response.json({ error: "Source not found" }, { status: 404 });
   }
@@ -130,18 +140,32 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const budgetAction =
+    kind === "flashcard"
+      ? "sourceFlashcardDrafts"
+      : "sourcePracticeDrafts";
+
   try {
     const [folderSnapshots, topicSnapshots] = await Promise.all([
       Promise.all(
         source.folderIds.map((folderId) =>
           adminDb.collection("users").doc(uid).collection("studyFolders").doc(folderId).get()
         )
-      ).catch(() => []),
+      ).catch(() => {
+        // Folder names only enrich the prompt; ownership and source content
+        // were already verified, so drafting remains safe without them.
+        return [];
+      }),
       Promise.all(
         source.topicIds.map((topicId) =>
           adminDb.collection("users").doc(uid).collection("topics").doc(topicId).get()
         )
-      ).catch(() => []),
+      ).catch(() => {
+        // Topic names are best-effort prompt context, not authorization or
+        // source grounding, so a metadata outage must not invalidate the
+        // provider attempt after the allowance has been charged.
+        return [];
+      }),
     ]);
     const folderNames = folderSnapshots
       .map((snapshot) => snapshot.data()?.name)
@@ -175,17 +199,44 @@ export async function POST(request: NextRequest) {
      * The filter downstream still runs, as a backstop for the model ignoring
      * this rather than as the mechanism.
      */
-    const pendingSnapshot = await draftsCollection.where("sourceId", "==", source.id).get();
+    const pendingSnapshot = await draftsCollection
+      .where("sourceId", "==", source.id)
+      .where("contentStatus", "==", "draft")
+      .where("kind", "==", draftKind)
+      .orderBy("createdAt", "desc")
+      .limit(PENDING_PROMPT_LIMIT)
+      .get();
     const pendingPrompts = pendingSnapshot.docs
       .map((pendingDoc) => pendingDoc.data() as Record<string, unknown>)
+      // Keep a defensive shape check even though Firestore already applies
+      // these filters; it prevents malformed legacy documents entering the
+      // prompt while the query still bounds the read to 24 documents.
       .filter(
         (data) => data.contentStatus === "draft" && data.kind === draftKind
       )
       .map((data) => String((draftKind === "flashcard" ? data.front : data.questionText) ?? "").trim())
       .filter(Boolean)
-      .slice(0, PENDING_PROMPT_LIMIT)
       .map((prompt) => prompt.slice(0, 200));
     const existingPromptKeys = pendingPrompts.map(getSourceDraftPromptKey);
+
+    let budgetDecision;
+    try {
+      // All validation, ownership checks, and required Firestore reads have
+      // completed. Charge immediately before the provider attempt.
+      budgetDecision = await checkAiBudget({ uid, action: budgetAction });
+    } catch (error) {
+      console.error("Could not enforce the source draft AI budget.", error);
+      return Response.json(
+        {
+          error: "AI usage limits are temporarily unavailable. Try again shortly.",
+          code: "budget_unavailable",
+        },
+        { status: 503 }
+      );
+    }
+    if (!budgetDecision.allowed) {
+      return createAiBudgetLimitResponse(budgetAction, budgetDecision);
+    }
 
     const generated = await generateGeminiText({
       apiKey: GEMINI_API_KEY,
