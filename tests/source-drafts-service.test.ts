@@ -77,6 +77,39 @@ describe("generateSourceDrafts", () => {
     ).rejects.toThrow(/today's draft limit/i);
   });
 
+  it("describes a burst limit as temporary", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(429, {
+          error: "Jami is receiving requests too quickly. Try again in a moment.",
+          code: "burst_limit",
+          retryAfterSeconds: 20,
+        })
+      )
+    );
+
+    await expect(
+      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard", depth: "medium" })
+    ).rejects.toThrow(/in a moment/i);
+  });
+
+  it("does not describe a budget-store outage as missing AI configuration", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        jsonResponse(503, {
+          error: "AI usage limits are temporarily unavailable. Try again shortly.",
+          code: "budget_unavailable",
+        })
+      )
+    );
+
+    await expect(
+      generateSourceDrafts({ sourceId: "source-1", kind: "flashcard", depth: "medium" })
+    ).rejects.toThrow(/usage limits are temporarily unavailable/i);
+  });
+
   it("explains an unconfigured deployment", async () => {
     vi.stubGlobal("fetch", vi.fn(async () => jsonResponse(503, {})));
 

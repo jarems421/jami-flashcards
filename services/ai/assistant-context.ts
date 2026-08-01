@@ -21,6 +21,8 @@ import {
 import { getAdminDb } from "@/services/firebase/admin";
 
 const MAX_SOURCE_METADATA_CANDIDATES = 200;
+const MAX_SOURCE_CANDIDATES_PER_RELATION =
+  MAX_SOURCE_METADATA_CANDIDATES / 2;
 const LEARN_RELATED_CARD_SCAN_LIMIT = 20;
 const LEARN_MAX_RELATED_CARDS = 6;
 
@@ -43,14 +45,25 @@ async function loadRelatedCards(input: {
 }) {
   if (!input.deckId) return "";
 
-  const snapshot = await input.db
-    .collection("cards")
-    .where("userId", "==", input.uid)
-    .where("deckId", "==", input.deckId)
-    .limit(LEARN_RELATED_CARD_SCAN_LIMIT)
-    .get();
+  const cards = input.db.collection("cards");
+  const snapshots = await Promise.all(
+    (["userId", "uid"] as const).map((ownerField) =>
+      cards
+        .where(ownerField, "==", input.uid)
+        .where("deckId", "==", input.deckId)
+        .limit(LEARN_RELATED_CARD_SCAN_LIMIT)
+        .get()
+    )
+  );
+  const cardDocuments = Array.from(
+    new Map(
+      snapshots.flatMap((snapshot) =>
+        snapshot.docs.map((cardDoc) => [cardDoc.id, cardDoc] as const)
+      )
+    ).values()
+  );
 
-  const related = snapshot.docs
+  const related = cardDocuments
     .filter((doc) => doc.id !== input.cardId)
     .map((doc) => {
       const data = doc.data();
@@ -110,18 +123,46 @@ async function selectSources(input: {
     });
   }
 
-  const snapshot = await input.db
+  const sourceCollection = input.db
     .collection("users")
     .doc(input.uid)
-    .collection("sources")
-    .limit(MAX_SOURCE_METADATA_CANDIDATES)
-    .get();
-  const candidates = new Map<string, Source>();
-  snapshot.docs.forEach((sourceDoc) => {
-    candidates.set(
-      sourceDoc.id,
-      mapSourceData(sourceDoc.id, sourceDoc.data() ?? {})
+    .collection("sources");
+  const relationQueries = [];
+  if (input.relations.folderIds.length > 0) {
+    relationQueries.push(
+      sourceCollection
+        .where("status", "==", "active")
+        .where(
+          "folderIds",
+          "array-contains-any",
+          input.relations.folderIds.slice(0, 30)
+        )
+        .limit(MAX_SOURCE_CANDIDATES_PER_RELATION)
+        .get()
     );
+  }
+  if (input.relations.topicIds.length > 0) {
+    relationQueries.push(
+      sourceCollection
+        .where("status", "==", "active")
+        .where(
+          "topicIds",
+          "array-contains-any",
+          input.relations.topicIds.slice(0, 30)
+        )
+        .limit(MAX_SOURCE_CANDIDATES_PER_RELATION)
+        .get()
+    );
+  }
+  const snapshots = await Promise.all(relationQueries);
+  const candidates = new Map<string, Source>();
+  snapshots.forEach((snapshot) => {
+    snapshot.docs.forEach((sourceDoc) => {
+      candidates.set(
+        sourceDoc.id,
+        mapSourceData(sourceDoc.id, sourceDoc.data() ?? {})
+      );
+    });
   });
   required.forEach((source) => candidates.set(source.id, source));
 

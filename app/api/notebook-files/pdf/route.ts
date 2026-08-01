@@ -53,7 +53,7 @@ export async function GET(request: NextRequest) {
         { status: 415 }
       );
     }
-    if (!Number.isFinite(size) || size < 1 || size > MAX_NOTEBOOK_FILE_SIZE) {
+    if (!Number.isFinite(size) || size < 1 || size >= MAX_NOTEBOOK_FILE_SIZE) {
       return Response.json(
         { error: "This notebook file has an invalid file size." },
         { status: 413 }
@@ -61,6 +61,12 @@ export async function GET(request: NextRequest) {
     }
 
     const [bytes] = await file.download();
+    if (bytes.byteLength < 1 || bytes.byteLength >= MAX_NOTEBOOK_FILE_SIZE) {
+      return Response.json(
+        { error: "This notebook file has an invalid file size." },
+        { status: 413 }
+      );
+    }
     const responseBytes = new Uint8Array(bytes.byteLength);
     responseBytes.set(bytes);
     return new Response(responseBytes.buffer, {
@@ -68,6 +74,7 @@ export async function GET(request: NextRequest) {
         "Cache-Control": "private, max-age=3600",
         "Content-Length": String(bytes.byteLength),
         "Content-Type": contentType,
+        "X-Content-Type-Options": "nosniff",
       },
     });
   } catch (error) {

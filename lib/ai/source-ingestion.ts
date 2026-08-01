@@ -279,7 +279,7 @@ export async function prepareSourceForTutor(
       throw new Error("This uploaded file type is not supported by Tutor.");
     }
     const buffer = await loadStoredFile(source.storagePath);
-    if (buffer.byteLength <= 0 || buffer.byteLength > MAX_SOURCE_FILE_SIZE) {
+    if (buffer.byteLength <= 0 || buffer.byteLength >= MAX_SOURCE_FILE_SIZE) {
       throw new Error("The uploaded file is empty or too large.");
     }
     const kind = getSourceFileKind(source.fileType);

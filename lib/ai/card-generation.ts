@@ -80,6 +80,7 @@ export function parseGeneratedCardDrafts(text: string): GeneratedCardDraft[] {
       .map(normalizeGeneratedDraft)
       .filter((draft): draft is GeneratedCardDraft => draft !== null);
   } catch {
+    // Providers sometimes return labelled prose; parse that safe fallback.
     return parseFallbackDrafts(text);
   }
 }

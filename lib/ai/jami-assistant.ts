@@ -355,6 +355,7 @@ export function parseJamiAssistantModelAnswer(
       repairModelJsonBackslashes(unwrapJson(value))
     ) as ModelAnswerPayload;
   } catch {
+    // Invalid structured model output is rejected so the route can retry it.
     return null;
   }
 

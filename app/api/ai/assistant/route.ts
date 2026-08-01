@@ -17,7 +17,11 @@ import {
   JamiAssistantContextError,
   resolveJamiAssistantContext,
 } from "@/services/ai/assistant-context";
-import { checkAiBudget, getAiTokenCap } from "@/services/ai/budgets";
+import {
+  checkAiBudget,
+  createAiBudgetLimitResponse,
+  getAiTokenCap,
+} from "@/services/ai/budgets";
 import { getJsonAnswerFormatPrompt } from "@/lib/ai/response-format";
 import { cleanAiResponseText } from "@/lib/ai/response-text";
 import {
@@ -100,13 +104,31 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const allowed = await checkAiBudget({ uid, action: "assistant" });
-  if (!allowed) {
+  const declaredSourceBytes = resolved.sources.reduce(
+    (total, source) => total + (source.sizeBytes ?? 0),
+    0
+  );
+  if (declaredSourceBytes > MAX_COMBINED_SOURCE_BYTES) {
     return failureResponse(
-      "Jami has reached today's AI limit. Try again tomorrow.",
-      429,
-      "budget_reached"
+      "Choose fewer or smaller sources. Jami can read up to 30 MB at once.",
+      413,
+      "sources_too_large"
     );
+  }
+
+  let budgetDecision;
+  try {
+    budgetDecision = await checkAiBudget({ uid, action: "assistant" });
+  } catch (error) {
+    console.error("Could not enforce the Jami assistant AI budget.", error);
+    return failureResponse(
+      "AI usage limits are temporarily unavailable. Try again shortly.",
+      503,
+      "budget_unavailable"
+    );
+  }
+  if (!budgetDecision.allowed) {
+    return createAiBudgetLimitResponse("assistant", budgetDecision);
   }
 
   let storageBucket: ReturnType<typeof getAdminStorageBucket> | null = null;

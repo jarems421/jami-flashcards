@@ -4,10 +4,19 @@ import type {
   SourceDraftKind,
 } from "@/lib/ai/source-draft-quality";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
+import { invalidateDashboardData } from "@/services/dashboard/cache";
 
-function friendlyError(status: number, message?: string) {
-  if (status === 429) return "Jami has reached today's draft limit. Try again tomorrow.";
-  if (status === 503) return "AI drafting is not configured in this deployment yet.";
+function friendlyError(status: number, message?: string, code?: string) {
+  if (status === 429) {
+    return code === "burst_limit"
+      ? message || "Jami is drafting too quickly. Try again in a moment."
+      : "Jami has reached today's draft limit. Try again tomorrow.";
+  }
+  if (status === 503) {
+    return code === "budget_unavailable"
+      ? message || "AI usage limits are temporarily unavailable. Try again shortly."
+      : "AI drafting is not configured in this deployment yet.";
+  }
   if (status === 422) {
     return message || "Jami could not find enough material in this source to draft from.";
   }
@@ -42,10 +51,16 @@ export async function generateSourceDrafts(input: {
     body: JSON.stringify(input),
   });
 
-  const data = await response.json().catch(() => null);
+  const data = await response.json().catch(() => {
+    // Proxies may replace an API error with a non-JSON body; HTTP status still
+    // selects the stable fallback message below.
+    return null;
+  });
   if (!response.ok) {
-    throw new Error(friendlyError(response.status, data?.error));
+    throw new Error(friendlyError(response.status, data?.error, data?.code));
   }
+
+  invalidateDashboardData(user.uid);
 
   return {
     drafts: Array.isArray(data?.drafts) ? (data.drafts as GeneratedContentDraft[]) : [],

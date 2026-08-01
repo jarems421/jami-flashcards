@@ -9,27 +9,22 @@ import {
 
 export const runtime = "nodejs";
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    const statusCode =
-      typeof error === "object" &&
-      error !== null &&
-      "statusCode" in error &&
-      typeof (error as { statusCode?: unknown }).statusCode === "number"
-        ? ` (${(error as { statusCode: number }).statusCode})`
-        : "";
-    const body =
-      typeof error === "object" &&
-      error !== null &&
-      "body" in error &&
-      typeof (error as { body?: unknown }).body === "string"
-        ? `: ${(error as { body: string }).body.slice(0, 180)}`
-        : "";
-
-    return `${error.message}${statusCode}${body}`;
-  }
-
-  return "Unknown notification error";
+function logNotificationError(label: string, error: unknown) {
+  const statusCode =
+    typeof error === "object" &&
+    error !== null &&
+    "statusCode" in error &&
+    typeof (error as { statusCode?: unknown }).statusCode === "number"
+      ? (error as { statusCode: number }).statusCode
+      : undefined;
+  const message =
+    error instanceof Error
+      ? error.message
+          .replace(/https?:\/\/\S+/gi, "[url]")
+          .replace(/[\r\n]+/g, " ")
+          .slice(0, 180)
+      : "Unknown notification error";
+  console.error(label, { statusCode, message });
 }
 
 export async function POST(request: NextRequest) {
@@ -51,14 +46,35 @@ export async function POST(request: NextRequest) {
 
   try {
     let requestedSubscriptionId: string | null = null;
-    try {
-      const body = (await request.json()) as Record<string, unknown>;
-      requestedSubscriptionId =
-        typeof body.subscriptionId === "string" && body.subscriptionId.trim()
+    const rawBody = await request.text();
+    if (rawBody.trim()) {
+      let body: Record<string, unknown>;
+      try {
+        const parsed = JSON.parse(rawBody) as unknown;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("Invalid notification test body.");
+        }
+        body = parsed as Record<string, unknown>;
+      } catch {
+        return Response.json({ error: "Invalid request body" }, { status: 400 });
+      }
+
+      if (
+        "subscriptionId" in body &&
+        body.subscriptionId !== null &&
+        typeof body.subscriptionId !== "string"
+      ) {
+        return Response.json({ error: "Invalid subscription id" }, { status: 400 });
+      }
+
+      const candidate =
+        typeof body.subscriptionId === "string"
           ? body.subscriptionId.trim()
-          : null;
-    } catch {
-      requestedSubscriptionId = null;
+          : "";
+      if (candidate.length > 256 || candidate.includes("/")) {
+        return Response.json({ error: "Invalid subscription id" }, { status: 400 });
+      }
+      requestedSubscriptionId = candidate || null;
     }
 
     const adminDb = getAdminDb();
@@ -114,8 +130,14 @@ export async function POST(request: NextRequest) {
           );
         }
 
+        logNotificationError("Targeted test notification failed.", error);
         return Response.json(
-          { error: getErrorMessage(error), sent: 0, removed: 0, failed: 1 },
+          {
+            error: "The notification provider could not deliver this test just now.",
+            sent: 0,
+            removed: 0,
+            failed: 1,
+          },
           { status: 502 }
         );
       }
@@ -164,7 +186,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        console.error(error);
+        logNotificationError("Test notification delivery failed.", error);
         failed += 1;
       }
     }
@@ -188,11 +210,11 @@ export async function POST(request: NextRequest) {
       failed,
     });
   } catch (error) {
-    console.error(error);
+    logNotificationError("Test notification route failed.", error);
 
     return Response.json(
       {
-        error: getErrorMessage(error),
+        error: "Test notifications are temporarily unavailable.",
       },
       { status: 500 }
     );

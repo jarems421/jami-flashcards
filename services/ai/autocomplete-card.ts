@@ -9,12 +9,22 @@ export type CardBackAutocompleteInput = {
   topicIds?: string[];
 };
 
-function getFriendlyAutocompleteError(status: number, message?: string) {
+function getFriendlyAutocompleteError(
+  status: number,
+  message?: string,
+  code?: string
+) {
   if (status === 429) {
+    if (code === "daily_limit") {
+      return "Jami has reached today's AI limit. Try again tomorrow.";
+    }
     return "AI drafting is taking a short break. Keep writing, or come back in a little while.";
   }
 
   if (status === 503) {
+    if (code === "budget_unavailable") {
+      return message || "AI usage limits are temporarily unavailable. Try again shortly.";
+    }
     return "AI drafting is not available in this deployment yet.";
   }
 
@@ -42,8 +52,14 @@ export async function autocompleteCardBack(input: CardBackAutocompleteInput) {
   });
 
   if (!res.ok) {
-    const data = await res.json().catch(() => null);
-    throw new Error(getFriendlyAutocompleteError(res.status, data?.error));
+    const data = await res.json().catch(() => {
+      // A gateway can return HTML/plain text on failure; the response status
+      // still maps to a safe user-facing fallback.
+      return null;
+    });
+    throw new Error(
+      getFriendlyAutocompleteError(res.status, data?.error, data?.code)
+    );
   }
 
   const data = await res.json();
