@@ -67,6 +67,19 @@ The required composite indexes are declared in `firestore.indexes.json`.
 | Push subscriptions | A digest/test notification must attempt every registered device; expired entries are removed as they are encountered. |
 | Legacy lifecycle compatibility | Early folders, notebooks, sources and topics may lack `archived`/`status`; the model mappers intentionally treat those shapes as active. Firestore cannot query for a missing field, so complete active lists use the short-lived compatibility pass above until a separately authorized data migration is verified. Goal history has the same cached fallback only for finished records missing the newer `createdAt` sort field; modern history remains cursor-paged. No record is rewritten or deleted by a read. |
 
+### Measured volume, 2026-08-01
+
+`node scripts/measure-data-shape.mjs` counted the live account: 7 cards, 1
+deck, 1 source, 1 topic, 17 notebooks, 52 notebook pages, 15 drafts, 0 mastery
+events. The largest deck holds 7 cards.
+
+Every complete-collection read above is therefore reading tens of documents,
+not thousands. The thresholds set before measuring were: under 1,000 no
+action, 1,000-5,000 paginate the list views, over 5,000 build a search index
+or stored summaries. Nothing here is close to the first threshold, so the
+retained reads stay as they are and no search index is justified. Re-measure
+before adding one.
+
 These are explicit architecture exceptions, not accidental list implementations.
 Ordinary folder browsing uses membership-scoped compatibility queries. Today
 and complete active-list workspaces retain the documented 60-second cold
