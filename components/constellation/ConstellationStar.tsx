@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  clampPercentage,
   getEffectiveStarPresetId,
   getEffectiveStarVisualSize,
   getStarPresetIconPath,
@@ -10,6 +11,7 @@ import {
 type ConstellationStarProps = {
   star: NormalizedStar;
   onDragStart?: () => void;
+  onNudge?: (position: NormalizedStar["position"]) => void;
   variant?: "default" | "background" | "preview";
   label?: string;
 };
@@ -77,6 +79,7 @@ function getStarGlowFilter(glowStrength: number, isBackground: boolean, starSize
 export default function ConstellationStar({
   star,
   onDragStart,
+  onNudge,
   variant = "default",
   label = "Earned star",
 }: ConstellationStarProps) {
@@ -89,55 +92,89 @@ export default function ConstellationStar({
   const effectivePresetId = getEffectiveStarPresetId(star);
   const presetIcon = getStarPresetIconPath(effectivePresetId) ?? DEFAULT_STAR_ICON;
   const palette = getStarPalette(star.color);
+  const className = `absolute select-none ${variant === "default" ? "constellation-star-enter" : ""} ${onDragStart ? "cursor-grab touch-none" : ""}`;
+  const style = {
+    left: `${star.position.x}%`,
+    top: `${star.position.y}%`,
+    transform: "translate(-50%, -50%)",
+    width: `${starSize}px`,
+    height: `${starSize}px`,
+  };
+  const visual = (
+    <div
+      className="pointer-events-none relative h-full w-full"
+      style={{
+        animationName: "constellation-twinkle",
+        animationDuration: getTwinkleDuration(star, isBackground),
+        animationDelay: getTwinkleDelay(star),
+        animationIterationCount: "infinite",
+        animationTimingFunction: "cubic-bezier(0.33, 1, 0.68, 1)",
+        transformOrigin: "center",
+        willChange: "transform, opacity",
+      }}
+    >
+      <div
+        className="absolute inset-0"
+        style={{
+          background: isBackground
+            ? `radial-gradient(circle at center, ${palette.core} 0%, ${palette.middle} 18%, ${palette.glow} 42%, ${palette.edge} 68%)`
+            : `radial-gradient(circle at center, ${palette.core} 0%, ${palette.middle} 24%, ${palette.glow} 54%, ${palette.edge} 78%)`,
+          opacity: isBackground ? 0.88 : isPreview ? 0.92 : 0.84,
+          filter: `${getStarGlowFilter(glowStrength, isBackground, starSize)} brightness(1.02)`,
+          mixBlendMode: "screen",
+          WebkitMaskImage: `url("${presetIcon}")`,
+          maskImage: `url("${presetIcon}")`,
+          WebkitMaskPosition: "center",
+          maskPosition: "center",
+          WebkitMaskRepeat: "no-repeat",
+          maskRepeat: "no-repeat",
+          WebkitMaskSize: "contain",
+          maskSize: "contain",
+          maskMode: "alpha",
+          willChange: "transform, opacity",
+        }}
+      />
+    </div>
+  );
+
+  if (onDragStart || onNudge) {
+    return (
+      <button
+        type="button"
+        aria-label={`${label}. Use the arrow keys to move this star.`}
+        onPointerDown={onDragStart}
+        onKeyDown={(event) => {
+          if (!onNudge) return;
+          const step = event.shiftKey ? 5 : 1;
+          const offset = {
+            ArrowLeft: { x: -step, y: 0 },
+            ArrowRight: { x: step, y: 0 },
+            ArrowUp: { x: 0, y: -step },
+            ArrowDown: { x: 0, y: step },
+          }[event.key];
+          if (!offset) return;
+          event.preventDefault();
+          onNudge({
+            x: clampPercentage(star.position.x + offset.x),
+            y: clampPercentage(star.position.y + offset.y),
+          });
+        }}
+        className={`${className} border-0 bg-transparent p-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[var(--color-selected-border)]`}
+        style={style}
+        title={label}
+      >
+        {visual}
+      </button>
+    );
+  }
 
   return (
     <div
-      onMouseDown={onDragStart}
-      onTouchStart={onDragStart}
-      className={`absolute select-none ${variant === "default" ? "constellation-star-enter" : ""} ${onDragStart ? "cursor-grab touch-none" : ""}`}
-      style={{
-        left: `${star.position.x}%`,
-        top: `${star.position.y}%`,
-        transform: "translate(-50%, -50%)",
-        width: `${starSize}px`,
-        height: `${starSize}px`,
-      }}
+      className={className}
+      style={style}
       title={label}
     >
-      <div
-        className="pointer-events-none relative h-full w-full"
-        style={{
-          animationName: "constellation-twinkle",
-          animationDuration: getTwinkleDuration(star, isBackground),
-          animationDelay: getTwinkleDelay(star),
-          animationIterationCount: "infinite",
-          animationTimingFunction: "cubic-bezier(0.33, 1, 0.68, 1)",
-          transformOrigin: "center",
-          willChange: "transform, opacity",
-        }}
-      >
-        <div
-          className="absolute inset-0"
-          style={{
-            background: isBackground
-              ? `radial-gradient(circle at center, ${palette.core} 0%, ${palette.middle} 18%, ${palette.glow} 42%, ${palette.edge} 68%)`
-              : `radial-gradient(circle at center, ${palette.core} 0%, ${palette.middle} 24%, ${palette.glow} 54%, ${palette.edge} 78%)`,
-            opacity: isBackground ? 0.88 : isPreview ? 0.92 : 0.84,
-            filter: `${getStarGlowFilter(glowStrength, isBackground, starSize)} brightness(1.02)`,
-            mixBlendMode: "screen",
-            WebkitMaskImage: `url("${presetIcon}")`,
-            maskImage: `url("${presetIcon}")`,
-            WebkitMaskPosition: "center",
-            maskPosition: "center",
-            WebkitMaskRepeat: "no-repeat",
-            maskRepeat: "no-repeat",
-            WebkitMaskSize: "contain",
-            maskSize: "contain",
-            maskMode: "alpha",
-            willChange: "transform, opacity",
-          }}
-        />
-      </div>
+      {visual}
     </div>
   );
 }

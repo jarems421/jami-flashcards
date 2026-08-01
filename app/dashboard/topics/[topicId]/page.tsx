@@ -64,6 +64,7 @@ export default function TopicDetailPage() {
   const [editingName, setEditingName] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteOpen, setDeleteOpen] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const {
     feedback,
     success,
@@ -94,6 +95,7 @@ export default function TopicDetailPage() {
 
   const applyTopicData = useCallback(
     (data: Awaited<ReturnType<typeof loadTopicData>>) => {
+      setLoadFailed(false);
       setTopics(data.topics);
       setCards(data.cards);
       setDecks(data.decks);
@@ -105,11 +107,12 @@ export default function TopicDetailPage() {
   );
 
   const handleTopicLoadError = useCallback((error: unknown) => {
-    console.error(error);
+    console.error("Failed to load a Topic and its linked workspace data.", error);
+    setLoadFailed(true);
     showError("Could not load this Topic.");
   }, [showError]);
 
-  const { loading } = useDashboardData({
+  const { loading, reload } = useDashboardData({
     requestKey: user.uid,
     load: loadTopicData,
     apply: applyTopicData,
@@ -252,6 +255,30 @@ export default function TopicDetailPage() {
     return (
       <AppPage title="Topic" backHref="/dashboard/topics" backLabel="Topics">
         <Skeleton className="h-56" />
+      </AppPage>
+    );
+  }
+
+  if (loadFailed) {
+    return (
+      <AppPage title="Topic" backHref="/dashboard/topics" backLabel="Topics">
+        {feedback ? (
+          <FeedbackBanner
+            type={feedback.type}
+            message={feedback.message}
+            onDismiss={() => clearFeedback()}
+          />
+        ) : null}
+        <EmptyState
+          emoji="Topic"
+          title="This Topic could not load"
+          description="Your workspace data has not been replaced with empty results. Try loading it again."
+          action={
+            <Button type="button" onClick={() => void reload()}>
+              Try again
+            </Button>
+          }
+        />
       </AppPage>
     );
   }

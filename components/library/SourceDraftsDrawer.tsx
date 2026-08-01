@@ -16,61 +16,76 @@ import type { SourceWorkspaceFeedback } from "./source-workspace-types";
 
 type SourceDraftsDrawerProps = {
   open: boolean;
-  drafts: GeneratedContentDraft[];
-  made: SourceMadeCounts;
-  drafting: SourceDraftKind | null;
-  conversationFocusAvailable: boolean;
-  useConversationFocus: boolean;
-  onUseConversationFocusChange: (value: boolean) => void;
-  onGenerate: (kind: SourceDraftKind, depth: SourceDraftDepth) => void;
-  rejectingAll: boolean;
-  onRejectAll: () => void;
-  selectedDraft: GeneratedContentDraft | null;
   sourceTitle: string | null;
-  topics: Topic[];
-  decks: Deck[];
-  notebooks: Notebook[];
-  deckIdByDraft: Record<string, string>;
-  notebookIdByDraft: Record<string, string>;
   userId: string;
   feedback: SourceWorkspaceFeedback | null;
-  onClose: () => void;
-  onDismissFeedback: () => void;
-  onSelectDraft: (draftId: string) => void;
-  onDeckChange: (draftId: string, deckId: string) => void;
-  onNotebookChange: (draftId: string, notebookId: string) => void;
-  onSaved: (message: string) => void;
-  onTopicsChange: (topics: Topic[]) => void;
+  generation: {
+    made: SourceMadeCounts;
+    drafting: SourceDraftKind | null;
+    conversationFocusAvailable: boolean;
+    useConversationFocus: boolean;
+    onUseConversationFocusChange: (value: boolean) => void;
+    onGenerate: (kind: SourceDraftKind, depth: SourceDraftDepth) => void;
+  };
+  review: {
+    drafts: GeneratedContentDraft[];
+    selectedDraft: GeneratedContentDraft | null;
+    rejectingAll: boolean;
+    onRejectAll: () => void;
+    onSelectDraft: (draftId: string) => void;
+  };
+  destinations: {
+    topics: Topic[];
+    decks: Deck[];
+    notebooks: Notebook[];
+    deckIdByDraft: Record<string, string>;
+    notebookIdByDraft: Record<string, string>;
+    onDeckChange: (draftId: string, deckId: string) => void;
+    onNotebookChange: (draftId: string, notebookId: string) => void;
+  };
+  lifecycle: {
+    onClose: () => void;
+    onDismissFeedback: () => void;
+    onSaved: (message: string) => void;
+    onTopicsChange: (topics: Topic[]) => void;
+  };
 };
 
 export default function SourceDraftsDrawer({
   open,
-  drafts,
-  made,
-  drafting,
-  conversationFocusAvailable,
-  useConversationFocus,
-  onUseConversationFocusChange,
-  onGenerate,
-  rejectingAll,
-  onRejectAll,
-  selectedDraft,
   sourceTitle,
-  topics,
-  decks,
-  notebooks,
-  deckIdByDraft,
-  notebookIdByDraft,
   userId,
   feedback,
-  onClose,
-  onDismissFeedback,
-  onSelectDraft,
-  onDeckChange,
-  onNotebookChange,
-  onSaved,
-  onTopicsChange,
+  generation,
+  review,
+  destinations,
+  lifecycle,
 }: SourceDraftsDrawerProps) {
+  const {
+    made,
+    drafting,
+    conversationFocusAvailable,
+    useConversationFocus,
+    onUseConversationFocusChange,
+    onGenerate,
+  } = generation;
+  const {
+    drafts,
+    selectedDraft,
+    rejectingAll,
+    onRejectAll,
+    onSelectDraft,
+  } = review;
+  const {
+    topics,
+    decks,
+    notebooks,
+    deckIdByDraft,
+    notebookIdByDraft,
+    onDeckChange,
+    onNotebookChange,
+  } = destinations;
+  const { onClose, onDismissFeedback, onSaved, onTopicsChange } = lifecycle;
   return (
     <SourceWorkspaceDrawer
       // Opens whether or not drafts exist: this is where making them happens,

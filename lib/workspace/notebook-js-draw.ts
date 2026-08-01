@@ -208,3 +208,18 @@ export function areNotebookInkStylesEqual(
     left.penThickness === right.penThickness
   );
 }
+
+/**
+ * Takes the synchronous snapshot used by route-exit saves. Interaction is
+ * checked both before and after export because a pointer can land while
+ * js-draw is serializing a large page.
+ */
+export function serializeNotebookInkSynchronously(
+  editor: { toSVG(): { outerHTML: string } } | null,
+  ready: boolean,
+  isInteracting: () => boolean
+): string | null {
+  if (!editor || !ready || isInteracting()) return null;
+  const svg = editor.toSVG();
+  return isInteracting() ? null : svg.outerHTML;
+}

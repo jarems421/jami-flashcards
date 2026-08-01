@@ -36,6 +36,7 @@ export function readNotebookToolbarDockPreference(): NotebookToolbarDock {
     );
     return isNotebookToolbarDock(storedValue) ? storedValue : "bottom";
   } catch {
+    // Storage can be unavailable in privacy modes; the bottom dock is safe.
     return "bottom";
   }
 }

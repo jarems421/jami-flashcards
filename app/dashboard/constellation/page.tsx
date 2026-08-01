@@ -17,6 +17,7 @@ import {
   renameConstellation,
 } from "@/services/constellation/constellations";
 import {
+  getConstellationBackgroundActionLabel,
   readConstellationBackgroundConstellationId,
   readConstellationBackgroundEnabled,
   setConstellationBackgroundConstellationId,
@@ -72,11 +73,18 @@ export default function ConstellationDashboardPage() {
 
   const lastForegroundRefreshAtRef = useRef(0);
   const dragPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setIsConstellationBackgroundEnabled(readConstellationBackgroundEnabled());
     setBackgroundConstellationId(readConstellationBackgroundConstellationId());
   }, []);
+
+  useEffect(() => {
+    if (renamingConstellationId) {
+      renameInputRef.current?.focus();
+    }
+  }, [renamingConstellationId]);
 
   const loadConstellationData = useCallback(async () => {
     const nextConstellations = await ensureConstellationSetup(user.uid);
@@ -283,6 +291,21 @@ export default function ConstellationDashboardPage() {
     };
   }, [canEditSelectedConstellation, draggingStarId, user.uid]);
 
+  const handleKeyboardStarMove = useCallback(
+    (starId: string, position: NormalizedStar["position"]) => {
+      setAllStars((current) =>
+        current.map((star) =>
+          star.id === starId ? { ...star, position } : star
+        )
+      );
+      void saveStarPosition(user.uid, starId, position).catch((error) => {
+        console.error(error);
+        showError("Could not save that star position.");
+      });
+    },
+    [showError, user.uid]
+  );
+
   const handleCreateConstellation = async () => {
     const trimmedName = constellationName.trim();
     if (!trimmedName) {
@@ -382,6 +405,7 @@ export default function ConstellationDashboardPage() {
               renamingConstellationId === activeConstellation.id ? (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
                   <Input
+                    ref={renameInputRef}
                     value={renameValue}
                     onChange={(e) => setRenameValue(e.target.value)}
                     onKeyDown={(e) => {
@@ -389,7 +413,6 @@ export default function ConstellationDashboardPage() {
                       if (e.key === "Escape") cancelRename();
                     }}
                     containerClassName="w-full max-w-sm"
-                    autoFocus
                   />
                   <div className="flex gap-2">
                     <Button size="sm" onClick={() => void handleRename()} disabled={!renameValue.trim()}>Save</Button>
@@ -517,9 +540,9 @@ export default function ConstellationDashboardPage() {
                       variant={isSelectedConstellationBackground ? "secondary" : "primary"}
                       onClick={handleToggleSelectedBackground}
                     >
-                      {isSelectedConstellationBackground
-                        ? "Remove background"
-                        : "Use as background"}
+                      {getConstellationBackgroundActionLabel(
+                        isSelectedConstellationBackground
+                      )}
                     </Button>
                   </div>
                 ) : null}
@@ -545,6 +568,12 @@ export default function ConstellationDashboardPage() {
                       onDragStart={
                         canEditSelectedConstellation
                           ? () => setDraggingStarId(star.id)
+                          : undefined
+                      }
+                      onNudge={
+                        canEditSelectedConstellation
+                          ? (position) =>
+                              handleKeyboardStarMove(star.id, position)
                           : undefined
                       }
                     />
@@ -603,6 +632,7 @@ export default function ConstellationDashboardPage() {
                           {renamingConstellationId === constellation.id ? (
                             <div className="flex flex-wrap items-center gap-2">
                               <Input
+                                ref={renameInputRef}
                                 value={renameValue}
                                 onChange={(e) => setRenameValue(e.target.value)}
                                 onKeyDown={(e) => {
@@ -610,7 +640,6 @@ export default function ConstellationDashboardPage() {
                                   if (e.key === "Escape") cancelRename();
                                 }}
                                 containerClassName="w-full max-w-[10rem]"
-                                autoFocus
                               />
                               <Button size="sm" onClick={() => void handleRename()} disabled={!renameValue.trim()}>Save</Button>
                               <Button size="sm" variant="ghost" onClick={cancelRename}>Cancel</Button>

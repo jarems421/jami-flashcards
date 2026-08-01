@@ -1,5 +1,9 @@
-import { readFileSync } from "node:fs";
-import { createElement } from "react";
+import {
+  createElement,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
@@ -31,13 +35,21 @@ import NotebookPageStaticContent from "@/components/workspace/NotebookPageStatic
 import NotebookPageThumbnail from "@/components/workspace/NotebookPageThumbnail";
 import NotebookPageBackground from "@/components/workspace/NotebookPageBackground";
 
-const backgroundSource = readFileSync(
-  new URL(
-    "../components/workspace/NotebookPageBackground.tsx",
-    import.meta.url
-  ),
-  "utf8"
-);
+function findRenderedElement(
+  node: ReactNode,
+  predicate: (element: ReactElement<Record<string, unknown>>) => boolean
+): ReactElement<Record<string, unknown>> | null {
+  if (Array.isArray(node)) {
+    for (const child of node) {
+      const match = findRenderedElement(child, predicate);
+      if (match) return match;
+    }
+    return null;
+  }
+  if (!isValidElement<Record<string, unknown>>(node)) return null;
+  if (predicate(node)) return node;
+  return findRenderedElement(node.props.children as ReactNode, predicate);
+}
 
 const notebook: Notebook = {
   id: "notebook-1",
@@ -234,7 +246,26 @@ describe("notebook page backgrounds", () => {
   });
 
   it("keeps explicit renderer remount keys", () => {
-    expect(backgroundSource).toContain("key={imageRenderKey}");
-    expect(backgroundSource).toContain("key={pdfRenderKey}");
+    const imageTree = NotebookPageBackground({
+      backgroundFile: imageFile,
+      backgroundUrl: "https://example.com/diagram.png",
+      imageStrategy: "next-image",
+      imageRenderKey: "image-retry-2",
+    });
+    const image = findRenderedElement(
+      imageTree,
+      (element) => element.props.src === "https://example.com/diagram.png"
+    );
+    expect(image?.key).toBe("image-retry-2");
+
+    const pdfTree = NotebookPageBackground({
+      backgroundFile: pdfFile,
+      pdfRenderKey: "pdf-retry-3",
+    });
+    const pdf = findRenderedElement(
+      pdfTree,
+      (element) => element.props.storagePath === pdfFile.storagePath
+    );
+    expect(pdf?.key).toBe("pdf-retry-3");
   });
 });

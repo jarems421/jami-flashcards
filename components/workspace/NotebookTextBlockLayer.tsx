@@ -2,6 +2,8 @@
 
 import {
   memo,
+  useEffect,
+  useRef,
   type KeyboardEvent as ReactKeyboardEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -86,6 +88,50 @@ type Props = {
   onStopEditing: () => void;
 };
 
+function NotebookTextEditor({
+  block,
+  pageColor,
+  onSelect,
+  onChangeText,
+  onStopEditing,
+}: {
+  block: NotebookTextBlock;
+  pageColor: NotebookPageColor;
+  onSelect: (blockId: string) => void;
+  onChangeText: (blockId: string, text: string) => void;
+  onStopEditing: () => void;
+}) {
+  const editorRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    editorRef.current?.focus();
+  }, []);
+
+  return (
+    <textarea
+      ref={editorRef}
+      value={block.text}
+      maxLength={MAX_NOTEBOOK_TEXT_BLOCK_TEXT}
+      // The box beneath owns dragging; typing must not start one.
+      onPointerDown={(event) => event.stopPropagation()}
+      onPointerMove={(event) => event.stopPropagation()}
+      onPointerUp={(event) => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
+      onKeyDown={(event) => {
+        if (event.key === "Escape") {
+          event.stopPropagation();
+          onStopEditing();
+        }
+      }}
+      onFocus={() => onSelect(block.id)}
+      onChange={(event) => onChangeText(block.id, event.target.value)}
+      placeholder="Type here..."
+      data-notebook-text-editor="true"
+      className={`notebook-text-editor h-full w-full resize-none rounded-[0.45rem] bg-transparent p-2 pr-16 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+    />
+  );
+}
+
 /**
  * The typed text boxes floating above the ink surface.
  *
@@ -160,10 +206,6 @@ function NotebookTextBlockLayer({
             onPointerMove={(event) => onPointerMove(block, event)}
             onPointerUp={(event) => onPointerUp(block, event)}
             onPointerCancel={(event) => onPointerCancel(block, event)}
-            onClick={(event) => {
-              event.stopPropagation();
-              onSelect(block.id);
-            }}
           >
             {selected && editingEnabled && !gesturing ? (
               <>
@@ -205,35 +247,31 @@ function NotebookTextBlockLayer({
             ) : null}
 
             {editing && editingEnabled ? (
-              <textarea
-                value={block.text}
-                maxLength={MAX_NOTEBOOK_TEXT_BLOCK_TEXT}
-                autoFocus
-                // The box beneath owns dragging; typing must not start one.
-                onPointerDown={(event) => event.stopPropagation()}
-                onPointerMove={(event) => event.stopPropagation()}
-                onPointerUp={(event) => event.stopPropagation()}
-                onClick={(event) => event.stopPropagation()}
-                onKeyDown={(event) => {
-                  if (event.key === "Escape") {
-                    event.stopPropagation();
-                    onStopEditing();
-                  }
-                }}
-                onFocus={() => onSelect(block.id)}
-                onChange={(event) => onChangeText(block.id, event.target.value)}
-                placeholder="Type here..."
-                data-notebook-text-editor="true"
-                className={`notebook-text-editor h-full w-full resize-none rounded-[0.45rem] bg-transparent p-2 pr-16 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+              <NotebookTextEditor
+                block={block}
+                pageColor={pageColor}
+                onSelect={onSelect}
+                onChangeText={onChangeText}
+                onStopEditing={onStopEditing}
               />
             ) : (
-              <div
-                className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-[0.45rem] p-2 pr-10 text-sm font-medium leading-6 ${
+              <button
+                type="button"
+                aria-label={
+                  block.text.trim()
+                    ? `Select text box: ${block.text.slice(0, 80)}`
+                    : "Select empty text box"
+                }
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onSelect(block.id);
+                }}
+                className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-[0.45rem] border-0 bg-transparent p-2 pr-10 text-left text-sm font-medium leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${
                   onBlack ? "text-[#f8fafc]" : "text-slate-950"
                 } ${block.text.trim() ? "" : "opacity-60"}`}
               >
                 {displayText}
-              </div>
+              </button>
             )}
           </div>
         );

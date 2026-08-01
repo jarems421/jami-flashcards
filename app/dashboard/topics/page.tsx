@@ -155,7 +155,7 @@ export default function TopicsPage() {
 
   const handleTopicsLoadError = useCallback(
     (error: unknown) => {
-      console.error(error);
+      console.error("Failed to load Topics and linked workspace data.", error);
       showError("Could not load Topics.");
     },
     [showError]

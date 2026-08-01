@@ -1,6 +1,10 @@
 "use client";
 
-import { useId, type ReactNode } from "react";
+import {
+  useId,
+  type KeyboardEventHandler,
+  type ReactNode,
+} from "react";
 
 type CardBackEditorProps = {
   label?: string;
@@ -10,6 +14,7 @@ type CardBackEditorProps = {
   maxLength?: number;
   rows?: number;
   disabled?: boolean;
+  onKeyDown?: KeyboardEventHandler<HTMLTextAreaElement>;
   /**
    * Optional control shown on the label row, opposite the label. Actions that
    * belong to this field live here rather than beneath it, so they cost no
@@ -26,6 +31,7 @@ export default function CardBackEditor({
   maxLength,
   rows = 6,
   disabled = false,
+  onKeyDown,
   action,
 }: CardBackEditorProps) {
   const textareaId = useId();
@@ -56,6 +62,7 @@ export default function CardBackEditor({
           maxLength={maxLength}
           disabled={disabled}
           onChange={(event) => onChange(event.target.value)}
+          onKeyDown={onKeyDown}
           // Inherit the wrapper's radius so the field reads as one shape rather
           // than two rounded rectangles sitting on top of each other.
           className="w-full resize-y rounded-[inherit] bg-transparent px-5 py-4 text-sm leading-6 text-field-text placeholder:text-field-placeholder outline-none disabled:cursor-not-allowed disabled:opacity-60"

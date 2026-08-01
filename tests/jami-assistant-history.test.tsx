@@ -167,6 +167,7 @@ describe("JamiAssistantHistory rename", () => {
     await render();
     await openMenuItem("Rename");
     expect(nameField()?.value).toBe("Ohm's law");
+    expect(document.activeElement).toBe(nameField());
   });
 
   it("saves a trimmed new name and closes the editor", async () => {

@@ -1,10 +1,12 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
-import { createPortal } from "react-dom";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import { useAdaptiveMenuPlacement } from "@/components/ui/useAdaptiveMenuPlacement";
 import ObjectIcon from "@/components/workspace/ObjectIcon";
+import ObjectActionsSheet, {
+  type ObjectActionsSheetAction,
+} from "@/components/workspace/ObjectActionsSheet";
 import { cx } from "@/lib/app/class-names";
 import { getObjectColorPreset } from "@/lib/workspace/object-card-styles";
 
@@ -116,7 +118,6 @@ function NotebookCardInner({
 
 export function NotebookObjectCard(props: NotebookObjectCardProps) {
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
-  const mobileActionsTitleId = useId();
   const { handleToggle, menuPositionClass } = useAdaptiveMenuPlacement(112);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
@@ -129,19 +130,6 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
     }
     touchStartRef.current = null;
   };
-
-  useEffect(() => {
-    if (!mobileActionsOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setMobileActionsOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mobileActionsOpen]);
 
   useEffect(() => clearLongPress, []);
 
@@ -180,6 +168,24 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
   };
 
   const hasActions = Boolean(props.onEdit || props.onDelete);
+  const mobileActions: ObjectActionsSheetAction[] = [];
+  if (props.onEdit) {
+    mobileActions.push({
+      id: "edit",
+      label: "Edit notebook",
+      disabled: props.deleting,
+      onSelect: props.onEdit,
+    });
+  }
+  if (props.onDelete) {
+    mobileActions.push({
+      id: "delete",
+      label: props.deleting ? "Deleting..." : "Delete notebook",
+      tone: "danger",
+      disabled: props.deleting,
+      onSelect: props.onDelete,
+    });
+  }
   const standaloneInteractionClass = hasActions
     ? undefined
     : "transition duration-200 hover:-translate-y-0.5 active:scale-[0.985]";
@@ -222,7 +228,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
       onClickCapture={(event) => {
         if (
           event.target instanceof Element &&
-          event.target.closest("[data-mobile-notebook-actions]")
+          event.target.closest('[data-mobile-object-actions="notebook"]')
         ) {
           suppressNextClickRef.current = false;
           return;
@@ -300,79 +306,16 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
           ) : null}
         </div>
       </details>
-      {mobileActionsOpen
-        ? createPortal(
-            <div
-              data-mobile-notebook-actions
-              className="fixed inset-0 z-[100] flex items-end bg-black/45 p-3 backdrop-blur-[2px] md:hidden"
-              role="presentation"
-              onPointerDown={(event) => {
-                if (event.target === event.currentTarget) {
-                  suppressNextClickRef.current = false;
-                  setMobileActionsOpen(false);
-                }
-              }}
-            >
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby={mobileActionsTitleId}
-                className="app-panel w-full rounded-[1.5rem] p-3 shadow-[0_24px_60px_rgba(0,0,0,0.38)]"
-              >
-                <div className="px-2 pb-3 pt-1">
-                  <div
-                    id={mobileActionsTitleId}
-                    className="truncate text-sm font-semibold text-text-primary"
-                  >
-                    {props.title}
-                  </div>
-                  <div className="mt-1 text-xs text-text-muted">Notebook actions</div>
-                </div>
-                <div className="grid gap-2">
-                  {props.onEdit ? (
-                    <button
-                      type="button"
-                      disabled={props.deleting}
-                      className="min-h-12 rounded-[1rem] bg-[var(--color-glass-subtle)] px-4 text-left text-sm font-semibold text-text-primary disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
-                      onClick={() => {
-                        suppressNextClickRef.current = false;
-                        setMobileActionsOpen(false);
-                        props.onEdit?.();
-                      }}
-                    >
-                      Edit notebook
-                    </button>
-                  ) : null}
-                  {props.onDelete ? (
-                    <button
-                      type="button"
-                      disabled={props.deleting}
-                      className="min-h-12 rounded-[1rem] bg-[var(--color-error-muted)] px-4 text-left text-sm font-semibold text-error disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
-                      onClick={() => {
-                        suppressNextClickRef.current = false;
-                        setMobileActionsOpen(false);
-                        props.onDelete?.();
-                      }}
-                    >
-                      {props.deleting ? "Deleting..." : "Delete notebook"}
-                    </button>
-                  ) : null}
-                  <button
-                    type="button"
-                    className="min-h-12 rounded-[1rem] px-4 text-left text-sm font-semibold text-text-secondary"
-                    onClick={() => {
-                      suppressNextClickRef.current = false;
-                      setMobileActionsOpen(false);
-                    }}
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
-            </div>,
-            document.body
-          )
-        : null}
+      <ObjectActionsSheet
+        open={mobileActionsOpen}
+        objectKind="notebook"
+        title={props.title}
+        actions={mobileActions}
+        onClose={() => {
+          suppressNextClickRef.current = false;
+          setMobileActionsOpen(false);
+        }}
+      />
     </div>
   );
 }

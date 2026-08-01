@@ -1,9 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { createPortal } from "react-dom";
-import { useEffect, useId, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useRef, useState, type PointerEvent } from "react";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
+import ObjectActionsSheet from "@/components/workspace/ObjectActionsSheet";
 import type { DeckColorPresetId, DeckIconPresetId } from "@/lib/study/deck-style";
 
 type DeckObjectCardProps = {
@@ -24,7 +24,6 @@ export default function DeckObjectCard({
   removing = false,
 }: DeckObjectCardProps) {
   const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
-  const mobileActionsTitleId = useId();
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const touchStartRef = useRef<{ pointerId: number; x: number; y: number } | null>(null);
   const suppressNextClickRef = useRef(false);
@@ -38,20 +37,6 @@ export default function DeckObjectCard({
   };
 
   useEffect(() => clearLongPress, []);
-
-  useEffect(() => {
-    if (!mobileActionsOpen) return;
-
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        suppressNextClickRef.current = false;
-        setMobileActionsOpen(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [mobileActionsOpen]);
 
   const handlePointerDown = (event: PointerEvent<HTMLDivElement>) => {
     if (
@@ -104,7 +89,7 @@ export default function DeckObjectCard({
       onClickCapture={(event) => {
         if (
           event.target instanceof Element &&
-          event.target.closest("[data-mobile-deck-actions]")
+          event.target.closest('[data-mobile-object-actions="deck"]')
         ) {
           suppressNextClickRef.current = false;
           return;
@@ -170,58 +155,21 @@ export default function DeckObjectCard({
             </div>
           </details>
 
-          {mobileActionsOpen
-            ? createPortal(
-                <div
-                  data-mobile-deck-actions
-                  className="fixed inset-0 z-[100] flex items-end bg-black/45 p-3 backdrop-blur-[2px] md:hidden"
-                  role="presentation"
-                  onPointerDown={(event) => {
-                    if (event.target === event.currentTarget) {
-                      closeMobileActions();
-                    }
-                  }}
-                >
-                  <div
-                    role="dialog"
-                    aria-modal="true"
-                    aria-labelledby={mobileActionsTitleId}
-                    className="app-panel w-full rounded-[1.5rem] p-3 shadow-[0_24px_60px_rgba(0,0,0,0.38)]"
-                  >
-                    <div className="px-2 pb-3 pt-1">
-                      <div
-                        id={mobileActionsTitleId}
-                        className="truncate text-sm font-semibold text-text-primary"
-                      >
-                        {title}
-                      </div>
-                      <div className="mt-1 text-xs text-text-muted">Deck actions</div>
-                    </div>
-                    <div className="grid gap-2">
-                      <button
-                        type="button"
-                        disabled={removing}
-                        className="min-h-12 rounded-[1rem] bg-error-muted px-4 text-left text-sm font-semibold text-danger-text disabled:cursor-not-allowed disabled:opacity-60"
-                        onClick={() => {
-                          closeMobileActions();
-                          onRemoveFromFolder();
-                        }}
-                      >
-                        {removing ? "Removing..." : "Remove from folder"}
-                      </button>
-                      <button
-                        type="button"
-                        className="min-h-12 rounded-[1rem] px-4 text-left text-sm font-semibold text-text-secondary"
-                        onClick={closeMobileActions}
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                </div>,
-                document.body
-              )
-            : null}
+          <ObjectActionsSheet
+            open={mobileActionsOpen}
+            objectKind="deck"
+            title={title}
+            actions={[
+              {
+                id: "remove",
+                label: removing ? "Removing..." : "Remove from folder",
+                tone: "danger",
+                disabled: removing,
+                onSelect: onRemoveFromFolder,
+              },
+            ]}
+            onClose={closeMobileActions}
+          />
         </>
       ) : null}
     </div>

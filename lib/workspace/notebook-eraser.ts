@@ -269,6 +269,7 @@ export function getContinuousNotebookEraserSamples(
   try {
     coalesced = event.getCoalescedEvents?.() ?? [];
   } catch {
+    // Some WebKit builds expose this API but throw; the endpoint still works.
     coalesced = [];
   }
 

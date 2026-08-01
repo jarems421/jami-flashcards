@@ -146,6 +146,8 @@ export default function ToolbarIconButton({
   icon,
   active = false,
   disabled = false,
+  expanded,
+  controls,
   onClick,
   children,
 }: {
@@ -153,6 +155,8 @@ export default function ToolbarIconButton({
   icon: NotebookIconName;
   active?: boolean;
   disabled?: boolean;
+  expanded?: boolean;
+  controls?: string;
   onClick?: () => void;
   children?: ReactNode;
 }) {
@@ -160,6 +164,8 @@ export default function ToolbarIconButton({
     <button
       type="button"
       aria-label={label}
+      aria-expanded={expanded}
+      aria-controls={controls}
       title={label}
       disabled={disabled}
       data-notebook-toolbar-action="true"

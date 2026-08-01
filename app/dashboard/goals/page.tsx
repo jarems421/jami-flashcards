@@ -29,7 +29,10 @@ import { getActiveTopics } from "@/services/study/topics";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import {
   createGoal,
-  getGoalsWithCurrentStatuses,
+  getActiveGoalsWithCurrentStatuses,
+  getCompletedGoalCount,
+  getGoalHistoryPage,
+  type GoalHistoryCursor,
   updateGoal,
 } from "@/services/study/goals";
 import type { Topic } from "@/lib/material/topics";
@@ -188,22 +191,42 @@ export default function GoalsPage() {
   const [decks, setDecks] = useState<Deck[]>([]);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [folders, setFolders] = useState<StudyFolder[]>([]);
+  const [historicalGoals, setHistoricalGoals] = useState<Goal[]>([]);
+  const [historyCursor, setHistoryCursor] =
+    useState<GoalHistoryCursor | null>(null);
+  const [historyLoaded, setHistoryLoaded] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyUnavailable, setHistoryUnavailable] = useState(false);
+  const [completedGoalsCount, setCompletedGoalsCount] = useState(0);
+  const [goalsUnavailable, setGoalsUnavailable] = useState(false);
 
   const lastForegroundRefreshAtRef = useRef(0);
 
   const loadGoalData = useCallback(
-    () => getGoalsWithCurrentStatuses(user.uid),
+    async () => {
+      const [activeGoals, completedCount] = await Promise.all([
+        getActiveGoalsWithCurrentStatuses(user.uid),
+        getCompletedGoalCount(user.uid),
+      ]);
+      return { activeGoals, completedCount };
+    },
     [user.uid]
   );
 
-  const applyGoalData = useCallback((nextGoals: Goal[]) => {
-    setGoals(nextGoals);
+  const applyGoalData = useCallback((data: {
+    activeGoals: Goal[];
+    completedCount: number;
+  }) => {
+    setGoals(data.activeGoals);
+    setCompletedGoalsCount(data.completedCount);
+    setGoalsUnavailable(false);
   }, []);
 
   const handleGoalLoadError = useCallback((error: unknown) => {
-    console.error(error);
-    setGoals([]);
-  }, []);
+    console.error("Failed to load goals.", error);
+    setGoalsUnavailable(true);
+    showError("Failed to load goals.");
+  }, [showError]);
 
   const { loading: isLoadingGoals, reload: reloadGoals } = useDashboardData({
     requestKey: user.uid,
@@ -225,7 +248,7 @@ export default function GoalsPage() {
   );
 
   const handleConstellationSummaryLoadError = useCallback((error: unknown) => {
-    console.error(error);
+    console.error("Failed to load the goal constellation summary.", error);
     setActiveConstellation(null);
   }, []);
 
@@ -236,26 +259,73 @@ export default function GoalsPage() {
     onError: handleConstellationSummaryLoadError,
   });
 
+  const loadGoalHistory = useCallback(
+    async (options: { append?: boolean } = {}) => {
+      if (historyLoading) return;
+      setHistoryLoading(true);
+      setHistoryUnavailable(false);
+      try {
+        const page = await getGoalHistoryPage(user.uid, {
+          cursor: options.append ? historyCursor : null,
+          pageSize: 30,
+        });
+        setHistoricalGoals((current) => {
+          const next = options.append ? [...current, ...page.items] : page.items;
+          return Array.from(
+            new Map(next.map((goal) => [goal.id, goal])).values()
+          ).sort((left, right) => right.createdAt - left.createdAt);
+        });
+        setHistoryCursor(page.nextCursor);
+        setHistoryLoaded(true);
+      } catch (error) {
+        console.error("Failed to load goal history.", error);
+        setHistoryUnavailable(true);
+        showError("Could not load goal history. Try again in a moment.");
+      } finally {
+        setHistoryLoading(false);
+      }
+    }, [historyCursor, historyLoading, showError, user.uid]
+  );
+
   const reloadGoalWorkspace = useCallback(async () => {
-    await Promise.all([reloadGoals(), reloadConstellationSummary()]);
-  }, [reloadConstellationSummary, reloadGoals]);
+    await Promise.all([
+      reloadGoals(),
+      reloadConstellationSummary(),
+      historyLoaded ? loadGoalHistory() : Promise.resolve(),
+    ]);
+  }, [historyLoaded, loadGoalHistory, reloadConstellationSummary, reloadGoals]);
 
   useEffect(() => {
     let cancelled = false;
-    void Promise.all([
-      getDecks(user.uid).catch(() => [] as Deck[]),
-      getActiveTopics(user.uid).catch(() => [] as Topic[]),
-      getActiveStudyFolders(user.uid).catch(() => [] as StudyFolder[]),
-    ]).then(([nextDecks, nextTopics, nextFolders]) => {
+    void Promise.allSettled([
+      getDecks(user.uid),
+      getActiveTopics(user.uid),
+      getActiveStudyFolders(user.uid),
+    ]).then(([decksResult, topicsResult, foldersResult]) => {
       if (cancelled) return;
-      setDecks(nextDecks);
-      setTopics(nextTopics);
-      setFolders(nextFolders);
+      if (decksResult.status === "fulfilled") setDecks(decksResult.value);
+      if (topicsResult.status === "fulfilled") setTopics(topicsResult.value);
+      if (foldersResult.status === "fulfilled") setFolders(foldersResult.value);
+
+      const failedScopes = [
+        ["decks", decksResult] as const,
+        ["topics", topicsResult] as const,
+        ["folders", foldersResult] as const,
+      ].filter(([, result]) => result.status === "rejected");
+      if (failedScopes.length > 0) {
+        console.warn("Some goal scope options failed to load.", {
+          scopes: failedScopes.map(([scope]) => scope),
+          errors: failedScopes.map(([, result]) =>
+            result.status === "rejected" ? result.reason : undefined
+          ),
+        });
+        showError("Some goal options could not load. Refresh to try again.");
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [user.uid]);
+  }, [showError, user.uid]);
 
   useEffect(() => {
     const handleFocus = () => {
@@ -288,9 +358,6 @@ export default function GoalsPage() {
     }
   }, [clearFeedback, reloadGoalWorkspace]);
 
-  const completedGoalsCount = goals.filter(
-    (goal) => goal.status === "completed"
-  ).length;
   const parsedGoalTargetCards = parseTargetCardsInput(targetCards);
   const parsedGoalTargetAccuracy = parseTargetAccuracyInput(targetAccuracy);
   const previewTargetCards = parsedGoalTargetCards ?? 10;
@@ -486,7 +553,7 @@ export default function GoalsPage() {
 
       resetGoalForm();
     } catch (error) {
-      console.error(error);
+      console.error("Failed to save a goal.", error);
       showError(editingGoalId ? "Failed to save goal." : "Failed to create goal.");
     } finally {
       setIsCreatingGoal(false);
@@ -508,23 +575,24 @@ export default function GoalsPage() {
       await updateGoal(user.uid, goal.id, {
         status: "cancelled",
       });
-      setGoals((prev) =>
-        prev.map((item) =>
-          item.id === goal.id ? { ...item, status: "cancelled" } : item
-        )
-      );
+      setGoals((prev) => prev.filter((item) => item.id !== goal.id));
+      if (historyLoaded) {
+        setHistoricalGoals((current) => [
+          { ...goal, status: "cancelled" },
+          ...current.filter((item) => item.id !== goal.id),
+        ]);
+      }
       if (editingGoalId === goal.id) resetGoalForm();
       success("Goal moved to history.");
     } catch (error) {
-      console.error(error);
+      console.error("Failed to cancel a goal.", error);
       showError("Failed to cancel goal.");
     } finally {
       setCancellingGoalId(null);
     }
   };
 
-  const activeGoals = goals.filter((goal) => goal.status === "active");
-  const historicalGoals = goals.filter((goal) => goal.status !== "active");
+  const activeGoals = goals;
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -722,6 +790,18 @@ export default function GoalsPage() {
             <Skeleton className="h-28" />
             <Skeleton className="h-28" />
           </div>
+        ) : goalsUnavailable ? (
+          <EmptyState
+            emoji="Retry"
+            eyebrow="Goals unavailable"
+            title="Your goals could not load"
+            description="Nothing has been replaced with an empty list. Try loading this section again."
+            action={
+              <Button type="button" variant="secondary" onClick={() => void reloadGoals()}>
+                Retry goals
+              </Button>
+            }
+          />
         ) : (
           <>
             {activeGoals.length === 0 ? (
@@ -809,14 +889,41 @@ export default function GoalsPage() {
 
             <Button
               type="button"
-              onClick={() => setShowGoalHistory((value) => !value)}
+              onClick={() => {
+                const nextVisible = !showGoalHistory;
+                setShowGoalHistory(nextVisible);
+                if (nextVisible && !historyLoaded) void loadGoalHistory();
+              }}
               variant="secondary"
+              disabled={historyLoading && !historyLoaded}
             >
-              {showGoalHistory ? "Hide goal history" : "Show goal history"}
+              {historyLoading && !historyLoaded
+                ? "Loading goal history..."
+                : showGoalHistory
+                  ? "Hide goal history"
+                  : "Show goal history"}
             </Button>
 
             {showGoalHistory ? (
-              historicalGoals.length === 0 ? (
+              historyLoading && !historyLoaded ? (
+                <div aria-label="Loading goal history" className="grid gap-3 sm:grid-cols-2">
+                  <Skeleton className="h-32 rounded-2xl" />
+                  <Skeleton className="h-32 rounded-2xl" />
+                </div>
+              ) : historyUnavailable ? (
+                <EmptyState
+                  emoji="Retry"
+                  eyebrow="Goal history unavailable"
+                  title="Your past goals could not load"
+                  description="Try this section again without refreshing the rest of the page."
+                  action={
+                    <Button type="button" variant="secondary" onClick={() => void loadGoalHistory()}>
+                      Retry history
+                    </Button>
+                  }
+                  variant="compact"
+                />
+              ) : historicalGoals.length === 0 ? (
                 <EmptyState
                   emoji="History"
                   eyebrow="Goal history"
@@ -825,12 +932,10 @@ export default function GoalsPage() {
                   variant="compact"
                 />
               ) : (
-                <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
-                  {historicalGoals.map((goal) => (
-                    <div
-                      key={goal.id}
-                      className="app-panel p-4 text-sm"
-                    >
+                <div className="space-y-4">
+                  <div className="grid gap-3 sm:gap-4 lg:grid-cols-2">
+                    {historicalGoals.map((goal) => (
+                      <div key={goal.id} className="app-panel p-4 text-sm">
                       <div className="flex items-center justify-between">
                         <span className="min-w-0 pr-3">
                           <span className="block truncate font-semibold">{getGoalDisplayName(goal)}</span>
@@ -856,8 +961,19 @@ export default function GoalsPage() {
                         {goal.progress.cardsCompleted} / {goal.targetCards} cards ·{" "}
                         {formatGoalAccuracyText(goal)}
                       </div>
-                    </div>
-                  ))}
+                      </div>
+                    ))}
+                  </div>
+                  {historyCursor ? (
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      disabled={historyLoading}
+                      onClick={() => void loadGoalHistory({ append: true })}
+                    >
+                      {historyLoading ? "Loading more..." : "Load more history"}
+                    </Button>
+                  ) : null}
                 </div>
               )
             ) : null}

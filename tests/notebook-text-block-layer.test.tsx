@@ -186,9 +186,20 @@ describe("NotebookTextBlockLayer", () => {
 
   it("inverts text for a black page", () => {
     render({ pageColor: "black" });
-    expect(blockEl()!.querySelector("div")?.className).toContain("#f8fafc");
+    expect(blockEl()!.querySelector("button")?.className).toContain("#f8fafc");
     render({ pageColor: "white" });
-    expect(blockEl()!.querySelector("div")?.className).toContain("text-slate-950");
+    expect(blockEl()!.querySelector("button")?.className).toContain("text-slate-950");
+  });
+
+  it("uses a keyboard-focusable control to select a text box", () => {
+    render();
+    const selectButton = blockEl()!.querySelector<HTMLButtonElement>(
+      'button[aria-label^="Select text box"]'
+    );
+
+    expect(selectButton).not.toBeNull();
+    act(() => selectButton!.click());
+    expect(handlers.onSelect).toHaveBeenCalledWith("block-1");
   });
 
   it("drops the idle outline when the block asks to hide it", () => {

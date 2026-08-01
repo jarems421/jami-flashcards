@@ -29,6 +29,12 @@ describe("notebook PDF helpers", () => {
         "alice"
       )
     ).toThrow("Invalid notebook PDF path");
+    expect(() =>
+      validateOwnedNotebookPdfStoragePath(
+        "users/alice/notebookFiles/notebook-1/nested/paper.pdf",
+        "alice"
+      )
+    ).toThrow("Invalid notebook PDF path");
   });
 
   it("accepts one and two hundred pages and rejects larger documents", () => {

@@ -35,6 +35,7 @@ function renderMath(expression: string, displayMode: boolean) {
       trust: false,
     });
   } catch {
+    // Malformed legacy maths is rendered as visible source text below.
     return "";
   }
 }

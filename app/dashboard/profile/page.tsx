@@ -145,6 +145,7 @@ export default function ProfilePage() {
 
     void (async () => {
       setLoadingUsername(true);
+      setUsernameError(null);
       try {
         const username = await loadInAppUsername(user.uid);
         if (!cancelled) {
@@ -152,7 +153,12 @@ export default function ProfilePage() {
           setUsernameInput(username ?? "");
         }
       } catch (nextError) {
-        console.error(nextError);
+        console.error("Failed to load the in-app username.", {
+          code: getAuthErrorCode(nextError) ?? "unknown",
+        });
+        if (!cancelled) {
+          setUsernameError("Failed to load your saved name.");
+        }
       } finally {
         if (!cancelled) {
           setLoadingUsername(false);
@@ -177,7 +183,9 @@ export default function ProfilePage() {
       await deleteAccount((phase) => setDeletionPhase(phase));
       router.replace("/");
     } catch (nextError) {
-      console.error(nextError);
+      console.error("Account deletion failed.", {
+        code: getAccountDeletionErrorCode(nextError) ?? "unknown",
+      });
       if (
         getAccountDeletionErrorCode(nextError) ===
         "auth/requires-recent-login"
@@ -211,8 +219,10 @@ export default function ProfilePage() {
       setDeletionPhase(null);
       await handleDeleteAccount();
     } catch (nextError) {
-      console.error(nextError);
       const accountCode = getAccountDeletionErrorCode(nextError);
+      console.error("Account reauthentication failed.", {
+        code: accountCode || getAuthErrorCode(nextError) || "unknown",
+      });
       setError(
         accountCode === "account/password-required"
           ? "Enter your current password to continue."
@@ -235,7 +245,9 @@ export default function ProfilePage() {
       setUsernameInput(nextUsername ?? "");
       setUsernameSaved(true);
     } catch (nextError) {
-      console.error(nextError);
+      console.error("Failed to save the in-app username.", {
+        code: getAuthErrorCode(nextError) ?? "unknown",
+      });
       setUsernameError("Failed to save username.");
     } finally {
       setSavingUsername(false);

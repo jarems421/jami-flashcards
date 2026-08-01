@@ -12,6 +12,7 @@ import type { NotebookEditorTool } from "@/lib/workspace/notebook-page-state";
 
 /** Which tool's options popover is open, if any. */
 export type NotebookToolMenu = "pen" | "highlighter" | "eraser" | null;
+export const NOTEBOOK_TOOL_SETTINGS_ID = "notebook-tool-settings";
 
 /** Position per dock edge. Side docks respect the device safe-area inset. */
 const DOCK_CLASS: Record<NotebookToolbarDock, string> = {
@@ -98,6 +99,8 @@ function NotebookDrawingToolbar({
             label="Pen (P)"
             icon="pen"
             active={tool === "pen" || openMenu === "pen"}
+            expanded={openMenu === "pen"}
+            controls={NOTEBOOK_TOOL_SETTINGS_ID}
             onClick={() => onSelectDrawingTool("pen")}
           >
             <ToolColorBar color={penColor} tool="pen" />
@@ -108,6 +111,8 @@ function NotebookDrawingToolbar({
             label="Highlighter (H)"
             icon="highlighter"
             active={tool === "highlighter" || openMenu === "highlighter"}
+            expanded={openMenu === "highlighter"}
+            controls={NOTEBOOK_TOOL_SETTINGS_ID}
             onClick={() => onSelectDrawingTool("highlighter")}
           >
             <ToolColorBar color={highlighterColor} tool="highlighter" />
@@ -118,6 +123,8 @@ function NotebookDrawingToolbar({
             label="Eraser (E)"
             icon="eraser"
             active={tool === "eraser" || openMenu === "eraser"}
+            expanded={openMenu === "eraser"}
+            controls={NOTEBOOK_TOOL_SETTINGS_ID}
             onClick={() => onSelectDrawingTool("eraser")}
           />
         </div>

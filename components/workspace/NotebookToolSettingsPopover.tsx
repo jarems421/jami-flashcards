@@ -1,7 +1,10 @@
 "use client";
 
 import InkColorPicker from "@/components/workspace/NotebookInkColorPicker";
-import type { NotebookToolMenu } from "@/components/workspace/NotebookDrawingToolbar";
+import {
+  NOTEBOOK_TOOL_SETTINGS_ID,
+  type NotebookToolMenu,
+} from "@/components/workspace/NotebookDrawingToolbar";
 import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
@@ -76,6 +79,9 @@ export default function NotebookToolSettingsPopover({
 
   return (
     <div
+      id={NOTEBOOK_TOOL_SETTINGS_ID}
+      role="group"
+      aria-label={`${openMenu} settings`}
       className={`notebook-toolbar-popover-in notebook-drawer-surface absolute z-50 w-[min(92vw,22rem)] rounded-[1.25rem] border border-[var(--color-border)] p-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.32)] ${DOCK_CLASS[dock]}`}
     >
       {openMenu === "pen" ? (

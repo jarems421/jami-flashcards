@@ -62,7 +62,9 @@ export default function Home() {
         const maybeCode = getAuthErrorCode(nextError);
         setError(getFriendlyAuthError(maybeCode));
         setIsSigningIn(false);
-        console.error("Redirect result error:", nextError);
+        console.error("Google redirect sign-in failed.", {
+          code: maybeCode ?? "unknown",
+        });
       });
 
     return () => unsubscribe();
@@ -81,7 +83,6 @@ export default function Home() {
     } catch (nextError) {
       const maybeCode = getAuthErrorCode(nextError);
       setError(getFriendlyAuthError(maybeCode));
-      console.error(nextError);
       setIsSigningIn(false);
     }
   };

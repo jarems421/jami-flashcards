@@ -58,6 +58,7 @@ export default function NotebookTextBlockOptions({
         <div
           id={menuId}
           role="menu"
+          tabIndex={-1}
           aria-label="Text box options"
           className={`absolute z-40 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${
             openAbove ? "bottom-9" : "top-9"
