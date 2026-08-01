@@ -32,6 +32,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Check source file sizes
+        run: npm run check:sizes
+
       - name: Test
         run: npm test
 
@@ -88,14 +91,14 @@ jobs:
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
-      - name: Run signed-in notebook smoke tests
+      - name: Run signed-in browser smoke tests
         run: npm run test:e2e
 
       - name: Upload browser diagnostics
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: notebook-browser-smoke
+          name: browser-smoke
           path: |
             playwright-report/
             test-results/

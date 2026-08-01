@@ -8,6 +8,7 @@ export function readSidebarHiddenPreference(): boolean {
   try {
     return localStorage.getItem(SIDEBAR_HIDDEN_STORAGE_KEY) === "true";
   } catch {
+    // Storage can be unavailable in privacy modes; the default layout is safe.
     return false;
   }
 }

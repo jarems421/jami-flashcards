@@ -11,7 +11,8 @@ Follow `docs/ui-design-system.md` for all UI work.
 During the current Phase 6 notebook-first Practice phase:
 - Build toward a folder-first study workspace: folder -> notebook / paper / deck / source -> natural work -> save -> later AI help / marking / flashcards.
 - Folders are broad study spaces. Topics are concepts/subtopics.
-- Use user-facing spelling `Practice`, while keeping existing routes such as `/dashboard/practise` compatible until a safe alias exists.
+- Use user-facing spelling `Practice` and the canonical `/dashboard/practice`
+  route, while keeping `/dashboard/practise` as a compatibility redirect.
 - The legacy question-bank Practice workflow has been removed from the product surface. Do not reintroduce question bank, standalone Add question, answer/working attempt forms, confidence blocks, old Practice Tutor panels, or tiny scratchpad side features.
 - Notebook file upload infrastructure is in scope for uploaded-file/paper notebooks.
 - Do not build Anywhere, background/persistent OCR, automatic PDF indexing, full-paper mode, browser extension, always-on screen watching, voice tutor expansion, or iPad companion. Library Tutor may read up to five deliberately selected sources on demand after the student asks; do not persist extracted source content or process sources in the background.

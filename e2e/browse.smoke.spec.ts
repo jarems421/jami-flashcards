@@ -35,6 +35,27 @@ async function openScreen(page: Page, path: string, heading: string) {
   return errors;
 }
 
+test("the legacy Practice route redirects permanently and keeps its query", async ({
+  request,
+}) => {
+  const response = await request.get(
+    "/dashboard/practise?agent=1&source=first&source=second",
+    { maxRedirects: 0 }
+  );
+  expect(response.status()).toBe(308);
+
+  const destination = new URL(
+    response.headers().location ?? "",
+    "http://127.0.0.1:3100"
+  );
+  expect(destination.pathname).toBe("/dashboard/practice");
+  expect(destination.searchParams.get("agent")).toBe("1");
+  expect(destination.searchParams.getAll("source")).toEqual([
+    "first",
+    "second",
+  ]);
+});
+
 test("Sources lists saved sources and filters them", async ({ page }) => {
   await signIn(page);
   const errors = await openScreen(page, "/dashboard/library", "Sources");

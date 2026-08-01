@@ -188,7 +188,7 @@ Use Browser Use on localhost for UI work when available.
 
 Check:
 - `/dashboard/study`
-- `/dashboard/practise`
+- `/dashboard/practice`
 - `/dashboard/progress`
 - `/dashboard/library`
 

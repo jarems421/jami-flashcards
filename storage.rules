@@ -37,7 +37,8 @@ service firebase.storage {
 
     match /users/{userId}/notebookFiles/{notebookId}/{fileName} {
       allow read: if isSelf(userId);
-      allow write: if isSelf(userId) && !isDemoAccount() && isAllowedNotebookFile();
+      allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedNotebookFile();
+      allow delete: if isSelf(userId) && !isDemoAccount();
     }
 
     match /users/{userId}/sourceFiles/{sourceId}/{fileName} {

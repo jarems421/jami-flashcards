@@ -7,6 +7,10 @@ export const CONSTELLATION_BACKGROUND_CRASH_MARKER_STORAGE_KEY =
 export const CONSTELLATION_BACKGROUND_EVENT =
   "constellation-background-change";
 
+export function getConstellationBackgroundActionLabel(enabled: boolean) {
+  return enabled ? "Remove background" : "Use as background";
+}
+
 export function readConstellationBackgroundEnabled() {
   if (typeof window === "undefined") {
     return false;
