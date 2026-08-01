@@ -1,5 +1,5 @@
-import { redirect } from "next/navigation";
+import PracticeWorkspace from "@/components/workspace/PracticeWorkspace";
 
-export default function PracticeAliasPage() {
-  redirect("/dashboard/practise");
+export default function PracticePage() {
+  return <PracticeWorkspace />;
 }

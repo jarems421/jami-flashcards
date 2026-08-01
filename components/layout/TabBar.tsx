@@ -35,9 +35,9 @@ const tabs: Tab[] = [
     icon: "M11.4 2.55a1 1 0 011.2 0l8.1 6.075a1 1 0 010 1.6l-3.2 2.4v3.05a1 1 0 01-.42.815C15.63 17.51 13.92 18.05 12 18.05s-3.63-.54-5.08-1.565a1 1 0 01-.42-.815v-3.045l-2-1.5v4.425a1 1 0 11-2 0V9.625a1 1 0 01.4-.8l8.5-6.275zm-3.15 11.4v1.16c1.1.62 2.35.94 3.75.94s2.65-.32 3.75-.94v-1.16l-3.15 2.363a1 1 0 01-1.2 0L8.25 13.95z",
   },
   {
-    href: "/dashboard/practise",
-    label: "Folders",
-    description: "Study spaces",
+    href: "/dashboard/practice",
+    label: "Practice",
+    description: "Folders and notebooks",
     group: "support",
     icon: "M3 6.75A2.75 2.75 0 015.75 4h4.44c.73 0 1.43.29 1.945.805l1.06 1.06c.235.235.553.367.884.367h4.171A2.75 2.75 0 0121 8.982v8.268A2.75 2.75 0 0118.25 20h-12.5A2.75 2.75 0 013 17.25V6.75z",
   },
@@ -107,10 +107,10 @@ const navGroups: { id: TabGroup; label: string; helper: string }[] = [
 
 function isActive(pathname: string, href: string) {
   if (href === "/dashboard") return pathname === "/dashboard";
-  if (href === "/dashboard/practise") {
+  if (href === "/dashboard/practice") {
     return [
-      "/dashboard/practise",
       "/dashboard/practice",
+      "/dashboard/practise",
       "/dashboard/folders",
       "/dashboard/notebooks",
     ].some((route) => pathname.startsWith(route));
