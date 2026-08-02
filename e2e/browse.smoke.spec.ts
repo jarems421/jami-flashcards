@@ -176,3 +176,27 @@ test("phone keeps the browse screens usable", async ({ page }) => {
     expect(box!.width).toBeLessThanOrEqual(390);
   }
 });
+
+test("every response carries the security headers", async ({ request }) => {
+  const response = await request.get("/dashboard");
+  const headers = response.headers();
+
+  // Enforced: these cannot break resource loading, so a regression here is a
+  // real loss of protection rather than a policy still being tuned.
+  const csp = headers["content-security-policy"] ?? "";
+  expect(csp).toContain("frame-ancestors 'none'");
+  expect(csp).toContain("object-src 'none'");
+  expect(csp).toContain("base-uri 'self'");
+  expect(csp).toContain("form-action 'self'");
+
+  // The restrictive policy rides along as Report-Only until a real session
+  // proves connect-src is complete.
+  expect(headers["content-security-policy-report-only"] ?? "").toContain(
+    "default-src 'self'"
+  );
+
+  expect(headers["x-content-type-options"]).toBe("nosniff");
+  expect(headers["x-frame-options"]).toBe("DENY");
+  expect(headers["referrer-policy"]).toBe("strict-origin-when-cross-origin");
+  expect(headers["permissions-policy"]).toContain("camera=()");
+});
