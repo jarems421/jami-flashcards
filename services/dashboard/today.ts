@@ -111,6 +111,39 @@ function resolveSection<T>(input: {
   return { value: input.empty, state: "unavailable" as const };
 }
 
+/**
+ * What a student would call each section, so the banner can say what is
+ * missing. "One section" is accurate and useless: it is the same sentence
+ * whether their notebooks failed or their goals did.
+ */
+const SECTION_LABELS: Record<keyof DashboardSnapshot["sections"], string> = {
+  decks: "your decks",
+  profile: "your profile",
+  cards: "your cards",
+  session: "your study session",
+  goals: "your goals",
+  activity: "your activity",
+  topics: "your topics",
+  mastery: "your progress",
+  drafts: "your drafts",
+  sources: "your sources",
+  folders: "your folders",
+  notebooks: "your notebooks",
+  dailyReview: "Daily Review",
+};
+
+function describeFailedSections(failedSections: string[]) {
+  const labels = failedSections.map(
+    (section) =>
+      SECTION_LABELS[section as keyof DashboardSnapshot["sections"]] ?? section
+  );
+
+  if (labels.length === 1) return labels[0];
+  if (labels.length === 2) return `${labels[0]} and ${labels[1]}`;
+  // Past two it stops being a useful sentence and becomes a list to scan.
+  return `${labels.length} sections`;
+}
+
 async function fetchDashboardSnapshot(
   userId: string,
   previous?: DashboardSnapshot
@@ -285,6 +318,17 @@ async function fetchDashboardSnapshot(
     .filter(([, state]) => state !== "ready")
     .map(([section]) => section);
 
+  if (failedSections.length > 0) {
+    // Today loads thirteen sections independently, so a count on its own
+    // leaves no way to tell which one is broken -- from either the banner or
+    // the console.
+    console.warn("Today sections did not refresh.", {
+      failedSections: failedSections.map(
+        (section) => `${section}:${sections[section as keyof typeof sections]}`
+      ),
+    });
+  }
+
   const snapshot: DashboardSnapshot = {
     fetchedAt: Date.now(),
     sections,
@@ -313,7 +357,7 @@ async function fetchDashboardSnapshot(
       failedSections.length > 0
         ? {
             type: "error",
-            message: `Today could not refresh ${failedSections.length === 1 ? "one section" : `${failedSections.length} sections`}. Existing information is shown where available.`,
+            message: `Today could not refresh ${describeFailedSections(failedSections)}. Existing information is shown where available.`,
           }
         : null,
   };
