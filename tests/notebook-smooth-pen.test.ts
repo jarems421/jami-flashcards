@@ -130,6 +130,25 @@ describe("the smooth pen", () => {
     expect(sharpestTurn).toBeGreaterThan(60);
   });
 
+  it("reaches the far end of a stroke that doubles back on itself", () => {
+    /*
+     * Joined-up writing retraces constantly -- up the stem of an 'l' and back
+     * down it, round the top of an 'e'. At the turn, the point before and the
+     * point after both sit on the same line, so the far end has no sideways
+     * offset from the line between them at all. Judged on that alone it looks
+     * like a sample carrying no shape, and dropping it pulls the ink back
+     * short of where the pen went.
+     */
+    const points = [
+      ...Array.from({ length: 20 }, (_, step) => point(10 + step * 4, 60)),
+      ...Array.from({ length: 20 }, (_, step) => point(86 - step * 4, 60)),
+    ];
+    const reach = buildStroke(points).getBBox();
+
+    // The pen went out to x = 86 and came back. The ink has to go there too.
+    expect(reach.x + reach.w).toBeGreaterThan(86 - PEN_WIDTH);
+  });
+
   it("stores a small fraction of the samples it was given", () => {
     const points = arc();
     const smooth = buildStroke(points).getParts()[0].path.parts.length;
