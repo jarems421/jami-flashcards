@@ -36,9 +36,9 @@ const tabs: Tab[] = [
   },
   {
     href: "/dashboard/practice",
-    label: "Practice",
-    description: "Folders and notebooks",
-    group: "support",
+    label: "Folders",
+    description: "Notebooks and papers",
+    group: "loop",
     icon: "M3 6.75A2.75 2.75 0 015.75 4h4.44c.73 0 1.43.29 1.945.805l1.06 1.06c.235.235.553.367.884.367h4.171A2.75 2.75 0 0121 8.982v8.268A2.75 2.75 0 0118.25 20h-12.5A2.75 2.75 0 013 17.25V6.75z",
   },
   {

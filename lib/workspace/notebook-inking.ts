@@ -57,8 +57,14 @@ export const NOTEBOOK_PAGE_FIT_INSET = NOTEBOOK_VIEWPORT_REGULAR_INSET;
 export const NOTEBOOK_DEFAULT_THICKNESS_PERCENT = 50;
 export const NOTEBOOK_PEN_MIN_WIDTH = 2;
 export const NOTEBOOK_PEN_MAX_WIDTH = 10;
-export const NOTEBOOK_HIGHLIGHTER_MIN_WIDTH = 10;
-export const NOTEBOOK_HIGHLIGHTER_MAX_WIDTH = 30;
+/**
+ * A highlighter is laid over a line of text, so its useful range starts around
+ * the height of one and goes well past it. The old ceiling of 30 needed
+ * several passes to cover an ordinary sentence, which is not what the tool is
+ * for; the floor still leaves something thin enough to underline with.
+ */
+export const NOTEBOOK_HIGHLIGHTER_MIN_WIDTH = 16;
+export const NOTEBOOK_HIGHLIGHTER_MAX_WIDTH = 64;
 export const NOTEBOOK_MAX_LIVE_POINTER_SAMPLES_PER_EVENT = 8;
 
 export function appendPendingNotebookStroke(
