@@ -1,5 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
+import {
+  captureStructuredLogs,
+  expectRedactedLogs,
+} from "./support/log-capture";
 
 /**
  * The card back drafting route.
@@ -304,5 +308,40 @@ describe("card back autocomplete", () => {
       code: "budget_unavailable",
     });
     expect(mocks.generateText).not.toHaveBeenCalled();
+  });
+
+  it("logs a correlated request without writing the card's text to the log", async () => {
+    mocks.generateText.mockRejectedValue(
+      Object.assign(new Error("Gemini is overloaded"), { status: 503 })
+    );
+
+    const { records, lines } = await captureStructuredLogs(() =>
+      postAutocomplete(
+        request(
+          mathsCard({
+            front: "Solve SECRET_CARD_FRONT for x",
+            currentBack: "SECRET_CARD_DRAFT",
+          })
+        )
+      )
+    );
+
+    expectRedactedLogs({
+      records,
+      lines,
+      route: "ai.autocomplete-card",
+      events: ["provider.first_attempt_failed", "provider.failed"],
+      studentText: [
+        "SECRET_CARD_FRONT",
+        "SECRET_CARD_DRAFT",
+        // The nearby cards pulled in for tone are someone's work too.
+        "What is the quadratic formula?",
+        "Algebra",
+      ],
+    });
+
+    const failure = records.find((record) => record.event === "provider.failed");
+    expect(failure?.error).toMatchObject({ status: 503 });
+    expect(failure?.uid).toBe("user-1");
   });
 });

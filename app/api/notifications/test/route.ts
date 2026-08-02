@@ -6,10 +6,21 @@ import {
   isExpiredPushSubscriptionError,
   sendPushNotification,
 } from "@/services/notifications/web-push";
+import { createLogger } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
 
-function logNotificationError(label: string, error: unknown) {
+const log = createLogger({ route: "notifications.test" });
+
+/**
+ * Push failures are reported without the error itself.
+ *
+ * A push endpoint is a capability URL — anyone holding it can send to that
+ * browser — and the provider puts it in the message, so the URL is stripped
+ * before anything is written. It goes out under `detail` rather than
+ * `message`, which the logger redacts as student text.
+ */
+function logNotificationError(event: string, error: unknown) {
   const statusCode =
     typeof error === "object" &&
     error !== null &&
@@ -17,14 +28,14 @@ function logNotificationError(label: string, error: unknown) {
     typeof (error as { statusCode?: unknown }).statusCode === "number"
       ? (error as { statusCode: number }).statusCode
       : undefined;
-  const message =
+  const detail =
     error instanceof Error
       ? error.message
           .replace(/https?:\/\/\S+/gi, "[url]")
           .replace(/[\r\n]+/g, " ")
           .slice(0, 180)
       : "Unknown notification error";
-  console.error(label, { statusCode, message });
+  log.error(event, { statusCode, detail });
 }
 
 export async function POST(request: NextRequest) {
@@ -134,7 +145,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        logNotificationError("Targeted test notification failed.", error);
+        logNotificationError("push.targeted_send_failed", error);
         return Response.json(
           {
             error: "The notification provider could not deliver this test just now.",
@@ -190,7 +201,7 @@ export async function POST(request: NextRequest) {
           continue;
         }
 
-        logNotificationError("Test notification delivery failed.", error);
+        logNotificationError("push.send_failed", error);
         failed += 1;
       }
     }
@@ -214,7 +225,7 @@ export async function POST(request: NextRequest) {
       failed,
     });
   } catch (error) {
-    logNotificationError("Test notification route failed.", error);
+    logNotificationError("request.failed", error);
 
     return Response.json(
       {

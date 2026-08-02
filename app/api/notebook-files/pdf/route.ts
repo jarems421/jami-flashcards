@@ -8,6 +8,7 @@ import {
   getAdminAuth,
   getAdminStorageBucket,
 } from "@/services/firebase/admin";
+import { createLogger } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
 
@@ -94,10 +95,13 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.error("Could not download notebook file.", {
-      storagePath,
-      error,
-    });
+    // The last path segment ends in the student's own filename, so the
+    // notebook id is logged instead of the path. It is enough to find the
+    // file, and a title like "Biology resit notes" is not log material.
+    createLogger({ route: "notebook-files.pdf", uid: userId }).error(
+      "file.download_failed",
+      { notebookId: storagePath.split("/")[3], error }
+    );
     return Response.json(
       { error: "This notebook file could not be downloaded." },
       { status: 500 }

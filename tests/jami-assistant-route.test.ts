@@ -1,5 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
+import {
+  captureStructuredLogs,
+  expectRedactedLogs,
+} from "./support/log-capture";
 
 const mocks = vi.hoisted(() => {
   class ContextError extends Error {
@@ -475,63 +479,39 @@ describe("universal Jami assistant route", () => {
    * written.
    */
   it("logs a correlated request without writing student work to the log", async () => {
-    const lines: string[] = [];
-    const capture = (line: unknown) => {
-      lines.push(String(line));
-    };
-    const spies = [
-      vi.spyOn(console, "log").mockImplementation(capture),
-      vi.spyOn(console, "warn").mockImplementation(capture),
-      vi.spyOn(console, "error").mockImplementation(capture),
-    ];
+    mocks.prepareSource.mockRejectedValue(
+      new Error("This source could not be read.")
+    );
+    mocks.streamText.mockRejectedValue(
+      Object.assign(new Error("Gemini is overloaded"), { status: 503 })
+    );
 
-    try {
-      mocks.prepareSource.mockRejectedValue(
-        new Error("This source could not be read.")
-      );
-      mocks.streamText.mockRejectedValue(
-        Object.assign(new Error("Gemini is overloaded"), { status: 503 })
-      );
-
-      await readStream(
+    const { records, lines } = await captureStructuredLogs(async () =>
+      readStream(
         await postAssistant(
           request(
             validBody({ message: "Explain SECRET_STUDENT_QUESTION to me." })
           )
         )
-      );
-    } finally {
-      spies.forEach((spy) => spy.mockRestore());
-    }
-
-    // Every line parses on its own, which is what a log search depends on.
-    const records = lines.map((line) => JSON.parse(line));
-    expect(records.length).toBeGreaterThanOrEqual(2);
-
-    // The unreadable source and the provider failure are one story.
-    const requestIds = new Set(records.map((record) => record.requestId));
-    expect(requestIds.size).toBe(1);
-    expect(records.every((record) => record.route === "ai.assistant")).toBe(
-      true
-    );
-    expect(records.map((record) => record.event)).toEqual(
-      expect.arrayContaining(["source.prepare_failed", "provider.failed"])
+      )
     );
 
-    const failure = records.find(
-      (record) => record.event === "provider.failed"
-    );
-    expect(failure.error).toMatchObject({ status: 503 });
-    expect(failure.uid).toBe("user-1");
+    expectRedactedLogs({
+      records,
+      lines,
+      route: "ai.assistant",
+      // The unreadable source and the provider failure are one story.
+      events: ["source.prepare_failed", "provider.failed"],
+      studentText: [
+        "SECRET_STUDENT_QUESTION",
+        "Biology notes",
+        "Plants capture light energy.",
+        "Card front and answer",
+      ],
+    });
 
-    const everything = lines.join("\n");
-    for (const studentText of [
-      "SECRET_STUDENT_QUESTION",
-      "Biology notes",
-      "Plants capture light energy.",
-      "Card front and answer",
-    ]) {
-      expect(everything).not.toContain(studentText);
-    }
+    const failure = records.find((record) => record.event === "provider.failed");
+    expect(failure?.error).toMatchObject({ status: 503 });
+    expect(failure?.uid).toBe("user-1");
   });
 });

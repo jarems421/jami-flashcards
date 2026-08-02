@@ -1,5 +1,9 @@
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { NextRequest } from "next/server";
+import {
+  captureStructuredLogs,
+  expectRedactedLogs,
+} from "./support/log-capture";
 
 /**
  * The source drafting route.
@@ -526,5 +530,40 @@ describe("source draft generation", () => {
     });
     expect(mocks.generateText).not.toHaveBeenCalled();
     expect(mocks.added).toHaveLength(0);
+  });
+
+  it("logs a correlated request without writing the source text to the log", async () => {
+    mocks.sourceData.contentText =
+      "SECRET_SOURCE_TEXT about the Calvin cycle.";
+    mocks.sourceData.title = "SECRET_SOURCE_TITLE";
+    mocks.generateText.mockRejectedValue(
+      Object.assign(new Error("Gemini is overloaded"), { status: 503 })
+    );
+
+    const { records, lines } = await captureStructuredLogs(() =>
+      postDrafts(
+        request({
+          sourceId: "source-1",
+          kind: "flashcard",
+          focus: "SECRET_TUTOR_CONVERSATION",
+        })
+      )
+    );
+
+    expectRedactedLogs({
+      records,
+      lines,
+      route: "ai.source-drafts",
+      events: ["provider.failed"],
+      studentText: [
+        "SECRET_SOURCE_TEXT",
+        "SECRET_SOURCE_TITLE",
+        "SECRET_TUTOR_CONVERSATION",
+      ],
+    });
+
+    const failure = records.find((record) => record.event === "provider.failed");
+    expect(failure?.error).toMatchObject({ status: 503 });
+    expect(failure).toMatchObject({ uid: "user-1", kind: "flashcard" });
   });
 });

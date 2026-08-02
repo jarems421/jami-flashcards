@@ -13,6 +13,7 @@ import {
   isExpiredPushSubscriptionError,
   sendPushNotification,
 } from "@/services/notifications/web-push";
+import { createLogger, type Logger } from "@/lib/observability/logger";
 
 export const DIGEST_CLAIM_TTL_MS = 10 * 60 * 1000;
 export const DIGEST_PAGE_SIZE = 100;
@@ -33,7 +34,7 @@ type DigestDependencies = {
   adminDb?: ReturnType<typeof getAdminDb>;
   clock?: () => number;
   createClaimId?: () => string;
-  logger?: Pick<Console, "error" | "warn">;
+  logger?: Pick<Logger, "error" | "warn">;
   sendPush?: (
     subscription: Parameters<typeof sendPushNotification>[0],
     payload: Parameters<typeof sendPushNotification>[1]
@@ -330,7 +331,7 @@ async function processPreference(
   const userId = getPreferenceUserId(preferencesDoc);
   if (!userId) {
     result.skipped = 1;
-    dependencies.logger.warn("Skipped an unexpected notification preference path.", {
+    dependencies.logger.warn("preferences.unexpected_path", {
       path: preferencesDoc.ref.path,
     });
     return result;
@@ -422,20 +423,14 @@ async function processPreference(
         }
 
         result.failed = 1;
-        dependencies.logger.error("Notification digest delivery failed.", {
-          userId,
-          error,
-        });
+        dependencies.logger.error("push.send_failed", { userId, error });
       }
     }
 
     if (result.sent === 0 && result.failed === 0) result.skipped = 1;
   } catch (error) {
     result.failed = 1;
-    dependencies.logger.error("Notification digest user processing failed.", {
-      userId,
-      error,
-    });
+    dependencies.logger.error("user.processing_failed", { userId, error });
   } finally {
     if (claimOpen && claimId && !markedSent) {
       try {
@@ -449,10 +444,7 @@ async function processPreference(
         );
       } catch (error) {
         result.failed = 1;
-        dependencies.logger.error("Notification digest claim release failed.", {
-          userId,
-          error,
-        });
+        dependencies.logger.error("claim.release_failed", { userId, error });
       }
     }
   }
@@ -470,7 +462,8 @@ export async function runNotificationDigest(
 ): Promise<NotificationDigestSummary> {
   const adminDb = dependencies.adminDb ?? getAdminDb();
   const clock = dependencies.clock ?? Date.now;
-  const logger = dependencies.logger ?? console;
+  const logger =
+    dependencies.logger ?? createLogger({ service: "notifications.digest" });
   const resolvedDependencies = {
     adminDb,
     clock,
@@ -496,7 +489,7 @@ export async function runNotificationDigest(
     const elapsedMs = clock() - startedAt;
     if (durationWarningEmitted || elapsedMs < durationWarningMs) return;
     durationWarningEmitted = true;
-    logger.warn("Notification digest is approaching its route duration budget.", {
+    logger.warn("run.approaching_duration_budget", {
       elapsedMs,
       durationWarningMs,
       considered: summary.considered,

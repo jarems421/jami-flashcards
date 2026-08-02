@@ -1,3 +1,7 @@
+import { createLogger } from "@/lib/observability/logger";
+
+const log = createLogger({ route: "health" });
+
 function getErrorCode(error: unknown): string | undefined {
   if (typeof error === "object" && error !== null && "code" in error) {
     const code = (error as { code?: unknown }).code;
@@ -49,9 +53,7 @@ export async function GET() {
       });
     }
 
-    console.error("Firestore health check failed.", {
-      code: code ?? "unknown",
-    });
+    log.error("firestore.unreachable", { code: code ?? "unknown" });
 
     return Response.json(
       {

@@ -501,7 +501,7 @@ describe("notification digest orchestration", () => {
 
     expect(logger.warn).toHaveBeenCalledTimes(1);
     expect(logger.warn).toHaveBeenCalledWith(
-      expect.stringContaining("duration budget"),
+      "run.approaching_duration_budget",
       expect.objectContaining({ durationWarningMs: 10 })
     );
   });
