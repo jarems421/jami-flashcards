@@ -108,6 +108,8 @@ export function createNotebookSmoothPenStrokeFactory(
     const shapeTolerance =
       viewport.getSizeOfPixelOnCanvas() * SHAPE_TOLERANCE_RATIO;
     const maximumSpan = viewport.getSizeOfPixelOnCanvas() * MAXIMUM_SPAN_RATIO;
+    /** Below this, the line has turned far enough to count as a corner. */
+    const cornerCosine = Math.cos((CORNER_DEGREES * Math.PI) / 180);
     const points: Point2[] = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
     /**
      * The newest sample, held back one step.
@@ -177,7 +179,6 @@ export function createNotebookSmoothPenStrokeFactory(
       // the curve arriving at it and the seam is invisible.
       const at = (index: number) =>
         shape[Math.min(Math.max(index, 0), shape.length - 1)];
-      const cornerCosine = Math.cos((CORNER_DEGREES * Math.PI) / 180);
 
       /**
        * The direction the curve should leave `index` in.
@@ -239,7 +240,27 @@ export function createNotebookSmoothPenStrokeFactory(
         // The held sample earns its place only if dropping it would change
         // the line. Otherwise the newer sample takes its place.
         const lastKept = points[points.length - 1];
+        /*
+         * How far the line turns at the held sample.
+         *
+         * Sideways offset alone is not enough to decide this. Where a stroke
+         * doubles back -- up the stem of an 'l' and down it again, round the
+         * top of an 'e' -- the point before the turn and the point after it
+         * lie on the same line, so the far end has no offset from that line
+         * whatsoever. Judged on offset it looks like a sample carrying no
+         * shape, and dropping it pulls the ink back short of where the pen
+         * actually went. Anywhere the line turns enough to be drawn as a
+         * corner has to be kept for the same reason.
+         */
+        const arriving = pending.minus(lastKept);
+        const leaving = next.minus(pending);
+        const turns =
+          arriving.magnitude() > 0 &&
+          leaving.magnitude() > 0 &&
+          arriving.normalized().dot(leaving.normalized()) < cornerCosine;
+
         if (
+          turns ||
           strayFromLine(pending, lastKept, next) >= shapeTolerance ||
           next.distanceTo(lastKept) >= maximumSpan
         ) {
