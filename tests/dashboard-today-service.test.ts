@@ -165,6 +165,9 @@ describe("Today data coordinator", () => {
     expect(refreshed.snapshot.decks).toHaveLength(1);
     expect(refreshed.snapshot.sections.decks).toBe("stale");
     expect(refreshed.feedback?.type).toBe("error");
+    // Naming the section is the point: Today loads thirteen of them, so a
+    // bare count cannot be acted on by the student or by whoever debugs it.
+    expect(refreshed.feedback?.message).toContain("your decks");
     expect(
       getCachedDashboardSnapshot(
         "user-1",
