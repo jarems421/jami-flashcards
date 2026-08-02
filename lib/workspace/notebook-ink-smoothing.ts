@@ -33,23 +33,29 @@ export type NotebookInkSmoothingOptions = {
 };
 
 /**
- * Tuned for handwriting speed, which is where writing is actually judged.
+ * Flat across the speeds handwriting actually uses.
  *
- * The cutoff rises with speed, so these two numbers decide how much noise
- * survives at the speed a pen is normally moving. At the previous 4.5/0.3 the
- * cutoff reached 70 Hz by 220 px/s -- ordinary handwriting -- and roughly 70%
- * of the sensor's jitter passed straight through. The filter was only really
- * working while the pen was nearly still, which is exactly when nothing is
- * being written.
+ * The cutoff rises with speed, so `minCutoff` governs the pen when it is
+ * moving slowly and `beta` how quickly it lets go as the pen speeds up. The
+ * mistake worth remembering is that these are not "less smoothing" and "more
+ * smoothing": a pen slows down at precisely the moments that need the most
+ * accuracy -- the turn at the top of an 'o', the join between two letters --
+ * so a low `minCutoff` clamps down hardest exactly where the shape is being
+ * made. At 2 Hz only a sixth of each sample survived down there, and the ink
+ * felt magnetic, dragged towards where it had just been.
  *
- * The cost is lag, bounded near `1 / (2π · beta)`: 0.53px before, 1.77px now.
- * Both are well under a pen width, and the lag only appears at speed, where
- * the eye is following the pen rather than the ink. Raise `beta` if the ink
- * ever feels like it is trailing; lower it if writing still looks noisy.
+ * Raising `minCutoff` and dropping `beta` flattens the curve instead of
+ * tilting it: about a third of each sample survives when the pen is crawling,
+ * near enough to the original feel, while less than half survives at writing
+ * speed, where the original let 78% of the sensor's noise straight through.
+ *
+ * The cost is lag, bounded near `1 / (2π · beta)`, now about 4px at the top of
+ * a fast stroke where the eye is on the pen rather than the ink. Lower
+ * `minCutoff` if writing feels dragged; lower `beta` if it looks noisy.
  */
 export const NOTEBOOK_INK_SMOOTHING: NotebookInkSmoothingOptions = {
-  minCutoff: 2,
-  beta: 0.09,
+  minCutoff: 9,
+  beta: 0.04,
   derivativeCutoff: 16,
 };
 

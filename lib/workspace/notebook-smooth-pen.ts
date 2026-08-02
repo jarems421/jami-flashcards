@@ -48,10 +48,39 @@ const MINIMUM_STEP_RATIO = 0.6;
  * their neighbours already describe carry no shape and can go. Curvature is
  * where the points are kept.
  */
-const SHAPE_TOLERANCE_RATIO = 0.55;
+const SHAPE_TOLERANCE_RATIO = 0.25;
+
+/**
+ * The furthest apart two kept points may be, in screen pixels.
+ *
+ * The test above only ever compares one held sample against the chord it sits
+ * on, so on a long gentle curve the error accumulates unchecked: each sample
+ * looks near enough to the line, and the line quietly grows. Small round
+ * letters are what suffer -- an 'o' is a long gentle curve at that scale, and
+ * it comes back flattened. Forcing a point at least this often bounds how far
+ * that can run.
+ */
+const MAXIMUM_SPAN_RATIO = 24;
 
 /** Catmull-Rom tension. A sixth is the uniform, non-overshooting form. */
 const TANGENT_SCALE = 1 / 6;
+
+/**
+ * How sharply the line must turn at a point before it is treated as a corner
+ * rather than a curve, in degrees.
+ *
+ * A Catmull-Rom spline is smooth *everywhere*, which sounds like what a pen
+ * wants until you write joined-up. Handwriting is full of deliberate corners
+ * -- the point of a 'v', the cusp where one letter joins the next, the turn
+ * back down at the top of an 'a' -- and a curve that cannot make a corner
+ * rounds every one of them off. That reads as the pen being magnetic: it
+ * refuses to go exactly where it was taken.
+ *
+ * At a corner the two tangents are taken from the strokes either side instead
+ * of from the line through them, which lets the join come to a point. Curves
+ * below the threshold are untouched, so a genuine curve stays seamless.
+ */
+const CORNER_DEGREES = 35;
 
 export function createNotebookSmoothPenStrokeFactory(
   jsDraw: JsDrawModule
@@ -78,6 +107,7 @@ export function createNotebookSmoothPenStrokeFactory(
     );
     const shapeTolerance =
       viewport.getSizeOfPixelOnCanvas() * SHAPE_TOLERANCE_RATIO;
+    const maximumSpan = viewport.getSizeOfPixelOnCanvas() * MAXIMUM_SPAN_RATIO;
     const points: Point2[] = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
     /**
      * The newest sample, held back one step.
@@ -147,16 +177,42 @@ export function createNotebookSmoothPenStrokeFactory(
       // the curve arriving at it and the seam is invisible.
       const at = (index: number) =>
         shape[Math.min(Math.max(index, 0), shape.length - 1)];
+      const cornerCosine = Math.cos((CORNER_DEGREES * Math.PI) / 180);
+
+      /**
+       * The direction the curve should leave `index` in.
+       *
+       * Normally the line through its neighbours, which is what makes the
+       * join seamless. At a corner it is the outgoing stroke alone, so the
+       * curve arrives and leaves along the two strokes that meet there and
+       * the point survives.
+       */
+      const tangentAt = (index: number, outgoing: boolean) => {
+        const previous = at(index - 1);
+        const here = at(index);
+        const next = at(index + 1);
+        const arriving = here.minus(previous);
+        const leaving = next.minus(here);
+        if (arriving.magnitude() === 0 || leaving.magnitude() === 0) {
+          return next.minus(previous);
+        }
+        // How straight the path is through this point. Turning back on itself
+        // approaches -1; carrying straight on approaches 1.
+        const straightness = arriving
+          .normalized()
+          .dot(leaving.normalized());
+        if (straightness > cornerCosine) return next.minus(previous);
+        return outgoing ? leaving : arriving;
+      };
+
       const commands: PathCommand[] = [];
       for (let index = 0; index < shape.length - 1; index += 1) {
-        const previous = at(index - 1);
         const from = at(index);
         const to = at(index + 1);
-        const next = at(index + 2);
         commands.push({
           kind: PathCommandType.CubicBezierTo,
-          controlPoint1: from.plus(to.minus(previous).times(TANGENT_SCALE)),
-          controlPoint2: to.minus(next.minus(from).times(TANGENT_SCALE)),
+          controlPoint1: from.plus(tangentAt(index, true).times(TANGENT_SCALE)),
+          controlPoint2: to.minus(tangentAt(index + 1, false).times(TANGENT_SCALE)),
           endPoint: to,
         });
       }
@@ -182,9 +238,10 @@ export function createNotebookSmoothPenStrokeFactory(
         }
         // The held sample earns its place only if dropping it would change
         // the line. Otherwise the newer sample takes its place.
+        const lastKept = points[points.length - 1];
         if (
-          strayFromLine(pending, points[points.length - 1], next) >=
-          shapeTolerance
+          strayFromLine(pending, lastKept, next) >= shapeTolerance ||
+          next.distanceTo(lastKept) >= maximumSpan
         ) {
           points.push(pending);
         }
