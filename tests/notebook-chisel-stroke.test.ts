@@ -76,10 +76,10 @@ describe("chisel highlighter geometry", () => {
   function perpendicularThickness(from: [number, number], to: [number, number]) {
     const outline = outlineOf([point(...from), point(...to)]);
     const axis = jsDraw.Vec2.of(to[0] - from[0], to[1] - from[1]).normalized();
-    // The first and last corners are one sample offset by +nib and -nib, so
-    // the vector between them is the nib laid end to end.
-    const across = outline[0].minus(outline[outline.length - 1]);
-    return Math.abs(across.x * axis.y - across.y * axis.x);
+    const across = outline.map(
+      (corner) => corner.x * -axis.y + corner.y * axis.x
+    );
+    return Math.max(...across) - Math.min(...across);
   }
 
   it("offsets along a fixed nib angle rather than perpendicular to travel", () => {
@@ -91,9 +91,21 @@ describe("chisel highlighter geometry", () => {
     );
 
     // A round nib would make these identical. A chisel is broad across its
-    // edge and vanishes to a line along it, which is the whole point.
-    expect(horizontal).toBeCloseTo(STROKE_WIDTH * Math.sin(radians), 1);
-    expect(alongNib).toBeCloseTo(0, 5);
+    // edge and narrow along it, which is the whole point.
+    expect(horizontal).toBeGreaterThan(alongNib * 4);
+  });
+
+  it("still lays down its narrow side when running along the nib", () => {
+    // The break mid-curve was this going to zero. A bare flat edge sweeps no
+    // area at all in the one direction it is lined up with; a real tip is a
+    // rectangle and always leaves at least its thickness.
+    const radians = (NIB_ANGLE_DEGREES * Math.PI) / 180;
+    const alongNib = perpendicularThickness(
+      [0, 0],
+      [100 * Math.cos(radians), 100 * Math.sin(radians)]
+    );
+
+    expect(alongNib).toBeCloseTo(STROKE_WIDTH * 0.2, 1);
   });
 
   it("keeps close to the full thickness on an ordinary horizontal sweep", () => {
@@ -101,24 +113,26 @@ describe("chisel highlighter geometry", () => {
     const ys = outline.map((corner) => corner.y);
     const spread = Math.max(...ys) - Math.min(...ys);
 
-    expect(spread).toBeCloseTo(
-      STROKE_WIDTH * Math.sin((NIB_ANGLE_DEGREES * Math.PI) / 180),
-      1
-    );
+    // Essentially the nominal thickness: the nib is steep enough that an
+    // ordinary sweep meets it nearly broadside.
+    expect(spread).toBeCloseTo(STROKE_WIDTH, 0);
   });
 
   it("ends on a slant, which is what reads as a highlighter", () => {
     const outline = outlineOf([point(0, 0), point(120, 0)]);
-    const leading = outline[0];
-    const trailing = outline[outline.length - 1];
-    const edgeAngle =
-      (Math.atan2(leading.y - trailing.y, leading.x - trailing.x) * 180) /
-      Math.PI;
-    // The cap is a line, not an arrow: which end it is measured from flips the
-    // angle by 180 degrees without changing the slant.
-    const slant = ((edgeAngle % 180) + 180) % 180;
+    // How far the top of the leading end overhangs the bottom of it. A round
+    // nib ends square and would give zero here; a chisel ends on the skew.
+    const upper = Math.max(
+      ...outline.filter((corner) => corner.y > 0).map((corner) => corner.x)
+    );
+    const lower = Math.max(
+      ...outline.filter((corner) => corner.y < 0).map((corner) => corner.x)
+    );
 
-    expect(slant).toBeCloseTo(NIB_ANGLE_DEGREES, 0);
+    expect(upper - lower).toBeCloseTo(
+      STROKE_WIDTH * Math.cos((NIB_ANGLE_DEGREES * Math.PI) / 180),
+      0
+    );
   });
 
   it("draws a visible mark for a tap, where a flat edge alone would not", () => {
@@ -175,18 +189,20 @@ describe("never eating a hole in itself", () => {
     return twice / 2;
   }
 
-  it("sweeps each step as its own convex quad, which cannot fold", () => {
+  it("sweeps each step as its own convex footprint, which cannot fold", () => {
     const subpaths = subpathsOf(halfCircle());
 
     expect(subpaths.length).toBeGreaterThan(4);
     for (const corners of subpaths) {
-      expect(corners).toHaveLength(4);
+      // The tip is a rectangle, so a step sweeps a hexagon at most.
+      expect(corners.length).toBeGreaterThanOrEqual(4);
+      expect(corners.length).toBeLessThanOrEqual(6);
 
-      // Convexity: every turn around the quad goes the same way. A folded
-      // outline is exactly what fails this.
+      // Convexity: every turn around the footprint goes the same way. A
+      // folded outline is exactly what fails this.
       const turns = corners.map((corner, index) => {
-        const next = corners[(index + 1) % 4];
-        const after = corners[(index + 2) % 4];
+        const next = corners[(index + 1) % corners.length];
+        const after = corners[(index + 2) % corners.length];
         const a = next.minus(corner);
         const b = after.minus(next);
         return Math.sign(a.x * b.y - a.y * b.x);

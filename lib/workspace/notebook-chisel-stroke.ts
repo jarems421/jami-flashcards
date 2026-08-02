@@ -37,10 +37,16 @@ import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
 const NIB_ANGLE_DEGREES = 65;
 
 /**
- * The nib's narrow dimension, as a fraction of stroke width. Only visible on a
- * tap, where a flat edge would otherwise enclose no area and draw nothing.
+ * The nib's narrow dimension, as a fraction of its width.
+ *
+ * A real chisel tip is a rectangle, not a knife edge, and that thickness is
+ * what stops the stroke disappearing. Modelled as a bare flat edge, a stroke
+ * travelling along the nib's own axis sweeps *no area at all* -- which is seen
+ * as the stroke breaking apart partway through a curve, at exactly the angle
+ * where the edge lines up with the direction of travel. A real highlighter
+ * cannot do that, because it always lays down at least its narrow side.
  */
-const NIB_NARROW_RATIO = 0.16;
+const NIB_NARROW_RATIO = 0.2;
 
 /**
  * How far the tip must travel before a sample is kept, as a fraction of the
@@ -53,6 +59,38 @@ const NIB_NARROW_RATIO = 0.16;
  */
 const GUIDE_STEP_RATIO = 0.34;
 
+/**
+ * The outline of a set of points, wound the same way every time.
+ *
+ * Monotone chain. Consistent winding is not incidental here: it is what lets
+ * overlapping footprints add rather than cancel under the nonzero fill rule.
+ */
+function convexHull(points: Point2[]): Point2[] {
+  const sorted = [...points].sort((left, right) =>
+    left.x === right.x ? left.y - right.y : left.x - right.x
+  );
+  const turn = (origin: Point2, from: Point2, to: Point2) =>
+    (from.x - origin.x) * (to.y - origin.y) -
+    (from.y - origin.y) * (to.x - origin.x);
+
+  const chain = (ordered: Point2[]) => {
+    const side: Point2[] = [];
+    for (const candidate of ordered) {
+      while (
+        side.length >= 2 &&
+        turn(side[side.length - 2], side[side.length - 1], candidate) <= 0
+      ) {
+        side.pop();
+      }
+      side.push(candidate);
+    }
+    side.pop();
+    return side;
+  };
+
+  return [...chain(sorted), ...chain([...sorted].reverse())];
+}
+
 export function createNotebookChiselStrokeFactory(
   jsDraw: JsDrawModule
 ): ComponentBuilderFactory {
@@ -63,6 +101,17 @@ export function createNotebookChiselStrokeFactory(
     const color: Color4 = startPoint.color;
     const halfWidth = Math.max(startPoint.width, 0.1) / 2;
     const nib = Vec2.of(Math.cos(angle), Math.sin(angle)).times(halfWidth);
+    // Across the nib's width, and across its thickness.
+    const narrow = Vec2.of(-Math.sin(angle), Math.cos(angle)).times(
+      halfWidth * NIB_NARROW_RATIO
+    );
+    /** The four corners of the tip, placed at a point on the path. */
+    const tipAt = (centre: Point2) => [
+      centre.plus(nib).plus(narrow),
+      centre.plus(nib).minus(narrow),
+      centre.minus(nib).minus(narrow),
+      centre.minus(nib).plus(narrow),
+    ];
     const minimumStep = Math.max(
       viewport.getSizeOfPixelOnCanvas() * 0.65,
       halfWidth * GUIDE_STEP_RATIO
@@ -97,18 +146,8 @@ export function createNotebookChiselStrokeFactory(
       const style = { fill: color };
 
       if (points.length === 1) {
-        // A tap. A flat edge encloses no area on its own, so the nib's narrow
-        // dimension is what makes the mark visible at all.
-        const narrow = Vec2.of(-Math.sin(angle), Math.cos(angle)).times(
-          halfWidth * NIB_NARROW_RATIO
-        );
-        const centre = points[0];
-        const corners = [
-          centre.plus(nib).plus(narrow),
-          centre.plus(nib).minus(narrow),
-          centre.minus(nib).minus(narrow),
-          centre.minus(nib).plus(narrow),
-        ];
+        // A tap leaves the tip's own footprint.
+        const corners = tipAt(points[0]);
         return {
           startPoint: corners[0],
           commands: corners.slice(1).map(
@@ -119,18 +158,18 @@ export function createNotebookChiselStrokeFactory(
       }
 
       /*
-       * One parallelogram per step, rather than one outline around the whole
+       * One swept footprint per step, rather than one outline around the whole
        * stroke.
        *
        * A single outline is only valid while the path stays on one side of the
        * nib's axis and never turns tighter than the nib reaches. Cross either
        * limit and the outline folds back through itself; the crossed region
-       * takes a winding number of zero and is punched out of the fill. That is
-       * the stroke breaking mid-curve, and the mesh of holes where a stroke
-       * doubles back over itself in one motion.
+       * takes a winding number of zero and is punched out of the fill. That
+       * was the stroke breaking mid-curve, and the mesh of holes where one
+       * motion doubled back over itself.
        *
        * Sweeping each step separately removes the possibility rather than
-       * handling the cases. Every parallelogram is convex and cannot fold, and
+       * handling the cases. Every footprint is convex and cannot fold, and
        * wound the same way they can only ever add: a point covered by five of
        * them has a winding number of five, not one or zero. It costs more
        * points in the saved path, which is the right trade for a highlighter
@@ -141,19 +180,15 @@ export function createNotebookChiselStrokeFactory(
       let pathStart: Point2 | null = null;
 
       for (let index = 1; index < path.length; index += 1) {
-        const from = path[index - 1];
-        const to = path[index];
-        const direction = to.minus(from);
-        // Winding has to match across every step, so the offset is taken
-        // towards whichever side keeps this one turning the same way.
-        const cross = nib.x * direction.y - nib.y * direction.x;
-        const towards = cross >= 0 ? nib : nib.times(-1);
-        const corners = [
-          from.plus(towards),
-          to.plus(towards),
-          to.minus(towards),
-          from.minus(towards),
-        ];
+        // The area a rectangular tip covers sliding from one point to the next
+        // is the hull of its footprint at both ends. Sweeping the tip rather
+        // than a bare edge is what keeps the stroke alive when it turns to run
+        // along the nib, where an edge would sweep nothing at all.
+        const corners = convexHull([
+          ...tipAt(path[index - 1]),
+          ...tipAt(path[index]),
+        ]);
+        if (corners.length < 3) continue;
 
         if (pathStart === null) {
           pathStart = corners[0];
