@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
@@ -6,13 +7,18 @@ import {
   createAiBudgetLimitResponse,
   getAiTokenCap,
 } from "@/services/ai/budgets";
-import { generateGeminiText, isGeminiTimeoutError } from "@/lib/ai/gemini";
+import {
+  generateGeminiText,
+  isGeminiTimeoutError,
+  type GeminiResponseDiagnostics,
+} from "@/lib/ai/gemini";
 import {
   cleanGeneratedCardBack,
   detectCardBackSubject,
   getSubjectPrompt,
 } from "@/lib/ai/card-autocomplete";
 import { featureFlags } from "@/lib/app/feature-flags";
+import { createLogger } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
 
@@ -169,6 +175,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const startedAt = Date.now();
+  const log = createLogger({
+    route: "ai.autocomplete-card",
+    requestId: randomUUID(),
+    uid,
+  });
+
   let front: string;
   let currentBack: string;
   let deckId: string | undefined;
@@ -223,7 +236,7 @@ export async function POST(request: NextRequest) {
       }
     }
   } catch (error) {
-    console.error("Could not verify the autocomplete deck before generation.", error);
+    log.error("deck.verify_failed", { deckId, error });
     return Response.json(
       { error: "This deck could not be loaded just now." },
       { status: 500 },
@@ -240,7 +253,7 @@ export async function POST(request: NextRequest) {
       front,
     });
   } catch (error) {
-    console.error("Could not load nearby cards before autocomplete generation.", error);
+    log.error("related_cards.load_failed", { deckId, error });
     return Response.json(
       { error: "Nearby cards could not be loaded just now." },
       { status: 500 }
@@ -251,7 +264,7 @@ export async function POST(request: NextRequest) {
   try {
     budgetDecision = await checkAiBudget({ uid, action: "autocompleteCard" });
   } catch (error) {
-    console.error("Could not enforce the card autocomplete AI budget.", error);
+    log.error("budget.check_failed", { error });
     return Response.json(
       {
         error: "AI usage limits are temporarily unavailable. Try again shortly.",
@@ -263,6 +276,12 @@ export async function POST(request: NextRequest) {
   if (!budgetDecision.allowed) {
     return createAiBudgetLimitResponse("autocompleteCard", budgetDecision);
   }
+
+  // Declared outside the attempt so the failure log can still say which models
+  // were reached before it went wrong.
+  const providerDiagnostics: (GeminiResponseDiagnostics & {
+    stage: string;
+  })[] = [];
 
   try {
     const subject = detectCardBackSubject({ front, deckName, topics });
@@ -295,7 +314,7 @@ ${relatedCardsPrompt}
 
 Write the best flashcard back. If there is already a draft, improve or complete it without making it bloated.`;
 
-    const generateDraft = async (prompt: string) => {
+    const generateDraft = async (prompt: string, stage: string) => {
       const text = await generateGeminiText({
         apiKey: GEMINI_API_KEY,
         timeoutMs: REQUEST_TIMEOUT_MS,
@@ -308,18 +327,23 @@ Write the best flashcard back. If there is already a draft, improve or complete 
           systemInstruction: systemPrompt,
           contents: [{ role: "user", parts: [{ text: prompt }] }],
         },
+        onResponse: (diagnostics) => {
+          providerDiagnostics.push({ ...diagnostics, stage });
+        },
         onRetry: ({ error, modelName, nextModelName }) => {
-          console.warn(
-            `Gemini card autocomplete failed on ${modelName}; retrying with ${nextModelName}.`,
+          log.warn("provider.model_fallback", {
+            stage,
+            modelName,
+            nextModelName,
             error,
-          );
+          });
         },
       });
       return cleanGeneratedCardBack(text);
     };
 
-    let reply = await generateDraft(userPrompt).catch(async (error) => {
-      console.warn("Gemini card autocomplete first attempt failed:", error);
+    let reply = await generateDraft(userPrompt, "first").catch(async (error) => {
+      log.warn("provider.first_attempt_failed", { error });
       const quickPrompt = `Write a complete, concise flashcard back for this front.
 
 Front:
@@ -329,7 +353,7 @@ Current draft:
 ${currentBack || "(empty)"}
 
 Return only the finished back text.`;
-      return generateDraft(quickPrompt);
+      return generateDraft(quickPrompt, "simplified");
     });
 
     if (isLikelyIncompleteBack(reply, front)) {
@@ -345,22 +369,43 @@ Rewrite the complete final back in one concise response.
 - Keep it accurate and fully usable as the back of a flashcard.
 - Finish all equations/sentences.
 - Do not output placeholders like "etc." or unfinished fragments.`;
-      const retriedReply = await generateDraft(retryPrompt);
-      if (
+      const retriedReply = await generateDraft(retryPrompt, "completion");
+      const accepted =
         !isLikelyIncompleteBack(retriedReply, front) ||
-        retriedReply.length > reply.length
-      ) {
+        retriedReply.length > reply.length;
+      // Whether the completeness heuristic is earning the extra call is only
+      // visible from how often it fires and how often the rewrite is kept.
+      log.info("draft.completeness_retry", {
+        accepted,
+        firstLength: reply.length,
+        retriedLength: retriedReply.length,
+      });
+      if (accepted) {
         reply = retriedReply;
       }
     }
 
     if (!reply) {
+      log.warn("provider.empty_answer", {
+        durationMs: Date.now() - startedAt,
+        providerDiagnostics,
+      });
       return Response.json({ error: "AI could not return a usable answer right now." }, { status: 502 });
     }
 
+    log.info("request.completed", {
+      durationMs: Date.now() - startedAt,
+      backLength: reply.length,
+      providerDiagnostics,
+    });
     return Response.json({ back: reply.slice(0, MAX_BACK_OUTPUT_LENGTH) });
   } catch (error) {
-    console.error("Gemini card autocomplete error:", error);
+    log.error("provider.failed", {
+      error,
+      timedOut: isGeminiTimeoutError(error),
+      durationMs: Date.now() - startedAt,
+      providerDiagnostics,
+    });
     const message =
       isGeminiTimeoutError(error)
         ? "AI is taking longer than usual."

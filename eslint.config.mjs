@@ -112,6 +112,18 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    // These routes emit structured records through `@/lib/observability/logger`.
+    // A stray `console.*` is not just untidy: it is a line the log search
+    // cannot correlate to the request that produced it, which is the whole
+    // point of the logger. The scope is deliberately the routes already
+    // migrated — widen it as the rest of the API follows, rather than
+    // listing exceptions here.
+    files: ["app/api/ai/**/*.ts"],
+    rules: {
+      "no-console": "error",
+    },
+  },
+  {
     files: ["app/**/*.{jsx,tsx}", "components/**/*.{jsx,tsx}"],
     rules: {
       ...jsxA11y.flatConfigs.recommended.rules,

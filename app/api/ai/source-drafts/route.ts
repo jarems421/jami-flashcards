@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { NextRequest } from "next/server";
 import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
 import { getBearerToken } from "@/lib/auth/bearer";
@@ -8,7 +9,11 @@ import {
 import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { CARD_TEXT_FORMAT_PROMPT } from "@/lib/ai/response-format";
-import { generateGeminiText } from "@/lib/ai/gemini";
+import {
+  generateGeminiText,
+  type GeminiResponseDiagnostics,
+} from "@/lib/ai/gemini";
+import { createLogger } from "@/lib/observability/logger";
 import { parseGeneratedQuestionDrafts } from "@/lib/ai/question-generation";
 import {
   clampSourceDraftCount,
@@ -86,6 +91,13 @@ export async function POST(request: NextRequest) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const startedAt = Date.now();
+  const log = createLogger({
+    route: "ai.source-drafts",
+    requestId: randomUUID(),
+    uid,
+  });
+
   let sourceId: string;
   let kind: SourceDraftKind;
   let depth: SourceDraftDepth;
@@ -123,7 +135,7 @@ export async function POST(request: NextRequest) {
       .doc(sourceId)
       .get();
   } catch (error) {
-    console.error("Could not load a source before draft generation.", error);
+    log.error("source.load_failed", { sourceId, error });
     return Response.json(
       { error: "This source could not be loaded just now." },
       { status: 500 }
@@ -148,6 +160,10 @@ export async function POST(request: NextRequest) {
     kind === "flashcard"
       ? "sourceFlashcardDrafts"
       : "sourcePracticeDrafts";
+
+  // Declared outside the attempt so the failure log can still say which model
+  // was reached before it went wrong.
+  const providerDiagnostics: GeminiResponseDiagnostics[] = [];
 
   try {
     const [folderSnapshots, topicSnapshots] = await Promise.all([
@@ -229,7 +245,7 @@ export async function POST(request: NextRequest) {
       // completed. Charge immediately before the provider attempt.
       budgetDecision = await checkAiBudget({ uid, action: budgetAction });
     } catch (error) {
-      console.error("Could not enforce the source draft AI budget.", error);
+      log.error("budget.check_failed", { action: budgetAction, error });
       return Response.json(
         {
           error: "AI usage limits are temporarily unavailable. Try again shortly.",
@@ -284,8 +300,15 @@ ${source.contentText.slice(0, 12_000)}`,
           },
         ],
       },
+      onResponse: (diagnostics) => {
+        providerDiagnostics.push(diagnostics);
+      },
       onRetry: ({ error, modelName, nextModelName }) => {
-        console.warn(`Source draft generation failed on ${modelName}; retrying with ${nextModelName}.`, error);
+        log.warn("provider.model_fallback", {
+          modelName,
+          nextModelName,
+          error,
+        });
       },
     });
 
@@ -342,6 +365,19 @@ ${source.contentText.slice(0, 12_000)}`,
         existingPromptKeys.length > 0 &&
         (kind === "flashcard" ? parsedCardDrafts.length : parsedQuestionDrafts.length) > 0;
 
+      log.warn("drafts.none_usable", {
+        kind,
+        depth,
+        requestedCount: count,
+        parsedCount:
+          kind === "flashcard"
+            ? parsedCardDrafts.length
+            : parsedQuestionDrafts.length,
+        pendingCount: existingPromptKeys.length,
+        everythingWasDuplicate,
+        durationMs: Date.now() - startedAt,
+        providerDiagnostics,
+      });
       return Response.json(
         {
           error: everythingWasDuplicate
@@ -355,6 +391,15 @@ ${source.contentText.slice(0, 12_000)}`,
     const safeDrafts = drafts;
     const refs = await Promise.all(safeDrafts.map((draft) => draftsCollection.add(draft)));
 
+    log.info("request.completed", {
+      kind,
+      depth,
+      requestedCount: count,
+      draftCount: safeDrafts.length,
+      removedDraftCount,
+      durationMs: Date.now() - startedAt,
+      providerDiagnostics,
+    });
     return Response.json({
       drafts: safeDrafts.map((draft, index) => ({
         id: refs[index].id,
@@ -364,7 +409,13 @@ ${source.contentText.slice(0, 12_000)}`,
       requestedCount: count,
     });
   } catch (error) {
-    console.error("Source draft generation error:", error);
+    log.error("provider.failed", {
+      error,
+      kind,
+      depth,
+      durationMs: Date.now() - startedAt,
+      providerDiagnostics,
+    });
     const fallbackText = cleanGeneratedStudyText(String(error));
     return Response.json(
       { error: fallbackText || "Could not generate source drafts just now." },
