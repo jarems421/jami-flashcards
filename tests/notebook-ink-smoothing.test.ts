@@ -49,6 +49,36 @@ describe("notebook ink smoothing", () => {
     expect(maxFilteredDeviation).toBeLessThan(0.45);
   });
 
+  it("attenuates jitter at handwriting speed, not only when barely moving", () => {
+    // The test above uses a 25 px/s stroke, which is the one regime where the
+    // filter was already doing its job. Ordinary handwriting is nearer 220
+    // px/s, and the cutoff rises with speed -- so this is the case that
+    // decides whether writing looks clean.
+    const smoother = new NotebookInkSmoother({ x: 0, y: 50, time: 0 });
+    const perSampleStep = (220 * SAMPLE_INTERVAL_MS) / 1000;
+    const samples = makeSamples(
+      Array.from({ length: 120 }, (_, index) => ({
+        x: (index + 1) * perSampleStep,
+        y: 50 + (index % 2 === 0 ? 1 : -1),
+      }))
+    );
+
+    let maxFilteredDeviation = 0;
+    samples.forEach((sample, index) => {
+      const filtered = smoother.next(sample);
+      if (index >= 20) {
+        maxFilteredDeviation = Math.max(
+          maxFilteredDeviation,
+          Math.abs(filtered.y - 50)
+        );
+      }
+    });
+
+    // Raw deviation is 1px. Half of it surviving is what reads as a jittery
+    // line at writing speed.
+    expect(maxFilteredDeviation).toBeLessThan(0.5);
+  });
+
   it("stays close to the pen during fast movement", () => {
     const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
     // 1500 px/s — a fast handwriting stroke.
@@ -88,8 +118,15 @@ describe("notebook ink smoothing", () => {
         });
       }
 
-      expect(step - first.x).toBeLessThan(1.25);
-      expect(30 * step - latest.x).toBeLessThan(0.75);
+      // The first movement is taken exactly as reported: there is nothing to
+      // filter it against, and lag is most obvious where the pen lands.
+      expect(step - first.x).toBe(0);
+      // Steady-state lag is the price of the smoothing, and beta is what sets
+      // it. Derived rather than hardcoded so the bound cannot quietly drift
+      // away from the constant that actually governs it.
+      expect(30 * step - latest.x).toBeLessThan(
+        1 / (2 * Math.PI * NOTEBOOK_INK_SMOOTHING.beta)
+      );
     }
   );
 
