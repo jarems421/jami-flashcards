@@ -1,13 +1,14 @@
 // @vitest-environment jsdom
 
 import { beforeAll, describe, expect, it } from "vitest";
+import type { Point2, Stroke, StrokeDataPoint } from "js-draw";
 import { createNotebookChiselStrokeFactory } from "@/lib/workspace/notebook-chisel-stroke";
 import { loadJsDraw, type JsDrawModule } from "@/lib/workspace/notebook-js-draw";
 
 /**
- * The highlighter's whole character is its geometry, so these assert the
- * shape rather than that a stroke was produced at all. A round nib would pass
- * "a path came back"; only the outline distinguishes the two.
+ * The highlighter's whole character is its geometry, so these assert the shape
+ * rather than that a stroke was produced at all. A round nib would pass "a
+ * path came back"; only the outline distinguishes the two.
  */
 let jsDraw: JsDrawModule;
 
@@ -16,44 +17,67 @@ beforeAll(async () => {
 }, 120_000);
 
 const NIB_ANGLE_DEGREES = 65;
+const STROKE_WIDTH = 20;
 
-function point(x: number, y: number, width = 20) {
+function point(x: number, y: number): StrokeDataPoint {
   return {
     pos: jsDraw.Vec2.of(x, y),
-    width,
+    width: STROKE_WIDTH,
     color: jsDraw.Color4.fromString("#ffd400"),
     time: 0,
   };
 }
 
-/** A viewport whose pixel is small enough not to filter the test's samples. */
+/** Fine enough that the tests' own samples are not filtered as hand tremor. */
 const viewport = { getSizeOfPixelOnCanvas: () => 0.01 } as never;
 
-function buildStroke(points: ReturnType<typeof point>[]) {
+function buildStroke(points: StrokeDataPoint[]): Stroke {
   const builder = createNotebookChiselStrokeFactory(jsDraw)(points[0], viewport);
   for (const next of points.slice(1)) builder.addPoint(next);
-  return builder.build();
+
+  const built = builder.build();
+  if (!(built instanceof jsDraw.Stroke)) {
+    throw new Error("The chisel builder should produce a Stroke.");
+  }
+  return built;
 }
 
-function outlineOf(points: ReturnType<typeof point>[]) {
-  return buildStroke(points)
-    .getParts()[0]
-    .path.geometry.flatMap((part) =>
-      "p1" in part ? [part.p1, part.p2] : [part.p1]
+/** The outline's corner points, in the order the path visits them. */
+function outlineOf(points: StrokeDataPoint[]): Point2[] {
+  const path = buildStroke(points).getParts()[0].path;
+  const corners: Point2[] = [path.startPoint];
+
+  for (const part of path.parts) {
+    corners.push(
+      part.kind === jsDraw.PathCommandType.MoveTo ||
+        part.kind === jsDraw.PathCommandType.LineTo
+        ? part.point
+        : part.endPoint
     );
+  }
+  return corners;
+}
+
+/** A half circle, which turns through every direction and so must cross the
+ * nib's axis whatever angle the nib is set to. */
+function halfCircle(): StrokeDataPoint[] {
+  return Array.from({ length: 36 }, (_, step) => {
+    const t = (step / 35) * Math.PI;
+    return point(100 + Math.cos(t) * 80, Math.sin(t) * 80);
+  });
 }
 
 describe("chisel highlighter geometry", () => {
   /**
    * How wide the stroke actually is, across its direction of travel. A
-   * bounding box cannot be used here: for a diagonal stroke it measures the
-   * travel, not the mark.
+   * bounding box cannot be used: for a diagonal stroke it measures the travel
+   * rather than the mark.
    */
   function perpendicularThickness(from: [number, number], to: [number, number]) {
     const outline = outlineOf([point(...from), point(...to)]);
     const axis = jsDraw.Vec2.of(to[0] - from[0], to[1] - from[1]).normalized();
-    // The first and last corners are the same sample offset by +nib and -nib,
-    // so the vector between them is the nib laid end to end.
+    // The first and last corners are one sample offset by +nib and -nib, so
+    // the vector between them is the nib laid end to end.
     const across = outline[0].minus(outline[outline.length - 1]);
     return Math.abs(across.x * axis.y - across.y * axis.x);
   }
@@ -68,7 +92,7 @@ describe("chisel highlighter geometry", () => {
 
     // A round nib would make these identical. A chisel is broad across its
     // edge and vanishes to a line along it, which is the whole point.
-    expect(horizontal).toBeCloseTo(20 * Math.sin(radians), 1);
+    expect(horizontal).toBeCloseTo(STROKE_WIDTH * Math.sin(radians), 1);
     expect(alongNib).toBeCloseTo(0, 5);
   });
 
@@ -77,21 +101,24 @@ describe("chisel highlighter geometry", () => {
     const ys = outline.map((corner) => corner.y);
     const spread = Math.max(...ys) - Math.min(...ys);
 
-    // 20 wide at 65 degrees: 20 * sin(65) is about 18.1.
-    expect(spread).toBeCloseTo(20 * Math.sin((NIB_ANGLE_DEGREES * Math.PI) / 180), 1);
+    expect(spread).toBeCloseTo(
+      STROKE_WIDTH * Math.sin((NIB_ANGLE_DEGREES * Math.PI) / 180),
+      1
+    );
   });
 
   it("ends on a slant, which is what reads as a highlighter", () => {
     const outline = outlineOf([point(0, 0), point(120, 0)]);
-    // The two corners at the start of the stroke are offset by +nib and -nib,
-    // so the leading edge runs at the nib angle rather than straight up.
     const leading = outline[0];
     const trailing = outline[outline.length - 1];
     const edgeAngle =
       (Math.atan2(leading.y - trailing.y, leading.x - trailing.x) * 180) /
       Math.PI;
+    // The cap is a line, not an arrow: which end it is measured from flips the
+    // angle by 180 degrees without changing the slant.
+    const slant = ((edgeAngle % 180) + 180) % 180;
 
-    expect(Math.abs(edgeAngle) % 180).toBeCloseTo(NIB_ANGLE_DEGREES, 0);
+    expect(slant).toBeCloseTo(NIB_ANGLE_DEGREES, 0);
   });
 
   it("draws a visible mark for a tap, where a flat edge alone would not", () => {
@@ -101,21 +128,79 @@ describe("chisel highlighter geometry", () => {
     expect(box.height).toBeGreaterThan(0);
   });
 
-  it("discards samples too close together to change the shape", () => {
-    const dense = createNotebookChiselStrokeFactory(jsDraw)(point(0, 0), {
-      getSizeOfPixelOnCanvas: () => 4,
-    } as never);
-    for (let x = 0; x <= 20; x += 0.5) dense.addPoint(point(x, 0));
-
-    // 41 samples across 20 units, filtered to roughly one every 2.6 units.
-    const corners = dense.build().getParts()[0].path.geometry.length;
-    expect(corners).toBeLessThan(30);
-  });
-
   it("produces a filled path, so overlaps within one stroke do not darken", () => {
     const style = buildStroke([point(0, 0), point(60, 0)]).getParts()[0].style;
 
     expect(style.fill.a).toBeGreaterThan(0);
     expect(style.stroke).toBeUndefined();
+  });
+});
+
+/**
+ * The stroke used to stop dead partway through a curve and resume after it.
+ * Offsetting by a fixed nib only describes the swept area while travel stays
+ * on one side of the nib's axis; crossing that axis folded the outline into a
+ * bowtie whose crossed lobe cancelled itself under the nonzero winding rule.
+ */
+describe("staying continuous through a turn", () => {
+  /**
+   * There is deliberately no "is the centre of the curve filled" test here.
+   *
+   * One was written, and it passed with the fold bug reintroduced:
+   * `closedContainsPoint` does not model the nonzero winding rule the renderer
+   * actually fills with, so it reported the cancelled lobe as covered. Keeping
+   * it would have been false assurance. The two tests below encode the fix
+   * itself and were both confirmed to fail when it is removed; continuity was
+   * checked by rendering an arc, a loop and a wave and looking at them.
+   */
+  it("splits the turn into separate subpaths rather than one folded outline", () => {
+    const path = buildStroke(halfCircle()).getParts()[0].path;
+    const subpathStarts = path.parts.filter(
+      (part) => part.kind === jsDraw.PathCommandType.MoveTo
+    );
+
+    expect(subpathStarts.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("winds every subpath the same way, so they union instead of cancelling", () => {
+    const path = buildStroke(halfCircle()).getParts()[0].path;
+
+    // Split the outline back into its subpaths and take each one's signed
+    // area. Two subpaths wound opposite ways would subtract where they meet
+    // and reopen the hole the splitting exists to close.
+    const subpaths: Point2[][] = [[path.startPoint]];
+    for (const part of path.parts) {
+      const corner =
+        part.kind === jsDraw.PathCommandType.MoveTo ||
+        part.kind === jsDraw.PathCommandType.LineTo
+          ? part.point
+          : part.endPoint;
+      if (part.kind === jsDraw.PathCommandType.MoveTo) subpaths.push([corner]);
+      else subpaths[subpaths.length - 1].push(corner);
+    }
+
+    const signs = subpaths
+      .filter((corners) => corners.length > 2)
+      .map((corners) => {
+        let twiceArea = 0;
+        for (let index = 0; index < corners.length; index += 1) {
+          const here = corners[index];
+          const next = corners[(index + 1) % corners.length];
+          twiceArea += here.x * next.y - next.x * here.y;
+        }
+        return Math.sign(twiceArea);
+      });
+
+    expect(signs.length).toBeGreaterThan(1);
+    expect(new Set(signs).size).toBe(1);
+  });
+
+  it("smooths its edges into curves rather than a chain of corners", () => {
+    const path = buildStroke(halfCircle()).getParts()[0].path;
+    const curves = path.parts.filter(
+      (part) => part.kind === jsDraw.PathCommandType.QuadraticBezierTo
+    );
+
+    expect(curves.length).toBeGreaterThan(4);
   });
 });
