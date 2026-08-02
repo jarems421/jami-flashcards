@@ -629,6 +629,34 @@
     color: #fff7ff;
   }
 
+  /*
+   * Never wait to find out whether a tap was the start of a double-tap.
+   *
+   * Safari holds a tap for around 300ms deciding whether to zoom, and
+   * `manipulation` is what tells it not to bother. This used to sit inside
+   * `@media (pointer: coarse)`, which sounds right and is not: an iPad
+   * reports `pointer: fine` as soon as a Pencil or a trackpad is attached, so
+   * the one device this was written for skipped it. Taps needed repeating and
+   * anything done in quick succession had to be paced.
+   *
+   * It costs nothing to state unconditionally -- a mouse has no double-tap
+   * gesture to suppress -- so it is no longer conditional on guessing the
+   * input device correctly.
+   */
+  a,
+  button,
+  summary,
+  input,
+  label,
+  select,
+  textarea,
+  [role="button"],
+  [role="tab"],
+  [role="menuitem"],
+  [role="switch"] {
+    touch-action: manipulation;
+  }
+
   @media (pointer: coarse) {
     a,
     button,
@@ -636,7 +664,6 @@
     [role="button"] {
       -webkit-touch-callout: none;
       -webkit-user-drag: none;
-      touch-action: manipulation;
     }
   }
 

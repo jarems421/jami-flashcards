@@ -28,6 +28,17 @@ const APP_THEME_SAFELIST = [
 
 /** @type {import('tailwindcss').Config} */
 module.exports = {
+  /*
+   * Compile every `hover:` utility inside `@media (hover: hover)`.
+   *
+   * Without it, a touch device applies the hover state on first contact and
+   * leaves it stuck there, so a tap can land as "now hovered" rather than as
+   * a press. The device has no pointer to move away afterwards, so the state
+   * only clears when something else is touched.
+   */
+  future: {
+    hoverOnlyWhenSupported: true,
+  },
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
