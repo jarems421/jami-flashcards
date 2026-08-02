@@ -60,6 +60,26 @@ const NIB_NARROW_RATIO = 0.2;
 const GUIDE_STEP_RATIO = 0.34;
 
 /**
+ * How far the path may stray from a straight run, and how far a single
+ * footprint may span, as fractions of the nib's half-width.
+ *
+ * Every step is swept as its own footprint, which is what makes holes
+ * impossible -- but it also means a highlight over one word is dozens of
+ * overlapping shapes. The precision eraser splits a filled shape at its edges,
+ * so erasing across that many leaves the uncovered remainder of each one
+ * behind: the specks that took several passes to clear.
+ *
+ * Sweeping between the samples that actually describe the path, rather than
+ * every sample, gives the same shape in a handful of footprints instead. The
+ * eraser then has a few large pieces to divide rather than a crowd of small
+ * ones.
+ */
+const FOOTPRINT_TOLERANCE_RATIO = 0.06;
+const FOOTPRINT_SPAN_RATIO = 6;
+/** Beyond this turn a footprint always ends, so curves keep their shape. */
+const FOOTPRINT_TURN_DEGREES = 12;
+
+/**
  * The outline of a set of points, wound the same way every time.
  *
  * Monotone chain. Consistent winding is not incidental here: it is what lets
@@ -142,6 +162,48 @@ export function createNotebookChiselStrokeFactory(
       return smoothed;
     };
 
+    /**
+     * The samples worth sweeping between: where the path bends, where it has
+     * run far enough, and nowhere else. Fewer, longer footprints describe the
+     * same wash and leave the eraser far less to shred.
+     */
+    const sweepPoints = (path: Point2[]) => {
+      if (path.length < 3) return path;
+
+      const tolerance = halfWidth * FOOTPRINT_TOLERANCE_RATIO;
+      const span = halfWidth * FOOTPRINT_SPAN_RATIO;
+      const turnCosine = Math.cos((FOOTPRINT_TURN_DEGREES * Math.PI) / 180);
+      const kept = [path[0]];
+
+      for (let index = 1; index < path.length - 1; index += 1) {
+        const anchor = kept[kept.length - 1];
+        const here = path[index];
+        const next = path[index + 1];
+        const arriving = here.minus(anchor);
+        const leaving = next.minus(here);
+        const bends =
+          arriving.magnitude() > 0 &&
+          leaving.magnitude() > 0 &&
+          arriving.normalized().dot(leaving.normalized()) < turnCosine;
+
+        const along = next.minus(anchor);
+        const length = along.magnitude();
+        const stray =
+          length === 0
+            ? here.distanceTo(anchor)
+            : Math.abs(
+                along.x * (here.y - anchor.y) - along.y * (here.x - anchor.x)
+              ) / length;
+
+        if (bends || stray >= tolerance || here.distanceTo(anchor) >= span) {
+          kept.push(here);
+        }
+      }
+
+      kept.push(path[path.length - 1]);
+      return kept;
+    };
+
     const renderablePath = (): RenderablePathSpec => {
       const style = { fill: color };
 
@@ -175,7 +237,7 @@ export function createNotebookChiselStrokeFactory(
        * points in the saved path, which is the right trade for a highlighter
        * that never eats a hole in itself.
        */
-      const path = steadied(points);
+      const path = sweepPoints(steadied(points));
       const commands: PathCommand[] = [];
       let pathStart: Point2 | null = null;
 
