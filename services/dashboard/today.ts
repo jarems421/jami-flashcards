@@ -93,6 +93,11 @@ async function settle<T>(request: Promise<T>): Promise<Settled<T>> {
   try {
     return { ok: true, value: await request };
   } catch (error) {
+    // Reported here rather than only at the end. Today keeps going on a
+    // failed section by design, which means the reason it failed is otherwise
+    // discarded entirely -- leaving "one section is stale" with no way to
+    // find out why.
+    console.warn("Today section request failed.", error);
     return { ok: false, error };
   }
 }
