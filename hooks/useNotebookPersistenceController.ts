@@ -32,6 +32,7 @@ import {
   NotebookPageConflictError,
   saveNotebookPageSnapshot,
 } from "@/services/study/notebooks";
+import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 
 type PageSnapshotInput = {
   page: NotebookPage;
@@ -374,6 +375,10 @@ export function useNotebookPersistenceController({
       const page = pageState.read().selectedPage;
       if (!page || !latestRef.current.userId) return false;
       if (latestRef.current.isInkInteracting()) return false;
+      // Ink is fetched separately from the page record. If it has not arrived,
+      // the canvas is empty for that reason alone, and saving would replace
+      // the student's drawing with a blank page.
+      if (pageHasUnloadedInk(page)) return false;
 
       const operation = (async () => {
         const saveId = latestSaveIdRef.current + 1;

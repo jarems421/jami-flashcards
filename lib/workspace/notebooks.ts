@@ -36,6 +36,17 @@ export type NotebookInkData = {
   svg: string;
 };
 
+/**
+ * Lossy page preview stored on the page record for the pages drawer. See
+ * `lib/workspace/notebook-page-ink-split.ts` for how it is built and why it is
+ * bounded.
+ */
+export type NotebookPageThumbnailData = {
+  inkSvg?: string;
+  strokes: NotebookStroke[];
+  inkOmitted: boolean;
+};
+
 export type NotebookPenColor = "black" | "white" | "red" | "green";
 export type NotebookHighlighterColor = "yellow" | "green" | "pink";
 export type NotebookCustomStrokeColor = `#${string}`;
@@ -114,8 +125,18 @@ export type NotebookPage = {
   pageType: NotebookPageType;
   typedContent?: string;
   textBlocks: NotebookTextBlock[];
+  /**
+   * Full-fidelity ink. Absent on a page saved in the split shape until its ink
+   * record is fetched; never populated from `thumbnail`, which is lossy.
+   */
   inkData?: NotebookInkData;
   strokeData?: NotebookStrokeData;
+  /**
+   * Bounded digest used by the pages drawer so thumbnails render without
+   * fetching ink. Deliberately a separate field: writing it back as `inkData`
+   * would save a 160px approximation over the student's real drawing.
+   */
+  thumbnail?: NotebookPageThumbnailData;
   imageRefs: NotebookImageRef[];
   backgroundFileId?: string;
   pdfPageIndex?: number;
@@ -270,7 +291,42 @@ function normalizeNotebookStroke(value: unknown): NotebookStroke | null {
   };
 }
 
-function normalizeStrokeData(value: unknown): NotebookStrokeData | undefined {
+function normalizeThumbnailData(
+  value: unknown
+): NotebookPageThumbnailData | undefined {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const data = value as {
+    inkSvg?: unknown;
+    strokes?: unknown;
+    inkOmitted?: unknown;
+  };
+  const strokes = Array.isArray(data.strokes)
+    ? data.strokes
+        .map(normalizeNotebookStroke)
+        .filter((stroke): stroke is NotebookStroke => Boolean(stroke))
+    : [];
+  const inkSvg =
+    typeof data.inkSvg === "string" && data.inkSvg.trimStart().startsWith("<svg")
+      ? data.inkSvg
+      : undefined;
+
+  if (!inkSvg && strokes.length === 0 && data.inkOmitted !== true) {
+    return undefined;
+  }
+
+  return {
+    ...(inkSvg ? { inkSvg } : {}),
+    strokes,
+    inkOmitted: data.inkOmitted === true,
+  };
+}
+
+export function normalizeNotebookStrokeData(
+  value: unknown
+): NotebookStrokeData | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
   }
@@ -634,7 +690,8 @@ export function mapNotebookPageData(
     typedContent,
     textBlocks: textBlocks.length > 0 ? textBlocks : createNotebookTextBlocksFromTypedContent(typedContent),
     inkData: normalizeNotebookInkData(data.inkData),
-    strokeData: normalizeStrokeData(data.strokeData),
+    strokeData: normalizeNotebookStrokeData(data.strokeData),
+    thumbnail: normalizeThumbnailData(data.thumbnail),
     imageRefs: normalizeImageRefs(data.imageRefs),
     backgroundFileId: normalizeOptionalString(data.backgroundFileId, 160),
     pdfPageIndex:
@@ -752,7 +809,7 @@ export function buildNotebookPagePayload(input: {
     (typeof input.typedContent === "string" && input.typedContent.trim()
       ? input.typedContent
       : undefined);
-  const strokeData = input.strokeData ? normalizeStrokeData(input.strokeData) : undefined;
+  const strokeData = input.strokeData ? normalizeNotebookStrokeData(input.strokeData) : undefined;
   if (
     input.strokeData &&
     (input.strokeData.strokes.length > MAX_NOTEBOOK_STROKES ||

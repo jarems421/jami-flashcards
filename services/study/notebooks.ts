@@ -33,6 +33,8 @@ import {
   mapNotebookFileData,
   mapNotebookPageData,
   getNotebookPagesAfterDelete,
+  normalizeNotebookInkData,
+  normalizeNotebookStrokeData,
   normalizeNotebookTitle,
   normalizeNotebookPreviewSvg,
   prepareNotebookPageSnapshotForPersistence,
@@ -48,9 +50,17 @@ import {
   type NotebookTextBlock,
   type NotebookType,
 } from "@/lib/workspace/notebooks";
+import {
+  isNotebookInkRecordWithinLimits,
+  mergeNotebookPageInk,
+  splitNotebookPageForPersistence,
+  type NotebookPageInkRecord,
+} from "@/lib/workspace/notebook-page-ink-split";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
+/** Firestore caps a batch at 500 operations. */
+const PAGE_DELETE_BATCH_LIMIT = 400;
 
 export class NotebookPageConflictError extends Error {
   readonly code = "notebook-page-conflict";
@@ -75,6 +85,10 @@ function notebookPagesCollection(userId: string) {
 
 function notebookFilesCollection(userId: string) {
   return collection(db, "users", userId, "notebookFiles");
+}
+
+function notebookPageInkRef(userId: string, pageId: string) {
+  return doc(db, "users", userId, "notebookPageInk", pageId);
 }
 
 const NOTEBOOKS_COLLECTION = "notebooks";
@@ -403,6 +417,59 @@ export async function getNotebookPages(
     .sort((a, b) => a.pageNumber - b.pageNumber);
 }
 
+/**
+ * Fetches one page's full-fidelity ink.
+ *
+ * Returns null both when a page has no ink and when it still stores its ink
+ * inline, since a legacy page's inline copy is the authoritative one and no
+ * ink record exists for it.
+ */
+export async function getNotebookPageInk(
+  userId: string,
+  pageId: string
+): Promise<NotebookPageInkRecord | null> {
+  const normalizedUserId = userId.trim();
+  const normalizedPageId = pageId.trim();
+  if (!normalizedUserId) throw new Error("Missing userId.");
+  if (!normalizedPageId) throw new Error("Missing pageId.");
+
+  const snapshot = await withTimeout(
+    getDoc(notebookPageInkRef(normalizedUserId, normalizedPageId)),
+    LOAD_MS,
+    "Load notebook page ink"
+  );
+  if (!snapshot.exists()) return null;
+
+  const data = snapshot.data() as Record<string, unknown>;
+  return {
+    pageId: normalizedPageId,
+    notebookId: typeof data.notebookId === "string" ? data.notebookId : "",
+    inkData: normalizeNotebookInkData(data.inkData),
+    strokeData: normalizeNotebookStrokeData(data.strokeData),
+    contentRevision:
+      typeof data.contentRevision === "number" &&
+      Number.isFinite(data.contentRevision)
+        ? Math.max(0, Math.round(data.contentRevision))
+        : 0,
+    updatedAt:
+      typeof data.updatedAt === "number" && Number.isFinite(data.updatedAt)
+        ? data.updatedAt
+        : 0,
+  };
+}
+
+/**
+ * Loads a page ready to edit, pulling its ink record only when the page does
+ * not already carry ink inline.
+ */
+export async function getNotebookPageWithInk(
+  userId: string,
+  page: NotebookPage
+): Promise<NotebookPage> {
+  if (page.inkData || page.strokeData) return page;
+  return mergeNotebookPageInk(page, await getNotebookPageInk(userId, page.id));
+}
+
 export async function getNextNotebookPageNumber(
   userId: string,
   notebookId: string
@@ -645,17 +712,40 @@ export async function saveNotebookPageSnapshot(
 
       const now = Date.now();
       const contentRevision = remoteRevision + 1;
+      const { thumbnail, ink } = splitNotebookPageForPersistence({
+        pageId,
+        notebookId,
+        inkData,
+        contentRevision,
+        updatedAt: now,
+      });
+      if (ink && !isNotebookInkRecordWithinLimits(ink)) {
+        throw new Error("This page has too much ink to sync safely.");
+      }
+
+      // Page and ink move together. A page record claiming a revision whose
+      // ink never landed would open as blank work, so the two writes must
+      // succeed or fail as one.
       transaction.update(pageRef, {
         typedContent: snapshot.typedContent.trim() || null,
         textBlocks: snapshot.textBlocks,
-        inkData,
+        // Ink now lives in its own record. Clearing the inline copy is what
+        // converts a legacy page, and it happens only once the ink write below
+        // is part of the same committed transaction.
+        inkData: null,
         strokeData: null,
+        thumbnail,
         pageColor: snapshot.pageColor,
         pageStyle: snapshot.pageStyle,
         status: snapshot.status,
         contentRevision,
         updatedAt: now,
       });
+      if (ink) {
+        transaction.set(notebookPageInkRef(normalizedUserId, pageId), ink);
+      } else {
+        transaction.delete(notebookPageInkRef(normalizedUserId, pageId));
+      }
       transaction.update(notebookRef, {
         previewInkSvg: normalizeNotebookPreviewSvg(input.inkData.svg) ?? null,
         previewPageId: pageId,
@@ -703,6 +793,9 @@ export async function deleteNotebookPage(
   const batch = writeBatch(db);
 
   batch.delete(doc(db, "users", normalizedUserId, "notebookPages", normalizedPageId));
+  // Deleting the page without its ink record would orphan the ink, which no
+  // later read could reach or clean up.
+  batch.delete(notebookPageInkRef(normalizedUserId, normalizedPageId));
   for (const page of nextPages) {
     const previous = pages.find((candidate) => candidate.id === page.id);
     if (!previous) continue;
@@ -842,10 +935,17 @@ export async function deleteNotebookPageRecords(
   if (!normalizedUserId) throw new Error("Missing userId.");
   if (normalizedPageIds.length === 0) return;
 
-  const batch = writeBatch(db);
-  normalizedPageIds.forEach((pageId) => {
-    batch.delete(doc(db, "users", normalizedUserId, "notebookPages", pageId));
-  });
-  await withTimeout(batch.commit(), WRITE_MS, "Clean up notebook pages");
+  // Each page costs two deletes now that ink is a separate record, and a batch
+  // is capped at 500 operations, so chunk rather than assuming a notebook is
+  // small enough to fit.
+  const pagesPerBatch = Math.floor(PAGE_DELETE_BATCH_LIMIT / 2);
+  for (let start = 0; start < normalizedPageIds.length; start += pagesPerBatch) {
+    const batch = writeBatch(db);
+    for (const pageId of normalizedPageIds.slice(start, start + pagesPerBatch)) {
+      batch.delete(doc(db, "users", normalizedUserId, "notebookPages", pageId));
+      batch.delete(notebookPageInkRef(normalizedUserId, pageId));
+    }
+    await withTimeout(batch.commit(), WRITE_MS, "Clean up notebook pages");
+  }
   invalidateDashboardData(normalizedUserId);
 }
