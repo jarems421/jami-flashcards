@@ -1,3 +1,31 @@
+/**
+ * Theme classes are stamped on <html> and <body> at runtime from
+ * `APP_THEME_OPTIONS`, built as `app-theme-${value}`. A template literal is
+ * invisible to the content scanner, so Tailwind dropped the matching rules
+ * from `globals.css` and four of the six themes shipped with no CSS at all —
+ * they stamped their class and inherited the `:root` default.
+ *
+ * Only `purple` and `light` survived, and only because unrelated literal
+ * strings for the legacy `app-theme-purple-pink` and `app-theme-light` classes
+ * happened to appear in the source.
+ *
+ * `tests/app-theme.test.ts` fails if a theme is added to APP_THEME_OPTIONS
+ * without being listed here, because the failure is silent otherwise: the app
+ * builds, the class applies, and the colours are simply wrong.
+ */
+const APP_THEME_SAFELIST = [
+  "app-theme-normal",
+  "app-theme-purple",
+  "app-theme-pink",
+  "app-theme-paper-white",
+  "app-theme-soft-grey",
+  "app-theme-black",
+  // Retained so a document restored from an older session still resolves.
+  "app-theme-purple-pink",
+  // Shared overrides the two light themes both depend on.
+  "app-theme-light",
+];
+
 /** @type {import('tailwindcss').Config} */
 module.exports = {
   content: [
@@ -5,6 +33,7 @@ module.exports = {
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
     "./lib/**/*.{js,ts,jsx,tsx,mdx}",
   ],
+  safelist: APP_THEME_SAFELIST,
   theme: {
     extend: {
       fontFamily: {
@@ -128,3 +157,6 @@ module.exports = {
   },
   plugins: [],
 };
+
+// Exported so a test can hold it against APP_THEME_OPTIONS.
+module.exports.APP_THEME_SAFELIST = APP_THEME_SAFELIST;
