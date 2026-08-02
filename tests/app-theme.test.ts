@@ -157,3 +157,33 @@ describe("black is a true black, distinct from grey", () => {
     expect(surfaceBase("black")).not.toBe(surfaceBase("soft-grey"));
   });
 });
+
+/**
+ * The source CSS is not the shipped CSS.
+ *
+ * Every other test in this file reads `globals.css`, which is why four themes
+ * could ship with no colours at all while these stayed green: the rules were
+ * in the file and Tailwind dropped them from the build, because the class
+ * names are only ever constructed as `app-theme-${value}` and a template
+ * literal is invisible to the content scanner.
+ */
+describe("every theme survives the Tailwind content scan", () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { APP_THEME_SAFELIST } = require("../tailwind.config.js") as {
+    APP_THEME_SAFELIST: string[];
+  };
+
+  it("safelists the class of every selectable theme", () => {
+    for (const option of APP_THEME_OPTIONS) {
+      expect(APP_THEME_SAFELIST, option.value).toContain(
+        `app-theme-${option.value}`
+      );
+    }
+  });
+
+  it("safelists every class the runtime stamps, including legacy ones", () => {
+    for (const className of APP_THEME_CLASS_NAMES) {
+      expect(APP_THEME_SAFELIST, className).toContain(className);
+    }
+  });
+});
