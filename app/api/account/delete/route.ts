@@ -4,6 +4,7 @@ import { ACCOUNT_DELETION_CONFIRMATION } from "@/lib/auth/account-deletion-contr
 import { getBearerToken } from "@/lib/auth/bearer";
 import { deleteAccountWithAdmin } from "@/services/auth/account-deletion-admin";
 import { getAdminAuth } from "@/services/firebase/admin";
+import { createLogger } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -79,7 +80,12 @@ export async function DELETE(request: NextRequest) {
       typeof error === "object" && error && "code" in error
         ? String((error as { code?: unknown }).code)
         : "unknown";
-    console.error("Account deletion stopped before completion.", { code });
+    // Deliberately the error's code and not the error: a failure here is
+    // reported while the user still has an account and can retry, and the
+    // message can carry document paths from their own data.
+    createLogger({ route: "account.delete" }).error("deletion.incomplete", {
+      code,
+    });
     return json(
       {
         error:

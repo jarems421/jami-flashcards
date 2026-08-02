@@ -5,9 +5,12 @@ import {
 } from "@/lib/study/day";
 import { getCronAuthorizationStatus } from "@/services/auth/cron-authorization";
 import { runNotificationDigest } from "@/services/notifications/digest";
+import { createLogger } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
+
+const log = createLogger({ route: "notifications.digest" });
 
 export async function GET(request: NextRequest) {
   const authorizationStatus = getCronAuthorizationStatus({
@@ -15,7 +18,7 @@ export async function GET(request: NextRequest) {
     configuredSecret: process.env.CRON_SECRET,
   });
   if (authorizationStatus === "misconfigured") {
-    console.error("Notification digest cron is disabled because CRON_SECRET is missing.");
+    log.error("cron.misconfigured", { missing: "CRON_SECRET" });
     return Response.json(
       { ok: false, error: "Notification digest cron is not configured." },
       { status: 503 }
@@ -44,7 +47,7 @@ export async function GET(request: NextRequest) {
       ...summary,
     });
   } catch (error) {
-    console.error("Notification digest orchestration failed.", error);
+    log.error("digest.failed", { studyDayKey, error });
     return Response.json(
       { ok: false, error: "Notification digest could not be completed." },
       { status: 500 }

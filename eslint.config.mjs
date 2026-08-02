@@ -112,13 +112,20 @@ const eslintConfig = defineConfig([
     },
   },
   {
-    // These routes emit structured records through `@/lib/observability/logger`.
-    // A stray `console.*` is not just untidy: it is a line the log search
-    // cannot correlate to the request that produced it, which is the whole
-    // point of the logger. The scope is deliberately the routes already
-    // migrated — widen it as the rest of the API follows, rather than
-    // listing exceptions here.
-    files: ["app/api/ai/**/*.ts"],
+    // Server code emits structured records through
+    // `@/lib/observability/logger`. A stray `console.*` is not just untidy: it
+    // is a line the log search cannot correlate to the request that produced
+    // it, which is the whole point of the logger.
+    //
+    // Only server code is listed. `services/**` runs in the browser, where a
+    // JSON line goes to the student's own console and is strictly worse than
+    // the prose it replaced; sending those anywhere useful is a separate
+    // decision, not a lint rule.
+    files: [
+      "app/api/**/*.ts",
+      "app/health/**/*.ts",
+      "services/notifications/**/*.ts",
+    ],
     rules: {
       "no-console": "error",
     },
