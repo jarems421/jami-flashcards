@@ -61,11 +61,29 @@ The required composite indexes are declared in `firestore.indexes.json`.
 | Goal scope pickers | Creating a goal requires the complete current folder, deck and topic vocabulary so the student can select any existing scope. These reads happen once per Goals workspace load and are not used for history or counts. |
 | Topic relationship management | A Topic detail workspace lets the student add as well as remove cards, notebooks, sources and drafts. Firestore cannot query for items whose `topicIds` array does not contain one value, so this explicit management surface loads each owned candidate set once and reuses it for overview counts, search and membership edits. Destructive Topic cleanup uses positive membership queries instead. |
 | Deck and Topic overview counts | A separate aggregate per visible row creates O(number of rows) fan-out, while a stored per-row summary is forbidden by this campaign. One owned input scan is retained and shared by all row counts. |
-| Notebook pages/files in the editor | Page navigation, thumbnails, immutable PDF backgrounds and save conflict handling operate on the complete open notebook. They never scan another notebook. |
+| Notebook page records in the editor | Page navigation, thumbnails, immutable PDF backgrounds and save conflict handling operate on the complete open notebook's page records. Ink is no longer among them -- see below. They never scan another notebook. |
 | Constellation rendering and backfill | The visual surface positions every star, and legacy star/constellation records must remain readable until observed migration completes. Creation/count checks themselves are bounded. |
 | Destructive cleanup and one-time migration | Deleting an account/deck/notebook/thread and the one-time topic migration must enumerate every owned target to avoid orphaning data. |
 | Push subscriptions | A digest/test notification must attempt every registered device; expired entries are removed as they are encountered. |
 | Legacy lifecycle compatibility | Early folders, notebooks, sources and topics may lack `archived`/`status`; the model mappers intentionally treat those shapes as active. Firestore cannot query for a missing field, so complete active lists use the short-lived compatibility pass above until a separately authorized data migration is verified. Goal history has the same cached fallback only for finished records missing the newer `createdAt` sort field; modern history remains cursor-paged. No record is rewritten or deleted by a read. |
+
+### Notebook page ink, split 2026-08-02
+
+Ink lives in `users/{uid}/notebookPageInk/{pageId}` rather than on the page
+record. Opening a notebook loads page records plus the ink for the open page
+and its two neighbours; the pages drawer renders from a bounded thumbnail
+digest stored on the page record, so it never fetches ink to draw a preview.
+
+A page may hold up to `MAX_NOTEBOOK_PAGE_SNAPSHOT_BYTES`, so before the split
+a hundred-page notebook could pull tens of megabytes to display one page. This
+is the read that actually grows: notebooks are the used surface, at 17
+notebooks and 52 pages against 7 cards.
+
+Pages written before the split keep their inline ink and are converted only
+when next saved. Nothing is rewritten in bulk, so an un-opened notebook is
+still read in its old shape and the benefit accrues as pages are edited.
+`scripts/seed-large-notebook.mjs` builds a notebook in either shape to measure
+the difference on a real device.
 
 ### Measured volume, 2026-08-01
 
