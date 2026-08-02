@@ -71,50 +71,26 @@ export function createNotebookChiselStrokeFactory(
     const points = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
 
     /**
-     * Smooths one edge of the outline into quadratic curves through the
-     * midpoints between samples, with each sample as a control point. Straight
-     * segments would show every sample as a corner along the edge, which is
-     * what made the stroke look constructed rather than drawn.
-     */
-    const smoothEdge = (edge: Point2[]): PathCommand[] => {
-      if (edge.length < 2) return [];
-      if (edge.length === 2) {
-        return [{ kind: PathCommandType.LineTo, point: edge[1] }];
-      }
-
-      const commands: PathCommand[] = [];
-      for (let index = 1; index < edge.length - 1; index += 1) {
-        commands.push({
-          kind: PathCommandType.QuadraticBezierTo,
-          controlPoint: edge[index],
-          endPoint: edge[index].lerp(edge[index + 1], 0.5),
-        });
-      }
-      commands.push({
-        kind: PathCommandType.LineTo,
-        point: edge[edge.length - 1],
-      });
-      return commands;
-    };
-
-    /**
-     * Which side of the nib the stroke is currently travelling towards.
+     * Eases the tremor out of the sampled path before it is swept.
      *
-     * This is the crux of keeping the stroke continuous. Offsetting every
-     * sample by `+nib` and `-nib` only describes the swept area while the path
-     * stays on one side of the nib's axis. The moment travel crosses that axis
-     * the two edges swap sides, the outline folds into a bowtie, and the
-     * crossed lobe cancels itself under the nonzero winding rule -- which is
-     * seen as the stroke stopping dead mid-curve and resuming after the turn.
-     *
-     * Splitting into runs at each crossing keeps every run's outline
-     * well-formed. The runs meet where the stroke is momentarily edge-on and
-     * genuinely has no width, so they join seamlessly.
+     * The steadying happens here, on the centre line, rather than on the
+     * outline. Smoothing the outline instead only makes the edges prettier
+     * while leaving the shape doing whatever the hand did.
      */
-    const travelSide = (from: Point2, to: Point2) => {
-      const direction = to.minus(from);
-      const cross = nib.x * direction.y - nib.y * direction.x;
-      return cross >= 0 ? 1 : -1;
+    const steadied = (raw: Point2[]) => {
+      if (raw.length < 3) return raw;
+
+      const smoothed = [raw[0]];
+      for (let index = 1; index < raw.length - 1; index += 1) {
+        smoothed.push(
+          raw[index - 1]
+            .plus(raw[index].times(2))
+            .plus(raw[index + 1])
+            .times(0.25)
+        );
+      }
+      smoothed.push(raw[raw.length - 1]);
+      return smoothed;
     };
 
     const renderablePath = (): RenderablePathSpec => {
@@ -142,43 +118,51 @@ export function createNotebookChiselStrokeFactory(
         };
       }
 
-      // Split the samples into runs that stay on one side of the nib's axis.
-      const runs: Point2[][] = [];
-      let current = [points[0]];
-      let side = travelSide(points[0], points[1]);
-      for (let index = 1; index < points.length; index += 1) {
-        const nextSide = travelSide(points[index - 1], points[index]);
-        if (nextSide !== side && current.length > 1) {
-          current.push(points[index - 1]);
-          runs.push(current);
-          // The new run restarts from the turn, so the two share a point and
-          // meet without a seam.
-          current = [points[index - 1]];
-          side = nextSide;
-        }
-        current.push(points[index]);
-      }
-      if (current.length > 1) runs.push(current);
-
+      /*
+       * One parallelogram per step, rather than one outline around the whole
+       * stroke.
+       *
+       * A single outline is only valid while the path stays on one side of the
+       * nib's axis and never turns tighter than the nib reaches. Cross either
+       * limit and the outline folds back through itself; the crossed region
+       * takes a winding number of zero and is punched out of the fill. That is
+       * the stroke breaking mid-curve, and the mesh of holes where a stroke
+       * doubles back over itself in one motion.
+       *
+       * Sweeping each step separately removes the possibility rather than
+       * handling the cases. Every parallelogram is convex and cannot fold, and
+       * wound the same way they can only ever add: a point covered by five of
+       * them has a winding number of five, not one or zero. It costs more
+       * points in the saved path, which is the right trade for a highlighter
+       * that never eats a hole in itself.
+       */
+      const path = steadied(points);
       const commands: PathCommand[] = [];
       let pathStart: Point2 | null = null;
 
-      for (const run of runs) {
-        // Keeping every run wound the same way matters: two subpaths of
-        // opposite winding would cancel where they overlap and reopen the
-        // hole this split exists to close.
-        const towards = travelSide(run[0], run[1]) > 0 ? nib : nib.times(-1);
-        const outward = run.map((point) => point.plus(towards));
-        const back = run.map((point) => point.minus(towards)).reverse();
+      for (let index = 1; index < path.length; index += 1) {
+        const from = path[index - 1];
+        const to = path[index];
+        const direction = to.minus(from);
+        // Winding has to match across every step, so the offset is taken
+        // towards whichever side keeps this one turning the same way.
+        const cross = nib.x * direction.y - nib.y * direction.x;
+        const towards = cross >= 0 ? nib : nib.times(-1);
+        const corners = [
+          from.plus(towards),
+          to.plus(towards),
+          to.minus(towards),
+          from.minus(towards),
+        ];
 
         if (pathStart === null) {
-          pathStart = outward[0];
+          pathStart = corners[0];
         } else {
-          commands.push({ kind: PathCommandType.MoveTo, point: outward[0] });
+          commands.push({ kind: PathCommandType.MoveTo, point: corners[0] });
         }
-        commands.push(...smoothEdge(outward));
-        commands.push({ kind: PathCommandType.LineTo, point: back[0] });
-        commands.push(...smoothEdge(back));
+        for (const corner of corners.slice(1)) {
+          commands.push({ kind: PathCommandType.LineTo, point: corner });
+        }
       }
 
       return {
