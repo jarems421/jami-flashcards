@@ -1,8 +1,10 @@
 import type {
   Editor as JsDrawEditor,
   InputEvt as JsDrawInputEvent,
+  PenTool as JsDrawPenTool,
   Pointer as JsDrawPointer,
 } from "js-draw";
+import { createNotebookChiselStrokeFactory } from "@/lib/workspace/notebook-chisel-stroke";
 import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
 import {
   getNotebookEraserModeValue,
@@ -125,6 +127,32 @@ export function applyNotebookEraserMode(
   if (modeValue && modeValue.get() !== nextMode) modeValue.set(nextMode);
 }
 
+type StrokeShapeTool = "pen" | "highlighter";
+
+/**
+ * Remembers which nib each pen tool is currently carrying.
+ *
+ * `setStrokeFactory` has no getter, so without this the factory would be
+ * rebuilt on every style application -- including mid-gesture ones, where
+ * replacing the factory under an in-progress stroke is not worth risking.
+ */
+const appliedStrokeShapes = new WeakMap<object, StrokeShapeTool>();
+
+export function applyNotebookStrokeShape(
+  pen: JsDrawPenTool,
+  tool: StrokeShapeTool,
+  jsDraw: JsDrawModule
+) {
+  if (appliedStrokeShapes.get(pen) === tool) return;
+
+  pen.setStrokeFactory(
+    tool === "highlighter"
+      ? createNotebookChiselStrokeFactory(jsDraw)
+      : jsDraw.makeFreehandLineBuilder
+  );
+  appliedStrokeShapes.set(pen, tool);
+}
+
 export function applyNotebookInkStyle(
   editor: JsDrawEditor,
   style: NotebookInkStyle,
@@ -167,6 +195,9 @@ export function applyNotebookInkStyle(
   });
 
   if (style.activeTool === "pen" || style.activeTool === "highlighter") {
+    // Pen and highlighter share one js-draw tool, so the nib shape has to be
+    // swapped with the tool rather than set once at startup.
+    applyNotebookStrokeShape(primaryPen, style.activeTool, jsDraw);
     const selectedColor =
       style.activeTool === "highlighter"
         ? style.highlighterColor
