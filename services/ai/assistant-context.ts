@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Part } from "@google/generative-ai";
+import type { AiContentPart } from "@/lib/ai/content-parts";
 import {
   JamiAssistantContextError,
   assertSnapshotMime,
@@ -221,7 +221,7 @@ async function resolveLearnContext(input: {
    */
   const answerIsVisibleToStudent = input.context.phase === "answer";
 
-  const parts: Part[] = [
+  const parts: AiContentPart[] = [
     {
       text: [
         `Learn phase: ${input.context.phase}`,
@@ -268,7 +268,7 @@ async function resolveSourcesContext(input: {
           .map((source) => source.title)
           .join(", ")}.`,
       },
-    ] satisfies Part[],
+    ] satisfies AiContentPart[],
     relations: {
       currentSourceIds: input.context.sourceIds,
       directSourceIds: [],
@@ -308,7 +308,7 @@ async function resolveNotebookContext(input: {
       .join("\n\n")
       .slice(0, 12_000);
   const questionPrompt = input.context.questionPrompt || page.questionPrompt || "";
-  const currentParts: Part[] = [
+  const currentParts: AiContentPart[] = [
     {
       text: `Notebook: ${notebook.title}\nPage: ${page.pageNumber}${
         questionPrompt ? `\nQuestion prompt: ${questionPrompt}` : ""

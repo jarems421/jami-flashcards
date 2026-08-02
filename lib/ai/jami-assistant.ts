@@ -1,4 +1,4 @@
-import type { Part } from "@google/generative-ai";
+import type { AiContentPart } from "@/lib/ai/content-parts";
 
 import { normalizeAssistantId as normalizeId } from "@/lib/ai/jami-assistant-normalize";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
@@ -393,7 +393,7 @@ export function buildJamiAssistantReferenceParts(input: {
   reference: string;
   boundaryToken: string;
   label: string;
-  parts: readonly Part[];
+  parts: readonly AiContentPart[];
 }) {
   return [
     {
@@ -403,7 +403,7 @@ export function buildJamiAssistantReferenceParts(input: {
     {
       text: `--- END UNTRUSTED REFERENCE ${input.reference} ${input.boundaryToken} ---`,
     },
-  ] satisfies Part[];
+  ] satisfies AiContentPart[];
 }
 
 export function formatJamiAssistantUsedContext(

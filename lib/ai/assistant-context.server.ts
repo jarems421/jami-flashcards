@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Part } from "@google/generative-ai";
+import type { AiContentPart } from "@/lib/ai/content-parts";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
 import type { Source } from "@/lib/material/sources";
 
@@ -16,7 +16,7 @@ export type SourceRelations = {
 export type ResolvedJamiAssistantContext = {
   currentId: string;
   currentLabel: string;
-  currentParts: Part[];
+  currentParts: AiContentPart[];
   sources: Source[];
 };
 
