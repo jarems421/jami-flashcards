@@ -21,11 +21,11 @@
      * not match it. The ladder keeps its old lightness steps so contrast and
      * panel separation are unchanged; only the hue and saturation moved.
      */
-    --color-surface-base: #080d2e;
-    --color-surface-raised: #0d1440;
-    --color-surface-overlay: #151e52;
-    --color-surface-panel: rgba(15, 22, 62, 0.88);
-    --color-surface-panel-strong: rgba(11, 16, 50, 0.94);
+    --color-surface-base: #040827;
+    --color-surface-raised: #060c36;
+    --color-surface-overlay: #0a1246;
+    --color-surface-panel: rgba(8, 13, 53, 0.88);
+    --color-surface-panel-strong: rgba(6, 10, 42, 0.94);
 
     /* Glass layers */
     --color-glass-subtle: rgba(255, 255, 255, 0.05);
@@ -57,10 +57,10 @@
     --color-text-primary: #fff8ff;
     --color-text-secondary: #f1f5ff;
     --color-text-muted: #c8d1e3;
-    --color-text-inverse: #101827;
+    --color-text-inverse: #080e21;
 
     /* Readable foreground/background pairs */
-    --color-field-bg: rgba(10, 14, 24, 0.74);
+    --color-field-bg: rgba(5, 8, 20, 0.74);
     --color-field-text: #fff8ff;
     --color-field-placeholder: #c8d1e3;
     --color-field-border: rgba(233, 219, 255, 0.22);
@@ -80,26 +80,26 @@
     --app-overlay: transparent;
     --gradient-card: linear-gradient(
       160deg,
-      rgba(16, 24, 68, 0.97) 0%,
-      rgba(22, 32, 84, 0.92) 52%,
-      rgba(10, 15, 46, 0.98) 100%
+      rgba(8, 14, 58, 0.97) 0%,
+      rgba(11, 19, 71, 0.92) 52%,
+      rgba(5, 9, 39, 0.98) 100%
     );
     --gradient-panel: linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.09),
       rgba(255, 255, 255, 0.02)
     );
-    --topbar-bg: linear-gradient(180deg, rgba(13, 19, 56, 0.86), rgba(6, 10, 34, 0.78));
+    --topbar-bg: linear-gradient(180deg, rgba(6, 11, 48, 0.86), rgba(3, 6, 29, 0.78));
     --topbar-border: rgba(255, 255, 255, 0.12);
-    --topbar-shadow: 0 18px 38px rgba(2, 5, 26, 0.26);
-    --nav-shell-bg: linear-gradient(180deg, rgba(14, 20, 60, 0.92), rgba(6, 10, 34, 0.95));
+    --topbar-shadow: 0 18px 38px rgba(1, 3, 22, 0.26);
+    --nav-shell-bg: linear-gradient(180deg, rgba(7, 12, 51, 0.92), rgba(3, 6, 29, 0.95));
     --nav-shell-border: rgba(255, 255, 255, 0.12);
-    --nav-shell-shadow: 0 22px 44px rgba(2, 5, 26, 0.34);
+    --nav-shell-shadow: 0 22px 44px rgba(1, 3, 22, 0.34);
     --nav-hover-bg: rgba(255, 255, 255, 0.045);
     --nav-active-bg: linear-gradient(135deg, rgba(125, 224, 204, 0.15), rgba(255, 255, 255, 0.075));
     --nav-active-border: var(--color-warm-border);
     --nav-active-text: #fff8ff;
-    --nav-active-shadow: 0 14px 24px rgba(7, 12, 24, 0.24);
+    --nav-active-shadow: 0 14px 24px rgba(4, 7, 20, 0.24);
     --button-primary-bg: linear-gradient(180deg, #8f7de8 0%, #7565d6 100%);
     --button-primary-bg-hover: linear-gradient(180deg, #a994f4 0%, #8170e2 100%);
     --button-primary-border: rgba(255, 255, 255, 0.18);
@@ -112,22 +112,22 @@
     --button-secondary-border: rgba(255, 255, 255, 0.24);
     --button-secondary-border-hover: rgba(255, 255, 255, 0.36);
     --button-secondary-text: var(--color-text-primary);
-    --button-secondary-shadow: 0 10px 20px rgba(11, 4, 32, 0.12);
-    --button-secondary-shadow-hover: 0 14px 26px rgba(11, 4, 32, 0.18);
+    --button-secondary-shadow: 0 10px 20px rgba(6, 2, 27, 0.12);
+    --button-secondary-shadow-hover: 0 14px 26px rgba(6, 2, 27, 0.18);
     --button-disabled-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.075));
     --button-disabled-border: rgba(255, 255, 255, 0.22);
     --button-disabled-text: #e4eaf7;
-    --button-surface-bg: linear-gradient(180deg, rgba(16, 24, 70, 0.94), rgba(10, 15, 46, 0.94));
-    --button-surface-bg-hover: linear-gradient(180deg, rgba(22, 32, 88, 0.96), rgba(13, 19, 58, 0.96));
+    --button-surface-bg: linear-gradient(180deg, rgba(8, 14, 60, 0.94), rgba(5, 9, 39, 0.94));
+    --button-surface-bg-hover: linear-gradient(180deg, rgba(11, 19, 75, 0.96), rgba(6, 11, 49, 0.96));
     --button-surface-border: rgba(255, 255, 255, 0.22);
     --button-surface-border-hover: rgba(255, 255, 255, 0.32);
     --button-surface-text: var(--color-text-primary);
-    --button-surface-shadow-hover: 0 20px 38px rgba(2, 5, 26, 0.34);
+    --button-surface-shadow-hover: 0 20px 38px rgba(1, 3, 22, 0.34);
     --button-warm-bg: linear-gradient(180deg, #fff8fd 0%, #ffe8f7 42%, #ffdff4 100%);
     --button-warm-bg-hover: linear-gradient(180deg, #ffffff 0%, #fff0fb 42%, #ffe3f5 100%);
     --button-warm-border: rgba(255, 255, 255, 0.24);
     --button-warm-border-hover: rgba(255, 255, 255, 0.32);
-    --button-warm-text: #10091d;
+    --button-warm-text: #080519;
     --button-warm-shadow: 0 12px 24px rgba(255, 214, 246, 0.18);
     --button-warm-shadow-hover: 0 16px 30px rgba(255, 214, 246, 0.24);
     --button-ghost-bg-hover: rgba(255, 255, 255, 0.08);
@@ -141,12 +141,12 @@
 
     /* Shadows */
     --shadow-glass: 0 18px 50px rgba(4, 0, 18, 0.38);
-    --shadow-card: 0 18px 34px rgba(10, 4, 24, 0.2);
-    --shadow-shell: 0 20px 38px rgba(8, 3, 20, 0.24);
+    --shadow-card: 0 18px 34px rgba(5, 2, 20, 0.2);
+    --shadow-shell: 0 20px 38px rgba(4, 2, 17, 0.24);
     --shadow-accent: 0 16px 28px rgba(157, 99, 223, 0.18);
     --shadow-warm: 0 14px 28px rgba(255, 214, 246, 0.16);
-    --shadow-bubble: 0 18px 34px rgba(10, 4, 24, 0.2);
-    --shadow-button-3d: 0 10px 22px rgba(10, 4, 24, 0.18);
+    --shadow-bubble: 0 18px 34px rgba(5, 2, 20, 0.2);
+    --shadow-button-3d: 0 10px 22px rgba(5, 2, 20, 0.18);
 
     /* Motion */
     --duration-fast: 160ms;
