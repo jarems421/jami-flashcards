@@ -102,12 +102,14 @@ describe("notebook inking helpers", () => {
     expect(getPenWidthFromPercent(100)).toBe(10);
     expect(getPenWidthFromPercent("bad")).toBe(6);
 
-    expect(getHighlighterWidthFromPercent(0)).toBe(10);
-    expect(getHighlighterWidthFromPercent(25)).toBe(15);
-    expect(getHighlighterWidthFromPercent(50)).toBe(20);
-    expect(getHighlighterWidthFromPercent(75)).toBe(25);
-    expect(getHighlighterWidthFromPercent(100)).toBe(30);
-    expect(getHighlighterWidthFromPercent("bad")).toBe(20);
+    // Wide enough that one pass covers a line of text at the top of the
+    // range, which is the job; the floor still underlines.
+    expect(getHighlighterWidthFromPercent(0)).toBe(16);
+    expect(getHighlighterWidthFromPercent(25)).toBe(28);
+    expect(getHighlighterWidthFromPercent(50)).toBe(40);
+    expect(getHighlighterWidthFromPercent(75)).toBe(52);
+    expect(getHighlighterWidthFromPercent(100)).toBe(64);
+    expect(getHighlighterWidthFromPercent("bad")).toBe(40);
   });
 
   it("collects coalesced pointer samples when the browser provides them", () => {

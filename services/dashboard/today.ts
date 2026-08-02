@@ -319,14 +319,16 @@ async function fetchDashboardSnapshot(
     .map(([section]) => section);
 
   if (failedSections.length > 0) {
-    // Today loads thirteen sections independently, so a count on its own
-    // leaves no way to tell which one is broken -- from either the banner or
-    // the console.
-    console.warn("Today sections did not refresh.", {
-      failedSections: failedSections.map(
-        (section) => `${section}:${sections[section as keyof typeof sections]}`
-      ),
-    });
+    // Named in the message rather than an attached object, so which section
+    // failed is readable in the console without expanding anything. Today
+    // loads thirteen of them independently and a count alone identifies none.
+    console.warn(
+      `Today sections did not refresh: ${failedSections
+        .map(
+          (section) => `${section}=${sections[section as keyof typeof sections]}`
+        )
+        .join(", ")}`
+    );
   }
 
   const snapshot: DashboardSnapshot = {

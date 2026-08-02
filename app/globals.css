@@ -12,12 +12,20 @@
   }
 
   :root {
-    /* Surface colors - quiet night palette */
-    --color-surface-base: #0d1018;
-    --color-surface-raised: #121725;
-    --color-surface-overlay: #182033;
-    --color-surface-panel: rgba(20, 24, 36, 0.88);
-    --color-surface-panel-strong: rgba(17, 21, 33, 0.94);
+    /*
+     * Surface colours - the night sky from the app icon.
+     *
+     * These were a near-neutral blue-grey, which read as charcoal rather than
+     * as Jami's blue: the icon's background is a saturated navy-indigo
+     * (sampled at #101860 through #05082b, dominant #000828) and the app did
+     * not match it. The ladder keeps its old lightness steps so contrast and
+     * panel separation are unchanged; only the hue and saturation moved.
+     */
+    --color-surface-base: #080d2e;
+    --color-surface-raised: #0d1440;
+    --color-surface-overlay: #151e52;
+    --color-surface-panel: rgba(15, 22, 62, 0.88);
+    --color-surface-panel-strong: rgba(11, 16, 50, 0.94);
 
     /* Glass layers */
     --color-glass-subtle: rgba(255, 255, 255, 0.05);
@@ -72,21 +80,21 @@
     --app-overlay: transparent;
     --gradient-card: linear-gradient(
       160deg,
-      rgba(24, 29, 43, 0.97) 0%,
-      rgba(30, 35, 52, 0.92) 52%,
-      rgba(16, 20, 32, 0.98) 100%
+      rgba(16, 24, 68, 0.97) 0%,
+      rgba(22, 32, 84, 0.92) 52%,
+      rgba(10, 15, 46, 0.98) 100%
     );
     --gradient-panel: linear-gradient(
       180deg,
       rgba(255, 255, 255, 0.09),
       rgba(255, 255, 255, 0.02)
     );
-    --topbar-bg: linear-gradient(180deg, rgba(18, 23, 35, 0.86), rgba(10, 13, 22, 0.78));
+    --topbar-bg: linear-gradient(180deg, rgba(13, 19, 56, 0.86), rgba(6, 10, 34, 0.78));
     --topbar-border: rgba(255, 255, 255, 0.12);
-    --topbar-shadow: 0 18px 38px rgba(4, 8, 18, 0.26);
-    --nav-shell-bg: linear-gradient(180deg, rgba(19, 24, 37, 0.92), rgba(10, 13, 22, 0.95));
+    --topbar-shadow: 0 18px 38px rgba(2, 5, 26, 0.26);
+    --nav-shell-bg: linear-gradient(180deg, rgba(14, 20, 60, 0.92), rgba(6, 10, 34, 0.95));
     --nav-shell-border: rgba(255, 255, 255, 0.12);
-    --nav-shell-shadow: 0 22px 44px rgba(4, 8, 18, 0.34);
+    --nav-shell-shadow: 0 22px 44px rgba(2, 5, 26, 0.34);
     --nav-hover-bg: rgba(255, 255, 255, 0.045);
     --nav-active-bg: linear-gradient(135deg, rgba(125, 224, 204, 0.15), rgba(255, 255, 255, 0.075));
     --nav-active-border: var(--color-warm-border);
@@ -109,12 +117,12 @@
     --button-disabled-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.075));
     --button-disabled-border: rgba(255, 255, 255, 0.22);
     --button-disabled-text: #e4eaf7;
-    --button-surface-bg: linear-gradient(180deg, rgba(24, 30, 45, 0.94), rgba(15, 19, 31, 0.94));
-    --button-surface-bg-hover: linear-gradient(180deg, rgba(30, 37, 55, 0.96), rgba(18, 23, 36, 0.96));
+    --button-surface-bg: linear-gradient(180deg, rgba(16, 24, 70, 0.94), rgba(10, 15, 46, 0.94));
+    --button-surface-bg-hover: linear-gradient(180deg, rgba(22, 32, 88, 0.96), rgba(13, 19, 58, 0.96));
     --button-surface-border: rgba(255, 255, 255, 0.22);
     --button-surface-border-hover: rgba(255, 255, 255, 0.32);
     --button-surface-text: var(--color-text-primary);
-    --button-surface-shadow-hover: 0 20px 38px rgba(4, 8, 18, 0.34);
+    --button-surface-shadow-hover: 0 20px 38px rgba(2, 5, 26, 0.34);
     --button-warm-bg: linear-gradient(180deg, #fff8fd 0%, #ffe8f7 42%, #ffdff4 100%);
     --button-warm-bg-hover: linear-gradient(180deg, #ffffff 0%, #fff0fb 42%, #ffe3f5 100%);
     --button-warm-border: rgba(255, 255, 255, 0.24);
