@@ -28,6 +28,7 @@ import {
 import {
   applyNotebookInkStyle,
   applyNotebookEraserMode,
+  applyNotebookStrokeShape,
   areNotebookInkStylesEqual,
   loadJsDraw,
   makePrecisePenInputMapper,
@@ -356,9 +357,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             primaryPen.setInputMapper(
               makePrecisePenInputMapper(jsDraw, editor, inkSmoothersRef.current)
             );
-            // Connect exact coalesced Pencil samples as smooth quadratic
-            // curves, then paint the complete packet synchronously once.
-            primaryPen.setStrokeFactory(jsDraw.makeFreehandLineBuilder);
+            // The nib is swapped with the tool, but set the pen's here too so
+            // the very first stroke cannot land on js-draw's default fitter.
+            applyNotebookStrokeShape(primaryPen, "pen", jsDraw);
             penPreviewBatch = installBatchedNotebookPenPreview(
               primaryPen as unknown as NotebookBatchedPen
             );

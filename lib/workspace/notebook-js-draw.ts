@@ -5,6 +5,7 @@ import type {
   Pointer as JsDrawPointer,
 } from "js-draw";
 import { createNotebookChiselStrokeFactory } from "@/lib/workspace/notebook-chisel-stroke";
+import { createNotebookSmoothPenStrokeFactory } from "@/lib/workspace/notebook-smooth-pen";
 import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
 import {
   getNotebookEraserModeValue,
@@ -148,7 +149,7 @@ export function applyNotebookStrokeShape(
   pen.setStrokeFactory(
     tool === "highlighter"
       ? createNotebookChiselStrokeFactory(jsDraw)
-      : jsDraw.makeFreehandLineBuilder
+      : createNotebookSmoothPenStrokeFactory(jsDraw)
   );
   appliedStrokeShapes.set(pen, tool);
 }
