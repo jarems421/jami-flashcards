@@ -2,7 +2,7 @@ import "server-only";
 
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import type { Part } from "@google/generative-ai";
+import type { AiContentPart } from "@/lib/ai/content-parts";
 import mammoth from "mammoth";
 import { load } from "cheerio";
 import { OfficeParser } from "officeparser";
@@ -23,7 +23,7 @@ const MAX_REDIRECTS = 3;
 type PreparedSource = {
   sourceId: string;
   label: string;
-  parts: Part[];
+  parts: AiContentPart[];
   inputBytes: number;
 };
 

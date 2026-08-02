@@ -1,6 +1,15 @@
 import { defineConfig, globalIgnores } from "eslint/config";
 import nextVitals from "eslint-config-next/core-web-vitals";
 import nextTs from "eslint-config-next/typescript";
+
+/** The AI provider SDK belongs to its client module. Domain logic and
+ * services describe model input with `@/lib/ai/content-parts` instead, so
+ * adding or changing a provider stays inside `lib/ai/gemini.ts`. */
+const AI_SDK_RESTRICTION = {
+  name: "@google/generative-ai",
+  message:
+    "Import the provider SDK only from lib/ai/gemini.ts; use @/lib/ai/content-parts for model input shapes.",
+};
 import jsxA11y from "eslint-plugin-jsx-a11y";
 
 const eslintConfig = defineConfig([
@@ -64,8 +73,42 @@ const eslintConfig = defineConfig([
               message: "Keep this domain layer pure; pass external data in from a page or service.",
             },
           ],
+          // Flat config replaces a rule rather than merging it, so the SDK ban
+          // has to live in the same declaration as the purity patterns above.
+          // Splitting them into a second `lib/**` block silently switches this
+          // one off.
+          paths: [AI_SDK_RESTRICTION],
         },
       ],
+    },
+  },
+  {
+    // The provider client is the one module allowed to know the vendor. It
+    // still may not reach into components or services.
+    files: ["lib/ai/gemini.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          patterns: [
+            {
+              group: [
+                "@/components/**",
+                "@/services/**",
+                "**/components/**",
+                "**/services/**",
+              ],
+              message: "Keep this domain layer pure; pass external data in from a page or service.",
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["services/**/*.ts"],
+    rules: {
+      "no-restricted-imports": ["error", { paths: [AI_SDK_RESTRICTION] }],
     },
   },
   {
