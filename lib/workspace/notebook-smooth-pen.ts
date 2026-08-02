@@ -66,6 +66,22 @@ const MAXIMUM_SPAN_RATIO = 24;
 const TANGENT_SCALE = 1 / 6;
 
 /**
+ * How far a point may be eased towards the line between its neighbours.
+ *
+ * The lightest possible guidance, and deliberately spatial rather than
+ * temporal. Smoothing the input harder would ease curves too, but by holding
+ * the ink back in time -- which is felt immediately as the pen being dragged,
+ * and was the magnetic complaint. Nudging the shape instead costs nothing in
+ * time: the ink is still drawn the instant the sample arrives, just a fraction
+ * kinder about where the hand wobbled.
+ *
+ * Kept small enough not to be noticed except side by side. Two points are
+ * exempt on principle: the newest, so the line always ends exactly under the
+ * pen, and any corner, so a deliberate point stays a point.
+ */
+const EASE_TOWARDS_NEIGHBOURS = 0.15;
+
+/**
  * How sharply the line must turn at a point before it is treated as a corner
  * rather than a curve, in degrees.
  *
@@ -133,6 +149,45 @@ export function createNotebookSmoothPenStrokeFactory(
     /** Every point that shapes the curve, including the one still held. */
     const shapePoints = () => (pending ? [...points, pending] : points);
 
+    /**
+     * Eases each interior point a fraction towards the line between its
+     * neighbours, so a curve drawn by hand comes out a little rounder.
+     *
+     * The first and last are left exactly where they were: the last is under
+     * the pen right now, and moving it is what would be felt as lag. Corners
+     * are left alone too, since easing one is the same as rounding it off.
+     */
+    const easedShape = (shape: Point2[]) => {
+      if (shape.length < 3) return shape;
+
+      const eased: Point2[] = [shape[0]];
+      for (let index = 1; index < shape.length - 1; index += 1) {
+        const previous = shape[index - 1];
+        const here = shape[index];
+        const next = shape[index + 1];
+        const arriving = here.minus(previous);
+        const leaving = next.minus(here);
+        const isCorner =
+          arriving.magnitude() > 0 &&
+          leaving.magnitude() > 0 &&
+          arriving.normalized().dot(leaving.normalized()) < cornerCosine;
+
+        eased.push(
+          isCorner
+            ? here
+            : here.plus(
+                previous
+                  .plus(next)
+                  .times(0.5)
+                  .minus(here)
+                  .times(EASE_TOWARDS_NEIGHBOURS)
+              )
+        );
+      }
+      eased.push(shape[shape.length - 1]);
+      return eased;
+    };
+
     const renderablePath = (): RenderablePathSpec => {
       const width = strokeWidth();
       const stroked = {
@@ -140,7 +195,7 @@ export function createNotebookSmoothPenStrokeFactory(
         stroke: { color, width },
       };
 
-      const shape = shapePoints();
+      const shape = easedShape(shapePoints());
 
       if (shape.length === 1) {
         // A dot. Round caps make a zero-length stroke visible on canvas but
