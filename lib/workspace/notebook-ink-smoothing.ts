@@ -32,9 +32,24 @@ export type NotebookInkSmoothingOptions = {
   derivativeCutoff: number;
 };
 
+/**
+ * Tuned for handwriting speed, which is where writing is actually judged.
+ *
+ * The cutoff rises with speed, so these two numbers decide how much noise
+ * survives at the speed a pen is normally moving. At the previous 4.5/0.3 the
+ * cutoff reached 70 Hz by 220 px/s -- ordinary handwriting -- and roughly 70%
+ * of the sensor's jitter passed straight through. The filter was only really
+ * working while the pen was nearly still, which is exactly when nothing is
+ * being written.
+ *
+ * The cost is lag, bounded near `1 / (2π · beta)`: 0.53px before, 1.77px now.
+ * Both are well under a pen width, and the lag only appears at speed, where
+ * the eye is following the pen rather than the ink. Raise `beta` if the ink
+ * ever feels like it is trailing; lower it if writing still looks noisy.
+ */
 export const NOTEBOOK_INK_SMOOTHING: NotebookInkSmoothingOptions = {
-  minCutoff: 4.5,
-  beta: 0.3,
+  minCutoff: 2,
+  beta: 0.09,
   derivativeCutoff: 16,
 };
 
@@ -56,6 +71,7 @@ export class NotebookInkSmoother {
   private velocityX = 0;
   private velocityY = 0;
   private lastTime: number;
+  private hasMoved = false;
 
   constructor(
     seed: NotebookInkSample,
@@ -72,6 +88,20 @@ export class NotebookInkSmoother {
       (sample.time - this.lastTime) / 1000
     );
     this.lastTime = Math.max(this.lastTime, sample.time);
+
+    // The first movement of a stroke has no history to be filtered against,
+    // and the velocity estimate still reads zero -- which is the filter's
+    // strongest smoothing. Left alone that shows up as the ink hanging back at
+    // the moment the pen lands, the one place lag is unmistakable. Take it
+    // exactly as reported and start the velocity estimate from it.
+    if (!this.hasMoved) {
+      this.hasMoved = true;
+      this.velocityX = (sample.x - this.x) / deltaSeconds;
+      this.velocityY = (sample.y - this.y) / deltaSeconds;
+      this.x = sample.x;
+      this.y = sample.y;
+      return { x: this.x, y: this.y };
+    }
 
     const derivativeAlpha = lowPassAlpha(this.options.derivativeCutoff, deltaSeconds);
     this.velocityX += derivativeAlpha * ((sample.x - this.x) / deltaSeconds - this.velocityX);
