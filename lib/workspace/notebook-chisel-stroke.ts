@@ -3,6 +3,7 @@ import type {
   ComponentBuilder,
   ComponentBuilderFactory,
   PathCommand,
+  Point2,
   RenderablePathSpec,
   StrokeDataPoint,
   Viewport,
@@ -42,14 +43,16 @@ const NIB_ANGLE_DEGREES = 65;
 const NIB_NARROW_RATIO = 0.16;
 
 /**
- * Builds strokes shaped by a flat nib rather than a round one.
+ * How far the tip must travel before a sample is kept, as a fraction of the
+ * nib's half-width.
  *
- * The outline is one filled polygon: every sample offset by `+nib` on the way
- * out, then the same samples offset by `-nib` on the way back. Areas where a
- * stroke crosses itself fill once under the nonzero winding rule, so scrubbing
- * back and forth over the same words stays one even wash rather than darkening
- * at every crossing.
+ * A highlighter is a broad tool laid over text that is already there, so it
+ * wants to follow the hand's intent rather than its tremor. Sampling in steps
+ * proportional to the nib means a thick highlighter is steadied more than a
+ * thin one, which is what makes it feel guided rather than twitchy.
  */
+const GUIDE_STEP_RATIO = 0.34;
+
 export function createNotebookChiselStrokeFactory(
   jsDraw: JsDrawModule
 ): ComponentBuilderFactory {
@@ -60,11 +63,59 @@ export function createNotebookChiselStrokeFactory(
     const color: Color4 = startPoint.color;
     const halfWidth = Math.max(startPoint.width, 0.1) / 2;
     const nib = Vec2.of(Math.cos(angle), Math.sin(angle)).times(halfWidth);
-    // Samples closer together than a pixel cannot change the rendered shape,
-    // and each one kept is two more points in the saved path.
-    const minimumStep = Math.max(viewport.getSizeOfPixelOnCanvas() * 0.65, 0.01);
+    const minimumStep = Math.max(
+      viewport.getSizeOfPixelOnCanvas() * 0.65,
+      halfWidth * GUIDE_STEP_RATIO
+    );
 
     const points = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
+
+    /**
+     * Smooths one edge of the outline into quadratic curves through the
+     * midpoints between samples, with each sample as a control point. Straight
+     * segments would show every sample as a corner along the edge, which is
+     * what made the stroke look constructed rather than drawn.
+     */
+    const smoothEdge = (edge: Point2[]): PathCommand[] => {
+      if (edge.length < 2) return [];
+      if (edge.length === 2) {
+        return [{ kind: PathCommandType.LineTo, point: edge[1] }];
+      }
+
+      const commands: PathCommand[] = [];
+      for (let index = 1; index < edge.length - 1; index += 1) {
+        commands.push({
+          kind: PathCommandType.QuadraticBezierTo,
+          controlPoint: edge[index],
+          endPoint: edge[index].lerp(edge[index + 1], 0.5),
+        });
+      }
+      commands.push({
+        kind: PathCommandType.LineTo,
+        point: edge[edge.length - 1],
+      });
+      return commands;
+    };
+
+    /**
+     * Which side of the nib the stroke is currently travelling towards.
+     *
+     * This is the crux of keeping the stroke continuous. Offsetting every
+     * sample by `+nib` and `-nib` only describes the swept area while the path
+     * stays on one side of the nib's axis. The moment travel crosses that axis
+     * the two edges swap sides, the outline folds into a bowtie, and the
+     * crossed lobe cancels itself under the nonzero winding rule -- which is
+     * seen as the stroke stopping dead mid-curve and resuming after the turn.
+     *
+     * Splitting into runs at each crossing keeps every run's outline
+     * well-formed. The runs meet where the stroke is momentarily edge-on and
+     * genuinely has no width, so they join seamlessly.
+     */
+    const travelSide = (from: Point2, to: Point2) => {
+      const direction = to.minus(from);
+      const cross = nib.x * direction.y - nib.y * direction.x;
+      return cross >= 0 ? 1 : -1;
+    };
 
     const renderablePath = (): RenderablePathSpec => {
       const style = { fill: color };
@@ -91,21 +142,50 @@ export function createNotebookChiselStrokeFactory(
         };
       }
 
-      const commands: PathCommand[] = [];
+      // Split the samples into runs that stay on one side of the nib's axis.
+      const runs: Point2[][] = [];
+      let current = [points[0]];
+      let side = travelSide(points[0], points[1]);
       for (let index = 1; index < points.length; index += 1) {
-        commands.push({
-          kind: PathCommandType.LineTo,
-          point: points[index].plus(nib),
-        });
+        const nextSide = travelSide(points[index - 1], points[index]);
+        if (nextSide !== side && current.length > 1) {
+          current.push(points[index - 1]);
+          runs.push(current);
+          // The new run restarts from the turn, so the two share a point and
+          // meet without a seam.
+          current = [points[index - 1]];
+          side = nextSide;
+        }
+        current.push(points[index]);
       }
-      for (let index = points.length - 1; index >= 0; index -= 1) {
-        commands.push({
-          kind: PathCommandType.LineTo,
-          point: points[index].minus(nib),
-        });
+      if (current.length > 1) runs.push(current);
+
+      const commands: PathCommand[] = [];
+      let pathStart: Point2 | null = null;
+
+      for (const run of runs) {
+        // Keeping every run wound the same way matters: two subpaths of
+        // opposite winding would cancel where they overlap and reopen the
+        // hole this split exists to close.
+        const towards = travelSide(run[0], run[1]) > 0 ? nib : nib.times(-1);
+        const outward = run.map((point) => point.plus(towards));
+        const back = run.map((point) => point.minus(towards)).reverse();
+
+        if (pathStart === null) {
+          pathStart = outward[0];
+        } else {
+          commands.push({ kind: PathCommandType.MoveTo, point: outward[0] });
+        }
+        commands.push(...smoothEdge(outward));
+        commands.push({ kind: PathCommandType.LineTo, point: back[0] });
+        commands.push(...smoothEdge(back));
       }
 
-      return { startPoint: points[0].plus(nib), commands, style };
+      return {
+        startPoint: pathStart ?? points[0].plus(nib),
+        commands,
+        style,
+      };
     };
 
     return {
