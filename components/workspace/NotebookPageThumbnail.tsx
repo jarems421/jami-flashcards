@@ -19,6 +19,7 @@ import {
   normalizeNotebookStrokes,
 } from "@/lib/workspace/notebook-page-content";
 import { orderNotebookStrokesForRendering } from "@/lib/workspace/notebook-rendering";
+import { resolveNotebookPageThumbnail } from "@/lib/workspace/notebook-page-ink-split";
 
 export default function NotebookPageThumbnail({
   page,
@@ -33,12 +34,12 @@ export default function NotebookPageThumbnail({
 }) {
   const pageColor = page.pageColor ?? notebook.pageColor ?? "white";
   const pageStyle = page.pageStyle ?? notebook.pageStyle ?? "plain";
-  const strokes = normalizeNotebookStrokes(page.strokeData?.strokes).slice(
-    0,
-    10
-  );
+  // Reads the stored digest for a split page and the real ink for a legacy or
+  // already-loaded one, so the drawer never fetches ink to draw a preview.
+  const preview = resolveNotebookPageThumbnail(page);
+  const strokes = normalizeNotebookStrokes(preview.strokes).slice(0, 10);
   const textBlocks = page.textBlocks.slice(0, 3);
-  const inkSvg = page.inkData?.svg;
+  const inkSvg = preview.inkSvg;
 
   return (
     <div

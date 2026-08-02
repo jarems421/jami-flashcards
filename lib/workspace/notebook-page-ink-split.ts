@@ -17,6 +17,7 @@
 import type {
   NotebookInkData,
   NotebookPage,
+  NotebookPageThumbnailData,
   NotebookStroke,
   NotebookStrokeData,
 } from "@/lib/workspace/notebooks";
@@ -46,13 +47,7 @@ export type NotebookPageInkRecord = {
   updatedAt: number;
 };
 
-export type NotebookPageThumbnail = {
-  /** Present only when the page's SVG fits the thumbnail budget. */
-  inkSvg?: string;
-  strokes: NotebookStroke[];
-  /** True when the page has ink that the digest could not represent. */
-  inkOmitted: boolean;
-};
+export type NotebookPageThumbnail = NotebookPageThumbnailData;
 
 /**
  * Evenly samples a stroke down to at most `MAX_THUMBNAIL_STROKE_POINTS`.
@@ -166,6 +161,51 @@ export function needsInkSplitConversion(page: NotebookPage): boolean {
     inlineSvgLength > MAX_THUMBNAIL_INK_SVG_LENGTH ||
     (page.strokeData?.strokes.length ?? 0) > MAX_THUMBNAIL_STROKES
   );
+}
+
+/**
+ * True when a page is known to have ink that has not been fetched yet.
+ *
+ * The digest is what makes this answerable without a read: if a page carries
+ * no inline ink and its digest shows nothing, the page genuinely has no ink
+ * and needs no fetch. Anything the digest does show means real ink exists in
+ * the ink record.
+ *
+ * Callers must never open such a page for editing, because an empty canvas
+ * that autosaves would write over the student's saved drawing.
+ */
+export function pageHasUnloadedInk(page: NotebookPage): boolean {
+  if (page.inkData || page.strokeData) return false;
+  const thumbnail = page.thumbnail;
+  if (!thumbnail) return false;
+  return Boolean(
+    thumbnail.inkSvg || thumbnail.strokes.length > 0 || thumbnail.inkOmitted
+  );
+}
+
+/**
+ * What the pages drawer should draw for a page.
+ *
+ * A page saved in the split shape carries a digest. A legacy page carries its
+ * real ink inline, and a page whose ink record has already been fetched
+ * carries that -- both render at full fidelity, which is strictly better than
+ * the digest and costs nothing extra since the data is already in memory.
+ */
+export function resolveNotebookPageThumbnail(
+  page: NotebookPage
+): NotebookPageThumbnail {
+  if (page.inkData || page.strokeData) {
+    // The budget exists to keep stored records small. This data is already in
+    // memory, so render it in full rather than degrading it on the way out.
+    return {
+      ...(page.inkData ? { inkSvg: page.inkData.svg } : {}),
+      strokes: (page.strokeData?.strokes ?? [])
+        .slice(0, MAX_THUMBNAIL_STROKES)
+        .map(downsampleStrokePoints),
+      inkOmitted: false,
+    };
+  }
+  return page.thumbnail ?? { strokes: [], inkOmitted: false };
 }
 
 /**

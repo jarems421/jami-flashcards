@@ -188,6 +188,14 @@ service cloud.firestore {
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
+      // Full-fidelity page ink, split out of the page record so opening a
+      // notebook does not fetch every stroke of every page. Same owner-only
+      // access as the page it belongs to.
+      match /notebookPageInk/{pageId} {
+        allow read: if isSelf(userId);
+        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+      }
+
       match /notebookFiles/{fileId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();

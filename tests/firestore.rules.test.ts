@@ -474,6 +474,29 @@ describe("Firestore security rules", () => {
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebooks", "notebook-1")));
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "notebookPages", "page-1")));
     await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "notebookPageInk", "page-1"), {
+        notebookId: "notebook-1",
+        inkData: { version: 2, format: "js-draw-svg", svg: "<svg></svg>" },
+        contentRevision: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(
+      getDoc(doc(aliceDb, "users", ALICE, "notebookPageInk", "page-1"))
+    );
+    // Ink is a student's handwriting; it must be no more reachable than the
+    // page it was split out of.
+    await assertFails(
+      getDoc(doc(bobDb, "users", ALICE, "notebookPageInk", "page-1"))
+    );
+    await assertFails(
+      setDoc(doc(bobDb, "users", ALICE, "notebookPageInk", "page-1"), {
+        notebookId: "notebook-1",
+        contentRevision: 2,
+        updatedAt: 2,
+      })
+    );
+    await assertSucceeds(
       setDoc(doc(aliceDb, "users", ALICE, "notebookFiles", "file-1"), {
         notebookId: "notebook-1",
         folderId: "folder-linear-algebra",

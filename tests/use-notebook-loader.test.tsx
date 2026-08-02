@@ -16,11 +16,16 @@ const deleteNotebookPageDraft = vi.fn();
 const writeNotebookPageDraft = vi.fn();
 const getNotebookDraftDecision = vi.fn();
 const getNotebookFileDownloadUrl = vi.fn();
+// Pages in these fixtures already carry whatever ink they have, so the real
+// service would return them untouched.
+const getNotebookPageWithInk = vi.fn((_userId: unknown, page: unknown) => page);
 
 vi.mock("@/services/study/notebooks", () => ({
   getNotebookById: (...a: unknown[]) => getNotebookById(...a),
   getNotebookPages: (...a: unknown[]) => getNotebookPages(...a),
   getNotebookFiles: (...a: unknown[]) => getNotebookFiles(...a),
+  getNotebookPageWithInk: (userId: unknown, page: unknown) =>
+    getNotebookPageWithInk(userId, page),
 }));
 
 vi.mock("@/services/study/notebook-files", () => ({

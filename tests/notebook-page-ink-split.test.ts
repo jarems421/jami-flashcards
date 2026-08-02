@@ -8,6 +8,8 @@ import {
   isNotebookInkRecordWithinLimits,
   mergeNotebookPageInk,
   needsInkSplitConversion,
+  pageHasUnloadedInk,
+  resolveNotebookPageThumbnail,
   splitNotebookPageForPersistence,
 } from "@/lib/workspace/notebook-page-ink-split";
 import type { NotebookPage, NotebookStroke } from "@/lib/workspace/notebooks";
@@ -197,6 +199,53 @@ describe("notebook page ink split", () => {
         })
       )
     ).toBe(false);
+  });
+
+  it("knows a split page still owes its ink", () => {
+    expect(
+      pageHasUnloadedInk(
+        page({ thumbnail: { inkSvg: "<svg>x</svg>", strokes: [], inkOmitted: false } })
+      )
+    ).toBe(true);
+    expect(
+      pageHasUnloadedInk(page({ thumbnail: { strokes: [], inkOmitted: true } }))
+    ).toBe(true);
+  });
+
+  it("treats a page with no ink and a page already holding ink as ready", () => {
+    expect(pageHasUnloadedInk(page())).toBe(false);
+    expect(
+      pageHasUnloadedInk(page({ thumbnail: { strokes: [], inkOmitted: false } }))
+    ).toBe(false);
+    expect(
+      pageHasUnloadedInk(
+        page({
+          inkData: { version: 2, format: "js-draw-svg", svg: "<svg>x</svg>" },
+          thumbnail: { inkSvg: "<svg>x</svg>", strokes: [], inkOmitted: false },
+        })
+      )
+    ).toBe(false);
+  });
+
+  it("renders a loaded page's real ink rather than the stored digest", () => {
+    const big = svgOfLength(MAX_THUMBNAIL_INK_SVG_LENGTH + 5_000);
+    const resolved = resolveNotebookPageThumbnail(
+      page({
+        inkData: { version: 2, format: "js-draw-svg", svg: big },
+        thumbnail: { strokes: [], inkOmitted: true },
+      })
+    );
+
+    expect(resolved.inkSvg).toBe(big);
+    expect(resolved.inkOmitted).toBe(false);
+  });
+
+  it("falls back to the stored digest for a page whose ink is not loaded", () => {
+    const resolved = resolveNotebookPageThumbnail(
+      page({ thumbnail: { inkSvg: "<svg>thumb</svg>", strokes: [], inkOmitted: false } })
+    );
+
+    expect(resolved.inkSvg).toBe("<svg>thumb</svg>");
   });
 
   it("holds ink records to the same limit as an inline page snapshot", () => {

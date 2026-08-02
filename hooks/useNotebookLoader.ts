@@ -26,7 +26,9 @@ import {
   getNotebookById,
   getNotebookFiles,
   getNotebookPages,
+  getNotebookPageWithInk,
 } from "@/services/study/notebooks";
+import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 
 export type NotebookDraftConflict = {
   draft: NotebookPageDraft;
@@ -55,6 +57,11 @@ export type NotebookLoader = {
   setNotebook: Dispatch<SetStateAction<Notebook | null>>;
   pages: NotebookPage[];
   setPages: Dispatch<SetStateAction<NotebookPage[]>>;
+  /**
+   * Loads a page's ink before it is opened for editing. False means the ink
+   * could not be fetched and the page must not be shown as an empty canvas.
+   */
+  hydratePageInk: (pageId: string) => Promise<boolean>;
   files: NotebookFile[];
   setFiles: Dispatch<SetStateAction<NotebookFile[]>>;
   /** Download URLs for image backgrounds, keyed by file id. */
@@ -93,6 +100,11 @@ export function useNotebookLoader({
 }: UseNotebookLoaderOptions): NotebookLoader {
   const [notebook, setNotebook] = useState<Notebook | null>(null);
   const [pages, setPages] = useState<NotebookPage[]>([]);
+  // Read through a ref so page hydration stays referentially stable across
+  // renders, matching how the other notebook handlers avoid re-subscribing
+  // pointer work on every state change.
+  const pagesRef = useRef<NotebookPage[]>([]);
+  pagesRef.current = pages;
   const [files, setFiles] = useState<NotebookFile[]>([]);
   const [fileUrls, setFileUrls] = useState<Record<string, string>>({});
   const [resolvedImageFileIds, setResolvedImageFileIds] = useState<
@@ -168,6 +180,21 @@ export function useNotebookLoader({
         nextPages.find((page) => page.id === requestedPageId)?.id ??
         nextPages[0]?.id ??
         null;
+      // Pages arrive without ink once they are stored in the split shape, so
+      // the page about to be edited needs its ink record before anything
+      // compares against it. This must happen before the draft decision below,
+      // which weighs a local draft against the saved page's content.
+      const lightSelectedPage = nextPages.find(
+        (page) => page.id === nextSelectedPageId
+      );
+      if (lightSelectedPage) {
+        const hydrated = await getNotebookPageWithInk(userId, lightSelectedPage);
+        if (hydrated !== lightSelectedPage) {
+          nextPages = nextPages.map((page) =>
+            page.id === hydrated.id ? hydrated : page
+          );
+        }
+      }
       const nextSelectedPage = nextPages.find(
         (page) => page.id === nextSelectedPageId
       );
@@ -323,11 +350,85 @@ export function useNotebookLoader({
     });
   }, [draftConflict, userId]);
 
+  /**
+   * Ensures a page holds its full-fidelity ink before it is drawn on.
+   *
+   * Called when navigating to a page, because pages load without ink once they
+   * are stored in the split shape. Resolves to true when the page is ready to
+   * edit and false when its ink could not be fetched -- the caller must not
+   * open a page for editing on a false, or an autosave would write an empty
+   * canvas over saved work.
+   */
+  const hydratePageInk = useCallback(
+    async (pageId: string): Promise<boolean> => {
+      const target = pagesRef.current.find((page) => page.id === pageId);
+      if (!target || !userId) return false;
+      // A page with nothing to fetch is already ready, and asking for an ink
+      // record that does not exist would be a read per blank page.
+      if (!pageHasUnloadedInk(target)) return true;
+
+      try {
+        const hydrated = await getNotebookPageWithInk(userId, target);
+        if (hydrated !== target) {
+          setPages((current) =>
+            current.map((page) => (page.id === hydrated.id ? hydrated : page))
+          );
+        }
+        return true;
+      } catch (error) {
+        console.error("Failed to load this page's drawing.", error);
+        latestRef.current.onFeedback({
+          type: "error",
+          message:
+            "Jami could not load this page's drawing. Stay on this page and try again in a moment.",
+        });
+        return false;
+      }
+    },
+    [setPages, userId]
+  );
+
+  // Swiping between pages commits inside an animation frame and cannot wait on
+  // a fetch, so the neighbours of the open page are loaded in advance. A swipe
+  // then finds their ink already in memory.
+  useEffect(() => {
+    const index = pages.findIndex((page) => page.id === selectedPageId);
+    if (index < 0 || !userId) return;
+    const ownerId = userId;
+
+    let cancelled = false;
+    const neighbours = [pages[index - 1], pages[index + 1]].filter(
+      (page): page is NotebookPage => Boolean(page) && pageHasUnloadedInk(page)
+    );
+
+    void (async () => {
+      for (const neighbour of neighbours) {
+        if (cancelled) return;
+        try {
+          const hydrated = await getNotebookPageWithInk(ownerId, neighbour);
+          if (cancelled || hydrated === neighbour) continue;
+          setPages((current) =>
+            current.map((page) => (page.id === hydrated.id ? hydrated : page))
+          );
+        } catch {
+          // A prefetch is an optimisation. Failing silently is correct here:
+          // navigating to the page runs hydratePageInk, which reports the
+          // failure and refuses to open an empty canvas.
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pages, selectedPageId, userId]);
+
   return {
     notebook,
     setNotebook,
     pages,
     setPages,
+    hydratePageInk,
     files,
     setFiles,
     fileUrls,

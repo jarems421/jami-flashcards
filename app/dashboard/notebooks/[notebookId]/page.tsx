@@ -225,6 +225,7 @@ export default function NotebookEditorPage() {
     files,
     setFiles,
     fileUrls,
+    hydratePageInk,
     resolvedImageFileIds,
     selectedPageId,
     setSelectedPageId,
@@ -1194,17 +1195,11 @@ export default function NotebookEditorPage() {
   ]);
 
   const prepareCurrentPageForNavigation = useCallback(async () => {
-    if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) {
-      return false;
-    }
-    if (
-      hasSaveInFlight() ||
-      pageState.read().saveStatus === "saving" ||
-      pageState.read().saveStatus === "unsaved" ||
-      pageState.read().saveStatus === "failed"
-    ) {
-      return saveCurrentPage({ flush: true });
-    }
+    if (inkEditorRef.current?.isInteracting() || inkInteractionActiveRef.current) return false;
+    const { saveStatus } = pageState.read();
+    const savePending =
+      saveStatus === "saving" || saveStatus === "unsaved" || saveStatus === "failed";
+    if (hasSaveInFlight() || savePending) return saveCurrentPage({ flush: true });
     return true;
   }, [hasSaveInFlight, inkInteractionActiveRef, pageState, saveCurrentPage]);
 
@@ -1214,10 +1209,13 @@ export default function NotebookEditorPage() {
       if (pageNavigationLockedRef.current) return false;
       const ready = await prepareCurrentPageForNavigation();
       if (!ready) return false;
+      // Ink first: selecting a page before its ink arrives would mount an
+      // empty canvas that autosave could write over the saved drawing.
+      if (!(await hydratePageInk(pageId))) return false;
       setSelectedPageId(pageId);
       return true;
     },
-    [pageState, prepareCurrentPageForNavigation, setSelectedPageId]
+    [hydratePageInk, pageState, prepareCurrentPageForNavigation, setSelectedPageId]
   );
 
   const prefersReducedNotebookMotion = useCallback(
