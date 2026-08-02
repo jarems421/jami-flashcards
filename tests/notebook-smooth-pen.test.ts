@@ -149,6 +149,36 @@ describe("the smooth pen", () => {
     expect(reach.x + reach.w).toBeGreaterThan(86 - PEN_WIDTH);
   });
 
+  it("eases the line towards its own curve without moving the pen's end", () => {
+    /*
+     * The lightest guidance: interior points are nudged a fraction towards
+     * the line between their neighbours, which on a curve means very slightly
+     * inside it. The newest point is never moved -- shifting that is what
+     * would be felt as the ink trailing the pen, and it is the whole
+     * difference between guidance and being dragged.
+     */
+    const points = arc();
+    const path = buildStroke(points).getParts()[0].path;
+
+    const ends: Point2[] = [];
+    for (const part of path.parts) {
+      if ("endPoint" in part) ends.push(part.endPoint);
+    }
+
+    // The line still finishes exactly where the pen did.
+    const last = ends[ends.length - 1];
+    const drawnTo = points[points.length - 1].pos;
+    expect(last.x).toBeCloseTo(drawnTo.x, 6);
+    expect(last.y).toBeCloseTo(drawnTo.y, 6);
+
+    // Every sample sat exactly on a circle of radius 150. Easing pulls the
+    // interior of the line a little inside it -- and only a little.
+    const radii = ends.map((p) => Math.hypot(p.x - 300, p.y - 300));
+    const meanRadius = radii.reduce((sum, r) => sum + r, 0) / radii.length;
+    expect(meanRadius).toBeLessThan(150);
+    expect(meanRadius).toBeGreaterThan(150 * 0.995);
+  });
+
   it("stores a small fraction of the samples it was given", () => {
     const points = arc();
     const smooth = buildStroke(points).getParts()[0].path.parts.length;
