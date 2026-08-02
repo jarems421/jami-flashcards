@@ -104,6 +104,35 @@ full Vitest (1,132 passed, 0 skipped), Firestore + Storage rules, production
 build, and the Playwright suite including `e2e/production-matrix.spec.ts` at
 1440px desktop, 1024×1366 tablet and 390×844 phone.
 
+## Follow-up, 2026-08-02
+
+Four things closed after the campaign report above.
+
+**Silent catches.** The seventeen without a reason comment now have one. No
+runtime change.
+
+**Scaling, measured rather than assumed.** `scripts/measure-data-shape.mjs`
+counted the live account: 7 cards, 1 deck, 1 source, 17 notebooks. The
+complete-collection reads in the audit are touching tens of documents, so no
+pagination and no search index is justified. Thresholds were fixed before
+running it and are recorded in `docs/data-access-audit.md`.
+
+**Notebook page ink split.** The read that actually grows was notebooks, not
+cards. Ink moved to `users/{uid}/notebookPageInk/{pageId}`, fetched only for
+the open page and its neighbours, with a bounded thumbnail digest on the page
+record for the drawer. Legacy pages keep inline ink and convert on save.
+`scripts/seed-large-notebook.mjs` builds a large notebook in either shape so
+the difference can be timed on a real device.
+
+**The browser suite was testing the dev server.** It ran against `next dev`,
+so a route reached late under load could exceed its wait and fail a test that
+passed in isolation -- different failures on every run, none of them defects.
+It now builds and serves the app: 18 passed, about six minutes instead of
+twenty, and the production surface matrix finally tests production output.
+
+This last one devalues the browser evidence in the report above, and in the
+campaign baseline. Those runs were green, but against the dev server.
+
 **Verification caveat.** The campaign arrived as one uncommitted working tree
 of 199 paths. It was carved into eight subsystem commits for review, but only
 the tip is gate-verified — the intermediate commits were never materialized as
