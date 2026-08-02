@@ -1,21 +1,24 @@
 # Jami manual test script
 
-Everything on this list is live on `main`. The unit suite, the build, and an
-emulator-backed browser suite all pass, but "the tests pass" and "it looks
-right" are different claims, and the items below only have the first.
+Everything on this list is live on `main`. The unit suite (1,180 tests), the
+build, and an emulator-backed browser suite against a production build all
+pass, but "the tests pass" and "it works on a real device" are different
+claims, and the items below only have the first.
 
 **What is already covered automatically** (do not redo these by hand):
 `npm run test:e2e` drives a signed-in browser through notebook autosave,
 drawing, toolbar docking, reload, and back-navigation, plus the study review
-loop — at desktop, tablet, and phone widths. What it cannot cover is anything
-needing an Apple Pencil, and anything where the failure is "looks wrong"
-rather than "throws".
+loop and the security headers — at desktop, tablet, and phone widths. What it
+cannot cover is anything needing an Apple Pencil, anything where the failure
+is "looks wrong" rather than "throws", and anything only visible in
+production logs.
 
 **Verified on iPad as of 2026-07-31:** notebook writing feel after the ink
-controller extraction, and undo ordering across ink and text boxes.
+controller extraction, and undo ordering across ink and text boxes. Both need
+re-checking — the ink loading and saving path changed underneath them since.
 
-Ordered by blast radius, not by feature. The first section can break screens
-that have nothing to do with AI, so start there even though it looks boring.
+Ordered by blast radius, not by feature. The first sections can break screens
+that have nothing to do with AI, so start there even though they look boring.
 
 Check at three widths where layout is involved: **desktop ~1440px**,
 **tablet ~820px**, **phone ~390px**.
@@ -25,162 +28,207 @@ scroll sideways.** Long equations must scroll inside their own box.
 
 ---
 
-## 1. Regressions — widest reach, check first
+## 0. Do this first: open the browser console and leave it open
 
-### 1.1 Existing cards still render as they did
+A Content-Security-Policy went live in Report-Only mode. Every violation it
+reports is free data, and collecting it is the whole point of this pass.
 
-**The single most valuable check on this list.** `StudyText` now routes text
-through KaTeX, and every card in your account predates that.
+Report-Only messages read like *"would have been blocked"* or *"Refused to …
+(report only)"*. **These are not failures.** They are the list of what must be
+added to the policy before the rest of it can be enforced. Copy any you see,
+along with the page you were on.
 
-Find a card created before today with maths in it — one showing Unicode like
-`x²`, `√`, `·` rather than `$…$`.
+An actual red error with no "report only" qualifier **is** a failure — that
+means one of the enforced directives bit.
 
-- ✅ Renders exactly as before: superscripts raised, `a/b` as a stacked fraction
-- ❌ Shows literal `x^2`, or a plain slash where a fraction used to be
+---
 
-Check it in **study**, **deck detail**, and the **cards list**.
+## 1. Sign-in and page loading — widest reach
 
-### 1.2 Form fields everywhere
+Four directives are enforced rather than merely reported: `frame-ancestors`,
+`object-src`, `base-uri` and `form-action`. A mistake in these breaks screens
+with nothing to do with any feature, which is why this is first.
 
-The `.app-field` focus style changed, and that class is on nearly every input
-and textarea in the app.
+### 1.1 Google sign-in
+
+The riskiest interaction with the new headers, because `form-action 'self'` is
+enforced and the auth handshake leaves the origin.
+
+- Sign out completely, then sign in with Google
+- ✅ Redirects out, comes back signed in, lands on the dashboard
+- ❌ Blank page, a console error naming `form-action`, or a redirect loop
+- Repeat once on **phone width** — the redirect flow differs from the popup
+
+### 1.2 Hard reload on several pages
+
+Hard reload (Ctrl/Cmd+Shift+R) on: dashboard, a deck, study, library, a
+notebook, profile.
+
+- ✅ Every page renders fully, styled, with its data
+- ❌ Unstyled text, missing images or icons, or a page that renders empty
+
+### 1.3 The installed app
+
+- ✅ The PWA still installs, or still opens if already installed
+- ✅ Profile → the test notification button still delivers
+- ❌ The service worker fails to register (the console will say so)
+
+---
+
+## 2. The notebook ink split — highest data-loss risk
+
+Page ink moved out of the page record into its own document. **Pages saved
+before that change keep their ink inline and are converted the first time you
+save them.** That conversion is the riskiest operation in the app right now,
+so test it deliberately rather than incidentally.
+
+### 2.1 An old notebook still opens with its ink
+
+Find a notebook with real drawing on it from **before today**.
+
+- ✅ Every page shows exactly the ink you remember, on the right pages
+- ❌ A blank page where you drew, or ink appearing on the wrong page
+
+### 2.2 The conversion moment
+
+In that same old notebook: **add one new stroke to a page that already had
+ink**, let it save, then reload.
+
+- ✅ Both the old ink and the new stroke are there after the reload
+- ❌ The old ink is gone and only the new stroke survived — **stop and say so
+      immediately**, this is the failure the section exists for
+
+Repeat on a second page of the same notebook.
+
+### 2.3 Blank pages stay blank
+
+- ✅ A page you never drew on is still empty after navigating away and back
+- ❌ A faint, low-resolution version of a drawing appears on it — that would be
+      the thumbnail digest being loaded as if it were ink
+
+### 2.4 Fast page navigation
+
+Move through pages faster than they can load.
+
+- ✅ Pages settle on the right ink; none end up blank
+- ❌ Ink from one page briefly painted onto another
+
+### 2.5 A large notebook
+
+```
+node scripts/seed-large-notebook.mjs --pages 100 --yes
+```
+
+- ✅ Opens in reasonable time rather than fetching all 100 pages
+- ✅ Jumping to page 50, then 90, stays responsive
+- Delete the notebook afterwards — that removes everything the script created
+
+### 2.6 Apple Pencil, on the iPad
+
+The part no suite can reach.
+
+- ✅ Writing feels immediate, with no lag building over a long page
+- ✅ Palm rejection still works
+- ✅ Undo steps back through ink and typed text in the order you did them
+- ❌ Undo jumps out of order, or removes something you did not do last
+
+---
+
+## 3. The AI pipeline — all three routes changed
+
+Behaviour should be identical; only logging was added. That is exactly the
+kind of change that looks safe and is worth ten minutes.
+
+### 3.1 Card autocomplete
+
+Create a card in a maths deck. Front: *"What is the derivative of x cubed?"*
+Press **Draft** on the Back label row.
+
+- ✅ A back is drafted, and the **Preview** shows it as rendered maths
+- ✅ Save it, then confirm it renders in study, deck detail and the cards list
+- ❌ Preview shows raw `$…$`, or no draft returns at all
+
+### 3.2 Source drafting
+
+Library → a source with real pasted text → **Create from this**.
+
+- ✅ **Light** → around 3 drafts; **Thorough** → around 8, noticeably deeper
+- ✅ Follow one through: edit it, pick a deck, add it, confirm it lands there
+- ✅ Make twice in a row → the second does not repeat the first's ideas
+- ✅ Editing a draft shows "Saving…" then "Saved"; merely selecting one does
+      not write
+
+### 3.3 Jami tutor
+
+Notebook → **Jami Tutor**. Ask: *"Explain the chain rule and show me a worked
+example, step by step."*
+
+- ✅ Waiting messages progress, then the answer arrives
+- ✅ Real notation, not raw `$$…$$`; display maths centred on its own line
+- ✅ The Used receipt underneath names what it drew on
+- ❓ Does the answer stream in progressively or land all at once? Either is
+      worth reporting
+
+Then in a study session, **before flipping a card**:
+
+- ✅ Jami says it cannot see the answer and suggests flipping
+- ❌ It gives the answer away, or invents one and presents it as the card's
+
+---
+
+## 4. The new logs — only visible in the deploy
+
+Nothing here shows in the UI. After section 3, open the production logs.
+
+- ✅ Each AI action produced JSON lines carrying `event`, `route`,
+      `requestId`, `uid` and `durationMs`
+- ✅ A successful one has `event: "request.completed"` with token counts
+- ✅ **No card text, source text, or anything you typed appears anywhere in
+      them** — redaction works from a list of field names, so this is the
+      check that actually matters
+- ❌ Any student text at all — tell me the field name and I will add it
+
+If a request failed, its lines should all share one `requestId`, so the model
+fallback and the failure read as one story.
+
+---
+
+## 5. Regressions from earlier phases
+
+Not re-checked recently, still worth a pass.
+
+### 5.1 Existing cards still render as they did
+
+`StudyText` routes text through KaTeX and older cards predate that. Find a
+card with maths written as Unicode (`x²`, `√`, `·`) rather than `$…$`.
+
+- ✅ Renders as before: superscripts raised, `a/b` as a stacked fraction
+- ❌ Literal `x^2`, or a plain slash where a fraction used to be
+
+Check in **study**, **deck detail** and the **cards list**.
+
+### 5.2 Form fields
 
 Click into fields on: add a card, add a source, rename a deck, profile
 username, notebook title.
 
 - ✅ On focus the border brightens and the glow sits evenly around it
-- ❌ A second outline offset below the field, or no visible focus state at all
+- ❌ A second outline offset below the field, or no visible focus state
 
-### 1.3 Themes do not break readability
+### 5.3 Themes
 
-Profile → Theme. Try **all six**, and on each, visit dashboard, a deck, study,
+Profile → Theme. Try **all six**, and on each visit dashboard, a deck, study
 and library.
 
-- ✅ Text stays readable, borders visible, buttons legible on every theme
+- ✅ Text readable, borders visible, buttons legible on every theme
 - ❌ Any surface where text and background are near the same shade
-- Pay particular attention to **Black**: separation comes from borders rather
-  than shadows there, so flat or invisible panel edges are the failure
+- Watch **Black** especially — separation comes from borders, not shadows
 - And **Pink** next to **Purple** — if they read as the same theme, say so
 
-The picker itself: six swatches, three across on phone, tick on the selected
-one, and the tick should be visible on both the White and Black swatches.
+### 5.4 Long equations on phone
 
----
-
-## 2. Things that write data
-
-### 2.1 Drafting from a source
-
-Library → select a source with real pasted text → **Create from this**.
-
-- ✅ Panel opens even with no drafts yet
-- ✅ Pick **Light**, press **Make** on Flashcards → around 3 drafts
-- ✅ Pick **Thorough**, make again → around 8, and noticeably more detailed
-- ❌ Depth makes no difference to count or detail
-
-Then follow one all the way: edit it, pick a deck, add it → ✅ it appears in
-that deck. Repeat for a practice question → ✅ it appears as a notebook page.
-
-### 2.2 Draft auto-save
-
-In a draft, edit the Back field and **wait a second without pressing anything**.
-
-- ✅ "Saving…" then "Saved" appears
-- ✅ Close the panel, reopen it, select the same draft — your edit is there
-- ❌ Edit is lost, or "Saving…" fires on every keystroke
-
-Then click between two drafts without editing.
-
-- ❌ Anything saves. Selecting a draft is not an edit and must not write
-
-### 2.3 Reject
-
-- ✅ The bin icon rejects one draft and it disappears
-- ✅ **Reject all** clears the rest
-- ✅ Neither asks for confirmation (nothing is deleted, they are marked rejected)
-
-### 2.4 Card autocomplete
-
-Create a card in a maths deck. Front: *"What is the derivative of x cubed?"*
-Press **Draft** on the Back label row.
-
-- ✅ A back is drafted, and the **Preview** below shows it as rendered maths
-- ✅ Save it, then confirm it renders on the card face in study, deck detail and
-      the cards list
-- ❌ Preview shows raw `$…$`, or no Preview appears at all
-
----
-
-## 3. Behaviour changes
-
-### 3.1 Jami cannot see an unflipped answer
-
-Study session → **Jami** button beside the progress bar.
-
-- ✅ The button is a small pill, not a full-width bar
-- ✅ Opening it **before flipping** shows the note explaining Jami cannot see
-      the answer
-- ✅ Ask "just tell me the answer" → it says it cannot see it and suggests
-      flipping
-- ❌ It gives the answer away, or invents one and presents it as the card's
-
-Then **flip** the card.
-
-- ✅ The drawer closed on flip
-- ✅ Reopening shows different starters, and answers now explain directly
-
-Also worth judging: on a card you have failed several times, does the
-explanation offer more scaffolding than on an easy one? That is the memory
-profile working, and it is a soft signal — judge across a few cards.
-
-### 3.2 Source-first grounding
-
-Library → a source → **Ask Jami about this**. Ask something the source only
-partly covers.
-
-- ✅ Teaches from your source first, then extends beyond it
-- ✅ Says plainly when it is going past what the source covers
-- ❌ Ignores the source, or refuses to go beyond it at all
-
-### 3.3 Conversation focus
-
-After a conversation about a source, open **Create from this**.
-
-- ✅ A checkbox offers to focus on what you discussed
-- ✅ With it on, drafts lean towards that part of the source
-- ❌ The checkbox appears when you have never spoken to Jami about that source
-
----
-
-## 4. Polish
-
-### 4.1 Waiting and streaming
-
-Notebook → **Jami Tutor**. Ask: *"Explain the chain rule and show me a worked
-example, step by step."* (forces the longest path)
-
-- ✅ "Jami is thinking" appears, then changes to "Cooking something up" around
-      4s, "Still going" around 9s
-- ✅ Each message animates in once, no continuous bouncing
-- ✅ The waiting bubble disappears when the answer starts
-- ❓ **Does the answer appear progressively, or all at once?** Either is worth
-      reporting — this is the open streaming question, and "all at once" is a
-      real possible answer, not necessarily a bug
-
-### 4.2 Maths and spacing in answers
-
-Same drawer: *"Show me the quadratic formula on its own line, and inline show
-me x squared plus y squared."*
-
-- ✅ Real notation, a proper fraction bar and √, not raw `$$…$$`
-- ✅ Display maths centred on its own line, inline maths on the text line
-
-Then: *"Give me three separate paragraphs and then a bulleted list of four items."*
-
-- ✅ Normal single spacing
-- ❌ A blank line between every paragraph and bullet
-
-Then on **phone width**: *"Show me a really long equation with many terms."*
+In a Jami answer and on a card: *"Show me a really long equation with many
+terms."*
 
 - ✅ Scrolls inside its own box
 - ❌ The whole page scrolls sideways
@@ -189,6 +237,9 @@ Then on **phone width**: *"Show me a really long equation with many terms."*
 
 ## Reporting back
 
-Useful details: which surface, what you typed, what you expected, what you got,
-and the width. **A screenshot of any maths that renders wrongly is worth a lot**
-— that is the hardest category to describe in words.
+Useful details: which surface, what you typed, what you expected, what you
+got, and the width.
+
+**Two things are worth more than the rest:** a screenshot of any maths that
+renders wrongly, and the exact text of any CSP console message. The second is
+what turns the rest of the policy from reported into enforced.
