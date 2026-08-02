@@ -137,38 +137,22 @@ describe("chisel highlighter geometry", () => {
 });
 
 /**
- * The stroke used to stop dead partway through a curve and resume after it.
- * Offsetting by a fixed nib only describes the swept area while travel stays
- * on one side of the nib's axis; crossing that axis folded the outline into a
- * bowtie whose crossed lobe cancelled itself under the nonzero winding rule.
+ * The stroke used to break apart where it doubled back: mid-curve at first,
+ * and as a mesh of holes where one continuous motion crossed itself. Both had
+ * the same cause. A single outline around the whole stroke is only valid while
+ * the path stays on one side of the nib's axis and never turns tighter than
+ * the nib reaches; past either limit it folds through itself and the crossed
+ * region takes a winding number of zero, punching it out of the fill.
+ *
+ * Sweeping each step as its own parallelogram removes the possibility instead
+ * of handling the cases, and these pin that structure.
  */
-describe("staying continuous through a turn", () => {
-  /**
-   * There is deliberately no "is the centre of the curve filled" test here.
-   *
-   * One was written, and it passed with the fold bug reintroduced:
-   * `closedContainsPoint` does not model the nonzero winding rule the renderer
-   * actually fills with, so it reported the cancelled lobe as covered. Keeping
-   * it would have been false assurance. The two tests below encode the fix
-   * itself and were both confirmed to fail when it is removed; continuity was
-   * checked by rendering an arc, a loop and a wave and looking at them.
-   */
-  it("splits the turn into separate subpaths rather than one folded outline", () => {
-    const path = buildStroke(halfCircle()).getParts()[0].path;
-    const subpathStarts = path.parts.filter(
-      (part) => part.kind === jsDraw.PathCommandType.MoveTo
-    );
-
-    expect(subpathStarts.length).toBeGreaterThanOrEqual(1);
-  });
-
-  it("winds every subpath the same way, so they union instead of cancelling", () => {
-    const path = buildStroke(halfCircle()).getParts()[0].path;
-
-    // Split the outline back into its subpaths and take each one's signed
-    // area. Two subpaths wound opposite ways would subtract where they meet
-    // and reopen the hole the splitting exists to close.
+describe("never eating a hole in itself", () => {
+  /** The outline split back into its subpaths. */
+  function subpathsOf(points: StrokeDataPoint[]): Point2[][] {
+    const path = buildStroke(points).getParts()[0].path;
     const subpaths: Point2[][] = [[path.startPoint]];
+
     for (const part of path.parts) {
       const corner =
         part.kind === jsDraw.PathCommandType.MoveTo ||
@@ -178,29 +162,73 @@ describe("staying continuous through a turn", () => {
       if (part.kind === jsDraw.PathCommandType.MoveTo) subpaths.push([corner]);
       else subpaths[subpaths.length - 1].push(corner);
     }
+    return subpaths;
+  }
 
-    const signs = subpaths
-      .filter((corners) => corners.length > 2)
-      .map((corners) => {
-        let twiceArea = 0;
-        for (let index = 0; index < corners.length; index += 1) {
-          const here = corners[index];
-          const next = corners[(index + 1) % corners.length];
-          twiceArea += here.x * next.y - next.x * here.y;
-        }
-        return Math.sign(twiceArea);
+  function signedArea(corners: Point2[]) {
+    let twice = 0;
+    for (let index = 0; index < corners.length; index += 1) {
+      const here = corners[index];
+      const next = corners[(index + 1) % corners.length];
+      twice += here.x * next.y - next.x * here.y;
+    }
+    return twice / 2;
+  }
+
+  it("sweeps each step as its own convex quad, which cannot fold", () => {
+    const subpaths = subpathsOf(halfCircle());
+
+    expect(subpaths.length).toBeGreaterThan(4);
+    for (const corners of subpaths) {
+      expect(corners).toHaveLength(4);
+
+      // Convexity: every turn around the quad goes the same way. A folded
+      // outline is exactly what fails this.
+      const turns = corners.map((corner, index) => {
+        const next = corners[(index + 1) % 4];
+        const after = corners[(index + 2) % 4];
+        const a = next.minus(corner);
+        const b = after.minus(next);
+        return Math.sign(a.x * b.y - a.y * b.x);
       });
+      expect(new Set(turns.filter((turn) => turn !== 0)).size).toBe(1);
+    }
+  });
 
-    expect(signs.length).toBeGreaterThan(1);
+  it("winds every quad the same way, so overlaps add instead of cancelling", () => {
+    // A stroke scrubbed back over itself, which is where the mesh appeared.
+    const scrub: StrokeDataPoint[] = [];
+    for (let pass = 0; pass < 4; pass += 1) {
+      for (let step = 0; step < 20; step += 1) {
+        const x = pass % 2 === 0 ? 20 + step * 6 : 134 - step * 6;
+        scrub.push(point(x, 20 + pass * 3));
+      }
+    }
+
+    const signs = subpathsOf(scrub).map((corners) =>
+      Math.sign(signedArea(corners))
+    );
+
+    expect(signs.length).toBeGreaterThan(10);
     expect(new Set(signs).size).toBe(1);
   });
 
-  it("smooths its edges into curves rather than a chain of corners", () => {
-    const path = buildStroke(halfCircle()).getParts()[0].path;
-    const curves = path.parts.filter(
-      (part) => part.kind === jsDraw.PathCommandType.QuadraticBezierTo
+  it("steadies tremor rather than tracing it", () => {
+    // A straight sweep with alternating noise on every sample.
+    const jittery = Array.from({ length: 40 }, (_, step) =>
+      point(20 + step * 6, step % 2 === 0 ? 6 : -6)
     );
 
-    expect(curves.length).toBeGreaterThan(4);
+    // Each quad's leading edge spans one steadied sample, so the midpoint of
+    // its two corners recovers the path actually swept.
+    const centres = subpathsOf(jittery).map((corners) =>
+      corners[0].lerp(corners[3], 0.5)
+    );
+    const spread =
+      Math.max(...centres.map((centre) => centre.y)) -
+      Math.min(...centres.map((centre) => centre.y));
+
+    // The raw input swings across 12 units every sample.
+    expect(spread).toBeLessThan(12);
   });
 });
