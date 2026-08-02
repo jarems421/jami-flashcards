@@ -229,6 +229,26 @@ describe("never eating a hole in itself", () => {
     expect(new Set(signs).size).toBe(1);
   });
 
+  it("sweeps a straight highlight in few footprints, not dozens", () => {
+    /*
+     * The precision eraser divides a filled shape at its edges, so every
+     * footprint the eraser only partly covers leaves its remainder behind.
+     * Across a wash of dozens of overlapping footprints that is a scatter of
+     * specks needing several passes to clear. A straight run over a word is
+     * one shape, and should be swept in about as few.
+     */
+    const straight = Array.from({ length: 60 }, (_, step) =>
+      point(20 + step * 4, 40)
+    );
+
+    expect(subpathsOf(straight).length).toBeLessThan(8);
+  });
+
+  it("still bends where the path bends", () => {
+    // Thinning footprints must not flatten a curve into a few long chords.
+    expect(subpathsOf(halfCircle()).length).toBeGreaterThan(6);
+  });
+
   it("steadies tremor rather than tracing it", () => {
     // A straight sweep with alternating noise on every sample.
     const jittery = Array.from({ length: 40 }, (_, step) =>
