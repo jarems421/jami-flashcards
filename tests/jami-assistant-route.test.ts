@@ -467,4 +467,71 @@ describe("universal Jami assistant route", () => {
     expect(mocks.prepareSource).not.toHaveBeenCalled();
     expect(mocks.streamText).not.toHaveBeenCalled();
   });
+
+  /**
+   * The logger redacts by field name, which is only worth anything if the route
+   * actually routes its logs through it. This drives a real request whose every
+   * moving part carries recognisable student text, then reads back what was
+   * written.
+   */
+  it("logs a correlated request without writing student work to the log", async () => {
+    const lines: string[] = [];
+    const capture = (line: unknown) => {
+      lines.push(String(line));
+    };
+    const spies = [
+      vi.spyOn(console, "log").mockImplementation(capture),
+      vi.spyOn(console, "warn").mockImplementation(capture),
+      vi.spyOn(console, "error").mockImplementation(capture),
+    ];
+
+    try {
+      mocks.prepareSource.mockRejectedValue(
+        new Error("This source could not be read.")
+      );
+      mocks.streamText.mockRejectedValue(
+        Object.assign(new Error("Gemini is overloaded"), { status: 503 })
+      );
+
+      await readStream(
+        await postAssistant(
+          request(
+            validBody({ message: "Explain SECRET_STUDENT_QUESTION to me." })
+          )
+        )
+      );
+    } finally {
+      spies.forEach((spy) => spy.mockRestore());
+    }
+
+    // Every line parses on its own, which is what a log search depends on.
+    const records = lines.map((line) => JSON.parse(line));
+    expect(records.length).toBeGreaterThanOrEqual(2);
+
+    // The unreadable source and the provider failure are one story.
+    const requestIds = new Set(records.map((record) => record.requestId));
+    expect(requestIds.size).toBe(1);
+    expect(records.every((record) => record.route === "ai.assistant")).toBe(
+      true
+    );
+    expect(records.map((record) => record.event)).toEqual(
+      expect.arrayContaining(["source.prepare_failed", "provider.failed"])
+    );
+
+    const failure = records.find(
+      (record) => record.event === "provider.failed"
+    );
+    expect(failure.error).toMatchObject({ status: 503 });
+    expect(failure.uid).toBe("user-1");
+
+    const everything = lines.join("\n");
+    for (const studentText of [
+      "SECRET_STUDENT_QUESTION",
+      "Biology notes",
+      "Plants capture light energy.",
+      "Card front and answer",
+    ]) {
+      expect(everything).not.toContain(studentText);
+    }
+  });
 });

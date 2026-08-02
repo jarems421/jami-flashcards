@@ -32,6 +32,7 @@ import {
 import { extractStreamingAnswer } from "@/lib/ai/streaming-answer";
 import { prepareSourceForTutor } from "@/lib/ai/source-ingestion";
 import { getBearerToken } from "@/lib/auth/bearer";
+import { createLogger } from "@/lib/observability/logger";
 import {
   getAdminAuth,
   getAdminStorageBucket,
@@ -71,6 +72,13 @@ export async function POST(request: NextRequest) {
   const uid = await getAuthenticatedUserId(request);
   if (!uid) return failureResponse("Unauthorized", 401, "unauthorized");
 
+  const startedAt = Date.now();
+  const log = createLogger({
+    route: "ai.assistant",
+    requestId: randomUUID(),
+    uid,
+  });
+
   let parsedRequest;
   try {
     parsedRequest = parseJamiAssistantRequest(await request.json());
@@ -100,7 +108,7 @@ export async function POST(request: NextRequest) {
     if (error instanceof JamiAssistantContextError) {
       return failureResponse(error.message, error.status, error.code);
     }
-    console.error("Could not resolve Jami assistant context:", error);
+    log.error("context.load_failed", { error });
     return failureResponse(
       "Jami could not load the current study context.",
       500,
@@ -124,7 +132,7 @@ export async function POST(request: NextRequest) {
   try {
     budgetDecision = await checkAiBudget({ uid, action: "assistant" });
   } catch (error) {
-    console.error("Could not enforce the Jami assistant AI budget.", error);
+    log.error("budget.check_failed", { error });
     return failureResponse(
       "AI usage limits are temporarily unavailable. Try again shortly.",
       503,
@@ -151,6 +159,14 @@ export async function POST(request: NextRequest) {
         );
         return { source, sourceRef, prepared, error: null };
       } catch (error) {
+        // The student is told which source failed, but until now nothing
+        // recorded why, so a source that never reads looked like a quiet
+        // shortfall in the answer rather than a fault.
+        log.warn("source.prepare_failed", {
+          sourceId: source.id,
+          sourceRef,
+          error,
+        });
         return {
           source,
           sourceRef,
@@ -313,10 +329,12 @@ ${responseGuidance.instruction}`;
         providerDiagnostics.push(diagnostics);
       },
       onRetry: ({ error, modelName, nextModelName }) => {
-        console.warn(
-          `Jami assistant failed on ${modelName}; retrying with ${nextModelName}.`,
-          error
-        );
+        log.warn("provider.model_fallback", {
+          attempt: "buffered",
+          modelName,
+          nextModelName,
+          error,
+        });
       },
     });
 
@@ -377,7 +395,7 @@ ${responseGuidance.instruction}`;
       successfulModelName === "gemini-2.5-flash"
         ? "gemini-2.5-flash-lite"
         : "gemini-2.5-flash";
-    console.warn("Jami assistant received invalid structured output.", {
+    log.warn("provider.invalid_structured_output", {
       depth: responseGuidance.depth,
       generatedCharacters: generated.length,
       providerDiagnostics,
@@ -417,10 +435,12 @@ ${responseGuidance.instruction}`;
             providerDiagnostics.push(diagnostics);
           },
           onRetry: ({ error, modelName, nextModelName }) => {
-            console.warn(
-              `Jami assistant stream failed on ${modelName}; retrying with ${nextModelName}.`,
-              error
-            );
+            log.warn("provider.model_fallback", {
+              attempt: "stream",
+              modelName,
+              nextModelName,
+              error,
+            });
           },
         })) {
           buffer += chunk;
@@ -439,10 +459,11 @@ ${responseGuidance.instruction}`;
         }
 
         if (!parsedAnswer) {
-          console.error("Jami assistant structured-output retry failed.", {
+          log.error("provider.structured_retry_failed", {
             depth: responseGuidance.depth,
             generatedCharacters: buffer.length,
             providerDiagnostics,
+            durationMs: Date.now() - startedAt,
           });
           controller.enqueue(
             event({
@@ -456,6 +477,12 @@ ${responseGuidance.instruction}`;
 
         const payload = buildAnswerPayload(parsedAnswer);
         if (!payload) {
+          log.warn("provider.empty_answer", {
+            depth: responseGuidance.depth,
+            generatedCharacters: buffer.length,
+            providerDiagnostics,
+            durationMs: Date.now() - startedAt,
+          });
           controller.enqueue(
             event({
               type: "error",
@@ -470,8 +497,25 @@ ${responseGuidance.instruction}`;
         // leave what was shown out of step with the final answer. Sending the
         // whole reply lets the client settle on it rather than trusting deltas.
         controller.enqueue(event({ type: "done", ...payload }));
+
+        // The token counts were already collected for the failure paths and
+        // then discarded on success, which left the usual questions — what a
+        // request costs, how long it takes, whether fallbacks are routine —
+        // answerable only from the times it went wrong.
+        log.info("request.completed", {
+          depth: responseGuidance.depth,
+          durationMs: Date.now() - startedAt,
+          sourceCount: readable.length,
+          sourceFailureCount: sourceFailures.length,
+          providerDiagnostics,
+        });
       } catch (error) {
-        console.error("Jami assistant provider error:", error);
+        log.error("provider.failed", {
+          error,
+          depth: responseGuidance.depth,
+          durationMs: Date.now() - startedAt,
+          providerDiagnostics,
+        });
         controller.enqueue(
           event({
             type: "error",
