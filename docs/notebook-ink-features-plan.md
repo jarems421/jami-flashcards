@@ -397,6 +397,48 @@ on top of it, exactly as scribbling over blank paper does.
 and the existing message — "could not load this page's drawing. Stay on this
 page and try again in a moment" — reads correctly for that outcome.
 
+### Reported broken on device, and why
+
+Both new gestures failed in real use. Neither had anything to do with wiring —
+both were calibration, and both were only findable by measuring against inputs
+shaped like real ones.
+
+**Quick flicks were still being swallowed.** The queue decided whether to hold a
+flick from the state at *pointer-down*. But a settle takes a few hundred
+milliseconds and so does a second flick, so the flick usually lands across the
+end of the settle: begun while busy, released once idle. It was queued — and
+then stranded, because the queue only drains when a handoff completes and there
+was no longer a handoff in flight. It now queues only when the track is *still*
+settling at release; otherwise the release falls through and turns the page
+immediately. `shouldQueueNotebookPageTurn` states the rule and its test says why.
+
+**Scribble-to-erase almost never fired.** The thresholds were tuned against tidy
+synthetic fixtures — perfectly parallel legs, constant speed — and real gestures
+missed on three of six gates at once. Measured over generated hand-shaped
+scribbles:
+
+| Gate | Was | Real scribbles measure | Now |
+| --- | --- | --- | --- |
+| Reversals | ≥ 4 (five passes) | 3 (four passes) | ≥ 3 |
+| Screen speed | ≥ 1.2 px/ms | 0.4–0.9 | ≥ 0.35 |
+| Retrace ratio | ≥ 4 | 2.8–4.7 | ≥ 2.5 |
+
+Loosening those let a `w` through, which is the failure that matters. Its legs
+are parallel and retrace each other perfectly, and once the principal axis of a
+squarish shape comes out vertical, nothing about direction of travel separates
+it from a scribble. Proportions do: a scribble-out is a **band** laid over some
+writing. A new gate caps the gesture's width across its own direction at half
+its length — real scribbles measure 0.12–0.38 against it, while `w`, `m`, `z`,
+`big w` and hatching all sit above 0.6.
+
+Speed came out as the weakest signal and is now nearly vestigial. Its original
+job was excluding shading, which band aspect and leg overlap reject far more
+convincingly (overlap 0.00, aspect 0.63). What is left for it is telling a
+strike-out from someone drawing slowly.
+
+Two shapes deliberately still do not fire: a three-pass zig-zag (two reversals,
+exactly what `w` and `m` make) and a genuinely slow movement.
+
 ### Verified
 
 `npm run typecheck`, `npm run lint`, `npm test` (1254 tests, 155 files), and

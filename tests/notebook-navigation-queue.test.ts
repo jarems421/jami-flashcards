@@ -3,6 +3,7 @@ import {
   getNotebookPageTurnOffset,
   getQueuedNotebookPageTurn,
   resolveQueuedNotebookPageTurn,
+  shouldQueueNotebookPageTurn,
   type NotebookQueuedPageTurn,
 } from "@/lib/workspace/notebook-navigation-queue";
 
@@ -13,6 +14,42 @@ const turn = (
   direction,
   velocityX: direction === "next" ? -2.4 : 2.4,
   createsPage,
+});
+
+describe("shouldQueueNotebookPageTurn", () => {
+  it("queues a flick released while the previous turn is still settling", () => {
+    expect(
+      shouldQueueNotebookPageTurn({
+        settlingNow: true,
+        startedWhileSettling: true,
+      })
+    ).toBe(true);
+  });
+
+  /**
+   * The bug that made quick flicks look broken. A settle and a second flick
+   * both take a few hundred milliseconds, so the flick usually lands *across*
+   * the end of the settle: begun while busy, released once idle. Queuing on the
+   * starting state alone stranded it, because the queue only drains when a
+   * handoff completes and there was no longer a handoff in flight.
+   */
+  it("does not queue one released after the track went idle", () => {
+    expect(
+      shouldQueueNotebookPageTurn({
+        settlingNow: false,
+        startedWhileSettling: true,
+      })
+    ).toBe(false);
+  });
+
+  it("never queues a flick that had the track to itself", () => {
+    expect(
+      shouldQueueNotebookPageTurn({
+        settlingNow: true,
+        startedWhileSettling: false,
+      })
+    ).toBe(false);
+  });
 });
 
 describe("getQueuedNotebookPageTurn", () => {

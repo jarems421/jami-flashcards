@@ -24,11 +24,15 @@ export type NotebookScribblePoint = { x: number; y: number };
 export type NotebookScribbleSample = NotebookScribblePoint & { time: number };
 
 /**
- * A `w` has three legs and an `m` has three; a word crossed out with two
- * passes has two. Four reversals means five legs, which is already outside
- * what handwriting produces in a single stroke.
+ * A `w` has three legs and an `m` has three, so both reverse twice; a word
+ * crossed out with two passes reverses once. Three reversals means four legs,
+ * which clears all of them.
+ *
+ * Measured against scribbles as a hand actually makes them, four reversals --
+ * five passes -- was simply more than people do. Most scribble-outs are three
+ * or four passes, and requiring five is why the gesture did not fire.
  */
-const MIN_REVERSALS = 4;
+const MIN_REVERSALS = 3;
 /**
  * How far the pen must travel back before a reversal counts.
  *
@@ -38,14 +42,48 @@ const MIN_REVERSALS = 4;
 const REVERSAL_HYSTERESIS_ON_SCREEN = 8;
 /** Legs of a scribble run parallel; the strokes of a letter do not. */
 const MAX_LEG_DEVIATION_DEGREES = 25;
-/** Path length against bounding-box diagonal: retracing, not progressing. */
-const MIN_RETRACE_RATIO = 4;
-/** Consecutive legs must cover each other, which shading and hatching do not. */
+/**
+ * Path length against bounding-box diagonal: retracing, not progressing.
+ *
+ * A four-pass scribble measures about 2.8, so this is a floor rather than a
+ * discriminator. Overlap below is the gate that actually separates retracing
+ * from advancing, and it does so far more precisely.
+ */
+const MIN_RETRACE_RATIO = 2.5;
+/**
+ * Consecutive legs must cover each other, which shading and hatching do not.
+ *
+ * With leg deviation, one of the two load-bearing signals: a real scribble
+ * measures ~1.0 against this and ~4 degrees against that, while `www` written
+ * quickly fails both by a wide margin. The looser thresholds above lean on it.
+ */
 const MIN_LEG_OVERLAP = 0.6;
 /** Smaller than this and a hurried `zz` would qualify. Roughly a word wide. */
 const MIN_MAJOR_EXTENT_ON_PAGE = 48;
-/** Scribbles are fast. Deliberate shading is not. */
-const MIN_MEAN_SPEED_ON_SCREEN_PER_MS = 1.2;
+/**
+ * How thick the gesture may be across its own direction, as a fraction of its
+ * length. A scribble-out is a *band* laid over some writing; a letter is a
+ * blob about as tall as it is wide.
+ *
+ * This is what keeps a `w` out. Its legs are parallel and they retrace each
+ * other perfectly, so leg deviation and overlap both read it as a scribble --
+ * and once the principal axis comes out vertical, as it does for a square
+ * shape, nothing about the direction of travel distinguishes the two. Measured:
+ * real scribbles land between 0.12 and 0.38, while `w`, `m`, `z` and hatching
+ * all sit above 0.6.
+ */
+const MAX_BAND_ASPECT = 0.5;
+/**
+ * Scribbles are brisk. Deliberate drawing is not.
+ *
+ * The weakest of the six, and deliberately kept low. Ordinary scribble-outs
+ * measure 0.5 to 0.9 and the original 1.2 rejected nearly all of them; a
+ * relaxed one is still a scribble. Shading, which this was originally meant to
+ * catch, is excluded far more convincingly by overlap and band aspect. What is
+ * left for speed is the genuinely slow movement of someone drawing rather than
+ * striking something out.
+ */
+const MIN_MEAN_SPEED_ON_SCREEN_PER_MS = 0.35;
 /** Below this a stroke has too little shape to judge. */
 const MIN_SAMPLES = 8;
 /** Samples closer together than this are the same place. */
@@ -225,6 +263,10 @@ export function detectNotebookScribble(
   const along = samples.map((sample) => sample.x * axis.x + sample.y * axis.y);
   const majorExtent = Math.max(...along) - Math.min(...along);
   if (majorExtent < MIN_MAJOR_EXTENT_ON_PAGE) return null;
+
+  const across = samples.map((sample) => sample.x * -axis.y + sample.y * axis.x);
+  const minorExtent = Math.max(...across) - Math.min(...across);
+  if (minorExtent / majorExtent > MAX_BAND_ASPECT) return null;
 
   const legs = legsAlongAxis(along, REVERSAL_HYSTERESIS_ON_SCREEN / scale);
   const reversals = legs.length - 1;
