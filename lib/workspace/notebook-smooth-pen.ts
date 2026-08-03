@@ -62,8 +62,18 @@ const SHAPE_TOLERANCE_RATIO = 0.25;
  */
 const MAXIMUM_SPAN_RATIO = 24;
 
-/** Catmull-Rom tension. A sixth is the uniform, non-overshooting form. */
-const TANGENT_SCALE = 1 / 6;
+/**
+ * How much of a segment each control arm takes, as a fraction of that
+ * segment's own length.
+ *
+ * A third either side is the classic Catmull-Rom arm for evenly spaced points,
+ * and it keeps a cubic inside the two points it joins. The arm has to be
+ * measured against *this* segment: thinning leaves points very unevenly
+ * spaced, so an arm sized from the span between a point's neighbours can come
+ * out longer than the short segment it belongs to, and the curve then bulges
+ * past where the pen went.
+ */
+const TANGENT_SCALE = 1 / 3;
 
 /**
  * How far a point may be eased towards the line between its neighbours.
@@ -79,7 +89,7 @@ const TANGENT_SCALE = 1 / 6;
  * exempt on principle: the newest, so the line always ends exactly under the
  * pen, and any corner, so a deliberate point stays a point.
  */
-const EASE_TOWARDS_NEIGHBOURS = 0.15;
+const EASE_TOWARDS_NEIGHBOURS = 0.34;
 
 /**
  * How sharply the line must turn at a point before it is treated as a corner
@@ -265,10 +275,20 @@ export function createNotebookSmoothPenStrokeFactory(
       for (let index = 0; index < shape.length - 1; index += 1) {
         const from = at(index);
         const to = at(index + 1);
+        // Direction from the neighbours, length from this segment alone.
+        const reach = to.distanceTo(from) * TANGENT_SCALE;
+        const armOut = tangentAt(index, true);
+        const armIn = tangentAt(index + 1, false);
         commands.push({
           kind: PathCommandType.CubicBezierTo,
-          controlPoint1: from.plus(tangentAt(index, true).times(TANGENT_SCALE)),
-          controlPoint2: to.minus(tangentAt(index + 1, false).times(TANGENT_SCALE)),
+          controlPoint1:
+            armOut.magnitude() > 0
+              ? from.plus(armOut.normalized().times(reach))
+              : from,
+          controlPoint2:
+            armIn.magnitude() > 0
+              ? to.minus(armIn.normalized().times(reach))
+              : to,
           endPoint: to,
         });
       }

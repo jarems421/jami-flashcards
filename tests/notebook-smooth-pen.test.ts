@@ -179,6 +179,48 @@ describe("the smooth pen", () => {
     expect(meanRadius).toBeGreaterThan(150 * 0.995);
   });
 
+  it("never reaches past where the pen went", () => {
+    /*
+     * Thinning leaves the kept points very unevenly spaced -- a long straight
+     * run keeps almost nothing, a tight curve keeps everything. Sizing a
+     * control arm from the span between a point's neighbours then hands a
+     * short segment an arm meant for a long one, and the curve bulges outside
+     * the two points it joins. On a page that is writing reaching very
+     * slightly further than the stroke that made it.
+     *
+     * A cubic stays within its endpoints when neither arm outruns the segment;
+     * a third of it either side is the even-spacing case.
+     */
+    const points = [
+      point(20, 100),
+      point(160, 100),
+      point(168, 104),
+      point(174, 130),
+      point(176, 240),
+    ];
+    const path = buildStroke(points).getParts()[0].path;
+
+    let from = path.startPoint;
+    let worstRatio = 0;
+    for (const part of path.parts) {
+      if (part.kind === jsDraw.PathCommandType.CubicBezierTo) {
+        const span = part.endPoint.distanceTo(from);
+        if (span > 0) {
+          worstRatio = Math.max(
+            worstRatio,
+            part.controlPoint1.distanceTo(from) / span,
+            part.controlPoint2.distanceTo(part.endPoint) / span
+          );
+        }
+        from = part.endPoint;
+      } else if ("point" in part) {
+        from = part.point;
+      }
+    }
+
+    expect(worstRatio).toBeLessThan(0.4);
+  });
+
   it("stores a small fraction of the samples it was given", () => {
     const points = arc();
     const smooth = buildStroke(points).getParts()[0].path.parts.length;
