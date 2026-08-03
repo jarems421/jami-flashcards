@@ -51,6 +51,39 @@ export function saveNotebookToolbarDockPreference(
   }
 }
 
+export const NOTEBOOK_SCRIBBLE_ERASE_STORAGE_KEY =
+  "jami:notebook-scribble-erase";
+
+/**
+ * Scribbling out is on unless it has been turned off.
+ *
+ * It is the behaviour people arrive expecting, and the detection is built to
+ * need six independent signals before it acts. The switch exists because it is
+ * still a destructive gesture on the tool used for everything else.
+ */
+export function readNotebookScribbleErasePreference() {
+  if (typeof window === "undefined") return true;
+
+  try {
+    return window.localStorage.getItem(NOTEBOOK_SCRIBBLE_ERASE_STORAGE_KEY) !==
+      "off";
+  } catch {
+    // Storage can be unavailable in privacy modes; the default stands.
+    return true;
+  }
+}
+
+export function saveNotebookScribbleErasePreference(enabled: boolean) {
+  try {
+    window.localStorage.setItem(
+      NOTEBOOK_SCRIBBLE_ERASE_STORAGE_KEY,
+      enabled ? "on" : "off"
+    );
+  } catch {
+    // This is a non-critical, device-local preference.
+  }
+}
+
 export function isNotebookToolbarSideDock(dock: NotebookToolbarDock) {
   return dock === "left" || dock === "right";
 }

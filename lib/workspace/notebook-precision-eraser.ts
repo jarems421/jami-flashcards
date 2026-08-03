@@ -2,6 +2,8 @@ import type {
   AbstractComponent,
   Editor as JsDrawEditor,
   LineSegment2,
+  PathCommand,
+  RenderablePathSpec,
   SerializableCommand,
   Vec2,
 } from "js-draw";
@@ -10,6 +12,7 @@ import {
   getNotebookPrecisionEraserContactRadiusOnCanvas,
   type NotebookEraserPoint,
 } from "@/lib/workspace/notebook-eraser";
+import { unionOfConvexPolygons } from "@/lib/workspace/notebook-convex-union";
 
 type JsDrawModule = typeof import("js-draw");
 
@@ -132,6 +135,71 @@ function getComponentContactRadius(input: {
     }
   }
   return touchedRadius;
+}
+
+/**
+ * Rebuilds a highlighter saved as a row of separate footprints into one loop.
+ *
+ * Highlights drawn before the builder started tracing their union carry a path
+ * of `MoveTo`-joined subpaths, and js-draw cannot erase that shape without
+ * destroying it: `Path.asClosed()` turns every `MoveTo` into a `LineTo`, and
+ * the splitting above it pairs pieces as though the path were a single closed
+ * loop. The wash bridges between footprints and bulges outside itself.
+ *
+ * The subpaths are the convex footprints, so the same union that the builder
+ * traces at commit heals them here, on contact, covering exactly the region
+ * they already painted. The heal rides in the erase's own undo action.
+ *
+ * Returns `null` for anything that is not this shape, which includes every
+ * stroke already carrying a single loop -- so a healed highlight is not
+ * rebuilt again on the next pass.
+ */
+function healFilledMultiSubpathStroke(
+  component: AbstractComponent,
+  jsDraw: JsDrawModule
+): AbstractComponent | null {
+  const getParts = (component as AbstractComponent & {
+    getParts?: () => readonly RenderablePathSpec[];
+  }).getParts;
+  if (typeof getParts !== "function") return null;
+  const parts = getParts.call(component);
+  if (parts.length !== 1) return null;
+
+  const part = parts[0];
+  const style = part.style;
+  if (!style || style.fill.a === 0) return null;
+
+  const polygons: NotebookEraserPoint[][] = [];
+  let current: NotebookEraserPoint[] = [
+    { x: part.startPoint.x, y: part.startPoint.y },
+  ];
+  for (const command of part.commands) {
+    // Only straight-edged footprints belong to a chisel highlighter. Anything
+    // curved is a different kind of stroke and is left exactly as it is.
+    if (command.kind === jsDraw.PathCommandType.MoveTo) {
+      polygons.push(current);
+      current = [{ x: command.point.x, y: command.point.y }];
+    } else if (command.kind === jsDraw.PathCommandType.LineTo) {
+      current.push({ x: command.point.x, y: command.point.y });
+    } else {
+      return null;
+    }
+  }
+  polygons.push(current);
+  if (polygons.length < 2) return null;
+
+  const outline = unionOfConvexPolygons(polygons);
+  if (!outline) return null;
+
+  const corners = outline.map((point) => jsDraw.Vec2.of(point.x, point.y));
+  const healed: RenderablePathSpec = {
+    startPoint: corners[0],
+    commands: corners.slice(1).map(
+      (point): PathCommand => ({ kind: jsDraw.PathCommandType.LineTo, point })
+    ),
+    style,
+  };
+  return new jsDraw.Stroke([healed], component.getZIndex());
 }
 
 function isByteEquivalentReplacement(
@@ -351,8 +419,14 @@ export class NotebookPrecisionEraserGesture {
     const toAdd: AbstractComponent[] = [];
 
     for (const component of candidates) {
+      // A highlighter saved as separate footprints is rebuilt into one loop
+      // before it is cut, because js-draw cannot divide the other shape without
+      // destroying it. The heal covers the same region, and rides in this
+      // erase's own undo action.
+      const target =
+        healFilledMultiSubpathStroke(component, this.jsDraw) ?? component;
       const contactRadius = getComponentContactRadius({
-        component,
+        component: target,
         cursorDiameter: this.cursorDiameter,
         eraserFrom: fromPoint,
         eraserTo: currentPoint,
@@ -365,11 +439,15 @@ export class NotebookPrecisionEraserGesture {
         currentPoint,
         contactRadius
       );
-      const replacements = component.withRegionErased?.(
+      const replacements = target.withRegionErased?.(
         contactSweep,
         this.editor.viewport
       );
-      if (!replacements || isByteEquivalentReplacement(component, replacements)) {
+      if (
+        !replacements ||
+        (target === component &&
+          isByteEquivalentReplacement(component, replacements))
+      ) {
         continue;
       }
       // js-draw can return [] for tiny paths even when only their edge was

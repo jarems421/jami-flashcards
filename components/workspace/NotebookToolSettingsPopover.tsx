@@ -45,6 +45,8 @@ type NotebookToolSettingsPopoverProps = {
     thicknessPercent: number;
     onColorChange: (color: NotebookStrokeColor) => void;
     onThicknessChange: (percent: number) => void;
+    scribbleToErase: boolean;
+    onScribbleToEraseChange: (enabled: boolean) => void;
   };
   highlighter: {
     color: NotebookStrokeColor;
@@ -101,6 +103,41 @@ export default function NotebookToolSettingsPopover({
             previewWidth={getPenWidthFromPercent(pen.thicknessPercent)}
             onChange={pen.onThicknessChange}
           />
+          <div className="border-t border-[var(--color-border)] pt-3">
+            <button
+              type="button"
+              role="switch"
+              // Named explicitly so the helper line below stays a description
+              // rather than becoming part of the control's name.
+              aria-label="Scribble to erase"
+              aria-checked={pen.scribbleToErase}
+              onClick={() => pen.onScribbleToEraseChange(!pen.scribbleToErase)}
+              className="flex min-h-11 w-full items-center justify-between gap-3 rounded-2xl px-1 text-left transition hover:bg-[var(--color-glass-subtle)]"
+            >
+              <span>
+                <span className="block text-xs font-semibold text-text-primary">
+                  Scribble to erase
+                </span>
+                <span className="mt-0.5 block text-[0.7rem] leading-4 text-text-secondary">
+                  Scribble back and forth over writing to delete it
+                </span>
+              </span>
+              <span
+                aria-hidden="true"
+                className={`relative h-6 w-10 shrink-0 rounded-full border transition ${
+                  pen.scribbleToErase
+                    ? "border-transparent bg-[var(--color-selected-text)]"
+                    : "border-[var(--color-border-strong)] bg-[var(--color-glass-subtle)]"
+                }`}
+              >
+                <span
+                  className={`absolute top-1/2 h-4 w-4 -translate-y-1/2 rounded-full bg-white transition-[left] ${
+                    pen.scribbleToErase ? "left-[1.25rem]" : "left-[0.15rem]"
+                  }`}
+                />
+              </span>
+            </button>
+          </div>
         </div>
       ) : null}
 

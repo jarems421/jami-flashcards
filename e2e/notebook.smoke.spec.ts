@@ -283,6 +283,34 @@ test("signed-in notebook work autosaves and survives navigation and reload", asy
   expect(pageErrors).toEqual([]);
 });
 
+test("the pen settings carry the scribble-to-erase switch, on by default", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1024, height: 1366 });
+  await signIn(page);
+  await openNotebook(page);
+
+  // Pressing the active tool opens its options, the GoodNotes pattern. The pen
+  // is the tool a notebook opens on.
+  await page.getByRole("button", { name: "Pen (P)" }).click();
+
+  const scribbleSwitch = page.getByRole("switch", {
+    name: "Scribble to erase",
+  });
+  await expect(scribbleSwitch).toBeVisible();
+  await expect(scribbleSwitch).toHaveAttribute("aria-checked", "true");
+
+  await scribbleSwitch.click();
+  await expect(scribbleSwitch).toHaveAttribute("aria-checked", "false");
+
+  // The preference is device-local and has to survive a reload.
+  await page.reload();
+  await page.getByRole("button", { name: "Pen (P)" }).click();
+  await expect(
+    page.getByRole("switch", { name: "Scribble to erase" })
+  ).toHaveAttribute("aria-checked", "false");
+});
+
 test("tablet keeps notebook controls usable", async ({ page }) => {
   await page.setViewportSize({ width: 1024, height: 1366 });
   await signIn(page);

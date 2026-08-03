@@ -13,6 +13,7 @@ import {
   Rect2,
   Vec2,
 } from "@js-draw/math";
+import type { RenderablePathSpec } from "js-draw";
 // @ts-expect-error -- Direct module import avoids js-draw's browser-only package entry in node tests.
 import JsDrawStroke from "../node_modules/js-draw/dist/mjs/components/Stroke.mjs";
 
@@ -252,6 +253,8 @@ function makeHarness(
     },
     Erase: FakeEraseCommand,
     LineSegment2: geometry.LineSegment2 ?? FakeLineSegment,
+    // Read when a legacy multi-subpath highlighter is healed before erasing.
+    PathCommandType,
     Path:
       geometry.Path ??
       ({
@@ -574,5 +577,130 @@ describe("live notebook precision eraser", () => {
     expect(harness.editor.image.components).toHaveLength(1);
     gesture.finish();
     expect(harness.editor.dispatched).toHaveLength(1);
+  });
+
+  /**
+   * A highlighter saved before the builder traced its union is a row of
+   * `MoveTo`-joined footprints. `Path.asClosed()` turns each `MoveTo` into a
+   * `LineTo`, so erasing that shape welds the footprints into a zig-zag that
+   * bridges between them -- the deformation. It is rebuilt into one loop on
+   * contact instead.
+   */
+  describe("healing a legacy multi-subpath highlighter", () => {
+    /** Three overlapping square footprints, as an old straight wash saved. */
+    const legacyWash = () =>
+      JsDrawStroke.fromFilled(
+        new Path(Vec2.of(-60, -10), [
+          { kind: PathCommandType.LineTo, point: Vec2.of(-20, -10) },
+          { kind: PathCommandType.LineTo, point: Vec2.of(-20, 10) },
+          { kind: PathCommandType.LineTo, point: Vec2.of(-60, 10) },
+          { kind: PathCommandType.MoveTo, point: Vec2.of(-30, -10) },
+          { kind: PathCommandType.LineTo, point: Vec2.of(10, -10) },
+          { kind: PathCommandType.LineTo, point: Vec2.of(10, 10) },
+          { kind: PathCommandType.LineTo, point: Vec2.of(-30, 10) },
+          { kind: PathCommandType.MoveTo, point: Vec2.of(0, -10) },
+          { kind: PathCommandType.LineTo, point: Vec2.of(40, -10) },
+          { kind: PathCommandType.LineTo, point: Vec2.of(40, 10) },
+          { kind: PathCommandType.LineTo, point: Vec2.of(0, 10) },
+        ]),
+        Color4.fromHex("#ffd400")
+      );
+
+    const partsOf = (stroke: JsDrawStroke) =>
+      stroke.getParts() as RenderablePathSpec[];
+
+    const subpathCountOf = (stroke: JsDrawStroke) =>
+      partsOf(stroke).reduce(
+        (total, part) =>
+          total +
+          1 +
+          part.commands.filter(
+            (command) => command.kind === PathCommandType.MoveTo
+          ).length,
+        0
+      );
+
+    /**
+     * Filled area, which is what the deformation actually changes. Counting
+     * subpaths cannot see it: `asClosed()` welds the footprints into a single
+     * subpath too, just the wrong one.
+     */
+    const filledAreaOf = (stroke: JsDrawStroke) =>
+      partsOf(stroke).reduce((total, part) => {
+        const corners = [
+          part.startPoint,
+          ...part.commands.map((command) =>
+            command.kind === PathCommandType.MoveTo ||
+            command.kind === PathCommandType.LineTo
+              ? command.point
+              : command.endPoint
+          ),
+        ];
+        let twice = 0;
+        for (let index = 0; index < corners.length; index += 1) {
+          const here = corners[index];
+          const next = corners[(index + 1) % corners.length];
+          twice += here.x * next.y - next.x * here.y;
+        }
+        return total + Math.abs(twice / 2);
+      }, 0);
+
+    it("replaces the footprints with one loop, cut where the eraser passed", () => {
+      const wash = legacyWash();
+      expect(subpathCountOf(wash)).toBe(3);
+      // The union of the three footprints: 100 long by 20 tall.
+      expect(filledAreaOf(wash)).not.toBeCloseTo(2000, 0);
+
+      const harness = makeRealStrokeHarness([wash]);
+      const gesture = makeGesture(harness, 20);
+
+      // Straight down through the middle of the wash, which divides it.
+      gesture.begin({ x: -10, y: -30 });
+      gesture.move({ x: -10, y: 30 });
+      gesture.finish();
+
+      const remaining = harness.editor.image.components as JsDrawStroke[];
+      expect(remaining).not.toContain(wash);
+      expect(remaining).toHaveLength(2);
+      for (const piece of remaining) {
+        expect(subpathCountOf(piece)).toBe(1);
+      }
+
+      // 2000 less the 20-wide bite the eraser took out of it, and nowhere near
+      // the welded shape that erasing the raw footprints produces.
+      const remainingArea = remaining.reduce(
+        (total, piece) => total + filledAreaOf(piece),
+        0
+      );
+      expect(remainingArea).toBeGreaterThan(1500);
+      expect(remainingArea).toBeLessThan(1700);
+    });
+
+    it("leaves the page in one undoable action", () => {
+      const harness = makeRealStrokeHarness([legacyWash()]);
+      const gesture = makeGesture(harness, 20);
+
+      gesture.begin({ x: -10, y: -30 });
+      gesture.move({ x: -10, y: 30 });
+      gesture.finish();
+
+      expect(harness.editor.dispatched).toHaveLength(1);
+    });
+
+    it("does not rebuild a highlighter that already carries one loop", () => {
+      const healed = JsDrawStroke.fromFilled(
+        Path.fromRect(new Rect2(-60, -10, 100, 20)),
+        Color4.fromHex("#ffd400")
+      );
+      const harness = makeRealStrokeHarness([healed]);
+      const gesture = makeGesture(harness, 20);
+
+      // Well clear of the wash: nothing is touched, so nothing is rewritten.
+      gesture.begin({ x: -10, y: 200 });
+      gesture.finish();
+
+      expect(harness.editor.image.components).toEqual([healed]);
+      expect(harness.editor.dispatched).toHaveLength(0);
+    });
   });
 });
