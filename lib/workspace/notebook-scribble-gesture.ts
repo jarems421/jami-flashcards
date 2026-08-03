@@ -29,27 +29,25 @@ export function planNotebookScribbleErase(input: {
   jsDraw: JsDrawModule;
   /** Screen-space samples, relative to the ink surface. */
   samples: readonly NotebookScribbleSample[];
+  /** The nib, in page units. */
   strokeWidth: number;
 }): NotebookScribbleErasePlan | null {
-  const scribble = detectNotebookScribble(input.samples, {
+  // Onto the page before anything is measured, so the gesture means the same
+  // thing at every zoom rather than getting easier to trigger as you zoom in.
+  const pageSamples = input.samples.map((sample) => {
+    const point = input.editor.viewport.screenToCanvas(
+      input.jsDraw.Vec2.of(sample.x, sample.y)
+    );
+    return { x: point.x, y: point.y, time: sample.time };
+  });
+  const scribble = detectNotebookScribble(pageSamples, {
     strokeWidth: input.strokeWidth,
+    viewportScale: input.editor.viewport.getScaleFactor(),
   });
   if (!scribble) return null;
 
-  const toCanvas = (point: NotebookScribblePoint) => {
-    const canvasPoint = input.editor.viewport.screenToCanvas(
-      input.jsDraw.Vec2.of(point.x, point.y)
-    );
-    return { x: canvasPoint.x, y: canvasPoint.y };
-  };
-  const hull = scribble.band.hull.map(toCanvas);
-  const bounds = {
-    minX: Math.min(...hull.map((point) => point.x)),
-    minY: Math.min(...hull.map((point) => point.y)),
-    maxX: Math.max(...hull.map((point) => point.x)),
-    maxY: Math.max(...hull.map((point) => point.y)),
-  };
-  const band = { hull, bounds };
+  const band = scribble.band;
+  const bounds = band.bounds;
   const searchArea = new input.jsDraw.Rect2(
     bounds.minX,
     bounds.minY,

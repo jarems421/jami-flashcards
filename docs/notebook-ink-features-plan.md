@@ -359,6 +359,44 @@ block whose area assertion was checked to fail with the heal disabled — subpat
 counting alone cannot see the deformation, because `asClosed()` welds the
 footprints into a single subpath too, just the wrong one.
 
+### Gaps found on review, and how they were closed
+
+A pass over the shipped code turned up five loose ends. Four are closed.
+
+- **A queued flick past the last page did nothing**, where the same gesture on
+  an idle track makes a new page. The queued turn now records whether the pull
+  was hard enough to create, and `resolveQueuedNotebookPageTurn` decides
+  create/turn/none against the page the queue actually lands on.
+- **Deleting a page selected its neighbour without waiting for ink** — the same
+  data-loss path as the swipe, missed on the first pass. Now hydrates first.
+  Closing it surfaced a second bug underneath: `getNotebookPageWithInk` returns
+  a *copy of the page as it was before the fetch*, carrying ink, and
+  `hydratePageInk` wrote that whole copy back. Since deleting a page renumbers
+  the ones after it, hydrating during a delete restored the old numbering.
+  Hydration now merges only the ink fields into the page as it currently
+  stands, which also hardens the pre-existing neighbour prefetch against the
+  same race.
+- **Zoom changed how easily a scribble triggered.** The thresholds now split by
+  what they measure: size is page-relative (a scribble is about as wide as a
+  word, whatever the zoom), speed and tremor are screen-relative (the hand does
+  not know what the zoom is). Measuring everything one way makes the gesture
+  trivial to trigger at one end of the zoom range and impossible at the other.
+- **A page waiting for its ink looked editable.** It now says so.
+
+**Not closed, deliberately: a scribble does not delete text blocks.** It could,
+but the two histories are separate — js-draw owns ink undo, the page owns text
+undo, reconciled by timestamp — so deleting both would take two presses of undo
+to reverse, losing the single-press property the gesture was built around.
+Making it atomic means adding pairing to undo ordering that was hard-won. And
+the product case is weak: text blocks are objects with their own delete button,
+a box may hold a paragraph, and scribbling over typed text is at least as likely
+to mean "mark this wrong" as "remove it". Scribbling over a text box leaves ink
+on top of it, exactly as scribbling over blank paper does.
+
+**Already correct: a failed ink fetch mid-swipe.** The track returns to source
+and the existing message — "could not load this page's drawing. Stay on this
+page and try again in a moment" — reads correctly for that outcome.
+
 ### Verified
 
 `npm run typecheck`, `npm run lint`, `npm test` (1254 tests, 155 files), and

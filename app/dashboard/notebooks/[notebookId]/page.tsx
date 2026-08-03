@@ -135,6 +135,7 @@ import {
 import {
   getNotebookPageTurnOffset,
   getQueuedNotebookPageTurn,
+  resolveQueuedNotebookPageTurn,
   type NotebookQueuedPageTurn,
 } from "@/lib/workspace/notebook-navigation-queue";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
@@ -352,9 +353,9 @@ export default function NotebookEditorPage() {
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
   const queuedPageTurnRef = useRef<NotebookQueuedPageTurn | null>(null);
-  const selectPageByOffsetRef = useRef<
-    (offset: -1 | 1) => Promise<boolean>
-  >(() => Promise.resolve(false));
+  const drainQueuedPageTurnRef = useRef<(turn: NotebookQueuedPageTurn) => void>(
+    () => undefined
+  );
   const inkMountedUnloadedPageIdRef = useRef<string | null>(null);
   const editorRevisionRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
@@ -1440,11 +1441,7 @@ export default function NotebookEditorPage() {
       // hydration: each turn pays the ink-first gate in its own right.
       const queuedTurn = queuedPageTurnRef.current;
       queuedPageTurnRef.current = null;
-      if (queuedTurn) {
-        void selectPageByOffsetRef.current(
-          getNotebookPageTurnOffset(queuedTurn)
-        );
-      }
+      if (queuedTurn) drainQueuedPageTurnRef.current(queuedTurn);
     });
   }, [
     inkReadyRef,
@@ -1615,7 +1612,7 @@ export default function NotebookEditorPage() {
     },
     [pages, runPageTrackNavigation, selectedPageIndex]
   );
-  selectPageByOffsetRef.current = selectPageByOffset;
+
 
   useEffect(
     () => () => {
@@ -1800,6 +1797,37 @@ export default function NotebookEditorPage() {
     user?.uid,
   ]);
 
+  /**
+   * Runs a flick that was held while the previous turn settled.
+   *
+   * Resolved against the page the queue actually landed on, so the gesture ends
+   * up doing what it would have done on an idle track -- including making a new
+   * page when it was a hard pull past the end of the notebook.
+   */
+  const drainQueuedPageTurn = useCallback(
+    (turn: NotebookQueuedPageTurn) => {
+      const action = resolveQueuedNotebookPageTurn({
+        canCreatePage: fullNotebookEditingEnabled,
+        pageCount: pages.length,
+        selectedPageIndex,
+        turn,
+      });
+      if (action === "create") {
+        void createBlankPageAtEnd(turn.velocityX);
+      } else if (action === "turn") {
+        void selectPageByOffset(getNotebookPageTurnOffset(turn));
+      }
+    },
+    [
+      createBlankPageAtEnd,
+      fullNotebookEditingEnabled,
+      pages.length,
+      selectPageByOffset,
+      selectedPageIndex,
+    ]
+  );
+  drainQueuedPageTurnRef.current = drainQueuedPageTurn;
+
   const handleStartPageSwipe = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (
       !fullNotebookEditingEnabled ||
@@ -1976,6 +2004,8 @@ export default function NotebookEditorPage() {
     // resolved here: the queued turn is a direction, and the page it applies to
     // is whichever one is open when it runs.
     if (swipe.queuedOnly) {
+      const queuedPageWidth =
+        pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
       const queuedVelocityX = getNotebookSwipeVelocity([
         ...swipe.samples,
         { x: event.clientX, time: event.timeStamp },
@@ -1984,8 +2014,7 @@ export default function NotebookEditorPage() {
         ? null
         : getNotebookSwipeReleaseDecision({
             totalDx: deltaX,
-            pageWidth:
-              pageSurfaceRef.current?.getBoundingClientRect().width ?? 1,
+            pageWidth: queuedPageWidth,
             velocityX: queuedVelocityX,
             currentIndex: selectedPageIndex,
             pageCount: pages.length,
@@ -1994,6 +2023,15 @@ export default function NotebookEditorPage() {
         current: queuedPageTurnRef.current,
         direction: queuedDirection,
         velocityX: queuedVelocityX,
+        // Whether this lands on the last page is not known yet, so record how
+        // hard the pull was and let the drain decide.
+        createsPage:
+          !options.cancelled &&
+          shouldCreateNotebookPageOnRelease({
+            totalDx: deltaX,
+            pageWidth: queuedPageWidth,
+            velocityX: queuedVelocityX,
+          }),
       });
       return;
     }
@@ -2279,6 +2317,9 @@ export default function NotebookEditorPage() {
 
       pageState.resetHydration();
       setPages(nextPages);
+      // Ink first, as everywhere else: the page taking this one's place must
+      // not open on an empty canvas that autosave could write over its drawing.
+      if (nextSelectedPage) await hydratePageInk(nextSelectedPage.id);
       setSelectedPageId(nextSelectedPage?.id ?? null);
       resetTextBlockInteraction();
       success(`Page ${page.pageNumber} deleted.`);
@@ -3075,6 +3116,19 @@ export default function NotebookEditorPage() {
                 }`}
               >
                 Use Apple Pencil or stylus to write. Fingers move the page.
+              </div>
+            ) : null}
+            {selectedPageInkUnloaded && fullNotebookEditingEnabled ? (
+              <div
+                role="status"
+                className={`notebook-floating-control pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-text-secondary ${
+                  toolbarDock === "bottom"
+                    ? "bottom-[calc(var(--notebook-control-bottom-inset)+6.35rem)]"
+                    : "bottom-[var(--notebook-control-bottom-inset)]"
+                }`}
+              >
+                Loading this page&rsquo;s drawing. Writing is paused until it
+                arrives.
               </div>
             ) : null}
             {scribbleEraseNotice !== null ? (

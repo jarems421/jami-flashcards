@@ -11,9 +11,13 @@
  * flick covers ground quickly. Together they describe a motion that handwriting
  * does not make.
  *
- * Everything here works in screen pixels rather than page coordinates, so the
- * gesture means the same thing at every zoom level -- the same convention the
- * precision eraser already uses for its contact radius.
+ * Samples arrive in **page coordinates**, and the thresholds split by what they
+ * actually measure. Size is a property of the content: "a scribble is about as
+ * wide as a word" means a word on the page, whatever the zoom. Speed and tremor
+ * are properties of the hand, which does not know what the zoom is -- so those
+ * are converted back through `viewportScale` and judged on screen. Measuring
+ * everything one way or the other makes the gesture easier to trigger at one
+ * end of the zoom range and impossible at the other. The page is 900 across.
  */
 
 export type NotebookScribblePoint = { x: number; y: number };
@@ -31,21 +35,21 @@ const MIN_REVERSALS = 4;
  * Without hysteresis, tremor at the turn of each leg registers as a flurry of
  * reversals and any slow deliberate stroke can reach four.
  */
-const REVERSAL_HYSTERESIS_PX = 8;
+const REVERSAL_HYSTERESIS_ON_SCREEN = 8;
 /** Legs of a scribble run parallel; the strokes of a letter do not. */
 const MAX_LEG_DEVIATION_DEGREES = 25;
 /** Path length against bounding-box diagonal: retracing, not progressing. */
 const MIN_RETRACE_RATIO = 4;
 /** Consecutive legs must cover each other, which shading and hatching do not. */
 const MIN_LEG_OVERLAP = 0.6;
-/** Smaller than this and a hurried `zz` would qualify. */
-const MIN_MAJOR_EXTENT_PX = 40;
+/** Smaller than this and a hurried `zz` would qualify. Roughly a word wide. */
+const MIN_MAJOR_EXTENT_ON_PAGE = 48;
 /** Scribbles are fast. Deliberate shading is not. */
-const MIN_MEAN_SPEED_PX_PER_MS = 1.2;
+const MIN_MEAN_SPEED_ON_SCREEN_PER_MS = 1.2;
 /** Below this a stroke has too little shape to judge. */
 const MIN_SAMPLES = 8;
 /** Samples closer together than this are the same place. */
-const MIN_SAMPLE_SPACING_PX = 1;
+const MIN_SAMPLE_SPACING_ON_SCREEN = 1;
 
 export type NotebookScribbleBand = {
   /** Convex hull of the gesture, grown by the nib, wound counter-clockwise. */
@@ -63,12 +67,15 @@ function distance(first: NotebookScribblePoint, second: NotebookScribblePoint) {
   return Math.hypot(second.x - first.x, second.y - first.y);
 }
 
-function thinned(samples: readonly NotebookScribbleSample[]) {
+function thinned(
+  samples: readonly NotebookScribbleSample[],
+  minSpacing: number
+) {
   const kept: NotebookScribbleSample[] = [];
   for (const sample of samples) {
     if (!Number.isFinite(sample.x) || !Number.isFinite(sample.y)) continue;
     const previous = kept[kept.length - 1];
-    if (previous && distance(previous, sample) < MIN_SAMPLE_SPACING_PX) continue;
+    if (previous && distance(previous, sample) < minSpacing) continue;
     kept.push(sample);
   }
   return kept;
@@ -105,7 +112,7 @@ function principalAxis(points: readonly NotebookScribblePoint[]) {
 }
 
 /** Runs of travel between direction changes, as index ranges. */
-function legsAlongAxis(along: readonly number[]) {
+function legsAlongAxis(along: readonly number[], hysteresis: number) {
   const legs: Array<{ end: number; start: number }> = [];
   let legStart = 0;
   let direction = 0;
@@ -114,7 +121,7 @@ function legsAlongAxis(along: readonly number[]) {
   for (let index = 1; index < along.length; index += 1) {
     const value = along[index];
     if (direction === 0) {
-      if (Math.abs(value - extreme) >= REVERSAL_HYSTERESIS_PX) {
+      if (Math.abs(value - extreme) >= hysteresis) {
         direction = Math.sign(value - extreme);
         extreme = value;
       }
@@ -125,7 +132,7 @@ function legsAlongAxis(along: readonly number[]) {
       continue;
     }
     // Moving against the run. Only a real retreat ends the leg.
-    if (Math.abs(value - extreme) < REVERSAL_HYSTERESIS_PX) continue;
+    if (Math.abs(value - extreme) < hysteresis) continue;
     legs.push({ start: legStart, end: index - 1 });
     legStart = index - 1;
     direction = -direction;
@@ -203,17 +210,23 @@ function boundsOf(points: readonly NotebookScribblePoint[]) {
 
 export function detectNotebookScribble(
   rawSamples: readonly NotebookScribbleSample[],
-  options: { strokeWidth?: number } = {}
+  options: { strokeWidth?: number; viewportScale?: number } = {}
 ): NotebookScribble | null {
-  const samples = thinned(rawSamples);
+  // Page units per screen pixel, for the thresholds that describe the hand
+  // rather than the page.
+  const scale =
+    Number.isFinite(options.viewportScale) && (options.viewportScale ?? 0) > 0
+      ? (options.viewportScale as number)
+      : 1;
+  const samples = thinned(rawSamples, MIN_SAMPLE_SPACING_ON_SCREEN / scale);
   if (samples.length < MIN_SAMPLES) return null;
 
   const axis = principalAxis(samples);
   const along = samples.map((sample) => sample.x * axis.x + sample.y * axis.y);
   const majorExtent = Math.max(...along) - Math.min(...along);
-  if (majorExtent < MIN_MAJOR_EXTENT_PX) return null;
+  if (majorExtent < MIN_MAJOR_EXTENT_ON_PAGE) return null;
 
-  const legs = legsAlongAxis(along);
+  const legs = legsAlongAxis(along, REVERSAL_HYSTERESIS_ON_SCREEN / scale);
   const reversals = legs.length - 1;
   if (reversals < MIN_REVERSALS) return null;
 
@@ -226,7 +239,12 @@ export function detectNotebookScribble(
   if (diagonal < 1e-9 || pathLength / diagonal < MIN_RETRACE_RATIO) return null;
 
   const elapsed = samples[samples.length - 1].time - samples[0].time;
-  if (elapsed <= 0 || pathLength / elapsed < MIN_MEAN_SPEED_PX_PER_MS) return null;
+  if (
+    elapsed <= 0 ||
+    (pathLength * scale) / elapsed < MIN_MEAN_SPEED_ON_SCREEN_PER_MS
+  ) {
+    return null;
+  }
 
   // Legs of a scribble lie along the same line. Folded to a quarter turn,
   // because a leg running backwards along the axis is just as parallel.
