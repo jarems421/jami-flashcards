@@ -374,4 +374,56 @@ describe("committing as one loop, so the eraser can divide it", () => {
     expect(box.width).toBeGreaterThan(0);
     expect(box.height).toBeGreaterThan(0);
   });
+
+  /**
+   * The union falls back to the footprints rather than returning a wrong shape,
+   * which means a tolerance that is slightly off degrades silently: highlights
+   * keep the geometry the eraser cannot survive and nothing says so. Fixed
+   * shapes cannot catch that -- their corners are exact integers, while a real
+   * nib's are irrational and never quite meet.
+   */
+  it("traces the union of a hand-drawn path, not only of tidy fixtures", () => {
+    /** Wobble, variable step, and coordinates that do not land on integers. */
+    const handPath = (seed: number, length: number, curve: number) => {
+      let state = seed;
+      const random = () => {
+        state = (state * 1103515245 + 12345) % 2147483648;
+        return state / 2147483648;
+      };
+      const path: StrokeDataPoint[] = [];
+      let x = 60 + random() * 40;
+      let y = 200 + random() * 300;
+      let angle = (random() - 0.5) * 0.6;
+      for (let step = 0; step < length; step += 1) {
+        angle += (random() - 0.5) * curve;
+        const advance = 3 + random() * 5;
+        x += Math.cos(angle) * advance;
+        y += Math.sin(angle) * advance + (random() - 0.5) * 1.4;
+        path.push(point(x, y));
+      }
+      return path;
+    };
+
+    const fellBack: string[] = [];
+    for (const [label, length, curve] of [
+      ["a word", 30, 0.05],
+      ["a line of text", 120, 0.05],
+      ["a long sweep", 300, 0.03],
+      ["a curve", 150, 0.25],
+      ["a curly path", 150, 0.6],
+    ] as const) {
+      for (let seed = 1; seed <= 12; seed += 1) {
+        const path = buildStroke(handPath(seed * 7919, length, curve))
+          .getParts()[0]
+          .path;
+        if (
+          path.parts.some((part) => part.kind === jsDraw.PathCommandType.MoveTo)
+        ) {
+          fellBack.push(`${label} #${seed}`);
+        }
+      }
+    }
+
+    expect(fellBack).toEqual([]);
+  }, 60_000);
 });
