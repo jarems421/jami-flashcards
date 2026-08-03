@@ -133,6 +133,83 @@ describe("detectNotebookScribble", () => {
     expect(detectNotebookScribble(trace(corners))).not.toBeNull();
   });
 
+  /**
+   * Zoom moves the page under the hand, so the two kinds of threshold have to
+   * be measured in different spaces. Scribbling over the same word should work
+   * the same at any zoom, even though the hand travels a different distance to
+   * do it.
+   */
+  describe("across zoom levels", () => {
+    /**
+     * Scribbling over a fixed piece of the page, at a given zoom and a given
+     * hand speed. Zoomed in, the hand has further to travel to cross the same
+     * word, so the gesture takes proportionally longer.
+     */
+    const overPageBand = (input: {
+      handSpeed?: number;
+      pageWidth?: number;
+      viewportScale: number;
+    }) => {
+      const { handSpeed = 2, pageWidth = 140, viewportScale } = input;
+      const samples: NotebookScribbleSample[] = [];
+      const step = 2;
+      const count = Math.max(1, Math.round(pageWidth / step));
+      let time = 0;
+
+      for (let pass = 0; pass < 6; pass += 1) {
+        const fromX = pass % 2 === 0 ? 100 : 100 + pageWidth;
+        const toX = pass % 2 === 0 ? 100 + pageWidth : 100;
+        for (let index = pass === 0 ? 0 : 1; index <= count; index += 1) {
+          const t = index / count;
+          samples.push({
+            x: fromX + (toX - fromX) * t,
+            y: 200 + pass * 3,
+            time,
+          });
+          time += ((pageWidth / count) * viewportScale) / handSpeed;
+        }
+      }
+      return samples;
+    };
+
+    it.each([0.5, 0.85, 1, 2, 4])(
+      "recognises a scribble over the same words at %sx",
+      (viewportScale) => {
+        expect(
+          detectNotebookScribble(overPageBand({ viewportScale }), {
+            viewportScale,
+          })
+        ).not.toBeNull();
+      }
+    );
+
+    it.each([0.5, 1, 4])(
+      "still refuses one too small to be aimed at a word at %sx",
+      (viewportScale) => {
+        expect(
+          detectNotebookScribble(
+            overPageBand({ viewportScale, pageWidth: 30 }),
+            { viewportScale }
+          )
+        ).toBeNull();
+      }
+    );
+
+    it("judges speed by the hand, so a lazy sweep zoomed out is not a scribble", () => {
+      // Zoomed out, the hand covers four page units per screen pixel: a slow,
+      // deliberate movement looks fast if speed is read off the page.
+      const dawdling = overPageBand({ viewportScale: 0.25, handSpeed: 0.5 });
+      const brisk = overPageBand({ viewportScale: 0.25, handSpeed: 2 });
+
+      expect(
+        detectNotebookScribble(dawdling, { viewportScale: 0.25 })
+      ).toBeNull();
+      expect(
+        detectNotebookScribble(brisk, { viewportScale: 0.25 })
+      ).not.toBeNull();
+    });
+  });
+
   it("refuses a gesture with no area, having no band to erase within", () => {
     // Retracing one line exactly. No hand does this, and without a band there
     // is no honest way to say what the gesture covered.

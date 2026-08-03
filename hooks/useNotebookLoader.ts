@@ -359,6 +359,34 @@ export function useNotebookLoader({
    * open a page for editing on a false, or an autosave would write an empty
    * canvas over saved work.
    */
+  /**
+   * Folds a fetched ink record into the page as it stands *now*.
+   *
+   * The fetch takes a page object read before the await and returns a copy of
+   * it carrying ink. Writing that copy back would also restore every other
+   * field as it was when the fetch started — and pages are renumbered while a
+   * fetch is in flight, notably by a delete. Merging only the ink keeps the
+   * rest of the record whoever's it currently is.
+   */
+  const applyHydratedInk = useCallback(
+    (hydrated: NotebookPage) => {
+      setPages((current) =>
+        current.map((page) => {
+          if (page.id !== hydrated.id) return page;
+          // Ink that arrived while the fetch was running is newer than the
+          // fetch, and must not be replaced by it.
+          if (page.inkData || page.strokeData) return page;
+          return {
+            ...page,
+            ...(hydrated.inkData ? { inkData: hydrated.inkData } : {}),
+            ...(hydrated.strokeData ? { strokeData: hydrated.strokeData } : {}),
+          };
+        })
+      );
+    },
+    [setPages]
+  );
+
   const hydratePageInk = useCallback(
     async (pageId: string): Promise<boolean> => {
       const target = pagesRef.current.find((page) => page.id === pageId);
@@ -369,11 +397,7 @@ export function useNotebookLoader({
 
       try {
         const hydrated = await getNotebookPageWithInk(userId, target);
-        if (hydrated !== target) {
-          setPages((current) =>
-            current.map((page) => (page.id === hydrated.id ? hydrated : page))
-          );
-        }
+        if (hydrated !== target) applyHydratedInk(hydrated);
         return true;
       } catch (error) {
         console.error("Failed to load this page's drawing.", error);
@@ -385,7 +409,7 @@ export function useNotebookLoader({
         return false;
       }
     },
-    [setPages, userId]
+    [applyHydratedInk, userId]
   );
 
   // Swiping between pages commits inside an animation frame and cannot wait on
@@ -407,9 +431,7 @@ export function useNotebookLoader({
         try {
           const hydrated = await getNotebookPageWithInk(ownerId, neighbour);
           if (cancelled || hydrated === neighbour) continue;
-          setPages((current) =>
-            current.map((page) => (page.id === hydrated.id ? hydrated : page))
-          );
+          applyHydratedInk(hydrated);
         } catch {
           // A prefetch is an optimisation. Failing silently is correct here:
           // navigating to the page runs hydratePageInk, which reports the
@@ -421,7 +443,7 @@ export function useNotebookLoader({
     return () => {
       cancelled = true;
     };
-  }, [pages, selectedPageId, userId]);
+  }, [applyHydratedInk, pages, selectedPageId, userId]);
 
   return {
     notebook,

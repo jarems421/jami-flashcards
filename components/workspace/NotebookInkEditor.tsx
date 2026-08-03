@@ -865,8 +865,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           editor,
           jsDraw: pointerJsDraw,
           samples: scribbleTrack.samples,
-          // The nib is measured in canvas units; the gesture in screen pixels.
-          strokeWidth: penThickness * editor.viewport.getScaleFactor(),
+          strokeWidth: penThickness,
         });
         scribbleSamplesRef.current = null;
         if (plan) {
