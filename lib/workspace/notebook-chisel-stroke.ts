@@ -9,6 +9,7 @@ import type {
   Viewport,
 } from "js-draw";
 import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
+import { unionOfConvexPolygons } from "@/lib/workspace/notebook-convex-union";
 
 /**
  * A chisel-tip stroke builder, for the highlighter.
@@ -204,43 +205,27 @@ export function createNotebookChiselStrokeFactory(
       return kept;
     };
 
-    const renderablePath = (): RenderablePathSpec => {
-      const style = { fill: color };
+    /*
+     * One swept footprint per step of the nib.
+     *
+     * A single outline traced naively is only valid while the path stays on one
+     * side of the nib's axis and never turns tighter than the nib reaches.
+     * Cross either limit and the outline folds back through itself; the crossed
+     * region takes a winding number of zero and is punched out of the fill.
+     * That was the stroke breaking mid-curve, and the mesh of holes where one
+     * motion doubled back over itself.
+     *
+     * Sweeping each step separately removes the possibility rather than
+     * handling the cases. Every footprint is convex and cannot fold, and wound
+     * the same way they can only ever add: a point covered by five of them has
+     * a winding number of five, not one or zero.
+     */
+    const footprints = (): Point2[][] => {
+      // A tap leaves the tip's own footprint.
+      if (points.length === 1) return [tipAt(points[0])];
 
-      if (points.length === 1) {
-        // A tap leaves the tip's own footprint.
-        const corners = tipAt(points[0]);
-        return {
-          startPoint: corners[0],
-          commands: corners.slice(1).map(
-            (point): PathCommand => ({ kind: PathCommandType.LineTo, point })
-          ),
-          style,
-        };
-      }
-
-      /*
-       * One swept footprint per step, rather than one outline around the whole
-       * stroke.
-       *
-       * A single outline is only valid while the path stays on one side of the
-       * nib's axis and never turns tighter than the nib reaches. Cross either
-       * limit and the outline folds back through itself; the crossed region
-       * takes a winding number of zero and is punched out of the fill. That
-       * was the stroke breaking mid-curve, and the mesh of holes where one
-       * motion doubled back over itself.
-       *
-       * Sweeping each step separately removes the possibility rather than
-       * handling the cases. Every footprint is convex and cannot fold, and
-       * wound the same way they can only ever add: a point covered by five of
-       * them has a winding number of five, not one or zero. It costs more
-       * points in the saved path, which is the right trade for a highlighter
-       * that never eats a hole in itself.
-       */
       const path = sweepPoints(steadied(points));
-      const commands: PathCommand[] = [];
-      let pathStart: Point2 | null = null;
-
+      const polygons: Point2[][] = [];
       for (let index = 1; index < path.length; index += 1) {
         // The area a rectangular tip covers sliding from one point to the next
         // is the hull of its footprint at both ends. Sweeping the tip rather
@@ -250,8 +235,25 @@ export function createNotebookChiselStrokeFactory(
           ...tipAt(path[index - 1]),
           ...tipAt(path[index]),
         ]);
-        if (corners.length < 3) continue;
+        if (corners.length >= 3) polygons.push(corners);
+      }
+      return polygons;
+    };
 
+    const loopPath = (corners: Point2[]): RenderablePathSpec => ({
+      startPoint: corners[0],
+      commands: corners.slice(1).map(
+        (point): PathCommand => ({ kind: PathCommandType.LineTo, point })
+      ),
+      style: { fill: color },
+    });
+
+    /** Every footprint as its own subpath. What the wet stroke draws. */
+    const footprintPath = (polygons: Point2[][]): RenderablePathSpec => {
+      const commands: PathCommand[] = [];
+      let pathStart: Point2 | null = null;
+
+      for (const corners of polygons) {
         if (pathStart === null) {
           pathStart = corners[0];
         } else {
@@ -265,7 +267,7 @@ export function createNotebookChiselStrokeFactory(
       return {
         startPoint: pathStart ?? points[0].plus(nib),
         commands,
-        style,
+        style: { fill: color },
       };
     };
 
@@ -279,10 +281,31 @@ export function createNotebookChiselStrokeFactory(
         points.push(next);
       },
       preview(renderer) {
-        renderer.drawPath(renderablePath());
+        renderer.drawPath(footprintPath(footprints()));
       },
+      /*
+       * The committed stroke is the same region as one closed loop.
+       *
+       * Subpaths are what the eraser cannot survive. `Path.asClosed()`, which
+       * every erased piece passes through, turns each `MoveTo` into a `LineTo`
+       * -- welding the footprints into a zig-zag that bridges between them and
+       * bulges outside the wash -- and the splitting above it pairs pieces on
+       * the assumption that the path is a single loop. Tracing the union once,
+       * here, hands the eraser the shape it expects, so a highlighter divides
+       * like a pen stroke does.
+       *
+       * The union is the region the footprints already paint, so nothing moves
+       * between the wet stroke and the dry one. If it cannot be traced the
+       * footprints are kept: the old behaviour is the floor, not the ceiling.
+       */
       build() {
-        return new Stroke([renderablePath()]);
+        const polygons = footprints();
+        const outline = unionOfConvexPolygons(polygons);
+        return new Stroke([
+          outline
+            ? loopPath(outline.map((point) => Vec2.of(point.x, point.y)))
+            : footprintPath(polygons),
+        ]);
       },
       /**
        * The live ink trail some browsers render ahead of the committed stroke.

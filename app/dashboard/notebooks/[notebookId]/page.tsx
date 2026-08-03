@@ -132,6 +132,16 @@ import {
   buildNotebookPageSearch,
   prepareNotebookExit,
 } from "@/lib/workspace/notebook-navigation";
+import {
+  getNotebookPageTurnOffset,
+  getQueuedNotebookPageTurn,
+  type NotebookQueuedPageTurn,
+} from "@/lib/workspace/notebook-navigation-queue";
+import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
+import {
+  readNotebookScribbleErasePreference,
+  saveNotebookScribbleErasePreference,
+} from "@/lib/workspace/notebook-toolbar";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 import {
   trackNotebookPdfCanvas,
@@ -153,6 +163,11 @@ type PageSwipeState = {
   axis: "horizontal" | "vertical" | null;
   intent: NotebookPageDragIntent | null;
   completed: boolean;
+  /**
+   * The gesture began while a page turn was still settling. It is tracked only
+   * to resolve a direction on release; it never moves the track.
+   */
+  queuedOnly: boolean;
 };
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
@@ -294,6 +309,8 @@ export default function NotebookEditorPage() {
     penMenuOpen, setPenMenuOpen, highlighterMenuOpen, setHighlighterMenuOpen,
     eraserMenuOpen, setEraserMenuOpen,
     touchInkHintVisible, setTouchInkHintVisible,
+    scribbleToErase, setScribbleToErase,
+    scribbleEraseNotice, setScribbleEraseNotice,
   } = useNotebookDrawingToolState();
   const {
     pageZoom, setPageZoom, pagePan, setPagePan,
@@ -334,9 +351,15 @@ export default function NotebookEditorPage() {
   const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
+  const queuedPageTurnRef = useRef<NotebookQueuedPageTurn | null>(null);
+  const selectPageByOffsetRef = useRef<
+    (offset: -1 | 1) => Promise<boolean>
+  >(() => Promise.resolve(false));
+  const inkMountedUnloadedPageIdRef = useRef<string | null>(null);
   const editorRevisionRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
   const touchInkHintTimeoutRef = useRef<number | null>(null);
+  const scribbleNoticeTimeoutRef = useRef<number | null>(null);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
@@ -367,6 +390,13 @@ export default function NotebookEditorPage() {
   });
   const trackPreviousPage = carouselPages.previousPage;
   const trackNextPage = carouselPages.nextPage;
+  // Ink is fetched separately from the page record. Until it lands, the canvas
+  // is empty for that reason alone, so it must not accept new strokes: the
+  // editor reads its SVG once at mount, and drawing here would mean saving a
+  // near-blank page over the student's real drawing.
+  const selectedPageInkUnloaded = selectedPage
+    ? pageHasUnloadedInk(selectedPage)
+    : false;
   const selectedPageInkSvg = useMemo(() => {
     if (!selectedPage) {
       return legacyStrokesToJsDrawSvg([], CANVAS_WIDTH, CANVAS_HEIGHT);
@@ -922,6 +952,41 @@ export default function NotebookEditorPage() {
   }, [setIsPhoneLayout]);
 
   useEffect(() => {
+    setScribbleToErase(readNotebookScribbleErasePreference());
+  }, [setScribbleToErase]);
+
+  /**
+   * Says what a scribble just removed.
+   *
+   * An erase nobody explicitly asked for should never be silent, even when the
+   * gesture was deliberate. Undo is one press away and now does exactly the
+   * right thing, because the scribble itself never entered the history.
+   */
+  const handleScribbleErase = useCallback(
+    (strokeCount: number) => {
+      setScribbleEraseNotice(strokeCount);
+      if (scribbleNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(scribbleNoticeTimeoutRef.current);
+      }
+      scribbleNoticeTimeoutRef.current = window.setTimeout(() => {
+        setScribbleEraseNotice(null);
+        scribbleNoticeTimeoutRef.current = null;
+      }, 2600);
+    },
+    [setScribbleEraseNotice]
+  );
+
+  useEffect(
+    () => () => {
+      if (scribbleNoticeTimeoutRef.current !== null) {
+        window.clearTimeout(scribbleNoticeTimeoutRef.current);
+        scribbleNoticeTimeoutRef.current = null;
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
     if (!selectedPage) {
       setTextBlocks([]);
       resetTextBlockInteraction();
@@ -943,6 +1008,11 @@ export default function NotebookEditorPage() {
     );
     setPageColor(selectedPage.pageColor ?? notebook?.pageColor ?? "white");
     setPageStyle(selectedPage.pageStyle ?? notebook?.pageStyle ?? "plain");
+    // Remember when the editor is mounting without this page's real ink, so the
+    // canvas can be rebuilt from it once the fetch lands.
+    inkMountedUnloadedPageIdRef.current = pageHasUnloadedInk(selectedPage)
+      ? selectedPage.id
+      : null;
     pageState.hydratePage(selectedPage.id, selectedPage.contentRevision);
     const recoveredDraft = takeRecoveredDraft(selectedPage.id);
     if (recoveredDraft) {
@@ -972,6 +1042,32 @@ export default function NotebookEditorPage() {
     success,
     takeRecoveredDraft,
   ]);
+
+  /**
+   * Rebuilds a canvas that mounted before its ink arrived.
+   *
+   * `NotebookInkEditor` reads `initialSvg` once, at mount, so ink that lands
+   * afterwards would never reach it — and the next autosave would write that
+   * empty canvas over the saved drawing. Remounting discards js-draw's undo
+   * stack, so this only runs while there is demonstrably nothing to lose, which
+   * the read-only gate on an unhydrated page guarantees.
+   */
+  useEffect(() => {
+    const pendingPageId = inkMountedUnloadedPageIdRef.current;
+    if (
+      !selectedPage ||
+      pendingPageId !== selectedPage.id ||
+      pageHasUnloadedInk(selectedPage)
+    ) {
+      return;
+    }
+    inkMountedUnloadedPageIdRef.current = null;
+    const inkEditor = inkEditorRef.current;
+    if (inkEditor?.hasInk() || (inkEditor?.getHistoryState().undoDepth ?? 0) > 0) {
+      return;
+    }
+    setInkEditorMountRevision((current) => current + 1);
+  }, [selectedPage, setInkEditorMountRevision]);
 
   useEffect(() => {
     setPenColor((current) => {
@@ -1070,6 +1166,7 @@ export default function NotebookEditorPage() {
         pageNavigationLockedRef.current = pageCreationInFlightRef.current;
       }
       pageSwipeRef.current = null;
+      queuedPageTurnRef.current = null;
       createPageActiveRef.current = false;
       setCreatePageActive(false);
       setCreatePageProgress(0);
@@ -1243,6 +1340,7 @@ export default function NotebookEditorPage() {
       updatePageSwipeMotion(null);
       pageNavigationLockedRef.current = pageCreationInFlightRef.current;
       pageSwipeRef.current = null;
+      queuedPageTurnRef.current = null;
       createPageActiveRef.current = false;
       setCreatePageActive(false);
       setCreatePageProgress(0);
@@ -1337,6 +1435,16 @@ export default function NotebookEditorPage() {
       setCreatePageActive(false);
       setCreatePageProgress(0);
       setCreatingPage(false);
+      // A flick that arrived while this turn was settling runs now. It is
+      // resolved from the page just opened, so a queued turn cannot outrun
+      // hydration: each turn pays the ink-first gate in its own right.
+      const queuedTurn = queuedPageTurnRef.current;
+      queuedPageTurnRef.current = null;
+      if (queuedTurn) {
+        void selectPageByOffsetRef.current(
+          getNotebookPageTurnOffset(queuedTurn)
+        );
+      }
     });
   }, [
     inkReadyRef,
@@ -1439,7 +1547,14 @@ export default function NotebookEditorPage() {
         velocityX,
         reducedMotion: prefersReducedNotebookMotion(),
       });
-      const readyPromise = prepareCurrentPageForNavigation();
+      // Ink first, exactly as `selectPageById` does: opening a page before its
+      // ink arrives would mount an empty canvas that autosave could later write
+      // over the saved drawing. Neighbour prefetch usually makes this instant,
+      // and it runs against the settle animation rather than after it.
+      const readyPromise = Promise.all([
+        prepareCurrentPageForNavigation(),
+        hydratePageInk(targetPage.id),
+      ]).then(([saved, hydrated]) => saved && hydrated);
       const settlePromise = animatePageTrackTo({
         phase: "settling",
         kind: "page",
@@ -1470,6 +1585,7 @@ export default function NotebookEditorPage() {
     [
       animatePageTrackTo,
       beginPageHandoff,
+      hydratePageInk,
       pageTrackOffsetRef,
       pageTrackTravelDistance,
       prefersReducedNotebookMotion,
@@ -1499,6 +1615,7 @@ export default function NotebookEditorPage() {
     },
     [pages, runPageTrackNavigation, selectedPageIndex]
   );
+  selectPageByOffsetRef.current = selectPageByOffset;
 
   useEffect(
     () => () => {
@@ -1687,7 +1804,6 @@ export default function NotebookEditorPage() {
     if (
       !fullNotebookEditingEnabled ||
       !shouldPointerSwipePages(event.pointerType) ||
-      pageNavigationLockedRef.current ||
       inkInteractionActiveRef.current ||
       activeTextGestureId
     ) {
@@ -1708,6 +1824,7 @@ export default function NotebookEditorPage() {
       axis: null,
       intent: null,
       completed: false,
+      queuedOnly: pageNavigationLockedRef.current,
     };
     safelySetPointerCapture(event.currentTarget, event.pointerId);
   }, [
@@ -1748,10 +1865,17 @@ export default function NotebookEditorPage() {
           canPanVertically: pageCanPanVertically,
           zoom: viewportLayout.zoom,
         });
-        if (swipe.intent === "page") {
+        if (swipe.intent === "page" && !swipe.queuedOnly) {
           setPagePreviewVisibility(true);
         }
       }
+    }
+
+    // The track is mid-settle and owns its own transform. Keep collecting
+    // samples so the release can resolve a direction, but touch nothing.
+    if (swipe.queuedOnly) {
+      event.preventDefault();
+      return;
     }
 
     // A landscape page can be taller than the frame while still being
@@ -1846,6 +1970,33 @@ export default function NotebookEditorPage() {
     pageSwipeRef.current = null;
     const deltaX = event.clientX - swipe.startX;
     const deltaY = event.clientY - swipe.startY;
+
+    // A flick released while the previous turn was still settling is held until
+    // that turn finishes rather than dropped. Bounds are deliberately not
+    // resolved here: the queued turn is a direction, and the page it applies to
+    // is whichever one is open when it runs.
+    if (swipe.queuedOnly) {
+      const queuedVelocityX = getNotebookSwipeVelocity([
+        ...swipe.samples,
+        { x: event.clientX, time: event.timeStamp },
+      ]);
+      const queuedDirection = options.cancelled
+        ? null
+        : getNotebookSwipeReleaseDecision({
+            totalDx: deltaX,
+            pageWidth:
+              pageSurfaceRef.current?.getBoundingClientRect().width ?? 1,
+            velocityX: queuedVelocityX,
+            currentIndex: selectedPageIndex,
+            pageCount: pages.length,
+          }).direction;
+      queuedPageTurnRef.current = getQueuedNotebookPageTurn({
+        current: queuedPageTurnRef.current,
+        direction: queuedDirection,
+        velocityX: queuedVelocityX,
+      });
+      return;
+    }
 
     // A resolved pan commits its final position; horizontal page swipes remain
     // available whenever the sheet has no horizontal pan range.
@@ -2014,6 +2165,11 @@ export default function NotebookEditorPage() {
     if (pageNavigationLockedRef.current) {
       event.preventDefault();
       event.stopPropagation();
+      // Everything else stays blocked while a turn settles, but a flick is
+      // tracked so it can be queued instead of silently swallowed.
+      if (shouldPointerSwipePages(event.pointerType)) {
+        handleStartPageSwipe(event);
+      }
       return;
     }
     setPenMenuOpen(false);
@@ -2519,6 +2675,11 @@ export default function NotebookEditorPage() {
               setPenThicknessPercent(clampNotebookThicknessPercent(value));
               switchNotebookTool("pen");
             },
+            scribbleToErase,
+            onScribbleToEraseChange: (enabled) => {
+              setScribbleToErase(enabled);
+              saveNotebookScribbleErasePreference(enabled);
+            },
           }}
           highlighter={{
             color: highlighterColor,
@@ -2658,7 +2819,9 @@ export default function NotebookEditorPage() {
                         (selectedPage.strokeData?.strokes?.length ?? 0) > 0
                     )}
                     inkReady={inkReady}
-                    editingEnabled={fullNotebookEditingEnabled}
+                    editingEnabled={
+                      fullNotebookEditingEnabled && !selectedPageInkUnloaded
+                    }
                     eraserWidth={eraserWidth}
                     inkEditorMountRevision={inkEditorMountRevision}
                     inkEditorRef={inkEditorRef}
@@ -2714,6 +2877,8 @@ export default function NotebookEditorPage() {
                       },
                       activeTool: tool,
                       eraserMode,
+                      scribbleToErase,
+                      onScribbleErase: handleScribbleErase,
                       penColor,
                       penThickness:
                         getPenWidthFromPercent(penThicknessPercent),
@@ -2910,6 +3075,31 @@ export default function NotebookEditorPage() {
                 }`}
               >
                 Use Apple Pencil or stylus to write. Fingers move the page.
+              </div>
+            ) : null}
+            {scribbleEraseNotice !== null ? (
+              <div
+                role="status"
+                className={`notebook-floating-control absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--color-border)] py-1.5 pl-3.5 pr-1.5 text-xs font-semibold text-text-secondary ${
+                  toolbarDock === "bottom"
+                    ? "bottom-[calc(var(--notebook-control-bottom-inset)+6.35rem)]"
+                    : "bottom-[var(--notebook-control-bottom-inset)]"
+                }`}
+              >
+                Scribbled out{" "}
+                {scribbleEraseNotice === 1
+                  ? "1 stroke"
+                  : `${scribbleEraseNotice} strokes`}
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleUndo();
+                    setScribbleEraseNotice(null);
+                  }}
+                  className="rounded-full bg-[var(--color-selected-bg)] px-2.5 py-1 text-[var(--color-selected-text)] transition hover:brightness-110"
+                >
+                  Undo
+                </button>
               </div>
             ) : null}
         </div>

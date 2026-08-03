@@ -38,6 +38,11 @@ import {
   type NotebookInkTool,
 } from "@/lib/workspace/notebook-js-draw";
 import { NotebookPrecisionEraserGesture } from "@/lib/workspace/notebook-precision-eraser";
+import {
+  applyNotebookScribbleErase,
+  planNotebookScribbleErase,
+} from "@/lib/workspace/notebook-scribble-gesture";
+import type { NotebookScribbleSample } from "@/lib/workspace/notebook-scribble-erase";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
 import {
   installBatchedNotebookPenPreview,
@@ -95,7 +100,16 @@ type Props = NotebookInkStyle & {
   onPointerMove(event: ReactPointerEvent<HTMLDivElement>): void;
   onPointerUp(event: ReactPointerEvent<HTMLDivElement>): void;
   readOnly?: boolean;
+  /** Scribbling out with the pen deletes the strokes it covers. */
+  scribbleToErase?: boolean;
+  onScribbleErase?(strokeCount: number): void;
 };
+
+/**
+ * A stroke longer than this cannot be a scribble worth acting on, and the
+ * buffer must not grow without bound while someone writes a paragraph.
+ */
+const MAX_SCRIBBLE_SAMPLES = 512;
 
 type ActivePrecisionEraserGesture = {
   cursorDiameter: number;
@@ -130,6 +144,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       penColor,
       penThickness,
       readOnly = false,
+      scribbleToErase = false,
+      onScribbleErase,
     },
     forwardedRef
   ) {
@@ -156,6 +172,18 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     );
     const precisionEraserGestureRef =
       useRef<ActivePrecisionEraserGesture | null>(null);
+    /**
+     * The live pen path, for recognising a scribble-out at release.
+     *
+     * Bounded: a long stroke cannot be a scribble anyway, and this sits in a
+     * pointer handler that runs at the Pencil's full rate.
+     */
+    const scribbleSamplesRef = useRef<{
+      pointerId: number;
+      samples: NotebookScribbleSample[];
+      surfaceLeft: number;
+      surfaceTop: number;
+    } | null>(null);
     const pendingStyleRef = useRef(false);
     const appliedStyleRef = useRef<NotebookInkStyle | null>(null);
     const initialSvgRef = useRef(initialSvg);
@@ -175,6 +203,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onInteractionChange,
       onReady,
       onReadyError,
+      onScribbleErase,
     });
     useEffect(() => {
       callbacksRef.current = {
@@ -183,6 +212,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         onInteractionChange,
         onReady,
         onReadyError,
+        onScribbleErase,
       };
     }, [
       onChange,
@@ -190,6 +220,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onInteractionChange,
       onReady,
       onReadyError,
+      onScribbleErase,
     ]);
 
     useImperativeHandle(
@@ -542,6 +573,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const cancelEditorGesture = useCallback(() => {
       inkSmoothersRef.current.clear();
       lastForwardedPointerSampleRef.current.clear();
+      scribbleSamplesRef.current = null;
       precisionEraserGestureRef.current?.gesture.cancel();
       precisionEraserGestureRef.current = null;
       eraserSurfaceOffsetRef.current = null;
@@ -770,6 +802,23 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             event.nativeEvent
           );
         }
+        if (scribbleToErase && activeTool === "pen") {
+          const rect = surface.getBoundingClientRect();
+          scribbleSamplesRef.current = {
+            pointerId: event.pointerId,
+            samples: [
+              {
+                x: event.clientX - rect.left,
+                y: event.clientY - rect.top,
+                time: event.timeStamp,
+              },
+            ],
+            surfaceLeft: rect.left,
+            surfaceTop: rect.top,
+          };
+        } else {
+          scribbleSamplesRef.current = null;
+        }
         try {
           if (!surface.hasPointerCapture(event.pointerId)) {
             surface.setPointerCapture(event.pointerId);
@@ -780,6 +829,69 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         callbacksRef.current.onInteractionChange(true);
       }
       const pointerJsDraw = jsDrawRef.current;
+      const scribbleTrack = scribbleSamplesRef.current;
+      if (
+        scribbleTrack?.pointerId === event.pointerId &&
+        (type === "pointermove" || type === "pointerup")
+      ) {
+        scribbleTrack.samples.push({
+          x: event.clientX - scribbleTrack.surfaceLeft,
+          y: event.clientY - scribbleTrack.surfaceTop,
+          time: event.timeStamp,
+        });
+        // Past the cap the gesture has run far longer than any scribble, and a
+        // truncated path cannot be judged honestly. Stop watching this stroke.
+        if (scribbleTrack.samples.length > MAX_SCRIBBLE_SAMPLES) {
+          scribbleSamplesRef.current = null;
+        }
+      }
+
+      /*
+       * A scribble is answered before the release reaches js-draw.
+       *
+       * Cancelling the pen's gesture discards the stroke in progress, so the
+       * scribble never becomes a component and never enters the undo history:
+       * one press of undo brings back what was erased, with nothing left over.
+       * A scribble over blank paper plans nothing and commits as ordinary ink.
+       */
+      if (
+        type === "pointerup" &&
+        editor &&
+        pointerJsDraw &&
+        scribbleSamplesRef.current?.pointerId === event.pointerId &&
+        scribbleTrack
+      ) {
+        const plan = planNotebookScribbleErase({
+          editor,
+          jsDraw: pointerJsDraw,
+          samples: scribbleTrack.samples,
+          // The nib is measured in canvas units; the gesture in screen pixels.
+          strokeWidth: penThickness * editor.viewport.getScaleFactor(),
+        });
+        scribbleSamplesRef.current = null;
+        if (plan) {
+          cancelEditorGesture();
+          applyNotebookScribbleErase(editor, pointerJsDraw, plan);
+          callbacksRef.current.onScribbleErase?.(plan.components.length);
+          finishPointerInteraction({
+            pointerId: event.pointerId,
+            timeStamp: event.timeStamp,
+          });
+          try {
+            if (surface.hasPointerCapture(event.pointerId)) {
+              surface.releasePointerCapture(event.pointerId);
+            }
+          } catch {
+            // Capture may already be gone; the interaction is finished either way.
+          }
+          inkSmoothersRef.current.delete(event.pointerId);
+          lastForwardedPointerSampleRef.current.delete(event.pointerId);
+          return true;
+        }
+      }
+      if (type === "pointerup" || type === "pointercancel") {
+        scribbleSamplesRef.current = null;
+      }
       if (editor) {
         if (precisionEraserActive) {
           if (

@@ -1,7 +1,12 @@
 // @vitest-environment jsdom
 
 import { beforeAll, describe, expect, it } from "vitest";
-import type { Point2, Stroke, StrokeDataPoint } from "js-draw";
+import type {
+  Point2,
+  RenderablePathSpec,
+  Stroke,
+  StrokeDataPoint,
+} from "js-draw";
 import { createNotebookChiselStrokeFactory } from "@/lib/workspace/notebook-chisel-stroke";
 import { loadJsDraw, type JsDrawModule } from "@/lib/workspace/notebook-js-draw";
 
@@ -42,6 +47,39 @@ function buildStroke(points: StrokeDataPoint[]): Stroke {
   return built;
 }
 
+/**
+ * What the wet stroke draws, which is still one footprint per step of the nib.
+ * The committed stroke traces the union of these into one loop.
+ */
+function previewPathOf(points: StrokeDataPoint[]): RenderablePathSpec {
+  const builder = createNotebookChiselStrokeFactory(jsDraw)(points[0], viewport);
+  for (const next of points.slice(1)) builder.addPoint(next);
+
+  let captured: RenderablePathSpec | null = null;
+  builder.preview({
+    drawPath: (spec: RenderablePathSpec) => {
+      captured = spec;
+    },
+  } as never);
+  if (!captured) throw new Error("The chisel builder should preview a path.");
+  return captured;
+}
+
+/** The corner points of a path spec, in the order the path visits them. */
+function cornersOfSpec(spec: RenderablePathSpec): Point2[] {
+  const corners: Point2[] = [spec.startPoint];
+
+  for (const part of spec.commands) {
+    corners.push(
+      part.kind === jsDraw.PathCommandType.MoveTo ||
+        part.kind === jsDraw.PathCommandType.LineTo
+        ? part.point
+        : part.endPoint
+    );
+  }
+  return corners;
+}
+
 /** The outline's corner points, in the order the path visits them. */
 function outlineOf(points: StrokeDataPoint[]): Point2[] {
   const path = buildStroke(points).getParts()[0].path;
@@ -56,6 +94,16 @@ function outlineOf(points: StrokeDataPoint[]): Point2[] {
     );
   }
   return corners;
+}
+
+function signedAreaOf(corners: Point2[]) {
+  let twice = 0;
+  for (let index = 0; index < corners.length; index += 1) {
+    const here = corners[index];
+    const next = corners[(index + 1) % corners.length];
+    twice += here.x * next.y - next.x * here.y;
+  }
+  return twice / 2;
 }
 
 /** A half circle, which turns through every direction and so must cross the
@@ -159,15 +207,15 @@ describe("chisel highlighter geometry", () => {
  * region takes a winding number of zero, punching it out of the fill.
  *
  * Sweeping each step as its own parallelogram removes the possibility instead
- * of handling the cases, and these pin that structure.
+ * of handling the cases, and these pin that structure in the wet stroke.
  */
 describe("never eating a hole in itself", () => {
-  /** The outline split back into its subpaths. */
+  /** The previewed path split back into its subpaths. */
   function subpathsOf(points: StrokeDataPoint[]): Point2[][] {
-    const path = buildStroke(points).getParts()[0].path;
-    const subpaths: Point2[][] = [[path.startPoint]];
+    const spec = previewPathOf(points);
+    const subpaths: Point2[][] = [[spec.startPoint]];
 
-    for (const part of path.parts) {
+    for (const part of spec.commands) {
       const corner =
         part.kind === jsDraw.PathCommandType.MoveTo ||
         part.kind === jsDraw.PathCommandType.LineTo
@@ -179,15 +227,7 @@ describe("never eating a hole in itself", () => {
     return subpaths;
   }
 
-  function signedArea(corners: Point2[]) {
-    let twice = 0;
-    for (let index = 0; index < corners.length; index += 1) {
-      const here = corners[index];
-      const next = corners[(index + 1) % corners.length];
-      twice += here.x * next.y - next.x * here.y;
-    }
-    return twice / 2;
-  }
+  const signedArea = signedAreaOf;
 
   it("sweeps each step as its own convex footprint, which cannot fold", () => {
     const subpaths = subpathsOf(halfCircle());
@@ -266,5 +306,72 @@ describe("never eating a hole in itself", () => {
 
     // The raw input swings across 12 units every sample.
     expect(spread).toBeLessThan(12);
+  });
+});
+
+/**
+ * Subpaths are what the eraser cannot survive. `Path.asClosed()`, which every
+ * erased piece passes through, replaces each `MoveTo` with a `LineTo` -- so a
+ * row of footprints becomes one zig-zag polygon that bridges between them and
+ * bulges outside the wash. The splitting above it is worse still, pairing
+ * pieces on the assumption that the path is a single closed loop.
+ *
+ * The committed stroke is therefore the union of the footprints, traced once
+ * into that single loop.
+ */
+describe("committing as one loop, so the eraser can divide it", () => {
+  const scrub = () => {
+    const points: StrokeDataPoint[] = [];
+    for (let pass = 0; pass < 4; pass += 1) {
+      for (let step = 0; step < 20; step += 1) {
+        const x = pass % 2 === 0 ? 20 + step * 6 : 134 - step * 6;
+        points.push(point(x, 20 + pass * 3));
+      }
+    }
+    return points;
+  };
+
+  it.each([
+    ["a straight sweep", () => [point(20, 40), point(160, 40)]],
+    ["a curve through every direction", halfCircle],
+    ["a stroke scrubbed back over itself", scrub],
+  ])("commits %s with no MoveTo in the path", (_label, makePoints) => {
+    const path = buildStroke(makePoints()).getParts()[0].path;
+
+    expect(
+      path.parts.some((part) => part.kind === jsDraw.PathCommandType.MoveTo)
+    ).toBe(false);
+  });
+
+  it("covers the same region the wet stroke drew", () => {
+    // The union of the footprints, so nothing moves between wet and dry. A
+    // bounding box is the coarse check that survives either structure.
+    const points = halfCircle();
+    const previewCorners = cornersOfSpec(previewPathOf(points));
+    const committed = buildStroke(points).getBBox();
+    const xs = previewCorners.map((corner) => corner.x);
+    const ys = previewCorners.map((corner) => corner.y);
+
+    expect(committed.x).toBeCloseTo(Math.min(...xs), 4);
+    expect(committed.y).toBeCloseTo(Math.min(...ys), 4);
+    expect(committed.w).toBeCloseTo(Math.max(...xs) - Math.min(...xs), 4);
+    expect(committed.h).toBeCloseTo(Math.max(...ys) - Math.min(...ys), 4);
+  });
+
+  it("encloses more than any single footprint, so it is the union and not one piece", () => {
+    const points = halfCircle();
+    const committed = Math.abs(signedAreaOf(outlineOf(points)));
+    const oneStep = Math.abs(
+      signedAreaOf(cornersOfSpec(previewPathOf([points[0], points[1]])))
+    );
+
+    expect(committed).toBeGreaterThan(oneStep * 4);
+  });
+
+  it("still commits a tap, which has only one footprint to trace", () => {
+    const box = buildStroke([point(50, 50)]).getBBox();
+
+    expect(box.width).toBeGreaterThan(0);
+    expect(box.height).toBeGreaterThan(0);
   });
 });
