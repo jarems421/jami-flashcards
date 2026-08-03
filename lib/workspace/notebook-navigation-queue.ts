@@ -25,6 +25,25 @@ export type NotebookQueuedPageTurn = {
 };
 
 /**
+ * Whether a released flick should be held rather than run now.
+ *
+ * Both halves matter. A gesture that began while the track was idle drives the
+ * track itself and was never a candidate for the queue. A gesture that began
+ * during a settle but was released after it finished must *not* be queued: the
+ * queue drains when a handoff completes, so with no handoff left in flight the
+ * turn would sit there forever and the flick would appear to do nothing. That
+ * timing is the common one -- a settle takes a few hundred milliseconds, and so
+ * does a second flick -- which is why queuing on the starting state alone left
+ * quick flicks still being swallowed.
+ */
+export function shouldQueueNotebookPageTurn(input: {
+  settlingNow: boolean;
+  startedWhileSettling: boolean;
+}) {
+  return input.startedWhileSettling && input.settlingNow;
+}
+
+/**
  * One slot, newest wins.
  *
  * A flurry of flicks should land one page beyond wherever the animation is

@@ -136,6 +136,7 @@ import {
   getNotebookPageTurnOffset,
   getQueuedNotebookPageTurn,
   resolveQueuedNotebookPageTurn,
+  shouldQueueNotebookPageTurn,
   type NotebookQueuedPageTurn,
 } from "@/lib/workspace/notebook-navigation-queue";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
@@ -2003,7 +2004,12 @@ export default function NotebookEditorPage() {
     // that turn finishes rather than dropped. Bounds are deliberately not
     // resolved here: the queued turn is a direction, and the page it applies to
     // is whichever one is open when it runs.
-    if (swipe.queuedOnly) {
+    if (
+      shouldQueueNotebookPageTurn({
+        settlingNow: pageNavigationLockedRef.current,
+        startedWhileSettling: swipe.queuedOnly,
+      })
+    ) {
       const queuedPageWidth =
         pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
       const queuedVelocityX = getNotebookSwipeVelocity([

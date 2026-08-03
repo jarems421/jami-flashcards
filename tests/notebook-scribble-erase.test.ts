@@ -51,13 +51,140 @@ function scribble(passes = 6, pixelsPerMs = 2) {
   return trace(corners, pixelsPerMs);
 }
 
+/**
+ * A scribble-out as a hand actually makes it: overshooting ends, a band that
+ * drifts as it goes, wobble on every sample, and a speed in the range people
+ * really scribble at.
+ *
+ * The first cut of this detector was tuned against tidy fixtures and rejected
+ * essentially every real gesture -- four passes rather than five, 0.7 screen
+ * pixels per millisecond rather than 1.2. These are the shapes that matter.
+ */
+function handScribble(input: {
+  bandHeight?: number;
+  durationMs?: number;
+  passes?: number;
+  seed?: number;
+  wordWidth?: number;
+}) {
+  const {
+    bandHeight = 40,
+    durationMs = 800,
+    passes = 4,
+    seed = 1,
+    wordWidth = 160,
+  } = input;
+  let state = seed * 7919;
+  const random = () => {
+    state = (state * 1103515245 + 12345) % 2147483648;
+    return state / 2147483648;
+  };
+
+  const corners: Array<[number, number]> = [];
+  for (let pass = 0; pass <= passes; pass += 1) {
+    corners.push([
+      200 + (pass % 2 === 0 ? 0 : wordWidth) + (random() - 0.5) * 20,
+      400 + (pass / passes) * bandHeight + (random() - 0.5) * 8,
+    ]);
+  }
+
+  const samples: NotebookScribbleSample[] = [];
+  let total = 0;
+  for (let index = 1; index < corners.length; index += 1) {
+    total += Math.hypot(
+      corners[index][0] - corners[index - 1][0],
+      corners[index][1] - corners[index - 1][1]
+    );
+  }
+  let travelled = 0;
+  for (let index = 1; index < corners.length; index += 1) {
+    const [fromX, fromY] = corners[index - 1];
+    const [toX, toY] = corners[index];
+    const legLength = Math.hypot(toX - fromX, toY - fromY);
+    const count = Math.max(2, Math.round(legLength / 4));
+    for (let step = index === 1 ? 0 : 1; step <= count; step += 1) {
+      const t = step / count;
+      samples.push({
+        x: fromX + (toX - fromX) * t + (random() - 0.5) * 2,
+        y: fromY + (toY - fromY) * t + (random() - 0.5) * 2,
+        time: ((travelled + legLength * t) / total) * durationMs,
+      });
+    }
+    travelled += legLength;
+  }
+  return samples;
+}
+
 describe("detectNotebookScribble", () => {
   it("recognises a fast back-and-forth scribble", () => {
     const found = detectNotebookScribble(scribble());
 
     expect(found).not.toBeNull();
-    expect(found!.reversals).toBeGreaterThanOrEqual(4);
+    expect(found!.reversals).toBeGreaterThanOrEqual(3);
     expect(found!.band.hull.length).toBeGreaterThanOrEqual(3);
+  });
+
+  describe("as a hand actually scribbles", () => {
+    it.each([
+      ["four passes over a word", {}],
+      ["five passes over a word", { passes: 5, durationMs: 900 }],
+      ["six quick passes", { passes: 6, durationMs: 700 }],
+      ["four passes over a phrase", { wordWidth: 320 }],
+      ["a band as tall as two lines", { passes: 5, bandHeight: 70 }],
+      ["an unhurried scribble", { durationMs: 1100 }],
+    ])("recognises %s", (_label, options) => {
+      for (let seed = 1; seed <= 8; seed += 1) {
+        expect(
+          detectNotebookScribble(handScribble({ ...options, seed }), {
+            viewportScale: 0.85,
+          })
+        ).not.toBeNull();
+      }
+    });
+
+    it("leaves a three-pass zig-zag alone, being too close to a letter", () => {
+      // Two reversals, exactly what `w` and `m` make. The floor is deliberate.
+      for (let seed = 1; seed <= 8; seed += 1) {
+        expect(
+          detectNotebookScribble(
+            handScribble({ passes: 3, durationMs: 600, seed }),
+            { viewportScale: 0.85 }
+          )
+        ).toBeNull();
+      }
+    });
+
+    it("leaves a slow, considered movement alone", () => {
+      for (let seed = 1; seed <= 8; seed += 1) {
+        expect(
+          detectNotebookScribble(
+            handScribble({ durationMs: 2200, seed }),
+            { viewportScale: 0.85 }
+          )
+        ).toBeNull();
+      }
+    });
+  });
+
+  /**
+   * Once the principal axis of a squarish gesture comes out vertical, a `w`
+   * has parallel legs that retrace each other perfectly -- indistinguishable
+   * from a scribble by direction alone. Its proportions are what give it away.
+   */
+  it("leaves a letter-shaped gesture alone however scribble-like its legs", () => {
+    const bigW = trace(
+      [
+        [100, 300],
+        [160, 460],
+        [220, 300],
+        [280, 460],
+        [340, 300],
+        [400, 460],
+      ],
+      2
+    );
+
+    expect(detectNotebookScribble(bigW, { viewportScale: 0.85 })).toBeNull();
   });
 
   it.each([
@@ -85,7 +212,10 @@ describe("detectNotebookScribble", () => {
   });
 
   it("leaves a slow deliberate zig-zag alone", () => {
-    expect(detectNotebookScribble(scribble(6, 0.4))).toBeNull();
+    // Slow enough to be drawing rather than striking out. A merely relaxed
+    // scribble still counts -- speed is the weakest of the six signals, and
+    // demanding a brisk one is what stopped the gesture firing at all.
+    expect(detectNotebookScribble(scribble(6, 0.15))).toBeNull();
   });
 
   it("leaves a scribble too small to be aimed at anything alone", () => {
@@ -198,7 +328,7 @@ describe("detectNotebookScribble", () => {
     it("judges speed by the hand, so a lazy sweep zoomed out is not a scribble", () => {
       // Zoomed out, the hand covers four page units per screen pixel: a slow,
       // deliberate movement looks fast if speed is read off the page.
-      const dawdling = overPageBand({ viewportScale: 0.25, handSpeed: 0.5 });
+      const dawdling = overPageBand({ viewportScale: 0.25, handSpeed: 0.15 });
       const brisk = overPageBand({ viewportScale: 0.25, handSpeed: 2 });
 
       expect(
