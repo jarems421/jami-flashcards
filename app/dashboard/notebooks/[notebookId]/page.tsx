@@ -3080,7 +3080,10 @@ export default function NotebookEditorPage() {
             {scribbleEraseNotice !== null ? (
               <div
                 role="status"
-                className={`notebook-floating-control absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--color-border)] py-1.5 pl-3.5 pr-1.5 text-xs font-semibold text-text-secondary ${
+                // The pill sits over the page for a couple of seconds. Only the
+                // Undo button takes pointer events, so it cannot swallow a
+                // Pencil stroke that lands underneath it.
+                className={`notebook-floating-control pointer-events-none absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--color-border)] py-1.5 pl-3.5 pr-1.5 text-xs font-semibold text-text-secondary ${
                   toolbarDock === "bottom"
                     ? "bottom-[calc(var(--notebook-control-bottom-inset)+6.35rem)]"
                     : "bottom-[var(--notebook-control-bottom-inset)]"
@@ -3096,7 +3099,7 @@ export default function NotebookEditorPage() {
                     handleUndo();
                     setScribbleEraseNotice(null);
                   }}
-                  className="rounded-full bg-[var(--color-selected-bg)] px-2.5 py-1 text-[var(--color-selected-text)] transition hover:brightness-110"
+                  className="pointer-events-auto rounded-full bg-[var(--color-selected-bg)] px-2.5 py-1 text-[var(--color-selected-text)] transition hover:brightness-110"
                 >
                   Undo
                 </button>
