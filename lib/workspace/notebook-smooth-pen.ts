@@ -92,6 +92,20 @@ const TANGENT_SCALE = 1 / 3;
 const EASE_TOWARDS_NEIGHBOURS = 0.34;
 
 /**
+ * How far a stroke may wander from the straight line between its ends and
+ * still be taken as an attempt at one, as a fraction of that line's length.
+ *
+ * Holding still at the end of a stroke snaps it straight. The judgement has
+ * to be conservative: straightening something the hand did not mean as a line
+ * is far worse than declining to straighten one it did, because the drawing
+ * is already finished and the correction overwrites it.
+ */
+const STRAIGHTEN_TOLERANCE = 0.09;
+
+/** Shorter than this and there is not enough of a line to be sure. */
+const STRAIGHTEN_MINIMUM_SPAN_RATIO = 12;
+
+/**
  * How sharply the line must turn at a point before it is treated as a corner
  * rather than a curve, in degrees.
  *
@@ -351,6 +365,38 @@ export function createNotebookSmoothPenStrokeFactory(
       },
       inkTrailStyle() {
         return { color, width: strokeWidth() };
+      },
+      /**
+       * Called when the pen is held still, to offer a tidied version of what
+       * has been drawn. Returning null leaves the stroke exactly as drawn.
+       */
+      async autocorrectShape() {
+        const shape = easedShape(shapePoints());
+        if (shape.length < 3) return null;
+
+        const from = shape[0];
+        const to = shape[shape.length - 1];
+        const span = to.distanceTo(from);
+        if (span < strokeWidth() * STRAIGHTEN_MINIMUM_SPAN_RATIO) return null;
+
+        // Only straighten what was nearly straight already. A curve, a letter
+        // or a scribble all fail this and are left alone.
+        let worst = 0;
+        for (const point of shape) {
+          worst = Math.max(worst, strayFromLine(point, from, to));
+        }
+        if (worst > span * STRAIGHTEN_TOLERANCE) return null;
+
+        return new Stroke([
+          {
+            startPoint: from,
+            commands: [{ kind: PathCommandType.LineTo, point: to }],
+            style: {
+              fill: jsDraw.Color4.transparent,
+              stroke: { color, width: strokeWidth() },
+            },
+          },
+        ]);
       },
     };
   };

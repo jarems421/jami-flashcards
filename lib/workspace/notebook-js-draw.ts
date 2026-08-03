@@ -146,11 +146,25 @@ export function applyNotebookStrokeShape(
 ) {
   if (appliedStrokeShapes.get(pen) === tool) return;
 
+  /*
+   * Hold still at the end of a stroke and a line snaps straight. js-draw
+   * detects the pause and asks the builder to correct itself; the pen answers
+   * that in `autocorrectShape`, which only straightens something that was
+   * already reaching for a line.
+   *
+   * The pen only. A highlighter is laid over words that are already there and
+   * has nothing to snap to, and straightening one mid-sweep would be a
+   * surprise rather than a help.
+   */
+  const straightenOnHold = tool === "pen";
   pen.setStrokeFactory(
     tool === "highlighter"
       ? createNotebookChiselStrokeFactory(jsDraw)
       : createNotebookSmoothPenStrokeFactory(jsDraw)
   );
+  if (pen.getStrokeAutocorrectionEnabled() !== straightenOnHold) {
+    pen.setStrokeAutocorrectEnabled(straightenOnHold);
+  }
   appliedStrokeShapes.set(pen, tool);
 }
 

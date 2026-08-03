@@ -221,6 +221,63 @@ describe("the smooth pen", () => {
     expect(worstRatio).toBeLessThan(0.4);
   });
 
+  describe("straightening when the pen is held still", () => {
+    function autocorrect(points: StrokeDataPoint[]) {
+      const builder = createNotebookSmoothPenStrokeFactory(jsDraw)(
+        points[0],
+        viewport
+      );
+      for (const next of points.slice(1)) builder.addPoint(next);
+      return builder.autocorrectShape?.() ?? Promise.resolve(null);
+    }
+
+    it("snaps a roughly straight stroke onto its own two ends", async () => {
+      // Drawn left to right with a hand's worth of wander.
+      const points = Array.from({ length: 30 }, (_, step) =>
+        point(20 + step * 10, 100 + (step % 3 === 0 ? 1.5 : -1.5))
+      );
+      const corrected = await autocorrect(points);
+
+      expect(corrected).not.toBeNull();
+      const path = (corrected as Stroke).getParts()[0].path;
+      expect(path.parts).toHaveLength(1);
+      expect(path.startPoint.x).toBeCloseTo(20, 3);
+      expect(path.parts[0].kind).toBe(jsDraw.PathCommandType.LineTo);
+    });
+
+    /*
+     * Declining matters more than snapping. The stroke is already finished
+     * when this runs, so straightening something the hand did not mean as a
+     * line overwrites real work; failing to straighten one it did costs
+     * nothing but a moment.
+     */
+    it("leaves a curve alone", async () => {
+      expect(await autocorrect(arc())).toBeNull();
+    });
+
+    it("leaves a letter-sized stroke alone", async () => {
+      // Short enough that its wander cannot be judged, and the pen pauses
+      // between letters constantly.
+      const points = Array.from({ length: 12 }, (_, step) =>
+        point(20 + step * 1.5, 100)
+      );
+
+      expect(await autocorrect(points)).toBeNull();
+    });
+
+    it("leaves a scribble alone", async () => {
+      const points: StrokeDataPoint[] = [];
+      for (let pass = 0; pass < 4; pass += 1) {
+        for (let step = 0; step < 15; step += 1) {
+          const x = pass % 2 === 0 ? 20 + step * 12 : 188 - step * 12;
+          points.push(point(x, 100 + pass * 9));
+        }
+      }
+
+      expect(await autocorrect(points)).toBeNull();
+    });
+  });
+
   it("stores a small fraction of the samples it was given", () => {
     const points = arc();
     const smooth = buildStroke(points).getParts()[0].path.parts.length;
