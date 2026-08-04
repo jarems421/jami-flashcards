@@ -17,7 +17,14 @@ import sharp from "sharp";
 
 /** The manifest's background_color, so the launch matches the app it opens. */
 const BACKGROUND = "#100719";
-/** How much of the shorter side the mark takes, matching the launch screen. */
+/**
+ * How much of the shorter side the mark takes.
+ *
+ * The app's own opening screen draws it at the same share -- `BrandMark`'s
+ * `launch` size, `min(26vw, 26vh)` -- so that when the web page takes over from
+ * this image the mark does not appear to move or resize. Change one and change
+ * the other.
+ */
 const MARK_RATIO = 0.26;
 
 const SOURCE_ICON = join(process.cwd(), "public", "icons", "icon-512.png");

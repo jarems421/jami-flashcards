@@ -1,4 +1,4 @@
-type BrandMarkSize = "sm" | "md" | "lg";
+type BrandMarkSize = "sm" | "md" | "lg" | "launch";
 
 type BrandMarkProps = {
   size?: BrandMarkSize;
@@ -9,6 +9,16 @@ const sizeClasses: Record<BrandMarkSize, string> = {
   sm: "h-7 w-7",
   md: "h-9 w-9",
   lg: "h-11 w-11",
+  /**
+   * The size the launch screen draws it at.
+   *
+   * A share of the shorter side rather than a fixed size, because that is how
+   * `scripts/generate-splash-screens.mjs` places it in the image iOS shows
+   * first. Matching the two means the app's own opening screen takes over from
+   * that image without the mark appearing to move or resize. Changing this
+   * without changing `MARK_RATIO` there puts the jump back.
+   */
+  launch: "h-[min(26vw,26vh)] w-[min(26vw,26vh)]",
 };
 
 export default function BrandMark({ size = "md", className = "" }: BrandMarkProps) {
