@@ -489,6 +489,13 @@ or across existing work.
 are the same motion as an area scribble and nothing reliably separates them. The
 pen settings carry a switch for anyone who shades diagrams.
 
+**The "Scribbled out N strokes · Undo" pill is gone**, removed on request. The
+original argument for it — that an erase nobody explicitly asked for should not
+be silent — did not survive contact with the gesture: you scribble something out
+because you meant to, and a pill confirming it every time is noise over the page
+you are writing on. Undo is still one press and still reverses the whole thing,
+because the scribble never entered the history.
+
 ### Verified
 
 `npm run typecheck`, `npm run lint`, `npm test` (1254 tests, 155 files), and

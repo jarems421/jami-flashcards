@@ -300,7 +300,6 @@ export default function NotebookEditorPage() {
     eraserMenuOpen, setEraserMenuOpen,
     touchInkHintVisible, setTouchInkHintVisible,
     scribbleToErase, setScribbleToErase,
-    scribbleEraseNotice, setScribbleEraseNotice,
   } = useNotebookDrawingToolState();
   const {
     pageZoom, setPageZoom, pagePan, setPagePan,
@@ -345,7 +344,6 @@ export default function NotebookEditorPage() {
   const editorRevisionRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
   const touchInkHintTimeoutRef = useRef<number | null>(null);
-  const scribbleNoticeTimeoutRef = useRef<number | null>(null);
   const fullNotebookEditingEnabled = !isPhoneLayout || phoneFullEditing;
   const selectedPage = useMemo(
     () => pages.find((page) => page.id === selectedPageId) ?? pages[0] ?? null,
@@ -940,37 +938,6 @@ export default function NotebookEditorPage() {
   useEffect(() => {
     setScribbleToErase(readNotebookScribbleErasePreference());
   }, [setScribbleToErase]);
-
-  /**
-   * Says what a scribble just removed.
-   *
-   * An erase nobody explicitly asked for should never be silent, even when the
-   * gesture was deliberate. Undo is one press away and now does exactly the
-   * right thing, because the scribble itself never entered the history.
-   */
-  const handleScribbleErase = useCallback(
-    (strokeCount: number) => {
-      setScribbleEraseNotice(strokeCount);
-      if (scribbleNoticeTimeoutRef.current !== null) {
-        window.clearTimeout(scribbleNoticeTimeoutRef.current);
-      }
-      scribbleNoticeTimeoutRef.current = window.setTimeout(() => {
-        setScribbleEraseNotice(null);
-        scribbleNoticeTimeoutRef.current = null;
-      }, 2600);
-    },
-    [setScribbleEraseNotice]
-  );
-
-  useEffect(
-    () => () => {
-      if (scribbleNoticeTimeoutRef.current !== null) {
-        window.clearTimeout(scribbleNoticeTimeoutRef.current);
-        scribbleNoticeTimeoutRef.current = null;
-      }
-    },
-    []
-  );
 
   useEffect(() => {
     if (!selectedPage) {
@@ -2828,7 +2795,6 @@ export default function NotebookEditorPage() {
                       activeTool: tool,
                       eraserMode,
                       scribbleToErase,
-                      onScribbleErase: handleScribbleErase,
                       penColor,
                       penThickness:
                         getPenWidthFromPercent(penThicknessPercent),
@@ -3038,34 +3004,6 @@ export default function NotebookEditorPage() {
               >
                 Loading this page&rsquo;s drawing. Writing is paused until it
                 arrives.
-              </div>
-            ) : null}
-            {scribbleEraseNotice !== null ? (
-              <div
-                role="status"
-                // The pill sits over the page for a couple of seconds. Only the
-                // Undo button takes pointer events, so it cannot swallow a
-                // Pencil stroke that lands underneath it.
-                className={`notebook-floating-control pointer-events-none absolute left-1/2 z-20 flex -translate-x-1/2 items-center gap-2 rounded-full border border-[var(--color-border)] py-1.5 pl-3.5 pr-1.5 text-xs font-semibold text-text-secondary ${
-                  toolbarDock === "bottom"
-                    ? "bottom-[calc(var(--notebook-control-bottom-inset)+6.35rem)]"
-                    : "bottom-[var(--notebook-control-bottom-inset)]"
-                }`}
-              >
-                Scribbled out{" "}
-                {scribbleEraseNotice === 1
-                  ? "1 stroke"
-                  : `${scribbleEraseNotice} strokes`}
-                <button
-                  type="button"
-                  onClick={() => {
-                    handleUndo();
-                    setScribbleEraseNotice(null);
-                  }}
-                  className="pointer-events-auto rounded-full bg-[var(--color-selected-bg)] px-2.5 py-1 text-[var(--color-selected-text)] transition hover:brightness-110"
-                >
-                  Undo
-                </button>
               </div>
             ) : null}
         </div>
