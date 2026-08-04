@@ -105,12 +105,19 @@ describe("notebook page content", () => {
     expect(linedBackground).toContain("M 0 40 H 900");
     expect(linedBackground).toContain("M 0 1200 H 900");
 
+    /*
+     * The grid runs edge to edge in both directions, so no cell is cut short.
+     * It used to keep the cell exactly 45 and split the height's twenty-five
+     * unit remainder between the ends, which left a band about a quarter of a
+     * cell tall at the top and bottom -- a row of half-squares.
+     */
     const gridBackground = decodeURIComponent(
       getNotebookPageStyleBackground("white", "grid")?.backgroundImage ?? ""
     );
-    expect(gridBackground).toContain("M 0 12.5 V 1227.5");
-    expect(gridBackground).toContain("M 900 12.5 V 1227.5");
-    expect(gridBackground).toContain("M 0 1227.5 H 900");
+    expect(gridBackground).toContain("M 0 0 V 1240");
+    expect(gridBackground).toContain("M 900 0 V 1240");
+    expect(gridBackground).toContain("M 0 0 H 900");
+    expect(gridBackground).toContain("M 0 1240 H 900");
   });
 
   it("bounds thumbnail paths and produces stable accessible element ids", () => {
