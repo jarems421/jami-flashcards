@@ -95,15 +95,33 @@ const EASE_TOWARDS_NEIGHBOURS = 0.34;
  * How far a stroke may wander from the straight line between its ends and
  * still be taken as an attempt at one, as a fraction of that line's length.
  *
- * Holding still at the end of a stroke snaps it straight. The judgement has
- * to be conservative: straightening something the hand did not mean as a line
- * is far worse than declining to straighten one it did, because the drawing
- * is already finished and the correction overwrites it.
+ * Holding still at the end of a stroke snaps it straight. This used to be
+ * strict, on the reasoning that straightening something the hand did not mean
+ * as a line overwrites a finished drawing -- but it was strict enough that only
+ * an already-straight line qualified, which is the one case that needs no help.
+ * A ruled line drawn freehand wanders, and a rough one is exactly what somebody
+ * holding their pen still is asking to have tidied.
+ *
+ * What guards this is not the tolerance but the gesture: nobody stops dead at
+ * the end of ordinary writing, they lift. And the result can now be adjusted
+ * before it commits, so a snap that came out wrong is redirected rather than
+ * redrawn.
  */
-const STRAIGHTEN_TOLERANCE = 0.09;
+const STRAIGHTEN_TOLERANCE = 0.22;
+
+/**
+ * How far a stroke may run backwards along its own line and still be taken as
+ * an attempt at one, as a fraction of that line's length.
+ *
+ * Sideways wandering is what a rough line does; coming back on itself is what a
+ * `v`, an `n` or a zigzag does. Allowing the first generously while still
+ * refusing the second is what stops the loose tolerance above straightening
+ * shapes that only happen to start and end far apart.
+ */
+const STRAIGHTEN_MAXIMUM_BACKTRACK = 0.12;
 
 /** Shorter than this and there is not enough of a line to be sure. */
-const STRAIGHTEN_MINIMUM_SPAN_RATIO = 12;
+const STRAIGHTEN_MINIMUM_SPAN_RATIO = 8;
 
 /**
  * How sharply the line must turn at a point before it is treated as a corner
@@ -160,6 +178,19 @@ export function createNotebookSmoothPenStrokeFactory(
      * cannot be known until the next sample arrives.
      */
     let pending: Point2 | null = null;
+    /**
+     * Set once the stroke has snapped straight, after which the stroke *is*
+     * this line and the pen is aiming it rather than drawing.
+     *
+     * Snapping used to be the end of it: the line appeared, and any further
+     * movement threw it away and went back to the freehand path, so getting the
+     * angle right meant drawing it again until it landed. Keeping the line and
+     * letting its far end follow the pen turns that into aiming -- swing to
+     * pivot, come back along it to shorten, lift when it looks right. The near
+     * end stays where the stroke began, which is the end the hand has already
+     * committed to.
+     */
+    let straightened: { from: Point2; to: Point2 } | null = null;
 
     /** Perpendicular distance from `point` to the line `from`-`to`. */
     const strayFromLine = (point: Point2, from: Point2, to: Point2) => {
@@ -212,7 +243,55 @@ export function createNotebookSmoothPenStrokeFactory(
       return eased;
     };
 
+    /** Whichever straight line the stroke has been aimed at so far. */
+    const straightLineSpec = (
+      from: Point2,
+      to: Point2
+    ): RenderablePathSpec => ({
+      startPoint: from,
+      commands: [{ kind: PathCommandType.LineTo, point: to }],
+      style: {
+        fill: jsDraw.Color4.transparent,
+        stroke: { color, width: strokeWidth() },
+      },
+    });
+
+    /**
+     * The line this stroke would snap to, or null if it is not a line.
+     *
+     * Judged on the eased shape rather than the raw samples, so the same points
+     * decide it that would have been drawn.
+     */
+    const straightenedShape = () => {
+      const shape = easedShape(shapePoints());
+      if (shape.length < 3) return null;
+
+      const from = shape[0];
+      const to = shape[shape.length - 1];
+      const span = to.distanceTo(from);
+      if (span < strokeWidth() * STRAIGHTEN_MINIMUM_SPAN_RATIO) return null;
+
+      const along = to.minus(from).times(1 / span);
+      let worstStray = 0;
+      let furthestAlong = 0;
+      let worstBacktrack = 0;
+      for (const point of shape) {
+        worstStray = Math.max(worstStray, strayFromLine(point, from, to));
+        const travelled = point.minus(from).dot(along);
+        worstBacktrack = Math.max(worstBacktrack, furthestAlong - travelled);
+        furthestAlong = Math.max(furthestAlong, travelled);
+      }
+
+      if (worstStray > span * STRAIGHTEN_TOLERANCE) return null;
+      if (worstBacktrack > span * STRAIGHTEN_MAXIMUM_BACKTRACK) return null;
+      return { from, to };
+    };
+
     const renderablePath = (): RenderablePathSpec => {
+      if (straightened) {
+        return straightLineSpec(straightened.from, straightened.to);
+      }
+
       const width = strokeWidth();
       const stroked = {
         fill: jsDraw.Color4.transparent,
@@ -312,10 +391,20 @@ export function createNotebookSmoothPenStrokeFactory(
 
     return {
       getBBox() {
-        return Rect2.bboxOf(shapePoints()).grownBy(strokeWidth() / 2);
+        const shape = straightened
+          ? [straightened.from, straightened.to]
+          : shapePoints();
+        return Rect2.bboxOf(shape).grownBy(strokeWidth() / 2);
       },
       addPoint(newPoint: StrokeDataPoint) {
         const next = Vec2.of(newPoint.pos.x, newPoint.pos.y);
+        // Already a line: the pen is aiming its far end, not adding to a path.
+        if (straightened) {
+          if (next.distanceTo(straightened.to) >= minimumStep) {
+            straightened = { from: straightened.from, to: next };
+          }
+          return;
+        }
         const newest = pending ?? points[points.length - 1];
         if (next.distanceTo(newest) < minimumStep) return;
 
@@ -369,34 +458,22 @@ export function createNotebookSmoothPenStrokeFactory(
       /**
        * Called when the pen is held still, to offer a tidied version of what
        * has been drawn. Returning null leaves the stroke exactly as drawn.
+       *
+       * The line is returned so it appears the moment it snaps, and kept so the
+       * pen can go on aiming it. js-draw discards what it was shown as soon as
+       * the pen moves again and falls back to asking the builder what it built
+       * -- which by then is the aimed line. It restores the snapped version only
+       * if the pen lifts within a few hundred milliseconds of first twitching,
+       * which is the accidental nudge that guard is there for, not an
+       * adjustment.
        */
       async autocorrectShape() {
-        const shape = easedShape(shapePoints());
-        if (shape.length < 3) return null;
+        if (straightened) return null;
+        const line = straightenedShape();
+        if (!line) return null;
 
-        const from = shape[0];
-        const to = shape[shape.length - 1];
-        const span = to.distanceTo(from);
-        if (span < strokeWidth() * STRAIGHTEN_MINIMUM_SPAN_RATIO) return null;
-
-        // Only straighten what was nearly straight already. A curve, a letter
-        // or a scribble all fail this and are left alone.
-        let worst = 0;
-        for (const point of shape) {
-          worst = Math.max(worst, strayFromLine(point, from, to));
-        }
-        if (worst > span * STRAIGHTEN_TOLERANCE) return null;
-
-        return new Stroke([
-          {
-            startPoint: from,
-            commands: [{ kind: PathCommandType.LineTo, point: to }],
-            style: {
-              fill: jsDraw.Color4.transparent,
-              stroke: { color, width: strokeWidth() },
-            },
-          },
-        ]);
+        straightened = line;
+        return new Stroke([straightLineSpec(line.from, line.to)]);
       },
     };
   };
