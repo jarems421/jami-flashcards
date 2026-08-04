@@ -5,6 +5,7 @@ import {
   runDashboardDataRequest,
   type DashboardDataRequestOutcome,
 } from "@/lib/app/dashboard-data";
+import { subscribeToCachedReads } from "@/services/cache/read-through";
 
 type UseDashboardDataOptions<T> = {
   requestKey: string;
@@ -49,11 +50,13 @@ export function useDashboardData<T>({
     onLoadStartRef.current = onLoadStart;
   }, [onLoadStart]);
 
-  const reload = useCallback(async () => {
+  const run = useCallback(async (options: { quiet?: boolean } = {}) => {
     const requestId = requestIdRef.current + 1;
     requestIdRef.current = requestId;
-    setLoading(true);
-    onLoadStartRef.current?.();
+    if (!options.quiet) {
+      setLoading(true);
+      onLoadStartRef.current?.();
+    }
 
     return runDashboardDataRequest({
       load: () => loadRef.current(),
@@ -63,6 +66,24 @@ export function useDashboardData<T>({
       onSettled: () => setLoading(false),
     });
   }, []);
+
+  const reload = useCallback(() => run(), [run]);
+
+  /**
+   * A page is answered from the cache the moment its data has merely aged, and
+   * the refresh runs behind it. This picks the refreshed value up.
+   *
+   * Quietly: the page is already showing something, so raising its loading flag
+   * would replace what the student is reading with a spinner to tell them it
+   * has been confirmed. The reads are fresh in the cache by now, so this is a
+   * re-render rather than a round trip.
+   */
+  useEffect(() => {
+    if (!requestKey) return;
+    return subscribeToCachedReads(requestKey, () => {
+      void run({ quiet: true });
+    });
+  }, [requestKey, run]);
 
   useEffect(() => {
     let cancelled = false;
