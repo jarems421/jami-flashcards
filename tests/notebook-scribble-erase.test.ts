@@ -142,12 +142,114 @@ describe("detectNotebookScribble", () => {
       }
     });
 
-    it("leaves a three-pass zig-zag alone, being too close to a letter", () => {
-      // Two reversals, exactly what `w` and `m` make. The floor is deliberate.
+    it("recognises the smallest gesture anyone means: three passes", () => {
       for (let seed = 1; seed <= 8; seed += 1) {
         expect(
           detectNotebookScribble(
             handScribble({ passes: 3, durationMs: 600, seed }),
+            { viewportScale: 0.85 }
+          )
+        ).not.toBeNull();
+      }
+    });
+
+    it("recognises a scribble over a single narrow letter", () => {
+      // A few quick passes across a `t` span barely more than its stem. This
+      // is the size that made the gesture feel arbitrary: it worked scribbling
+      // along a letter and not across one.
+      for (let seed = 1; seed <= 8; seed += 1) {
+        expect(
+          detectNotebookScribble(
+            handScribble({
+              bandHeight: 36,
+              durationMs: 320,
+              passes: 5,
+              seed,
+              wordWidth: 32,
+            }),
+            { viewportScale: 0.85 }
+          )
+        ).not.toBeNull();
+      }
+    });
+
+    /**
+     * The gestures people most want this for, and the ones the band rule used
+     * to reject: they cover an area rather than tracing a thin line.
+     */
+    describe("covering an area rather than a line", () => {
+      /** Back and forth across a block, working down it. */
+      const areaScribble = (input: {
+        height: number;
+        passes: number;
+        seed: number;
+        width: number;
+      }) => {
+        let state = input.seed * 7919;
+        const random = () => {
+          state = (state * 1103515245 + 12345) % 2147483648;
+          return state / 2147483648;
+        };
+        const samples: NotebookScribbleSample[] = [];
+        let time = 0;
+        for (let pass = 0; pass < input.passes; pass += 1) {
+          const y =
+            300 + (pass / (input.passes - 1)) * input.height + (random() - 0.5) * 6;
+          const fromX = pass % 2 === 0 ? 150 : 150 + input.width;
+          const toX = pass % 2 === 0 ? 150 + input.width : 150;
+          const count = Math.max(2, Math.round(input.width / 5));
+          for (let step = pass === 0 ? 0 : 1; step <= count; step += 1) {
+            const t = step / count;
+            samples.push({
+              x: fromX + (toX - fromX) * t + (random() - 0.5) * 3,
+              y: y + (random() - 0.5) * 3,
+              time,
+            });
+            time += 2.2;
+          }
+        }
+        return samples;
+      };
+
+      it("recognises a scribble over a chunk of several lines", () => {
+        for (let seed = 1; seed <= 8; seed += 1) {
+          expect(
+            detectNotebookScribble(
+              areaScribble({ height: 220, passes: 9, seed, width: 380 }),
+              { viewportScale: 0.85 }
+            )
+          ).not.toBeNull();
+        }
+      });
+
+      it("recognises a square-ish scribble, as scribbling out a scribble makes", () => {
+        for (let seed = 1; seed <= 8; seed += 1) {
+          expect(
+            detectNotebookScribble(
+              areaScribble({ height: 200, passes: 8, seed, width: 200 }),
+              { viewportScale: 0.85 }
+            )
+          ).not.toBeNull();
+        }
+      });
+
+      it("recognises one taller than it is wide", () => {
+        for (let seed = 1; seed <= 8; seed += 1) {
+          expect(
+            detectNotebookScribble(
+              areaScribble({ height: 300, passes: 10, seed, width: 180 }),
+              { viewportScale: 0.85 }
+            )
+          ).not.toBeNull();
+        }
+      });
+    });
+
+    it("leaves a two-pass cross-out alone, because that is a mark people keep", () => {
+      for (let seed = 1; seed <= 8; seed += 1) {
+        expect(
+          detectNotebookScribble(
+            handScribble({ passes: 2, durationMs: 500, seed }),
             { viewportScale: 0.85 }
           )
         ).toBeNull();
@@ -166,49 +268,20 @@ describe("detectNotebookScribble", () => {
     });
   });
 
+
   /**
-   * Once the principal axis of a squarish gesture comes out vertical, a `w`
-   * has parallel legs that retrace each other perfectly -- indistinguishable
-   * from a scribble by direction alone. Its proportions are what give it away.
+   * What the *motion* still rules out. A small scribble and a small `w` are
+   * the same shape, and every rule that separated them broke something people
+   * do -- whole words, blocks of lines, single letters. Letters are kept safe
+   * by requiring the gesture to cover ink instead; see the gesture tests.
    */
-  it("leaves a letter-shaped gesture alone however scribble-like its legs", () => {
-    const bigW = trace(
-      [
-        [100, 300],
-        [160, 460],
-        [220, 300],
-        [280, 460],
-        [340, 300],
-        [400, 460],
-      ],
-      2
-    );
-
-    expect(detectNotebookScribble(bigW, { viewportScale: 0.85 })).toBeNull();
-  });
-
   it.each([
-    ["a w", [[40, 60], [55, 120], [70, 60], [85, 120], [100, 60]]],
-    ["an m", [[40, 120], [40, 60], [70, 120], [70, 60], [100, 120]]],
-    ["a z", [[40, 60], [110, 60], [40, 120], [110, 120]]],
-    [
-      "a two-pass cross-out",
-      [[40, 90], [180, 90], [180, 96], [40, 96]],
-    ],
+    ["a two-pass cross-out, which is a mark people keep", [[40, 90], [180, 90], [180, 96], [40, 96]]],
+    ["a single fast stroke", [[40, 90], [300, 90]]],
   ])("leaves %s alone", (_label, corners) => {
     expect(
       detectNotebookScribble(trace(corners as Array<[number, number]>))
     ).toBeNull();
-  });
-
-  it("leaves shading alone, because its passes advance instead of retracing", () => {
-    // Hatching down a block: each pass sits below the last, not over it.
-    const corners: Array<[number, number]> = [];
-    for (let pass = 0; pass < 10; pass += 1) {
-      corners.push(pass % 2 === 0 ? [40, 60 + pass * 9] : [90, 60 + pass * 9]);
-    }
-
-    expect(detectNotebookScribble(trace(corners))).toBeNull();
   });
 
   it("leaves a slow deliberate zig-zag alone", () => {
@@ -219,20 +292,13 @@ describe("detectNotebookScribble", () => {
   });
 
   it("leaves a scribble too small to be aimed at anything alone", () => {
+    // Narrower than a letter: there is not enough gesture to read.
     const corners: Array<[number, number]> = [];
     for (let pass = 0; pass < 6; pass += 1) {
-      corners.push(pass % 2 === 0 ? [40, 60 + pass] : [70, 60 + pass]);
+      corners.push(pass % 2 === 0 ? [40, 60 + pass] : [58, 60 + pass]);
     }
 
     expect(detectNotebookScribble(trace(corners))).toBeNull();
-  });
-
-  it("leaves three legs alone, however fast and however parallel", () => {
-    expect(
-      detectNotebookScribble(
-        trace([[40, 90], [180, 90], [40, 96], [180, 96]], 3)
-      )
-    ).toBeNull();
   });
 
   it("leaves a single fast stroke alone", () => {
@@ -318,7 +384,7 @@ describe("detectNotebookScribble", () => {
       (viewportScale) => {
         expect(
           detectNotebookScribble(
-            overPageBand({ viewportScale, pageWidth: 30 }),
+            overPageBand({ viewportScale, pageWidth: 18 }),
             { viewportScale }
           )
         ).toBeNull();

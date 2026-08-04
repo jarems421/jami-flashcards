@@ -112,6 +112,65 @@ describe("planNotebookScribbleErase", () => {
   });
 });
 
+/**
+ * Where letters are kept safe.
+ *
+ * A letter-sized scribble and a letter are the same motion, so shape cannot
+ * separate them and the rules that tried broke whole words, blocks of lines and
+ * single letters. What separates them is what the gesture *did*: writing a
+ * letter leaves existing work mostly outside it, while scribbling something out
+ * swallows it.
+ */
+describe("a letter-sized gesture has to swallow what it takes", () => {
+  /** A `w`, which every shape gate reads as a scribble. */
+  const letterW = (): NotebookScribbleSample[] => {
+    const corners: Array<[number, number]> = [
+      [100, 100],
+      [115, 160],
+      [130, 100],
+      [145, 160],
+      [160, 100],
+    ];
+    const samples: NotebookScribbleSample[] = [];
+    let time = 0;
+    for (let index = 1; index < corners.length; index += 1) {
+      const [fromX, fromY] = corners[index - 1];
+      const [toX, toY] = corners[index];
+      const length = Math.hypot(toX - fromX, toY - fromY);
+      const count = Math.max(2, Math.round(length / 2));
+      for (let step = index === 1 ? 0 : 1; step <= count; step += 1) {
+        const t = step / count;
+        samples.push({
+          x: fromX + (toX - fromX) * t,
+          y: fromY + (toY - fromY) * t,
+          time,
+        });
+        time += length / count / 2;
+      }
+    }
+    return samples;
+  };
+
+  it("deletes nothing when a letter is written on blank paper", () => {
+    expect(plan(makeHarness([]), letterW())).toBeNull();
+  });
+
+  it("deletes nothing when a letter is written across existing work", () => {
+    // A line of writing running through where the `w` was made. Most of it
+    // lies outside the letter, so the letter takes none of it.
+    expect(plan(makeHarness([line(-200, 130, 400, 130)]), letterW())).toBeNull();
+  });
+
+  it("still takes a letter that a letter-sized scribble swallows whole", () => {
+    // A short stroke sitting entirely inside the same gesture.
+    const swallowed = line(112, 128, 150, 132);
+
+    expect(plan(makeHarness([swallowed]), letterW())?.components).toEqual([
+      swallowed,
+    ]);
+  });
+});
+
 describe("applyNotebookScribbleErase", () => {
   it("erases in one undoable action", () => {
     const word = line(60, 106, 130, 106);

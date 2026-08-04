@@ -4,6 +4,8 @@ import {
   detectNotebookScribble,
   getNotebookScribbleCoverage,
   NOTEBOOK_SCRIBBLE_MIN_COVERAGE,
+  NOTEBOOK_SCRIBBLE_SMALL_EXTENT,
+  NOTEBOOK_SCRIBBLE_SMALL_MIN_COVERAGE,
   type NotebookScribblePoint,
   type NotebookScribbleSample,
 } from "@/lib/workspace/notebook-scribble-erase";
@@ -92,7 +94,13 @@ export function planNotebookScribbleErase(input: {
       total += weight;
     }
 
-    if (total > 0 && covered / total >= NOTEBOOK_SCRIBBLE_MIN_COVERAGE) {
+    // A letter-sized gesture has to swallow what it takes, because at that size
+    // it is indistinguishable in shape from someone writing a letter.
+    const minCoverage =
+      scribble.majorExtent < NOTEBOOK_SCRIBBLE_SMALL_EXTENT
+        ? NOTEBOOK_SCRIBBLE_SMALL_MIN_COVERAGE
+        : NOTEBOOK_SCRIBBLE_MIN_COVERAGE;
+    if (total > 0 && covered / total >= minCoverage) {
       components.push(component);
     }
   }

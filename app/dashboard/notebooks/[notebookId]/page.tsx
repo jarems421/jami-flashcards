@@ -132,13 +132,6 @@ import {
   buildNotebookPageSearch,
   prepareNotebookExit,
 } from "@/lib/workspace/notebook-navigation";
-import {
-  getNotebookPageTurnOffset,
-  getQueuedNotebookPageTurn,
-  resolveQueuedNotebookPageTurn,
-  shouldQueueNotebookPageTurn,
-  type NotebookQueuedPageTurn,
-} from "@/lib/workspace/notebook-navigation-queue";
 import { pageHasUnloadedInk } from "@/lib/workspace/notebook-page-ink-split";
 import {
   readNotebookScribbleErasePreference,
@@ -165,11 +158,6 @@ type PageSwipeState = {
   axis: "horizontal" | "vertical" | null;
   intent: NotebookPageDragIntent | null;
   completed: boolean;
-  /**
-   * The gesture began while a page turn was still settling. It is tracked only
-   * to resolve a direction on release; it never moves the track.
-   */
-  queuedOnly: boolean;
 };
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
@@ -353,10 +341,6 @@ export default function NotebookEditorPage() {
   const createPageIndicatorRef = useRef<HTMLDivElement | null>(null);
   const createPageProgressCircleRef = useRef<SVGCircleElement | null>(null);
   const pageSwipeRef = useRef<PageSwipeState | null>(null);
-  const queuedPageTurnRef = useRef<NotebookQueuedPageTurn | null>(null);
-  const drainQueuedPageTurnRef = useRef<(turn: NotebookQueuedPageTurn) => void>(
-    () => undefined
-  );
   const inkMountedUnloadedPageIdRef = useRef<string | null>(null);
   const editorRevisionRef = useRef(0);
   const ignoredTouchInkCountRef = useRef(0);
@@ -1168,7 +1152,6 @@ export default function NotebookEditorPage() {
         pageNavigationLockedRef.current = pageCreationInFlightRef.current;
       }
       pageSwipeRef.current = null;
-      queuedPageTurnRef.current = null;
       createPageActiveRef.current = false;
       setCreatePageActive(false);
       setCreatePageProgress(0);
@@ -1342,7 +1325,6 @@ export default function NotebookEditorPage() {
       updatePageSwipeMotion(null);
       pageNavigationLockedRef.current = pageCreationInFlightRef.current;
       pageSwipeRef.current = null;
-      queuedPageTurnRef.current = null;
       createPageActiveRef.current = false;
       setCreatePageActive(false);
       setCreatePageProgress(0);
@@ -1437,12 +1419,6 @@ export default function NotebookEditorPage() {
       setCreatePageActive(false);
       setCreatePageProgress(0);
       setCreatingPage(false);
-      // A flick that arrived while this turn was settling runs now. It is
-      // resolved from the page just opened, so a queued turn cannot outrun
-      // hydration: each turn pays the ink-first gate in its own right.
-      const queuedTurn = queuedPageTurnRef.current;
-      queuedPageTurnRef.current = null;
-      if (queuedTurn) drainQueuedPageTurnRef.current(queuedTurn);
     });
   }, [
     inkReadyRef,
@@ -1805,34 +1781,11 @@ export default function NotebookEditorPage() {
    * up doing what it would have done on an idle track -- including making a new
    * page when it was a hard pull past the end of the notebook.
    */
-  const drainQueuedPageTurn = useCallback(
-    (turn: NotebookQueuedPageTurn) => {
-      const action = resolveQueuedNotebookPageTurn({
-        canCreatePage: fullNotebookEditingEnabled,
-        pageCount: pages.length,
-        selectedPageIndex,
-        turn,
-      });
-      if (action === "create") {
-        void createBlankPageAtEnd(turn.velocityX);
-      } else if (action === "turn") {
-        void selectPageByOffset(getNotebookPageTurnOffset(turn));
-      }
-    },
-    [
-      createBlankPageAtEnd,
-      fullNotebookEditingEnabled,
-      pages.length,
-      selectPageByOffset,
-      selectedPageIndex,
-    ]
-  );
-  drainQueuedPageTurnRef.current = drainQueuedPageTurn;
-
   const handleStartPageSwipe = useCallback((event: ReactPointerEvent<HTMLElement>) => {
     if (
       !fullNotebookEditingEnabled ||
       !shouldPointerSwipePages(event.pointerType) ||
+      pageNavigationLockedRef.current ||
       inkInteractionActiveRef.current ||
       activeTextGestureId
     ) {
@@ -1853,7 +1806,6 @@ export default function NotebookEditorPage() {
       axis: null,
       intent: null,
       completed: false,
-      queuedOnly: pageNavigationLockedRef.current,
     };
     safelySetPointerCapture(event.currentTarget, event.pointerId);
   }, [
@@ -1894,17 +1846,10 @@ export default function NotebookEditorPage() {
           canPanVertically: pageCanPanVertically,
           zoom: viewportLayout.zoom,
         });
-        if (swipe.intent === "page" && !swipe.queuedOnly) {
+        if (swipe.intent === "page") {
           setPagePreviewVisibility(true);
         }
       }
-    }
-
-    // The track is mid-settle and owns its own transform. Keep collecting
-    // samples so the release can resolve a direction, but touch nothing.
-    if (swipe.queuedOnly) {
-      event.preventDefault();
-      return;
     }
 
     // A landscape page can be taller than the frame while still being
@@ -1999,48 +1944,6 @@ export default function NotebookEditorPage() {
     pageSwipeRef.current = null;
     const deltaX = event.clientX - swipe.startX;
     const deltaY = event.clientY - swipe.startY;
-
-    // A flick released while the previous turn was still settling is held until
-    // that turn finishes rather than dropped. Bounds are deliberately not
-    // resolved here: the queued turn is a direction, and the page it applies to
-    // is whichever one is open when it runs.
-    if (
-      shouldQueueNotebookPageTurn({
-        settlingNow: pageNavigationLockedRef.current,
-        startedWhileSettling: swipe.queuedOnly,
-      })
-    ) {
-      const queuedPageWidth =
-        pageSurfaceRef.current?.getBoundingClientRect().width ?? 1;
-      const queuedVelocityX = getNotebookSwipeVelocity([
-        ...swipe.samples,
-        { x: event.clientX, time: event.timeStamp },
-      ]);
-      const queuedDirection = options.cancelled
-        ? null
-        : getNotebookSwipeReleaseDecision({
-            totalDx: deltaX,
-            pageWidth: queuedPageWidth,
-            velocityX: queuedVelocityX,
-            currentIndex: selectedPageIndex,
-            pageCount: pages.length,
-          }).direction;
-      queuedPageTurnRef.current = getQueuedNotebookPageTurn({
-        current: queuedPageTurnRef.current,
-        direction: queuedDirection,
-        velocityX: queuedVelocityX,
-        // Whether this lands on the last page is not known yet, so record how
-        // hard the pull was and let the drain decide.
-        createsPage:
-          !options.cancelled &&
-          shouldCreateNotebookPageOnRelease({
-            totalDx: deltaX,
-            pageWidth: queuedPageWidth,
-            velocityX: queuedVelocityX,
-          }),
-      });
-      return;
-    }
 
     // A resolved pan commits its final position; horizontal page swipes remain
     // available whenever the sheet has no horizontal pan range.
