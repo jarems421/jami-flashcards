@@ -222,9 +222,9 @@ describe("serving an aged value while it refreshes", () => {
     await readThroughCache(decks(), load, { now: start });
     subscribeToCachedReads("student", reloaded);
     await readThroughCache(decks(), load, { now: start + aged });
-    // Let the background refresh settle.
-    await Promise.resolve();
-    await Promise.resolve();
+    // Refreshes are gathered for a moment before anyone is told, so that a page
+    // whose several reads all refresh reloads once rather than once each.
+    await new Promise((resolve) => setTimeout(resolve, 600));
 
     expect(reloaded).toHaveBeenCalled();
     // Reloading finds the refreshed value without going back to the server.
@@ -246,6 +246,49 @@ describe("serving an aged value while it refreshes", () => {
     expect(await readThroughCache(decks(), load, { now: start })).toEqual([
       "new",
     ]);
+  });
+
+  /**
+   * A page makes several reads at once and they come back at several different
+   * times. Announcing each one separately reloaded the page once per read --
+   * six full renders in a burst on every return to a tab, measured, and exactly
+   * what a page feels like when it is described as sluggish.
+   */
+  it("reloads a page once for a visit, not once per read", async () => {
+    const start = 1_000_000;
+    const collections = [
+      "cards",
+      "decks",
+      "topics",
+      "folders",
+      "sources",
+      "notebooks",
+    ];
+    const load = (name: string, delay: number) => () =>
+      new Promise<string[]>((resolve) =>
+        setTimeout(() => resolve([name]), delay)
+      );
+    const visit = (now: number) =>
+      Promise.all(
+        collections.map((collection, index) =>
+          readThroughCache(
+            { collection, userId: "student" },
+            load(collection, (index + 1) * 15),
+            { now }
+          )
+        )
+      );
+
+    await visit(start);
+    let reloads = 0;
+    subscribeToCachedReads("student", () => {
+      reloads += 1;
+    });
+
+    await visit(start + aged);
+    await new Promise((resolve) => setTimeout(resolve, 600));
+
+    expect(reloads).toBe(1);
   });
 
   it("stops telling a listener that has unsubscribed", async () => {
