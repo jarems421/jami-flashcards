@@ -7,7 +7,10 @@ import CardBrowserWorkspace from "@/components/cards/CardBrowserWorkspace";
 import CardsGettingStarted from "@/components/cards/CardsGettingStarted";
 import { useUser } from "@/components/providers/UserProvider";
 import { Button, EmptyState, FeedbackBanner } from "@/components/ui";
-import { useDashboardData } from "@/hooks/useDashboardData";
+import {
+  useDashboardData,
+  type DashboardDataLoadOptions,
+} from "@/hooks/useDashboardData";
 import { useFeedback } from "@/hooks/useFeedback";
 import type { Feedback } from "@/lib/app/feedback";
 import { sortByCreatedAtNewest } from "@/lib/app/recent-items";
@@ -49,20 +52,20 @@ export default function CardsSearchPage() {
     [showError, success]
   );
 
-  const loadCardsData = useCallback(async () => {
+  const loadCardsData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
     const [userDecks, userCards, userSources, userFolders, userTopics] =
       await Promise.all([
-        getDecks(user.uid),
-        loadUserCards(user.uid),
-        getActiveSources(user.uid),
-        getActiveStudyFolders(user.uid).catch((error) => {
+        getDecks(user.uid, reads),
+        loadUserCards(user.uid, reads),
+        getActiveSources(user.uid, reads),
+        getActiveStudyFolders(user.uid, reads).catch((error) => {
           console.error("Failed to load folders for Cards filters.", error);
           showError(
             "Folder filters are temporarily unavailable. Your cards are still shown."
           );
           return [] as StudyFolder[];
         }),
-        getActiveTopics(user.uid),
+        getActiveTopics(user.uid, reads),
       ]);
 
     return {

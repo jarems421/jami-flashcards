@@ -7,9 +7,20 @@ import {
 } from "@/lib/app/dashboard-data";
 import { subscribeToCachedReads } from "@/services/cache/read-through";
 
+export type DashboardDataLoadOptions = {
+  /**
+   * Go to the server rather than answer from the shared read cache.
+   *
+   * Set when the student asked for a refresh in so many words. Without it the
+   * button would be answered from a cache it cannot see and appear to do
+   * nothing, which is worse than the wait it was trying to save.
+   */
+  force?: boolean;
+};
+
 type UseDashboardDataOptions<T> = {
   requestKey: string;
-  load: () => Promise<T>;
+  load: (options: DashboardDataLoadOptions) => Promise<T>;
   apply: (data: T) => void;
   onError: (error: unknown) => void;
   onLoadStart?: () => void;
@@ -17,7 +28,9 @@ type UseDashboardDataOptions<T> = {
 
 type UseDashboardDataResult = {
   loading: boolean;
-  reload: () => Promise<DashboardDataRequestOutcome>;
+  reload: (
+    options?: DashboardDataLoadOptions
+  ) => Promise<DashboardDataRequestOutcome>;
 };
 
 export function useDashboardData<T>({
@@ -50,24 +63,30 @@ export function useDashboardData<T>({
     onLoadStartRef.current = onLoadStart;
   }, [onLoadStart]);
 
-  const run = useCallback(async (options: { quiet?: boolean } = {}) => {
-    const requestId = requestIdRef.current + 1;
-    requestIdRef.current = requestId;
-    if (!options.quiet) {
-      setLoading(true);
-      onLoadStartRef.current?.();
-    }
+  const run = useCallback(
+    async (options: DashboardDataLoadOptions & { quiet?: boolean } = {}) => {
+      const requestId = requestIdRef.current + 1;
+      requestIdRef.current = requestId;
+      if (!options.quiet) {
+        setLoading(true);
+        onLoadStartRef.current?.();
+      }
 
-    return runDashboardDataRequest({
-      load: () => loadRef.current(),
-      isCurrent: () => requestId === requestIdRef.current,
-      apply: (data) => applyRef.current(data),
-      onError: (error) => onErrorRef.current(error),
-      onSettled: () => setLoading(false),
-    });
-  }, []);
+      return runDashboardDataRequest({
+        load: () => loadRef.current({ force: options.force }),
+        isCurrent: () => requestId === requestIdRef.current,
+        apply: (data) => applyRef.current(data),
+        onError: (error) => onErrorRef.current(error),
+        onSettled: () => setLoading(false),
+      });
+    },
+    []
+  );
 
-  const reload = useCallback(() => run(), [run]);
+  const reload = useCallback(
+    (options: DashboardDataLoadOptions = {}) => run(options),
+    [run]
+  );
 
   /**
    * A page is answered from the cache the moment its data has merely aged, and

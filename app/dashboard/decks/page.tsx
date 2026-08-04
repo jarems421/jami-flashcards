@@ -23,7 +23,10 @@ import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, P
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
-import { useDashboardData } from "@/hooks/useDashboardData";
+import {
+  useDashboardData,
+  type DashboardDataLoadOptions,
+} from "@/hooks/useDashboardData";
 
 type DeckDraft = {
   name: string;
@@ -62,11 +65,11 @@ export default function DecksPage() {
   const nameInputRef = useRef<HTMLInputElement>(null);
   const lastForegroundRefreshAtRef = useRef(0);
 
-  const loadDeckData = useCallback(async () => {
+  const loadDeckData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
     const [nextDecks, nextFolders, nextCards] = await Promise.all([
-      getDecks(user.uid),
-      getActiveStudyFolders(user.uid),
-      loadUserCards(user.uid),
+      getDecks(user.uid, reads),
+      getActiveStudyFolders(user.uid, reads),
+      loadUserCards(user.uid, reads),
     ]);
     return {
       decks: nextDecks,
@@ -127,7 +130,9 @@ export default function DecksPage() {
     setRefreshing(true);
     clearFeedback();
     try {
-      await loadAll();
+      // Asked for in so many words, so it goes to the server. Answering this
+      // from the cache would look like the button doing nothing.
+      await loadAll({ force: true });
     } finally {
       setRefreshing(false);
     }

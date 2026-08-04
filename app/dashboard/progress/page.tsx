@@ -50,7 +50,10 @@ import {
   Skeleton,
   StatTile,
 } from "@/components/ui";
-import { useDashboardData } from "@/hooks/useDashboardData";
+import {
+  useDashboardData,
+  type DashboardDataLoadOptions,
+} from "@/hooks/useDashboardData";
 
 const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
@@ -106,7 +109,7 @@ export default function ProgressPage() {
     }
   }, [user.uid]);
 
-  const loadProgressData = useCallback(async () => {
+  const loadProgressData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
     await ensureStudyStateSetup(user.uid);
     const [
       nextCards,
@@ -118,12 +121,12 @@ export default function ProgressPage() {
       nextStudyActivity,
       nextGoals,
     ] = await Promise.all([
-      loadUserCards(user.uid),
-      getGeneratedContentDrafts(user.uid),
-      getActiveSources(user.uid),
-      getActiveNotebooks(user.uid),
-      getDecks(user.uid),
-      getActiveTopics(user.uid),
+      loadUserCards(user.uid, reads),
+      getGeneratedContentDrafts(user.uid, reads),
+      getActiveSources(user.uid, reads),
+      getActiveNotebooks(user.uid, reads),
+      getDecks(user.uid, reads),
+      getActiveTopics(user.uid, reads),
       loadStudyActivity(user.uid),
       getGoals(user.uid),
     ]);
