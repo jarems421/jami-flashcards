@@ -131,16 +131,18 @@ describe("notebook page snapshot geometry", () => {
     expect(lined.horizontalLines.slice(0, 3)).toEqual([40, 80, 120]);
     expect(lined.verticalLines).toEqual([]);
 
+    // Edge to edge, so the exported page has no half-cell either. 81 against a
+    // 45 cell fits two of 40.5 rather than one of 45 with 18 spare at each end.
     const grid = getNotebookSnapshotPaperPattern("black", "grid", 81, 81);
     expect(grid.backgroundColor).toBe("#080a10");
-    expect(grid.horizontalLines).toEqual([18, 63]);
-    expect(grid.verticalLines).toEqual([18, 63]);
+    expect(grid.horizontalLines).toEqual([0, 40.5, 81]);
+    expect(grid.verticalLines).toEqual([0, 40.5, 81]);
 
     const fullPageGrid = getNotebookSnapshotPaperPattern("white", "grid");
     expect(fullPageGrid.verticalLines[0]).toBe(0);
     expect(fullPageGrid.verticalLines.at(-1)).toBe(900);
-    expect(fullPageGrid.horizontalLines[0]).toBe(12.5);
-    expect(fullPageGrid.horizontalLines.at(-1)).toBe(1227.5);
+    expect(fullPageGrid.horizontalLines[0]).toBe(0);
+    expect(fullPageGrid.horizontalLines.at(-1)).toBe(1240);
 
     const dotted = getNotebookSnapshotPaperPattern("white", "dot", 43, 43);
     expect(dotted.dotCenters).toEqual([
