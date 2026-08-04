@@ -15,6 +15,10 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
+  readThroughCache,
+  type CachedReadOptions,
+} from "@/services/cache/read-through";
+import {
   invalidateLegacyActiveRecords,
   loadCachedLegacyActiveRecords,
   mergeActiveItems,
@@ -71,9 +75,21 @@ async function getLegacyActiveTopics(userId: string) {
   return records.map(({ id, data }) => mapTopicData(id, data));
 }
 
-export async function getActiveTopics(userId: string): Promise<Topic[]> {
+/** Shared by six pages, so the result is cached rather than re-read by each. */
+export async function getActiveTopics(
+  userId: string,
+  options: CachedReadOptions = {}
+): Promise<Topic[]> {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) throw new Error("Missing userId.");
+  return readThroughCache(
+    { collection: "topics:active", userId: normalizedUserId },
+    () => loadActiveTopics(normalizedUserId),
+    options
+  );
+}
+
+async function loadActiveTopics(normalizedUserId: string): Promise<Topic[]> {
   const [snapshot, legacyItems] = await Promise.all([
     withTimeout(
       getDocs(
@@ -170,7 +186,9 @@ export async function createOrGetTopic(userId: string, nameInput: string) {
     : undefined;
   if (active) return active;
 
-  const legacyTopics = await getActiveTopics(userId);
+  // Deciding whether to create a topic or adopt an existing one. A stale list
+  // here makes a duplicate.
+  const legacyTopics = await getActiveTopics(userId, { force: true });
   const legacyMatch = legacyTopics.find(
     (topic) => getTopicNameKey(topic.name) === normalizedName
   );
@@ -225,7 +243,8 @@ export async function updateTopic(
     // full active-topic scan only after that legacy shape is migrated.
     const legacyConflict = normalizedConflict
       ? false
-      : (await getActiveTopics(userId)).some(
+      : // A uniqueness check standing between the student and a write.
+        (await getActiveTopics(userId, { force: true })).some(
           (topic) =>
             topic.id !== topicId &&
             getTopicNameKey(topic.name) === normalizedName

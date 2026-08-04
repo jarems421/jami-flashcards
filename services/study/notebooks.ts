@@ -20,6 +20,10 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
+  readThroughCache,
+  type CachedReadOptions,
+} from "@/services/cache/read-through";
+import {
   invalidateLegacyActiveRecords,
   isAfterActiveCursor,
   loadCachedLegacyActiveRecords,
@@ -143,12 +147,24 @@ async function getLegacyActiveNotebooksForFolder(
   return records.map(({ id, data }) => mapNotebookData(id, data));
 }
 
-export async function getActiveNotebooks(userId: string) {
+/** Shared by the Progress, Topics and Library pages. */
+export async function getActiveNotebooks(
+  userId: string,
+  options: CachedReadOptions = {}
+) {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) {
     throw new Error("Missing userId.");
   }
 
+  return readThroughCache(
+    { collection: "notebooks:active", userId: normalizedUserId },
+    () => loadActiveNotebooks(normalizedUserId),
+    options
+  );
+}
+
+async function loadActiveNotebooks(normalizedUserId: string) {
   const [snapshot, legacyItems] = await Promise.all([
     withTimeout(
       getDocs(

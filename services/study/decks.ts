@@ -3,6 +3,10 @@ import { withTimeout } from "@/services/firebase/firestore";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
+  readThroughCache,
+  type CachedReadOptions,
+} from "@/services/cache/read-through";
+import {
   invalidateLegacyActiveRecords,
   loadCachedLegacyActiveRecords,
 } from "@/services/study/active-compatibility";
@@ -240,12 +244,29 @@ export const createDeck = async (
   };
 };
 
-export const getDecks = async (userId: string): Promise<Deck[]> => {
+/**
+ * Every deck the student owns.
+ *
+ * Six pages ask for this, so the result is shared rather than fetched once per
+ * page. Pass `{ force: true }` from anything that writes the result back.
+ */
+export const getDecks = async (
+  userId: string,
+  options: CachedReadOptions = {}
+): Promise<Deck[]> => {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) {
     throw new Error("Missing userId");
   }
 
+  return readThroughCache(
+    { collection: "decks", userId: normalizedUserId },
+    () => loadDecks(normalizedUserId),
+    options
+  );
+};
+
+const loadDecks = async (normalizedUserId: string): Promise<Deck[]> => {
   const col = collection(db, "decks");
   const qByUserId = query(col, where("userId", "==", normalizedUserId));
   const qByLegacyUid = query(col, where("uid", "==", normalizedUserId));

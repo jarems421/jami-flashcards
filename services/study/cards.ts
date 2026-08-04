@@ -14,6 +14,10 @@ import {
 import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateAllDashboardData, invalidateDashboardData } from "@/services/dashboard/cache";
+import {
+  readThroughCache,
+  type CachedReadOptions,
+} from "@/services/cache/read-through";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import {
   mapCardData,
@@ -91,7 +95,30 @@ function getCardWrite(card: Card): CardWrite {
   };
 }
 
-export async function loadUserCards(userId: string): Promise<Card[]> {
+/**
+ * Every card the student owns.
+ *
+ * Six pages ask for this. `docs/data-access-audit.md` records why the complete
+ * set is required rather than paged -- FSRS state, due queues and duplicate
+ * warnings are all functions of the whole -- so the fix for asking six times is
+ * to ask once and share it.
+ *
+ * Anything that grades, edits or schedules a card must pass `{ force: true }`:
+ * a card's next state is computed from its current one, and a stale copy would
+ * write back the wrong answer.
+ */
+export async function loadUserCards(
+  userId: string,
+  options: CachedReadOptions = {}
+): Promise<Card[]> {
+  return readThroughCache(
+    { collection: "cards", userId },
+    () => loadUserCardsFromServer(userId),
+    options
+  );
+}
+
+async function loadUserCardsFromServer(userId: string): Promise<Card[]> {
   const cards = collection(db, "cards");
   const [current, legacy] = await Promise.all([
     withTimeout(

@@ -17,6 +17,10 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
+  readThroughCache,
+  type CachedReadOptions,
+} from "@/services/cache/read-through";
+import {
   invalidateLegacyActiveRecords,
   isAfterActiveCursor,
   loadCachedLegacyActiveRecords,
@@ -104,9 +108,21 @@ export async function getSources(userId: string): Promise<Source[]> {
   );
 }
 
-export async function getActiveSources(userId: string): Promise<Source[]> {
+/** Shared by the Progress, Cards and Topics pages. */
+export async function getActiveSources(
+  userId: string,
+  options: CachedReadOptions = {}
+): Promise<Source[]> {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) throw new Error("Missing userId.");
+  return readThroughCache(
+    { collection: "sources:active", userId: normalizedUserId },
+    () => loadActiveSources(normalizedUserId),
+    options
+  );
+}
+
+async function loadActiveSources(normalizedUserId: string): Promise<Source[]> {
   const [snapshot, legacyItems] = await Promise.all([
     withTimeout(
       getDocs(

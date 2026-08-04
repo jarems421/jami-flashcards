@@ -16,6 +16,10 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
+  readThroughCache,
+  type CachedReadOptions,
+} from "@/services/cache/read-through";
+import {
   invalidateLegacyActiveRecords,
   isAfterActiveCursor,
   loadCachedLegacyActiveRecords,
@@ -108,12 +112,24 @@ export async function getActiveStudyFoldersPage(
   };
 }
 
-export async function getActiveStudyFolders(userId: string) {
+/** Shared by the Cards, Decks and Library pages. */
+export async function getActiveStudyFolders(
+  userId: string,
+  options: CachedReadOptions = {}
+) {
   const normalizedUserId = userId.trim();
   if (!normalizedUserId) {
     throw new Error("Missing userId.");
   }
 
+  return readThroughCache(
+    { collection: "folders:active", userId: normalizedUserId },
+    () => loadActiveStudyFolders(normalizedUserId),
+    options
+  );
+}
+
+async function loadActiveStudyFolders(normalizedUserId: string) {
   const [snapshot, legacyItems] = await Promise.all([
     withTimeout(
       getDocs(

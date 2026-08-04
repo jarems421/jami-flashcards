@@ -1,3 +1,9 @@
+import {
+  clearCachedReads,
+  invalidateAllCachedReads,
+  invalidateCachedReads,
+} from "@/services/cache/read-through";
+
 type DashboardCacheEntry<T> = {
   value: T;
   fetchedAt: number;
@@ -43,9 +49,15 @@ export function clearDashboardInFlight(userId: string, request: Promise<unknown>
  * Domain writes call this after they commit so Today never treats an older
  * in-memory snapshot as fresh. The value remains available as stale UI while
  * the next request refreshes it.
+ *
+ * Sixty-one write sites already call this, which is why the shared read cache
+ * is invalidated from here rather than by adding a second call to every one of
+ * them. A write that forgot the second call would be a cache that silently
+ * served yesterday's data.
  */
 export function invalidateDashboardData(userId: string) {
   userRevisions.set(userId, (userRevisions.get(userId) ?? 0) + 1);
+  invalidateCachedReads(userId);
   const entry = entries.get(userId);
   if (!entry) return;
   entries.set(userId, { ...entry, invalidated: true });
@@ -54,6 +66,7 @@ export function invalidateDashboardData(userId: string) {
 /** Used by legacy card operations whose public API predates a userId input. */
 export function invalidateAllDashboardData() {
   globalRevision += 1;
+  invalidateAllCachedReads();
   entries.forEach((entry, userId) => {
     entries.set(userId, { ...entry, invalidated: true });
   });
@@ -63,4 +76,5 @@ export function clearDashboardData(userId: string) {
   entries.delete(userId);
   inFlight.delete(userId);
   userRevisions.delete(userId);
+  clearCachedReads(userId);
 }
