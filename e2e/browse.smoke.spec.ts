@@ -60,7 +60,12 @@ test("Sources lists saved sources and filters them", async ({ page }) => {
   await signIn(page);
   const errors = await openScreen(page, "/dashboard/library", "Sources");
 
-  await expect(page.getByText(E2E_SOURCE.title).first()).toBeVisible({ timeout: 45_000 });
+  // The first screen in the run that reads anything, so it pays for the
+  // Firestore connection and this route's first render on top of its own work.
+  // Measured at 28s running second and past 45s running first, which is why
+  // this one wait is longer than its neighbours rather than the suite reporting
+  // a different failure depending on how busy the machine was.
+  await expect(page.getByText(E2E_SOURCE.title).first()).toBeVisible({ timeout: 90_000 });
 
   // A search that cannot match must not leave the previous list on screen.
   const search = page.getByLabel("Search Sources");

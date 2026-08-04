@@ -4,6 +4,7 @@ import {
   CACHED_READ_STALE_MS,
   clearCachedReads,
   getCachedReadKey,
+  getCachedReadStats,
   invalidateAllCachedReads,
   invalidateCachedReads,
   peekCachedRead,
@@ -305,6 +306,43 @@ describe("clearCachedReads", () => {
 
     expect(peekCachedRead(decks("one"), { now: start })).toBeNull();
     expect(peekCachedRead(decks("two"), { now: start })?.value).toEqual(["a"]);
+  });
+});
+
+/**
+ * The claim this change rests on was measured before it was believed. This is
+ * what lets the result be measured the same way rather than asserted.
+ */
+describe("getCachedReadStats", () => {
+  it("counts what the cache did rather than what it was asked", async () => {
+    const load = vi.fn(async () => ["a"]);
+    const start = 1_000_000;
+
+    await readThroughCache(decks(), load, { now: start });
+    await readThroughCache(decks(), load, { now: start });
+    await readThroughCache(decks(), load, { now: start });
+    await readThroughCache(decks(), load, { force: true, now: start });
+
+    expect(getCachedReadStats()).toEqual({
+      // The first read and the forced one.
+      misses: 2,
+      hits: 2,
+      joined: 0,
+      forced: 1,
+    });
+  });
+
+  it("counts a caller that joined a request already on the wire", async () => {
+    let release: (value: string[]) => void = () => {};
+    const load = () => new Promise<string[]>((resolve) => (release = resolve));
+
+    const first = readThroughCache(decks(), load);
+    const second = readThroughCache(decks(), load);
+    release(["a"]);
+    await Promise.all([first, second]);
+
+    expect(getCachedReadStats().joined).toBe(1);
+    expect(getCachedReadStats().misses).toBe(1);
   });
 });
 
