@@ -124,27 +124,39 @@ export function subscribeToCachedReads(userId: string, listener: CacheListener) 
   };
 }
 
-const announcementPending = new Set<string>();
-
 /**
- * Coalesced: a page usually makes several reads at once, and all of them
- * refreshing should reload it once rather than once each.
+ * How long to gather refreshes before telling anyone.
+ *
+ * A page makes several reads at once and they come back at several different
+ * times. Coalescing on a microtask only merged the ones that happened to land
+ * together, so a page with six reads reloaded six times on every return to it
+ * -- six full renders in a burst, which is exactly what a page feels like when
+ * it is described as sluggish. A window long enough to span the spread between
+ * responses merges them into the one reload that was intended, and is still far
+ * too short to be seen.
  */
-function announceRefresh(userId: string) {
-  if (announcementPending.has(userId)) return;
-  announcementPending.add(userId);
+const REFRESH_ANNOUNCEMENT_WINDOW_MS = 250;
 
-  void Promise.resolve().then(() => {
-    announcementPending.delete(userId);
-    listeners.get(userId)?.forEach((listener) => {
-      try {
-        listener();
-      } catch (error) {
-        // One page failing to reload must not stop the others hearing about it.
-        console.warn("A cached-read listener failed.", error);
-      }
-    });
-  });
+const announcementTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+function announceRefresh(userId: string) {
+  const existing = announcementTimers.get(userId);
+  if (existing) clearTimeout(existing);
+
+  announcementTimers.set(
+    userId,
+    setTimeout(() => {
+      announcementTimers.delete(userId);
+      listeners.get(userId)?.forEach((listener) => {
+        try {
+          listener();
+        } catch (error) {
+          // One page failing to reload must not stop the others hearing.
+          console.warn("A cached-read listener failed.", error);
+        }
+      });
+    }, REFRESH_ANNOUNCEMENT_WINDOW_MS)
+  );
 }
 
 export type CachedReadOptions = {
@@ -304,6 +316,7 @@ export function resetCachedReadsForTests() {
   inFlight.clear();
   userRevisions.clear();
   listeners.clear();
-  announcementPending.clear();
+  announcementTimers.forEach((timer) => clearTimeout(timer));
+  announcementTimers.clear();
   globalRevision = 0;
 }

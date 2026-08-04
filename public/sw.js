@@ -1,6 +1,16 @@
-// Bumped with the navigation strategy, so the old network-first entries go
-// rather than lingering beside the new ones.
-const STATIC_CACHE = "jami-static-v3";
+// Bumped whenever the navigation strategy changes, so pages cached under the
+// old one go rather than lingering beside the new.
+const STATIC_CACHE = "jami-static-v4";
+
+/**
+ * How long the network gets to produce a current page before the cached one is
+ * shown instead.
+ *
+ * Long enough that an ordinary connection always wins, so the app is running
+ * the build that is actually deployed; short enough that a bad one does not
+ * mean staring at nothing.
+ */
+const NAVIGATION_NETWORK_BUDGET_MS = 1_200;
 const APP_SHELL_URLS = [
   "/",
   "/dashboard",
@@ -50,20 +60,24 @@ self.addEventListener("fetch", (event) => {
 
   if (request.mode === "navigate") {
     /*
-     * Answer from the cache and refresh behind it.
+     * Take the newest page the network can produce quickly, and the cached one
+     * otherwise.
      *
-     * This used to go to the network first and fall back to the cache only when
-     * that failed, which made every launch of the installed app wait for a full
-     * round trip before anything at all could paint. That wait is the long dark
-     * screen before the logo: the page cannot draw what it has not received,
-     * and the markup it needs -- brand, background, the whole opening screen --
-     * was already sitting in the cache the whole time.
+     * Answering from the cache outright is faster and was tried. It is the
+     * wrong trade here: the cached page is a whole build of the app, chunk
+     * references and all, so serving it means running the *previous* build on
+     * every launch. On an app being deployed through the day that means fixes
+     * arriving a launch late and bugs reappearing after they were fixed, which
+     * costs far more than the wait it saves -- and makes it impossible to tell
+     * whether a report is about the current code.
      *
-     * The copy is refreshed on every launch, so it is at most one launch behind.
-     * That is the cost, and it buys an app that opens rather than loads.
+     * The wait it saves is also mostly gone: the reason a launch looked blank
+     * was iOS having no launch screen to show, which it now has.
      */
     event.respondWith(
-      caches.match(request).then((cached) => {
+      (async () => {
+        const cached = await caches.match(request);
+
         const fromNetwork = fetch(request)
           .then((response) => {
             // A redirect cannot be replayed from the cache, and an error page
@@ -74,24 +88,34 @@ self.addEventListener("fetch", (event) => {
             }
             return response;
           })
-          .catch(async () => {
-            return (
-              cached ||
-              (await caches.match("/dashboard/study")) ||
-              (await caches.match("/")) ||
-              new Response("Offline", { status: 503, statusText: "Offline" })
-            );
-          });
+          .catch(() => null);
 
-        if (cached) {
-          // Kept running: this is what makes the next launch current. Its
-          // failure is nobody's problem, since the page has already been served.
-          event.waitUntil(fromNetwork.catch(() => undefined));
-          return cached;
+        if (!cached) {
+          return (
+            (await fromNetwork) ||
+            (await caches.match("/dashboard/study")) ||
+            (await caches.match("/")) ||
+            new Response("Offline", { status: 503, statusText: "Offline" })
+          );
         }
 
-        return fromNetwork;
-      })
+        // Something to fall back on, so the network gets a bounded chance to
+        // beat it rather than an unlimited one. A slow connection stops meaning
+        // a blank screen without a fast one meaning a stale app.
+        const timedOut = Symbol("timed out");
+        const winner = await Promise.race([
+          fromNetwork,
+          new Promise((resolve) =>
+            setTimeout(() => resolve(timedOut), NAVIGATION_NETWORK_BUDGET_MS)
+          ),
+        ]);
+
+        if (winner && winner !== timedOut) return winner;
+
+        // Serving what we have; the request above still refreshes the cache.
+        event.waitUntil(fromNetwork.catch(() => undefined));
+        return cached;
+      })()
     );
     return;
   }
