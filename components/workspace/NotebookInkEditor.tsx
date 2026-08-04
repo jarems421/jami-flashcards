@@ -28,6 +28,7 @@ import {
 import {
   applyNotebookInkStyle,
   applyNotebookEraserMode,
+  applyNotebookNibThickness,
   applyNotebookStrokeShape,
   areNotebookInkStylesEqual,
   loadJsDraw,
@@ -784,6 +785,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               primaryPen.setPressureSensitivityEnabled(pressureEnabled);
             }
           }
+          // The nib is set in page units but js-draw wants screen pixels, so
+          // its value depends on the current zoom -- which changes without the
+          // style changing, and so would otherwise be missed by the equality
+          // check above. Reasserting it here pins the mark to the page.
+          applyNotebookNibThickness(editor, pointerStyle, jsDraw);
           // Reassert mutable eraser state at contact time. Precision routing no
           // longer trusts js-draw's mode, but Stroke mode still uses its tool.
           if (activeTool === "eraser") {
