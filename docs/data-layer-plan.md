@@ -117,6 +117,20 @@ every card to reflect one rename. Library does the same in four places. With
 phases 1–3 these become cheap rather than free; they should update locally and
 let invalidation handle the rest.
 
+> **What phase 5 turned out to be.** The premise above was wrong in two ways.
+> Those reloads are *how the page reflects the write*, and replacing them with
+> optimistic local updates is a behaviour change with real risk — the server
+> normalises what it stores — for a saving that is one query against seven
+> cards. Meanwhile invalidation already makes them correct: a write supersedes
+> the cached reads, so the reload refetches exactly because it must.
+>
+> The valuable work was the opposite, and it was a bug this project introduced.
+> A page's **Refresh** button called the same load path as its mount, so once
+> reads were cached the button could be answered from the cache and do nothing
+> at all. `useDashboardData` now threads a `force` flag from `reload()` into the
+> page's load function and on into the reads, and the explicit refresh sets it.
+> Deliberate refreshes reach the server; incidental ones do not.
+
 **6 — Evidence.** A dev-only read counter, so the improvement is measured rather
 than asserted, and a regression is visible. `scripts/measure-data-shape.mjs`
 already establishes the precedent for measuring before claiming.

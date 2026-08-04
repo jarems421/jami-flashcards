@@ -38,7 +38,10 @@ import {
   getActiveTopics,
   updateTopic,
 } from "@/services/study/topics";
-import { useDashboardData } from "@/hooks/useDashboardData";
+import {
+  useDashboardData,
+  type DashboardDataLoadOptions,
+} from "@/hooks/useDashboardData";
 
 const RECENT_TOPIC_COUNT = 3;
 const TOPIC_BROWSE_PAGE_SIZE = 30;
@@ -124,14 +127,14 @@ export default function TopicsPage() {
   const { feedback, success, showError, showThrownError, clear: clearFeedback } =
     useFeedback();
 
-  const loadTopicsData = useCallback(async () => {
+  const loadTopicsData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
     const [nextTopics, nextCards, nextNotebooks, nextSources, nextDrafts] =
       await Promise.all([
-        getActiveTopics(user.uid),
-        loadUserCards(user.uid),
-        getActiveNotebooks(user.uid),
-        getActiveSources(user.uid),
-        getGeneratedContentDrafts(user.uid),
+        getActiveTopics(user.uid, reads),
+        loadUserCards(user.uid, reads),
+        getActiveNotebooks(user.uid, reads),
+        getActiveSources(user.uid, reads),
+        getGeneratedContentDrafts(user.uid, reads),
       ]);
     return {
       topics: nextTopics,

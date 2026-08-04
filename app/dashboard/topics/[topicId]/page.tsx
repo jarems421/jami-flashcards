@@ -37,7 +37,10 @@ import {
   getActiveTopics,
   updateTopic,
 } from "@/services/study/topics";
-import { useDashboardData } from "@/hooks/useDashboardData";
+import {
+  useDashboardData,
+  type DashboardDataLoadOptions,
+} from "@/hooks/useDashboardData";
 
 type TopicSection = "overview" | "cards" | "notebooks" | "sources" | "drafts";
 
@@ -73,15 +76,15 @@ export default function TopicDetailPage() {
     clear: clearFeedback,
   } = useFeedback();
 
-  const loadTopicData = useCallback(async () => {
+  const loadTopicData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
     const [nextTopics, nextCards, nextDecks, nextNotebooks, nextSources, nextDrafts] =
       await Promise.all([
-        getActiveTopics(user.uid),
-        loadUserCards(user.uid),
-        getDecks(user.uid),
-        getActiveNotebooks(user.uid),
-        getActiveSources(user.uid),
-        getGeneratedContentDrafts(user.uid),
+        getActiveTopics(user.uid, reads),
+        loadUserCards(user.uid, reads),
+        getDecks(user.uid, reads),
+        getActiveNotebooks(user.uid, reads),
+        getActiveSources(user.uid, reads),
+        getGeneratedContentDrafts(user.uid, reads),
       ]);
     return {
       topics: nextTopics,

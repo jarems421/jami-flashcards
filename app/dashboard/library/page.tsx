@@ -3,7 +3,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
-import { useDashboardData } from "@/hooks/useDashboardData";
+import {
+  useDashboardData,
+  type DashboardDataLoadOptions,
+} from "@/hooks/useDashboardData";
 import { useLibraryBrowser } from "@/hooks/useLibraryBrowser";
 import { useSourceManagement } from "@/hooks/useSourceManagement";
 import type { Source } from "@/lib/material/sources";
@@ -58,7 +61,7 @@ export default function LibraryPage() {
     clear: clearFeedback,
   } = useFeedback();
 
-  const loadLibraryData = useCallback(async () => {
+  const loadLibraryData = useCallback(async (reads: DashboardDataLoadOptions = {}) => {
     const [
       nextSources,
       nextTopics,
@@ -68,17 +71,17 @@ export default function LibraryPage() {
       nextDrafts,
     ] = await Promise.all([
       getSources(user.uid),
-      getActiveTopics(user.uid),
-      getActiveStudyFolders(user.uid).catch((error) => {
+      getActiveTopics(user.uid, reads),
+      getActiveStudyFolders(user.uid, reads).catch((error) => {
         console.error("Failed to load folders for Sources.", error);
         showError(
           "Folder links are temporarily unavailable. Your saved sources are still shown."
         );
         return [] as StudyFolder[];
       }),
-      getDecks(user.uid),
-      getActiveNotebooks(user.uid),
-      getGeneratedContentDrafts(user.uid),
+      getDecks(user.uid, reads),
+      getActiveNotebooks(user.uid, reads),
+      getGeneratedContentDrafts(user.uid, reads),
     ]);
     return {
       sources: nextSources,

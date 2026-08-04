@@ -124,6 +124,22 @@ describe("a write is seen", () => {
   });
 });
 
+/**
+ * A cache the page cannot see makes "Refresh" ambiguous. Pressing it has to
+ * reach the server, or the button appears to do nothing -- which is worse than
+ * the wait it was saving.
+ */
+describe("an explicit refresh", () => {
+  it("reaches the server even when the cache is fresh", async () => {
+    await getDecks("student");
+    const afterFirst = reads;
+
+    await getDecks("student", { force: true });
+
+    expect(reads).toBeGreaterThan(afterFirst);
+  });
+});
+
 describe("reads that feed a write", () => {
   /**
    * Grading a card computes its next interval from the state it reads. This is
