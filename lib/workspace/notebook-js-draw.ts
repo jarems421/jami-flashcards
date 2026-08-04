@@ -128,6 +128,57 @@ export function applyNotebookEraserMode(
   if (modeValue && modeValue.get() !== nextMode) modeValue.set(nextMode);
 }
 
+/**
+ * Converts a nib width in page units into the number js-draw wants.
+ *
+ * js-draw measures tool thickness in *screen* pixels and divides by the
+ * viewport scale to get the width it actually lays down:
+ * `width = thickness / viewport.getScaleFactor()`. Passed a page-unit width
+ * directly, the pen therefore draws narrower the further in you zoom -- write
+ * at 2x and the mark is half the width it would have been, so zooming back out
+ * shows thin, shrunken writing. It also made the pen a different weight on a
+ * phone than on a desktop, because the fitted scale differs.
+ *
+ * Multiplying back out pins the mark to the page: the same nib puts down the
+ * same width whatever the zoom, which is how writing behaves everywhere else.
+ *
+ * The eraser deliberately does *not* do this. Its cursor is a ring on the
+ * screen and erasing a smaller part of the page as you zoom in is the point of
+ * zooming in to erase.
+ */
+export function getNotebookNibThicknessForViewport(
+  editor: JsDrawEditor,
+  pageThickness: number
+) {
+  const scale = editor.viewport.getScaleFactor();
+  return pageThickness * (Number.isFinite(scale) && scale > 0 ? scale : 1);
+}
+
+/**
+ * Pushes the nib width to js-draw for the zoom the viewport is at now.
+ *
+ * Kept callable on its own because the zoom can change without the style
+ * changing, and the style application is skipped when nothing about the style
+ * moved. The pen path reasserts this at every contact, exactly as the eraser
+ * already reasserts its mode and size.
+ */
+export function applyNotebookNibThickness(
+  editor: JsDrawEditor,
+  style: NotebookInkStyle,
+  jsDraw: JsDrawModule
+) {
+  if (style.activeTool !== "pen" && style.activeTool !== "highlighter") return;
+  const pen = editor.toolController.getMatchingTools(jsDraw.PenTool)[0];
+  if (!pen) return;
+  const thickness = getNotebookNibThicknessForViewport(
+    editor,
+    style.activeTool === "highlighter"
+      ? style.highlighterThickness
+      : style.penThickness
+  );
+  if (pen.getThickness() !== thickness) pen.setThickness(thickness);
+}
+
 type StrokeShapeTool = "pen" | "highlighter";
 
 /**
@@ -223,17 +274,11 @@ export function applyNotebookInkStyle(
     );
     const parsed = jsDraw.Color4.fromString(color);
     const parsedColor = jsDraw.Color4.ofRGBA(parsed.r, parsed.g, parsed.b, opacity);
-    const thickness =
-      style.activeTool === "highlighter"
-        ? style.highlighterThickness
-        : style.penThickness;
     // Pressure is enabled per contact only for Apple Pencil. Keeping this
     // baseline off gives mouse and desktop-stylus strokes one consistent width.
     const pressureEnabled = false;
     if (!primaryPen.getColor().eq(parsedColor)) primaryPen.setColor(parsedColor);
-    if (primaryPen.getThickness() !== thickness) {
-      primaryPen.setThickness(thickness);
-    }
+    applyNotebookNibThickness(editor, style, jsDraw);
     if (primaryPen.getPressureSensitivityEnabled() !== pressureEnabled) {
       primaryPen.setPressureSensitivityEnabled(pressureEnabled);
     }
