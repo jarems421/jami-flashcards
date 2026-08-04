@@ -197,9 +197,8 @@ vi.mock("@/services/firebase/client", () => ({ db: {} }));
 vi.mock("@/services/firebase/firestore", () => ({
   withTimeout: <T>(request: Promise<T>) => request,
 }));
-vi.mock("@/services/dashboard/cache", () => ({
-  invalidateDashboardData: vi.fn(),
-}));
+// Deliberately not mocked. It is what carries a write through to the shared
+// read cache, so stubbing it would hide whether a write is seen at all.
 
 const folders = await import("@/services/study/folders");
 const notebooks = await import("@/services/study/notebooks");
@@ -207,6 +206,9 @@ const sources = await import("@/services/study/sources");
 const topics = await import("@/services/study/topics");
 const { invalidateLegacyActiveRecords } = await import(
   "@/services/study/active-compatibility"
+);
+const { resetCachedReadsForTests } = await import(
+  "@/services/cache/read-through"
 );
 
 function record(
@@ -219,6 +221,9 @@ function record(
 
 beforeEach(() => {
   firestore.reset();
+  // These assert what the *compatibility* scan reads. The shared read-through
+  // cache sits above it and would otherwise answer from an earlier test.
+  resetCachedReadsForTests();
   for (const userId of ["folder-user", "notebook-user", "source-user", "topic-user"]) {
     for (const collectionName of ["studyFolders", "notebooks", "sources", "topics"]) {
       invalidateLegacyActiveRecords(userId, collectionName);

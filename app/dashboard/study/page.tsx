@@ -279,7 +279,10 @@ export default function StudyPage() {
       });
       const [nextDecks, nextCards, nextTopics, activeSessionResult] = await Promise.all([
         getDecks(user.uid),
-        loadUserCards(user.uid),
+        // Every card loaded here is a card that may be graded, and grading
+        // computes the next interval from the state it reads. This one read
+        // must come from the server however recently another page asked.
+        loadUserCards(user.uid, { force: true }),
         getActiveTopics(user.uid).catch((error) => {
           console.error("Failed to load Topics for Learn filters.", error);
           showError(

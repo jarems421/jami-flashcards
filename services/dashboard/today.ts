@@ -151,7 +151,11 @@ function describeFailedSections(failedSections: string[]) {
 
 async function fetchDashboardSnapshot(
   userId: string,
-  previous?: DashboardSnapshot
+  previous?: DashboardSnapshot,
+  // Today's snapshot cache now sits above the shared read cache. Refresh has to
+  // reach through both, or pressing it would rebuild the snapshot out of the
+  // same cached reads and appear to do nothing.
+  reads: { force?: boolean } = {}
 ): Promise<DashboardLoadResult> {
   await ensureStudyStateSetup(userId);
   const now = Date.now();
@@ -169,13 +173,13 @@ async function fetchDashboardSnapshot(
     foldersResult,
     notebooksResult,
   ] = await Promise.all([
-    settle(getDecks(userId)),
+    settle(getDecks(userId, reads)),
     settle(loadInAppUsername(userId)),
-    settle(loadUserCards(userId)),
+    settle(loadUserCards(userId, reads)),
     settle(loadRemoteActiveStudySession(userId, getStudyDayKey(now), now)),
     settle(getDashboardGoalSummary(userId, now)),
     settle(loadDashboardStudyActivity(userId)),
-    settle(getActiveTopics(userId)),
+    settle(getActiveTopics(userId, reads)),
     settle(getMasteryEvents(userId)),
     settle(getPendingGeneratedContentDrafts(userId, 4)),
     settle(
@@ -406,7 +410,7 @@ export async function loadDashboardSnapshot(
   const previousEntry = getDashboardCacheEntry<DashboardSnapshot>(userId);
   const previous = cached?.snapshot;
   const revisionAtStart = getDashboardCacheRevision(userId);
-  const request = fetchDashboardSnapshot(userId, previous).then((result) => {
+  const request = fetchDashboardSnapshot(userId, previous, { force: options.force }).then((result) => {
     const hasDegradedSections = Object.values(result.snapshot.sections).some(
       (state) => state !== "ready"
     );

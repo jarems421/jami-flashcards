@@ -14,6 +14,10 @@ import { db } from "@/services/firebase/client";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
+  readThroughCache,
+  type CachedReadOptions,
+} from "@/services/cache/read-through";
+import {
   buildFlashcardDraftCardData,
   buildPracticeQuestionDraftNotebookPageData,
   type GeneratedContentDraft,
@@ -82,7 +86,19 @@ export function mapGeneratedContentDraftData(
   };
 }
 
-export async function getGeneratedContentDrafts(userId: string) {
+/** Shared by the Progress, Topics and Library pages. */
+export async function getGeneratedContentDrafts(
+  userId: string,
+  options: CachedReadOptions = {}
+) {
+  return readThroughCache(
+    { collection: "generatedContentDrafts", userId },
+    () => loadGeneratedContentDrafts(userId),
+    options
+  );
+}
+
+async function loadGeneratedContentDrafts(userId: string) {
   const snapshot = await withTimeout(
     // Ordered by when the draft was made, not when it was last touched. Sorting
     // by updatedAt moved a draft to the top the moment it was edited, so the
