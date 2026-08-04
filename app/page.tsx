@@ -114,13 +114,21 @@ export default function Home() {
         data-app-surface="true"
         data-auth-restoring="true"
         aria-busy="true"
-        className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-[var(--app-background)] px-5 py-10 text-text-primary"
+        /*
+         * Pinned to the viewport and centred by the grid, rather than centred
+         * inside a `100dvh` column.
+         *
+         * `dvh` is the *dynamic* viewport height, which on iOS is still
+         * settling while the app opens -- and anything centred against it moves
+         * as it settles, which is the mark appearing off-centre and then
+         * jumping. `fixed inset-0` cannot be measured wrongly because it is not
+         * measured: it is the viewport, whatever the viewport currently is.
+         */
+        className="fixed inset-0 grid place-items-center overflow-hidden bg-[var(--app-background)] text-text-primary"
       >
-        {/* The launch screen of an installed app, so it wears the app's face
-            rather than a bare spinner. */}
-        <div className="login-brand-halo" aria-hidden="true">
-          <BrandMark size="lg" />
-        </div>
+        {/* Drawn at the size and place the launch image iOS shows first draws
+            it, so one hands over to the other without appearing to move. */}
+        <BrandMark size="launch" />
         <span className="sr-only">Opening Jami</span>
       </main>
     );
