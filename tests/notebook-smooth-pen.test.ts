@@ -335,3 +335,123 @@ describe("the smooth pen", () => {
     expect(box.height).toBeCloseTo(PEN_WIDTH, 1);
   });
 });
+
+/**
+ * Holding the pen still at the end of a stroke snaps it straight, and then
+ * keeps it a line so the pen can aim it. Previously the judgement was strict
+ * enough that only an already-straight line qualified -- the one case needing
+ * no help -- and any movement after the snap threw the line away, so getting
+ * the angle right meant drawing it again until it landed.
+ */
+describe("straightening a line", () => {
+  function makeBuilder(points: StrokeDataPoint[]) {
+    const builder = createNotebookSmoothPenStrokeFactory(jsDraw)(
+      points[0],
+      viewport
+    );
+    for (const next of points.slice(1)) builder.addPoint(next);
+    return builder;
+  }
+
+  /** The stroke's two ends, whatever shape it ended up as. */
+  function endsOf(stroke: Stroke) {
+    const path = stroke.getParts()[0].path;
+    const last = path.parts[path.parts.length - 1];
+    const end =
+      last && "endPoint" in last
+        ? last.endPoint
+        : last && "point" in last
+          ? last.point
+          : path.startPoint;
+    return { start: path.startPoint, end };
+  }
+
+  const isStraightLine = (stroke: Stroke) => {
+    const path = stroke.getParts()[0].path;
+    return (
+      path.parts.length === 1 &&
+      path.parts[0].kind === jsDraw.PathCommandType.LineTo
+    );
+  };
+
+  /**
+   * A line drawn freehand: it wanders sideways but never doubles back.
+   * `roughness` is the wander as a fraction of the line's length.
+   */
+  const roughLine = (roughness: number, samples = 40) =>
+    Array.from({ length: samples }, (_, step) => {
+      const t = step / (samples - 1);
+      return point(100 + t * 400, 300 + Math.sin(t * Math.PI * 3) * 400 * roughness);
+    });
+
+  it.each([
+    ["all but straight", 0.01],
+    ["a little wobbly", 0.06],
+    ["visibly rough", 0.12],
+    ["frankly squiggly", 0.19],
+  ])("straightens %s a line", async (_label, roughness) => {
+    const corrected = await makeBuilder(roughLine(roughness)).autocorrectShape!();
+
+    expect(corrected).not.toBeNull();
+    expect(isStraightLine(corrected as Stroke)).toBe(true);
+  });
+
+  it("leaves a real curve alone", async () => {
+    expect(await makeBuilder(arc()).autocorrectShape!()).toBeNull();
+  });
+
+  it("still has a ceiling, so the tolerance is not simply anything", async () => {
+    expect(await makeBuilder(roughLine(0.35)).autocorrectShape!()).toBeNull();
+  });
+
+  it("leaves a shape that doubles back alone, however far apart its ends", () => {
+    // A `v`: both halves are straight, and it ends a long way from where it
+    // started, but it comes back on itself in the middle.
+    const shape = [
+      ...Array.from({ length: 20 }, (_, step) => point(100 + step * 5, 200 + step * 10)),
+      ...Array.from({ length: 20 }, (_, step) => point(200 + step * 5, 400 - step * 10)),
+    ];
+
+    return expect(makeBuilder(shape).autocorrectShape!()).resolves.toBeNull();
+  });
+
+  it("leaves a stroke too short to be sure alone", async () => {
+    const stub = Array.from({ length: 6 }, (_, step) => point(100 + step * 2, 300));
+
+    expect(await makeBuilder(stub).autocorrectShape!()).toBeNull();
+  });
+
+  it("keeps the line, so the pen can pivot it before letting go", async () => {
+    const builder = makeBuilder(roughLine(0.08));
+    await builder.autocorrectShape!();
+
+    // Swing well off the drawn direction, as aiming the line would.
+    builder.addPoint(point(300, 700));
+    const { start, end } = endsOf(builder.build() as Stroke);
+
+    expect(isStraightLine(builder.build() as Stroke)).toBe(true);
+    // The near end stays where the stroke began; the far end follows the pen.
+    expect(start.x).toBeCloseTo(100, 0);
+    expect(end.x).toBeCloseTo(300, 0);
+    expect(end.y).toBeCloseTo(700, 0);
+  });
+
+  it("lets the line be shortened by coming back along it", async () => {
+    const builder = makeBuilder(roughLine(0.05));
+    await builder.autocorrectShape!();
+    const drawn = endsOf(builder.build() as Stroke);
+
+    builder.addPoint(point(250, 300));
+    const shortened = endsOf(builder.build() as Stroke);
+
+    expect(shortened.end.x).toBeLessThan(drawn.end.x);
+    expect(shortened.start.x).toBeCloseTo(drawn.start.x, 4);
+  });
+
+  it("does not offer to straighten a line it has already straightened", async () => {
+    const builder = makeBuilder(roughLine(0.05));
+
+    expect(await builder.autocorrectShape!()).not.toBeNull();
+    expect(await builder.autocorrectShape!()).toBeNull();
+  });
+});
