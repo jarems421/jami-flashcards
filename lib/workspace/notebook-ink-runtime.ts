@@ -160,6 +160,42 @@ export function suppressNotebookEraserPreview(eraser: {
   eraser.drawPreviewAt = function suppressedDrawPreviewAt() {};
 }
 
+type NotebookAimablePen = {
+  autocorrectShape?: (pointer: unknown) => Promise<void>;
+  lastAutocorrectedShape?: unknown;
+};
+
+/**
+ * Lets a straightened line be aimed right up to the moment the pen lifts.
+ *
+ * js-draw remembers the line it snapped to, and if the pen lifts within a few
+ * hundred milliseconds of first moving again it puts that remembered line back
+ * -- on the reasoning that a small movement just after a correction was
+ * probably a slip, and the correction should survive it.
+ *
+ * That reasoning held while any movement *destroyed* the line. It no longer
+ * does: movement now aims the line instead, so the remembered version is
+ * simply an older aim, and restoring it throws away the adjustment. It bites
+ * exactly when someone is quick and confident -- snap, swing to the angle they
+ * want, lift -- which is the gesture working as intended.
+ *
+ * Forgetting the shape as soon as it has been shown leaves both remaining
+ * paths correct: lift without moving and js-draw commits the line it is still
+ * holding, or move and it asks the builder, which returns the aimed line.
+ */
+export function keepNotebookStraightenedLineAimable(pen: object) {
+  const target = pen as NotebookAimablePen;
+  const autocorrectShape = target.autocorrectShape;
+  if (typeof autocorrectShape !== "function") return false;
+
+  target.autocorrectShape = async function aimableAutocorrectShape(pointer) {
+    await autocorrectShape.call(target, pointer);
+    // Shown by now, and no longer wanted as a fallback.
+    target.lastAutocorrectedShape = null;
+  };
+  return true;
+}
+
 export function dispatchBatchedNotebookPointerSamples<Sample>(input: {
   batch?: { beginBatch(): void; endBatch(): void };
   dispatch(sample: Sample): void;
