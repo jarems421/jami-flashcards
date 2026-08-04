@@ -95,12 +95,15 @@ describe("notebook inking helpers", () => {
     expect(clampNotebookThicknessPercent(24.6)).toBe(25);
     expect(clampNotebookThicknessPercent(140)).toBe(100);
 
-    expect(getPenWidthFromPercent(0)).toBe(2);
-    expect(getPenWidthFromPercent(25)).toBe(4);
-    expect(getPenWidthFromPercent(50)).toBe(6);
-    expect(getPenWidthFromPercent(75)).toBe(8);
-    expect(getPenWidthFromPercent(100)).toBe(10);
-    expect(getPenWidthFromPercent("bad")).toBe(6);
+    // Page units. Sized to put down what the old screen-pixel arithmetic
+    // actually drew once the fitted scale had inflated it, rather than the
+    // nominal values it was set with.
+    expect(getPenWidthFromPercent(0)).toBe(3);
+    expect(getPenWidthFromPercent(25)).toBe(6.25);
+    expect(getPenWidthFromPercent(50)).toBe(9.5);
+    expect(getPenWidthFromPercent(75)).toBe(12.75);
+    expect(getPenWidthFromPercent(100)).toBe(16);
+    expect(getPenWidthFromPercent("bad")).toBe(9.5);
 
     // Wide enough that one pass covers a line of text at the top of the
     // range, which is the job; the floor still underlines.

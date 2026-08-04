@@ -26,13 +26,20 @@
  * a letter directly on top of existing work, which is not a thing people do by
  * accident, and which one press of undo reverses.
  *
- * Samples arrive in **page coordinates**, and the thresholds split by what they
- * actually measure. Size is a property of the content: "a scribble is about as
- * wide as a word" means a word on the page, whatever the zoom. Speed and tremor
- * are properties of the hand, which does not know what the zoom is -- so those
- * are converted back through `viewportScale` and judged on screen. Measuring
- * everything one way or the other makes the gesture easier to trigger at one
- * end of the zoom range and impossible at the other. The page is 900 across.
+ * Samples arrive in **screen pixels**, in whatever frame the caller is using.
+ * Every measurement here is translation-invariant, so the origin does not
+ * matter -- which is what lets the editor collect raw pointer coordinates
+ * during a stroke and work out where the page is only once a scribble has
+ * actually been found. Locating the page costs a layout flush, and doing that
+ * at the start of every stroke was enough to make writing feel like it dragged.
+ *
+ * The thresholds split by what they measure. Size belongs to the content --
+ * "about as wide as a word" means a word on the page, whatever the zoom -- so
+ * its threshold is scaled by `viewportScale` to meet the samples where they
+ * are. Speed and tremor belong to the hand, which does not know what the zoom
+ * is, and are compared directly. Measuring everything one way or the other
+ * makes the gesture trivial to trigger at one end of the zoom range and
+ * impossible at the other. The page is 900 units across.
  */
 
 export type NotebookScribblePoint = { x: number; y: number };
@@ -107,7 +114,10 @@ const MIN_SAMPLES = 8;
 const MIN_SAMPLE_SPACING_ON_SCREEN = 1;
 
 export type NotebookScribbleBand = {
-  /** Convex hull of the gesture, grown by the nib, wound counter-clockwise. */
+  /**
+   * Convex hull of the gesture, grown by the nib, wound counter-clockwise, in
+   * the same frame the samples arrived in.
+   */
   hull: NotebookScribblePoint[];
   bounds: { maxX: number; maxY: number; minX: number; minY: number };
 };
@@ -269,34 +279,55 @@ function grownHull(hull: NotebookScribblePoint[], margin: number) {
   });
 }
 
+/**
+ * One pass, no intermediates.
+ *
+ * Spreading four mapped copies of the samples reads better, but this runs at
+ * the end of every pen stroke and a stroke can carry a couple of thousand
+ * samples.
+ */
 function boundsOf(points: readonly NotebookScribblePoint[]) {
-  return {
-    minX: Math.min(...points.map((point) => point.x)),
-    minY: Math.min(...points.map((point) => point.y)),
-    maxX: Math.max(...points.map((point) => point.x)),
-    maxY: Math.max(...points.map((point) => point.y)),
-  };
+  let minX = Number.POSITIVE_INFINITY;
+  let minY = Number.POSITIVE_INFINITY;
+  let maxX = Number.NEGATIVE_INFINITY;
+  let maxY = Number.NEGATIVE_INFINITY;
+  for (const point of points) {
+    if (point.x < minX) minX = point.x;
+    if (point.y < minY) minY = point.y;
+    if (point.x > maxX) maxX = point.x;
+    if (point.y > maxY) maxY = point.y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+function extentOf(values: readonly number[]) {
+  let min = Number.POSITIVE_INFINITY;
+  let max = Number.NEGATIVE_INFINITY;
+  for (const value of values) {
+    if (value < min) min = value;
+    if (value > max) max = value;
+  }
+  return max - min;
 }
 
 export function detectNotebookScribble(
   rawSamples: readonly NotebookScribbleSample[],
   options: { strokeWidth?: number; viewportScale?: number } = {}
 ): NotebookScribble | null {
-  // Page units per screen pixel, for the thresholds that describe the hand
-  // rather than the page.
+  // Screen pixels per page unit, for the one threshold that belongs to the page.
   const scale =
     Number.isFinite(options.viewportScale) && (options.viewportScale ?? 0) > 0
       ? (options.viewportScale as number)
       : 1;
-  const samples = thinned(rawSamples, MIN_SAMPLE_SPACING_ON_SCREEN / scale);
+  const samples = thinned(rawSamples, MIN_SAMPLE_SPACING_ON_SCREEN);
   if (samples.length < MIN_SAMPLES) return null;
 
   const axis = principalAxis(samples);
   const along = samples.map((sample) => sample.x * axis.x + sample.y * axis.y);
-  const majorExtent = Math.max(...along) - Math.min(...along);
-  if (majorExtent < MIN_MAJOR_EXTENT_ON_PAGE) return null;
+  const majorExtent = extentOf(along);
+  if (majorExtent < MIN_MAJOR_EXTENT_ON_PAGE * scale) return null;
 
-  const legs = legsAlongAxis(along, REVERSAL_HYSTERESIS_ON_SCREEN / scale);
+  const legs = legsAlongAxis(along, REVERSAL_HYSTERESIS_ON_SCREEN);
   const reversals = legs.length - 1;
   if (reversals < MIN_REVERSALS) return null;
 
@@ -310,10 +341,7 @@ export function detectNotebookScribble(
   if (diagonal < 1e-9 || pathLength / diagonal < MIN_RETRACE_RATIO) return null;
 
   const elapsed = samples[samples.length - 1].time - samples[0].time;
-  if (
-    elapsed <= 0 ||
-    (pathLength * scale) / elapsed < MIN_MEAN_SPEED_ON_SCREEN_PER_MS
-  ) {
+  if (elapsed <= 0 || pathLength / elapsed < MIN_MEAN_SPEED_ON_SCREEN_PER_MS) {
     return null;
   }
 
@@ -367,7 +395,9 @@ export function detectNotebookScribble(
   return {
     band: { hull, bounds: boundsOf(hull) },
     legs: legs.length,
-    majorExtent,
+    // Reported on the page, because that is what the coverage rule compares
+    // against: how much of a word this gesture is, not how many pixels it drew.
+    majorExtent: majorExtent / scale,
     reversals,
   };
 }
