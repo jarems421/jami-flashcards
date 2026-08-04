@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import Home from "@/app/page";
+import AuthPage from "@/app/auth/page";
 import Button from "@/components/ui/Button";
 import { getConstellationBackgroundActionLabel } from "@/lib/constellation/background";
 
@@ -101,10 +102,13 @@ describe("theme colour hygiene", () => {
   });
 
   it("renders named controls through semantic variants and disabled tokens", () => {
-    const homeMarkup = renderToStaticMarkup(createElement(Home));
-    const googleLabelIndex = homeMarkup.indexOf("Continue with Google");
-    const googleButtonStart = homeMarkup.lastIndexOf("<button", googleLabelIndex);
-    const googleButton = homeMarkup.slice(googleButtonStart, googleLabelIndex);
+    // The email sign-in screen rather than the launch screen: the latter shows
+    // nothing but the brand until it knows whether anyone is signed in, so an
+    // installed app does not flash its sign-in form at somebody who already is.
+    const signInMarkup = renderToStaticMarkup(createElement(AuthPage));
+    const googleLabelIndex = signInMarkup.indexOf("Continue with Google");
+    const googleButtonStart = signInMarkup.lastIndexOf("<button", googleLabelIndex);
+    const googleButton = signInMarkup.slice(googleButtonStart, googleLabelIndex);
     expect(googleButton).toContain("app-button-primary");
 
     const disabledButton = renderToStaticMarkup(
@@ -122,5 +126,21 @@ describe("theme colour hygiene", () => {
     expect(getConstellationBackgroundActionLabel(true)).toBe(
       "Remove background"
     );
+  });
+
+  /**
+   * Installed as a PWA, this page is the launch screen. It used to render the
+   * sign-in form on its first paint and only redirect once the session finished
+   * restoring, so every launch flashed "sign in" at somebody who already had.
+   */
+  it("shows nothing to sign in with until it knows whether anyone is", () => {
+    const launchMarkup = renderToStaticMarkup(createElement(Home));
+
+    expect(launchMarkup).toContain('data-auth-restoring="true"');
+    expect(launchMarkup).not.toContain("Continue with Google");
+    expect(launchMarkup).not.toContain("Continue with email");
+    // The app's own background, so the launch reads as the app opening rather
+    // than as a page that has failed to load.
+    expect(launchMarkup).toContain("var(--app-background)");
   });
 });

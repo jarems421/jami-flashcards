@@ -22,6 +22,8 @@ vi.mock("@/services/auth/auth-listener", () => ({
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace, push: vi.fn(), prefetch: vi.fn() }),
+  // The gate notes where the student is, so a relaunch can return them there.
+  usePathname: () => "/dashboard/decks",
 }));
 
 // The authenticated tree pulls in the whole dashboard chrome; this suite is
