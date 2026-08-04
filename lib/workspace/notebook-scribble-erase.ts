@@ -6,10 +6,25 @@
  * A false positive deletes work nobody asked to delete, so the question is not
  * "could this be a scribble?" but "could this be anything else?".
  *
- * Six signals have to agree. Individually each has a plausible innocent
+ * Several signals have to agree. Individually each has a plausible innocent
  * explanation: `w` and `m` reverse direction, shading retraces a band, a fast
  * flick covers ground quickly. Together they describe a motion that handwriting
- * does not make.
+ * mostly does not make.
+ *
+ * Mostly, not entirely -- and that boundary is where this used to go wrong. The
+ * shape of a small scribble and the shape of a small `w` are genuinely close,
+ * and every rule added to separate them broke something people actually do:
+ * requiring a thin band stopped whole words, blocks of lines and scribbles-over-
+ * scribbles from registering, and requiring a word's worth of length stopped
+ * single letters. The gates here are therefore deliberately permissive about
+ * shape and size.
+ *
+ * The safety is that recognising a scribble deletes nothing on its own. Ink has
+ * to be *decisively covered* by it -- see `NOTEBOOK_SCRIBBLE_MIN_COVERAGE` and
+ * `planNotebookScribbleErase`. A `w` written on blank paper covers nothing and
+ * is simply drawn, whatever this function thinks of it. What is left is writing
+ * a letter directly on top of existing work, which is not a thing people do by
+ * accident, and which one press of undo reverses.
  *
  * Samples arrive in **page coordinates**, and the thresholds split by what they
  * actually measure. Size is a property of the content: "a scribble is about as
@@ -24,15 +39,15 @@ export type NotebookScribblePoint = { x: number; y: number };
 export type NotebookScribbleSample = NotebookScribblePoint & { time: number };
 
 /**
- * A `w` has three legs and an `m` has three, so both reverse twice; a word
- * crossed out with two passes reverses once. Three reversals means four legs,
- * which clears all of them.
+ * Two reversals is three passes, the smallest gesture anyone means as a
+ * scribble. A word crossed out with two passes reverses once and is left alone:
+ * a cross-out is a mark people keep.
  *
- * Measured against scribbles as a hand actually makes them, four reversals --
- * five passes -- was simply more than people do. Most scribble-outs are three
- * or four passes, and requiring five is why the gesture did not fire.
+ * Measured against scribbles as a hand actually makes them, the original four
+ * reversals -- five passes -- was simply more than people do, and is why the
+ * gesture did not fire. Most scribble-outs are three or four passes.
  */
-const MIN_REVERSALS = 3;
+const MIN_REVERSALS = 2;
 /**
  * How far the pen must travel back before a reversal counts.
  *
@@ -40,16 +55,23 @@ const MIN_REVERSALS = 3;
  * reversals and any slow deliberate stroke can reach four.
  */
 const REVERSAL_HYSTERESIS_ON_SCREEN = 8;
-/** Legs of a scribble run parallel; the strokes of a letter do not. */
-const MAX_LEG_DEVIATION_DEGREES = 25;
+/**
+ * Legs roughly share a direction rather than wandering.
+ *
+ * Generous, because a scribble over something small is nearly as tall as it is
+ * long and its legs rise steeply as a result -- scribbling out a single letter
+ * measures about 30 degrees. This only has to exclude motion with no common
+ * direction at all.
+ */
+const MAX_LEG_DEVIATION_DEGREES = 50;
 /**
  * Path length against bounding-box diagonal: retracing, not progressing.
  *
- * A four-pass scribble measures about 2.8, so this is a floor rather than a
- * discriminator. Overlap below is the gate that actually separates retracing
- * from advancing, and it does so far more precisely.
+ * A floor rather than a discriminator; overlap is what actually separates
+ * retracing from advancing. Four passes over a word measure 3.7, four over a
+ * single letter 2.3.
  */
-const MIN_RETRACE_RATIO = 2.5;
+const MIN_RETRACE_RATIO = 2.2;
 /**
  * Consecutive legs must cover each other, which shading and hatching do not.
  *
@@ -58,21 +80,16 @@ const MIN_RETRACE_RATIO = 2.5;
  * quickly fails both by a wide margin. The looser thresholds above lean on it.
  */
 const MIN_LEG_OVERLAP = 0.6;
-/** Smaller than this and a hurried `zz` would qualify. Roughly a word wide. */
-const MIN_MAJOR_EXTENT_ON_PAGE = 48;
 /**
- * How thick the gesture may be across its own direction, as a fraction of its
- * length. A scribble-out is a *band* laid over some writing; a letter is a
- * blob about as tall as it is wide.
+ * About one letter across. Below this there is not enough gesture to read.
  *
- * This is what keeps a `w` out. Its legs are parallel and they retrace each
- * other perfectly, so leg deviation and overlap both read it as a scribble --
- * and once the principal axis comes out vertical, as it does for a square
- * shape, nothing about the direction of travel distinguishes the two. Measured:
- * real scribbles land between 0.12 and 0.38, while `w`, `m`, `z` and hatching
- * all sit above 0.6.
+ * Deliberately small. Scribbling out a single letter is a real thing to want,
+ * and a letter is narrow: a few passes across a `t` or an `f` span barely more
+ * than the stem. The earlier 48 was sized for scribbling out whole words, which
+ * is why single letters worked only when the scribble happened to run *along*
+ * the letter rather than across it -- fine for a `j`, useless for a `t`.
  */
-const MAX_BAND_ASPECT = 0.5;
+const MIN_MAJOR_EXTENT_ON_PAGE = 26;
 /**
  * Scribbles are brisk. Deliberate drawing is not.
  *
@@ -98,6 +115,8 @@ export type NotebookScribbleBand = {
 export type NotebookScribble = {
   band: NotebookScribbleBand;
   legs: number;
+  /** Length along the legs, in page units. Sets how much cover is demanded. */
+  majorExtent: number;
   reversals: number;
 };
 
@@ -119,21 +138,34 @@ function thinned(
   return kept;
 }
 
-/** The direction the gesture mostly runs in, by principal component. */
+/**
+ * The direction the gesture's legs run in.
+ *
+ * Taken from how the pen *travelled*, not from where the points ended up.
+ * Those differ exactly when it matters: a scribble filling a square block has
+ * as much spread down the page as across it, so the spread of the points picks
+ * an axis arbitrarily -- and picking the direction the gesture advances rather
+ * than the direction its legs run makes every leg read as perpendicular to the
+ * axis, which is what stopped area-covering scribbles being recognised.
+ *
+ * Travel does not have that ambiguity. Nearly all of it is along the legs.
+ * Each step contributes its outer product, which is blind to the sign of the
+ * direction, so legs running opposite ways reinforce the same axis instead of
+ * cancelling; weighting by length lets the long sweeps outvote the turns.
+ */
 function principalAxis(points: readonly NotebookScribblePoint[]) {
-  const centroidX =
-    points.reduce((total, point) => total + point.x, 0) / points.length;
-  const centroidY =
-    points.reduce((total, point) => total + point.y, 0) / points.length;
   let xx = 0;
   let xy = 0;
   let yy = 0;
-  for (const point of points) {
-    const dx = point.x - centroidX;
-    const dy = point.y - centroidY;
-    xx += dx * dx;
-    xy += dx * dy;
-    yy += dy * dy;
+  for (let index = 1; index < points.length; index += 1) {
+    const dx = points[index].x - points[index - 1].x;
+    const dy = points[index].y - points[index - 1].y;
+    const length = Math.hypot(dx, dy);
+    if (length < 1e-9) continue;
+    // Unit direction, weighted by how far the pen went that way.
+    xx += (dx * dx) / length;
+    xy += (dx * dy) / length;
+    yy += (dy * dy) / length;
   }
   // Leading eigenvector of the 2x2 covariance matrix.
   const trace = xx + yy;
@@ -264,13 +296,10 @@ export function detectNotebookScribble(
   const majorExtent = Math.max(...along) - Math.min(...along);
   if (majorExtent < MIN_MAJOR_EXTENT_ON_PAGE) return null;
 
-  const across = samples.map((sample) => sample.x * -axis.y + sample.y * axis.x);
-  const minorExtent = Math.max(...across) - Math.min(...across);
-  if (minorExtent / majorExtent > MAX_BAND_ASPECT) return null;
-
   const legs = legsAlongAxis(along, REVERSAL_HYSTERESIS_ON_SCREEN / scale);
   const reversals = legs.length - 1;
   if (reversals < MIN_REVERSALS) return null;
+
 
   let pathLength = 0;
   for (let index = 1; index < samples.length; index += 1) {
@@ -335,7 +364,12 @@ export function detectNotebookScribble(
   );
   if (hull.length < 3) return null;
 
-  return { band: { hull, bounds: boundsOf(hull) }, legs: legs.length, reversals };
+  return {
+    band: { hull, bounds: boundsOf(hull) },
+    legs: legs.length,
+    majorExtent,
+    reversals,
+  };
 }
 
 /**
@@ -414,5 +448,28 @@ export function getNotebookScribbleCoverage(
   return coveredLength / totalLength;
 }
 
-/** A stroke this thoroughly covered is one the scribble was aimed at. */
-export const NOTEBOOK_SCRIBBLE_MIN_COVERAGE = 0.6;
+/**
+ * A stroke this thoroughly covered is one the scribble was aimed at.
+ *
+ * Half rather than most: the ends of a word, and the outer reaches of an
+ * earlier scribble being scribbled away, sit outside the hull and drag the
+ * ratio down even when the gesture plainly meant to take the lot. What this
+ * still has to exclude is a long rule or underline merely crossing the band,
+ * and that measures around 0.2.
+ */
+export const NOTEBOOK_SCRIBBLE_MIN_COVERAGE = 0.5;
+/**
+ * Below this length a gesture is letter-sized, and has to cover nearly all of
+ * whatever it takes.
+ */
+export const NOTEBOOK_SCRIBBLE_SMALL_EXTENT = 90;
+/**
+ * What a letter-sized gesture has to cover before anything is deleted.
+ *
+ * This is where the safety went when shape stopped being able to carry it. At
+ * this size a scribble and a `w`, `m` or `z` are the same motion, so the test
+ * has to be what the gesture *did* rather than what it looked like: scribbling
+ * a letter out swallows it whole and measures about 1.0, while writing a letter
+ * over existing work leaves that work mostly outside and comes nowhere near.
+ */
+export const NOTEBOOK_SCRIBBLE_SMALL_MIN_COVERAGE = 0.8;

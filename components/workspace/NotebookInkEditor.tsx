@@ -106,10 +106,14 @@ type Props = NotebookInkStyle & {
 };
 
 /**
- * A stroke longer than this cannot be a scribble worth acting on, and the
- * buffer must not grow without bound while someone writes a paragraph.
+ * Enough samples for any scribble, and a bound on the buffer.
+ *
+ * At roughly one per frame this is about half a minute of continuous drawing.
+ * The earlier 512 was under ten seconds, which a vigorous scribble over a
+ * block of several lines can genuinely exceed -- and exceeding it silently
+ * turned the gesture off for that stroke.
  */
-const MAX_SCRIBBLE_SAMPLES = 512;
+const MAX_SCRIBBLE_SAMPLES = 2048;
 
 type ActivePrecisionEraserGesture = {
   cursorDiameter: number;

@@ -439,6 +439,56 @@ strike-out from someone drawing slowly.
 Two shapes deliberately still do not fire: a three-pass zig-zag (two reversals,
 exactly what `w` and `m` make) and a genuinely slow movement.
 
+### Swipe queueing removed
+
+Dropped at the user's request on 4 August 2026. A flick released while the
+previous turn is settling is ignored again, as it was before. `lib/workspace/
+notebook-navigation-queue.ts` and its tests are gone.
+
+**The data-loss fixes it was bundled with all stay** — they were never part of
+the queue. Swipes and page deletes still wait for ink before opening a page, a
+page whose ink has not arrived refuses new strokes and says so, a canvas that
+mounted empty is rebuilt, and hydration merges only ink into the current record.
+
+### Scribble-to-erase: where the safety actually lives
+
+Three rounds of real-device feedback said the same thing — it did not fire — and
+each round the cause was a rule protecting against a `w`.
+
+The last one was decisive: it failed on whole words, on blocks of several lines,
+on scribbling away an earlier scribble, and inconsistently on single letters
+(fine on a `j`, useless on a `t` or `f`). Those have one cause each and one
+cause in common.
+
+- **Area-covering gestures** were rejected by the band-shape rule. Scribbling
+  out a block is roughly as tall as it is wide; the rule demanded a thin band.
+- **Single letters** were rejected by a minimum length sized for words. A few
+  passes across a `t` span barely more than its stem — which is why it worked
+  scribbling *along* a letter and not across one.
+- **The axis was being measured from the wrong thing.** The principal component
+  of the *points* picks the direction a gesture spreads, and for a square block
+  that is the direction it advances rather than the direction its legs run — so
+  every leg read as perpendicular to its own axis. It now comes from how the pen
+  travelled, which has no such ambiguity.
+
+The common cause is that shape was being asked to do a job it cannot do. At
+letter size a scribble and a `w` are the same motion, and every rule that
+separated them cost something people do. So the shape gates are now deliberately
+permissive — enough to recognise a repeated back-and-forth — and **the safety is
+that recognising a scribble deletes nothing on its own**. Ink has to be
+decisively covered: half of a stroke for an ordinary gesture, and **80% for a
+letter-sized one**, where writing a letter over existing work leaves that work
+mostly outside and comes nowhere near.
+
+Removed along the way: the band-aspect rule, its two-tier variant, and the
+detector-level claims about `w`, `m` and `z`, which are now tested where they are
+actually protected — nothing is deleted when a letter is written on blank paper
+or across existing work.
+
+**Known trade: shading and hatching over existing ink can now be taken.** They
+are the same motion as an area scribble and nothing reliably separates them. The
+pen settings carry a switch for anyone who shades diagrams.
+
 ### Verified
 
 `npm run typecheck`, `npm run lint`, `npm test` (1254 tests, 155 files), and
