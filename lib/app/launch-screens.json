@@ -1,0 +1,19 @@
+{
+  "comment": "Devices iOS needs an exactly-sized launch screen for. Read by scripts/generate-splash-screens.mjs, which draws them, and by app/layout.tsx, which points iOS at them. One list so the two cannot drift: an image with no link is dead weight, and a link with no image is a blank launch.",
+  "devices": [
+    { "name": "iphone-se", "width": 320, "height": 568, "scale": 2 },
+    { "name": "iphone-8", "width": 375, "height": 667, "scale": 2 },
+    { "name": "iphone-8-plus", "width": 414, "height": 736, "scale": 3 },
+    { "name": "iphone-x", "width": 375, "height": 812, "scale": 3 },
+    { "name": "iphone-xr", "width": 414, "height": 896, "scale": 2 },
+    { "name": "iphone-xs-max", "width": 414, "height": 896, "scale": 3 },
+    { "name": "iphone-12", "width": 390, "height": 844, "scale": 3 },
+    { "name": "iphone-12-pro-max", "width": 428, "height": 926, "scale": 3 },
+    { "name": "iphone-14-pro", "width": 393, "height": 852, "scale": 3 },
+    { "name": "iphone-14-pro-max", "width": 430, "height": 932, "scale": 3 },
+    { "name": "ipad-mini", "width": 768, "height": 1024, "scale": 2 },
+    { "name": "ipad-air", "width": 820, "height": 1180, "scale": 2 },
+    { "name": "ipad-pro-11", "width": 834, "height": 1194, "scale": 2 },
+    { "name": "ipad-pro-12", "width": 1024, "height": 1366, "scale": 2 }
+  ]
+}
