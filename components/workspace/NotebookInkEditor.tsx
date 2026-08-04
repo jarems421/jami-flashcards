@@ -102,7 +102,6 @@ type Props = NotebookInkStyle & {
   readOnly?: boolean;
   /** Scribbling out with the pen deletes the strokes it covers. */
   scribbleToErase?: boolean;
-  onScribbleErase?(strokeCount: number): void;
 };
 
 /**
@@ -149,7 +148,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       penThickness,
       readOnly = false,
       scribbleToErase = false,
-      onScribbleErase,
     },
     forwardedRef
   ) {
@@ -207,7 +205,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onInteractionChange,
       onReady,
       onReadyError,
-      onScribbleErase,
     });
     useEffect(() => {
       callbacksRef.current = {
@@ -216,7 +213,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         onInteractionChange,
         onReady,
         onReadyError,
-        onScribbleErase,
       };
     }, [
       onChange,
@@ -224,7 +220,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       onInteractionChange,
       onReady,
       onReadyError,
-      onScribbleErase,
     ]);
 
     useImperativeHandle(
@@ -875,7 +870,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         if (plan) {
           cancelEditorGesture();
           applyNotebookScribbleErase(editor, pointerJsDraw, plan);
-          callbacksRef.current.onScribbleErase?.(plan.components.length);
           finishPointerInteraction({
             pointerId: event.pointerId,
             timeStamp: event.timeStamp,

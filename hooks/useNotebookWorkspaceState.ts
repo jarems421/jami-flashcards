@@ -35,11 +35,6 @@ export function useNotebookDrawingToolState() {
   // The stored preference is read on the client after mount, so the server and
   // the first client render agree. See `readNotebookScribbleErasePreference`.
   const [scribbleToErase, setScribbleToErase] = useState(true);
-  /** How many strokes the last scribble removed, while the notice is showing. */
-  const [scribbleEraseNotice, setScribbleEraseNotice] = useState<number | null>(
-    null
-  );
-
   return {
     penColor,
     setPenColor,
@@ -63,8 +58,6 @@ export function useNotebookDrawingToolState() {
     setTouchInkHintVisible,
     scribbleToErase,
     setScribbleToErase,
-    scribbleEraseNotice,
-    setScribbleEraseNotice,
   };
 }
 
