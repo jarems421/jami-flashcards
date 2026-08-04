@@ -8,6 +8,7 @@ const nunitoSans = Nunito_Sans({
 });
 import ConstellationBackgroundShell from "@/components/constellation/ConstellationBackgroundShell";
 import PwaBootstrap from "@/components/layout/PwaBootstrap";
+import { getLaunchScreenLinks } from "@/lib/app/launch-screens";
 import OfflineBanner from "@/components/layout/OfflineBanner";
 import "./globals.css";
 
@@ -20,6 +21,10 @@ export const metadata: Metadata = {
     capable: true,
     statusBarStyle: "black-translucent",
     title: "Jami",
+    // What iOS shows while an installed Jami is opening. Without these it shows
+    // nothing -- a bare dark rectangle that reads as the app hanging rather
+    // than starting. Android builds its own from the manifest.
+    startupImage: getLaunchScreenLinks(),
   },
   formatDetection: {
     telephone: false,

@@ -1,4 +1,6 @@
-const STATIC_CACHE = "jami-static-v2";
+// Bumped with the navigation strategy, so the old network-first entries go
+// rather than lingering beside the new ones.
+const STATIC_CACHE = "jami-static-v3";
 const APP_SHELL_URLS = [
   "/",
   "/dashboard",
@@ -47,22 +49,49 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (request.mode === "navigate") {
+    /*
+     * Answer from the cache and refresh behind it.
+     *
+     * This used to go to the network first and fall back to the cache only when
+     * that failed, which made every launch of the installed app wait for a full
+     * round trip before anything at all could paint. That wait is the long dark
+     * screen before the logo: the page cannot draw what it has not received,
+     * and the markup it needs -- brand, background, the whole opening screen --
+     * was already sitting in the cache the whole time.
+     *
+     * The copy is refreshed on every launch, so it is at most one launch behind.
+     * That is the cost, and it buys an app that opens rather than loads.
+     */
     event.respondWith(
-      fetch(request)
-        .then((response) => {
-          const copy = response.clone();
-          caches.open(STATIC_CACHE).then((cache) => cache.put(request, copy));
-          return response;
-        })
-        .catch(async () => {
-          const cached = await caches.match(request);
-          return (
-            cached ||
-            (await caches.match("/dashboard/study")) ||
-            (await caches.match("/")) ||
-            new Response("Offline", { status: 503, statusText: "Offline" })
-          );
-        })
+      caches.match(request).then((cached) => {
+        const fromNetwork = fetch(request)
+          .then((response) => {
+            // A redirect cannot be replayed from the cache, and an error page
+            // must not become the shell the app opens on.
+            if (response.ok && !response.redirected) {
+              const copy = response.clone();
+              caches.open(STATIC_CACHE).then((cache) => cache.put(request, copy));
+            }
+            return response;
+          })
+          .catch(async () => {
+            return (
+              cached ||
+              (await caches.match("/dashboard/study")) ||
+              (await caches.match("/")) ||
+              new Response("Offline", { status: 503, statusText: "Offline" })
+            );
+          });
+
+        if (cached) {
+          // Kept running: this is what makes the next launch current. Its
+          // failure is nobody's problem, since the page has already been served.
+          event.waitUntil(fromNetwork.catch(() => undefined));
+          return cached;
+        }
+
+        return fromNetwork;
+      })
     );
     return;
   }
