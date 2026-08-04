@@ -47,8 +47,19 @@ const MINIMUM_STEP_RATIO = 0.6;
  * through sparse points as dense ones, so the samples that sit on the line
  * their neighbours already describe carry no shape and can go. Curvature is
  * where the points are kept.
+ *
+ * This was a quarter of a pixel, which is below the digitiser's own noise, so
+ * the test was reading jitter rather than shape and almost nothing was thinned.
+ * Measured against a hand wobbling half a pixel, a slow ruled line kept 150
+ * curves and the drawn line still sat 0.64px off true -- it was faithfully
+ * reproducing the wobble. Just above the noise it keeps 35 and sits 0.99px off:
+ * a quarter of the work for a tenth of a pixel, and a visibly steadier line.
+ *
+ * The ceiling is the small round letter. At half a pixel an 'o' loses its shape
+ * (0.85px off true here, 2.52px there), which is the flattening the span rule
+ * below also guards against. This sits under that.
  */
-const SHAPE_TOLERANCE_RATIO = 0.25;
+const SHAPE_TOLERANCE_RATIO = 0.4;
 
 /**
  * The furthest apart two kept points may be, in screen pixels.
@@ -140,6 +151,24 @@ const STRAIGHTEN_MINIMUM_SPAN_RATIO = 8;
  */
 const CORNER_DEGREES = 35;
 
+/**
+ * The shortest run the angle above may be measured over, in screen pixels.
+ *
+ * An angle between two segments a pixel long is mostly the digitiser's noise:
+ * half a pixel of wobble either side swings it through tens of degrees, so a
+ * slowly drawn straight line arrives full of corners that were never made. That
+ * is expensive twice over -- a corner is kept rather than thinned, and corners
+ * are exempt from easing, so the wobble that invented it is then preserved on
+ * purpose. Measured on a small 'o', ignoring these took it from 79 curves to 44
+ * *and* moved the drawn line closer to the true shape.
+ *
+ * A step and a half of travel, so it can only ever suppress an angle there was
+ * not enough movement to measure. A corner drawn deliberately clears it
+ * immediately, and one drawn slowly is kept by the offset test regardless,
+ * since sitting far off the line between its neighbours is what a corner is.
+ */
+const MINIMUM_CORNER_ARM_RATIO = MINIMUM_STEP_RATIO * 1.5;
+
 export function createNotebookSmoothPenStrokeFactory(
   jsDraw: JsDrawModule
 ): ComponentBuilderFactory {
@@ -166,6 +195,8 @@ export function createNotebookSmoothPenStrokeFactory(
     const shapeTolerance =
       viewport.getSizeOfPixelOnCanvas() * SHAPE_TOLERANCE_RATIO;
     const maximumSpan = viewport.getSizeOfPixelOnCanvas() * MAXIMUM_SPAN_RATIO;
+    const minimumCornerArm =
+      viewport.getSizeOfPixelOnCanvas() * MINIMUM_CORNER_ARM_RATIO;
     /** Below this, the line has turned far enough to count as a corner. */
     const cornerCosine = Math.cos((CORNER_DEGREES * Math.PI) / 180);
     const points: Point2[] = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
@@ -433,8 +464,8 @@ export function createNotebookSmoothPenStrokeFactory(
         const arriving = pending.minus(lastKept);
         const leaving = next.minus(pending);
         const turns =
-          arriving.magnitude() > 0 &&
-          leaving.magnitude() > 0 &&
+          arriving.magnitude() > minimumCornerArm &&
+          leaving.magnitude() > minimumCornerArm &&
           arriving.normalized().dot(leaving.normalized()) < cornerCosine;
 
         if (

@@ -298,6 +298,50 @@ describe("the smooth pen", () => {
     expect(smooth).toBeLessThan(fitter * 8);
   });
 
+  /**
+   * Real input is never noiseless, and the thinning used to be defeated by
+   * that: judged over a quarter of a pixel it was reading the digitiser rather
+   * than the hand, so a slowly drawn line arrived with a point at nearly every
+   * sample. Every one of those is a curve rasterised again on every frame for
+   * the rest of the stroke, which is what made writing on a zoomed-in page --
+   * where a stroke covers its true size in screen pixels -- run behind the pen.
+   *
+   * Both halves matter, so both are asserted: fewer curves, and closer to the
+   * line that was actually drawn rather than to the wobble on top of it.
+   */
+  it("is not defeated by the wobble in a hand-drawn line", () => {
+    let seed = 7;
+    const wobble = () => {
+      seed = (seed * 1103515245 + 12345) % 2147483648;
+      return (seed / 2147483648 - 0.5) * 0.5;
+    };
+    const trueDirection = jsDraw.Vec2.of(1, 0.28).normalized();
+    const samples = Array.from({ length: 600 }, (_, step) =>
+      point(step + wobble(), step * 0.28 + wobble())
+    );
+
+    const path = buildStroke(samples).getParts()[0].path;
+
+    // Kept 150 curves when the test sat under the noise; 35 once above it.
+    expect(path.parts.length).toBeLessThan(60);
+
+    let worstStray = 0;
+    const consider = (p: Point2) => {
+      // Distance from the line the hand meant, through the origin.
+      worstStray = Math.max(
+        worstStray,
+        Math.abs(p.x * trueDirection.y - p.y * trueDirection.x)
+      );
+    };
+    consider(path.startPoint);
+    for (const part of path.parts) {
+      if ("endPoint" in part) consider(part.endPoint);
+    }
+
+    // Inside the wobble it was given, so it is drawing the line and not the noise.
+    expect(worstStray).toBeLessThan(0.5);
+  });
+
   it("keeps the drawn line on the path the hand took", () => {
     const path = buildStroke(arc()).getParts()[0].path;
 
