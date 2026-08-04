@@ -61,6 +61,7 @@ import {
   dispatchBatchedNotebookPointerSamples,
   installNotebookInkViewportSynchronizer,
   installNotebookNativeInkGuards,
+  keepNotebookStraightenedLineAimable,
   positionNotebookEraserCursor,
   shouldContinueNotebookPrecisionGesture,
   shouldExpectNotebookCaptureLoss,
@@ -389,6 +390,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             // The nib is swapped with the tool, but set the pen's here too so
             // the very first stroke cannot land on js-draw's default fitter.
             applyNotebookStrokeShape(primaryPen, "pen", jsDraw);
+            // A line that has snapped straight goes on following the pen, so
+            // js-draw must not put the angle it first snapped to back when the
+            // pen lifts shortly after being moved.
+            keepNotebookStraightenedLineAimable(primaryPen);
             penPreviewBatch = installBatchedNotebookPenPreview(
               primaryPen as unknown as NotebookBatchedPen
             );

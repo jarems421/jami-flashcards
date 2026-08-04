@@ -12,6 +12,7 @@ import {
   shouldContinueNotebookPrecisionGesture,
   shouldExpectNotebookCaptureLoss,
   shouldUseNotebookPrecisionGesture,
+  keepNotebookStraightenedLineAimable,
   suppressNotebookEraserPreview,
 } from "@/lib/workspace/notebook-ink-runtime";
 import { makePrecisePenInputMapper } from "@/lib/workspace/notebook-js-draw";
@@ -238,5 +239,44 @@ describe("notebook ink viewport integration", () => {
     suppressNotebookEraserPreview(eraser);
     eraser.drawPreviewAt();
     expect(originalPreview).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * A line that has snapped straight goes on following the pen. js-draw would
+ * otherwise put the angle it first snapped to back whenever the pen lifts
+ * shortly after moving -- a guard written for when movement destroyed the
+ * correction, which now throws away the adjustment instead.
+ */
+describe("keepNotebookStraightenedLineAimable", () => {
+  it("forgets the snapped line once js-draw has shown it", async () => {
+    const pen = {
+      lastAutocorrectedShape: null as unknown,
+      autocorrectShape: async () => {
+        pen.lastAutocorrectedShape = { theLineItFirstSnappedTo: true };
+      },
+    };
+
+    expect(keepNotebookStraightenedLineAimable(pen)).toBe(true);
+    await pen.autocorrectShape();
+
+    // Shown, then forgotten: lifting after an adjustment now commits what the
+    // builder holds, which is the aimed line.
+    expect(pen.lastAutocorrectedShape).toBeNull();
+  });
+
+  it("still runs js-draw's own correction", async () => {
+    const corrected = vi.fn(async () => {});
+    const pen = { autocorrectShape: corrected };
+
+    keepNotebookStraightenedLineAimable(pen);
+    await pen.autocorrectShape();
+
+    expect(corrected).toHaveBeenCalledTimes(1);
+  });
+
+  it("declines rather than throws if js-draw stops offering the hook", () => {
+    // The worst case then is the old behaviour, not a broken pen.
+    expect(keepNotebookStraightenedLineAimable({})).toBe(false);
   });
 });
