@@ -170,7 +170,23 @@ Per commit: `npm run typecheck`, `npm run lint`, focused tests for the new seam,
 `npm test`, `npm run build`. `npm run test:rules` and `npm run test:e2e` before
 anything touching a write path.
 
-The behavioural claim to prove: **a warm tab switch issues no reads.** Today
-already demonstrates it; the e2e suite is the place to pin it for the rest, by
-navigating away and back and asserting the second visit paints without a
-loading state.
+The behavioural claim to prove: **a warm tab switch issues no reads.**
+
+That is pinned by `tests/shared-read-cache-integration.test.ts`, which drives
+the real service functions against a counting Firestore stub, so it fails if a
+service stops going through the cache — which asserting on the cache module
+directly would not catch.
+
+**Not pinned in the browser, deliberately.** A version of it there was written
+and removed. It navigated away and back and counted requests, and it made the
+suite worse: three extra navigations pushed the run past the point where the
+existing `Sources` test — which already sits at 28–45s against a 45s
+expectation — began failing instead. The two traded places between runs, which
+is the signature of a timing margin rather than a defect in either. The browser
+assertion was also the weaker one, counting requests to a host rather than
+reads of a collection.
+
+**Worth its own look:** `Sources` taking 28–45s to show one seeded row is not
+about the cache, and it is close enough to its timeout to fail whenever the
+machine is busy. It is the reason this suite reports a different failure most
+runs.

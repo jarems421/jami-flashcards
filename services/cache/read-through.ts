@@ -168,12 +168,20 @@ export function readThroughCache<T>(
   const cacheKey = getCachedReadKey(key);
   let servedFromCache = false;
 
+  if (options.force) stats.forced += 1;
+
   if (!options.force) {
     const cached = peekCachedRead<T>(key, { now: options.now });
-    if (cached?.freshness === "fresh") return Promise.resolve(cached.value);
+    if (cached?.freshness === "fresh") {
+      stats.hits += 1;
+      return Promise.resolve(cached.value);
+    }
 
     const existing = inFlight.get(cacheKey) as Promise<T> | undefined;
-    if (existing) return existing;
+    if (existing) {
+      stats.joined += 1;
+      return existing;
+    }
 
     // Nothing is known to have changed, so the page paints from what we have
     // and hears about the refresh when it lands. A superseded value is never
@@ -182,6 +190,7 @@ export function readThroughCache<T>(
     if (cached?.freshness === "aged") servedFromCache = true;
   }
 
+  stats.misses += 1;
   const revisionAtStart = revisionOf(key.userId);
   const request = load().then((value) => {
     // A write that landed while this was in flight must not be papered over by
@@ -249,8 +258,48 @@ export function clearCachedReads(userId: string) {
   userRevisions.delete(userId);
 }
 
+export type CachedReadStats = {
+  /** Reads answered without going to the server. */
+  hits: number;
+  /** Reads that went to the server. */
+  misses: number;
+  /** Callers that joined a request already on the wire. */
+  joined: number;
+  /** Reads that went to the server because a caller insisted. */
+  forced: number;
+};
+
+const stats: CachedReadStats = { hits: 0, misses: 0, joined: 0, forced: 0 };
+
+/**
+ * What the cache has actually done this session.
+ *
+ * The claim this whole change rests on -- that the pages were re-reading the
+ * same data -- was measured before it was believed, and this is what lets the
+ * result be measured the same way rather than asserted. Exposed on `window` in
+ * development so it can be read from a real device, where the round trips that
+ * motivated the work actually cost something.
+ */
+export function getCachedReadStats(): CachedReadStats {
+  return { ...stats };
+}
+
+export function resetCachedReadStats() {
+  stats.hits = 0;
+  stats.misses = 0;
+  stats.joined = 0;
+  stats.forced = 0;
+}
+
+if (process.env.NODE_ENV === "development" && typeof window !== "undefined") {
+  (
+    window as Window & { jamiCacheStats?: () => CachedReadStats }
+  ).jamiCacheStats = getCachedReadStats;
+}
+
 /** Test seam. Production code has no reason to empty every user's cache. */
 export function resetCachedReadsForTests() {
+  resetCachedReadStats();
   entries.clear();
   inFlight.clear();
   userRevisions.clear();
