@@ -55,8 +55,21 @@ export const NOTEBOOK_PAGE_COMPACT_FIT_INSET =
   NOTEBOOK_VIEWPORT_COMPACT_INSET;
 export const NOTEBOOK_PAGE_FIT_INSET = NOTEBOOK_VIEWPORT_REGULAR_INSET;
 export const NOTEBOOK_DEFAULT_THICKNESS_PERCENT = 50;
-export const NOTEBOOK_PEN_MIN_WIDTH = 2;
-export const NOTEBOOK_PEN_MAX_WIDTH = 10;
+/**
+ * The nib, in page units, on a page 900 across.
+ *
+ * These were raised when the pen stopped being measured in screen pixels. Under
+ * the old arithmetic a stroke came out `width / fitScale` wide on the page, and
+ * the fitted scale is well under one whenever the page is letterboxed -- around
+ * 0.58 on a landscape tablet, where the height is what constrains it. The same
+ * setting therefore drew far heavier than its nominal value, and correcting the
+ * arithmetic without correcting the numbers made every pen visibly thinner.
+ *
+ * The range now reproduces what that setting actually put on the page, and does
+ * it the same way on every screen, in either orientation, at any zoom.
+ */
+export const NOTEBOOK_PEN_MIN_WIDTH = 3;
+export const NOTEBOOK_PEN_MAX_WIDTH = 16;
 /**
  * A highlighter is laid over a line of text, so its useful range starts around
  * the height of one and goes well past it. The old ceiling of 30 needed

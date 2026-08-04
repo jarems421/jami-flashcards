@@ -184,8 +184,6 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const scribbleSamplesRef = useRef<{
       pointerId: number;
       samples: NotebookScribbleSample[];
-      surfaceLeft: number;
-      surfaceTop: number;
     } | null>(null);
     const pendingStyleRef = useRef(false);
     const appliedStyleRef = useRef<NotebookInkStyle | null>(null);
@@ -808,18 +806,18 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           );
         }
         if (scribbleToErase && activeTool === "pen") {
-          const rect = surface.getBoundingClientRect();
+          // Raw client coordinates. Recognising a scribble does not need to
+          // know where the page is, and asking would force a layout flush at
+          // the start of every stroke.
           scribbleSamplesRef.current = {
             pointerId: event.pointerId,
             samples: [
               {
-                x: event.clientX - rect.left,
-                y: event.clientY - rect.top,
+                x: event.clientX,
+                y: event.clientY,
                 time: event.timeStamp,
               },
             ],
-            surfaceLeft: rect.left,
-            surfaceTop: rect.top,
           };
         } else {
           scribbleSamplesRef.current = null;
@@ -840,8 +838,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         (type === "pointermove" || type === "pointerup")
       ) {
         scribbleTrack.samples.push({
-          x: event.clientX - scribbleTrack.surfaceLeft,
-          y: event.clientY - scribbleTrack.surfaceTop,
+          x: event.clientX,
+          y: event.clientY,
           time: event.timeStamp,
         });
         // Past the cap the gesture has run far longer than any scribble, and a
@@ -869,6 +867,10 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         const plan = planNotebookScribbleErase({
           editor,
           jsDraw: pointerJsDraw,
+          getSurfaceOffset: () => {
+            const rect = surface.getBoundingClientRect();
+            return { left: rect.left, top: rect.top };
+          },
           samples: scribbleTrack.samples,
           strokeWidth: penThickness,
         });

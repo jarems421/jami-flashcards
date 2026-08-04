@@ -338,8 +338,9 @@ describe("detectNotebookScribble", () => {
   describe("across zoom levels", () => {
     /**
      * Scribbling over a fixed piece of the page, at a given zoom and a given
-     * hand speed. Zoomed in, the hand has further to travel to cross the same
-     * word, so the gesture takes proportionally longer.
+     * hand speed, as the pointer reports it: on screen. Zoomed in, the same
+     * word is bigger, so the hand travels further and takes proportionally
+     * longer to cross it.
      */
     const overPageBand = (input: {
       handSpeed?: number;
@@ -357,9 +358,10 @@ describe("detectNotebookScribble", () => {
         const toX = pass % 2 === 0 ? 100 + pageWidth : 100;
         for (let index = pass === 0 ? 0 : 1; index <= count; index += 1) {
           const t = index / count;
+          // Page positions, scaled onto the screen the hand works on.
           samples.push({
-            x: fromX + (toX - fromX) * t,
-            y: 200 + pass * 3,
+            x: (fromX + (toX - fromX) * t) * viewportScale,
+            y: (200 + pass * 3) * viewportScale,
             time,
           });
           time += ((pageWidth / count) * viewportScale) / handSpeed;

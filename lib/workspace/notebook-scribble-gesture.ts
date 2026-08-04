@@ -29,27 +29,48 @@ export type NotebookScribbleErasePlan = {
 export function planNotebookScribbleErase(input: {
   editor: JsDrawEditor;
   jsDraw: JsDrawModule;
-  /** Screen-space samples, relative to the ink surface. */
+  /**
+   * Where the ink surface is on screen. Called only once a scribble has been
+   * recognised, because it costs a layout flush and almost every stroke is not
+   * one.
+   */
+  getSurfaceOffset: () => { left: number; top: number } | null;
+  /** Raw pointer samples, in client coordinates. */
   samples: readonly NotebookScribbleSample[];
   /** The nib, in page units. */
   strokeWidth: number;
 }): NotebookScribbleErasePlan | null {
-  // Onto the page before anything is measured, so the gesture means the same
-  // thing at every zoom rather than getting easier to trigger as you zoom in.
-  const pageSamples = input.samples.map((sample) => {
-    const point = input.editor.viewport.screenToCanvas(
-      input.jsDraw.Vec2.of(sample.x, sample.y)
-    );
-    return { x: point.x, y: point.y, time: sample.time };
-  });
-  const scribble = detectNotebookScribble(pageSamples, {
-    strokeWidth: input.strokeWidth,
-    viewportScale: input.editor.viewport.getScaleFactor(),
+  const viewportScale = input.editor.viewport.getScaleFactor();
+  // Recognised where the samples already are. Nothing here needs the page, and
+  // this runs at the end of every pen stroke -- mapping each sample onto the
+  // page first meant a matrix multiply and an allocation per sample to answer
+  // "no" for ordinary handwriting.
+  const scribble = detectNotebookScribble(input.samples, {
+    strokeWidth: input.strokeWidth * viewportScale,
+    viewportScale,
   });
   if (!scribble) return null;
 
-  const band = scribble.band;
-  const bounds = band.bounds;
+  const surfaceOffset = input.getSurfaceOffset();
+  if (!surfaceOffset) return null;
+  // Only the hull crosses onto the page: a couple of dozen points rather than
+  // every sample of the stroke.
+  const hull = scribble.band.hull.map((point) => {
+    const canvasPoint = input.editor.viewport.screenToCanvas(
+      input.jsDraw.Vec2.of(
+        point.x - surfaceOffset.left,
+        point.y - surfaceOffset.top
+      )
+    );
+    return { x: canvasPoint.x, y: canvasPoint.y };
+  });
+  const bounds = {
+    minX: Math.min(...hull.map((point) => point.x)),
+    minY: Math.min(...hull.map((point) => point.y)),
+    maxX: Math.max(...hull.map((point) => point.x)),
+    maxY: Math.max(...hull.map((point) => point.y)),
+  };
+  const band = { hull, bounds };
   const searchArea = new input.jsDraw.Rect2(
     bounds.minX,
     bounds.minY,

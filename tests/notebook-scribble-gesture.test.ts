@@ -59,7 +59,7 @@ function makeHarness(strokes: JsDrawStroke[], scale = 1) {
   };
   const jsDraw = { Erase: FakeErase, Rect2, Stroke: JsDrawStroke, Vec2 };
 
-  return { dispatched, editor, jsDraw };
+  return { dispatched, editor, jsDraw, surfaceReads: 0 };
 }
 
 const plan = (
@@ -69,6 +69,12 @@ const plan = (
   planNotebookScribbleErase({
     editor: harness.editor as never,
     jsDraw: harness.jsDraw as never,
+    // The page sits at the origin here, so client coordinates are page
+    // coordinates and the fixtures read as written.
+    getSurfaceOffset: () => {
+      harness.surfaceReads += 1;
+      return { left: 0, top: 0 };
+    },
     samples,
     strokeWidth: 2,
   });
@@ -84,6 +90,26 @@ describe("planNotebookScribbleErase", () => {
 
   it("plans nothing over blank paper, so the scribble commits as ink", () => {
     expect(plan(makeHarness([]))).toBeNull();
+  });
+
+  /**
+   * This runs at the end of every pen stroke, so what it costs to say "no" is
+   * what writing costs. Locating the page forces a layout flush; doing it per
+   * stroke was enough to make writing feel like it dragged.
+   */
+  it("does not go looking for the page unless a scribble was found", () => {
+    const ordinary = makeHarness([]);
+    // An ordinary stroke, which is what nearly every pen-up is.
+    const straight: NotebookScribbleSample[] = Array.from(
+      { length: 60 },
+      (_, step) => ({ x: 40 + step * 3, y: 106, time: step })
+    );
+    plan(ordinary, straight);
+    expect(ordinary.surfaceReads).toBe(0);
+
+    const scribbled = makeHarness([]);
+    plan(scribbled, scribbleSamples());
+    expect(scribbled.surfaceReads).toBe(1);
   });
 
   it("spares a rule that only passes beneath the scribble", () => {
