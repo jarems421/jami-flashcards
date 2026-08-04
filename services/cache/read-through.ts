@@ -29,7 +29,16 @@ export const CACHED_READ_FRESH_MS = 60_000;
  */
 export const CACHED_READ_STALE_MS = 5 * 60_000;
 
-export type CachedReadFreshness = "fresh" | "stale";
+/**
+ * Why a value can or cannot be trusted, which is not the same question as how
+ * old it is.
+ *
+ * `aged` has merely passed its window: nothing is known to have changed, so it
+ * is worth showing while a refresh runs. `superseded` means a write landed
+ * after it was read, so it is known to be wrong and is only ever a placeholder
+ * -- serving it would show the student their own edit being undone.
+ */
+export type CachedReadFreshness = "fresh" | "aged" | "superseded";
 
 export type CachedRead<T> = {
   value: T;
@@ -85,9 +94,57 @@ export function peekCachedRead<T>(
   const stillCurrent = entry.revision === revisionOf(key.userId);
   return {
     value: entry.value,
-    freshness:
-      stillCurrent && age <= CACHED_READ_FRESH_MS ? "fresh" : "stale",
+    freshness: !stillCurrent
+      ? "superseded"
+      : age <= CACHED_READ_FRESH_MS
+        ? "fresh"
+        : "aged",
   };
+}
+
+type CacheListener = () => void;
+
+const listeners = new Map<string, Set<CacheListener>>();
+
+/**
+ * Told when a background refresh has replaced one of this user's cached reads.
+ *
+ * A page reloads by running the load path it already has: the reads it calls
+ * are fresh in the cache by then, so it costs nothing and the page needs no
+ * knowledge of which read changed.
+ */
+export function subscribeToCachedReads(userId: string, listener: CacheListener) {
+  const forUser = listeners.get(userId) ?? new Set<CacheListener>();
+  forUser.add(listener);
+  listeners.set(userId, forUser);
+
+  return () => {
+    forUser.delete(listener);
+    if (forUser.size === 0) listeners.delete(userId);
+  };
+}
+
+const announcementPending = new Set<string>();
+
+/**
+ * Coalesced: a page usually makes several reads at once, and all of them
+ * refreshing should reload it once rather than once each.
+ */
+function announceRefresh(userId: string) {
+  if (announcementPending.has(userId)) return;
+  announcementPending.add(userId);
+
+  void Promise.resolve().then(() => {
+    announcementPending.delete(userId);
+    listeners.get(userId)?.forEach((listener) => {
+      try {
+        listener();
+      } catch (error) {
+        // One page failing to reload must not stop the others hearing about it.
+        console.warn("A cached-read listener failed.", error);
+      }
+    });
+  });
 }
 
 export type CachedReadOptions = {
@@ -109,6 +166,7 @@ export function readThroughCache<T>(
   options: CachedReadOptions & { now?: number } = {}
 ): Promise<T> {
   const cacheKey = getCachedReadKey(key);
+  let servedFromCache = false;
 
   if (!options.force) {
     const cached = peekCachedRead<T>(key, { now: options.now });
@@ -116,6 +174,12 @@ export function readThroughCache<T>(
 
     const existing = inFlight.get(cacheKey) as Promise<T> | undefined;
     if (existing) return existing;
+
+    // Nothing is known to have changed, so the page paints from what we have
+    // and hears about the refresh when it lands. A superseded value is never
+    // served this way: something *is* known to have changed, and showing it
+    // would be showing the student their own edit being undone.
+    if (cached?.freshness === "aged") servedFromCache = true;
   }
 
   const revisionAtStart = revisionOf(key.userId);
@@ -138,6 +202,20 @@ export function readThroughCache<T>(
     if (inFlight.get(cacheKey) === request) inFlight.delete(cacheKey);
   };
   request.then(forget, forget);
+
+  if (servedFromCache) {
+    const stale = peekCachedRead<T>(key, { now: options.now });
+    if (stale) {
+      // The refresh is already running; whoever is listening reloads when it
+      // lands. A failed one is swallowed here because the caller has been given
+      // a value and is not waiting on this.
+      void request.then(
+        () => announceRefresh(key.userId),
+        () => undefined
+      );
+      return Promise.resolve(stale.value);
+    }
+  }
 
   return request;
 }
@@ -176,5 +254,7 @@ export function resetCachedReadsForTests() {
   entries.clear();
   inFlight.clear();
   userRevisions.clear();
+  listeners.clear();
+  announcementPending.clear();
   globalRevision = 0;
 }

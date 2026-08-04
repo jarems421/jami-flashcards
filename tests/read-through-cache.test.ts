@@ -9,6 +9,7 @@ import {
   peekCachedRead,
   readThroughCache,
   resetCachedReadsForTests,
+  subscribeToCachedReads,
 } from "@/services/cache/read-through";
 
 /**
@@ -141,7 +142,7 @@ describe("invalidation", () => {
 
     expect(peekCachedRead(decks(), { now: start })).toEqual({
       value: ["a"],
-      freshness: "stale",
+      freshness: "superseded",
     });
   });
 
@@ -183,7 +184,96 @@ describe("invalidation", () => {
     release(["a"]);
     await request;
 
-    expect(peekCachedRead(decks(), { now: start })?.freshness).toBe("stale");
+    expect(peekCachedRead(decks(), { now: start })?.freshness).toBe("superseded");
+  });
+});
+
+/**
+ * Serving a value that has merely aged, while the refresh runs behind it, is
+ * what makes a tab paint instead of spin. Serving one a write has superseded
+ * would show the student their own edit being undone, so that case still waits.
+ */
+describe("serving an aged value while it refreshes", () => {
+  const aged = CACHED_READ_FRESH_MS + 1;
+
+  it("answers immediately with what it had", async () => {
+    const load = vi
+      .fn<() => Promise<string[]>>()
+      .mockResolvedValueOnce(["old"])
+      .mockResolvedValueOnce(["new"]);
+    const start = 1_000_000;
+
+    await readThroughCache(decks(), load, { now: start });
+
+    expect(
+      await readThroughCache(decks(), load, { now: start + aged })
+    ).toEqual(["old"]);
+  });
+
+  it("tells a listener once the refresh lands", async () => {
+    const load = vi
+      .fn<() => Promise<string[]>>()
+      .mockResolvedValueOnce(["old"])
+      .mockResolvedValueOnce(["new"]);
+    const start = 1_000_000;
+    const reloaded = vi.fn();
+
+    await readThroughCache(decks(), load, { now: start });
+    subscribeToCachedReads("student", reloaded);
+    await readThroughCache(decks(), load, { now: start + aged });
+    // Let the background refresh settle.
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(reloaded).toHaveBeenCalled();
+    // Reloading finds the refreshed value without going back to the server.
+    expect(
+      await readThroughCache(decks(), load, { now: start + aged })
+    ).toEqual(["new"]);
+  });
+
+  it("waits rather than serve a value a write superseded", async () => {
+    const load = vi
+      .fn<() => Promise<string[]>>()
+      .mockResolvedValueOnce(["old"])
+      .mockResolvedValueOnce(["new"]);
+    const start = 1_000_000;
+
+    await readThroughCache(decks(), load, { now: start });
+    invalidateCachedReads("student");
+
+    expect(await readThroughCache(decks(), load, { now: start })).toEqual([
+      "new",
+    ]);
+  });
+
+  it("stops telling a listener that has unsubscribed", async () => {
+    const load = vi.fn(async () => ["a"]);
+    const start = 1_000_000;
+    const reloaded = vi.fn();
+
+    await readThroughCache(decks(), load, { now: start });
+    const unsubscribe = subscribeToCachedReads("student", reloaded);
+    unsubscribe();
+    await readThroughCache(decks(), load, { now: start + aged });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(reloaded).not.toHaveBeenCalled();
+  });
+
+  it("does not tell another student's listener", async () => {
+    const load = vi.fn(async () => ["a"]);
+    const start = 1_000_000;
+    const reloaded = vi.fn();
+
+    await readThroughCache(decks("one"), load, { now: start });
+    subscribeToCachedReads("two", reloaded);
+    await readThroughCache(decks("one"), load, { now: start + aged });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(reloaded).not.toHaveBeenCalled();
   });
 });
 
