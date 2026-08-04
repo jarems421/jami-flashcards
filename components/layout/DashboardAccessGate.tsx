@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import type { User } from "firebase/auth";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import InAppNotice from "@/components/layout/InAppNotice";
 import TabBar from "@/components/layout/TabBar";
 import TopicMigrationGate from "@/components/topics/TopicMigrationGate";
@@ -12,6 +12,7 @@ import {
   readSidebarHiddenPreference,
   saveSidebarHiddenPreference,
 } from "@/lib/app/sidebar-preference";
+import { forgetLastRoute, rememberLastRoute } from "@/lib/app/last-route";
 
 function DashboardSpinner() {
   return (
@@ -56,8 +57,17 @@ function AuthenticatedDashboard({
 
 export default function DashboardAccessGate({ children }: { children: ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const [checked, setChecked] = useState(false);
   const [user, setUser] = useState<User | null>(null);
+
+  // Noted as they move, so relaunching the app can put them back rather than
+  // always opening the home screen. Only once they are actually signed in --
+  // a page they were bounced off is not a page they were on.
+  useEffect(() => {
+    if (!checked || !user || !pathname) return;
+    rememberLastRoute(pathname);
+  }, [checked, pathname, user]);
 
   useEffect(() => {
     let active = true;
@@ -86,6 +96,8 @@ export default function DashboardAccessGate({ children }: { children: ReactNode 
 
   useEffect(() => {
     if (checked && !user) {
+      // Signed out: the page they were on is no longer theirs to return to.
+      forgetLastRoute();
       router.replace("/");
     }
   }, [checked, router, user]);

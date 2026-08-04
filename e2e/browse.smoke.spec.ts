@@ -35,6 +35,48 @@ async function openScreen(page: Page, path: string, heading: string) {
   return errors;
 }
 
+/**
+ * Installed as a PWA, the app launches at `/`, which is the sign-in page. It
+ * used to render the sign-in form straight away and only redirect once the
+ * session finished restoring, so every launch flashed "sign in" at somebody who
+ * already had.
+ */
+test("launching while already signed in never offers to sign in", async ({
+  page,
+}) => {
+  await signIn(page);
+
+  // The launch an installed app makes: straight to the start URL.
+  await page.goto("/");
+
+  // Whatever is on screen while the session restores, it is not this.
+  await expect(
+    page.getByRole("button", { name: "Continue with Google" })
+  ).toHaveCount(0);
+  await page.waitForURL(/\/dashboard/, { timeout: 45_000 });
+});
+
+/**
+ * A launch that is the same session resumed returns to the page that was open;
+ * one after the app was properly closed opens at home.
+ */
+test("relaunching returns to the page that was open, unless the app was closed", async ({
+  page,
+}) => {
+  await signIn(page);
+  await openScreen(page, "/dashboard/decks", "Decks");
+
+  await page.goto("/");
+  await page.waitForURL(/\/dashboard\/decks/, { timeout: 45_000 });
+
+  // Closing the app properly ends the session, and with it the memory of where
+  // they were. Playwright cannot close a PWA, so this clears what closing one
+  // clears.
+  await page.evaluate(() => window.sessionStorage.clear());
+  await page.goto("/");
+  await page.waitForURL(/\/dashboard$/, { timeout: 45_000 });
+});
+
 test("the legacy Practice route redirects permanently and keeps its query", async ({
   request,
 }) => {

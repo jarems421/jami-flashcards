@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { signInWithGoogle, handleGoogleRedirectResult } from "@/services/auth";
 import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
 import { listenToAuth } from "@/services/auth/auth-listener";
+import { readLastRoute } from "@/lib/app/last-route";
 import { BrandMark } from "@/components/ui";
 import Button from "@/components/ui/Button";
 
@@ -23,37 +24,66 @@ const SIGN_IN_POINTS = [
   },
 ];
 
+/**
+ * How long to wait for the session to be restored before offering sign-in.
+ *
+ * Only reached if the auth listener never reports at all, which means something
+ * is wrong. Showing the sign-in form is the right thing to do then -- it is
+ * still usable -- but not a moment sooner, or an installed app shows its
+ * sign-in screen every single launch to somebody who is already signed in.
+ */
+const AUTH_RESTORE_TIMEOUT_MS = 5_000;
+
 export default function Home() {
   const router = useRouter();
   const routerRef = useRef(router);
   const redirectStartedRef = useRef(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Whether it is yet known if anyone is signed in.
+   *
+   * Installed as a PWA this page *is* the launch screen, and it used to render
+   * the sign-in form immediately -- so every launch flashed "sign in" at
+   * somebody who already had, until the session finished restoring a moment
+   * later. Nothing is offered until the answer is known.
+   */
+  const [authResolved, setAuthResolved] = useState(false);
 
   useEffect(() => {
     routerRef.current = router;
   }, [router]);
 
-  const redirectToDashboard = useCallback(() => {
+  const openApp = useCallback(() => {
     if (redirectStartedRef.current) {
       return;
     }
 
     redirectStartedRef.current = true;
-    routerRef.current.replace("/dashboard");
+    // Back to whatever they had open, if this launch is the same session
+    // resumed. A properly closed app has forgotten, and opens at home.
+    routerRef.current.replace(readLastRoute());
   }, []);
 
   useEffect(() => {
+    let settled = false;
+    const resolve = () => {
+      settled = true;
+      setAuthResolved(true);
+    };
+
     const unsubscribe = listenToAuth((user) => {
       if (user) {
-        redirectToDashboard();
+        openApp();
+        return;
       }
+      resolve();
     });
 
     void handleGoogleRedirectResult()
       .then((user) => {
         if (user) {
-          redirectToDashboard();
+          openApp();
         } else {
           setIsSigningIn(false);
         }
@@ -62,13 +92,39 @@ export default function Home() {
         const maybeCode = getAuthErrorCode(nextError);
         setError(getFriendlyAuthError(maybeCode));
         setIsSigningIn(false);
+        resolve();
         console.error("Google redirect sign-in failed.", {
           code: maybeCode ?? "unknown",
         });
       });
 
-    return () => unsubscribe();
-  }, [redirectToDashboard]);
+    const timeout = window.setTimeout(() => {
+      if (!settled) setAuthResolved(true);
+    }, AUTH_RESTORE_TIMEOUT_MS);
+
+    return () => {
+      window.clearTimeout(timeout);
+      unsubscribe();
+    };
+  }, [openApp]);
+
+  if (!authResolved) {
+    return (
+      <main
+        data-app-surface="true"
+        data-auth-restoring="true"
+        aria-busy="true"
+        className="relative flex min-h-[100dvh] flex-col items-center justify-center overflow-hidden bg-[var(--app-background)] px-5 py-10 text-text-primary"
+      >
+        {/* The launch screen of an installed app, so it wears the app's face
+            rather than a bare spinner. */}
+        <div className="login-brand-halo" aria-hidden="true">
+          <BrandMark size="lg" />
+        </div>
+        <span className="sr-only">Opening Jami</span>
+      </main>
+    );
+  }
 
   const handleGoogleSignIn = async () => {
     if (isSigningIn) return;
@@ -78,7 +134,7 @@ export default function Home() {
     try {
       const user = await signInWithGoogle();
       if (user) {
-        redirectToDashboard();
+        openApp();
       }
     } catch (nextError) {
       const maybeCode = getAuthErrorCode(nextError);
