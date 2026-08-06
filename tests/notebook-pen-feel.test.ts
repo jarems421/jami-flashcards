@@ -229,8 +229,8 @@ describe("pen smoothing", () => {
   });
 
   it("names the setting rather than leaving a bare number", () => {
-    expect(getNotebookPenSmoothingLabel(0).name).toBe("Faithful");
-    expect(getNotebookPenSmoothingLabel(100).name).toBe("Flowing");
+    expect(getNotebookPenSmoothingLabel(0).name).toBe("None");
+    expect(getNotebookPenSmoothingLabel(100).name).toBe("Strong");
     for (const percent of [0, 30, 60, 90]) {
       expect(getNotebookPenSmoothingLabel(percent).description.length)
         .toBeGreaterThan(0);

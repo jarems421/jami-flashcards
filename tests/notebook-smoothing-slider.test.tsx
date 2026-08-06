@@ -40,17 +40,17 @@ describe("the pen smoothing control", () => {
     expect(slider.value).toBe(String(NOTEBOOK_PEN_SMOOTHING_DEFAULT));
     expect(slider.getAttribute("aria-label")).toBe("Pen smoothing");
     // A bare percentage says nothing about what it does to the line.
-    expect(slider.getAttribute("aria-valuetext")).toContain("Balanced");
+    expect(slider.getAttribute("aria-valuetext")).toContain("Medium");
     expect(container.textContent).toContain("Smoothing");
-    expect(container.textContent).toContain("Balanced");
+    expect(container.textContent).toContain("Medium");
   });
 
   it("names both ends so the direction of the control is clear", () => {
     expect(render(0).slider.getAttribute("aria-valuetext")).toContain(
-      "Faithful"
+      "None"
     );
     expect(render(100).slider.getAttribute("aria-valuetext")).toContain(
-      "Flowing"
+      "Strong"
     );
   });
 

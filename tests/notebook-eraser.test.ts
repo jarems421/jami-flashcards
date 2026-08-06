@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   applyNotebookEraser,
@@ -364,5 +366,36 @@ describe("notebook eraser helpers", () => {
       highlighter,
       pen,
     ]);
+  });
+});
+
+/**
+ * The eraser ring floats over whatever the page happens to be: white paper,
+ * a black page at #080a10, or an imported PDF page, which can be anything.
+ * A single-colour outline therefore cannot work -- the dark one it used to
+ * carry vanished on a black page.
+ */
+describe("the eraser cursor stays visible on any page", () => {
+  const source = readFileSync(
+    join(process.cwd(), "components/workspace/NotebookInkEditor.tsx"),
+    "utf8"
+  );
+  const cursorClasses =
+    source
+      .split('data-testid="notebook-eraser-cursor"')[1]
+      ?.match(/className="([^"]+)"/)?.[1] ?? "";
+
+  it("carries a pale ring and a dark one together", () => {
+    expect(cursorClasses).not.toBe("");
+    // Pale enough to read on the black page.
+    expect(cursorClasses).toMatch(/border-white/);
+    // And dark rings either side of it, to read on white paper.
+    expect(cursorClasses).toMatch(/shadow-\[.*inset.*\]/);
+    expect(cursorClasses).toMatch(/rgba\(2,6,23/);
+  });
+
+  it("is not outlined in a single colour", () => {
+    expect(cursorClasses).not.toMatch(/border-slate-950/);
+    expect(cursorClasses).not.toMatch(/shadow-none/);
   });
 });

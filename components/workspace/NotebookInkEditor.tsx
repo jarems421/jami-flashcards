@@ -1131,7 +1131,15 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             ref={eraserCursorRef}
             aria-hidden="true"
             data-testid="notebook-eraser-cursor"
-            className="pointer-events-none absolute left-0 top-0 z-30 box-border aspect-square rounded-full border-2 border-slate-950/60 bg-transparent opacity-0 shadow-none will-change-transform"
+            /*
+             * Outlined in both polarities: a pale ring with a dark one just
+             * inside and outside it. A single dark outline disappeared on a
+             * black page, and a single pale one would disappear on a white
+             * one -- and neither can be chosen from the page colour anyway,
+             * since the ring also has to stay visible over an imported PDF
+             * page, which can be anything at all.
+             */
+            className="pointer-events-none absolute left-0 top-0 z-30 box-border aspect-square rounded-full border-2 border-white/85 bg-transparent opacity-0 shadow-[0_0_0_1.5px_rgba(2,6,23,0.55),inset_0_0_0_1.5px_rgba(2,6,23,0.55)] will-change-transform"
             style={{
               width: renderedEraserCursorDiameter,
               height: renderedEraserCursorDiameter,
