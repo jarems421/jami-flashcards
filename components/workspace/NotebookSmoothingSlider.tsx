@@ -6,39 +6,8 @@ import {
   getNotebookPenSmoothingLabel,
 } from "@/lib/workspace/notebook-pen-feel";
 
-/**
- * One continuous line, drawn the way the pen would draw it at each point along
- * the control: every turn kept on the left, curves carried through on the
- * right. It reads as a rail rather than as decoration only because it keeps the
- * same amplitude the whole way across -- a motif that flattens out towards one
- * end looks like a rail that stops halfway.
- */
-const RAIL =
-  "M0 7 L4 3 L8 11 L12 3 L16 11 L20 3 L24 11 L28 3 L32 11 L36 4 Q39 2 42 7 Q45 12 48 7 Q52 2 56 7 Q60 12 65 7 Q71 2 77 7 Q84 12 91 7 Q96 4 100 7";
-
 /** Half the thumb: the distance its centre is inset at either end of travel. */
 const THUMB_RADIUS = "9px";
-
-function Rail({ className }: { className: string }) {
-  return (
-    <svg
-      aria-hidden="true"
-      viewBox="0 0 100 14"
-      preserveAspectRatio="none"
-      className={`pointer-events-none absolute inset-x-0 top-1/2 h-3.5 -translate-y-1/2 ${className}`}
-    >
-      <path
-        d={RAIL}
-        fill="none"
-        stroke="currentColor"
-        strokeWidth={2}
-        strokeLinecap="round"
-        strokeLinejoin="round"
-        vectorEffect="non-scaling-stroke"
-      />
-    </svg>
-  );
-}
 
 /**
  * How hard the pen tidies the line.
@@ -78,14 +47,19 @@ export default function SmoothingSlider({
       </div>
       <div className="mt-1 flex h-8 items-center">
         <div className="relative flex h-8 flex-1 items-center">
-          <Rail className="text-[var(--color-border)]" />
+          {/* A plain rail, end to end, with the travelled part filled. The
+              fill is measured against the thumb's own travel rather than the
+              full width, since the thumb centre stops half a thumb short of
+              either end. */}
           <div
             aria-hidden="true"
-            className="pointer-events-none absolute inset-0"
-            style={{ clipPath: `inset(0 calc(100% - ${filledTo}) 0 0)` }}
-          >
-            <Rail className="text-[var(--color-selected-text)]" />
-          </div>
+            className="pointer-events-none absolute inset-x-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[var(--color-border)]"
+          />
+          <div
+            aria-hidden="true"
+            className="pointer-events-none absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-[var(--color-selected-text)]"
+            style={{ width: filledTo }}
+          />
           <input
             id={sliderId}
             type="range"
@@ -100,11 +74,7 @@ export default function SmoothingSlider({
           />
         </div>
       </div>
-      <div className="flex items-baseline justify-between gap-3 px-0.5 text-[0.65rem] leading-4 text-text-muted">
-        <span>Every turn kept</span>
-        <span>Curves carried through</span>
-      </div>
-      <p className="mt-1 px-0.5 text-[0.7rem] leading-4 text-text-secondary">
+      <p className="px-0.5 text-[0.7rem] leading-4 text-text-secondary">
         {description}
       </p>
     </div>

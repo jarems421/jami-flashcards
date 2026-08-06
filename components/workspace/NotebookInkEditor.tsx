@@ -162,7 +162,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       top: number;
     } | null>(null);
     const eraserCursorDiameterRef = useRef(
-      getNotebookEraserCursorDiameter(eraserMode, eraserThickness)
+      getNotebookEraserCursorDiameter(eraserThickness)
     );
     const editorRef = useRef<JsDrawEditor | null>(null);
     const jsDrawRef = useRef<JsDrawModule | null>(null);
@@ -275,10 +275,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           editor.toolController
             .getMatchingTools(jsDraw.EraserTool)[0]
             ?.setThickness(
-              getNotebookEraserToolThickness(
-                mode,
-                desiredStyleRef.current.eraserThickness
-              )
+              getNotebookEraserToolThickness(desiredStyleRef.current.eraserThickness)
             );
         },
         undo() {
@@ -722,10 +719,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         }
         // js-draw measures eraser thickness in screen pixels. Keep the DOM ring
         // in the same coordinate space so the visible boundary is authoritative.
-        const diameter = getNotebookEraserCursorDiameter(
-          eraserMode,
-          eraserThickness
-        );
+        const diameter = getNotebookEraserCursorDiameter(eraserThickness);
         const cursorDiameter = continuesPrecisionGesture && existingPrecisionGesture
           ? existingPrecisionGesture.cursorDiameter
           : diameter;
@@ -805,7 +799,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             editor.toolController
               .getMatchingTools(jsDraw.EraserTool)[0]
               ?.setThickness(
-                getNotebookEraserToolThickness(eraserMode, eraserThickness)
+                getNotebookEraserToolThickness(eraserThickness)
               );
           }
         }
@@ -919,10 +913,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
               clientY: event.clientY,
               timeStamp: event.timeStamp,
             };
-            const cursorDiameter = getNotebookEraserCursorDiameter(
-              eraserMode,
-              eraserThickness
-            );
+            const cursorDiameter = getNotebookEraserCursorDiameter(eraserThickness);
             const gesture = new NotebookPrecisionEraserGesture(
               editor,
               jsDrawRef.current,
@@ -970,10 +961,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
                 if (type === "pointerup") {
                   activeGesture.gesture.finish();
                   precisionEraserGestureRef.current = null;
-                  const selectedDiameter = getNotebookEraserCursorDiameter(
-                    eraserMode,
-                    eraserThickness
-                  );
+                  const selectedDiameter = getNotebookEraserCursorDiameter(eraserThickness);
                   eraserCursorDiameterRef.current = selectedDiameter;
                   const cursor = eraserCursorRef.current;
                   if (cursor) {
@@ -1065,7 +1053,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
 
     const renderedEraserCursorDiameter =
       precisionEraserGestureRef.current?.cursorDiameter ??
-      getNotebookEraserCursorDiameter(eraserMode, eraserThickness);
+      getNotebookEraserCursorDiameter(eraserThickness);
 
     return (
       <div

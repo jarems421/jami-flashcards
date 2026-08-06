@@ -12,8 +12,7 @@ export const NOTEBOOK_ERASER_THICKNESS_BY_SIZE: Record<
   large: 76,
 };
 
-const NOTEBOOK_PRECISION_ERASER_CURSOR_SCALE = 0.4;
-const NOTEBOOK_PRECISION_ERASER_MIN_CURSOR_DIAMETER = 12;
+const NOTEBOOK_ERASER_MIN_CURSOR_DIAMETER = 12;
 export const NOTEBOOK_PRECISION_ERASER_POLYGON_SIDES = 24;
 export const NOTEBOOK_PRECISION_ERASER_CONTACT_EPSILON_PX = 0.25;
 
@@ -27,31 +26,28 @@ function normalizeNotebookEraserThickness(thickness: number) {
 }
 
 /**
- * The precision cursor is intentionally smaller than the broad stroke eraser.
- * This keeps each pass gradual instead of making the two modes feel alike.
+ * Both modes erase at the size that was chosen.
+ *
+ * Precision used to draw at 40% of it, on the reasoning that a finer tip keeps
+ * each pass gradual and stops the two modes feeling alike. But the modes answer
+ * the same three size buttons, so that made a button mean two different things:
+ * picking the largest gave a 76px tip in stroke mode and a 30px one in
+ * precision. Size and mode are separate choices, and the size button is the one
+ * that says how big.
  */
-export function getNotebookEraserCursorDiameter(
-  mode: NotebookEraserMode,
-  thickness: number
-) {
-  const normalized = normalizeNotebookEraserThickness(thickness);
-  return mode === "precision"
-    ? Math.max(
-        NOTEBOOK_PRECISION_ERASER_MIN_CURSOR_DIAMETER,
-        normalized * NOTEBOOK_PRECISION_ERASER_CURSOR_SCALE
-      )
-    : normalized;
+export function getNotebookEraserCursorDiameter(thickness: number) {
+  return Math.max(
+    NOTEBOOK_ERASER_MIN_CURSOR_DIAMETER,
+    normalizeNotebookEraserThickness(thickness)
+  );
 }
 
 /**
- * Precision mode now uses a circular runtime eraser, so its configured size is
- * the visible diameter. Stroke mode keeps js-draw's broad square tip.
+ * Precision mode uses a circular runtime eraser whose configured size is the
+ * visible diameter; stroke mode uses js-draw's own tip at the same width.
  */
-export function getNotebookEraserToolThickness(
-  mode: NotebookEraserMode,
-  thickness: number
-) {
-  return getNotebookEraserCursorDiameter(mode, thickness);
+export function getNotebookEraserToolThickness(thickness: number) {
+  return getNotebookEraserCursorDiameter(thickness);
 }
 
 export type NotebookEraserPoint = { x: number; y: number };

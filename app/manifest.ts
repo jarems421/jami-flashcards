@@ -9,8 +9,15 @@ export default function manifest(): MetadataRoute.Manifest {
     start_url: "/",
     scope: "/",
     display: "standalone",
-    background_color: "#100719",
-    theme_color: "#100719",
+    /*
+     * Android's own launch screen. Kept on the default theme's
+     * `--color-surface-base`, the same colour the iOS launch images hold, so
+     * both platforms open on one continuous colour rather than on the purple
+     * theme's background this was left at when the default palette moved to
+     * navy.
+     */
+    background_color: "#040827",
+    theme_color: "#040827",
     categories: ["education", "productivity"],
     icons: [
       {

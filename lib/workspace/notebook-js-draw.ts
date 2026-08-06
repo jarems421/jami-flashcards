@@ -252,10 +252,7 @@ export function applyNotebookInkStyle(
   // to FullStroke, so configuring it unconditionally ensures the selected
   // precision/stroke mode is already correct the moment the eraser is enabled.
   applyNotebookEraserMode(editor, style.eraserMode, jsDraw);
-  const eraserThickness = getNotebookEraserToolThickness(
-    style.eraserMode,
-    style.eraserThickness
-  );
+  const eraserThickness = getNotebookEraserToolThickness(style.eraserThickness);
   if (erasers[0] && erasers[0].getThickness() !== eraserThickness) {
     erasers[0].setThickness(eraserThickness);
   }

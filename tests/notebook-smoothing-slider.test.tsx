@@ -76,38 +76,41 @@ describe("the pen smoothing control", () => {
     expect(render(400).slider.value).toBe("100");
   });
 
-  it("says which way the control runs", () => {
+  it("runs one rail the whole way across, with the travelled part filled", () => {
     render(50);
-    expect(container.textContent).toContain("Every turn kept");
-    expect(container.textContent).toContain("Curves carried through");
+    const rails = container.querySelectorAll<HTMLElement>("[aria-hidden='true']");
+    expect(rails).toHaveLength(2);
+
+    // The base rail spans the control end to end.
+    expect(rails[0].className).toContain("inset-x-0");
+    // The filled part starts at the same left edge and stops at the thumb.
+    expect(rails[1].className).toContain("left-0");
+    expect(rails[1].style.width).toContain("9px");
   });
 
-  it("fills the rail up to the thumb rather than to the edge", () => {
-    // The thumb's centre stops half a thumb short of either end, so a fill
-    // measured against the full width drifts away from it.
-    const filled = () =>
-      container.querySelector<HTMLElement>("[style*='clip-path']")?.style
-        .clipPath ?? "";
+  it("fills up to the thumb rather than to the edge", () => {
+    const fill = () =>
+      container.querySelectorAll<HTMLElement>("[aria-hidden='true']")[1].style
+        .width;
+
+    render(50);
+    const midway = fill();
+    // Half of the thumb's *travel*, not half of the control: the inset its
+    // centre keeps at either end is part of the sum, so the fill lands under
+    // the thumb rather than drifting up to a thumb's width away from it.
+    expect(midway).toContain("9px");
+    expect(midway).toContain("0.5");
 
     render(0);
-    expect(filled()).toContain("* 0)");
+    expect(fill()).not.toBe(midway);
     render(100);
-    expect(filled()).toContain("* 1)");
-    render(50);
-    expect(filled()).toContain("9px * 2");
-    expect(filled()).toContain("* 0.5)");
+    expect(fill()).not.toBe(midway);
   });
 
-  it("draws one rail the whole way across", () => {
+  it("stays compact", () => {
     render(50);
-    const rails = container.querySelectorAll("svg");
-    // A base rail and the filled copy over it, both spanning the full box.
-    expect(rails).toHaveLength(2);
-    for (const rail of rails) {
-      expect(rail.getAttribute("viewBox")).toBe("0 0 100 14");
-      const path = rail.querySelector("path")?.getAttribute("d") ?? "";
-      expect(path.startsWith("M0 ")).toBe(true);
-      expect(path.trimEnd().endsWith("100 7")).toBe(true);
-    }
+    // One line of explanation under the control, no end captions either side.
+    expect(container.querySelectorAll("p")).toHaveLength(1);
+    expect(container.textContent).not.toContain("Every turn kept");
   });
 });
