@@ -13,6 +13,8 @@ import {
   type NotebookViewportPoint,
 } from "@/lib/workspace/notebook-viewport";
 
+export { isNotebookViewportZoomedIn };
+
 export type NotebookInkPoint = {
   x: number;
   y: number;
@@ -168,19 +170,23 @@ export function shouldPointerSwipePages(pointerType: string) {
   return pointerType === "touch";
 }
 
-export type NotebookPageDragIntent = "page" | "pan" | "none";
+export type NotebookPageDragIntent = "page" | "none";
 
+/**
+ * One finger never moves the sheet.
+ *
+ * Where the page sits belongs to the two-finger gesture, the way it does in a
+ * paper notebook app: the sheet is something the reader looks at, not something
+ * they shove around. So a single finger either turns the page -- and only from
+ * the fitted view, where there is nothing else a sideways drag could mean -- or
+ * does nothing at all.
+ */
 export function getNotebookPageDragIntent(input: {
   axis: "horizontal" | "vertical";
-  canPanHorizontally: boolean;
-  canPanVertically: boolean;
   zoom?: number;
 }): NotebookPageDragIntent {
-  if (input.axis === "horizontal") {
-    if (input.canPanHorizontally) return "pan";
-    return isNotebookViewportZoomedIn(input.zoom ?? 1) ? "none" : "page";
-  }
-  return input.canPanVertically ? "pan" : "none";
+  if (input.axis !== "horizontal") return "none";
+  return isNotebookViewportZoomedIn(input.zoom ?? 1) ? "none" : "page";
 }
 
 export function shouldSuppressTouchAfterStylus(input: {

@@ -145,22 +145,15 @@ afterEach(() => {
 });
 
 describe("useNotebookViewportController", () => {
-  it("derives fit, page size, and pan capability from the frame", () => {
+  it("derives fit, page size, and travel from the frame", () => {
     const { controller } = handles;
     expect(controller.pageFit.width).toBeGreaterThan(0);
     expect(controller.pageWidthPx).toBeGreaterThan(0);
     expect(controller.pageTrackTravelDistance).toBeGreaterThan(0);
-    // At zoom 1 the page fits, so there is nothing to pan.
-    expect(controller.pageCanPanHorizontally).toBe(false);
-    expect(controller.pageCanPanVertically).toBe(false);
-  });
-
-  it("reports pan capability once the page is zoomed past the frame", () => {
-    act(() => {
-      handles.setZoom(3);
-    });
-    expect(handles.controller.pageCanPanHorizontally).toBe(true);
-    expect(handles.controller.pageCanPanVertically).toBe(true);
+    // At zoom 1 the sheet is pinned to the middle of the frame.
+    const { panBounds } = controller.layout;
+    expect(panBounds.minX).toBe(panBounds.maxX);
+    expect(panBounds.minY).toBe(panBounds.maxY);
   });
 
   it("frees a zoomed sheet that is still narrower than the frame", () => {
@@ -171,7 +164,6 @@ describe("useNotebookViewportController", () => {
       handles.setFrameSize({ width: 1194, height: 790 });
     });
     const fitted = handles.controller.layout.panBounds;
-    expect(handles.controller.pageCanPanHorizontally).toBe(false);
     expect(fitted.minX).toBe(fitted.maxX);
 
     act(() => {
@@ -180,7 +172,6 @@ describe("useNotebookViewportController", () => {
     const zoomed = handles.controller.layout.panBounds;
     const pageWidth = handles.controller.pageWidthPx;
     expect(pageWidth).toBeLessThan(1194);
-    expect(handles.controller.pageCanPanHorizontally).toBe(true);
     // Free to sit anywhere, right up to the point of leaving the frame.
     expect(zoomed.minX).toBeLessThan(0);
     expect(zoomed.maxX).toBeGreaterThan(1194 - pageWidth);
