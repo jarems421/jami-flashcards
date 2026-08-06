@@ -579,47 +579,26 @@ describe("notebook inking helpers", () => {
     ).toBeNull();
   });
 
-  it("swipes fitted pages but never changes page during zoomed panning", () => {
-    expect(
-      getNotebookPageDragIntent({
-        axis: "horizontal",
-        canPanHorizontally: false,
-        canPanVertically: true,
-        zoom: 1,
-      })
-    ).toBe("page");
-    expect(
-      getNotebookPageDragIntent({
-        axis: "vertical",
-        canPanHorizontally: false,
-        canPanVertically: true,
-        zoom: 1.2,
-      })
-    ).toBe("pan");
-    expect(
-      getNotebookPageDragIntent({
-        axis: "horizontal",
-        canPanHorizontally: false,
-        canPanVertically: true,
-        zoom: 1.2,
-      })
-    ).toBe("none");
-    expect(
-      getNotebookPageDragIntent({
-        axis: "horizontal",
-        canPanHorizontally: true,
-        canPanVertically: true,
-        zoom: 1.2,
-      })
-    ).toBe("pan");
-    expect(
-      getNotebookPageDragIntent({
-        axis: "vertical",
-        canPanHorizontally: false,
-        canPanVertically: false,
-        zoom: 1,
-      })
-    ).toBe("none");
+  it("swipes fitted pages and never lets one finger move the sheet", () => {
+    // Sideways from the fitted view is the one thing a single finger does.
+    expect(getNotebookPageDragIntent({ axis: "horizontal", zoom: 1 })).toBe(
+      "page"
+    );
+    expect(getNotebookPageDragIntent({ axis: "horizontal", zoom: 0.92 })).toBe(
+      "page"
+    );
+    // Zoomed in, a sideways drag would be a page turn mid-read: refused.
+    expect(getNotebookPageDragIntent({ axis: "horizontal", zoom: 1.2 })).toBe(
+      "none"
+    );
+    expect(getNotebookPageDragIntent({ axis: "horizontal", zoom: 4 })).toBe(
+      "none"
+    );
+    // Up and down never moves the sheet at any zoom: that is the two-finger
+    // gesture's job, so the page cannot be shoved around by one finger.
+    for (const zoom of [1, 1.2, 2, 4]) {
+      expect(getNotebookPageDragIntent({ axis: "vertical", zoom })).toBe("none");
+    }
   });
 
   it("keeps page swipe navigation inside available page bounds", () => {

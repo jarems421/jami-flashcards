@@ -104,8 +104,6 @@ export type NotebookViewportController = {
   pageWidthPx: number;
   pageHeightPx: number;
   pageTrackTravelDistance: number;
-  pageCanPanHorizontally: boolean;
-  pageCanPanVertically: boolean;
   /** Live pan written by the compositor, ahead of the committed React state. */
   pagePanLiveRef: RefObject<NotebookPagePan>;
   isPinchActive: () => boolean;
@@ -459,8 +457,6 @@ export function useNotebookViewportController({
     pageWidthPx: layout.pageSize.width,
     pageHeightPx: layout.pageSize.height,
     pageTrackTravelDistance: layout.swipeTravel,
-    pageCanPanHorizontally: layout.panBounds.maxX - layout.panBounds.minX > 0.5,
-    pageCanPanVertically: layout.panBounds.maxY - layout.panBounds.minY > 0.5,
     pagePanLiveRef,
     isPinchActive,
     cancelPinchAnimationFrame,
