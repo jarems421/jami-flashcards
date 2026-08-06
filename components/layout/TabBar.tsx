@@ -55,7 +55,7 @@ const tabs: Tab[] = [
     href: "/dashboard/progress",
     label: "Progress",
     description: "See weak topics",
-    group: "loop",
+    group: "support",
     icon: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z",
   },
   {
@@ -79,7 +79,7 @@ const tabs: Tab[] = [
     label: "Tutor",
     description: "Ask Jami, review drafts",
     group: "loop",
-    icon: "M2 19h20v2H2v-2zM4 7a1 1 0 011-1h3a1 1 0 011 1v12H4V7zM10 4a1 1 0 011-1h3a1 1 0 011 1v15h-5V4zM16 9a1 1 0 011-1h3a1 1 0 011 1v10h-5V9z",
+    icon: "M5 4h14a3 3 0 013 3v8a3 3 0 01-3 3h-7l-4.8 3.4A1 1 0 016 20.4V18H5a3 3 0 01-3-3V7a3 3 0 013-3z M12 6.6l1.15 2.75L15.9 10.5l-2.75 1.15L12 14.4l-1.15-2.75L8.1 10.5l2.75-1.15z",
   },
   {
     href: "/dashboard/goals",
@@ -106,8 +106,8 @@ const tabs: Tab[] = [
 ];
 
 const navGroups: { id: TabGroup; label: string; helper: string }[] = [
-  { id: "loop", label: "Learning loop", helper: "Memory, practice, repair, evidence" },
-  { id: "support", label: "Workspace", helper: "Organise, goals, rewards" },
+  { id: "loop", label: "Learning loop", helper: "Today, memory, your work, and Jami" },
+  { id: "support", label: "Workspace", helper: "Material, progress, goals, rewards" },
 ];
 
 function isActive(pathname: string, tab: Tab) {
