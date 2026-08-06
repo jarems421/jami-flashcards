@@ -19,7 +19,8 @@ import { loadUserCards } from "@/services/study/cards";
 import { getDeckCardCounts, type DeckCounts } from "@/lib/study/deck-counts";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
 import AppPage from "@/components/layout/AppPage";
-import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, Skeleton, StatTile } from "@/components/ui";
+import { Button, ButtonLink, ConfirmDialog, EmptyState, FeedbackBanner, Input, PageHero, SegmentedControl, Skeleton, StatTile } from "@/components/ui";
+import { FLASHCARD_VIEWS, FLASHCARDS_TITLE } from "@/lib/app/flashcard-views";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
 import { getDeckHref, getDeckStudyHref } from "@/lib/app/routes";
 import DeckCoverIcon from "@/components/decks/DeckCoverIcon";
@@ -202,7 +203,7 @@ export default function DecksPage() {
     return (
       <Refreshable onRefresh={handleRefresh}>
         <AppPage
-          title="Decks"
+          title={FLASHCARDS_TITLE}
           backHref="/dashboard"
           backLabel="Today"
           width="2xl"
@@ -214,6 +215,7 @@ export default function DecksPage() {
           }
           contentClassName="space-y-4 sm:space-y-6"
         >
+          <SegmentedControl items={FLASHCARD_VIEWS} label="Flashcard views" />
           <FeedbackBanner
             type="error"
             message={loadError}
@@ -243,13 +245,14 @@ export default function DecksPage() {
   return (
     <Refreshable onRefresh={handleRefresh}>
       <AppPage
-        title="Decks"
+        title={FLASHCARDS_TITLE}
         backHref="/dashboard"
         backLabel="Today"
         width="2xl"
         action={<RefreshIconButton refreshing={refreshing} onClick={() => void handleRefresh()} />}
         contentClassName="space-y-4 sm:space-y-6"
       >
+        <SegmentedControl items={FLASHCARD_VIEWS} label="Flashcard views" />
         {loadError ? (
           <FeedbackBanner
             type="error"
@@ -276,8 +279,8 @@ export default function DecksPage() {
 
         <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.2fr)_320px]">
           <PageHero
-            eyebrow="Flashcards"
-            title="Decks"
+            eyebrow="Decks"
+            title="New deck"
             action={
               <div className="w-full min-w-0 max-w-[32rem] space-y-3">
                 <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(8.5rem,11.5rem)]">

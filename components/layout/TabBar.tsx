@@ -15,6 +15,15 @@ type Tab = {
   group: TabGroup;
   /** SVG path data for the icon (24x24 viewBox). */
   icon: string;
+  /**
+   * Other routes this entry is the home of.
+   *
+   * One entry can cover a surface that spans several addresses -- Flashcards
+   * is decks and every card, Folders is notebooks too -- and it has to stay
+   * lit inside all of them, or a student navigates somewhere real and the
+   * sidebar tells them they are nowhere.
+   */
+  owns?: string[];
   iconMode?: "fill" | "stroke";
 };
 
@@ -36,6 +45,7 @@ const tabs: Tab[] = [
   },
   {
     href: "/dashboard/practice",
+    owns: ["/dashboard/practise", "/dashboard/folders", "/dashboard/notebooks"],
     label: "Folders",
     description: "Notebooks and papers",
     group: "loop",
@@ -50,17 +60,11 @@ const tabs: Tab[] = [
   },
   {
     href: "/dashboard/decks",
-    label: "Decks",
-    description: "Manage card sets",
+    owns: ["/dashboard/cards"],
+    label: "Flashcards",
+    description: "Decks and every card",
     group: "support",
     icon: "M3.75 9.776c.112-.017.227-.026.344-.026h15.812c.117 0 .232.009.344.026-.383-1.178-1.47-2.026-2.75-2.026h-11A2.75 2.75 0 003.75 9.776zM2.25 12.75a2.75 2.75 0 012.75-2.75h14a2.75 2.75 0 012.75 2.75v6.5a2.75 2.75 0 01-2.75 2.75H5a2.75 2.75 0 01-2.75-2.75v-6.5zM6.5 7.25V5.5A2.75 2.75 0 019.25 2.75h5.5A2.75 2.75 0 0117.5 5.5v1.75",
-  },
-  {
-    href: "/dashboard/cards",
-    label: "Cards",
-    description: "Search all cards",
-    group: "support",
-    icon: "M5.25 3A2.25 2.25 0 003 5.25v10.5A2.25 2.25 0 005.25 18h.5V7.25A2.25 2.25 0 018 5h10v-.25A1.75 1.75 0 0016.25 3h-11zM8 6.5A.75.75 0 007.25 7.25v11A2.75 2.75 0 0010 21h8.25A2.75 2.75 0 0021 18.25v-9A2.75 2.75 0 0018.25 6.5H8zm2.5 3h7.25a.75.75 0 010 1.5H10.5a.75.75 0 010-1.5zm0 3.5h5.25a.75.75 0 010 1.5H10.5a.75.75 0 010-1.5z",
   },
   {
     href: "/dashboard/topics",
@@ -105,17 +109,12 @@ const navGroups: { id: TabGroup; label: string; helper: string }[] = [
   { id: "support", label: "Workspace", helper: "Organise, goals, rewards" },
 ];
 
-function isActive(pathname: string, href: string) {
-  if (href === "/dashboard") return pathname === "/dashboard";
-  if (href === "/dashboard/practice") {
-    return [
-      "/dashboard/practice",
-      "/dashboard/practise",
-      "/dashboard/folders",
-      "/dashboard/notebooks",
-    ].some((route) => pathname.startsWith(route));
-  }
-  return pathname.startsWith(href);
+function isActive(pathname: string, tab: Tab) {
+  // Home is the only exact match; everything else owns its subtree.
+  if (tab.href === "/dashboard") return pathname === "/dashboard";
+  return [tab.href, ...(tab.owns ?? [])].some((route) =>
+    pathname.startsWith(route)
+  );
 }
 
 function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
@@ -388,7 +387,7 @@ export default function TabBar({
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
         {tabs.map((tab) => {
-          const active = isActive(pathname, tab.href);
+          const active = isActive(pathname, tab);
           return <MobileNavItem key={tab.href} tab={tab} active={active} />;
         })}
       </nav>
@@ -471,7 +470,7 @@ export default function TabBar({
                 {tabs
                   .filter((tab) => tab.group === group.id)
                   .map((tab) => {
-                    const active = isActive(pathname, tab.href);
+                    const active = isActive(pathname, tab);
                     return (
                       <DesktopNavItem
                         key={tab.href}

@@ -19,6 +19,8 @@ export { default as JamiSparklesIcon } from "./JamiSparklesIcon";
 export { default as PageHero } from "./PageHero";
 export { default as Textarea } from "./Textarea";
 export { default as ProgressBar } from "./ProgressBar";
+export { default as SegmentedControl } from "./SegmentedControl";
+export type { SegmentedControlItem } from "./SegmentedControl";
 export { default as SectionHeader } from "./SectionHeader";
 export { default as Skeleton } from "./Skeleton";
 export { default as StatTile } from "./StatTile";
