@@ -49,6 +49,20 @@ function finiteNonNegative(value: number) {
   return Number.isFinite(value) ? Math.max(0, value) : 0;
 }
 
+/**
+ * Zoom above which the sheet counts as zoomed in rather than fitted. Shared so
+ * pan bounds and drag intent agree on when the reader has left the fitted view.
+ */
+export const NOTEBOOK_VIEWPORT_FIT_ZOOM_EPSILON = 1.0001;
+
+export function isNotebookViewportZoomedIn(zoom: number | undefined) {
+  return (
+    typeof zoom === "number" &&
+    Number.isFinite(zoom) &&
+    zoom > NOTEBOOK_VIEWPORT_FIT_ZOOM_EPSILON
+  );
+}
+
 export function clampNotebookViewportZoom(value: number) {
   if (!Number.isFinite(value)) return 1;
   return Math.max(
@@ -138,18 +152,49 @@ export function getNotebookViewportPanBounds(input: {
   pageHeight: number;
   frameWidth: number;
   frameHeight: number;
+  /**
+   * Live zoom. An axis narrower than the frame used to be pinned to the middle
+   * of it at every zoom, which is why a pinch appeared to zoom into the centre
+   * of the page and only swung towards the fingers near the end: a landscape
+   * sheet is narrower than the frame until roughly 2x, so the anchor was
+   * discarded for most of the gesture and handed back abruptly.
+   *
+   * The spare room is now released gradually. At fit zoom the sheet is still
+   * pinned to the centre -- so it rests centred and horizontal drags stay page
+   * swipes -- and the reachable range opens out as the axis grows towards
+   * filling the frame, meeting the covered-frame range exactly when it does.
+   */
+  zoom?: number;
 }): NotebookViewportPanBounds {
   const pageWidth = finiteNonNegative(input.pageWidth);
   const pageHeight = finiteNonNegative(input.pageHeight);
   const frameWidth = finiteNonNegative(input.frameWidth);
   const frameHeight = finiteNonNegative(input.frameHeight);
+  const zoomedIn = isNotebookViewportZoomedIn(input.zoom);
+  const zoom = input.zoom ?? 1;
 
   const getAxisBounds = (pageSize: number, frameSize: number) => {
-    if (pageSize <= frameSize) {
-      const center = (frameSize - pageSize) / 2;
+    if (pageSize > frameSize) return { min: frameSize - pageSize, max: 0 };
+
+    const slack = frameSize - pageSize;
+    const center = slack / 2;
+    if (!zoomedIn || slack <= 0 || pageSize <= 0) {
       return { min: center, max: center };
     }
-    return { min: frameSize - pageSize, max: 0 };
+
+    // How far this axis has travelled from fitted towards filling the frame.
+    // `pageSize` is the fitted size times `zoom`, so the fill zoom is a
+    // property of the axis rather than of the moment.
+    const fillZoom = (frameSize * zoom) / pageSize;
+    const travel = fillZoom - 1;
+    const progress =
+      travel > 0 ? Math.min(1, Math.max(0, (zoom - 1) / travel)) : 1;
+    // Square root rather than the raw progress: the range wants to be wide
+    // enough to honour the pinch anchor as soon as the reader leaves the fitted
+    // view, while still closing to nothing exactly at fit so that pinching all
+    // the way back out settles the sheet centred without a sideways jump.
+    const reach = center * Math.sqrt(progress);
+    return { min: center - reach, max: center + reach };
   };
   const horizontal = getAxisBounds(pageWidth, frameWidth);
   const vertical = getAxisBounds(pageHeight, frameHeight);
@@ -236,6 +281,7 @@ export function getNotebookViewportLayout(input: {
     pageHeight: pageSize.height,
     frameWidth: frameSize.width,
     frameHeight: frameSize.height,
+    zoom,
   });
   const defaultOrigin = {
     x: (frameSize.width - pageSize.width) / 2,
