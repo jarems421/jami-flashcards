@@ -189,37 +189,6 @@ function ActionPill({
   );
 }
 
-function RecommendedActionCard({ plan }: { plan: TodayPlan }) {
-  return (
-    <Card
-      padding="lg"
-      className="h-full animate-slide-up !border-[color-mix(in_srgb,var(--color-text-primary)_14%,transparent)]"
-    >
-      <div className="flex h-full flex-col gap-5">
-        <div className="min-w-0">
-          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
-            Recommended next action
-          </div>
-          <h2 className="mt-3 text-2xl font-semibold tracking-tight text-text-primary">
-            {plan.nextAction.title}
-          </h2>
-          <p className="mt-3 max-w-3xl text-sm leading-6 text-text-secondary">
-            {plan.nextAction.description}
-          </p>
-        </div>
-        <div className="mt-auto flex flex-wrap gap-2">
-          <ActionPill href={plan.nextAction.href}>{plan.nextAction.label}</ActionPill>
-          {plan.nextAction.secondaryHref && plan.nextAction.secondaryLabel ? (
-            <ActionPill href={plan.nextAction.secondaryHref} variant="secondary">
-              {plan.nextAction.secondaryLabel}
-            </ActionPill>
-          ) : null}
-        </div>
-      </div>
-    </Card>
-  );
-}
-
 function DraftQueueCard({ plan }: { plan: TodayPlan }) {
   return (
     <Card padding="lg">
@@ -592,6 +561,12 @@ export default function DashboardHome() {
   const planUnavailable = planSections.some(
     (section) => sectionStates[section] === "unavailable"
   );
+  const hasSecondaryTier =
+    hasSecondaryCards ||
+    (sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0) ||
+    (sectionStates.cards !== "unavailable" &&
+      sectionStates.activity !== "unavailable" &&
+      cards.length > 0);
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -606,83 +581,88 @@ export default function DashboardHome() {
         ) : null}
 
         {/*
-          * The greeting and the counters both assumed a student who had been
-          * here before: somebody opening Jami for the first time was welcomed
-          * back and shown two zeros. On day one there is nothing to count, and
-          * a pair of noughts is a poor first thing to see.
+          * One block, not two.
+          *
+          * The hero used to promise "your next study step" and the card below
+          * it announced "recommended next action" -- two eyebrows, two
+          * headings and two panels before a single instruction. The
+          * recommendation *is* the hero now: the action is the largest words
+          * on the page and its button sits directly under them.
+          *
+          * The counters are the returning student's. On day one there is
+          * nothing to count and a pair of noughts is a poor first thing to
+          * see, so they wait until there is something to say.
           */}
         <PageHero
           className="animate-slide-up"
-          compact
-          eyebrow={isLoading ? "Loading" : hasStudyMaterial ? "Today" : "Welcome"}
+          eyebrow={
+            isLoading
+              ? "Loading"
+              : !hasStudyMaterial
+                ? inAppUsername
+                  ? `Welcome, ${inAppUsername}`
+                  : "Welcome"
+                : inAppUsername
+                  ? `Today, ${inAppUsername}`
+                  : "Today"
+          }
           title={
             isLoading
               ? "Getting today ready."
-              : hasStudyMaterial
-                ? "Your next study step"
-                : "Let's get you studying."
+              : planUnavailable
+                ? "Your study plan is temporarily unavailable."
+                : todayPlan.nextAction.title
           }
           description={
-            <>
-              {hasStudyMaterial
-                ? inAppUsername
-                  ? `Welcome back, ${inAppUsername}.`
-                  : "Welcome back."
-                : inAppUsername
-                  ? `Good to meet you, ${inAppUsername}. Jami will take it from the first step below.`
-                  : "Jami will take it from the first step below."}
-            </>
+            isLoading
+              ? undefined
+              : planUnavailable
+                ? "Refresh in a moment. Jami will not treat missing data as an empty study list."
+                : todayPlan.nextAction.description
+          }
+          action={
+            isLoading || planUnavailable ? undefined : (
+              <ActionPill href={todayPlan.nextAction.href}>
+                {todayPlan.nextAction.label}
+              </ActionPill>
+            )
+          }
+          secondaryAction={
+            !isLoading &&
+            !planUnavailable &&
+            todayPlan.nextAction.secondaryHref &&
+            todayPlan.nextAction.secondaryLabel ? (
+              <ActionPill
+                href={todayPlan.nextAction.secondaryHref}
+                variant="secondary"
+              >
+                {todayPlan.nextAction.secondaryLabel}
+              </ActionPill>
+            ) : null
           }
           aside={
             !hasStudyMaterial || isLoading ? undefined : (
-            <div className="app-subtle-panel grid w-full min-w-0 grid-cols-2 gap-3 rounded-[1.4rem] p-4 sm:min-w-[14rem] sm:grid-cols-1">
-              <div>
-                <div className="text-xs text-text-muted">Reviewed today</div>
-                <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">
-                  {isLoading
-                    ? "..."
-                    : sectionStates.activity === "unavailable"
-                      ? "—"
-                      : todayReviews}
+              <div className="app-subtle-panel grid w-full min-w-0 grid-cols-2 gap-3 rounded-[1.4rem] p-4 sm:min-w-[14rem] sm:grid-cols-1">
+                <div>
+                  <div className="text-xs text-text-muted">Reviewed today</div>
+                  <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">
+                    {sectionStates.activity === "unavailable" ? "—" : todayReviews}
+                  </div>
+                </div>
+                <div className="h-px bg-[var(--color-border)]" />
+                <div>
+                  <div className="text-xs text-text-muted">Due now</div>
+                  <div className="mt-1 text-lg font-medium text-text-primary sm:text-xl">
+                    {sectionStates.dailyReview === "unavailable" ? "—" : dueCount}
+                  </div>
                 </div>
               </div>
-              <div className="h-px bg-[var(--color-border)]" />
-              <div>
-                <div className="text-xs text-text-muted">Due now</div>
-                <div className="mt-1 text-lg font-medium text-text-primary sm:text-xl">
-                  {isLoading
-                    ? "..."
-                    : sectionStates.dailyReview === "unavailable"
-                      ? "—"
-                      : dueCount}
-                </div>
-              </div>
-            </div>
             )
           }
         />
 
-        {isLoading ? (
-          <Card tone="warm" padding="lg">
-            <SectionHeader
-              eyebrow="Recommended next action"
-              title="Building your study plan."
-            />
-          </Card>
-        ) : (
+        {!isLoading ? (
           <>
-            {planUnavailable ? (
-              <Card padding="lg">
-                <SectionHeader
-                  eyebrow="Recommended next action"
-                  title="Your complete study plan is temporarily unavailable."
-                  description="Refresh in a moment. Jami will not treat missing data as an empty study list."
-                />
-              </Card>
-            ) : (
-              <RecommendedActionCard plan={todayPlan} />
-            )}
-
             {!planUnavailable ? (
               <GettingStartedChecklist
                 items={gettingStartedItems}
@@ -691,44 +671,59 @@ export default function DashboardHome() {
               />
             ) : null}
 
-            {hasSecondaryCards ? (
-              <div
-                className={`grid items-start gap-4 ${
-                  secondaryCardCount === 1
-                    ? "grid-cols-1"
-                    : "md:grid-cols-2 2xl:grid-cols-3"
-                }`}
-              >
-                {sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0 ? (
-                  <DraftQueueCard plan={todayPlan} />
-                ) : null}
-                {sectionStates.topics !== "unavailable" &&
-                sectionStates.mastery !== "unavailable" &&
-                todayPlan.weakTopics.length > 0 ? (
-                  <WeakTopicsCard plan={todayPlan} />
-                ) : null}
-                {sectionStates.goals !== "unavailable" && todayPlan.goalSummary ? (
-                  <GoalSnapshotCard plan={todayPlan} />
-                ) : null}
-              </div>
-            ) : null}
+            {/*
+              * Everything below is the second tier, and it is labelled as
+              * such. Without a break the page was a flat stack of cards of
+              * equal weight, so the one thing Jami actually recommends had to
+              * compete with everything it merely noticed.
+              */}
+            {hasSecondaryTier ? (
+              <section className="space-y-4 border-t border-[var(--color-border)] pt-6">
+                <SectionHeader
+                  title="Also today"
+                  description="Worth a look once the step above is done."
+                />
 
-            {sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0 ? (
-              <StatTile
-                label="Easy extras"
-                value={remainingOptionalCount}
-                detail="Daily Review is clear, but these lighter passes are still available."
-                href={getCustomStudyHref({ mode: "daily" })}
-              />
-            ) : null}
+                {hasSecondaryCards ? (
+                  <div
+                    className={`grid items-start gap-4 ${
+                      secondaryCardCount === 1
+                        ? "grid-cols-1"
+                        : "md:grid-cols-2 2xl:grid-cols-3"
+                    }`}
+                  >
+                    {sectionStates.drafts !== "unavailable" && todayPlan.drafts.length > 0 ? (
+                      <DraftQueueCard plan={todayPlan} />
+                    ) : null}
+                    {sectionStates.topics !== "unavailable" &&
+                    sectionStates.mastery !== "unavailable" &&
+                    todayPlan.weakTopics.length > 0 ? (
+                      <WeakTopicsCard plan={todayPlan} />
+                    ) : null}
+                    {sectionStates.goals !== "unavailable" && todayPlan.goalSummary ? (
+                      <GoalSnapshotCard plan={todayPlan} />
+                    ) : null}
+                  </div>
+                ) : null}
 
-            {sectionStates.cards !== "unavailable" &&
-            sectionStates.activity !== "unavailable" &&
-            cards.length > 0 ? (
-              <StreakPredictionPanel prediction={streakPrediction} compact />
+                {sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0 ? (
+                  <StatTile
+                    label="Easy extras"
+                    value={remainingOptionalCount}
+                    detail="Daily Review is clear, but these lighter passes are still available."
+                    href={getCustomStudyHref({ mode: "daily" })}
+                  />
+                ) : null}
+
+                {sectionStates.cards !== "unavailable" &&
+                sectionStates.activity !== "unavailable" &&
+                cards.length > 0 ? (
+                  <StreakPredictionPanel prediction={streakPrediction} compact />
+                ) : null}
+              </section>
             ) : null}
           </>
-        )}
+        ) : null}
       </AppPage>
     </Refreshable>
   );
