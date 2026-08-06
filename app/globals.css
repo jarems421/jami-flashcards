@@ -2049,19 +2049,27 @@ body.constellation-background-enabled::before {
     font-weight: 600;
   }
 
-  /* KaTeX math: ensure inline equations scroll gracefully on narrow screens */
-  .ai-response .katex {
-    display: inline-block;
-    max-width: 100%;
-    overflow-x: auto;
-    overflow-y: hidden;
-    vertical-align: middle;
-    /*
-      Matching body size exactly left an inline \frac with a numerator and
-      denominator each around half the line height, which is too small to read
-      inside a sentence or a bullet. A small step up clears that without maths
-      towering over the prose around it.
-    */
+  /*
+   * Inline maths stands on the text baseline, at the weight of the words
+   * around it.
+   *
+   * Two things were lifting it off the line. `overflow-x: auto` on an
+   * inline-block moves its baseline to the bottom margin edge, so the box hung
+   * by its foot from the text baseline rather than standing on it; and
+   * `vertical-align: middle` then raised it again, aligning the middle of the
+   * expression with the middle of a lowercase letter. Neither is wanted:
+   * inline maths is a word in the sentence, and display maths scrolls on its
+   * own line below, where there is no baseline to share.
+   *
+   * The size is the other half of it. KaTeX ships `.katex { font-size: 1.21em }`
+   * because its own fonts run optically small, but against this UI font that
+   * reads as a heavier serif jumping out of the sentence -- most visible on the
+   * single italic variables that AI-written cards are full of. Matching body
+   * size exactly is too far the other way: an inline \frac then has a numerator
+   * and denominator of half a line each. This sits between the two.
+   */
+  .ai-response .katex,
+  [data-jami-math] .katex {
     font-size: 1.08em;
   }
 
@@ -2074,7 +2082,8 @@ body.constellation-background-enabled::before {
     text-align: center;
   }
 
-  .ai-response .katex-display .katex {
+  .ai-response .katex-display .katex,
+  [data-jami-math] .katex-display .katex {
     display: inline-block;
     /* Display maths already had room on its own line; only inline needed the step up. */
     font-size: 1em;
