@@ -446,17 +446,22 @@ export default function ProgressPage() {
 
           <div className="grid gap-4 xl:grid-cols-[minmax(0,0.72fr)_minmax(0,1.28fr)]">
             <Card padding="md">
+              {/*
+                * No overdue count.
+                *
+                * A backlog is real, but counting it is the number that loses
+                * students: miss a week, come back to a large figure that reads
+                * as a debt, and the honest response is to give up rather than
+                * start. How far behind a card is still decides what comes up
+                * first -- see `getNotebookMemoryRisk` -- it is just not put to
+                * the student as an accusation.
+                */}
               <SectionHeader
-                title="Due workload"
-                description="Cards ready to review now, with the overdue portion shown separately."
+                title="Ready to review"
+                description="Cards Jami has scheduled for you now."
               />
-              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-1 2xl:grid-cols-2">
+              <div className="mt-4">
                 <StatTile compact label="Cards due" value={cardsDue} />
-                <StatTile
-                  compact
-                  label="Overdue cards"
-                  value={analytics.retentionSummary.overdue}
-                />
               </div>
               {cardsDue > 0 ? (
                 <ButtonLink
@@ -475,7 +480,7 @@ export default function ProgressPage() {
           <Card padding="md">
               <SectionHeader
                 title="Deck health"
-                description="See which decks are holding up well and which have cards ready or overdue."
+                description="See which decks are holding up well and which have cards waiting."
               />
               {deckHealth.length > 0 ? (
                 <div className="app-chip mt-4 inline-flex rounded-full px-3 py-1.5 text-xs font-semibold">
@@ -495,8 +500,6 @@ export default function ProgressPage() {
                           </div>
                           <div className="mt-1 text-xs text-text-muted">
                             {summary.dueCount} due
-                            <span aria-hidden="true"> / </span>
-                            {summary.overdueCount} overdue
                           </div>
                         </div>
                         <span

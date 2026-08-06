@@ -109,12 +109,14 @@ export function StreakPredictionPanel({
           </div>
         </div>
       </div>
-      <div className="mt-5 grid gap-3 sm:grid-cols-4">
+      {/* Deliberately no overdue figure: a backlog counted back at a student
+          reads as a debt, and the honest response to a debt you cannot clear
+          is to stop. What is due now is the actionable half of it. */}
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
         {[
           { label: "Current streak", value: `${prediction.currentStreak}d` },
           { label: "Active days (7d)", value: `${prediction.trailing7ActiveDays}d` },
           { label: "Due now", value: prediction.dueBacklog },
-          { label: "Overdue", value: prediction.overdueBacklog },
         ].map((item) => (
           <div
             key={item.label}
