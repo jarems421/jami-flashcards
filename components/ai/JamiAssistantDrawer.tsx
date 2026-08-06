@@ -173,6 +173,20 @@ export default function JamiAssistantDrawer({
   const previousResetKeyRef = useRef(resetKey);
   const requestIdRef = useRef(0);
   const requestPendingRef = useRef(false);
+  /**
+   * The in-flight answer, so leaving can stop it.
+   *
+   * Bumping `requestIdRef` only made the drawer ignore what came back; the
+   * route carried on generating and the request stayed charged. Dropping the
+   * fetch is what actually tells the server to stop.
+   */
+  const requestAbortRef = useRef<AbortController | null>(null);
+  const abandonActiveRequest = useCallback(() => {
+    requestIdRef.current += 1;
+    requestPendingRef.current = false;
+    requestAbortRef.current?.abort();
+    requestAbortRef.current = null;
+  }, []);
   const normalizedQuickActions = quickActions.map((action) =>
     typeof action === "string" ? { label: action, prompt: action } : action
   );
@@ -206,8 +220,7 @@ export default function JamiAssistantDrawer({
   useEffect(() => {
     if (previousResetKeyRef.current === resetKey) return;
     previousResetKeyRef.current = resetKey;
-    requestIdRef.current += 1;
-    requestPendingRef.current = false;
+    abandonActiveRequest();
     setMessages([]);
     setInput("");
     setLoading(false);
@@ -217,7 +230,7 @@ export default function JamiAssistantDrawer({
     setThreadLoading(false);
     setActiveThread(null);
     onOpenChange(false);
-  }, [onOpenChange, resetKey]);
+  }, [abandonActiveRequest, onOpenChange, resetKey]);
 
   const refreshThreads = useCallback(async () => {
     const user = auth.currentUser;
@@ -259,11 +272,10 @@ export default function JamiAssistantDrawer({
       top: scrollRef.current.scrollHeight,
       behavior: "smooth",
     });
-  }, [historyOpen, loading, messages, open, threadLoading]);
+  }, [abandonActiveRequest, historyOpen, loading, messages, open, threadLoading]);
 
   const startNewChat = useCallback(() => {
-    requestIdRef.current += 1;
-    requestPendingRef.current = false;
+    abandonActiveRequest();
     setMessages([]);
     setInput("");
     setLoading(false);
@@ -273,7 +285,7 @@ export default function JamiAssistantDrawer({
     setThreadLoading(false);
     setActiveThread(null);
     window.requestAnimationFrame(() => inputRef.current?.focus());
-  }, []);
+  }, [abandonActiveRequest]);
 
   const openThread = useCallback(async (thread: JamiAssistantThread) => {
     const user = auth.currentUser;
@@ -281,8 +293,7 @@ export default function JamiAssistantDrawer({
       setHistoryError("Sign in again to open your saved chats.");
       return;
     }
-    requestIdRef.current += 1;
-    requestPendingRef.current = false;
+    abandonActiveRequest();
     setThreadLoading(true);
     setHistoryError(null);
     setError(null);
@@ -301,7 +312,7 @@ export default function JamiAssistantDrawer({
     } finally {
       setThreadLoading(false);
     }
-  }, []);
+  }, [abandonActiveRequest]);
 
   const renameThread = useCallback(
     async (thread: JamiAssistantThread, title: string) => {
@@ -336,12 +347,11 @@ export default function JamiAssistantDrawer({
         setError(null);
         setInput("");
         setLoading(false);
-        requestPendingRef.current = false;
-        requestIdRef.current += 1;
+        abandonActiveRequest();
         setMessages([]);
       }
     },
-    [activeThread?.id]
+    [abandonActiveRequest, activeThread?.id]
   );
 
   const viewingForeignThread =
@@ -358,6 +368,8 @@ export default function JamiAssistantDrawer({
       const requestId = requestIdRef.current + 1;
       requestIdRef.current = requestId;
       requestPendingRef.current = true;
+      const abortController = new AbortController();
+      requestAbortRef.current = abortController;
       setMessages((current) => [...current, { role: "user", text: message }]);
       setInput("");
       setLoading(true);
@@ -404,7 +416,8 @@ export default function JamiAssistantDrawer({
               next[next.length - 1] = { ...next[next.length - 1], text: textSoFar };
               return next;
             });
-          }
+          },
+          abortController.signal
         );
 
         if (requestIdRef.current !== requestId) return;
@@ -457,6 +470,9 @@ export default function JamiAssistantDrawer({
         }
       } catch (requestError) {
         if (requestIdRef.current !== requestId) return;
+        // Abandoning the answer is something the student did; it is not a
+        // failure to report back to them.
+        if (abortController.signal.aborted) return;
         // Drop any partially streamed answer so an incomplete reply is not
         // left sitting above the error.
         if (streaming) setMessages((current) => current.slice(0, -1));
@@ -466,6 +482,9 @@ export default function JamiAssistantDrawer({
             : "Jami could not answer that just now. Please try again."
         );
       } finally {
+        if (requestAbortRef.current === abortController) {
+          requestAbortRef.current = null;
+        }
         if (requestIdRef.current === requestId) {
           requestPendingRef.current = false;
           setLoading(false);

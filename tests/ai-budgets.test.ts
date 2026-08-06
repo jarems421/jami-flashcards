@@ -46,9 +46,8 @@ vi.mock("@/services/firebase/admin", () => ({
 }));
 
 const { AI_BUDGETS, getAiTokenCap } = await import("@/lib/ai/budgets");
-const { checkAiBudget, createAiBudgetLimitResponse } = await import(
-  "@/services/ai/budgets"
-);
+const { checkAiBudget, createAiBudgetLimitResponse, refundAiBudget } =
+  await import("@/services/ai/budgets");
 
 const MINUTE_MS = 60_000;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -304,5 +303,104 @@ describe("AI budget route responses", () => {
       code: "burst_limit",
       retryAfterSeconds: 23,
     });
+  });
+});
+
+/**
+ * A request was charged the moment it was allowed, and nothing ever gave it
+ * back — so a provider timeout, or closing the drawer mid-answer, still cost
+ * one of the day's forty with nothing to show for it.
+ */
+describe("giving a charged request back", () => {
+  const allow = async (now: number) => {
+    const decision = await checkAiBudget({ uid: "u1", action: "assistant", now });
+    if (!decision.allowed) throw new Error("expected the request to be allowed");
+    return decision.grant;
+  };
+
+  it("frees the request for another try", async () => {
+    const now = 5 * DAY_MS;
+    const grant = await allow(now);
+    await refundAiBudget(grant);
+
+    // Spend the whole day's allowance; it is only reachable if the refund
+    // actually returned the first request.
+    for (let index = 0; index < AI_BUDGETS.assistant.dailyRequestLimit; index += 1) {
+      const decision = await checkAiBudget({
+        uid: "u1",
+        action: "assistant",
+        // Spread across burst windows so only the daily limit is in play.
+        now: now + index * MINUTE_MS,
+      });
+      expect(decision.allowed, `request ${index + 1}`).toBe(true);
+    }
+  });
+
+  it("frees the burst allowance too", async () => {
+    const now = 6 * DAY_MS;
+    const grants = [];
+    for (let index = 0; index < AI_BUDGETS.assistant.burstRequestLimit; index += 1) {
+      grants.push(await allow(now));
+    }
+    expect((await checkAiBudget({ uid: "u1", action: "assistant", now })).allowed).toBe(
+      false
+    );
+
+    await refundAiBudget(grants[0]);
+    expect((await checkAiBudget({ uid: "u1", action: "assistant", now })).allowed).toBe(
+      true
+    );
+  });
+
+  it("cannot put a later burst window into credit", async () => {
+    /*
+     * A refund arriving after the window has rolled — a request that timed out
+     * a minute after it started — must not hand its allowance to the new
+     * window, or a slow failure would quietly raise the burst limit.
+     */
+    const now = 7 * DAY_MS;
+    const grant = await allow(now);
+    const laterWindow = now + AI_BUDGETS.assistant.burstWindowMs + 1;
+
+    // Open the new window and fill it.
+    for (let index = 0; index < AI_BUDGETS.assistant.burstRequestLimit; index += 1) {
+      expect(
+        (await checkAiBudget({ uid: "u1", action: "assistant", now: laterWindow }))
+          .allowed,
+        `request ${index + 1}`
+      ).toBe(true);
+    }
+    await refundAiBudget(grant);
+
+    expect(
+      (await checkAiBudget({ uid: "u1", action: "assistant", now: laterWindow }))
+        .allowed
+    ).toBe(false);
+  });
+
+  it("never drops a counter below nothing", async () => {
+    const now = 8 * DAY_MS;
+    const grant = await allow(now);
+    await refundAiBudget(grant);
+    await refundAiBudget(grant);
+    await refundAiBudget(grant);
+
+    for (let index = 0; index < AI_BUDGETS.assistant.dailyRequestLimit; index += 1) {
+      expect(
+        (await checkAiBudget({
+          uid: "u1",
+          action: "assistant",
+          now: now + index * MINUTE_MS,
+        })).allowed,
+        `request ${index + 1}`
+      ).toBe(true);
+    }
+    expect(
+      (await checkAiBudget({
+        uid: "u1",
+        action: "assistant",
+        now: now + AI_BUDGETS.assistant.dailyRequestLimit * MINUTE_MS,
+      })).allowed
+    ).toBe(false);
   });
 });
