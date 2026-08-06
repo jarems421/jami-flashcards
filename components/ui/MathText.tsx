@@ -70,12 +70,26 @@ export default function MathText({
           );
         }
 
+        /*
+         * Inline maths is a word in a sentence, so it is left inline.
+         *
+         * It used to be an inline-block that could scroll, which is what made
+         * every expression float above the line it belonged to: an inline-block
+         * whose overflow is not `visible` takes its baseline from its bottom
+         * margin edge instead of from its contents, so the box was hung by its
+         * foot from the text baseline rather than standing on it. The
+         * `align-[-0.08em]` here was an attempt to nudge that back, but the
+         * error grows with the height of the expression, so nothing constant
+         * could correct it.
+         *
+         * Display maths keeps its scroll container: it is a block on its own
+         * line, where there is no baseline to share.
+         */
         if (!segment.display && segment.trailingPunctuation) {
           return (
             <span key={`math-${index}`} className="inline whitespace-nowrap">
               <span
                 data-jami-math="true"
-                className="inline-block max-w-full overflow-x-auto overflow-y-hidden align-[-0.08em]"
                 dangerouslySetInnerHTML={{ __html: html }}
               />
               {segment.trailingPunctuation}
@@ -90,7 +104,7 @@ export default function MathText({
             className={
               segment.display
                 ? "my-2 block max-w-full overflow-x-auto overflow-y-hidden py-1 text-center"
-                : "inline-block max-w-full overflow-x-auto overflow-y-hidden align-[-0.08em]"
+                : ""
             }
             dangerouslySetInnerHTML={{ __html: html }}
           />
