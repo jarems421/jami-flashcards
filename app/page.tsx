@@ -127,8 +127,18 @@ export default function Home() {
         className="fixed inset-0 grid place-items-center overflow-hidden bg-[var(--app-background)] text-text-primary"
       >
         {/* Drawn at the size and place the launch image iOS shows first draws
-            it, so one hands over to the other without appearing to move. */}
-        <BrandMark size="launch" />
+            it, so one hands over to the other without appearing to move. The
+            halo is sized from the mark, so it is the same treatment the
+            sign-in screen gives it rather than a second one. */}
+        <div
+          className="login-brand-halo [--brand-halo-size:min(26vw,26vh)]"
+          aria-hidden="true"
+        >
+          <span className="login-brand-spark login-brand-spark-one" />
+          <span className="login-brand-spark login-brand-spark-two" />
+          <span className="login-brand-spark login-brand-spark-three" />
+          <BrandMark size="launch" />
+        </div>
         <span className="sr-only">Opening Jami</span>
       </main>
     );
