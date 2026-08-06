@@ -94,6 +94,49 @@ function cursive(xHeight: number) {
 const kinkCount = (stroke: Stroke) =>
   joinTurns(stroke).filter((turn) => turn > 1).length;
 
+/** How far the drawn line ends up from the points the pen actually visited. */
+function meanDeviation(stroke: Stroke, points: StrokeDataPoint[]) {
+  const path = stroke.getParts()[0].path;
+  const drawn: Array<{ x: number; y: number }> = [];
+  let from = path.startPoint;
+  for (const part of path.parts) {
+    if (part.kind !== jsDraw.PathCommandType.CubicBezierTo) {
+      if ("point" in part) from = part.point;
+      continue;
+    }
+    for (let step = 0; step <= 16; step += 1) {
+      const t = step / 16;
+      const u = 1 - t;
+      drawn.push({
+        x:
+          u ** 3 * from.x +
+          3 * u * u * t * part.controlPoint1.x +
+          3 * u * t * t * part.controlPoint2.x +
+          t ** 3 * part.endPoint.x,
+        y:
+          u ** 3 * from.y +
+          3 * u * u * t * part.controlPoint1.y +
+          3 * u * t * t * part.controlPoint2.y +
+          t ** 3 * part.endPoint.y,
+      });
+    }
+    from = part.endPoint;
+  }
+
+  let total = 0;
+  for (const sample of points) {
+    let nearest = Infinity;
+    for (const on of drawn) {
+      nearest = Math.min(
+        nearest,
+        Math.hypot(on.x - sample.pos.x, on.y - sample.pos.y)
+      );
+    }
+    total += nearest;
+  }
+  return total / points.length;
+}
+
 describe("pen smoothing", () => {
   it("draws handwriting with fewer corners the further it is turned up", () => {
     // The complaint this setting answers: at handwriting scale a plain curve
@@ -108,6 +151,22 @@ describe("pen smoothing", () => {
     expect(flowing).toBeLessThan(standard);
     // The default has to be a real improvement on the faithful end, not a nudge.
     expect(standard).toBeLessThan(faithful / 2);
+  });
+
+  it("buys fewer corners without the line fighting the hand", () => {
+    /*
+     * Easing is the only part of this that moves the line off the points the
+     * pen visited, and it does so in proportion. A heavy easing ceiling made
+     * turning smoothing up feel restrictive rather than smooth -- the pen
+     * resisting at every turn -- so the corner threshold, which costs no
+     * deviation at all, is what carries the range.
+     */
+    const points = cursive(34);
+    const faithful = meanDeviation(build(points, 0), points);
+    const flowing = meanDeviation(build(points, 100), points);
+
+    expect(flowing).toBeLessThan(0.4);
+    expect(flowing - faithful).toBeLessThan(0.3);
   });
 
   it("keeps a deliberate corner at every setting", () => {
@@ -155,7 +214,9 @@ describe("pen smoothing", () => {
     expect(middle.cornerDegrees).toBeLessThan(flowing.cornerDegrees);
     // A corner threshold at or past a right angle would stop a 'v' being one.
     expect(flowing.cornerDegrees).toBeLessThan(90);
-    expect(flowing.easeTowardsNeighbours).toBeLessThan(1);
+    // Easing stays at the light touch it has always had, whatever the setting:
+    // it is the one control here that pulls the line off the hand.
+    expect(flowing.easeTowardsNeighbours).toBeLessThanOrEqual(0.35);
   });
 
   it("clamps anything the slider or storage could hand it", () => {
