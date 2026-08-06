@@ -32,16 +32,16 @@ export type NotebookPenFeel = {
 };
 
 /**
- * The faithful end. Corners are taken at the slightest turn and nothing is
- * eased, so the line goes exactly where it was taken -- wobble included.
+ * No smoothing. Corners are taken at the slightest turn and nothing is eased,
+ * so the line goes exactly where it was taken -- wobble included.
  */
-const FAITHFUL: NotebookPenFeel = {
+const NO_SMOOTHING: NotebookPenFeel = {
   cornerDegrees: 18,
   easeTowardsNeighbours: 0,
 };
 
 /**
- * The flowing end. Only a turn that is unmistakably a point is drawn as one.
+ * Full smoothing. Only a turn that is unmistakably a point is drawn as one.
  *
  * The corner ceiling is deliberately short of a right angle: past that, the
  * point of a `v` and the cusp between two joined letters stop being corners
@@ -57,7 +57,7 @@ const FAITHFUL: NotebookPenFeel = {
  * that costs no deviation at all -- so the corner threshold carries the range
  * and easing stops at the light touch it has always had.
  */
-const FLOWING: NotebookPenFeel = {
+const FULL_SMOOTHING: NotebookPenFeel = {
   cornerDegrees: 62,
   easeTowardsNeighbours: 0.34,
 };
@@ -72,10 +72,13 @@ export function getNotebookPenFeel(smoothingPercent: number): NotebookPenFeel {
   const between = (from: number, to: number) => from + (to - from) * towards;
 
   return {
-    cornerDegrees: between(FAITHFUL.cornerDegrees, FLOWING.cornerDegrees),
+    cornerDegrees: between(
+      NO_SMOOTHING.cornerDegrees,
+      FULL_SMOOTHING.cornerDegrees
+    ),
     easeTowardsNeighbours: between(
-      FAITHFUL.easeTowardsNeighbours,
-      FLOWING.easeTowardsNeighbours
+      NO_SMOOTHING.easeTowardsNeighbours,
+      FULL_SMOOTHING.easeTowardsNeighbours
     ),
   };
 }
@@ -85,15 +88,21 @@ export type NotebookPenSmoothingLabel = {
   description: string;
 };
 
-/** What the current setting is called, and what it does, in the panel. */
+/**
+ * What the current setting is called, and what it does, in the panel.
+ *
+ * Named for how much smoothing is being applied, because that is what the
+ * control is called. Naming the resulting line instead put the word and the
+ * label in different terms, which is a thing to work out rather than read.
+ */
 export function getNotebookPenSmoothingLabel(
   smoothingPercent: number
 ): NotebookPenSmoothingLabel {
   const percent = clampNotebookPenSmoothing(smoothingPercent);
   if (percent < 25) {
     return {
-      name: "Faithful",
-      description: "Draws every turn of the pen, wobble included",
+      name: "None",
+      description: "Nothing is smoothed; every turn you make is drawn as a point",
     };
   }
   if (percent < 50) {
@@ -104,12 +113,12 @@ export function getNotebookPenSmoothingLabel(
   }
   if (percent < 75) {
     return {
-      name: "Balanced",
+      name: "Medium",
       description: "Carries curves through, keeps deliberate points",
     };
   }
   return {
-    name: "Flowing",
+    name: "Strong",
     description: "Rounds the line out; only sharp turns stay points",
   };
 }
