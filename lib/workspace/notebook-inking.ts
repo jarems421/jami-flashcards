@@ -4,6 +4,7 @@ import {
   clampNotebookViewportOrigin,
   getNotebookViewportFit,
   getNotebookViewportPanBounds,
+  isNotebookViewportZoomedIn,
   NOTEBOOK_VIEWPORT_COMPACT_INSET,
   NOTEBOOK_VIEWPORT_COMPACT_MAX_WIDTH,
   NOTEBOOK_VIEWPORT_MAX_ZOOM,
@@ -177,7 +178,7 @@ export function getNotebookPageDragIntent(input: {
 }): NotebookPageDragIntent {
   if (input.axis === "horizontal") {
     if (input.canPanHorizontally) return "pan";
-    return (input.zoom ?? 1) > 1.0001 ? "none" : "page";
+    return isNotebookViewportZoomedIn(input.zoom ?? 1) ? "none" : "page";
   }
   return input.canPanVertically ? "pan" : "none";
 }
@@ -374,6 +375,8 @@ export function clampNotebookPagePan(input: {
   pageHeight: number;
   frameWidth: number;
   frameHeight: number;
+  /** Live zoom, so a zoomed-in sheet may sit off-centre on an axis with room. */
+  zoom?: number;
 }): NotebookPagePan {
   return clampNotebookViewportOrigin({
     origin: input.pan,
@@ -392,6 +395,7 @@ export function getNotebookPagePanAfterPinch(input: {
   pageHeight: number;
   frameWidth: number;
   frameHeight: number;
+  zoom?: number;
 }) {
   return clampNotebookPagePan({
     pan: {
@@ -402,6 +406,7 @@ export function getNotebookPagePanAfterPinch(input: {
     pageHeight: input.pageHeight,
     frameWidth: input.frameWidth,
     frameHeight: input.frameHeight,
+    zoom: input.zoom,
   });
 }
 
@@ -446,6 +451,7 @@ export function getNotebookLivePinchTransform(input: {
     pageHeight: nextPageHeight,
     frameWidth: input.frameWidth,
     frameHeight: input.frameHeight,
+    zoom: input.nextZoom,
   });
 
   return {

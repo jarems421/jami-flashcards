@@ -773,7 +773,7 @@ export default function NotebookEditorPage() {
   }, [loading, notebook?.id, setFrameSize]);
 
   // Keep the committed pan valid whenever the zoom or frame changes: centered
-  // while the page fits, clamped to the frame edges while zoomed in.
+  // at fit zoom, and otherwise held inside the frame wherever the reader left it.
   useEffect(() => {
     setPagePan((previous) => {
       const next = clampNotebookPagePan({
@@ -782,10 +782,11 @@ export default function NotebookEditorPage() {
         pageHeight: pageHeightPx,
         frameWidth: frameSize.width,
         frameHeight: frameSize.height,
+        zoom: viewportLayout.zoom,
       });
       return next.x === previous.x && next.y === previous.y ? previous : next;
     });
-  }, [frameSize, pageHeightPx, pageWidthPx, setPagePan]);
+  }, [frameSize, pageHeightPx, pageWidthPx, setPagePan, viewportLayout.zoom]);
 
   useEffect(() => {
     pagePanLiveRef.current = pagePan;
@@ -1824,14 +1825,12 @@ export default function NotebookEditorPage() {
     // horizontal drags retain the physical page-swipe interaction.
     if (swipe.intent === "pan") {
       const nextPan = clampNotebookPagePan({
-        pan: {
-          x: swipe.startPan.x + totalDx,
-          y: swipe.startPan.y + totalDy,
-        },
+        pan: { x: swipe.startPan.x + totalDx, y: swipe.startPan.y + totalDy },
         pageWidth: pageWidthPx,
         pageHeight: pageHeightPx,
         frameWidth: frameSize.width,
         frameHeight: frameSize.height,
+        zoom: viewportLayout.zoom,
       });
       pagePanLiveRef.current = nextPan;
       const surface = pageSurfaceRef.current;

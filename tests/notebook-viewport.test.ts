@@ -170,7 +170,23 @@ describe("notebook viewport layout", () => {
     }
   });
 
-  it("recentres an undersized axis while preserving valid pan on the other axis", () => {
+  it("recentres an undersized axis at fit zoom", () => {
+    const layout = getNotebookViewportLayout({
+      frameWidth: 1024,
+      frameHeight: 700,
+      pan: { x: -900, y: -200 },
+    });
+
+    expect(layout.pageSize.width).toBeLessThan(layout.frameSize.width);
+    expect(layout.pageOrigin.x).toBeCloseTo(
+      (layout.frameSize.width - layout.pageSize.width) / 2
+    );
+    expect(layout.pageOrigin.y).toBeCloseTo(
+      (layout.frameSize.height - layout.pageSize.height) / 2
+    );
+  });
+
+  it("keeps an undersized axis inside the frame while preserving valid pan on the other axis", () => {
     const layout = getNotebookViewportLayout({
       frameWidth: 1024,
       frameHeight: 700,
@@ -180,10 +196,54 @@ describe("notebook viewport layout", () => {
 
     expect(layout.pageSize.width).toBeLessThan(layout.frameSize.width);
     expect(layout.pageSize.height).toBeGreaterThan(layout.frameSize.height);
-    expect(layout.pageOrigin.x).toBeCloseTo(
+    expect(layout.pageOrigin.x).toBeGreaterThanOrEqual(0);
+    expect(layout.pageOrigin.x).toBeLessThan(
       (layout.frameSize.width - layout.pageSize.width) / 2
     );
     expect(layout.pageOrigin.y).toBe(-200);
+  });
+
+  it("opens the reachable range smoothly as an axis grows to fill the frame", () => {
+    const frame = { frameWidth: 1194, frameHeight: 790 };
+    const reachAt = (zoom: number) => {
+      const layout = getNotebookViewportLayout({ ...frame, zoom });
+      const centre = (layout.frameSize.width - layout.pageSize.width) / 2;
+      return {
+        centre,
+        reach: layout.panBounds.maxX - centre,
+        slack: centre * 2,
+      };
+    };
+
+    // Fitted: pinned to the centre, so horizontal drags remain page swipes.
+    expect(reachAt(1).reach).toBeCloseTo(0);
+    // Part way: some freedom, but less than the full slack.
+    const midway = reachAt(1.5);
+    expect(midway.reach).toBeGreaterThan(0);
+    expect(midway.reach).toBeLessThan(midway.slack / 2);
+    // Widening monotonically as a fraction of the slack that remains.
+    expect(reachAt(2).reach / reachAt(2).slack).toBeGreaterThan(
+      midway.reach / midway.slack
+    );
+  });
+
+  it("hands the sheet over to the covered-frame bounds without a jump", () => {
+    const frame = { frameWidth: 1194, frameHeight: 790 };
+    // The zoom at which the page is exactly as wide as the frame.
+    const fitted = getNotebookViewportLayout({ ...frame });
+    const fillZoom = fitted.frameSize.width / fitted.pageSize.width;
+    const before = getNotebookViewportLayout({
+      ...frame,
+      zoom: fillZoom - 0.0005,
+      pan: { x: -5000, y: 0 },
+    });
+    const after = getNotebookViewportLayout({
+      ...frame,
+      zoom: fillZoom + 0.0005,
+      pan: { x: -5000, y: 0 },
+    });
+
+    expect(Math.abs(after.pageOrigin.x - before.pageOrigin.x)).toBeLessThan(1);
   });
 
   it("derives one page-and-gap travel distance for every carousel sheet", () => {

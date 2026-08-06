@@ -163,6 +163,28 @@ describe("useNotebookViewportController", () => {
     expect(handles.controller.pageCanPanVertically).toBe(true);
   });
 
+  it("frees a zoomed sheet that is still narrower than the frame", () => {
+    // Landscape fits the sheet by height, so it stays narrower than the frame
+    // until roughly 2x. That whole range used to pin the sheet to the middle of
+    // the frame, which is what made a pinch zoom into the centre of the page.
+    act(() => {
+      handles.setFrameSize({ width: 1194, height: 790 });
+    });
+    const fitted = handles.controller.layout.panBounds;
+    expect(handles.controller.pageCanPanHorizontally).toBe(false);
+    expect(fitted.minX).toBe(fitted.maxX);
+
+    act(() => {
+      handles.setZoom(1.5);
+    });
+    const zoomed = handles.controller.layout.panBounds;
+    expect(handles.controller.pageWidthPx).toBeLessThan(1194);
+    expect(handles.controller.pageCanPanHorizontally).toBe(true);
+    // Still bounded: the sheet may move off centre but never out of the frame.
+    expect(zoomed.minX).toBeGreaterThan(0);
+    expect(zoomed.maxX).toBeLessThan(1194 - handles.controller.pageWidthPx);
+  });
+
   it("ignores non-touch pointers", () => {
     const event = pointerEvent({ pointerType: "pen" });
     let handled = true;
