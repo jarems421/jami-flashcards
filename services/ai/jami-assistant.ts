@@ -112,7 +112,13 @@ async function readAssistantStream(
 
 export async function sendJamiAssistantMessage(
   input: JamiAssistantRequest,
-  onChunk?: (textSoFar: string) => void
+  onChunk?: (textSoFar: string) => void,
+  /**
+   * Abandons the answer. Dropping the request is what tells the route to stop
+   * generating, so without one a closed drawer left the provider running to the
+   * end and the student paying for an answer they would never see.
+   */
+  signal?: AbortSignal
 ): Promise<JamiAssistantResponse> {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
@@ -125,6 +131,7 @@ export async function sendJamiAssistantMessage(
       Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify(input),
+    ...(signal ? { signal } : {}),
   });
 
   // Everything that can fail before generation starts still answers with JSON,

@@ -238,6 +238,23 @@ function normalizeSnapshot(value: unknown): JamiAssistantSnapshot | undefined {
   };
 }
 
+/**
+ * Anything shaped like one of the reference fences below.
+ *
+ * Sources are wrapped in markers carrying a per-request token, which cannot be
+ * guessed and so cannot be closed early by injected text. History was the one
+ * channel with no such protection: text from a source can be quoted into an
+ * answer, and that answer comes back next turn as a model turn, where a forged
+ * marker would read as the app's own framing rather than as reference material.
+ * Stripping the shape means only this file can ever produce one.
+ */
+const REFERENCE_MARKER_PATTERN =
+  /-{2,}\s*(?:BEGIN|END)\s+UNTRUSTED\s+REFERENCE[^\n]*/gi;
+
+export function stripJamiAssistantReferenceMarkers(value: string) {
+  return value.replace(REFERENCE_MARKER_PATTERN, "").trim();
+}
+
 export function normalizeJamiAssistantHistory(
   value: unknown
 ): JamiAssistantHistoryMessage[] {
@@ -253,7 +270,10 @@ export function normalizeJamiAssistantHistory(
         entry.role === "user" || entry.role === "model" ? entry.role : null,
       text:
         typeof entry.text === "string"
-          ? entry.text.trim().slice(0, JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH)
+          ? stripJamiAssistantReferenceMarkers(entry.text).slice(
+              0,
+              JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH
+            )
           : "",
     }))
     .filter(

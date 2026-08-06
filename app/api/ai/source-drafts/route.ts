@@ -5,6 +5,7 @@ import { getBearerToken } from "@/lib/auth/bearer";
 import {
   checkAiBudget,
   createAiBudgetLimitResponse,
+  refundAiBudget,
 } from "@/services/ai/budgets";
 import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
@@ -33,6 +34,8 @@ export const runtime = "nodejs";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const MAX_FOCUS_LENGTH = 1_500;
 const REQUEST_TIMEOUT_MS = 20_000;
+/** A ceiling on the call as a whole, so a model fallback cannot double it. */
+const REQUEST_DEADLINE_MS = 32_000;
 /**
  * Enough to describe what a student is already sitting on without the list
  * competing with the source for the model's attention. Both draft ceilings are
@@ -97,6 +100,14 @@ export async function POST(request: NextRequest) {
     requestId: randomUUID(),
     uid,
   });
+  /**
+   * Hands back a request that produced no drafts to review.
+   *
+   * Declared out here so the catch below can reach it, and left null until the
+   * budget has actually been charged: there is nothing to give back before
+   * that, and a refund then would credit a request never made.
+   */
+  let refundRequest: ((why: string) => Promise<void>) | null = null;
 
   let sourceId: string;
   let kind: SourceDraftKind;
@@ -257,10 +268,20 @@ export async function POST(request: NextRequest) {
     if (!budgetDecision.allowed) {
       return createAiBudgetLimitResponse(budgetAction, budgetDecision);
     }
+    const budgetGrant = budgetDecision.grant;
+    refundRequest = async (why: string) => {
+      try {
+        await refundAiBudget(budgetGrant);
+      } catch (refundError) {
+        log.warn("budget.refund_failed", { why, error: refundError });
+      }
+    };
 
     const generated = await generateGeminiText({
       apiKey: GEMINI_API_KEY,
       timeoutMs: REQUEST_TIMEOUT_MS,
+      deadlineAt: startedAt + REQUEST_DEADLINE_MS,
+      signal: request.signal,
       request: {
         systemInstruction: `You create reviewed-by-human draft learning content for Jami.
 Everything you produce remains a draft until the student approves it.
@@ -409,6 +430,7 @@ ${source.contentText.slice(0, 12_000)}`,
       requestedCount: count,
     });
   } catch (error) {
+    await refundRequest?.("provider_failed");
     log.error("provider.failed", {
       error,
       kind,

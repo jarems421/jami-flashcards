@@ -6,6 +6,7 @@ import {
   checkAiBudget,
   createAiBudgetLimitResponse,
   getAiTokenCap,
+  refundAiBudget,
 } from "@/services/ai/budgets";
 import {
   generateGeminiText,
@@ -24,6 +25,16 @@ export const runtime = "nodejs";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const REQUEST_TIMEOUT_MS = 12_000;
+/**
+ * A ceiling on the route as a whole.
+ *
+ * One request here can make three provider calls -- the draft, a simplified
+ * fallback, then a completeness rewrite -- and each of those can fall back to a
+ * second model. At twelve seconds an attempt that is over a minute of waiting
+ * for a card back, so the whole route shares one budget and stops when it runs
+ * out rather than each attempt starting the clock again.
+ */
+const REQUEST_DEADLINE_MS = 25_000;
 const MAX_RELATED_CARDS = 5;
 const RELATED_CARD_SCAN_LIMIT = 20;
 const MAX_BACK_OUTPUT_LENGTH = 2000;
@@ -276,6 +287,17 @@ export async function POST(request: NextRequest) {
   if (!budgetDecision.allowed) {
     return createAiBudgetLimitResponse("autocompleteCard", budgetDecision);
   }
+  const budgetGrant = budgetDecision.grant;
+  const deadlineAt = startedAt + REQUEST_DEADLINE_MS;
+
+  /** Hands back a request that produced nothing the student can use. */
+  const refundRequest = async (why: string) => {
+    try {
+      await refundAiBudget(budgetGrant);
+    } catch (error) {
+      log.warn("budget.refund_failed", { why, error });
+    }
+  };
 
   // Declared outside the attempt so the failure log can still say which models
   // were reached before it went wrong.
@@ -318,6 +340,8 @@ Write the best flashcard back. If there is already a draft, improve or complete 
       const text = await generateGeminiText({
         apiKey: GEMINI_API_KEY,
         timeoutMs: REQUEST_TIMEOUT_MS,
+        deadlineAt,
+        signal: request.signal,
         generationConfig: {
           temperature: 0.15,
           topP: 0.85,
@@ -390,6 +414,7 @@ Rewrite the complete final back in one concise response.
         durationMs: Date.now() - startedAt,
         providerDiagnostics,
       });
+      await refundRequest("empty_answer");
       return Response.json({ error: "AI could not return a usable answer right now." }, { status: 502 });
     }
 
@@ -400,6 +425,7 @@ Rewrite the complete final back in one concise response.
     });
     return Response.json({ back: reply.slice(0, MAX_BACK_OUTPUT_LENGTH) });
   } catch (error) {
+    await refundRequest("provider_failed");
     log.error("provider.failed", {
       error,
       timedOut: isGeminiTimeoutError(error),

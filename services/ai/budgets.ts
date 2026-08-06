@@ -4,6 +4,7 @@ import {
   AI_BUDGETS,
   type AiBudgetAction,
   type AiBudgetDecision,
+  type AiBudgetGrant,
 } from "@/lib/ai/budgets";
 import { getAdminDb } from "@/services/firebase/admin";
 
@@ -117,7 +118,74 @@ export async function checkAiBudget(input: {
       );
     }
 
-    return { allowed: true, reason: null, retryAfterSeconds: 0 };
+    return {
+      allowed: true,
+      reason: null,
+      retryAfterSeconds: 0,
+      grant: {
+        uid: input.uid,
+        action: input.action,
+        dayKey,
+        burstWindowStartedAt,
+      },
+    };
+  });
+}
+
+/**
+ * Gives a charged request back.
+ *
+ * A request was charged the moment it was allowed, and nothing ever handed it
+ * back -- so a provider timeout or a reader who closed the drawer still cost
+ * one of the day's forty, with nothing to show for it. Only counters that
+ * still match the grant are touched, so a refund arriving after the burst
+ * window has rolled cannot put the new window into credit.
+ */
+export async function refundAiBudget(grant: AiBudgetGrant) {
+  const config = AI_BUDGETS[grant.action];
+  const db = getAdminDb();
+  const budgets = db.collection("aiBudgets");
+  const dailyDocId = `${grant.uid}:${grant.action}:${grant.dayKey}`;
+  const burstDocId = `${grant.uid}:${config.burstScope}:${grant.dayKey}`;
+  const dailyRef = budgets.doc(dailyDocId);
+  const burstRef = budgets.doc(burstDocId);
+
+  await db.runTransaction(async (transaction) => {
+    const dailySnapshot = await transaction.get(dailyRef);
+    const burstSnapshot =
+      burstDocId === dailyDocId
+        ? dailySnapshot
+        : await transaction.get(burstRef);
+    const dailyData = dailySnapshot.data();
+    const burstData = burstSnapshot.data();
+
+    const count = getNonNegativeInteger(dailyData?.count);
+    const burstCount = getNonNegativeInteger(burstData?.burstCount);
+    const refundsBurst =
+      burstData?.burstWindowStartedAt === grant.burstWindowStartedAt &&
+      burstCount > 0;
+
+    if (count > 0) {
+      transaction.set(
+        dailyRef,
+        {
+          count: count - 1,
+          updatedAt: Date.now(),
+          ...(refundsBurst && burstDocId === dailyDocId
+            ? { burstCount: burstCount - 1 }
+            : {}),
+        },
+        { merge: true }
+      );
+    }
+
+    if (refundsBurst && burstDocId !== dailyDocId) {
+      transaction.set(
+        burstRef,
+        { burstCount: burstCount - 1, updatedAt: Date.now() },
+        { merge: true }
+      );
+    }
   });
 }
 
