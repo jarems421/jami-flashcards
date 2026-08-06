@@ -43,16 +43,30 @@ type ChecklistItem = {
   done: boolean;
 };
 
+/**
+ * The road to the first review, for a student who has not walked it yet.
+ *
+ * It sits *below* the recommended action rather than above it. The whole point
+ * of the recommendation is that Jami already knows what to do next -- for a
+ * brand new student that is "create your first folder", and for everyone else
+ * it is their actual review -- so putting setup scaffolding on top of it made
+ * the page bury its own answer.
+ *
+ * It opens itself for a student with nothing to study, who needs the map, and
+ * stays folded for one who is already going.
+ */
 function GettingStartedChecklist({
   items,
   isLoading,
+  defaultOpen,
 }: {
   items: ChecklistItem[];
   isLoading: boolean;
+  defaultOpen: boolean;
 }) {
   const [open, toggleOpen] = usePersistentDisclosure(
     GETTING_STARTED_OPEN_STORAGE_KEY,
-    true,
+    defaultOpen,
   );
   const [dismissed, setDismissed] = useState(() => {
     if (typeof window === "undefined") return false;
@@ -501,6 +515,16 @@ export default function DashboardHome() {
       topics,
     ]
   );
+  /*
+   * Setup stops at the first review.
+   *
+   * It used to carry "set a goal" and "earn a star" too, which are good things
+   * but are not what stands between a student and studying -- and because most
+   * students never do them, the list never completed and the onboarding card
+   * never went away. Somebody reviewing every day still had a getting-started
+   * checklist on their home page. Goals and stars are surfaced below on their
+   * own merits, once there is something to study.
+   */
   const gettingStartedItems = useMemo<ChecklistItem[]>(
     () => [
       {
@@ -527,22 +551,18 @@ export default function DashboardHome() {
         href: "/dashboard/study",
         done: todayPlan.checklist.reviewCards,
       },
-      {
-        label: "Set a goal",
-        detail: "Choose a clear study target.",
-        href: "/dashboard/goals",
-        done: todayPlan.checklist.setGoal,
-      },
-      {
-        label: "Earn a star",
-        detail: "Complete a goal and see its reward.",
-        href: "/dashboard/constellation",
-        done: todayPlan.checklist.earnStar,
-      },
     ],
     [todayPlan.checklist]
   );
   const dueCount = todayPlan.dueCards.count;
+  /**
+   * Whether this student has anything of their own yet.
+   *
+   * It decides how loudly setup is offered, not whether the page leads with a
+   * recommendation: `buildNextAction` has an answer either way, and "create
+   * your first study folder" is as much a next step as a review is.
+   */
+  const hasStudyMaterial = cards.length > 0 || notebooks.length > 0;
   const hasSecondaryCards =
     todayPlan.drafts.length > 0 ||
     todayPlan.weakTopics.length > 0 ||
@@ -585,17 +605,36 @@ export default function DashboardHome() {
           <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} />
         ) : null}
 
+        {/*
+          * The greeting and the counters both assumed a student who had been
+          * here before: somebody opening Jami for the first time was welcomed
+          * back and shown two zeros. On day one there is nothing to count, and
+          * a pair of noughts is a poor first thing to see.
+          */}
         <PageHero
           className="animate-slide-up"
           compact
-          eyebrow={isLoading ? "Loading" : "Today"}
-          title={isLoading ? "Getting today ready." : "Your next study step"}
+          eyebrow={isLoading ? "Loading" : hasStudyMaterial ? "Today" : "Welcome"}
+          title={
+            isLoading
+              ? "Getting today ready."
+              : hasStudyMaterial
+                ? "Your next study step"
+                : "Let's get you studying."
+          }
           description={
             <>
-              {inAppUsername ? `Welcome back, ${inAppUsername}.` : "Welcome back."}
+              {hasStudyMaterial
+                ? inAppUsername
+                  ? `Welcome back, ${inAppUsername}.`
+                  : "Welcome back."
+                : inAppUsername
+                  ? `Good to meet you, ${inAppUsername}. Jami will take it from the first step below.`
+                  : "Jami will take it from the first step below."}
             </>
           }
           aside={
+            !hasStudyMaterial || isLoading ? undefined : (
             <div className="app-subtle-panel grid w-full min-w-0 grid-cols-2 gap-3 rounded-[1.4rem] p-4 sm:min-w-[14rem] sm:grid-cols-1">
               <div>
                 <div className="text-xs text-text-muted">Reviewed today</div>
@@ -619,12 +658,9 @@ export default function DashboardHome() {
                 </div>
               </div>
             </div>
+            )
           }
         />
-
-        {!planUnavailable ? (
-          <GettingStartedChecklist items={gettingStartedItems} isLoading={isLoading} />
-        ) : null}
 
         {isLoading ? (
           <Card tone="warm" padding="lg">
@@ -646,6 +682,14 @@ export default function DashboardHome() {
             ) : (
               <RecommendedActionCard plan={todayPlan} />
             )}
+
+            {!planUnavailable ? (
+              <GettingStartedChecklist
+                items={gettingStartedItems}
+                isLoading={isLoading}
+                defaultOpen={!hasStudyMaterial}
+              />
+            ) : null}
 
             {hasSecondaryCards ? (
               <div
