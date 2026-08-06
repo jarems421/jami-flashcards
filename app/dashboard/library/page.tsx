@@ -31,7 +31,12 @@ import SourceComposerDialog from "@/components/library/SourceComposerDialog";
 import SourceDetailsWorkflow from "@/components/library/SourceDetailsWorkflow";
 import SourceDraftWorkflow from "@/components/library/SourceDraftWorkflow";
 import SourceManagementDialogs from "@/components/library/SourceManagementDialogs";
-import { Button, EmptyState, FeedbackBanner, Skeleton } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, SegmentedControl, Skeleton } from "@/components/ui";
+import {
+  readSourcePanelLink,
+  TUTOR_TITLE,
+  TUTOR_VIEWS,
+} from "@/lib/app/tutor-views";
 
 type SourceWorkspacePanel = "tutor" | "details" | "drafts" | null;
 
@@ -48,8 +53,21 @@ export default function LibraryPage() {
   );
   const [composerOpen, setComposerOpen] = useState(false);
   const [composerFolderId, setComposerFolderId] = useState("");
-  const [activePanel, setActivePanel] =
-    useState<SourceWorkspacePanel>(null);
+  /*
+   * A Tutor link can name the panel to open as well as the source, so both are
+   * read from the URL once, as this component's initial state, rather than
+   * applied to it afterwards. Read from `window.location` like
+   * `useLibraryBrowser` does, so the two agree on where the URL lives.
+   */
+  const [deepLink] = useState(() =>
+    typeof window === "undefined"
+      ? { sourceId: null, panel: null }
+      : readSourcePanelLink(window.location.search)
+  );
+  const requestedSourceId = deepLink.sourceId;
+  const [activePanel, setActivePanel] = useState<SourceWorkspacePanel>(
+    deepLink.panel
+  );
   const [hasSuccessfulLoad, setHasSuccessfulLoad] = useState(false);
   const [loadFailed, setLoadFailed] = useState(false);
   const sourceComposerPrefillHandledRef = useRef(false);
@@ -137,6 +155,29 @@ export default function LibraryPage() {
     clearPanelForSelectionChange
   );
   const selectedSource = browser.selectedSource;
+
+  /*
+   * Selecting the source a Tutor link asked for.
+   *
+   * The drafts queue lists what is waiting per source, and a queue you cannot
+   * act on is only a reminder -- so a row has to be able to open the source
+   * that produced it. Guarded by a ref so it runs once per link and cannot
+   * fight a student who has since clicked something else.
+   *
+   * The panel itself is not set here: it is read straight off the URL as this
+   * component's initial state, and `visiblePanel` above already holds it shut
+   * until a source is actually selected.
+   */
+  const appliedDeepLinkRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!requestedSourceId || loading) return;
+    if (appliedDeepLinkRef.current === requestedSourceId) return;
+    if (!sources.some((source) => source.id === requestedSourceId)) return;
+
+    appliedDeepLinkRef.current = requestedSourceId;
+    browser.selectSource(requestedSourceId);
+  }, [browser, loading, requestedSourceId, sources]);
   const selectedSourceFileUrl = selectedSource
     ? sourceFileUrls[selectedSource.id]
     : undefined;
@@ -242,8 +283,9 @@ export default function LibraryPage() {
 
   if (loading && !hasSuccessfulLoad) {
     return (
-      <AppPage title="Sources" backHref="/dashboard" backLabel="Today">
+      <AppPage title={TUTOR_TITLE} backHref="/dashboard" backLabel="Today">
         <div className="space-y-4">
+          <SegmentedControl items={TUTOR_VIEWS} label="Tutor views" />
           <Skeleton className="h-16" />
           <Skeleton className="h-80" />
         </div>
@@ -253,8 +295,9 @@ export default function LibraryPage() {
 
   if (loadFailed && !hasSuccessfulLoad) {
     return (
-      <AppPage title="Sources" backHref="/dashboard" backLabel="Today">
+      <AppPage title={TUTOR_TITLE} backHref="/dashboard" backLabel="Today">
         <div className="space-y-4">
+          <SegmentedControl items={TUTOR_VIEWS} label="Tutor views" />
           {feedback ? (
             <FeedbackBanner
               type={feedback.type}
@@ -280,7 +323,7 @@ export default function LibraryPage() {
 
   return (
     <AppPage
-      title="Sources"
+      title={TUTOR_TITLE}
       backHref="/dashboard"
       backLabel="Today"
       width="study"
@@ -291,6 +334,8 @@ export default function LibraryPage() {
       }
       contentClassName="space-y-4"
     >
+      <SegmentedControl items={TUTOR_VIEWS} label="Tutor views" />
+
       {feedback &&
       !composerOpen &&
       !management.renameOpen &&

@@ -28,7 +28,10 @@ export default function SegmentedControl({
   items: SegmentedControlItem[];
   label: string;
 }) {
-  const pathname = usePathname();
+  // Typed as a string, but null wherever there is no router above this -- a
+  // test harness, or a tree rendered outside the app shell. Nothing is marked
+  // current in that case, which is better than the control throwing.
+  const pathname = usePathname() ?? "";
 
   return (
     <nav

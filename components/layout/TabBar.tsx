@@ -74,10 +74,11 @@ const tabs: Tab[] = [
     icon: "M12 2.25c4.83 0 8.75 3.92 8.75 8.75S16.83 19.75 12 19.75c-.36 0-.72-.02-1.08-.07l-3.31 2.76a.75.75 0 01-1.23-.58v-3.1A8.72 8.72 0 013.25 11c0-4.83 3.92-8.75 8.75-8.75zm-3.5 6.1a.75.75 0 01.75-.75h5.5a.75.75 0 010 1.5h-5.5a.75.75 0 01-.75-.75zm0 4a.75.75 0 01.75-.75h4a.75.75 0 010 1.5h-4a.75.75 0 01-.75-.75z",
   },
   {
-    href: "/dashboard/library",
-    label: "Sources",
-    description: "Saved references",
-    group: "support",
+    href: "/dashboard/tutor",
+    owns: ["/dashboard/library"],
+    label: "Tutor",
+    description: "Ask Jami, review drafts",
+    group: "loop",
     icon: "M2 19h20v2H2v-2zM4 7a1 1 0 011-1h3a1 1 0 011 1v12H4V7zM10 4a1 1 0 011-1h3a1 1 0 011 1v15h-5V4zM16 9a1 1 0 011-1h3a1 1 0 011 1v10h-5V9z",
   },
   {
