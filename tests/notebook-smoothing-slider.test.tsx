@@ -75,4 +75,39 @@ describe("the pen smoothing control", () => {
     expect(render(-20).slider.value).toBe("0");
     expect(render(400).slider.value).toBe("100");
   });
+
+  it("says which way the control runs", () => {
+    render(50);
+    expect(container.textContent).toContain("Every turn kept");
+    expect(container.textContent).toContain("Curves carried through");
+  });
+
+  it("fills the rail up to the thumb rather than to the edge", () => {
+    // The thumb's centre stops half a thumb short of either end, so a fill
+    // measured against the full width drifts away from it.
+    const filled = () =>
+      container.querySelector<HTMLElement>("[style*='clip-path']")?.style
+        .clipPath ?? "";
+
+    render(0);
+    expect(filled()).toContain("* 0)");
+    render(100);
+    expect(filled()).toContain("* 1)");
+    render(50);
+    expect(filled()).toContain("9px * 2");
+    expect(filled()).toContain("* 0.5)");
+  });
+
+  it("draws one rail the whole way across", () => {
+    render(50);
+    const rails = container.querySelectorAll("svg");
+    // A base rail and the filled copy over it, both spanning the full box.
+    expect(rails).toHaveLength(2);
+    for (const rail of rails) {
+      expect(rail.getAttribute("viewBox")).toBe("0 0 100 14");
+      const path = rail.querySelector("path")?.getAttribute("d") ?? "";
+      expect(path.startsWith("M0 ")).toBe(true);
+      expect(path.trimEnd().endsWith("100 7")).toBe(true);
+    }
+  });
 });

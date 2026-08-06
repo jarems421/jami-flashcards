@@ -41,17 +41,25 @@ const FAITHFUL: NotebookPenFeel = {
 };
 
 /**
- * The flowing end. Only a turn that is unmistakably a point is drawn as one,
- * and wobble is eased well down.
+ * The flowing end. Only a turn that is unmistakably a point is drawn as one.
  *
  * The corner ceiling is deliberately short of a right angle: past that, the
  * point of a `v` and the cusp between two joined letters stop being corners
  * and the pen starts refusing to go where it was taken, which is a worse
  * complaint than a slightly angular curve.
+ *
+ * The easing ceiling is low for the same reason, and it is the one that was
+ * got wrong first time round. Easing is the only part of this that moves the
+ * line off the points the pen visited, and it does so in proportion: measured
+ * on cursive at a 34px x-height, the line sits 0.11px off with none of it and
+ * 0.55px off at 0.62, which is felt as the pen resisting at every turn. What
+ * actually answers the joined-up-dots complaint is the corner threshold, and
+ * that costs no deviation at all -- so the corner threshold carries the range
+ * and easing stops at the light touch it has always had.
  */
 const FLOWING: NotebookPenFeel = {
   cornerDegrees: 62,
-  easeTowardsNeighbours: 0.62,
+  easeTowardsNeighbours: 0.34,
 };
 
 export function clampNotebookPenSmoothing(value: number) {
