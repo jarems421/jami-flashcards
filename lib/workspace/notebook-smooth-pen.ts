@@ -9,6 +9,11 @@ import type {
   Viewport,
 } from "js-draw";
 import type { JsDrawModule } from "@/lib/workspace/notebook-js-draw";
+import {
+  getNotebookPenFeel,
+  NOTEBOOK_PEN_SMOOTHING_DEFAULT,
+  type NotebookPenFeel,
+} from "@/lib/workspace/notebook-pen-feel";
 
 /**
  * A pen that draws the line the hand actually made.
@@ -87,20 +92,19 @@ const MAXIMUM_SPAN_RATIO = 24;
 const TANGENT_SCALE = 1 / 3;
 
 /**
- * How far a point may be eased towards the line between its neighbours.
+ * Easing is deliberately spatial rather than temporal. Smoothing the input
+ * harder would ease curves too, but by holding the ink back in time -- which is
+ * felt immediately as the pen being dragged, and was the magnetic complaint.
+ * Nudging the shape instead costs nothing in time: the ink is still drawn the
+ * instant the sample arrives, just a fraction kinder about where the hand
+ * wobbled.
  *
- * The lightest possible guidance, and deliberately spatial rather than
- * temporal. Smoothing the input harder would ease curves too, but by holding
- * the ink back in time -- which is felt immediately as the pen being dragged,
- * and was the magnetic complaint. Nudging the shape instead costs nothing in
- * time: the ink is still drawn the instant the sample arrives, just a fraction
- * kinder about where the hand wobbled.
- *
- * Kept small enough not to be noticed except side by side. Two points are
- * exempt on principle: the newest, so the line always ends exactly under the
- * pen, and any corner, so a deliberate point stays a point.
+ * Two points are exempt however far it is turned up: the newest, so the line
+ * always ends exactly under the pen, and any corner, so a deliberate point
+ * stays a point. How far the rest are eased, and how sharp a turn has to be
+ * before it counts as one of those corners, are the reader's to set --
+ * see `getNotebookPenFeel`.
  */
-const EASE_TOWARDS_NEIGHBOURS = 0.34;
 
 /**
  * How far a stroke may wander from the straight line between its ends and
@@ -135,8 +139,7 @@ const STRAIGHTEN_MAXIMUM_BACKTRACK = 0.12;
 const STRAIGHTEN_MINIMUM_SPAN_RATIO = 8;
 
 /**
- * How sharply the line must turn at a point before it is treated as a corner
- * rather than a curve, in degrees.
+ * The corner threshold is the reader's setting, but this is what it does.
  *
  * A Catmull-Rom spline is smooth *everywhere*, which sounds like what a pen
  * wants until you write joined-up. Handwriting is full of deliberate corners
@@ -148,11 +151,17 @@ const STRAIGHTEN_MINIMUM_SPAN_RATIO = 8;
  * At a corner the two tangents are taken from the strokes either side instead
  * of from the line through them, which lets the join come to a point. Curves
  * below the threshold are untouched, so a genuine curve stays seamless.
+ *
+ * Set it too low and the opposite complaint appears, which is the one this
+ * setting exists for: a small letter is a tight curve, tight enough that the
+ * line turns several degrees between one kept point and the next, and every one
+ * of those plain curves is then drawn as a point. Two corners in a row are
+ * joined by a straight chord, so a run of them is a run of chords -- writing
+ * that reads as joining up dots rather than flowing.
  */
-const CORNER_DEGREES = 35;
 
 /**
- * The shortest run the angle above may be measured over, in screen pixels.
+ * The shortest run the corner angle may be measured over, in screen pixels.
  *
  * An angle between two segments a pixel long is mostly the digitiser's noise:
  * half a pixel of wobble either side swings it through tens of degrees, so a
@@ -170,9 +179,11 @@ const CORNER_DEGREES = 35;
 const MINIMUM_CORNER_ARM_RATIO = MINIMUM_STEP_RATIO * 1.5;
 
 export function createNotebookSmoothPenStrokeFactory(
-  jsDraw: JsDrawModule
+  jsDraw: JsDrawModule,
+  feel: NotebookPenFeel = getNotebookPenFeel(NOTEBOOK_PEN_SMOOTHING_DEFAULT)
 ): ComponentBuilderFactory {
   const { PathCommandType, Rect2, Stroke, Vec2 } = jsDraw;
+  const { cornerDegrees, easeTowardsNeighbours } = feel;
 
   return (startPoint: StrokeDataPoint, viewport: Viewport): ComponentBuilder => {
     const color: Color4 = startPoint.color;
@@ -198,7 +209,7 @@ export function createNotebookSmoothPenStrokeFactory(
     const minimumCornerArm =
       viewport.getSizeOfPixelOnCanvas() * MINIMUM_CORNER_ARM_RATIO;
     /** Below this, the line has turned far enough to count as a corner. */
-    const cornerCosine = Math.cos((CORNER_DEGREES * Math.PI) / 180);
+    const cornerCosine = Math.cos((cornerDegrees * Math.PI) / 180);
     const points: Point2[] = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
     /**
      * The newest sample, held back one step.
@@ -244,7 +255,7 @@ export function createNotebookSmoothPenStrokeFactory(
      * are left alone too, since easing one is the same as rounding it off.
      */
     const easedShape = (shape: Point2[]) => {
-      if (shape.length < 3) return shape;
+      if (shape.length < 3 || easeTowardsNeighbours <= 0) return shape;
 
       const eased: Point2[] = [shape[0]];
       for (let index = 1; index < shape.length - 1; index += 1) {
@@ -266,7 +277,7 @@ export function createNotebookSmoothPenStrokeFactory(
                   .plus(next)
                   .times(0.5)
                   .minus(here)
-                  .times(EASE_TOWARDS_NEIGHBOURS)
+                  .times(easeTowardsNeighbours)
               )
         );
       }

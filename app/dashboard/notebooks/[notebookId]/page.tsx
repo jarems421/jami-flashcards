@@ -138,6 +138,11 @@ import {
   readNotebookScribbleErasePreference,
   saveNotebookScribbleErasePreference,
 } from "@/lib/workspace/notebook-toolbar";
+import {
+  clampNotebookPenSmoothing,
+  readNotebookPenSmoothingPreference,
+  saveNotebookPenSmoothingPreference,
+} from "@/lib/workspace/notebook-pen-feel";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 import {
   trackNotebookPdfCanvas,
@@ -300,6 +305,7 @@ export default function NotebookEditorPage() {
     eraserMenuOpen, setEraserMenuOpen,
     touchInkHintVisible, setTouchInkHintVisible,
     scribbleToErase, setScribbleToErase,
+    penSmoothingPercent, setPenSmoothingPercent,
   } = useNotebookDrawingToolState();
   const {
     pageZoom, setPageZoom, pagePan, setPagePan,
@@ -936,7 +942,8 @@ export default function NotebookEditorPage() {
 
   useEffect(() => {
     setScribbleToErase(readNotebookScribbleErasePreference());
-  }, [setScribbleToErase]);
+    setPenSmoothingPercent(readNotebookPenSmoothingPreference());
+  }, [setPenSmoothingPercent, setScribbleToErase]);
 
   useEffect(() => {
     if (!selectedPage) {
@@ -2541,6 +2548,13 @@ export default function NotebookEditorPage() {
               setPenThicknessPercent(clampNotebookThicknessPercent(value));
               switchNotebookTool("pen");
             },
+            smoothingPercent: penSmoothingPercent,
+            onSmoothingChange: (value) => {
+              const next = clampNotebookPenSmoothing(value);
+              setPenSmoothingPercent(next);
+              saveNotebookPenSmoothingPreference(next);
+              switchNotebookTool("pen");
+            },
             scribbleToErase,
             onScribbleToEraseChange: (enabled) => {
               setScribbleToErase(enabled);
@@ -2745,6 +2759,7 @@ export default function NotebookEditorPage() {
                       eraserMode,
                       scribbleToErase,
                       penColor,
+                      penSmoothing: penSmoothingPercent,
                       penThickness:
                         getPenWidthFromPercent(penThicknessPercent),
                       highlighterColor,

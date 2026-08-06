@@ -14,6 +14,11 @@ import {
 } from "@/lib/workspace/notebook-eraser";
 import { getNotebookInkColor } from "@/lib/workspace/notebook-ink-data";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
+import {
+  clampNotebookPenSmoothing,
+  getNotebookPenFeel,
+  NOTEBOOK_PEN_SMOOTHING_DEFAULT,
+} from "@/lib/workspace/notebook-pen-feel";
 
 export type JsDrawModule = typeof import("js-draw");
 
@@ -33,6 +38,8 @@ export type NotebookInkStyle = {
   highlighterThickness: number;
   penColor: NotebookStrokeColor;
   penThickness: number;
+  /** How much the pen tidies the line, 0 to 100. See `getNotebookPenFeel`. */
+  penSmoothing: number;
 };
 
 let jsDrawModulePromise: Promise<JsDrawModule> | null = null;
@@ -182,20 +189,25 @@ export function applyNotebookNibThickness(
 type StrokeShapeTool = "pen" | "highlighter";
 
 /**
- * Remembers which nib each pen tool is currently carrying.
+ * Remembers which nib each pen tool is currently carrying, and how it was
+ * tuned.
  *
  * `setStrokeFactory` has no getter, so without this the factory would be
  * rebuilt on every style application -- including mid-gesture ones, where
- * replacing the factory under an in-progress stroke is not worth risking.
+ * replacing the factory under an in-progress stroke is not worth risking. The
+ * smoothing is part of the key because changing it has to take effect on the
+ * next stroke, and only a new factory carries it.
  */
-const appliedStrokeShapes = new WeakMap<object, StrokeShapeTool>();
+const appliedStrokeShapes = new WeakMap<object, string>();
 
 export function applyNotebookStrokeShape(
   pen: JsDrawPenTool,
   tool: StrokeShapeTool,
-  jsDraw: JsDrawModule
+  jsDraw: JsDrawModule,
+  penSmoothing = NOTEBOOK_PEN_SMOOTHING_DEFAULT
 ) {
-  if (appliedStrokeShapes.get(pen) === tool) return;
+  const applied = `${tool}:${clampNotebookPenSmoothing(penSmoothing)}`;
+  if (appliedStrokeShapes.get(pen) === applied) return;
 
   /*
    * Hold still at the end of a stroke and a line snaps straight. js-draw
@@ -211,12 +223,15 @@ export function applyNotebookStrokeShape(
   pen.setStrokeFactory(
     tool === "highlighter"
       ? createNotebookChiselStrokeFactory(jsDraw)
-      : createNotebookSmoothPenStrokeFactory(jsDraw)
+      : createNotebookSmoothPenStrokeFactory(
+          jsDraw,
+          getNotebookPenFeel(penSmoothing)
+        )
   );
   if (pen.getStrokeAutocorrectionEnabled() !== straightenOnHold) {
     pen.setStrokeAutocorrectEnabled(straightenOnHold);
   }
-  appliedStrokeShapes.set(pen, tool);
+  appliedStrokeShapes.set(pen, applied);
 }
 
 export function applyNotebookInkStyle(
@@ -263,7 +278,12 @@ export function applyNotebookInkStyle(
   if (style.activeTool === "pen" || style.activeTool === "highlighter") {
     // Pen and highlighter share one js-draw tool, so the nib shape has to be
     // swapped with the tool rather than set once at startup.
-    applyNotebookStrokeShape(primaryPen, style.activeTool, jsDraw);
+    applyNotebookStrokeShape(
+      primaryPen,
+      style.activeTool,
+      jsDraw,
+      style.penSmoothing
+    );
     const selectedColor =
       style.activeTool === "highlighter"
         ? style.highlighterColor
@@ -296,7 +316,8 @@ export function areNotebookInkStylesEqual(
     left.highlighterColor === right.highlighterColor &&
     left.highlighterThickness === right.highlighterThickness &&
     left.penColor === right.penColor &&
-    left.penThickness === right.penThickness
+    left.penThickness === right.penThickness &&
+    left.penSmoothing === right.penSmoothing
   );
 }
 
