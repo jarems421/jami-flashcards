@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildSpacedRepetitionAnalytics } from "@/lib/study/analytics";
 import { getMemoryRiskInfo } from "@/lib/study/memory-risk";
-import type { Card } from "@/lib/decks/cards";
+import type { Card } from "@/lib/study/cards";
 
 const root = process.cwd();
 const read = (relativePath: string) =>
@@ -94,13 +94,33 @@ describe("the backlog is used, not counted at the student", () => {
 describe("home leads with the next step for everyone", () => {
   const source = read("app/dashboard/page.tsx");
 
-  it("puts the recommendation before the setup checklist", () => {
-    const recommendation = source.indexOf("<RecommendedActionCard");
-    const checklist = source.indexOf("<GettingStartedChecklist");
+  it("says the next step once, in the hero itself", () => {
+    /*
+     * The hero used to promise "your next study step" and a card below it
+     * announced "recommended next action" -- two eyebrows, two headings and
+     * two panels before a single instruction. The recommendation is the hero
+     * now, so the action is the first and largest thing on the page.
+     */
+    const hero = source.slice(
+      source.indexOf("<PageHero"),
+      source.indexOf("<GettingStartedChecklist")
+    );
 
-    expect(recommendation).toBeGreaterThan(-1);
-    expect(checklist).toBeGreaterThan(-1);
-    expect(recommendation).toBeLessThan(checklist);
+    expect(hero).toContain("todayPlan.nextAction.title");
+    expect(hero).toContain("todayPlan.nextAction.href");
+    expect(source).not.toContain("RecommendedActionCard");
+    expect(source).not.toContain("Recommended next action");
+    expect(source).not.toContain("Your next study step");
+  });
+
+  it("separates the one recommendation from everything else", () => {
+    // Without a break the page was a flat stack of equal cards, so the step
+    // Jami recommends competed with everything it merely noticed.
+    const checklist = source.indexOf("<GettingStartedChecklist");
+    const alsoToday = source.indexOf('title="Also today"');
+
+    expect(alsoToday).toBeGreaterThan(checklist);
+    expect(source).toContain("hasSecondaryTier");
   });
 
   it("stops setup at the first review, so it can finish", () => {
@@ -129,6 +149,8 @@ describe("home leads with the next step for everyone", () => {
     // The counters are the returning student's; on day one there is nothing to
     // count and a pair of noughts is a poor first thing to see.
     expect(source).toContain("!hasStudyMaterial || isLoading ? undefined :");
-    expect(source).toMatch(/hasStudyMaterial[\s\S]{0,120}Welcome back/);
+    // And the greeting knows which of the two it is talking to.
+    expect(source).toContain("`Welcome, ${inAppUsername}`");
+    expect(source).toContain("`Today, ${inAppUsername}`");
   });
 });
