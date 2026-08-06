@@ -974,13 +974,23 @@
 }
 
 @layer components {
+  /*
+   * The halo and its sparks are sized entirely from the mark they surround, so
+   * the same treatment works at the 2.75rem mark on the sign-in screen and at
+   * the much larger one the app opens on. Every offset and blur below is a
+   * fraction of `--brand-halo-size`; the default reproduces the sign-in screen
+   * exactly, and the opening screen overrides it to match `BrandMark`'s
+   * `launch` size.
+   */
   .login-brand-halo {
+    --brand-halo-size: 2.75rem;
+
     display: grid;
-    height: 2.75rem;
+    height: var(--brand-halo-size);
     isolation: isolate;
     place-items: center;
     position: relative;
-    width: 2.75rem;
+    width: var(--brand-halo-size);
   }
 
   .login-brand-halo::before {
@@ -992,8 +1002,8 @@
     );
     border-radius: 999px;
     content: "";
-    filter: blur(5px);
-    inset: -1.05rem;
+    filter: blur(calc(var(--brand-halo-size) * 0.114));
+    inset: calc(var(--brand-halo-size) * -0.382);
     position: absolute;
     z-index: -1;
   }
@@ -1012,34 +1022,36 @@
       0% 50%,
       41% 41%
     );
-    filter: drop-shadow(0 0 3px rgba(255, 223, 115, 0.62));
+    filter: drop-shadow(
+      0 0 calc(var(--brand-halo-size) * 0.068) rgba(255, 223, 115, 0.62)
+    );
     opacity: var(--login-brand-spark-opacity);
     position: absolute;
   }
 
   .login-brand-spark-one {
-    height: 0.55rem;
-    right: -0.7rem;
-    top: -0.55rem;
-    width: 0.55rem;
+    height: calc(var(--brand-halo-size) * 0.2);
+    right: calc(var(--brand-halo-size) * -0.255);
+    top: calc(var(--brand-halo-size) * -0.2);
+    width: calc(var(--brand-halo-size) * 0.2);
   }
 
   .login-brand-spark-two {
     --login-brand-spark-opacity: 0.82;
 
-    bottom: -0.6rem;
-    height: 0.32rem;
-    left: -0.6rem;
-    width: 0.32rem;
+    bottom: calc(var(--brand-halo-size) * -0.218);
+    height: calc(var(--brand-halo-size) * 0.116);
+    left: calc(var(--brand-halo-size) * -0.218);
+    width: calc(var(--brand-halo-size) * 0.116);
   }
 
   .login-brand-spark-three {
     --login-brand-spark-opacity: 0.66;
 
-    height: 0.22rem;
-    left: -0.45rem;
-    top: -0.35rem;
-    width: 0.22rem;
+    height: calc(var(--brand-halo-size) * 0.08);
+    left: calc(var(--brand-halo-size) * -0.164);
+    top: calc(var(--brand-halo-size) * -0.127);
+    width: calc(var(--brand-halo-size) * 0.08);
   }
 
   @media (prefers-reduced-motion: no-preference) {

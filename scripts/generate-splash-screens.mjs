@@ -27,8 +27,61 @@ const BACKGROUND = "#100719";
  */
 const MARK_RATIO = 0.26;
 
+/**
+ * The corner radius of the mark, as a fraction of its size.
+ *
+ * The source icon is a full square whose corners are painted very nearly black
+ * rather than left transparent. Composited straight onto the launch background
+ * those corners read as a hard black box around the mark -- the whole reason
+ * the opening looked blocky -- so they are masked away at the radius the
+ * artwork is already drawn to. Apple's own icon grid is 22.37%.
+ */
+const CORNER_RATIO = 0.2237;
+
+/**
+ * How far the glow reaches past the mark, and how strong it is at the mark's
+ * edge.
+ *
+ * The app's own opening screen puts the same warm halo behind the mark -- see
+ * `.login-brand-halo`, whose spread is 38% of the mark either side -- so the
+ * launch image is not a plainer version of the screen that replaces it.
+ */
+const GLOW_RATIO = 0.38;
+const GLOW_OPACITY = 0.22;
+
 const SOURCE_ICON = join(process.cwd(), "public", "icons", "icon-512.png");
 const OUTPUT_DIR = join(process.cwd(), "public", "splash");
+
+/** A rounded rectangle used as an alpha mask, at the mark's own radius. */
+function cornerMask(size) {
+  const radius = Math.round(size * CORNER_RATIO);
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">` +
+      `<rect width="${size}" height="${size}" rx="${radius}" ry="${radius}" fill="#fff"/>` +
+      `</svg>`
+  );
+}
+
+/**
+ * The warm halo, drawn a good deal larger than the mark and faded to nothing
+ * well inside its own edge so it never ends on a visible ring.
+ */
+function glow(size) {
+  const centre = size / 2;
+  return Buffer.from(
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}">` +
+      `<defs><radialGradient id="g">` +
+      `<stop offset="0%" stop-color="#ffefaa" stop-opacity="${GLOW_OPACITY}"/>` +
+      `<stop offset="42%" stop-color="#eadbff" stop-opacity="${(
+        GLOW_OPACITY * 0.68
+      ).toFixed(3)}"/>` +
+      `<stop offset="72%" stop-color="#eadbff" stop-opacity="0"/>` +
+      `<stop offset="100%" stop-color="#eadbff" stop-opacity="0"/>` +
+      `</radialGradient></defs>` +
+      `<circle cx="${centre}" cy="${centre}" r="${centre}" fill="url(#g)"/>` +
+      `</svg>`
+  );
+}
 
 /**
  * The same list the markup points iOS at, so an image cannot exist without a
@@ -40,8 +93,13 @@ const { devices: DEVICES } = (
 
 async function writeSplash({ name, pixelWidth, pixelHeight, orientation }) {
   const markSize = Math.round(Math.min(pixelWidth, pixelHeight) * MARK_RATIO);
+  const glowSize = Math.round(markSize * (1 + GLOW_RATIO * 2));
   const mark = await sharp(SOURCE_ICON)
     .resize(markSize, markSize, { fit: "contain", background: BACKGROUND })
+    // Keep only what falls inside the mark's rounded corners, so the artwork's
+    // near-black square corners cannot sit as a box on the launch background.
+    .composite([{ input: cornerMask(markSize), blend: "dest-in" }])
+    .png()
     .toBuffer();
 
   const image = await sharp({
@@ -52,11 +110,16 @@ async function writeSplash({ name, pixelWidth, pixelHeight, orientation }) {
       background: BACKGROUND,
     },
   })
-    .composite([{ input: mark, gravity: "centre" }])
-    // A flat background behind one mark needs nowhere near full colour. As
+    .composite([
+      { input: glow(glowSize), gravity: "centre" },
+      { input: mark, gravity: "centre" },
+    ])
+    // A flat background behind one mark needs nowhere near full colour, and as
     // truecolour the set came to 7.9MB of repository and of every device's
-    // cache; as a palette it is a fraction of that and looks identical.
-    .png({ compressionLevel: 9, palette: true })
+    // cache. The glow is a wide, very shallow gradient though, which is exactly
+    // what a 256-colour palette bands into visible rings, so it is given the
+    // full palette and sharp's dithering to spend it well.
+    .png({ compressionLevel: 9, palette: true, colours: 256, dither: 1 })
     .toBuffer();
 
   const fileName = `${name}-${orientation}.png`;
