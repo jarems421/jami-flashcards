@@ -2,6 +2,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
+  APP_THEME_BOOTSTRAP_SCRIPT,
   APP_THEME_CLASS_NAMES,
   APP_THEME_OPTIONS,
   getActiveAppThemeClassNames,
@@ -185,5 +186,70 @@ describe("every theme survives the Tailwind content scan", () => {
     for (const className of APP_THEME_CLASS_NAMES) {
       expect(APP_THEME_SAFELIST, className).toContain(className);
     }
+  });
+});
+
+/**
+ * The theme class is applied from an effect, which runs after the first paint.
+ * That meant every load painted the default navy and swapped to the chosen
+ * theme a frame later -- seen on the opening screen as the whole background
+ * changing colour under the mark, as though there were two loading screens.
+ * A blocking script in the head stamps it before anything is painted.
+ */
+describe("the theme is on the document before the first paint", () => {
+  const layout = readFileSync(join(root, "app/layout.tsx"), "utf8");
+
+  it("runs the bootstrap blocking in the head", () => {
+    expect(layout).toContain("APP_THEME_BOOTSTRAP_SCRIPT");
+    // Anything async or deferred lands after the paint it is there to beat.
+    expect(layout).not.toMatch(/APP_THEME_BOOTSTRAP_SCRIPT[\s\S]{0,200}defer/);
+    expect(layout).not.toMatch(/APP_THEME_BOOTSTRAP_SCRIPT[\s\S]{0,200}async/);
+  });
+
+  it("stamps exactly what the effect would, for every theme", () => {
+    for (const option of APP_THEME_OPTIONS) {
+      for (const className of getActiveAppThemeClassNames(option.value)) {
+        expect(APP_THEME_BOOTSTRAP_SCRIPT, option.value).toContain(className);
+      }
+    }
+  });
+
+  it("survives storage being unavailable rather than blanking the page", () => {
+    const run = (storage: unknown) => {
+      const classes: string[] = [];
+      const documentStub = {
+        documentElement: {
+          classList: { add: (...added: string[]) => classes.push(...added) },
+        },
+      };
+      new Function(
+        "window",
+        "document",
+        APP_THEME_BOOTSTRAP_SCRIPT
+      )({ localStorage: storage }, documentStub);
+      return classes;
+    };
+
+    // A stored theme is used, including the retired one folded into purple.
+    expect(run({ getItem: () => "paper-white" })).toEqual(
+      getActiveAppThemeClassNames("paper-white")
+    );
+    expect(run({ getItem: () => "purple-pink" })).toEqual(
+      getActiveAppThemeClassNames("purple")
+    );
+    // Nothing stored, nonsense stored, and storage that throws all fall back.
+    expect(run({ getItem: () => null })).toEqual(
+      getActiveAppThemeClassNames("normal")
+    );
+    expect(run({ getItem: () => "chartreuse" })).toEqual(
+      getActiveAppThemeClassNames("normal")
+    );
+    expect(
+      run({
+        getItem: () => {
+          throw new Error("denied");
+        },
+      })
+    ).toEqual([]);
   });
 });
