@@ -222,7 +222,9 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
         )}
       </div>
       <div className="mt-5">
-        <ActionPill href={plan.drafts[0]?.href ?? "/dashboard/progress"} variant="secondary">Review drafts</ActionPill>
+        {/* The queue has a home now. This used to guess at the first draft's own
+            source and fall back to Progress, which has nothing to do with drafts. */}
+        <ActionPill href="/dashboard/tutor" variant="secondary">Review drafts</ActionPill>
       </div>
     </Card>
   );
