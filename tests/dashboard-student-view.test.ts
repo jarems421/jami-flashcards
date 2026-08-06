@@ -145,6 +145,24 @@ describe("home leads with the next step for everyone", () => {
     );
   });
 
+  it("does not put the streak on the page you arrive at before studying", () => {
+    /*
+     * A streak only works as a reward for what you did. Home is opened before
+     * studying, so there it could never congratulate -- only warn about what
+     * was at risk, in the same loss framing the overdue count was removed for.
+     * It now appears on the session summary, where it has just been earned.
+     */
+    expect(source).not.toContain("StreakPredictionPanel");
+    expect(source).not.toContain("predictStudyStreak");
+
+    const study = read("app/dashboard/study/page.tsx");
+    expect(study).toContain("computeStudyStreak");
+    // "days running" rather than a streak at risk of being lost.
+    expect(study).toMatch(/day\{[^}]*\}\s*running/);
+    // Only for a session that actually reviewed something.
+    expect(study).toContain("reviewedThisSession === 0");
+  });
+
   it("does not welcome a first-time student back, or show them two zeros", () => {
     // The counters are the returning student's; on day one there is nothing to
     // count and a pair of noughts is a poor first thing to see.
