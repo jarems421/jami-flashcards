@@ -129,21 +129,85 @@ describe("the sidebar", () => {
     }
   });
 
-  it("gives the tutor an icon of its own", () => {
+  it("keeps a drawable fallback behind the tutor's drawn mark", () => {
     const byLabel = new Map(tabs.map((tab) => [tab.label, tab.icon]));
     const tutor = byLabel.get("Tutor") ?? "";
 
-    // It inherited the shelf icon from the Sources entry it replaced. A tutor
-    // is asked, so it is a speech bubble with Jami's own sparkle cut out of it.
+    // Jami is drawn by a component, but the path stays required so no entry is
+    // ever shapeless -- it inherited the shelf icon from the Sources entry it
+    // replaced, and that is what a fallback must not go back to.
     expect(tutor).not.toBe(byLabel.get("Flashcards"));
-    // Two subpaths: the bubble, and the star knocked out by the evenodd rule
-    // the icon is drawn with.
-    expect(tutor.match(/z/gi)).toHaveLength(2);
     expect(tabBar).toContain('fillRule="evenodd"');
   });
 
   it("gives no two entries the same icon", () => {
     const icons = tabs.map((tab) => tab.icon);
     expect(new Set(icons).size).toBe(icons.length);
+  });
+});
+
+/**
+ * The tutor is a person, not a glyph, so its mark is a drawing rather than one
+ * path string. Everywhere the tutor is offered shows the same face -- a student
+ * should recognise who they are about to talk to before they read the label.
+ */
+describe("Jami's own mark", () => {
+  const icon = readFileSync(
+    join(process.cwd(), "components/ui/JamiTutorIcon.tsx"),
+    "utf8"
+  );
+
+  it("carries the cap, the glasses, the smile, the braids and the star", () => {
+    expect(icon).toMatch(/mortarboard/i);
+    expect(icon).toMatch(/tassel/i);
+    expect(icon).toMatch(/glasses/i);
+    expect(icon).toMatch(/smile/i);
+    expect(icon).toMatch(/braid/i);
+    expect(icon).toMatch(/star/i);
+    // Two lenses and two runs of braids, one each side.
+    expect(icon.match(/cx="1?[0-9.]+"/g)?.length).toBeGreaterThanOrEqual(4);
+  });
+
+  it("takes the colour of whatever offers it", () => {
+    expect(icon).toContain('stroke="currentColor"');
+    expect(icon).not.toMatch(/#[0-9a-f]{3,6}/i);
+  });
+
+  it("stays open at small sizes", () => {
+    // Strokes for the parts with holes in them, fills only for the beads and
+    // the star, which have no middle left to show at a sidebar's size.
+    expect(icon).toContain('fill="none"');
+    expect(icon).toMatch(/fill="currentColor"\s+stroke="none"/);
+  });
+
+  it("is the sidebar's tutor icon, drawn rather than pathed", () => {
+    expect(tabBar).toContain("iconComponent: JamiTutorIcon");
+    expect(tabBar).toContain("if (tab.iconComponent)");
+  });
+
+  it("is used at every place the tutor is offered", () => {
+    const surfaces = [
+      "components/ai/JamiAssistantDrawer.tsx",
+      "app/dashboard/study/page.tsx",
+      "components/library/SourceWorkspace.tsx",
+      "components/workspace/NotebookToolbarIconButton.tsx",
+      "app/dashboard/tutor/page.tsx",
+    ];
+
+    for (const surface of surfaces) {
+      const source = readFileSync(join(process.cwd(), surface), "utf8");
+      expect(source, surface).toContain("JamiTutorIcon");
+      expect(source, surface).not.toContain("JamiSparklesIcon");
+    }
+  });
+
+  it("leaves the sparkle to the features that are not the tutor", () => {
+    // Card-back autocomplete is a different piece of AI, and saying it is Jami
+    // would promise a conversation that is not there.
+    const autocomplete = readFileSync(
+      join(process.cwd(), "components/decks/CardBackAutocomplete.tsx"),
+      "utf8"
+    );
+    expect(autocomplete).toContain("JamiSparklesIcon");
   });
 });

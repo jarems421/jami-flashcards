@@ -15,6 +15,7 @@ export { default as EmptyState } from "./EmptyState";
 export { default as FeedbackBanner } from "./FeedbackBanner";
 export { default as IconBubble } from "./IconBubble";
 export { default as Input } from "./Input";
+export { default as JamiTutorIcon } from "./JamiTutorIcon";
 export { default as JamiSparklesIcon } from "./JamiSparklesIcon";
 export { default as PageHero } from "./PageHero";
 export { default as Textarea } from "./Textarea";

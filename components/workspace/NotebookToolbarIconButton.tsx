@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { JamiSparklesIcon } from "@/components/ui";
+import { JamiTutorIcon } from "@/components/ui";
 
 export type NotebookIconName =
   | "back"
@@ -25,7 +25,7 @@ export type NotebookIconName =
 // caps/joins, and shared optical margins, so the set reads as one family.
 export function NotebookIcon({ name }: { name: NotebookIconName }) {
   if (name === "ai") {
-    return <JamiSparklesIcon className="h-[1.125rem] w-[1.125rem]" />;
+    return <JamiTutorIcon className="h-[1.25rem] w-[1.25rem]" />;
   }
 
   const common = {

@@ -15,7 +15,7 @@ import {
   DialogBackdrop,
   DialogPanel,
   DialogTitle,
-  JamiSparklesIcon,
+  JamiTutorIcon,
 } from "@/components/ui";
 import styles from "./SourceWorkspace.module.css";
 
@@ -102,7 +102,7 @@ export function SourceActionIcon({
   className?: string;
 }) {
   if (name === "sparkles") {
-    return <JamiSparklesIcon className={className} />;
+    return <JamiTutorIcon className={className} />;
   }
 
   const paths: Record<Exclude<SourceActionIconName, "sparkles">, ReactNode> = {

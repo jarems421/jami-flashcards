@@ -37,7 +37,7 @@ import {
   DialogBackdrop,
   DialogPanel,
   DialogTitle,
-  JamiSparklesIcon,
+  JamiTutorIcon,
   StudyText,
 } from "@/components/ui";
 
@@ -543,7 +543,7 @@ export default function JamiAssistantDrawer({
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-accent/20 bg-accent/10 text-accent">
-                <JamiSparklesIcon className="h-[1.1rem] w-[1.1rem]" />
+                <JamiTutorIcon className="h-[1.35rem] w-[1.35rem]" />
               </div>
               <div className="min-w-0">
                 <DialogTitle className="text-base font-semibold leading-tight text-text-primary">

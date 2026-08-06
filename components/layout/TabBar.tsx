@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import type { ComponentType } from "react";
+import { JamiTutorIcon } from "@/components/ui";
 import { usePathname } from "next/navigation";
 import { type TouchEvent, useEffect, useRef, useState } from "react";
 import { BrandMark, IconBubble } from "@/components/ui";
@@ -31,6 +33,12 @@ type Tab = {
    * sidebar tells them they are nowhere.
    */
   owns?: string[];
+  /**
+   * A drawn mark, for an entry whose icon is a character rather than a glyph.
+   * Takes precedence over `icon`, which stays required so every entry has a
+   * shape even while one is being swapped.
+   */
+  iconComponent?: ComponentType<{ className?: string }>;
   iconMode?: "fill" | "stroke";
 };
 
@@ -83,6 +91,7 @@ const tabs: Tab[] = [
   {
     href: "/dashboard/tutor",
     owns: ["/dashboard/library"],
+    iconComponent: JamiTutorIcon,
     label: "Tutor",
     description: "Ask Jami, review drafts",
     group: "loop",
@@ -127,6 +136,12 @@ function isActive(pathname: string, tab: Tab) {
 
 function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
   const strokeIcon = tab.iconMode === "stroke";
+  const sizing = `h-5 w-5 transition duration-fast ${active ? "opacity-100" : "opacity-75"}`;
+
+  if (tab.iconComponent) {
+    const Icon = tab.iconComponent;
+    return <Icon className={sizing} />;
+  }
 
   return (
     <svg
@@ -137,7 +152,7 @@ function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
       strokeLinecap={strokeIcon ? "round" : undefined}
       strokeLinejoin={strokeIcon ? "round" : undefined}
       aria-hidden="true"
-      className={`h-5 w-5 transition duration-fast ${active ? "opacity-100" : "opacity-75"}`}
+      className={sizing}
     >
       {(typeof tab.icon === "string" ? [tab.icon] : tab.icon).map((shape) => (
         <path
