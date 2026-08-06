@@ -76,22 +76,37 @@ describe("the pen smoothing control", () => {
     expect(render(400).slider.value).toBe("100");
   });
 
-  it("runs one rail the whole way across, with the travelled part filled", () => {
+  it("runs the wave the whole way across, at one height", () => {
     render(50);
-    const rails = container.querySelectorAll<HTMLElement>("[aria-hidden='true']");
+    const rails = container.querySelectorAll("svg");
     expect(rails).toHaveLength(2);
 
-    // The base rail spans the control end to end.
-    expect(rails[0].className).toContain("inset-x-0");
-    // The filled part starts at the same left edge and stops at the thumb.
-    expect(rails[1].className).toContain("left-0");
-    expect(rails[1].style.width).toContain("9px");
+    for (const rail of rails) {
+      expect(rail.className.baseVal).toContain("w-full");
+      const path = rail.querySelector("path")?.getAttribute("d") ?? "";
+      // Starts at the very left and finishes on the very right, so the thumb
+      // never runs off the end of it.
+      expect(path.startsWith("M0 7")).toBe(true);
+      expect(path.trimEnd().endsWith("100 7")).toBe(true);
+
+      // Every peak reaches the same height, sharp ones and rounded ones alike:
+      // a wave that tapers off looks like a rail that stops partway.
+      const peaks = [...path.matchAll(/[LQ](\d+(?:\.\d+)?) (-?\d+(?:\.\d+)?)/g)]
+        .map((match) => Number(match[2]))
+        .filter((y) => y !== 7);
+      expect(peaks.length).toBeGreaterThanOrEqual(8);
+      // Sharp peaks sit at the height itself; rounded ones put their control
+      // twice as far out to reach it.
+      for (const y of peaks) expect([3, 11, -1, 15]).toContain(y);
+      expect(peaks).toContain(3);
+      expect(peaks).toContain(-1);
+    }
   });
 
   it("fills up to the thumb rather than to the edge", () => {
     const fill = () =>
-      container.querySelectorAll<HTMLElement>("[aria-hidden='true']")[1].style
-        .width;
+      container.querySelector<HTMLElement>("[style*='clip-path']")?.style
+        .clipPath ?? "";
 
     render(50);
     const midway = fill();

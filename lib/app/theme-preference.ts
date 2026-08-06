@@ -113,6 +113,32 @@ export function readAppThemePreference(): AppThemePreference {
   return "normal";
 }
 
+/**
+ * Stamps the stored theme on the document before anything is painted.
+ *
+ * The theme class is otherwise applied from an effect, which runs after the
+ * first paint -- so every single load painted the default navy and swapped to
+ * the chosen theme a frame later. On the opening screen that is the whole
+ * screen changing colour under the mark, which reads as a second loading
+ * screen rather than as one.
+ *
+ * Built from the same options and class rules the effect uses, so the two
+ * cannot drift apart, and wrapped in a try so a browser refusing storage falls
+ * through to the default rather than leaving the page blank.
+ */
+export const APP_THEME_BOOTSTRAP_SCRIPT = `(function(){try{var c=${JSON.stringify(
+  Object.fromEntries(
+    APP_THEME_OPTIONS.map((option) => [
+      option.value,
+      getActiveAppThemeClassNames(option.value),
+    ])
+  )
+)},s=window.localStorage,t=s.getItem(${JSON.stringify(
+  APP_THEME_STORAGE_KEY
+)})||s.getItem(${JSON.stringify(
+  LEGACY_APP_BACKGROUND_STORAGE_KEY
+)});if(t==="purple-pink")t="purple";document.documentElement.classList.add.apply(document.documentElement.classList,c[t]||c.normal)}catch(e){}})();`;
+
 export function saveAppThemePreference(value: AppThemePreference) {
   try {
     localStorage.setItem(APP_THEME_STORAGE_KEY, value);

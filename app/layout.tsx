@@ -9,6 +9,7 @@ const nunitoSans = Nunito_Sans({
 import ConstellationBackgroundShell from "@/components/constellation/ConstellationBackgroundShell";
 import PwaBootstrap from "@/components/layout/PwaBootstrap";
 import { getLaunchScreenLinks } from "@/lib/app/launch-screens";
+import { APP_THEME_BOOTSTRAP_SCRIPT } from "@/lib/app/theme-preference";
 import OfflineBanner from "@/components/layout/OfflineBanner";
 import "./globals.css";
 
@@ -52,7 +53,17 @@ export default function RootLayout({
     <html
       lang="en"
       className={`${nunitoSans.variable} h-full antialiased`}
+      // The theme class below is stamped on before React sees the document.
+      suppressHydrationWarning
     >
+      <head>
+        {/* Blocking on purpose: the stored theme has to be on the document
+            before the first paint, or the app opens on the default background
+            and changes colour a frame later. */}
+        <script
+          dangerouslySetInnerHTML={{ __html: APP_THEME_BOOTSTRAP_SCRIPT }}
+        />
+      </head>
       <body className="min-h-full bg-surface-base text-text-primary">
         <PwaBootstrap />
         <OfflineBanner />
