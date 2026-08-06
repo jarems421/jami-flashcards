@@ -35,7 +35,12 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#100719",
+  /*
+   * The status bar while the app opens, so it matches the launch colour rather
+   * than framing it in the purple theme's background. Once a page is up, the
+   * notebook editor replaces this with the surface actually in use.
+   */
+  themeColor: "#040827",
 };
 
 export default function RootLayout({

@@ -126,12 +126,12 @@ export default function Home() {
          */
         className="fixed inset-0 grid place-items-center overflow-hidden bg-[var(--app-background)] text-text-primary"
       >
-        {/* Drawn at the size and place the launch image iOS shows first draws
-            it, so one hands over to the other without appearing to move. The
-            halo is sized from the mark, so it is the same treatment the
-            sign-in screen gives it rather than a second one. */}
+        {/* The only place the mark appears while the app opens: the launch
+            image iOS shows first is a flat colour, so this is not handing over
+            from a second one. The halo is sized from the mark, so it is the
+            same treatment the sign-in screen gives it rather than a new one. */}
         <div
-          className="login-brand-halo [--brand-halo-size:min(26vw,26vh)]"
+          className="login-brand-halo [--brand-halo-size:clamp(4.5rem,min(16vw,16vh),8rem)]"
           aria-hidden="true"
         >
           <span className="login-brand-spark login-brand-spark-one" />

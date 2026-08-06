@@ -40,28 +40,30 @@ describe("notebook eraser helpers", () => {
     expect(getNotebookEraserModeValue("stroke")).toBe("full-stroke");
   });
 
-  it("maps every UI size to a matching circular precision footprint", () => {
+  it("erases at the chosen size in both modes", () => {
+    // The two modes answer the same three size buttons, so a button that meant
+    // 76px with one mode selected and 30px with the other made the size read
+    // as part of the mode rather than as its own choice.
     expect(NOTEBOOK_ERASER_THICKNESS_BY_SIZE).toEqual({
       small: 36,
       medium: 56,
       large: 76,
     });
-    expect(getNotebookEraserCursorDiameter("precision", 36)).toBeCloseTo(14.4);
-    expect(getNotebookEraserCursorDiameter("precision", 56)).toBeCloseTo(22.4);
-    expect(getNotebookEraserCursorDiameter("precision", 76)).toBeCloseTo(30.4);
-    for (const thickness of Object.values(
-      NOTEBOOK_ERASER_THICKNESS_BY_SIZE
-    )) {
-      expect(getNotebookEraserToolThickness("precision", thickness)).toBe(
-        getNotebookEraserCursorDiameter("precision", thickness)
-      );
+    for (const thickness of Object.values(NOTEBOOK_ERASER_THICKNESS_BY_SIZE)) {
+      expect(getNotebookEraserCursorDiameter(thickness)).toBe(thickness);
+      expect(getNotebookEraserToolThickness(thickness)).toBe(thickness);
     }
-    expect(getNotebookEraserCursorDiameter("stroke", 56)).toBe(56);
-    expect(getNotebookEraserToolThickness("stroke", 56)).toBe(56);
+  });
+
+  it("keeps a graspable tip whatever it is handed", () => {
+    expect(getNotebookEraserCursorDiameter(1)).toBe(12);
+    expect(getNotebookEraserCursorDiameter(0)).toBe(12);
+    expect(getNotebookEraserCursorDiameter(Number.NaN)).toBe(12);
+    expect(getNotebookEraserCursorDiameter(5_000)).toBe(200);
   });
 
   it("converts visible edge contact into zoom-invariant canvas geometry", () => {
-    const diameter = getNotebookEraserCursorDiameter("precision", 56);
+    const diameter = getNotebookEraserCursorDiameter(56);
     const atFit = getNotebookPrecisionEraserContactRadiusOnCanvas({
       cursorDiameter: diameter,
       strokeWidth: 4,
@@ -85,10 +87,7 @@ describe("notebook eraser helpers", () => {
     for (const thickness of Object.values(
       NOTEBOOK_ERASER_THICKNESS_BY_SIZE
     )) {
-      const diameter = getNotebookEraserCursorDiameter(
-        "precision",
-        thickness
-      );
+      const diameter = getNotebookEraserCursorDiameter(thickness);
       for (const strokeWidth of [2, 4, 6, 10]) {
         const contactRadius =
           getNotebookPrecisionEraserContactRadiusOnCanvas({

@@ -10,15 +10,16 @@ const sizeClasses: Record<BrandMarkSize, string> = {
   md: "h-9 w-9",
   lg: "h-11 w-11",
   /**
-   * The size the launch screen draws it at.
+   * The size the app's own opening screen draws it at.
    *
-   * A share of the shorter side rather than a fixed size, because that is how
-   * `scripts/generate-splash-screens.mjs` places it in the image iOS shows
-   * first. Matching the two means the app's own opening screen takes over from
-   * that image without the mark appearing to move or resize. Changing this
-   * without changing `MARK_RATIO` there puts the jump back.
+   * It no longer has to agree with anything: the iOS launch image is a flat
+   * colour now, so this is the only place the mark appears while the app opens
+   * and it can be sized to look right rather than to match a picture. A share
+   * of the shorter side keeps it proportional, bounded at both ends so it is
+   * neither lost on a phone nor a slab on a desktop.
    */
-  launch: "h-[min(26vw,26vh)] w-[min(26vw,26vh)]",
+  launch:
+    "h-[clamp(4.5rem,min(16vw,16vh),8rem)] w-[clamp(4.5rem,min(16vw,16vh),8rem)]",
 };
 
 export default function BrandMark({ size = "md", className = "" }: BrandMarkProps) {
