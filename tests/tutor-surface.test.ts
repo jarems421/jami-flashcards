@@ -7,6 +7,13 @@ import {
   TUTOR_TITLE,
   TUTOR_VIEWS,
 } from "@/lib/app/tutor-views";
+import {
+  describeDraftCounts,
+  getDraftPreview,
+  groupTutorDrafts,
+} from "@/lib/app/tutor-drafts";
+import type { GeneratedContentDraft } from "@/lib/material/generated-content";
+import type { Source } from "@/lib/material/sources";
 
 const root = process.cwd();
 const read = (relativePath: string) =>
@@ -37,7 +44,7 @@ describe("the drafts queue has a home", () => {
 
   it("says which source to open, and can open it", () => {
     // A queue you cannot act on is only a reminder.
-    expect(tutorPage).toContain("groupDraftsBySource");
+    expect(tutorPage).toContain("groupTutorDrafts");
     expect(tutorPage).toContain("getSourcePanelHref");
     expect(getSourcePanelHref("abc", "drafts")).toBe(
       "/dashboard/library?source=abc&panel=drafts"
@@ -117,12 +124,98 @@ describe("it does not promise Jami a memory it does not have", () => {
   });
 
   it("says plainly that Jami reads what it is given, when it is asked", () => {
-    expect(tutorPage).toContain("Jami reads what you choose, when you ask.");
-    expect(tutorPage).toMatch(/does not read anything on its own/i);
-    expect(tutorPage).toMatch(/keeps nothing between conversations/i);
+    // Two short lines beside the offer rather than a paragraph inside it: a
+    // wall of prose about what Jami does not retain is skipped exactly when it
+    // matters, which is the first visit.
+    expect(tutorPage).toMatch(/Reads only what you hand it/i);
+    expect(tutorPage).toMatch(/Keeps nothing between conversations/i);
+    expect(tutorPage).toMatch(/for that conversation only/i);
   });
 
   it("keeps the student as the one who approves what Jami writes", () => {
     expect(tutorPage).toMatch(/until you have read it and said yes/i);
+  });
+});
+
+/**
+ * A queue that only counts is a reminder rather than something to act on: two
+ * rows reading "4 drafts" say nothing about which to open first.
+ */
+describe("the queue says what is in it", () => {
+  const source = (id: string, title: string) =>
+    ({ id, title, type: "file", folderIds: [], topicIds: [] }) as unknown as Source;
+
+  const draft = (over: Partial<GeneratedContentDraft>) =>
+    ({
+      id: "d1",
+      kind: "flashcard",
+      title: "Untitled",
+      topicIds: [],
+      origin: "ai",
+      contentStatus: "draft",
+      createdAt: 0,
+      updatedAt: 0,
+      ...over,
+    }) as GeneratedContentDraft;
+
+  it("shows the first draft's own words", () => {
+    const groups = groupTutorDrafts(
+      [
+        draft({ id: "a", sourceId: "s1", front: "What is a matrix?" }),
+        draft({ id: "b", sourceId: "s1", front: "Define orthogonality" }),
+      ],
+      [source("s1", "Linear algebra notes")]
+    );
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].title).toBe("Linear algebra notes");
+    expect(groups[0].preview).toBe("What is a matrix?");
+  });
+
+  it("reads a practice question from its question, not its front", () => {
+    expect(
+      getDraftPreview(
+        draft({ kind: "practice-question", questionText: "Multiply these matrices." })
+      )
+    ).toBe("Multiply these matrices.");
+  });
+
+  it("counts the two kinds separately, and says neither when there are none", () => {
+    const [group] = groupTutorDrafts(
+      [
+        draft({ id: "a", sourceId: "s1" }),
+        draft({ id: "b", sourceId: "s1", kind: "practice-question" }),
+        draft({ id: "c", sourceId: "s1", kind: "practice-question" }),
+      ],
+      [source("s1", "Notes")]
+    );
+
+    expect(describeDraftCounts(group)).toEqual(["1 card", "2 questions"]);
+    expect(
+      describeDraftCounts({ ...group, flashcards: 0, questions: 0 })
+    ).toEqual([]);
+  });
+
+  it("puts the biggest pile first, and never hides an orphaned draft", () => {
+    const groups = groupTutorDrafts(
+      [
+        draft({ id: "a", sourceId: "small" }),
+        draft({ id: "b", sourceId: "big" }),
+        draft({ id: "c", sourceId: "big" }),
+        draft({ id: "d" }),
+      ],
+      [source("small", "One"), source("big", "Two")]
+    );
+
+    expect(groups.map((group) => group.title)).toEqual([
+      "Two",
+      "One",
+      "Written without a source",
+    ]);
+  });
+
+  it("still names a group whose source has since been removed", () => {
+    const [group] = groupTutorDrafts([draft({ sourceId: "gone" })], []);
+    expect(group.title).toMatch(/removed/i);
   });
 });

@@ -13,8 +13,15 @@ type Tab = {
   mobileLabel?: string;
   description: string;
   group: TabGroup;
-  /** SVG path data for the icon (24x24 viewBox). */
-  icon: string;
+  /**
+   * SVG path data for the icon (24x24 viewBox).
+   *
+   * A list is drawn as separate shapes. One string is filled with the evenodd
+   * rule, so overlapping parts of it cut holes -- right for a glyph with a
+   * cut-out, wrong for a figure built from pieces that sit on top of each
+   * other, where every overlap would punch through to the background.
+   */
+  icon: string | readonly string[];
   /**
    * Other routes this entry is the home of.
    *
@@ -132,7 +139,14 @@ function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
       aria-hidden="true"
       className={`h-5 w-5 transition duration-fast ${active ? "opacity-100" : "opacity-75"}`}
     >
-      <path fillRule="evenodd" clipRule="evenodd" d={tab.icon} />
+      {(typeof tab.icon === "string" ? [tab.icon] : tab.icon).map((shape) => (
+        <path
+          key={shape}
+          fillRule="evenodd"
+          clipRule="evenodd"
+          d={shape}
+        />
+      ))}
     </svg>
   );
 }
