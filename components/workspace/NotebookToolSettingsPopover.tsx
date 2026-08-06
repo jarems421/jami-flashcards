@@ -5,6 +5,7 @@ import {
   NOTEBOOK_TOOL_SETTINGS_ID,
   type NotebookToolMenu,
 } from "@/components/workspace/NotebookDrawingToolbar";
+import SmoothingSlider from "@/components/workspace/NotebookSmoothingSlider";
 import ThicknessSlider from "@/components/workspace/NotebookThicknessSlider";
 import { NotebookIcon } from "@/components/workspace/NotebookToolbarIconButton";
 import type { NotebookStrokeColor } from "@/lib/workspace/notebooks";
@@ -45,6 +46,8 @@ type NotebookToolSettingsPopoverProps = {
     thicknessPercent: number;
     onColorChange: (color: NotebookStrokeColor) => void;
     onThicknessChange: (percent: number) => void;
+    smoothingPercent: number;
+    onSmoothingChange: (percent: number) => void;
     scribbleToErase: boolean;
     onScribbleToEraseChange: (enabled: boolean) => void;
   };
@@ -102,6 +105,10 @@ export default function NotebookToolSettingsPopover({
             color={getNotebookStrokePaintColor(pen.color, "pen")}
             previewWidth={getPenWidthFromPercent(pen.thicknessPercent)}
             onChange={pen.onThicknessChange}
+          />
+          <SmoothingSlider
+            percent={pen.smoothingPercent}
+            onChange={pen.onSmoothingChange}
           />
           <div className="border-t border-[var(--color-border)] pt-3">
             <button

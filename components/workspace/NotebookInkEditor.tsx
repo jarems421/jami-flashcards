@@ -147,6 +147,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       pageId,
       pageWidth,
       penColor,
+      penSmoothing,
       penThickness,
       readOnly = false,
       scribbleToErase = false,
@@ -197,6 +198,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       highlighterColor,
       highlighterThickness,
       penColor,
+      penSmoothing,
       penThickness,
     });
     const callbacksRef = useRef({
@@ -529,6 +531,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         highlighterColor,
         highlighterThickness,
         penColor,
+        penSmoothing,
         penThickness,
       };
       if (!editor) return;
@@ -548,6 +551,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       highlighterColor,
       highlighterThickness,
       penColor,
+      penSmoothing,
       penThickness,
     ]);
 
@@ -754,6 +758,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             highlighterColor,
             highlighterThickness,
             penColor,
+            penSmoothing,
             penThickness,
           };
           desiredStyleRef.current = pointerStyle;

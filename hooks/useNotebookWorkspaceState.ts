@@ -7,6 +7,7 @@ import type {
   NotebookEraserSize,
 } from "@/lib/workspace/notebook-eraser";
 import type { NotebookPagePan } from "@/lib/workspace/notebook-inking";
+import { NOTEBOOK_PEN_SMOOTHING_DEFAULT } from "@/lib/workspace/notebook-pen-feel";
 import type {
   NotebookPage,
   NotebookStrokeColor,
@@ -32,10 +33,16 @@ export function useNotebookDrawingToolState() {
   const [highlighterMenuOpen, setHighlighterMenuOpen] = useState(false);
   const [eraserMenuOpen, setEraserMenuOpen] = useState(false);
   const [touchInkHintVisible, setTouchInkHintVisible] = useState(false);
-  // The stored preference is read on the client after mount, so the server and
-  // the first client render agree. See `readNotebookScribbleErasePreference`.
+  // The stored preferences are read on the client after mount, so the server
+  // and the first client render agree. See `readNotebookScribbleErasePreference`
+  // and `readNotebookPenSmoothingPreference`.
   const [scribbleToErase, setScribbleToErase] = useState(true);
+  const [penSmoothingPercent, setPenSmoothingPercent] = useState(
+    NOTEBOOK_PEN_SMOOTHING_DEFAULT
+  );
   return {
+    penSmoothingPercent,
+    setPenSmoothingPercent,
     penColor,
     setPenColor,
     penThicknessPercent,

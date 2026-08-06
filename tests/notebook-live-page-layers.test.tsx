@@ -84,6 +84,7 @@ function makeProps(
       activeTool: "eraser",
       eraserMode: "precision",
       penColor: "black",
+      penSmoothing: 62,
       penThickness: 3,
       highlighterColor: "yellow",
       highlighterThickness: 18,
