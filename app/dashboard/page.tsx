@@ -12,13 +12,11 @@ import {
   countTodayReviews,
   type DailyStudyActivity,
 } from "@/lib/study/activity";
-import { predictStudyStreak } from "@/lib/study/streak-prediction";
 import type { GeneratedContentDraft } from "@/lib/material/generated-content";
 import type { Card as StudyCard } from "@/lib/study/cards";
 import AppPage from "@/components/layout/AppPage";
 import { Button, ButtonLink, Card, FeedbackBanner, IconBubble, PageHero, ProgressBar, SectionHeader, StatTile } from "@/components/ui";
 import Refreshable, { RefreshIconButton } from "@/components/layout/Refreshable";
-import { StreakPredictionPanel } from "@/components/stats/AnalyticsPanels";
 import type { Topic } from "@/lib/material/topics";
 import type { MasteryEvent } from "@/lib/material/mastery";
 import type { Source } from "@/lib/material/sources";
@@ -445,10 +443,6 @@ export default function DashboardHome() {
     () => countTodayReviews(studyActivity),
     [studyActivity]
   );
-  const streakPrediction = useMemo(
-    () => predictStudyStreak(cards, studyActivity),
-    [cards, studyActivity]
-  );
   const todayPlan = useMemo<TodayPlan>(
     () =>
       buildTodayPlan({
@@ -563,10 +557,7 @@ export default function DashboardHome() {
   );
   const hasSecondaryTier =
     hasSecondaryCards ||
-    (sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0) ||
-    (sectionStates.cards !== "unavailable" &&
-      sectionStates.activity !== "unavailable" &&
-      cards.length > 0);
+    (sectionStates.dailyReview !== "unavailable" && remainingOptionalCount > 0);
 
   return (
     <Refreshable onRefresh={handleRefresh}>
@@ -713,12 +704,6 @@ export default function DashboardHome() {
                     detail="Daily Review is clear, but these lighter passes are still available."
                     href={getCustomStudyHref({ mode: "daily" })}
                   />
-                ) : null}
-
-                {sectionStates.cards !== "unavailable" &&
-                sectionStates.activity !== "unavailable" &&
-                cards.length > 0 ? (
-                  <StreakPredictionPanel prediction={streakPrediction} compact />
                 ) : null}
               </section>
             ) : null}

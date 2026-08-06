@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import { useFeedback } from "@/hooks/useFeedback";
@@ -83,7 +83,8 @@ import {
 import { syncOfflineStudyReviews } from "@/services/study/offline";
 import { closeRemoteStudySession, loadRemoteActiveStudySession, saveRemoteActiveStudySession } from "@/services/study/session";
 import { applyGoalProgressForAnswer } from "@/services/study/goals";
-import { recordStudyReview } from "@/services/study/activity";
+import { loadStudyActivity, recordStudyReview } from "@/services/study/activity";
+import { computeStudyStreak } from "@/lib/study/activity";
 import { getDecks } from "@/services/study/decks";
 import type { Deck } from "@/lib/study/decks";
 import { getActiveTopics } from "@/services/study/topics";
@@ -974,6 +975,37 @@ export default function StudyPage() {
   }, [customPreviewCards.length, loaded, remainingCarryoverRequiredCards.length, remainingOptionalCards.length, remainingRequiredCards.length, requestedMode, selectedDeckIds.length, selectedTopicIds.length, sessionRestoreReady, startSession]);
 
   const done = loaded && sessionKind !== null && (sessionCards.length === 0 || index >= sessionCards.length);
+  /**
+   * Days running, read once the session is over.
+   *
+   * A streak belongs where it has just been earned. On the home page it could
+   * only ever be a warning -- you arrive there before studying, so there is
+   * nothing to congratulate and the panel could only say what was at risk.
+   * Here it is the reward for the work that has this moment been done.
+   */
+  const [daysRunning, setDaysRunning] = useState<number | null>(null);
+  const reviewedThisSession = sessionStats.reviewedCards;
+
+  useEffect(() => {
+    if (!done || reviewedThisSession === 0) {
+      setDaysRunning(null);
+      return;
+    }
+
+    let cancelled = false;
+    void loadStudyActivity(user.uid)
+      .then((activity) => {
+        if (!cancelled) setDaysRunning(computeStudyStreak(activity));
+      })
+      .catch(() => {
+        // A flourish on a finished session. If it cannot be read the summary
+        // stands without it rather than failing over a decoration.
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [done, reviewedThisSession, user.uid]);
   const current = loaded && sessionKind !== null && !done ? sessionCards[index] : null;
   const currentDeck = current
     ? decks.find((deck) => deck.id === current.deckId)
@@ -1857,8 +1889,18 @@ export default function StudyPage() {
                         : `You reviewed ${sessionStats.reviewedCards} of ${totalCards} card${totalCards === 1 ? "" : "s"}. Your next best step is ready below.`}
                     </p>
                   </div>
-                  <div className="rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-secondary">
-                    <span className="text-sm font-semibold text-text-primary">{accuracyPercentage}%</span> accuracy
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-secondary">
+                      <span className="text-sm font-semibold text-text-primary">{accuracyPercentage}%</span> accuracy
+                    </div>
+                    {daysRunning !== null && daysRunning > 0 ? (
+                      <div className="rounded-[1.4rem] border border-warm-border bg-warm-glow px-4 py-3 text-sm text-text-secondary">
+                        <span className="text-sm font-semibold text-text-primary">
+                          {daysRunning}
+                        </span>{" "}
+                        day{daysRunning === 1 ? "" : "s"} running
+                      </div>
+                    ) : null}
                   </div>
                 </div>
                 <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
