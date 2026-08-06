@@ -899,7 +899,7 @@ describe("notebook inking helpers", () => {
   });
 
   it("clamps page pan inside a fixed frame", () => {
-    // Page smaller than the frame: centered on both axes.
+    // Fitted page: centered on both axes, wherever the pan came from.
     expect(
       clampNotebookPagePan({
         pan: { x: 40, y: -80 },
@@ -909,7 +909,7 @@ describe("notebook inking helpers", () => {
         frameHeight: 600,
       })
     ).toEqual({ x: 100, y: 100 });
-    // Page larger than the frame: pan clamped so the frame stays covered.
+    // Zoomed page: free to sit where the gesture put it, frame uncovered and all.
     expect(
       clampNotebookPagePan({
         pan: { x: 50, y: -900 },
@@ -917,20 +917,24 @@ describe("notebook inking helpers", () => {
         pageHeight: 1400,
         frameWidth: 500,
         frameHeight: 600,
+        zoom: 2,
       })
-    ).toEqual({ x: 0, y: -800 });
+    ).toEqual({ x: 50, y: -900 });
+    // Held back only where the sheet would otherwise leave the frame entirely:
+    // 120px of it stays on screen on each axis.
     expect(
       clampNotebookPagePan({
-        pan: { x: -700, y: -100 },
+        pan: { x: 900, y: -2_000 },
         pageWidth: 1000,
         pageHeight: 1400,
         frameWidth: 500,
         frameHeight: 600,
+        zoom: 2,
       })
-    ).toEqual({ x: -500, y: -100 });
+    ).toEqual({ x: 380, y: -1_280 });
   });
 
-  it("keeps the pinched page anchor under the fingers and clamps the result", () => {
+  it("keeps the pinched page anchor under the fingers", () => {
     expect(
       getNotebookPagePanAfterPinch({
         pinchCenterX: 350,
@@ -943,8 +947,9 @@ describe("notebook inking helpers", () => {
         pageHeight: 1400,
         frameWidth: 500,
         frameHeight: 600,
+        zoom: 2,
       })
-    ).toEqual({ x: 0, y: -290 });
+    ).toEqual({ x: 90, y: -290 });
 
     expect(
       getNotebookPagePanAfterPinch({

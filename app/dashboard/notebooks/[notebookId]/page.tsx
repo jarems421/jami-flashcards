@@ -85,6 +85,7 @@ import {
 import {
   clearNotebookNativeSelection,
   installNotebookStylusTouchListeners,
+  installNotebookViewportZoomBlock,
   isNotebookTextEditingTarget,
   NOTEBOOK_EDITOR_LOCK_BODY_CLASS,
   safelyReleasePointerCapture,
@@ -1064,27 +1065,26 @@ export default function NotebookEditorPage() {
       clearNotebookNativeSelection(document);
     };
 
-    document.addEventListener("selectstart", preventIfOutsideTextEditor, true);
-    document.addEventListener("contextmenu", preventIfOutsideTextEditor, true);
-    document.addEventListener("dragstart", preventIfOutsideTextEditor, true);
-    document.addEventListener("copy", preventIfOutsideTextEditor, true);
-    document.addEventListener("cut", preventIfOutsideTextEditor, true);
-    document.addEventListener("paste", preventIfOutsideTextEditor, true);
+    const nativeEditingEvents =
+      ["selectstart", "contextmenu", "dragstart", "copy", "cut", "paste"];
+    for (const type of nativeEditingEvents) {
+      document.addEventListener(type, preventIfOutsideTextEditor, true);
+    }
     document.addEventListener("selectionchange", clearSelectionIfOutsideTextEditor);
+    // The browser's own pinch zoom would otherwise run alongside the sheet's.
+    const releaseViewportZoomBlock = installNotebookViewportZoomBlock(document);
 
     return () => {
+      releaseViewportZoomBlock();
       document.body.classList.remove(NOTEBOOK_EDITOR_LOCK_BODY_CLASS);
       root.style.background = previousRootBackground;
       document.body.style.background = previousBodyBackground;
       if (themeColorMeta && previousThemeColor !== undefined) {
         themeColorMeta.content = previousThemeColor;
       }
-      document.removeEventListener("selectstart", preventIfOutsideTextEditor, true);
-      document.removeEventListener("contextmenu", preventIfOutsideTextEditor, true);
-      document.removeEventListener("dragstart", preventIfOutsideTextEditor, true);
-      document.removeEventListener("copy", preventIfOutsideTextEditor, true);
-      document.removeEventListener("cut", preventIfOutsideTextEditor, true);
-      document.removeEventListener("paste", preventIfOutsideTextEditor, true);
+      for (const type of nativeEditingEvents) {
+        document.removeEventListener(type, preventIfOutsideTextEditor, true);
+      }
       document.removeEventListener("selectionchange", clearSelectionIfOutsideTextEditor);
     };
   }, []);
