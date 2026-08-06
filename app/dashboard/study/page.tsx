@@ -97,7 +97,7 @@ import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import {
   Button, Card as SurfaceCard, EmptyState, FeedbackBanner,
-  JamiSparklesIcon, ProgressBar, Skeleton, StudyText,
+  JamiTutorIcon, ProgressBar, Skeleton, StudyText,
 } from "@/components/ui";
 
 type SessionKind = StudySessionKind;
@@ -2023,7 +2023,7 @@ export default function StudyPage() {
                         onClick={() => setJamiAssistantOpen(true)}
                         className="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-xs font-semibold text-text-secondary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
                       >
-                        <JamiSparklesIcon className="h-3.5 w-3.5" />
+                        <JamiTutorIcon className="h-4 w-4" />
                         Jami
                       </button>
                     </div>

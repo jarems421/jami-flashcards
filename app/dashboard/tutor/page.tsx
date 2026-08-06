@@ -10,6 +10,7 @@ import {
   EmptyState,
   FeedbackBanner,
   IconBubble,
+  JamiTutorIcon,
   PageHero,
   SectionHeader,
   SegmentedControl,
@@ -147,7 +148,12 @@ export default function TutorPage() {
       */}
       <PageHero
         eyebrow="Jami"
-        title="Ask about your own material."
+        title={
+          <span className="flex items-center gap-3">
+            <JamiTutorIcon className="h-9 w-9 shrink-0 text-warm-accent sm:h-11 sm:w-11" />
+            <span>Ask about your own material.</span>
+          </span>
+        }
         description="Pick something for Jami to read and it can explain it, quiz you, or draft cards and questions from it."
         action={<ButtonLink href="/dashboard/library">Choose a source</ButtonLink>}
         aside={
