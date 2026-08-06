@@ -759,6 +759,9 @@
 
   [data-notebook-page-frame] {
     contain: layout paint;
+    /* The margin around the sheet must not start a native pan or pinch: page
+       zoom belongs to the sheet's own gesture handling. */
+    touch-action: none;
   }
 
   .notebook-dockable-toolbar,

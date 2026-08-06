@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   isNotebookStylusTouchEvent,
   installNotebookStylusTouchListeners,
+  installNotebookViewportZoomBlock,
   NOTEBOOK_STYLUS_ACTION_SELECTOR,
   NOTEBOOK_TEXT_EDITOR_SELECTOR,
 } from "@/lib/workspace/notebook-interaction-lock";
@@ -336,5 +337,52 @@ describe("notebook stylus touch listeners", () => {
     });
     listener?.(activeInkOnPage);
     expect(activeInkOnPage.defaultPrevented).toBe(true);
+  });
+});
+
+describe("notebook viewport zoom block", () => {
+  function makeSurface() {
+    const listeners = new Map<string, EventListener>();
+    const addEventListener = vi.fn((type: string, listener: EventListener) => {
+      listeners.set(type, listener);
+    });
+    const removeEventListener = vi.fn();
+    return {
+      addEventListener,
+      listeners,
+      removeEventListener,
+      surface: { addEventListener, removeEventListener } as unknown as EventTarget,
+    };
+  }
+
+  it("refuses Safari's own pinch and releases every binding", () => {
+    const surface = makeSurface();
+    const cleanup = installNotebookViewportZoomBlock(surface.surface);
+
+    for (const type of ["gesturestart", "gesturechange", "gestureend"]) {
+      const gesture = new Event(type, { cancelable: true });
+      surface.listeners.get(type)?.(gesture);
+      expect(gesture.defaultPrevented).toBe(true);
+    }
+    expect(surface.addEventListener).toHaveBeenCalledWith(
+      "gesturestart",
+      expect.any(Function),
+      { passive: false, capture: true }
+    );
+
+    cleanup();
+    expect(surface.removeEventListener).toHaveBeenCalledTimes(3);
+  });
+
+  it("leaves touch and pointer events alone", () => {
+    // Panning, swiping, and ink all ride on those; only the pinch is refused.
+    const surface = makeSurface();
+    installNotebookViewportZoomBlock(surface.surface);
+
+    expect([...surface.listeners.keys()]).toEqual([
+      "gesturestart",
+      "gesturechange",
+      "gestureend",
+    ]);
   });
 });

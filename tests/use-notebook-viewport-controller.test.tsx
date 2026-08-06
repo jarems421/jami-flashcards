@@ -178,11 +178,12 @@ describe("useNotebookViewportController", () => {
       handles.setZoom(1.5);
     });
     const zoomed = handles.controller.layout.panBounds;
-    expect(handles.controller.pageWidthPx).toBeLessThan(1194);
+    const pageWidth = handles.controller.pageWidthPx;
+    expect(pageWidth).toBeLessThan(1194);
     expect(handles.controller.pageCanPanHorizontally).toBe(true);
-    // Still bounded: the sheet may move off centre but never out of the frame.
-    expect(zoomed.minX).toBeGreaterThan(0);
-    expect(zoomed.maxX).toBeLessThan(1194 - handles.controller.pageWidthPx);
+    // Free to sit anywhere, right up to the point of leaving the frame.
+    expect(zoomed.minX).toBeLessThan(0);
+    expect(zoomed.maxX).toBeGreaterThan(1194 - pageWidth);
   });
 
   it("ignores non-touch pointers", () => {

@@ -166,6 +166,40 @@ export function installNotebookStylusTouchListeners(input: {
   };
 }
 
+/**
+ * Refuses the browser's own pinch zoom while the notebook editor is open.
+ *
+ * iPadOS Safari zooms the visual viewport whenever a pinch starts somewhere the
+ * app has not claimed the gesture -- the margin around the sheet, most
+ * obviously. That is a second zoom sitting on top of the notebook's own, with
+ * its own scale and its own idea of where the page is, so the editor takes the
+ * gesture off it entirely and leaves page zoom to the sheet.
+ *
+ * These `gesture*` events are Safari's own, and they fire for nothing but a
+ * pinch or a rotate, so refusing all of them costs no other interaction.
+ * Elsewhere `touch-action: none` on the page frame does the same job.
+ */
+export function installNotebookViewportZoomBlock(surface: EventTarget) {
+  const blockPinch: EventListener = (event) => {
+    if (!event.cancelable) return;
+    event.preventDefault();
+  };
+  const listenerOptions: AddEventListenerOptions = {
+    passive: false,
+    capture: true,
+  };
+  const gestureEvents = ["gesturestart", "gesturechange", "gestureend"];
+
+  for (const type of gestureEvents) {
+    surface.addEventListener(type, blockPinch, listenerOptions);
+  }
+  return () => {
+    for (const type of gestureEvents) {
+      surface.removeEventListener(type, blockPinch, listenerOptions);
+    }
+  };
+}
+
 export function shouldSuppressNotebookNativeEvent(target: EventTarget | null) {
   return !isNotebookTextEditingTarget(target);
 }

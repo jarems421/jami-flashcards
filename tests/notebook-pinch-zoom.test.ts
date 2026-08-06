@@ -43,6 +43,7 @@ describe("notebook pinch zoom release continuity", () => {
       pageHeight: startPageHeight * live.scaleRatio,
       frameWidth,
       frameHeight,
+      zoom: 1.2,
     });
 
     expect(live).toEqual({ x: -340, y: -440, scaleRatio: 1.2 });
@@ -86,13 +87,14 @@ describe("notebook pinch zoom release continuity", () => {
       pageHeight: startPageHeight * live.scaleRatio,
       frameWidth,
       frameHeight,
+      zoom: 0.92,
     });
 
     expect(live).toEqual({ x: 66, y: 70, scaleRatio: 0.92 });
     expect({ x: live.x, y: live.y }).toEqual(committed);
   });
 
-  it("applies oversized-page edge limits before the fingers are released", () => {
+  it("applies the same free limits before the fingers are released", () => {
     const frameWidth = 500;
     const frameHeight = 600;
     const startPageWidth = 400;
@@ -129,9 +131,12 @@ describe("notebook pinch zoom release continuity", () => {
       pageHeight: startPageHeight * live.scaleRatio,
       frameWidth,
       frameHeight,
+      zoom: 2,
     });
 
-    expect(live).toEqual({ x: 0, y: 0, scaleRatio: 2 });
+    // The anchor is honoured outright: the page point the fingers landed on is
+    // still exactly under them, even though the sheet no longer covers the frame.
+    expect(live).toEqual({ x: 10, y: 0, scaleRatio: 2 });
     expect({ x: live.x, y: live.y }).toEqual(committed);
   });
 });
@@ -178,32 +183,47 @@ describe("notebook pinch zoom anchoring", () => {
     };
   };
 
-  it("holds the pinched page point under the fingers through an ordinary zoom", () => {
-    for (const zoom of [1, 1.1, 1.25, 1.5]) {
-      expect(Math.abs(anchorScreenPositionAt(zoom).x - centerX)).toBeLessThan(
-        12
-      );
+  it("holds the pinched page point exactly under the fingers at every zoom", () => {
+    for (const zoom of [1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4]) {
+      const anchor = anchorScreenPositionAt(zoom);
+      expect(anchor.x).toBeCloseTo(centerX, 6);
+      expect(anchor.y).toBeCloseTo(centerY, 6);
     }
   });
 
-  it("gives up the anchor only as far as covering the frame demands", () => {
-    // Once the sheet is wider than the frame it has to keep the frame covered,
-    // and that is the only thing allowed to move the anchor: the page point
-    // lands on the reachable position nearest the fingers, nothing further.
-    for (const zoom of [2.5, 3, 3.5, 4]) {
-      const pageWidth = startPageWidth * zoom;
-      const nearestReachable = Math.min(
-        Math.max(centerX, frameWidth - (1 - anchorFx) * pageWidth),
-        anchorFx * pageWidth
-      );
-      expect(anchorScreenPositionAt(zoom).x).toBeCloseTo(nearestReachable, 6);
+  it("holds it for anchors anywhere across the sheet", () => {
+    for (const zoom of [1.5, 2.125, 3]) {
+      for (const fx of [0, 0.2, 0.5, 0.8, 1]) {
+        const finger = basePanX + fx * startPageWidth;
+        const live = getNotebookLivePinchTransform({
+          anchorFx: fx,
+          anchorFy: 0.5,
+          basePanX,
+          basePanY,
+          currentCenterX: finger,
+          currentCenterY: centerY,
+          frameWidth,
+          frameHeight,
+          nextZoom: zoom,
+          startCenterX: finger,
+          startCenterY: centerY,
+          startPageHeight,
+          startPageWidth,
+          startZoom: 1,
+        });
+        expect(live.x + fx * startPageWidth * live.scaleRatio).toBeCloseTo(
+          finger,
+          6
+        );
+      }
     }
   });
 
-  it("moves the anchor continuously as the sheet grows to fill the frame", () => {
-    const fillZoom = frameWidth / startPageWidth;
-    const before = anchorScreenPositionAt(fillZoom - 0.001).x;
-    const after = anchorScreenPositionAt(fillZoom + 0.001).x;
+  it("moves continuously out of the fitted view", () => {
+    // Fit zoom is the one place the sheet is pinned rather than free, so it is
+    // the one place a jump could appear.
+    const before = anchorScreenPositionAt(1).x;
+    const after = anchorScreenPositionAt(1.001).x;
 
     expect(Math.abs(after - before)).toBeLessThan(1);
   });
