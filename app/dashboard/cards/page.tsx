@@ -6,7 +6,8 @@ import CardCreationPanel from "@/components/decks/CardCreationPanel";
 import CardBrowserWorkspace from "@/components/cards/CardBrowserWorkspace";
 import CardsGettingStarted from "@/components/cards/CardsGettingStarted";
 import { useUser } from "@/components/providers/UserProvider";
-import { Button, EmptyState, FeedbackBanner } from "@/components/ui";
+import { Button, EmptyState, FeedbackBanner, SegmentedControl } from "@/components/ui";
+import { FLASHCARD_VIEWS, FLASHCARDS_TITLE } from "@/lib/app/flashcard-views";
 import {
   useDashboardData,
   type DashboardDataLoadOptions,
@@ -144,12 +145,13 @@ export default function CardsSearchPage() {
   if (loadFailed && !hasSuccessfulLoad) {
     return (
       <AppPage
-        title="Cards"
+        title={FLASHCARDS_TITLE}
         backHref="/dashboard"
         backLabel="Today"
         width="2xl"
         contentClassName="space-y-4 sm:space-y-6"
       >
+        <SegmentedControl items={FLASHCARD_VIEWS} label="Flashcard views" />
         {feedback ? (
           <FeedbackBanner
             type={feedback.type}
@@ -173,12 +175,14 @@ export default function CardsSearchPage() {
 
   return (
     <AppPage
-      title="Cards"
+      title={FLASHCARDS_TITLE}
       backHref="/dashboard"
       backLabel="Today"
       width="2xl"
       contentClassName="space-y-4 sm:space-y-6"
     >
+      <SegmentedControl items={FLASHCARD_VIEWS} label="Flashcard views" />
+
       {feedback ? (
         <FeedbackBanner
           type={feedback.type}
