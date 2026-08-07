@@ -178,6 +178,64 @@ const STRAIGHTEN_MINIMUM_SPAN_RATIO = 8;
  */
 const MINIMUM_CORNER_ARM_RATIO = MINIMUM_STEP_RATIO * 1.5;
 
+/**
+ * How much sharper than the turns either side of it a turn must be to count as
+ * a corner.
+ *
+ * The angle alone cannot tell a corner from a curve, because it depends on how
+ * far apart the points are -- and thinning spaces points by curvature, so the
+ * tighter the curve the further it turns between one kept point and the next. A
+ * small 'o' turns about fifty degrees a step, which is over any threshold low
+ * enough to catch the cusp between two letters. So every point on it was drawn
+ * as a corner, and since a corner takes its control arms from the strokes
+ * either side, two in a row put both arms on the chord and the segment between
+ * them came out as a literal straight line. Measured at a 12px 'o': three
+ * kinked joins and two straight runs, which is a polygon.
+ *
+ * What actually separates the two is that a corner is *local*. Turning is
+ * concentrated at one point and its neighbours are comparatively straight,
+ * where on a curve every point turns about the same amount. That test does not
+ * care how the points happen to be spaced.
+ */
+const CORNER_DOMINANCE = 1.7;
+
+/**
+ * The run each side of a point that its turn is measured over, in screen
+ * pixels.
+ *
+ * Longer than the arm that decides which points to keep, and for a second
+ * reason. There, a short arm only had to be long enough that the angle was not
+ * pure noise. Here the angle is also the yardstick every neighbouring angle is
+ * judged against, so noise in it does damage twice: measured over a single
+ * step, a straight stroke wobbling half a pixel turns thirty or forty degrees
+ * at every point, and a deliberate sixty-degree corner sitting among those no
+ * longer stands out from them. It was being rounded off -- the exact opposite
+ * of the complaint. Over a couple of pixels the wobble averages out and the
+ * corner is again the only thing turning.
+ */
+const TURN_ARM_RATIO = 2.5;
+
+/**
+ * How many points the reach above may cross to find that run.
+ *
+ * Reaching is meant to step over samples that landed on top of each other, not
+ * to step over shape. Where a curve turns hard the points bunch up, and a walk
+ * with no limit hops clean across the turn and reports the whole of it as one
+ * angle -- a smooth sine wave came back with 114-degree corners at its peaks,
+ * which is the fault this was supposed to be fixing.
+ */
+const TURN_ARM_MAXIMUM_REACH = 2;
+
+/**
+ * A turn this sharp is a corner whatever its neighbours are doing, in degrees.
+ *
+ * The rule above needs somewhere to stand, and a zigzag denies it one: in a 'w'
+ * every vertex is a corner, so each has another corner either side and none of
+ * them is locally dominant. Nothing in ordinary writing turns this far without
+ * meaning to, so past this the question does not need asking.
+ */
+const UNMISTAKABLE_CORNER_DEGREES = 100;
+
 export function createNotebookSmoothPenStrokeFactory(
   jsDraw: JsDrawModule,
   feel: NotebookPenFeel = getNotebookPenFeel(NOTEBOOK_PEN_SMOOTHING_DEFAULT)
@@ -208,8 +266,11 @@ export function createNotebookSmoothPenStrokeFactory(
     const maximumSpan = viewport.getSizeOfPixelOnCanvas() * MAXIMUM_SPAN_RATIO;
     const minimumCornerArm =
       viewport.getSizeOfPixelOnCanvas() * MINIMUM_CORNER_ARM_RATIO;
+    const turnArm = viewport.getSizeOfPixelOnCanvas() * TURN_ARM_RATIO;
     /** Below this, the line has turned far enough to count as a corner. */
     const cornerCosine = Math.cos((cornerDegrees * Math.PI) / 180);
+    const cornerRadians = (cornerDegrees * Math.PI) / 180;
+    const unmistakableCorner = (UNMISTAKABLE_CORNER_DEGREES * Math.PI) / 180;
     const points: Point2[] = [Vec2.of(startPoint.pos.x, startPoint.pos.y)];
     /**
      * The newest sample, held back one step.
@@ -247,6 +308,73 @@ export function createNotebookSmoothPenStrokeFactory(
     const shapePoints = () => (pending ? [...points, pending] : points);
 
     /**
+     * How far the line turns at each point, in radians. Ends count as none.
+     *
+     * A turn measured across a run barely longer than the pen's own step is
+     * mostly the digitiser's noise -- half a pixel of wobble either side swings
+     * it through tens of degrees. The same guard already governs which points
+     * are kept; without it here, a plain sine wave at writing scale still came
+     * out with one 114-degree corner in it, invented by two kept samples that
+     * happened to land a pixel apart.
+     *
+     * The measurement widens rather than being thrown away. Discarding it
+     * silently rounds off any corner that happens to have a kept point sitting
+     * close to it -- measured on a deliberate 60-degree bend, the point
+     * vanished entirely -- whereas reaching further out for the arm answers the
+     * same question over a run long enough for the answer to mean something.
+     */
+    const turnsAlong = (shape: Point2[]) => {
+      const turns = new Array<number>(shape.length).fill(0);
+      const last = shape.length - 1;
+      for (let index = 1; index < last; index += 1) {
+        const here = shape[index];
+        let back = index - 1;
+        while (
+          back > 0 &&
+          index - back < TURN_ARM_MAXIMUM_REACH &&
+          here.distanceTo(shape[back]) < turnArm
+        ) {
+          back -= 1;
+        }
+        let forward = index + 1;
+        while (
+          forward < last &&
+          forward - index < TURN_ARM_MAXIMUM_REACH &&
+          here.distanceTo(shape[forward]) < turnArm
+        ) {
+          forward += 1;
+        }
+
+        const arriving = here.minus(shape[back]);
+        const leaving = shape[forward].minus(here);
+        if (arriving.magnitude() === 0 || leaving.magnitude() === 0) continue;
+        const straightness = Math.max(
+          -1,
+          Math.min(1, arriving.normalized().dot(leaving.normalized()))
+        );
+        turns[index] = Math.acos(straightness);
+      }
+      return turns;
+    };
+
+    /**
+     * Which points the curve is allowed to come to a point at.
+     *
+     * Sharp enough on its own settles it. Otherwise the turn has to stand out
+     * from the ones either side of it, which is what tells a deliberate point
+     * from a curve drawn tightly -- see `CORNER_DOMINANCE`.
+     */
+    const cornersAlong = (shape: Point2[]) => {
+      const turns = turnsAlong(shape);
+      return turns.map((turn, index) => {
+        if (turn >= unmistakableCorner) return true;
+        if (turn < cornerRadians) return false;
+        const around = Math.max(turns[index - 1] ?? 0, turns[index + 1] ?? 0);
+        return turn >= around * CORNER_DOMINANCE;
+      });
+    };
+
+    /**
      * Eases each interior point a fraction towards the line between its
      * neighbours, so a curve drawn by hand comes out a little rounder.
      *
@@ -254,7 +382,7 @@ export function createNotebookSmoothPenStrokeFactory(
      * the pen right now, and moving it is what would be felt as lag. Corners
      * are left alone too, since easing one is the same as rounding it off.
      */
-    const easedShape = (shape: Point2[]) => {
+    const easedShape = (shape: Point2[], corners: boolean[]) => {
       if (shape.length < 3 || easeTowardsNeighbours <= 0) return shape;
 
       const eased: Point2[] = [shape[0]];
@@ -262,15 +390,9 @@ export function createNotebookSmoothPenStrokeFactory(
         const previous = shape[index - 1];
         const here = shape[index];
         const next = shape[index + 1];
-        const arriving = here.minus(previous);
-        const leaving = next.minus(here);
-        const isCorner =
-          arriving.magnitude() > 0 &&
-          leaving.magnitude() > 0 &&
-          arriving.normalized().dot(leaving.normalized()) < cornerCosine;
 
         eased.push(
-          isCorner
+          corners[index]
             ? here
             : here.plus(
                 previous
@@ -305,7 +427,8 @@ export function createNotebookSmoothPenStrokeFactory(
      * decide it that would have been drawn.
      */
     const straightenedShape = () => {
-      const shape = easedShape(shapePoints());
+      const raw = shapePoints();
+      const shape = easedShape(raw, cornersAlong(raw));
       if (shape.length < 3) return null;
 
       const from = shape[0];
@@ -340,7 +463,9 @@ export function createNotebookSmoothPenStrokeFactory(
         stroke: { color, width },
       };
 
-      const shape = easedShape(shapePoints());
+      const raw = shapePoints();
+      const corners = cornersAlong(raw);
+      const shape = easedShape(raw, corners);
 
       if (shape.length === 1) {
         // A dot. Round caps make a zero-length stroke visible on canvas but
@@ -397,13 +522,21 @@ export function createNotebookSmoothPenStrokeFactory(
         if (arriving.magnitude() === 0 || leaving.magnitude() === 0) {
           return next.minus(previous);
         }
-        // How straight the path is through this point. Turning back on itself
-        // approaches -1; carrying straight on approaches 1.
-        const straightness = arriving
-          .normalized()
-          .dot(leaving.normalized());
-        if (straightness > cornerCosine) return next.minus(previous);
-        return outgoing ? leaving : arriving;
+        if (corners[index]) return outgoing ? leaving : arriving;
+        /*
+         * The direction through the point, taken from the two segments as
+         * directions rather than as the chord between the outer points.
+         *
+         * The chord is the textbook Catmull-Rom tangent and it assumes points
+         * are evenly spaced, which thinning guarantees they are not: it keeps
+         * points where the line bends and drops them where it does not, so a
+         * 20px run regularly meets a 2px one. The chord across that pair points
+         * almost entirely along the long side, which swings the short segment's
+         * curve out and back -- a kink at exactly the tight turns this is meant
+         * to be smoothing. Normalising first weighs the two equally, so the
+         * tangent bisects the turn however lopsided the spacing.
+         */
+        return arriving.normalized().plus(leaving.normalized());
       };
 
       const commands: PathCommand[] = [];

@@ -43,22 +43,26 @@ const NO_SMOOTHING: NotebookPenFeel = {
 /**
  * Full smoothing. Only a turn that is unmistakably a point is drawn as one.
  *
- * The corner ceiling is deliberately short of a right angle: past that, the
- * point of a `v` and the cusp between two joined letters stop being corners
- * and the pen starts refusing to go where it was taken, which is a worse
- * complaint than a slightly angular curve.
+ * The corner ceiling used to stop short of a right angle, because nothing else
+ * protected the point of a `v` or the cusp between two joined letters: raise
+ * the threshold past those and the pen starts refusing to go where it was
+ * taken, which is a worse complaint than a slightly angular curve. The pen now
+ * treats a turn past a hundred degrees as a corner whatever this says, so those
+ * are safe on their own account and the ceiling is free to sit where it is
+ * useful -- which is above the tightest turn a small letter makes, since that
+ * was being drawn as a point at every setting.
  *
- * The easing ceiling is low for the same reason, and it is the one that was
- * got wrong first time round. Easing is the only part of this that moves the
- * line off the points the pen visited, and it does so in proportion: measured
- * on cursive at a 34px x-height, the line sits 0.11px off with none of it and
- * 0.55px off at 0.62, which is felt as the pen resisting at every turn. What
- * actually answers the joined-up-dots complaint is the corner threshold, and
- * that costs no deviation at all -- so the corner threshold carries the range
- * and easing stops at the light touch it has always had.
+ * The easing ceiling is low, and it is the one that was got wrong first time
+ * round. Easing is the only part of this that moves the line off the points the
+ * pen visited, and it does so in proportion: measured on cursive at a 34px
+ * x-height, the line sits 0.11px off with none of it and 0.55px off at 0.62,
+ * which is felt as the pen resisting at every turn. What answers the
+ * joined-up-dots complaint is the corner threshold, and that costs no deviation
+ * at all -- so the corner threshold carries the range and easing stops at the
+ * light touch it has always had.
  */
 const FULL_SMOOTHING: NotebookPenFeel = {
-  cornerDegrees: 62,
+  cornerDegrees: 82,
   easeTowardsNeighbours: 0.34,
 };
 
