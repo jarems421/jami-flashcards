@@ -139,10 +139,10 @@ npm run dev
 
 Open `http://localhost:3000`. The dashboard requires a signed-in Firebase user.
 
-[`.env.example`](.env.example) lists every variable with safe placeholders, in four
-groups: the public Firebase client config, Firebase Admin credentials, Web Push keys
-and the cron secret, and `GEMINI_API_KEY`. Never commit `.env.local` or production
-secrets.
+[`.env.example`](.env.example) lists every variable with safe placeholders: the
+public Firebase client config, Firebase Admin credentials, Web Push keys and the
+cron secret, `GEMINI_API_KEY`, and four demo-mode variables that nothing in the
+codebase currently reads. Never commit `.env.local` or production secrets.
 
 ## Commands
 
