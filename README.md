@@ -5,8 +5,8 @@
 <h1 align="center">Jami</h1>
 
 <p align="center">
-  A notebook-first study workspace combining handwritten practice, flashcards,
-  sources, goals, and progress tracking.
+  A notebook-first study workspace: handwritten practice, spaced-repetition
+  flashcards, your own reference material, goals, and progress in one place.
 </p>
 
 <p align="center">
@@ -17,65 +17,115 @@
 
 Jami is an authenticated Next.js application backed by Firebase. Students organise
 work in folders, write on fixed-page notebooks, build and review flashcards, save
-sources, set scoped goals, and monitor progress. The installed PWA supports cached
-study data and queued review synchronisation.
+sources for an AI tutor to read, set scoped goals, and track progress. Installed as
+a PWA it caches the app shell and queues reviews taken offline, replaying them when
+the connection returns.
 
 ## Product areas
 
-The dashboard keeps eleven stable destinations:
+The dashboard has ten destinations, in two groups.
 
-- **Home** recommends the most useful next action.
-- **Learn** runs scheduled and focused flashcard study.
-- **Folders** groups notebooks, decks, topics, and sources into study spaces.
-- **Progress** surfaces weak areas and recent activity.
-- **Decks** and **Cards** manage flashcard material.
-- **Topics** connect related study material.
-- **Sources** stores selected references and hosts the existing source tools.
-- **Goals** tracks time, card, accuracy, and streak targets against a chosen scope.
-- **Stars** visualises earned constellation rewards.
-- **Account** manages profile data, authentication, and account deletion.
+**Learning loop** — today, memory, your work, and Jami:
 
-`/dashboard/practice` is the canonical notebook-first Practice workspace.
-`/dashboard/practise` remains available as a permanent compatibility redirect.
+| Destination | Route | Purpose |
+| --- | --- | --- |
+| Home | `/dashboard` | Today: one next step, then drafts waiting, weak topics, and goals in motion |
+| Learn | `/dashboard/study` | Scheduled and focused flashcard review |
+| Folders | `/dashboard/practice` | Study spaces keeping each subject's notebooks, decks, and sources together |
+| Tutor | `/dashboard/tutor` | Jami: sources to ask about, and the queue of drafts she has written |
+
+**Workspace** — material, progress, goals, rewards:
+
+| Destination | Route | Purpose |
+| --- | --- | --- |
+| Progress | `/dashboard/progress` | Weak areas, recent activity, and review history |
+| Flashcards | `/dashboard/decks` | Decks, with card creation and search at `/dashboard/cards` |
+| Topics | `/dashboard/topics` | Concepts and subtopics linking material across folders |
+| Goals | `/dashboard/goals` | Time, card, accuracy, and streak targets against a chosen scope |
+| Stars | `/dashboard/constellation` | Earned constellation rewards |
+| Account | `/dashboard/profile` | Profile, authentication, and account deletion |
+
+Notebooks open at `/dashboard/notebooks/[notebookId]`, and sources at
+`/dashboard/library`. Both belong to the group above them in the sidebar rather
+than to entries of their own.
+
+### Route compatibility
+
+These stay indefinitely, so existing links and bookmarks do not break:
+
+| Old route | Redirects to |
+| --- | --- |
+| `/dashboard/practise` | `/dashboard/practice` |
+| `/dashboard/learn` | `/dashboard/study` |
+| `/dashboard/stats` | `/dashboard/progress` |
+
+## AI
+
+Google Gemini is the only model provider, reached exclusively through server-side
+Route Handlers under `app/api/ai/`. Three features use it: the Jami assistant,
+card-back autocomplete, and drafting study material from a source.
+
+The design constraints are deliberate and enforced in code:
+
+- **Nothing is read that was not handed over.** The assistant reads up to five
+  sources the student selects for that request (`JAMI_ASSISTANT_MAX_SOURCE_IDS`).
+  There is no background indexing, no persistent extraction, and no retention of
+  source text between conversations.
+- **Nothing generated joins your studying unreviewed.** Drafted cards and questions
+  land in a queue on the Tutor page and become study material only when accepted.
+- **Per-user budgets.** Daily and short-window request limits are counted in
+  Firestore transactions through the Admin SDK, and refunded when a request fails
+  or is cancelled before producing anything.
+- **Untrusted content is fenced.** Source text is enclosed in per-request random
+  boundary tokens so it cannot be read as instructions.
+- Requests carry a deadline and are cancelled when the client disconnects. Models
+  fall back down a ladder (`gemini-2.5-flash` → `gemini-2.5-flash-lite`).
 
 ## Technology
 
 | Area | Technology |
 | --- | --- |
-| Web application | Next.js 16, React 19, TypeScript |
-| Styling | Tailwind CSS and reusable components in `components/ui` |
-| Authentication and data | Firebase Auth, Firestore, and Storage |
-| Study scheduling | `ts-fsrs` plus Jami's prioritisation logic |
-| Notebook rendering | `js-draw`, PDF.js, and browser canvas APIs |
-| Existing AI features | Google Gemini through server Route Handlers |
-| Testing | Vitest and Firebase Rules Unit Testing |
+| Web application | Next.js 16 (App Router), React 19, TypeScript |
+| Styling | Tailwind CSS, with reusable primitives in `components/ui` |
+| Authentication and data | Firebase Auth, Firestore, Cloud Storage |
+| Review scheduling | `ts-fsrs`, with Jami's own prioritisation on top |
+| Notebook ink | `js-draw` and `perfect-freehand`, rendered to canvas |
+| Documents | `pdfjs-dist` for page rendering, `mammoth`/`officeparser`/`cheerio` for imports |
+| Rich text and maths | `react-markdown`, `remark-gfm`, `remark-math`, `rehype-katex`, KaTeX |
+| Charts | `recharts` |
+| Notifications | Web Push (`web-push`), sent by Vercel Cron |
+| AI | Google Gemini via `@google/generative-ai` |
+| Testing | Vitest, Playwright, Firebase Rules Unit Testing |
 
 ## Repository layout
 
 ```text
-app/                  Next.js pages, layouts, and server Route Handlers
+app/                  Pages, layouts, and server Route Handlers
 components/           Feature UI, application layout, and shared UI primitives
+hooks/                Stateful React hooks, including the notebook controllers
 lib/                  Models, validation, calculations, and browser-side utilities
 services/             Firebase persistence and client API adapters
-tests/                Unit, service, Route Handler, and Firebase rules tests
-docs/                 Design guidance, current QA notes, and marked historical reports
-public/               PWA files, application icons, and static assets
+tests/                Unit, service, and Route Handler tests (Vitest)
+e2e/                  Signed-in browser tests against the Firebase emulators
+scripts/              Repository tooling: size limits, splash screens, seeding
+docs/                 Design guidance, QA notes, and marked historical reports
+public/               PWA manifest, service worker, icons, and static assets
 ```
 
-Routes should stay thin where practical. Firebase and HTTP access belongs in
-`services`; pure domain logic belongs in `lib`; reusable visual primitives belong
-in `components/ui`. See [`docs/architecture.md`](docs/architecture.md) for dependency
-and compatibility boundaries. UI work must follow
-[`docs/ui-design-system.md`](docs/ui-design-system.md).
+Routes stay thin. Firebase and HTTP access belongs in `services`; pure domain logic
+belongs in `lib`; reusable visual primitives belong in `components/ui`. See
+[`docs/architecture.md`](docs/architecture.md) for dependency and compatibility
+boundaries, and [`docs/ui-design-system.md`](docs/ui-design-system.md), which all
+UI work must follow.
 
 ## Local development
 
 ### Requirements
 
-- Node.js 22.13 or newer
-- npm
+- Node.js 22.13 or newer, and npm
 - A Firebase project with Authentication, Firestore, and Storage
-- A Gemini API key only when exercising the existing AI endpoints
+- Java 21, to run the Firebase emulators for rules and browser tests
+- A Gemini API key, only to exercise the AI endpoints
 
 ### Setup
 
@@ -83,53 +133,59 @@ and compatibility boundaries. UI work must follow
 git clone https://github.com/jarems421/jami-flashcards.git
 cd jami-flashcards
 npm ci
-cp .env.example .env.local
+cp .env.example .env.local   # then fill in your own values
 npm run dev
 ```
 
-Open `http://localhost:3000`. The dashboard requires a Firebase-authenticated user.
-The variable names and safe placeholders are documented in
-[`.env.example`](.env.example); never commit `.env.local` or production secrets.
+Open `http://localhost:3000`. The dashboard requires a signed-in Firebase user.
+
+[`.env.example`](.env.example) lists every variable with safe placeholders, in four
+groups: the public Firebase client config, Firebase Admin credentials, Web Push keys
+and the cron secret, and `GEMINI_API_KEY`. Never commit `.env.local` or production
+secrets.
 
 ## Commands
 
 | Command | Purpose |
 | --- | --- |
-| `npm run dev` | Start the Webpack development server |
-| `npm run clean` | Remove the generated `.next` directory |
-| `npm run dev:clean` | Clean and start the development server |
-| `npm run typecheck` | Run strict TypeScript checks, including unused code checks |
-| `npm run lint` | Lint the complete repository |
+| `npm run dev` | Start the development server |
+| `npm run dev:clean` | Remove `.next` and start the development server |
+| `npm run typecheck` | Strict TypeScript checks, including unused code |
+| `npm run lint` | Lint the repository |
 | `npm run check:sizes` | Enforce source-file size limits |
 | `npm test` | Run the Vitest suite once |
-| `npm run test:rules` | Run Firestore and Storage rules tests in emulators |
-| `npm run test:e2e` | Run the signed-in Playwright suite in Firebase emulators |
+| `npm run test:rules` | Firestore and Storage rules tests, in emulators |
+| `npm run test:e2e` | Signed-in Playwright suite, in emulators |
 | `npm run emulators:rules` | Start the Firestore and Storage emulators |
-| `npm run build` | Create a production build |
-| `npm run check` | Run typecheck, lint, file-size checks, and Vitest |
-| `npm run verify:all` | Run the complete local quality, build, rules, and browser matrix |
-| `npm run firebase:rules:deploy` | Deploy Firestore and Storage rules |
-
-Pull requests and pushes to `main` run typecheck, lint, file-size checks, tests,
-a production build, Firebase rules tests, and browser smoke tests in GitHub Actions.
+| `npm run build` | Production build |
+| `npm run check` | Typecheck, lint, size limits, and Vitest |
+| `npm run verify:all` | `check`, plus build, rules tests, and browser tests |
+| `npm run firebase:rules:deploy` | Deploy Firestore rules, indexes, and Storage rules |
 
 ## Verification
 
-Run focused tests while iterating, then use the complete quality gate before a
-release:
+Run focused tests while iterating; run the full gate before a release:
 
 ```bash
 npm run verify:all
 ```
 
-Notebook and responsive UI changes also require manual desktop, iPad, and phone
-checks from [`docs/manual-qa.md`](docs/manual-qa.md).
+Pushes to `main` and pull requests run three parallel jobs in GitHub Actions
+([`.github/workflows/quality.yml`](.github/workflows/quality.yml)): typecheck, lint,
+size limits, Vitest and a production build; Firestore and Storage rules tests; and
+signed-in browser smoke tests on Chromium.
+
+Green unit tests are not sufficient evidence for UI work. Notebook and responsive
+changes also need manual desktop, iPad, and phone checks — see
+[`docs/manual-qa.md`](docs/manual-qa.md). Pen feel in particular can only be judged
+on a real stylus.
 
 ## Security and data changes
 
-Do not delete legacy Firestore structures, rules, indexes, compatibility fields,
-or externally callable API routes based only on static import analysis. Inventory
-production data and traffic first, then use an explicit migration or deprecation.
+Do not delete legacy Firestore structures, rules, indexes, compatibility fields, or
+externally callable API routes on the basis of static import analysis alone.
+Inventory production data and traffic first, then use an explicit migration or a
+deprecation window.
 
 ## License
 
