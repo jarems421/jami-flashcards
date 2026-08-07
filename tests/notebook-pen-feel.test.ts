@@ -74,8 +74,16 @@ function joinTurns(stroke: Stroke) {
   return turns;
 }
 
-/** Joined-up writing: a run of loops at handwriting scale, with hand wobble. */
-function cursive(xHeight: number) {
+/**
+ * Joined-up writing: a run of loops at handwriting scale, with hand wobble.
+ *
+ * `spread` is how far along the line each loop travels, as a multiple of the
+ * x-height, and it decides how tight the turn at the top of a loop is. Real
+ * writing spreads about twice its x-height per loop; packed tighter than that
+ * the peaks come out at a two-pixel radius, which is not a curve any hand makes
+ * -- it is a cusp, and it is correctly drawn as one.
+ */
+function cursive(xHeight: number, spread = 2.2) {
   const samplesPerLoop = Math.round(xHeight * 0.6);
   let seed = 7;
   const wobble = () => {
@@ -85,7 +93,7 @@ function cursive(xHeight: number) {
   return Array.from({ length: samplesPerLoop * 4 + 1 }, (_, step) => {
     const t = (step / samplesPerLoop) * Math.PI * 2;
     return point(
-      20 + (step / samplesPerLoop) * xHeight * 1.1 + wobble(),
+      20 + (step / samplesPerLoop) * xHeight * spread + wobble(),
       200 - Math.sin(t) * (xHeight / 2) + wobble()
     );
   });
@@ -138,19 +146,67 @@ function meanDeviation(stroke: Stroke, points: StrokeDataPoint[]) {
 }
 
 describe("pen smoothing", () => {
-  it("draws handwriting with fewer corners the further it is turned up", () => {
-    // The complaint this setting answers: at handwriting scale a plain curve
-    // turns far enough between kept points to be taken for a deliberate point,
-    // and a run of those is drawn as a run of chords.
-    const points = cursive(34);
-    const faithful = kinkCount(build(points, 0));
-    const standard = kinkCount(build(points, NOTEBOOK_PEN_SMOOTHING_DEFAULT));
-    const flowing = kinkCount(build(points, 100));
+  it("draws handwriting as curves, not as a run of chords", () => {
+    /*
+     * The complaint this answers, twice over.
+     *
+     * A corner used to be decided on the angle between one kept point and the
+     * next, and points are kept by curvature -- so the tighter the curve, the
+     * further it turned between them, and past a point every sample on it was
+     * called a corner. A corner takes its control arms from the strokes either
+     * side, so two in a row put both arms on the chord and the piece between
+     * them was drawn as a literal straight line. Writing came out as a chain of
+     * short flat runs, which is what "too sharp on the turns" was.
+     *
+     * Smaller writing was worse, which is the wrong way round. So this is not a
+     * comparison between settings -- there is nothing left to trade off. A
+     * curve is drawn as a curve, at every size, from the default upwards.
+     */
+    for (const xHeight of [18, 26, 34]) {
+      const points = cursive(xHeight);
+      const where = `x-height ${xHeight}`;
+      expect(kinkCount(build(points, NOTEBOOK_PEN_SMOOTHING_DEFAULT)), where).toBe(0);
+      expect(kinkCount(build(points, 100)), where).toBe(0);
+    }
+  });
 
-    expect(standard).toBeLessThan(faithful);
-    expect(flowing).toBeLessThan(standard);
-    // The default has to be a real improvement on the faithful end, not a nudge.
-    expect(standard).toBeLessThan(faithful / 2);
+  it("leaves a round letter round", () => {
+    // An 'o' is the shape that suffered most: a small one is a tight curve all
+    // the way round, so every point on it turned enough to be taken for a
+    // deliberate one and it came back a polygon.
+    for (const radius of [6, 10, 17]) {
+      const points = Array.from({ length: Math.round(radius * 6) }, (_, step) => {
+        const t = (step / Math.round(radius * 6)) * Math.PI * 2;
+        return point(200 + Math.cos(t) * radius, 200 + Math.sin(t) * radius);
+      });
+      const turns = joinTurns(build(points, NOTEBOOK_PEN_SMOOTHING_DEFAULT));
+      expect(Math.max(0, ...turns), `radius ${radius}`).toBeLessThan(1);
+    }
+  });
+
+  it("still lets the setting decide the turns it is actually about", () => {
+    /*
+     * With curves no longer mistaken for corners, the control does the one job
+     * left: how sharp a deliberate turn has to be before it is drawn as a
+     * point. A turn this size is a judgement call -- some hands mean it, some
+     * are just writing quickly -- which is why it is a setting.
+     */
+    const half = (60 / 2) * (Math.PI / 180);
+    const bend = [
+      ...Array.from({ length: 40 }, (_, k) =>
+        point(100 - Math.cos(half) * (40 - k), 150 - Math.sin(half) * (40 - k))
+      ),
+      point(100, 150),
+      ...Array.from({ length: 40 }, (_, k) =>
+        point(100 + Math.cos(half) * (k + 1), 150 - Math.sin(half) * (k + 1))
+      ),
+    ];
+
+    expect(Math.max(0, ...joinTurns(build(bend, 0)))).toBeGreaterThan(50);
+    expect(
+      Math.max(0, ...joinTurns(build(bend, NOTEBOOK_PEN_SMOOTHING_DEFAULT)))
+    ).toBeGreaterThan(50);
+    expect(Math.max(0, ...joinTurns(build(bend, 100)))).toBeLessThan(1);
   });
 
   it("buys fewer corners without the line fighting the hand", () => {
