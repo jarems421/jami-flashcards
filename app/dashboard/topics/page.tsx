@@ -79,11 +79,11 @@ function TopicActionsMenu({
         </svg>
       </summary>
       <div
-        className={`absolute right-0 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${menuPositionClass}`}
+        className={`absolute right-0 z-30 min-w-44 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${menuPositionClass}`}
       >
         <button
           type="button"
-          className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)]"
+          className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)]"
           onClick={(event) => {
             event.currentTarget.closest("details")?.removeAttribute("open");
             onRename();
@@ -93,7 +93,7 @@ function TopicActionsMenu({
         </button>
         <button
           type="button"
-          className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)]"
+          className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)]"
           onClick={(event) => {
             event.currentTarget.closest("details")?.removeAttribute("open");
             onDelete();
@@ -344,7 +344,7 @@ export default function TopicsPage() {
       </Card>
 
       {topics.length > 0 ? (
-        <div className="space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3">
+        <div className="space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <h2 className="text-lg font-semibold text-text-primary">
@@ -399,7 +399,7 @@ export default function TopicsPage() {
               return (
                 <section
                   key={summary.topic.id}
-                  className={`app-panel relative overflow-visible rounded-[1.35rem] transition duration-fast has-[details[open]]:z-40 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell ${
+                  className={`app-panel relative overflow-visible rounded-xl transition duration-fast has-[details[open]]:z-40 hover:-translate-y-0.5 hover:border-border-strong hover:shadow-shell ${
                     editing ? "sm:col-span-2" : "min-h-[8.5rem]"
                   }`}
                 >
@@ -440,12 +440,12 @@ export default function TopicsPage() {
                     <>
                       <Link
                         href={`/dashboard/topics/${encodeURIComponent(summary.topic.id)}`}
-                        className="group flex h-full flex-col rounded-[1.35rem] p-4 pr-14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        className="group flex h-full flex-col rounded-xl p-4 pr-14 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                       >
                         <h2 className="min-w-0 truncate text-base font-semibold text-text-primary">
                           {summary.topic.name}
                         </h2>
-                        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-[0.7rem] leading-5 text-text-muted">
+                        <div className="mt-3 flex flex-wrap gap-x-3 gap-y-1 text-2xs leading-5 text-text-muted">
                           <span>{summary.cardCount} cards</span>
                           <span>{summary.notebookCount} notebooks</span>
                           <span>{summary.sourceCount} sources</span>
@@ -455,12 +455,12 @@ export default function TopicsPage() {
                         summary.weakCardCount > 0 ? (
                           <div className="mt-auto flex flex-wrap gap-1.5 pt-3">
                             {summary.dueCardCount > 0 ? (
-                              <span className="app-chip rounded-full px-2.5 py-1 text-[0.68rem] font-semibold">
+                              <span className="app-chip rounded-full px-2.5 py-1 text-2xs font-semibold">
                                 {summary.dueCardCount} due
                               </span>
                             ) : null}
                             {summary.weakCardCount > 0 ? (
-                              <span className="rounded-full border border-[var(--color-error-border)] bg-[var(--color-error-muted)] px-2.5 py-1 text-[0.68rem] font-semibold text-[var(--color-error-text)]">
+                              <span className="rounded-full border border-[var(--color-error-border)] bg-[var(--color-error-muted)] px-2.5 py-1 text-2xs font-semibold text-[var(--color-error-text)]">
                                 {summary.weakCardCount} weak
                               </span>
                             ) : null}

@@ -217,7 +217,7 @@ export default function SourceComposerDialog({
           <div
             role="group"
             aria-label="Source type"
-            className="app-subtle-panel grid grid-cols-3 gap-1 rounded-[1.15rem] p-1"
+            className="app-subtle-panel grid grid-cols-3 gap-1 rounded-lg p-1"
           >
             {sourceComposerKinds.map((item) => (
               <button
@@ -227,8 +227,8 @@ export default function SourceComposerDialog({
                 onClick={() => changeComposerKind(item.value)}
                 className={
                   composerKind === item.value
-                    ? "app-selected min-h-11 rounded-[0.9rem] px-3 text-sm font-semibold"
-                    : "min-h-11 rounded-[0.9rem] px-3 text-sm font-medium text-text-muted transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                    ? "app-selected min-h-11 rounded-md px-3 text-sm font-semibold"
+                    : "min-h-11 rounded-md px-3 text-sm font-medium text-text-muted transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                 }
               >
                 {item.label}
@@ -269,7 +269,7 @@ export default function SourceComposerDialog({
         ) : null}
 
         {composerKind === "upload" ? (
-          <div className="app-subtle-panel rounded-[1.25rem] p-4">
+          <div className="app-subtle-panel rounded-lg p-4">
             <label
               className="block text-sm font-medium text-text-secondary"
               htmlFor="library-source-file"
@@ -305,7 +305,7 @@ export default function SourceComposerDialog({
                   filenameDerivedTitleRef.current = "";
                 }
               }}
-              className="app-field mt-3 block w-full cursor-pointer rounded-[1rem] p-3 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-[var(--button-secondary-bg)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--button-secondary-text)]"
+              className="app-field mt-3 block w-full cursor-pointer rounded-md p-3 text-sm file:mr-3 file:rounded-full file:border-0 file:bg-[var(--button-secondary-bg)] file:px-3 file:py-2 file:text-sm file:font-semibold file:text-[var(--button-secondary-text)]"
             />
             {sourceFile ? (
               <div className="mt-3 text-sm text-text-secondary">
@@ -315,7 +315,7 @@ export default function SourceComposerDialog({
           </div>
         ) : null}
 
-        <details className="group rounded-[1.2rem] border border-[var(--color-border)]">
+        <details className="group rounded-lg border border-[var(--color-border)]">
           <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 text-sm font-semibold text-text-secondary [&::-webkit-details-marker]:hidden">
             <span>Organise now (optional)</span>
             <svg

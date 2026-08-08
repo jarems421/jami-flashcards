@@ -48,7 +48,7 @@ export default function ConfirmDialog({
       />
       <DialogPanel
         role="alertdialog"
-        className="app-panel relative w-full max-w-md rounded-[1.55rem] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.5)] sm:p-6"
+        className="app-panel relative w-full max-w-md rounded-xl p-5 shadow-[0_28px_80px_rgba(0,0,0,0.5)] sm:p-6"
       >
         <DialogTitle className="text-xl font-semibold text-text-primary">
           {title}

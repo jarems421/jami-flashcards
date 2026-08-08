@@ -68,7 +68,7 @@ export default function FolderAssetPicker({
                 onClick={() =>
                   setSelectedIds((current) => toggleIdSelection(current, item.id))
                 }
-                className={`rounded-[1rem] border px-3 py-3 text-left text-sm transition ${
+                className={`rounded-md border px-3 py-3 text-left text-sm transition ${
                   selected
                     ? "border-warm-border bg-warm-glow text-text-primary"
                     : "border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-secondary"

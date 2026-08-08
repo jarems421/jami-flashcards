@@ -1567,7 +1567,7 @@ export default function StudyPage() {
     >
       {feedback ? <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={() => clearFeedback()} /> : null}
       {offlineMode || pendingOfflineReviews > 0 ? (
-        <div className="rounded-[1.5rem] border border-warm-border bg-warm-glow p-4 text-sm text-text-secondary">
+        <div className="rounded-xl border border-warm-border bg-warm-glow p-4 text-sm text-text-secondary">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="font-semibold text-text-primary">
@@ -1612,10 +1612,10 @@ export default function StudyPage() {
                 <SurfaceCard tone="warm" padding="lg">
                   <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
                     <div className="min-w-0 max-w-2xl">
-                      <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-secondary">
+                      <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
                         Daily Review
                       </div>
-                      <h2 className="mt-2 text-[1.55rem] font-semibold leading-tight tracking-tight text-text-primary sm:text-[2rem]">
+                      <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-text-primary sm:text-3xl">
                         {hasCarryoverRequiredCards
                           ? "Finish yesterday's review first."
                           : remainingRequiredCards.length > 0
@@ -1723,7 +1723,7 @@ export default function StudyPage() {
                   className="space-y-3"
                 >
                   <div>
-                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
                       Your choice
                     </div>
                     <h2
@@ -1881,7 +1881,7 @@ export default function StudyPage() {
               <SurfaceCard tone="warm" padding="lg" className="animate-warm-glow-pulse">
                 <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
                   <div>
-                    <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
+                    <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">Session complete</div>
                     <h2 className="mt-3 text-xl font-medium leading-tight tracking-tight text-text-primary sm:text-2xl">Good work.</h2>
                     <p className="mt-3 max-w-2xl text-sm leading-7 text-text-secondary sm:text-base">
                       {sessionKind === "simple"
@@ -1890,11 +1890,11 @@ export default function StudyPage() {
                     </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
-                    <div className="rounded-[1.4rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-secondary">
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-4 py-3 text-sm text-text-secondary">
                       <span className="text-sm font-semibold text-text-primary">{accuracyPercentage}%</span> accuracy
                     </div>
                     {daysRunning !== null && daysRunning > 0 ? (
-                      <div className="rounded-[1.4rem] border border-warm-border bg-warm-glow px-4 py-3 text-sm text-text-secondary">
+                      <div className="rounded-xl border border-warm-border bg-warm-glow px-4 py-3 text-sm text-text-secondary">
                         <span className="text-sm font-semibold text-text-primary">
                           {daysRunning}
                         </span>{" "}
@@ -1904,11 +1904,11 @@ export default function StudyPage() {
                   </div>
                 </div>
                 <div className="mt-6 grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
+                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
                     <div className="text-xs text-text-muted">Reviewed</div>
                     <div className="mt-2 flex min-h-7 items-center justify-center text-lg font-semibold leading-none tabular-nums text-text-primary">{sessionStats.reviewedCards}</div>
                   </div>
-                  <div className="rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm">
+                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm">
                     <div className="text-center text-xs text-text-muted">Ratings</div>
                     <div className="mt-2 grid grid-cols-2 gap-1.5 text-xs text-text-secondary">
                       {(["again", "hard", "good", "easy"] as CardRating[]).map((rating) => (
@@ -1919,16 +1919,16 @@ export default function StudyPage() {
                       ))}
                     </div>
                   </div>
-                  <div className="rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
+                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
                     <div className="text-xs text-text-muted">Goals completed</div>
                     <div className="mt-2 flex min-h-7 items-center justify-center text-lg font-semibold leading-none tabular-nums text-text-primary">{sessionStats.completedGoals}</div>
                   </div>
-                  <div className="rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
+                  <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-center text-sm">
                     <div className="text-xs text-text-muted">Rewards</div>
                     <div className="mt-2 text-sm text-text-secondary"><span className="font-semibold tabular-nums text-text-primary">{sessionStats.starsEarned}</span> star{sessionStats.starsEarned === 1 ? "" : "s"}</div>
                   </div>
                 </div>
-                <div className="mt-6 rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+                <div className="mt-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
                   <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Next best step</div>
                   <div className="mt-2 text-base font-semibold text-text-primary sm:text-lg">
                     {sessionWasCarryoverOnly && remainingFreshRequiredCards.length > 0
@@ -1975,9 +1975,9 @@ export default function StudyPage() {
                   ) : hasCards && customPreviewCards.length > 0 ? (
                     <Button type="button" onClick={() => startSession("custom")} size="lg" variant="warm">Start Focused Review</Button>
                   ) : sessionStats.completedGoals > 0 ? (
-                    <Link href="/dashboard/constellation" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">View constellation</Link>
+                    <Link href="/dashboard/constellation" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-2xl border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">View constellation</Link>
                   ) : (
-                    <Link href="/dashboard/cards" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">Edit cards</Link>
+                    <Link href="/dashboard/cards" className="inline-flex min-h-[3.25rem] items-center justify-center rounded-2xl border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105">Edit cards</Link>
                   )}
                   {sessionKind === "simple" && simpleStudyQueue.cards.length === 0 ? null : (
                     <Button type="button" onClick={() => startSession(sessionKind)} size="lg" variant="secondary">Run this session again</Button>
@@ -1992,7 +1992,7 @@ export default function StudyPage() {
               <section className="study-session-stage space-y-5 px-1 py-2 sm:px-2 sm:py-3">
                   <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-end">
                     <div className="min-w-0">
-                      <div className="text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">{getSessionLabel(sessionKind)}</div>
+                      <div className="text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">{getSessionLabel(sessionKind)}</div>
                       <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-1.5 text-sm leading-none text-text-secondary">
                         <span className="font-semibold tabular-nums text-text-primary">{remainingCards}</span>
                         <span className="text-text-muted">/</span>
@@ -2044,10 +2044,10 @@ export default function StudyPage() {
                         : "Jami cannot see this card's answer until you flip it, so it can nudge you towards it but never hand it over."
                     }
                   />
-                  <div data-study-current-card-id={current.id} className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-[2rem] perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
+                  <div data-study-current-card-id={current.id} className="study-flashcard-shell mx-auto w-full max-w-[62rem] cursor-pointer rounded-2xl perspective-[1400px]" onClick={!flipped ? handleFlip : undefined} onKeyDown={(event) => { if (flipped) return; if (event.key === "Enter" || event.key === " ") { event.preventDefault(); handleFlip(); } }} role="button" tabIndex={0} aria-label={flipped ? "Flashcard answer shown" : "Flip flashcard"}>
                     <div className={`relative aspect-[5/4] w-full transition-transform duration-slow ease-standard [transform-style:preserve-3d] sm:aspect-[16/10] xl:aspect-[16/9] ${flipped ? "[transform:rotateY(180deg)]" : ""}`}>
                       <div
-                        className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
+                        className="study-flashcard-face study-flashcard-face-front absolute inset-0 flex flex-col rounded-2xl p-5 [backface-visibility:hidden] sm:p-8 lg:p-10"
                         aria-hidden={flipped}
                         inert={flipped}
                         style={{
@@ -2068,12 +2068,12 @@ export default function StudyPage() {
                           {(current.topicIds?.length ?? 0) > 0 ? (
                             <div className="flex max-w-[60%] flex-wrap justify-end gap-1.5">
                               {(current.topicIds ?? []).slice(0, 2).map((topicId) => (
-                                <span key={topicId} className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-[0.68rem] font-medium opacity-75">
+                                <span key={topicId} className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-2xs font-medium opacity-75">
                                   {topicNamesById[topicId] ?? "Topic"}
                                 </span>
                               ))}
                               {(current.topicIds?.length ?? 0) > 2 ? (
-                                <span className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-[0.68rem] font-medium opacity-65">+{(current.topicIds?.length ?? 0) - 2}</span>
+                                <span className="rounded-full border border-current/15 bg-current/[0.05] px-2.5 py-1 text-2xs font-medium opacity-65">+{(current.topicIds?.length ?? 0) - 2}</span>
                               ) : null}
                             </div>
                           ) : null}
@@ -2082,7 +2082,7 @@ export default function StudyPage() {
                           <StudyText
                             as="p"
                             text={current.front}
-                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-[2.15rem]"
+                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-4xl"
                           />
                         </div>
                         <div className="text-center text-xs font-medium opacity-60">Tap anywhere on the card or press Space to reveal</div>
@@ -2094,7 +2094,7 @@ export default function StudyPage() {
                         aria-hidden take it out of both until the flip.
                       */}
                       <div
-                        className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-[2rem] p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10"
+                        className="study-flashcard-face study-flashcard-face-back absolute inset-0 flex flex-col rounded-2xl p-5 [backface-visibility:hidden] [transform:rotateY(180deg)] sm:p-8 lg:p-10"
                         aria-hidden={!flipped}
                         inert={!flipped}
                         style={{
@@ -2113,7 +2113,7 @@ export default function StudyPage() {
                           <StudyText
                             as="p"
                             text={current.back}
-                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-[2.15rem]"
+                            className="max-w-4xl whitespace-pre-wrap text-center text-lg font-medium leading-snug tracking-[0.01em] text-[color:inherit] sm:text-2xl xl:text-4xl"
                           />
                         </div>
                         <div className="text-center text-xs font-medium opacity-60">How well did you recall this?</div>
@@ -2122,7 +2122,7 @@ export default function StudyPage() {
                   </div>
               </section>
               {flipped ? (
-                <div className="sticky bottom-3 z-30 animate-fade-in space-y-3 rounded-[1.5rem] border border-[var(--color-border)] bg-surface-panel/95 p-2 shadow-[0_18px_36px_rgba(8,2,26,0.28)] backdrop-blur-md sm:static sm:z-auto sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
+                <div className="sticky bottom-3 z-30 animate-fade-in space-y-3 rounded-xl border border-[var(--color-border)] bg-surface-panel/95 p-2 shadow-[0_18px_36px_rgba(8,2,26,0.28)] backdrop-blur-md sm:static sm:z-auto sm:rounded-none sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none sm:backdrop-blur-0">
                   {savingRating ? <div className="text-center text-sm text-text-muted">Saving...</div> : null}
                   <div className="space-y-3">
                       {sessionKind === "simple" ? (
@@ -2131,23 +2131,23 @@ export default function StudyPage() {
                             type="button"
                             aria-label="Missed this card"
                             disabled={savingRating !== null}
-                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border border-rose-300/25 bg-rose-400/[0.08] px-3 py-4 text-center text-base font-semibold text-rose-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-rose-200/45 hover:bg-rose-400/[0.12] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
+                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-xl border border-rose-300/25 bg-rose-400/[0.08] px-3 py-4 text-center text-base font-semibold text-rose-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-rose-200/45 hover:bg-rose-400/[0.12] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
                             onClick={() => void handleSimpleStudyResult("wrong")}
                           >
                             <span>Missed</span>
-                            <span className="text-[0.7rem] font-normal opacity-75">Back of queue</span>
-                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-[0.68rem] leading-none tabular-nums opacity-75">1</span>
+                            <span className="text-2xs font-normal opacity-75">Back of queue</span>
+                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-2xs leading-none tabular-nums opacity-75">1</span>
                           </button>
                           <button
                             type="button"
                             aria-label="Got this card right"
                             disabled={savingRating !== null}
-                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border border-emerald-300/25 bg-emerald-400/[0.08] px-3 py-4 text-center text-base font-semibold text-emerald-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-emerald-200/45 hover:bg-emerald-400/[0.12] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
+                            className="flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-xl border border-emerald-300/25 bg-emerald-400/[0.08] px-3 py-4 text-center text-base font-semibold text-emerald-100 shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] hover:border-emerald-200/45 hover:bg-emerald-400/[0.12] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm"
                             onClick={() => void handleSimpleStudyResult("correct")}
                           >
                             <span>Got it</span>
-                            <span className="text-[0.7rem] font-normal opacity-75">Clear card</span>
-                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-[0.68rem] leading-none tabular-nums opacity-75">2</span>
+                            <span className="text-2xs font-normal opacity-75">Clear card</span>
+                            <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-2xs leading-none tabular-nums opacity-75">2</span>
                           </button>
                         </div>
                       ) : (
@@ -2159,12 +2159,12 @@ export default function StudyPage() {
                               key={rating}
                               type="button"
                               disabled={savingRating !== null}
-                              className={`flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-[1.35rem] border px-3 py-4 text-center text-base font-semibold shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm ${meta.classes}`}
+                              className={`flex min-h-[5.2rem] flex-col items-center justify-center gap-1.5 rounded-xl border px-3 py-4 text-center text-base font-semibold shadow-[0_10px_20px_rgba(8,2,26,0.12)] transition duration-fast ease-spring hover:-translate-y-[0.5px] active:scale-[0.985] disabled:saturate-[0.82] disabled:brightness-95 sm:min-h-[4.6rem] sm:px-4 sm:py-3.5 sm:text-sm ${meta.classes}`}
                               onClick={() => void handleRating(rating)}
                             >
                               <span>{RATING_LABELS[rating]}</span>
-                              <span className="text-[0.7rem] font-normal opacity-75">{meta.hint}</span>
-                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-[0.68rem] leading-none tabular-nums opacity-75">{meta.shortcut}</span>
+                              <span className="text-2xs font-normal opacity-75">{meta.hint}</span>
+                              <span className="inline-flex h-6 min-w-6 items-center justify-center rounded-full border border-[var(--color-border)] bg-black/10 px-2 text-2xs leading-none tabular-nums opacity-75">{meta.shortcut}</span>
                             </button>
                             );
                           })}

@@ -36,7 +36,7 @@ export default function HowJamiWorksCard() {
           {steps.map(([step, title]) => (
             <div
               key={step}
-              className="app-subtle-panel flex items-center gap-3 rounded-[1.1rem] p-3"
+              className="app-subtle-panel flex items-center gap-3 rounded-lg p-3"
             >
               <IconBubble size="sm" shape="circle" className="app-chip font-semibold">
                 {step}

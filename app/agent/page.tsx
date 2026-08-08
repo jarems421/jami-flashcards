@@ -73,7 +73,7 @@ function AgentLink({
     <Link
       href={href}
       data-agent-route={href}
-      className="group rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-left transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
+      className="group rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-left transition duration-fast hover:-translate-y-0.5 hover:border-warm-border hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
     >
       <div className="flex items-start justify-between gap-3">
         <div>
@@ -103,7 +103,7 @@ export default function AgentPage() {
           <Link
             href="/dashboard"
             data-agent-start="dashboard"
-            className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105"
+            className="inline-flex min-h-[3.25rem] items-center justify-center rounded-2xl border border-white/24 bg-[linear-gradient(180deg,#fff8fd_0%,#ffe8f7_42%,#ffdff4_100%)] px-5 py-3 text-base font-medium text-[#10091d] shadow-[0_12px_24px_rgba(255,214,246,0.18)] transition duration-fast hover:-translate-y-[1px] hover:brightness-105"
           >
             Open dashboard
           </Link>
@@ -111,7 +111,7 @@ export default function AgentPage() {
         secondaryAction={
           <a
             href="/llms.txt"
-            className="inline-flex min-h-[3.25rem] items-center justify-center rounded-[2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-5 py-3 text-base font-medium text-text-primary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
+            className="inline-flex min-h-[3.25rem] items-center justify-center rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-5 py-3 text-base font-medium text-text-primary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-strong,var(--color-glass-subtle))]"
           >
             Plain-text route map
           </a>
@@ -129,7 +129,7 @@ export default function AgentPage() {
             ["Real user data", "Reads and writes use the signed-in account's Firebase data."],
             ["No demo bypass", "The route index does not enable test-only behavior or local seeded content."],
           ].map(([title, detail]) => (
-            <div key={title} className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+            <div key={title} className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
               <div className="text-sm font-semibold text-text-primary">{title}</div>
               <p className="mt-2 text-sm leading-6 text-text-secondary">{detail}</p>
             </div>

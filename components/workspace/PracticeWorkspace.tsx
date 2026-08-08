@@ -277,7 +277,7 @@ export default function PracticeWorkspace() {
             <Skeleton className="h-7 w-48 rounded-full" />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
               {Array.from({ length: 3 }).map((_, index) => (
-                <Skeleton key={index} className="h-40 rounded-[1.4rem]" />
+                <Skeleton key={index} className="h-40 rounded-xl" />
               ))}
             </div>
           </section>
@@ -285,7 +285,7 @@ export default function PracticeWorkspace() {
             <Skeleton className="h-7 w-36 rounded-full" />
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
               {Array.from({ length: 5 }).map((_, index) => (
-                <Skeleton key={index} className="h-36 rounded-[1.4rem]" />
+                <Skeleton key={index} className="h-36 rounded-xl" />
               ))}
             </div>
           </section>

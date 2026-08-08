@@ -70,28 +70,28 @@ function NotebookCardInner({
   return (
     <div
       className={cx(
-        "group/notebook mx-auto flex h-full w-full max-w-[8.35rem] cursor-pointer flex-col items-center rounded-[1.05rem] border border-transparent bg-transparent px-2 py-2.5 text-center transition duration-200 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]",
+        "group/notebook mx-auto flex h-full w-full max-w-[8.35rem] cursor-pointer flex-col items-center rounded-lg border border-transparent bg-transparent px-2 py-2.5 text-center transition duration-200 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]",
         editorPreview ? "min-h-[7rem] max-w-[6rem] px-1.5 py-2" : compact ? "min-h-[9.6rem]" : "min-h-[10.9rem]",
       )}
     >
       <div className="flex items-center justify-center">
         <div className={cx("relative", editorPreview ? "h-[4.8rem] w-[4.6rem]" : compact ? "h-24 w-[5.45rem]" : "h-28 w-[6.1rem]")}>
           <div
-            className="absolute left-3 top-1.5 h-[94%] w-[82%] rounded-[0.62rem] border border-slate-900/10"
+            className="absolute left-3 top-1.5 h-[94%] w-[82%] rounded-sm border border-slate-900/10"
             style={paperStyle}
             aria-hidden="true"
           />
           <div
-            className="absolute left-2 top-2 h-[92%] w-[82%] rounded-[0.62rem] border border-slate-900/10 bg-white/80"
+            className="absolute left-2 top-2 h-[92%] w-[82%] rounded-sm border border-slate-900/10 bg-white/80"
             aria-hidden="true"
           />
           <div
-            className="absolute inset-y-0 left-0 h-full w-[82%] rounded-[0.66rem] border border-black/15 shadow-[0_9px_18px_rgba(15,23,42,0.18)] transition duration-200 group-hover/notebook:-rotate-[0.65deg]"
+            className="absolute inset-y-0 left-0 h-full w-[82%] rounded-sm border border-black/15 shadow-[0_9px_18px_rgba(15,23,42,0.18)] transition duration-200 group-hover/notebook:-rotate-[0.65deg]"
             style={{
               backgroundColor: preset.base,
             }}
           >
-            <div className="absolute inset-y-0 left-0 w-3 rounded-l-[0.66rem] border-r border-black/15 bg-black/10" aria-hidden="true" />
+            <div className="absolute inset-y-0 left-0 w-3 rounded-l-sm border-r border-black/15 bg-black/10" aria-hidden="true" />
             <div className="absolute inset-y-2 right-1.5 w-px bg-white/28" aria-hidden="true" />
             <ObjectIcon
               icon={icon}
@@ -274,7 +274,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
         </summary>
         <div
           className={cx(
-            "absolute right-0 z-30 grid min-w-44 gap-1 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-[0_18px_46px_rgba(0,0,0,0.28)]",
+            "absolute right-0 z-30 grid min-w-44 gap-1 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-[0_18px_46px_rgba(0,0,0,0.28)]",
             menuPositionClass
           )}
         >
@@ -282,7 +282,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
             <button
               type="button"
               disabled={props.deleting}
-              className="rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
+              className="rounded-sm px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
               onClick={(event) => {
                 event.currentTarget.closest("details")?.removeAttribute("open");
                 props.onEdit?.();
@@ -295,7 +295,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
             <button
               type="button"
               disabled={props.deleting}
-              className="rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
+              className="rounded-sm px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
               onClick={(event) => {
                 event.currentTarget.closest("details")?.removeAttribute("open");
                 props.onDelete?.();

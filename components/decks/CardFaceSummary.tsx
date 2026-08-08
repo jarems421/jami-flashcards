@@ -23,7 +23,7 @@ export default function CardFaceSummary({
       <StudyText
         as="div"
         text={front}
-        className="line-clamp-2 whitespace-pre-wrap text-[0.95rem] font-semibold leading-6 text-text-primary transition group-hover:text-accent"
+        className="line-clamp-2 whitespace-pre-wrap text-base font-semibold leading-6 text-text-primary transition group-hover:text-accent"
       />
       <div className="mt-2 border-t border-[var(--color-border)] pt-2">
         <StudyText

@@ -20,7 +20,7 @@ export default function DeckCoverIcon({
 
   return (
     <div
-      className={`relative grid shrink-0 place-items-center overflow-hidden rounded-[0.9rem] text-white shadow-[0_8px_16px_rgba(5,8,18,0.18)] ${className}`}
+      className={`relative grid shrink-0 place-items-center overflow-hidden rounded-md text-white shadow-[0_8px_16px_rgba(5,8,18,0.18)] ${className}`}
       style={{
         background: `linear-gradient(145deg, ${color.light} 0%, ${color.base} 58%, ${color.dark} 100%)`,
         boxShadow:

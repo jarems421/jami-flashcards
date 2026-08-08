@@ -2391,8 +2391,8 @@ export default function NotebookEditorPage() {
     return (
       <AppPage title="Notebook" backHref="/dashboard/folders" backLabel="Folders" width="3xl">
         <div className="space-y-5">
-          <Skeleton className="h-40 rounded-[1.7rem]" />
-          <Skeleton className="h-[34rem] rounded-[1.9rem]" />
+          <Skeleton className="h-40 rounded-2xl" />
+          <Skeleton className="h-[34rem] rounded-2xl" />
         </div>
       </AppPage>
     );

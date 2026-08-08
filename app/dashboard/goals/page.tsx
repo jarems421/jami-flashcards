@@ -134,7 +134,7 @@ function GoalDeadlineField({
       >
         {label}
       </label>
-      <div className="app-field relative flex min-h-11 min-w-0 items-center gap-3 overflow-hidden rounded-[1.15rem] px-4 py-2.5">
+      <div className="app-field relative flex min-h-11 min-w-0 items-center gap-3 overflow-hidden rounded-lg px-4 py-2.5">
         <span
           aria-hidden="true"
           className={`min-w-0 flex-1 truncate text-sm ${
@@ -665,7 +665,7 @@ export default function GoalsPage() {
                 label="Goal name"
                 placeholder="For example, Biology review"
                 containerClassName="goal-form-span-all min-w-0"
-                className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
+                className="min-h-11 min-w-0 !rounded-lg !px-4 !py-2.5"
               />
               <label className="min-w-0 text-sm font-medium text-text-secondary">
                 Counts study from
@@ -675,7 +675,7 @@ export default function GoalsPage() {
                     setGoalScopeType(event.target.value as GoalScopeType);
                     setGoalScopeId("");
                   }}
-                  className="app-field mt-2 min-h-11 w-full rounded-[1.15rem] px-4 py-2.5 text-sm"
+                  className="app-field mt-2 min-h-11 w-full rounded-lg px-4 py-2.5 text-sm"
                 >
                   <option value="all">All study</option>
                   <option value="deck">One deck</option>
@@ -689,7 +689,7 @@ export default function GoalsPage() {
                   <select
                     value={goalScopeId}
                     onChange={(event) => setGoalScopeId(event.target.value)}
-                    className="app-field mt-2 min-h-11 w-full rounded-[1.15rem] px-4 py-2.5 text-sm"
+                    className="app-field mt-2 min-h-11 w-full rounded-lg px-4 py-2.5 text-sm"
                   >
                     <option value="">Choose {goalScopeType}</option>
                     {scopeOptions.map((option) => (
@@ -700,7 +700,7 @@ export default function GoalsPage() {
                   </select>
                 </label>
               ) : (
-                <div className="app-subtle-panel flex min-h-11 items-center rounded-[1.15rem] px-4 py-2.5 text-sm text-text-secondary">
+                <div className="app-subtle-panel flex min-h-11 items-center rounded-lg px-4 py-2.5 text-sm text-text-secondary">
                   Every reviewed card counts toward this goal.
                 </div>
               )}
@@ -711,7 +711,7 @@ export default function GoalsPage() {
                 onChange={(event) => setTargetCards(event.target.value)}
                 label="Target cards"
                 containerClassName="min-w-0"
-                className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
+                className="min-h-11 min-w-0 !rounded-lg !px-4 !py-2.5"
               />
               <Input
                 type="number"
@@ -722,7 +722,7 @@ export default function GoalsPage() {
                 onChange={(event) => setTargetAccuracy(event.target.value)}
                 label="Accuracy %"
                 containerClassName="min-w-0"
-                className="min-h-11 min-w-0 !rounded-[1.15rem] !px-4 !py-2.5"
+                className="min-h-11 min-w-0 !rounded-lg !px-4 !py-2.5"
               />
               <div className="goal-form-span-all min-w-0 border-t border-[var(--color-border)] pt-4">
                 <div className="text-sm font-medium text-text-primary">Deadline</div>

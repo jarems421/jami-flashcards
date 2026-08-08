@@ -611,10 +611,10 @@ export default function FolderDetailPage() {
     return (
       <AppPage title="Folder" backHref="/dashboard/folders" backLabel="Folders">
         <div className="space-y-5">
-          <Skeleton className="h-56 rounded-[1.9rem]" />
+          <Skeleton className="h-56 rounded-2xl" />
           <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
             {Array.from({ length: 5 }).map((_, index) => (
-              <Skeleton key={index} className="h-40 rounded-[1.45rem]" />
+              <Skeleton key={index} className="h-40 rounded-xl" />
             ))}
           </div>
         </div>
@@ -749,7 +749,7 @@ export default function FolderDetailPage() {
           <span className="truncate text-text-secondary">{folder.name}</span>
         </nav>
 
-        <div className="flex flex-col gap-4 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-col gap-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-4">
             <div className="w-[7.25rem] shrink-0">
               <FolderObjectCard title={folder.name} color={folder.color} icon={folder.icon} />
@@ -1029,7 +1029,7 @@ export default function FolderDetailPage() {
                   return (
                     <div
                       key={source.id}
-                      className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3"
+                      className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3"
                     >
                       <div className="flex items-center justify-between gap-3">
                         <div className="min-w-0">

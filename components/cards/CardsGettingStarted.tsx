@@ -18,8 +18,8 @@ export default function CardsGettingStarted({
   }
 
   return (
-    <section className="grid gap-3 rounded-[1.5rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:grid-cols-3">
-      <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
+    <section className="grid gap-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:grid-cols-3">
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
           1. Decks
         </div>
@@ -38,7 +38,7 @@ export default function CardsGettingStarted({
           </Link>
         ) : null}
       </div>
-      <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
           2. Cards
         </div>
@@ -49,7 +49,7 @@ export default function CardsGettingStarted({
           Single card and paste-list import live just below.
         </p>
       </div>
-      <div className="rounded-[1.1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
+      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
         <div className="text-xs font-semibold uppercase tracking-[0.16em] text-text-muted">
           3. Topics
         </div>

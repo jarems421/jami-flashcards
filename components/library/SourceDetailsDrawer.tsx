@@ -86,7 +86,7 @@ export default function SourceDetailsDrawer({
                 No folders yet.
               </p>
             ) : (
-              <div className="mt-4 overflow-hidden rounded-[1rem] border border-[var(--color-border)]">
+              <div className="mt-4 overflow-hidden rounded-md border border-[var(--color-border)]">
                 {folders.map((folder) => {
                   const checked = source.folderIds.includes(folder.id);
                   const limitReached =

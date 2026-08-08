@@ -36,7 +36,7 @@ export default function SegmentedControl({
   return (
     <nav
       aria-label={label}
-      className="app-nav flex w-full gap-1.5 overflow-x-auto rounded-[1.4rem] border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-1.5 scrollbar-hide sm:w-auto sm:self-start"
+      className="app-nav flex w-full gap-1.5 overflow-x-auto rounded-xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-1.5 scrollbar-hide sm:w-auto sm:self-start"
     >
       {items.map((item) => {
         const active =
@@ -46,7 +46,7 @@ export default function SegmentedControl({
             key={item.href}
             href={item.href}
             aria-current={active ? "page" : undefined}
-            className={`flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-[1.05rem] px-4 py-2 text-left transition duration-fast sm:flex-none ${
+            className={`flex min-h-11 min-w-0 flex-1 flex-col justify-center rounded-lg px-4 py-2 text-left transition duration-fast sm:flex-none ${
               active
                 ? "app-selected border"
                 : "border border-transparent text-text-muted hover:border-[var(--color-border)] hover:bg-[var(--nav-hover-bg)] hover:text-text-primary"
@@ -54,7 +54,7 @@ export default function SegmentedControl({
           >
             <span className="truncate text-sm font-semibold">{item.label}</span>
             <span
-              className={`mt-0.5 truncate text-[0.68rem] leading-4 ${
+              className={`mt-0.5 truncate text-2xs leading-4 ${
                 active ? "text-text-secondary" : "text-text-muted"
               }`}
             >

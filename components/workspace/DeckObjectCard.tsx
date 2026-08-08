@@ -113,7 +113,7 @@ export default function DeckObjectCard({
         <DeckCoverIcon
           colorPreset={colorPreset}
           iconPreset={iconPreset}
-          className="h-16 w-14 rounded-[0.8rem]"
+          className="h-16 w-14 rounded-md"
         />
         <div className="min-w-0 flex-1 pr-7">
           <div className="line-clamp-2 text-sm font-semibold leading-5 text-text-primary">

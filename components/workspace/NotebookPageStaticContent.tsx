@@ -58,7 +58,7 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
         <div
           key={block.id}
           aria-hidden="true"
-          className={`absolute overflow-hidden rounded-[0.45rem] border bg-transparent ${
+          className={`absolute overflow-hidden rounded-sm border bg-transparent ${
             block.outlineVisible
               ? pageColor === "black"
                 ? "border-white/30"
@@ -73,7 +73,7 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
           }}
         >
           <div
-            className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-[0.45rem] p-2 pr-10 text-sm font-medium leading-6 ${
+            className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-sm p-2 pr-10 text-sm font-medium leading-6 ${
               pageColor === "black" ? "text-[#f8fafc]" : "text-slate-950"
             }`}
           >

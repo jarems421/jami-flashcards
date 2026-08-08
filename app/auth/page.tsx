@@ -152,7 +152,7 @@ export default function AuthPage() {
             {AUTH_HIGHLIGHTS.map((item) => (
               <div
                 key={item.label}
-                className="app-chip min-w-0 rounded-[1.15rem] p-3"
+                className="app-chip min-w-0 rounded-lg p-3"
               >
                 <div className="text-xs font-semibold text-text-primary">
                   {item.label}
@@ -171,7 +171,7 @@ export default function AuthPage() {
         padding="lg"
       >
         <div className="mx-auto max-w-xl">
-          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-secondary">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-secondary">
             {isSignInMode ? "Sign in" : "Create account"}
           </div>
           <h2 className="mt-3 text-2xl font-medium tracking-tight text-text-primary sm:text-3xl">

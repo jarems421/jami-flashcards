@@ -53,7 +53,7 @@ export default function CardBackEditor({
           {action}
         </div>
       ) : null}
-      <div className="app-field rounded-[1.5rem] transition duration-fast">
+      <div className="app-field rounded-xl transition duration-fast">
         <textarea
           id={textareaId}
           rows={rows}

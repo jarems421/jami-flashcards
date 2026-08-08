@@ -44,7 +44,7 @@ export default function ObjectActionsSheet({
       <DialogBackdrop className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
       <DialogPanel
         data-mobile-object-actions={objectKind}
-        className="app-panel relative w-full rounded-[1.5rem] p-3 shadow-[0_24px_60px_rgba(0,0,0,0.38)]"
+        className="app-panel relative w-full rounded-xl p-3 shadow-[0_24px_60px_rgba(0,0,0,0.38)]"
       >
         <div className="px-2 pb-3 pt-1">
           <DialogTitle className="truncate text-sm font-semibold text-text-primary">
@@ -60,7 +60,7 @@ export default function ObjectActionsSheet({
               key={action.id}
               type="button"
               disabled={action.disabled}
-              className={`min-h-12 rounded-[1rem] px-4 text-left text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
+              className={`min-h-12 rounded-md px-4 text-left text-sm font-semibold disabled:cursor-not-allowed disabled:opacity-60 ${
                 action.tone === "danger"
                   ? "bg-[var(--color-error-muted)] text-danger-text"
                   : "bg-[var(--color-glass-subtle)] text-text-primary"
@@ -76,7 +76,7 @@ export default function ObjectActionsSheet({
           <button
             ref={cancelButtonRef}
             type="button"
-            className="min-h-12 rounded-[1rem] px-4 text-left text-sm font-semibold text-text-secondary"
+            className="min-h-12 rounded-md px-4 text-left text-sm font-semibold text-text-secondary"
             onClick={onClose}
           >
             Cancel

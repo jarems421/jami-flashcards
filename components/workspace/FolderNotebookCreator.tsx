@@ -126,7 +126,7 @@ export default function FolderNotebookCreator({
             />
           </div>
         </div>
-        <div className="app-subtle-panel mx-auto w-full max-w-[8.5rem] rounded-[1rem] p-2 sm:mx-0">
+        <div className="app-subtle-panel mx-auto w-full max-w-[8.5rem] rounded-md p-2 sm:mx-0">
           <NotebookObjectCard
             title={title.trim() || "Notebook preview"}
             color={color}
@@ -152,7 +152,7 @@ export default function FolderNotebookCreator({
       </div>
 
       <div className="mt-5 grid gap-4 lg:grid-cols-2">
-        <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 lg:col-span-2">
+        <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 lg:col-span-2">
           <label
             htmlFor={fileInputId}
             className="mb-1.5 block text-sm font-medium text-text-secondary"

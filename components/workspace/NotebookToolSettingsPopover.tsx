@@ -87,7 +87,7 @@ export default function NotebookToolSettingsPopover({
       id={NOTEBOOK_TOOL_SETTINGS_ID}
       role="group"
       aria-label={`${openMenu} settings`}
-      className={`notebook-toolbar-popover-in notebook-drawer-surface absolute z-50 w-[min(92vw,22rem)] rounded-[1.25rem] border border-[var(--color-border)] p-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.32)] ${DOCK_CLASS[dock]}`}
+      className={`notebook-toolbar-popover-in notebook-drawer-surface absolute z-50 w-[min(92vw,22rem)] rounded-lg border border-[var(--color-border)] p-3.5 shadow-[0_18px_44px_rgba(0,0,0,0.32)] ${DOCK_CLASS[dock]}`}
     >
       {openMenu === "pen" ? (
         <div className="space-y-3">
@@ -125,7 +125,7 @@ export default function NotebookToolSettingsPopover({
                 <span className="block text-xs font-semibold text-text-primary">
                   Scribble to erase
                 </span>
-                <span className="mt-0.5 block text-[0.7rem] leading-4 text-text-secondary">
+                <span className="mt-0.5 block text-2xs leading-4 text-text-secondary">
                   Scribble back and forth over writing to delete it
                 </span>
               </span>

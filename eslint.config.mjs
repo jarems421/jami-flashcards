@@ -131,8 +131,55 @@ const eslintConfig = defineConfig([
     },
   },
   {
+    /*
+     * The radius and type scales are the scales. Nothing may invent a value.
+     *
+     * They already existed and were almost entirely ignored: the interface had
+     * settled on 31 different corner radii between 0.45rem and 2rem across 225
+     * places, and six different sizes for small text spanning a pixel and a
+     * half. Nothing looked wrong on any one screen, which is exactly why it
+     * spread -- the difference between 1.15rem and 1.2rem is invisible, and the
+     * fact that it varies is not.
+     *
+     * A one-off tidy would be undone within a month, one reasonable-looking
+     * `rounded-[1.3rem]` at a time, so the rule is what makes the scale hold.
+     * Both forms are checked: a plain string className, and the template
+     * literals that conditional class lists are built from.
+     *
+     * `em` is deliberately not covered: it is relative to whatever it sits
+     * inside, which is exactly right for a superscript or the halves of a
+     * fraction, and is not something an absolute scale can express.
+     *
+     * If a value is genuinely needed that the scale cannot express, add a step
+     * to the scale, or disable this rule on the line with a comment saying why
+     * -- there is one, on a page thumbnail that draws text at miniature size to
+     * stand in for a page rather than to be read.
+     */
     files: ["app/**/*.{jsx,tsx}", "components/**/*.{jsx,tsx}"],
     rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: String.raw`Literal[value=/rounded(-[a-z]{1,2})?-\[[0-9.]+(rem|px)\]/]`,
+          message:
+            "Use the radius scale: rounded-sm|md|lg|xl|2xl, or rounded-full for a pill.",
+        },
+        {
+          selector: String.raw`TemplateElement[value.raw=/rounded(-[a-z]{1,2})?-\[[0-9.]+(rem|px)\]/]`,
+          message:
+            "Use the radius scale: rounded-sm|md|lg|xl|2xl, or rounded-full for a pill.",
+        },
+        {
+          selector: String.raw`Literal[value=/text-\[[0-9.]+(rem|px)\]/]`,
+          message:
+            "Use the type scale: text-2xs is the floor, then text-xs, text-sm, text-base upwards.",
+        },
+        {
+          selector: String.raw`TemplateElement[value.raw=/text-\[[0-9.]+(rem|px)\]/]`,
+          message:
+            "Use the type scale: text-2xs is the floor, then text-xs, text-sm, text-base upwards.",
+        },
+      ],
       ...jsxA11y.flatConfigs.recommended.rules,
       "jsx-a11y/alt-text": [
         "error",

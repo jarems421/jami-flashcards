@@ -120,6 +120,18 @@ module.exports = {
         xl: "var(--radius-xl)",
         "2xl": "var(--radius-2xl)",
       },
+      /*
+       * One step below `xs`, for the uppercase eyebrows and metadata lines that
+       * had been hand-set at 0.62, 0.65, 0.66, 0.68, 0.7 and 0.72rem in 62
+       * places -- six sizes spanning a pixel and a half, which is a difference
+       * nobody can see and a decision made six ways.
+       *
+       * This is the floor. Anything smaller is unreadable on a phone, and the
+       * lint rule below refuses new arbitrary sizes so it stays the floor.
+       */
+      fontSize: {
+        "2xs": ["0.6875rem", { lineHeight: "1rem" }],
+      },
       boxShadow: {
         glass: "var(--shadow-glass)",
         card: "var(--shadow-card)",

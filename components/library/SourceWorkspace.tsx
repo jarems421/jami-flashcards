@@ -186,7 +186,7 @@ export function SourceWorkspaceDrawer({
       >
         <header className="flex items-start justify-between gap-4 border-b border-[var(--color-border)] px-5 py-5 sm:px-7 sm:py-6">
           <div className="min-w-0">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-text-muted">
+            <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted">
               {eyebrow}
             </div>
             <DialogTitle className="mt-1 truncate text-xl font-semibold text-text-primary sm:text-2xl">
@@ -247,12 +247,12 @@ export function SourceFolderPicker({
         Folders
       </span>
       {folders.length === 0 ? (
-        <div className="app-field flex min-h-[3.25rem] items-center rounded-[1.6rem] px-5 text-sm text-text-muted">
+        <div className="app-field flex min-h-[3.25rem] items-center rounded-2xl px-5 text-sm text-text-muted">
           No folders
         </div>
       ) : (
         <details className="group relative">
-          <summary className="app-field flex min-h-[3.25rem] cursor-pointer list-none items-center justify-between gap-3 rounded-[1.6rem] px-5 text-sm text-text-primary outline-none transition focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden">
+          <summary className="app-field flex min-h-[3.25rem] cursor-pointer list-none items-center justify-between gap-3 rounded-2xl px-5 text-sm text-text-primary outline-none transition focus-visible:ring-2 focus-visible:ring-accent [&::-webkit-details-marker]:hidden">
             <span className="truncate">{summary}</span>
             <svg
               aria-hidden="true"
@@ -263,7 +263,7 @@ export function SourceFolderPicker({
               <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </summary>
-          <div className="absolute left-0 right-0 z-40 mt-2 max-h-60 overflow-y-auto rounded-[1.2rem] border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-2 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+          <div className="absolute left-0 right-0 z-40 mt-2 max-h-60 overflow-y-auto rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-2 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
             {folders.map((folder) => {
               const checked = selectedFolderIds.includes(folder.id);
               const selectionLimitReached =
@@ -272,7 +272,7 @@ export function SourceFolderPicker({
               return (
                 <label
                   key={folder.id}
-                  className={`flex min-h-11 items-center gap-3 rounded-[0.85rem] px-3 text-sm transition ${
+                  className={`flex min-h-11 items-center gap-3 rounded-md px-3 text-sm transition ${
                     selectionLimitReached
                       ? "cursor-not-allowed text-text-muted"
                       : "cursor-pointer text-text-primary hover:bg-[var(--color-glass-subtle)]"

@@ -135,7 +135,7 @@ export default function SourceDraftEditor({
   ]);
 
   return (
-    <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="text-sm font-semibold text-text-primary">
@@ -184,14 +184,14 @@ export default function SourceDraftEditor({
           which is impossible while the maths is still "$\frac{a}{b}$".
         */}
         {previewFields.length > 0 ? (
-          <div className="app-subtle-panel rounded-[1.25rem] p-4">
-            <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
+          <div className="app-subtle-panel rounded-lg p-4">
+            <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
               Preview
             </div>
             <div className="mt-3 space-y-3">
               {previewFields.map((field) => (
                 <div key={field.label}>
-                  <div className="text-[0.68rem] font-medium uppercase tracking-[0.12em] text-text-muted">
+                  <div className="text-2xs font-medium uppercase tracking-[0.12em] text-text-muted">
                     {field.label}
                   </div>
                   <StudyText
@@ -232,7 +232,7 @@ export default function SourceDraftEditor({
               </select>
             </label>
           ) : (
-            <div className="rounded-[1.15rem] border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
+            <div className="rounded-lg border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
               <div className="font-semibold text-text-primary">
                 Create a deck before adding this flashcard.
               </div>
@@ -265,7 +265,7 @@ export default function SourceDraftEditor({
             </select>
           </label>
         ) : (
-          <div className="rounded-[1.15rem] border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
+          <div className="rounded-lg border border-warm-border bg-warm-glow p-3 text-sm leading-6 text-text-secondary">
             <div className="font-semibold text-text-primary">
               Create a notebook before approving this question draft.
             </div>

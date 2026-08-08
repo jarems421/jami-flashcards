@@ -156,7 +156,7 @@ export default function JamiAssistantHistory({
       {error || actionError ? (
         <div
           role="alert"
-          className="mt-4 rounded-[1rem] border border-error/30 bg-error-muted px-3.5 py-3 text-xs leading-relaxed text-[var(--color-error-text)]"
+          className="mt-4 rounded-md border border-error/30 bg-error-muted px-3.5 py-3 text-xs leading-relaxed text-[var(--color-error-text)]"
         >
           {actionError ?? error}
         </div>
@@ -171,7 +171,7 @@ export default function JamiAssistantHistory({
           Loading chats
         </div>
       ) : threads.length === 0 ? (
-        <div className="mt-8 rounded-[1.35rem] border border-dashed border-[var(--color-border-strong)] px-5 py-8 text-center">
+        <div className="mt-8 rounded-xl border border-dashed border-[var(--color-border-strong)] px-5 py-8 text-center">
           <p className="text-sm font-medium text-text-primary">No saved chats yet</p>
           <p className="mt-1.5 text-xs leading-relaxed text-text-muted">
             Your next conversation with Jami will appear here.
@@ -257,7 +257,7 @@ export default function JamiAssistantHistory({
                       <span className="block truncate text-sm font-semibold leading-snug text-text-primary">
                         {thread.title}
                       </span>
-                      <span className="mt-1 flex min-w-0 items-center gap-1.5 text-[0.68rem] text-text-muted">
+                      <span className="mt-1 flex min-w-0 items-center gap-1.5 text-2xs text-text-muted">
                         <span>{surfaceName(thread.surface)}</span>
                         <span aria-hidden="true">·</span>
                         <span>{formatUpdatedAt(thread.updatedAt)}</span>

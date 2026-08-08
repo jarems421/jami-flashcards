@@ -31,7 +31,7 @@ const Input = forwardRef<HTMLInputElement, InputProps>(function Input(
       <input
         id={inputId}
         ref={ref}
-        className={`app-field w-full rounded-[1.6rem] px-5 py-[1rem] text-sm outline-none transition duration-fast ${className}`}
+        className={`app-field w-full rounded-2xl px-5 py-[1rem] text-sm outline-none transition duration-fast ${className}`}
         {...props}
       />
     </div>

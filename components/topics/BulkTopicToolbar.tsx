@@ -38,7 +38,7 @@ export default function BulkTopicToolbar({
   const overCapacity = topicIds.length > maxTopicsToAdd;
 
   return (
-    <div className="rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
+    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
       <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
         <div className="min-w-0 flex-1">
           <div className="text-sm font-semibold text-text-primary">Manage cards</div>

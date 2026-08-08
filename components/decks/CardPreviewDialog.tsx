@@ -44,7 +44,7 @@ export default function CardPreviewDialog({
       onDismiss={() => onClose()}
     >
       <DialogBackdrop className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <DialogPanel className="relative w-full max-w-2xl rounded-[1.6rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.45)] sm:p-7">
+      <DialogPanel className="relative w-full max-w-2xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.45)] sm:p-7">
         <div className="flex items-start justify-between gap-4">
           <div>
             <DialogTitle className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
@@ -67,7 +67,7 @@ export default function CardPreviewDialog({
         {card ? (
           <>
             <div className="mt-6 grid gap-4">
-              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">
                   Front
                 </div>
@@ -77,7 +77,7 @@ export default function CardPreviewDialog({
                   className="mt-3 whitespace-pre-wrap text-lg font-medium leading-8 text-text-primary"
                 />
               </div>
-              <div className="rounded-[1.2rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.15em] text-text-muted">
                   Back
                 </div>

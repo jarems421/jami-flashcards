@@ -97,7 +97,7 @@ export default function SourcePreview({ source, fileUrl }: SourcePreviewProps) {
         aria-label={`${source.title} text preview`}
         className={`${readerMinHeightClass} min-h-full w-full bg-[var(--color-surface-panel-strong)] px-5 py-7 sm:px-8 sm:py-9`}
       >
-        <div className="mx-auto max-w-[46rem] whitespace-pre-wrap break-words text-[0.95rem] leading-[1.8] text-text-secondary sm:text-base">
+        <div className="mx-auto max-w-[46rem] whitespace-pre-wrap break-words text-base leading-[1.8] text-text-secondary sm:text-base">
           {source.contentText}
         </div>
       </div>
@@ -111,7 +111,7 @@ export default function SourcePreview({ source, fileUrl }: SourcePreviewProps) {
         className={`${readerMinHeightClass} min-h-full w-full bg-[var(--color-surface-panel-strong)] px-5 py-7 sm:px-8 sm:py-9`}
       >
         <div className="mx-auto w-full max-w-[46rem]">
-          <div className="break-all text-[0.95rem] leading-[1.8] text-text-secondary sm:text-base">
+          <div className="break-all text-base leading-[1.8] text-text-secondary sm:text-base">
             {source.externalUrl}
           </div>
         </div>

@@ -36,7 +36,7 @@ type NotebookSheetProps = {
 };
 
 const NOTEBOOK_SHEET_BASE_CLASS =
-  "overflow-hidden rounded-[0.625rem] shadow-none after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-[0.625rem] after:border after:border-black after:content-['']";
+  "overflow-hidden rounded-sm shadow-none after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-sm after:border after:border-black after:content-['']";
 
 function getSheetStyle(
   geometry: NotebookViewportGeometry,

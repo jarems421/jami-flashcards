@@ -23,7 +23,7 @@ export default function StatTile({
 }: StatTileProps) {
   const content = (
     <>
-      <div className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-text-muted">
+      <div className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-muted">
         {label}
       </div>
       <div className={`${compact ? "mt-1 text-lg" : "mt-3 text-xl sm:text-2xl"} font-semibold tracking-normal text-text-primary`}>

@@ -48,7 +48,7 @@ export default function FeedbackBanner({
   return (
     <div
       role="status"
-      className={`flex items-center justify-between gap-4 rounded-[1.7rem] border px-4 py-3 text-sm transition duration-200 ${
+      className={`flex items-center justify-between gap-4 rounded-2xl border px-4 py-3 text-sm transition duration-200 ${
         leaving ? "-translate-y-1 opacity-0" : "translate-y-0 opacity-100"
       } ${
         type === "error"

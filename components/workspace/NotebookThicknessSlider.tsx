@@ -27,7 +27,7 @@ export default function ThicknessSlider({
         >
           {label}
         </label>
-        <span className="text-[0.68rem] font-semibold tabular-nums text-text-muted">
+        <span className="text-2xs font-semibold tabular-nums text-text-muted">
           {clampedPercent}%
         </span>
       </div>

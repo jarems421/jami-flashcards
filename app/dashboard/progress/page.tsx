@@ -59,11 +59,11 @@ const PROGRESS_VISITED_KEY = "jami:progress-visited";
 
 function HeroMetric({ label, value }: { label: string; value: string | number }) {
   return (
-    <div className="app-chip rounded-[1rem] px-3 py-3 text-center">
+    <div className="app-chip rounded-md px-3 py-3 text-center">
       <div className="text-lg font-semibold tabular-nums text-text-primary sm:text-xl">
         {value}
       </div>
-      <div className="mt-1 text-[0.65rem] font-semibold uppercase tracking-[0.12em] text-text-muted">
+      <div className="mt-1 text-2xs font-semibold uppercase tracking-[0.12em] text-text-muted">
         {label}
       </div>
     </div>
@@ -71,7 +71,7 @@ function HeroMetric({ label, value }: { label: string; value: string | number })
 }
 
 const CHART_FALLBACK = (
-  <div className="h-full w-full animate-pulse rounded-[1rem] bg-[var(--color-glass-subtle)]" />
+  <div className="h-full w-full animate-pulse rounded-md bg-[var(--color-glass-subtle)]" />
 );
 
 const AccuracyChart = dynamic(
@@ -384,7 +384,7 @@ export default function ProgressPage() {
               </div>
 
               <div className="mt-5 grid gap-4 xl:grid-cols-2">
-                <div className="rounded-[1.25rem] border border-border/70 bg-surface-subtle/55 p-4">
+                <div className="rounded-lg border border-border/70 bg-surface-subtle/55 p-4">
                   <div>
                     <h3 className="text-sm font-semibold text-text-primary">Accuracy</h3>
                     <p className="mt-1 text-xs text-text-muted">
@@ -414,7 +414,7 @@ export default function ProgressPage() {
                   </div>
                 </div>
 
-                <div className="rounded-[1.25rem] border border-border/70 bg-surface-subtle/55 p-4">
+                <div className="rounded-lg border border-border/70 bg-surface-subtle/55 p-4">
                   <div>
                     <h3 className="text-sm font-semibold text-text-primary">Study time</h3>
                     <p className="mt-1 text-xs text-text-muted">
@@ -492,7 +492,7 @@ export default function ProgressPage() {
               <div className="mt-4 space-y-3">
                 {deckHealth.length > 0 ? (
                   deckHealth.slice(0, 6).map((summary) => (
-                    <div key={summary.deck.id} className="app-subtle-panel rounded-[1.15rem] p-4">
+                    <div key={summary.deck.id} className="app-subtle-panel rounded-lg p-4">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
                           <div className="truncate text-sm font-semibold text-text-primary">
@@ -581,7 +581,7 @@ export default function ProgressPage() {
                 ].map((item) => (
                   <div
                     key={item.label}
-                    className="app-chip flex min-w-0 items-center justify-between gap-3 rounded-[1rem] px-3 py-2.5"
+                    className="app-chip flex min-w-0 items-center justify-between gap-3 rounded-md px-3 py-2.5"
                   >
                     <div className="min-w-0 text-xs font-semibold text-text-muted">
                       {item.label}

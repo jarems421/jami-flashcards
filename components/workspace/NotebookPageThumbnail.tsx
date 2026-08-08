@@ -43,7 +43,7 @@ export default function NotebookPageThumbnail({
 
   return (
     <div
-      className={`relative aspect-[900/1240] overflow-hidden rounded-[0.6rem] shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
+      className={`relative aspect-[900/1240] overflow-hidden rounded-sm shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
       style={getNotebookPageStyleBackground(pageColor, pageStyle)}
     >
       <NotebookPageBackground
@@ -89,6 +89,13 @@ export default function NotebookPageThumbnail({
         {textBlocks.map((block) => (
           <div
             key={`${page.id}-${block.id}`}
+            /*
+             * Below the type scale's floor on purpose, and the one place that
+             * is right: this is a thumbnail of a page, so the text stands in
+             * for text at that scale rather than being read. Sizing it to the
+             * floor would make a page of notes look like three enormous words.
+             */
+            // eslint-disable-next-line no-restricted-syntax
             className={`absolute overflow-hidden rounded-sm border-[0.5px] px-1 text-[0.34rem] font-semibold leading-tight ${
               pageColor === "black"
                 ? "text-[#f8fafc]/80"
@@ -112,7 +119,7 @@ export default function NotebookPageThumbnail({
         ))}
       </div>
       <div
-        className={`absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-[0.62rem] font-semibold leading-none tabular-nums backdrop-blur-sm ${
+        className={`absolute bottom-1.5 left-1.5 rounded-full px-2 py-0.5 text-2xs font-semibold leading-none tabular-nums backdrop-blur-sm ${
           pageColor === "black"
             ? "bg-white/15 text-[#f8fafc]"
             : "bg-slate-950/55 text-white"

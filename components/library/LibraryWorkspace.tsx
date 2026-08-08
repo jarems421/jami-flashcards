@@ -102,7 +102,7 @@ export default function LibraryWorkspace({
         aria-label="Sources workspace"
         className={[
           styles.workspaceLayout,
-          "app-panel !overflow-hidden !rounded-[1.7rem]",
+          "app-panel !overflow-hidden !rounded-2xl",
         ].join(" ")}
       >
         <aside
@@ -121,7 +121,7 @@ export default function LibraryWorkspace({
                 value={browser.searchTerm}
                 onChange={(event) => browser.setSearchTerm(event.target.value)}
                 containerClassName="min-w-0 flex-1"
-                className="!rounded-[1.1rem] !px-4 !py-3"
+                className="!rounded-lg !px-4 !py-3"
               />
               <details
                 ref={filterDisclosureRef}
@@ -147,12 +147,12 @@ export default function LibraryWorkspace({
                 >
                   <SourceActionIcon name="filter" />
                   {browser.activeFilterCount > 0 ? (
-                    <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border border-[var(--color-surface-panel-strong)] bg-[var(--color-accent)] px-1 text-[0.62rem] font-semibold text-[var(--color-text-inverse)]">
+                    <span className="absolute -right-1 -top-1 grid h-5 min-w-5 place-items-center rounded-full border border-[var(--color-surface-panel-strong)] bg-[var(--color-accent)] px-1 text-2xs font-semibold text-[var(--color-text-inverse)]">
                       {browser.activeFilterCount}
                     </span>
                   ) : null}
                 </summary>
-                <div className="absolute right-0 z-40 mt-2 w-[15rem] max-w-[calc(100vw-3rem)] rounded-[1.15rem] border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[var(--shadow-shell)]">
+                <div className="absolute right-0 z-40 mt-2 w-[15rem] max-w-[calc(100vw-3rem)] rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[var(--shadow-shell)]">
                   <div className="space-y-3">
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-semibold text-text-muted">
@@ -163,7 +163,7 @@ export default function LibraryWorkspace({
                         onChange={(event) =>
                           browser.setFolderFilter(event.target.value)
                         }
-                        className="app-field min-h-11 w-full rounded-[1rem] px-3 text-sm outline-none"
+                        className="app-field min-h-11 w-full rounded-md px-3 text-sm outline-none"
                       >
                         <option value="">All folders</option>
                         {folders.map((folder) => (
@@ -184,7 +184,7 @@ export default function LibraryWorkspace({
                             event.target.value as LibrarySourceTypeFilter
                           )
                         }
-                        className="app-field min-h-11 w-full rounded-[1rem] px-3 text-sm outline-none"
+                        className="app-field min-h-11 w-full rounded-md px-3 text-sm outline-none"
                       >
                         <option value="all">All types</option>
                         {sourceTypes.map((type) => (
@@ -205,7 +205,7 @@ export default function LibraryWorkspace({
                             event.target.value as LibrarySourceStatusFilter
                           )
                         }
-                        className="app-field min-h-11 w-full rounded-[1rem] px-3 text-sm outline-none"
+                        className="app-field min-h-11 w-full rounded-md px-3 text-sm outline-none"
                       >
                         <option value="active">Active</option>
                         <option value="archived">Archived</option>
@@ -383,7 +383,7 @@ export default function LibraryWorkspace({
                   >
                     Create from this
                     {sourceDraftCount > 0 ? (
-                      <span className="ml-2 rounded-full bg-[var(--color-accent-muted)] px-1.5 py-0.5 text-[0.68rem] font-semibold tabular-nums">
+                      <span className="ml-2 rounded-full bg-[var(--color-accent-muted)] px-1.5 py-0.5 text-2xs font-semibold tabular-nums">
                         {sourceDraftCount}
                       </span>
                     ) : null}
@@ -408,11 +408,11 @@ export default function LibraryWorkspace({
                     >
                       <SourceActionIcon name="more" className="h-5 w-5" />
                     </summary>
-                    <div className="absolute right-0 top-[calc(100%+0.4rem)] z-40 grid min-w-48 gap-1 rounded-[1rem] border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[var(--shadow-shell)]">
+                    <div className="absolute right-0 top-[calc(100%+0.4rem)] z-40 grid min-w-48 gap-1 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[var(--shadow-shell)]">
                       {canOpenSelectedSource ? (
                         <button
                           type="button"
-                          className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                          className="min-h-11 rounded-sm px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                           onClick={(event) => {
                             closeDisclosureAndFocusTrigger(event.currentTarget);
                             actions.openOriginal();
@@ -424,7 +424,7 @@ export default function LibraryWorkspace({
                       ) : null}
                       <button
                         type="button"
-                        className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                        className="min-h-11 rounded-sm px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                         onClick={(event) => {
                           closeDisclosureAndFocusTrigger(event.currentTarget);
                           actions.openDetails();
@@ -435,7 +435,7 @@ export default function LibraryWorkspace({
                       {sourceDraftCount > 0 ? (
                         <button
                           type="button"
-                          className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                          className="min-h-11 rounded-sm px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                           onClick={(event) => {
                             closeDisclosureAndFocusTrigger(event.currentTarget);
                             actions.openDrafts();
@@ -446,7 +446,7 @@ export default function LibraryWorkspace({
                       ) : null}
                       <button
                         type="button"
-                        className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                        className="min-h-11 rounded-sm px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                         onClick={(event) => {
                           closeDisclosureAndFocusTrigger(event.currentTarget);
                           actions.rename();
@@ -461,7 +461,7 @@ export default function LibraryWorkspace({
                       <button
                         type="button"
                         disabled={restoring}
-                        className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:opacity-50"
+                        className="min-h-11 rounded-sm px-3 text-left text-sm font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:opacity-50"
                         onClick={(event) => {
                           closeDisclosureAndFocusTrigger(event.currentTarget);
                           if (selectedSource.status === "active") actions.archive();
@@ -472,7 +472,7 @@ export default function LibraryWorkspace({
                       </button>
                       <button
                         type="button"
-                        className="min-h-11 rounded-[0.75rem] px-3 text-left text-sm font-semibold text-[var(--color-error-text)] hover:bg-[var(--color-error-muted)]"
+                        className="min-h-11 rounded-sm px-3 text-left text-sm font-semibold text-[var(--color-error-text)] hover:bg-[var(--color-error-muted)]"
                         onClick={(event) => {
                           closeDisclosureAndFocusTrigger(event.currentTarget);
                           actions.delete();

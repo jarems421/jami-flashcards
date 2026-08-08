@@ -180,11 +180,11 @@ export default function Home() {
           Flashcards, notebooks, and progress in one calm study space.
         </p>
 
-        <div className="app-panel mt-8 w-full rounded-[1.7rem] p-5 sm:p-6">
+        <div className="app-panel mt-8 w-full rounded-2xl p-5 sm:p-6">
           {error ? (
             <div
               role="alert"
-              className="app-danger mb-4 rounded-[1.1rem] px-4 py-3 text-sm font-medium"
+              className="app-danger mb-4 rounded-lg px-4 py-3 text-sm font-medium"
             >
               {error}
             </div>
@@ -215,7 +215,7 @@ export default function Home() {
 
         <div className="mt-8 grid w-full gap-2 sm:grid-cols-3">
           {SIGN_IN_POINTS.map((point) => (
-            <div key={point.label} className="app-chip rounded-[1.15rem] p-3 text-left sm:text-center">
+            <div key={point.label} className="app-chip rounded-lg p-3 text-left sm:text-center">
               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-warm-accent">
                 {point.label}
               </div>

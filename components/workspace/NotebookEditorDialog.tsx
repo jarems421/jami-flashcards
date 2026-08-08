@@ -125,7 +125,7 @@ export default function NotebookEditorDialog({
           className="absolute inset-0 bg-black/55 backdrop-blur-sm"
         />
         <DialogPanel
-          className="app-panel relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[44rem] overflow-y-auto rounded-[1.55rem] p-3 backdrop-blur-md transition duration-fast sm:max-h-[calc(100dvh-2.5rem)] sm:p-4"
+          className="app-panel relative max-h-[calc(100dvh-1.5rem)] w-full max-w-[44rem] overflow-y-auto rounded-xl p-3 backdrop-blur-md transition duration-fast sm:max-h-[calc(100dvh-2.5rem)] sm:p-4"
         >
           <div className="text-center sm:text-left">
             <DialogTitle className="text-sm font-semibold text-text-primary">
@@ -155,7 +155,7 @@ export default function NotebookEditorDialog({
               disabled={saving}
               containerClassName="w-full max-w-[19rem]"
             />
-            <div className="app-subtle-panel rounded-[1rem] p-2">
+            <div className="app-subtle-panel rounded-md p-2">
               <NotebookObjectCard
                 title={title.trim() || "Notebook preview"}
                 color={color}

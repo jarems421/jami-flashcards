@@ -64,7 +64,7 @@ function ThemePreferenceCard() {
               title={option.description}
               aria-label={`${option.label}. ${option.description}`}
               onClick={() => handleSelectTheme(option.value)}
-              className="group flex flex-col items-center gap-2 rounded-[1.15rem] p-1.5 outline-none transition duration-fast focus-visible:ring-2 focus-visible:ring-accent/45"
+              className="group flex flex-col items-center gap-2 rounded-lg p-1.5 outline-none transition duration-fast focus-visible:ring-2 focus-visible:ring-accent/45"
             >
               <span
                 className={`relative grid aspect-square w-full max-w-[4.5rem] place-items-center rounded-full border-2 transition duration-fast ${
@@ -351,7 +351,7 @@ export default function ProfilePage() {
             Delete Account
           </Button>
         ) : (
-          <div className="app-subtle-panel mt-4 rounded-[1.2rem] p-4">
+          <div className="app-subtle-panel mt-4 rounded-lg p-4">
             <p className="text-sm font-semibold text-text-primary">
               This cannot be undone.
             </p>

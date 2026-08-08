@@ -25,7 +25,7 @@ const sizeClasses: Record<BrandMarkSize, string> = {
 export default function BrandMark({ size = "md", className = "" }: BrandMarkProps) {
   return (
     <span
-      className={`inline-grid shrink-0 place-items-center rounded-[0.9rem] ${sizeClasses[size]} ${className}`}
+      className={`inline-grid shrink-0 place-items-center rounded-md ${sizeClasses[size]} ${className}`}
       aria-hidden="true"
     >
       <svg

@@ -35,7 +35,7 @@ export default function CardActionsMenu({
           <circle cx="16" cy="10" r="1.35" />
         </svg>
       </summary>
-      <div className={`absolute right-0 z-30 min-w-44 overflow-hidden rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${menuPositionClass}`}>
+      <div className={`absolute right-0 z-30 min-w-44 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${menuPositionClass}`}>
         <button
           type="button"
           disabled={disabled}
@@ -43,7 +43,7 @@ export default function CardActionsMenu({
             closeMenu(event.currentTarget);
             onEdit();
           }}
-          className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
+          className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm font-medium text-text-primary transition hover:bg-[var(--color-glass-subtle)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
         >
           Edit card
         </button>
@@ -54,7 +54,7 @@ export default function CardActionsMenu({
             closeMenu(event.currentTarget);
             onDelete();
           }}
-          className="flex w-full items-center rounded-[0.75rem] px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
+          className="flex w-full items-center rounded-sm px-3 py-2 text-left text-sm font-semibold text-error transition hover:bg-[var(--color-error-muted)] disabled:cursor-not-allowed disabled:text-[var(--button-disabled-text)]"
         >
           {deleting ? "Deleting..." : "Delete"}
         </button>

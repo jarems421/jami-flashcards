@@ -43,7 +43,7 @@ export default function CardBulkActions({
       />
 
       {selectedCount > 0 ? (
-        <div className="grid gap-3 rounded-[1.25rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
+        <div className="grid gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 md:grid-cols-[minmax(0,1fr)_auto_auto] md:items-end">
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
               Move selected cards

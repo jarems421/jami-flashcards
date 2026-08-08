@@ -42,7 +42,7 @@ function getButtonClassName(
   size: ButtonSize,
   className = ""
 ) {
-  return `relative inline-flex items-center justify-center overflow-hidden rounded-[2rem] font-medium tracking-[0.01em] transition duration-fast ease-spring disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:!shadow-none disabled:saturate-[0.82] ${variantClasses[variant]} ${sizeClasses[size]} ${className}`;
+  return `relative inline-flex items-center justify-center overflow-hidden rounded-2xl font-medium tracking-[0.01em] transition duration-fast ease-spring disabled:cursor-not-allowed disabled:!border-[var(--button-disabled-border)] disabled:!bg-[var(--button-disabled-bg)] disabled:!text-[var(--button-disabled-text)] disabled:!shadow-none disabled:saturate-[0.82] ${variantClasses[variant]} ${sizeClasses[size]} ${className}`;
 }
 
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(

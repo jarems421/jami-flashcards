@@ -17,11 +17,11 @@ export default function SectionHeader({
     <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         {eyebrow ? (
-          <div className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-text-secondary">
+          <div className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
             {eyebrow}
           </div>
         ) : null}
-        <h3 className="mt-1 text-[1.05rem] font-medium tracking-tight text-text-primary sm:text-lg">
+        <h3 className="mt-1 text-base font-medium tracking-tight text-text-primary sm:text-lg">
           {title}
         </h3>
         {description ? (

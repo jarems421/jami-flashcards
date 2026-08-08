@@ -66,7 +66,7 @@ export default function CardDifficultyBadge({ card, compact = false }: Props) {
     <span
       className={`inline-flex items-center rounded-full border font-medium ${
         compact
-          ? "px-2.5 py-1 text-[0.68rem]"
+          ? "px-2.5 py-1 text-2xs"
           : "gap-1.5 px-3 py-1.5 text-xs"
       } ${TIER_CLASSES[difficulty.tier]}`}
       title={

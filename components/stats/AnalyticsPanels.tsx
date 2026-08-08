@@ -15,7 +15,7 @@ export function ScheduleForecastPanel({ analytics }: { analytics: SpacedRepetiti
         description={`${weeklyDueCount} card${weeklyDueCount === 1 ? "" : "s"} scheduled over the next 7 days.`}
       />
       <div
-        className="app-subtle-panel mt-4 rounded-[1.2rem] px-3 pb-3 pt-4 sm:px-4"
+        className="app-subtle-panel mt-4 rounded-lg px-3 pb-3 pt-4 sm:px-4"
         role="img"
         aria-label={`Seven-day scheduling forecast with ${weeklyDueCount} cards scheduled`}
       >
@@ -25,9 +25,9 @@ export function ScheduleForecastPanel({ analytics }: { analytics: SpacedRepetiti
               <div className="h-5 text-xs font-semibold tabular-nums text-text-secondary">
                 {point.dueCount > 0 ? point.dueCount : ""}
               </div>
-              <div className="mt-1 flex h-24 items-end rounded-[0.8rem] bg-glass-medium px-1.5 pt-2">
+              <div className="mt-1 flex h-24 items-end rounded-md bg-glass-medium px-1.5 pt-2">
                 <div
-                  className={`w-full rounded-t-[0.65rem] ${
+                  className={`w-full rounded-t-sm ${
                     index === 0
                       ? "bg-[var(--color-warm-accent)]"
                       : "bg-[var(--color-accent)]"
@@ -41,7 +41,7 @@ export function ScheduleForecastPanel({ analytics }: { analytics: SpacedRepetiti
                 />
               </div>
               <div
-                className={`mt-2 truncate text-[0.68rem] font-semibold ${
+                className={`mt-2 truncate text-2xs font-semibold ${
                   index === 0 ? "text-warm-accent" : "text-text-muted"
                 }`}
               >

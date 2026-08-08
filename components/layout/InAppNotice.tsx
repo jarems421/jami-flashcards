@@ -66,7 +66,7 @@ export default function InAppNotice() {
     >
       <DialogBackdrop className="absolute inset-0 bg-[#090615]/70 backdrop-blur-md" />
       <DialogPanel
-        className="w-full max-w-lg rounded-[2rem] border border-[var(--color-border)] bg-[linear-gradient(180deg,rgba(31,22,56,0.96),rgba(18,12,35,0.98))] p-5 shadow-[0_28px_70px_rgba(4,1,18,0.46)] sm:p-7"
+        className="w-full max-w-lg rounded-2xl border border-[var(--color-border)] bg-[linear-gradient(180deg,rgba(31,22,56,0.96),rgba(18,12,35,0.98))] p-5 shadow-[0_28px_70px_rgba(4,1,18,0.46)] sm:p-7"
       >
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-warm-accent">
           Update notice

@@ -13,7 +13,7 @@ type IconBubbleProps = {
 };
 
 const sizeClasses: Record<IconBubbleSize, string> = {
-  xs: "h-6 w-6 text-[0.68rem]",
+  xs: "h-6 w-6 text-2xs",
   sm: "h-8 w-8 text-xs",
   md: "h-10 w-10 text-sm",
   lg: "h-11 w-11 text-base",
@@ -21,7 +21,7 @@ const sizeClasses: Record<IconBubbleSize, string> = {
 
 const shapeClasses: Record<IconBubbleShape, string> = {
   circle: "rounded-full",
-  rounded: "rounded-[1.05rem]",
+  rounded: "rounded-lg",
 };
 
 export default function IconBubble({

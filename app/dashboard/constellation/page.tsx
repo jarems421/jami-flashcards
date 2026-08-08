@@ -490,7 +490,7 @@ export default function ConstellationDashboardPage() {
                 title="Your sky"
                 description="View your reward stars here. The active constellation can be arranged; finished constellations stay as calm records of past progress."
               />
-              <div className="app-subtle-panel flex flex-col gap-3 rounded-[1.5rem] p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+              <div className="app-subtle-panel flex flex-col gap-3 rounded-xl p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
                 <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-text-muted sm:max-w-xs">
                   Constellation
                   <span className="relative mt-1 block">
@@ -550,7 +550,7 @@ export default function ConstellationDashboardPage() {
 
               <div
                 id="constellation-container"
-                className="relative h-[60vh] w-full select-none overflow-hidden rounded-[2rem] border border-[var(--color-border)] bg-surface-base sm:h-[560px]"
+                className="relative h-[60vh] w-full select-none overflow-hidden rounded-2xl border border-[var(--color-border)] bg-surface-base sm:h-[560px]"
                 style={{
                   backgroundColor: "#090413",
                 }}

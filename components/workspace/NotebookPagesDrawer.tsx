@@ -55,7 +55,7 @@ function NotebookPagesDrawer({
         <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
           Pages
         </div>
-        <span className="app-chip rounded-full px-2 py-0.5 text-[0.68rem] font-semibold tabular-nums">
+        <span className="app-chip rounded-full px-2 py-0.5 text-2xs font-semibold tabular-nums">
           {pages.length}
         </span>
       </div>
@@ -97,7 +97,7 @@ function NotebookPagesDrawer({
             return (
               <div
                 key={page.id}
-                className={`group relative rounded-[0.95rem] border transition ${
+                className={`group relative rounded-md border transition ${
                   selected
                     ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-[0_0_0_3px_rgba(143,125,232,0.14)]"
                     : "border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
@@ -109,7 +109,7 @@ function NotebookPagesDrawer({
                   aria-current={selected ? "page" : undefined}
                   disabled={navigationBusy}
                   onClick={() => onSelectPage(page.id)}
-                  className="block w-full rounded-[0.95rem] p-1.5 text-left transition"
+                  className="block w-full rounded-md p-1.5 text-left transition"
                 >
                   <NotebookPageThumbnail
                     page={page}
@@ -134,7 +134,7 @@ function NotebookPagesDrawer({
                     className="absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full bg-error text-[var(--color-text-inverse)] shadow-[0_3px_10px_rgba(0,0,0,0.35)] transition hover:scale-105 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {deleting ? (
-                      <span className="text-[0.65rem] font-bold">...</span>
+                      <span className="text-2xs font-bold">...</span>
                     ) : (
                       <NotebookIcon name="trash" />
                     )}
@@ -144,7 +144,7 @@ function NotebookPagesDrawer({
             );
           })
         ) : (
-          <div className="rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 text-sm leading-6 text-text-muted">
+          <div className="rounded-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 text-sm leading-6 text-text-muted">
             Start with a fresh page using New page above.
           </div>
         )}

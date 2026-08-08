@@ -141,7 +141,7 @@ function GettingStartedChecklist({
             <Link
               key={item.label}
               href={item.href}
-              className={`app-subtle-panel flex min-h-[5rem] items-center gap-3 rounded-[1.15rem] p-3 transition duration-fast hover:-translate-y-[1px] ${
+              className={`app-subtle-panel flex min-h-[5rem] items-center gap-3 rounded-lg p-3 transition duration-fast hover:-translate-y-[1px] ${
                 item.done ? "app-selected" : ""
               }`}
             >
@@ -197,7 +197,7 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
       <div className="mt-5 space-y-3">
         {plan.drafts.length > 0 ? (
           plan.drafts.slice(0, 2).map((draft) => (
-            <div key={draft.id} className="app-subtle-panel rounded-[1.15rem] p-4">
+            <div key={draft.id} className="app-subtle-panel rounded-lg p-4">
               <div className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
                 {draft.sourceTitle ? "Source draft" : "Draft"}
               </div>
@@ -216,7 +216,7 @@ function DraftQueueCard({ plan }: { plan: TodayPlan }) {
             </div>
           ))
         ) : (
-          <p className="app-subtle-panel rounded-[1.15rem] p-4 text-sm leading-6 text-text-secondary">
+          <p className="app-subtle-panel rounded-lg p-4 text-sm leading-6 text-text-secondary">
             No drafts waiting.
           </p>
         )}
@@ -243,7 +243,7 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
             <Link
               key={topic.topicId}
               href={topic.href}
-              className="app-subtle-panel grid gap-3 rounded-[1.15rem] p-4 transition duration-fast hover:-translate-y-[1px] sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] sm:items-center"
+              className="app-subtle-panel grid gap-3 rounded-lg p-4 transition duration-fast hover:-translate-y-[1px] sm:grid-cols-[minmax(0,0.7fr)_minmax(0,1.3fr)] sm:items-center"
             >
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-text-primary">{topic.name}</div>
@@ -255,7 +255,7 @@ function WeakTopicsCard({ plan }: { plan: TodayPlan }) {
             </Link>
           ))
         ) : (
-          <p className="app-subtle-panel rounded-[1.15rem] p-4 text-sm leading-6 text-text-secondary">
+          <p className="app-subtle-panel rounded-lg p-4 text-sm leading-6 text-text-secondary">
             Weak topics appear after a little study history.
           </p>
         )}
@@ -287,7 +287,7 @@ function GoalSnapshotCard({ plan }: { plan: TodayPlan }) {
           </div>
         </div>
       ) : (
-        <p className="app-subtle-panel mt-5 rounded-[1.15rem] p-4 text-sm leading-6 text-text-secondary">
+        <p className="app-subtle-panel mt-5 rounded-lg p-4 text-sm leading-6 text-text-secondary">
           Add a goal when you want a target.
         </p>
       )}
@@ -635,7 +635,7 @@ export default function DashboardHome() {
           }
           aside={
             !hasStudyMaterial || isLoading ? undefined : (
-              <div className="app-subtle-panel grid w-full min-w-0 grid-cols-2 gap-3 rounded-[1.4rem] p-4 sm:min-w-[14rem] sm:grid-cols-1">
+              <div className="app-subtle-panel grid w-full min-w-0 grid-cols-2 gap-3 rounded-xl p-4 sm:min-w-[14rem] sm:grid-cols-1">
                 <div>
                   <div className="text-xs text-text-muted">Reviewed today</div>
                   <div className="mt-1 text-xl font-medium text-text-primary sm:text-2xl">

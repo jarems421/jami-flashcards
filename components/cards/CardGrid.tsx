@@ -217,7 +217,7 @@ export default function CardGrid({
                     <Link
                       href={getDeckHref(card.deckId)}
                       aria-label={`Open deck ${deckNamesById[card.deckId]}`}
-                      className="inline-flex max-w-full items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1 text-[0.68rem] font-medium text-text-secondary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary"
+                      className="inline-flex max-w-full items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-2.5 py-1 text-2xs font-medium text-text-secondary transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-medium)] hover:text-text-primary"
                     >
                       <span className="min-w-0 truncate">
                         {deckNamesById[card.deckId]}

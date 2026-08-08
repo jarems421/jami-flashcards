@@ -132,12 +132,31 @@
     --button-warm-shadow-hover: 0 16px 30px rgba(255, 214, 246, 0.24);
     --button-ghost-bg-hover: rgba(255, 255, 255, 0.08);
 
-    /* Radius - soft and pill-forward */
-    --radius-sm: 0.75rem;
-    --radius-md: 1.2rem;
-    --radius-lg: 1.6rem;
-    --radius-xl: 2.2rem;
-    --radius-2xl: 2.8rem;
+    /*
+     * Radius. Five steps, each a whole pixel, and the only five allowed.
+     *
+     * These were 0.75 / 1.2 / 1.6 / 2.2 / 2.8rem, chosen before the interface
+     * existed and then almost never used: the components reached for
+     * `rounded-[...]` instead, and settled on 31 different values between
+     * 0.45rem and 2rem across 225 places. Nothing looked wrong on any one
+     * screen, but no two panels agreed, and the difference between 1.15rem and
+     * 1.2rem is invisible while the inconsistency is not.
+     *
+     * So the scale is refitted to where the interface actually sits rather
+     * than the components being dragged to a scale that never suited them.
+     * Every one of those 225 values is now within two pixels of its step, and
+     * four at the top end.
+     *
+     * The small controls that carry `xl` and `2xl` do not move: a button at
+     * 36px tall already clamps a 45px radius to a pill, and 28px is still past
+     * half its height, so it stays one. What does change is the dozen large
+     * panels that were rounder than everything around them, which is the point.
+     */
+    --radius-sm: 0.625rem;  /* 10px - chips, badges, the smallest controls */
+    --radius-md: 0.875rem;  /* 14px - buttons, inputs, rows inside a panel */
+    --radius-lg: 1.125rem;  /* 18px - panels nested inside a card */
+    --radius-xl: 1.375rem;  /* 22px - cards */
+    --radius-2xl: 1.75rem;  /* 28px - page shells, drawers, dialogs */
 
     /* Shadows */
     --shadow-glass: 0 18px 50px rgba(4, 0, 18, 0.38);
@@ -1074,7 +1093,7 @@
     border: 1.5px solid var(--color-border-strong);
     background-color: var(--color-surface-panel);
     background-image: var(--gradient-card);
-    border-radius: 2.15rem;
+    border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-bubble);
   }
 
@@ -1084,7 +1103,7 @@
     border: 1.5px solid var(--color-warm-border);
     background-color: var(--color-surface-panel);
     background-image: var(--gradient-card);
-    border-radius: 2.15rem;
+    border-radius: var(--radius-2xl);
     box-shadow: var(--shadow-bubble);
   }
 
@@ -1241,7 +1260,7 @@
     min-height: 2.75rem;
     align-items: center;
     justify-content: center;
-    border-radius: 2rem;
+    border-radius: var(--radius-2xl);
     padding: 0.5rem 1rem;
     font-size: 0.875rem;
     font-weight: 600;
@@ -1725,7 +1744,7 @@ body.constellation-background-enabled::before {
 }
 
 .star-reward-card {
-  border-radius: 1.9rem;
+  border-radius: var(--radius-2xl);
   border: 1px solid var(--color-border);
   /* Opaque base under the panel colour: the panel token is a few percent
      translucent, which reads as depth over a scrim but lets the flashcard
@@ -1852,15 +1871,15 @@ body.constellation-background-enabled::before {
 @media (max-width: 640px) {
   .app-panel,
   .app-panel-warm {
-    border-radius: 1.8rem;
+    border-radius: var(--radius-2xl);
   }
 
   .app-topbar {
-    border-radius: 1.6rem !important;
+    border-radius: var(--radius-2xl) !important;
   }
 
   .app-nav {
-    border-radius: 1.9rem !important;
+    border-radius: var(--radius-2xl) !important;
   }
 }
 

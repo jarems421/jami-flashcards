@@ -97,7 +97,7 @@ export default function SmoothingSlider({
         >
           Smoothing
         </label>
-        <span className="text-[0.68rem] font-semibold text-text-muted">
+        <span className="text-2xs font-semibold text-text-muted">
           {name}
         </span>
       </div>
@@ -128,7 +128,7 @@ export default function SmoothingSlider({
           />
         </div>
       </div>
-      <p className="px-0.5 text-[0.7rem] leading-4 text-text-secondary">
+      <p className="px-0.5 text-2xs leading-4 text-text-secondary">
         {description}
       </p>
     </div>

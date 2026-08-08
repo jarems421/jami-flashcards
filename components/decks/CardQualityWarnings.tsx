@@ -21,7 +21,7 @@ export default function CardQualityWarnings({
         <span
           key={warning.id}
           title={warning.detail}
-          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-[0.68rem] font-medium ${warningClasses[warning.tone]}`}
+          className={`inline-flex items-center rounded-full border px-2.5 py-1 text-2xs font-medium ${warningClasses[warning.tone]}`}
         >
           {warning.label}
         </span>

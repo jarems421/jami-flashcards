@@ -109,7 +109,7 @@ function ColumnOptions({
               type="button"
               aria-pressed={selected}
               onClick={() => column.onToggle(option.id)}
-              className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-[1rem] px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
+              className={`flex min-h-12 w-full items-center justify-between gap-3 rounded-md px-3 py-2 text-left text-sm transition duration-fast ${selected ? "app-selected" : "app-chip hover:border-border-strong"}`}
             >
               <span className="min-w-0">
                 <span className="block truncate">{option.name}</span>

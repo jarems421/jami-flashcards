@@ -387,13 +387,13 @@ export default function NotificationSettingsCard({
               Install for a more native mobile feel.
             </p>
           </div>
-          <div className="app-chip rounded-full px-3 py-1 text-[10px] font-semibold uppercase tracking-[0.2em]">
+          <div className="app-chip rounded-full px-3 py-1 text-2xs font-semibold uppercase tracking-[0.2em]">
             {installLabel}
           </div>
         </div>
 
-        <div className="app-subtle-panel mt-4 rounded-[1.15rem] p-4 text-sm">
-          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+        <div className="app-subtle-panel mt-4 rounded-lg p-4 text-sm">
+          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">
             Install status
           </div>
           <div className="mt-2 text-sm leading-6 text-text-primary">
@@ -424,7 +424,7 @@ export default function NotificationSettingsCard({
 
         {feedback?.section === "install" ? (
           <div
-            className={`mt-4 rounded-[1.15rem] border p-3 text-sm ${
+            className={`mt-4 rounded-lg border p-3 text-sm ${
               feedback.type === "error"
                 ? "app-danger"
                 : "app-success"
@@ -443,7 +443,7 @@ export default function NotificationSettingsCard({
           </p>
         </div>
 
-        <div className={`${reminderStatus.tone} mt-4 rounded-[1.15rem] px-4 py-3`}>
+        <div className={`${reminderStatus.tone} mt-4 rounded-lg px-4 py-3`}>
           <div className="text-sm font-semibold">{reminderStatus.label}</div>
           <p className="mt-1 text-xs leading-5 text-inherit/80">
             {reminderStatus.detail}
@@ -451,8 +451,8 @@ export default function NotificationSettingsCard({
         </div>
 
         <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="app-subtle-panel rounded-[1.15rem] p-4 text-sm">
-            <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+          <div className="app-subtle-panel rounded-lg p-4 text-sm">
+            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">
               Device status
             </div>
             <div className="mt-2 space-y-1 text-sm text-text-secondary">
@@ -521,7 +521,7 @@ export default function NotificationSettingsCard({
             ) : null}
           </div>
 
-          <div className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <div className="text-sm font-semibold text-text-primary">
@@ -545,7 +545,7 @@ export default function NotificationSettingsCard({
 
             <div className="mt-4 space-y-3">
               <div
-                className={`rounded-[1.05rem] border border-[var(--color-border)] p-3 ${
+                className={`rounded-lg border border-[var(--color-border)] p-3 ${
                   preferences.enabled ? "bg-[var(--color-glass-subtle)]" : "bg-[var(--color-glass-subtle)] opacity-70"
                 }`}
               >
@@ -573,7 +573,7 @@ export default function NotificationSettingsCard({
                         type="button"
                         disabled={loading || !preferences.enabled || savingField === "mode"}
                         onClick={() => void handleModeChange(option.value)}
-                        className={`rounded-[1rem] border px-4 py-3 text-left transition duration-fast ${
+                        className={`rounded-md border px-4 py-3 text-left transition duration-fast ${
                           selected
                             ? "app-selected"
                             : "app-chip hover:border-border-strong hover:bg-[var(--color-glass-medium)]"
@@ -595,7 +595,7 @@ export default function NotificationSettingsCard({
 
         {feedback?.section === "notifications" ? (
           <div
-            className={`mt-4 rounded-[1.15rem] border p-3 text-sm ${
+            className={`mt-4 rounded-lg border p-3 text-sm ${
               feedback.type === "error"
                 ? "app-danger"
                 : "app-success"

@@ -68,7 +68,7 @@ export default function SourceCreatePanel({
   const madeTotal = made.flashcards + made.questions;
 
   return (
-    <div className="space-y-4 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+    <div className="space-y-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
       <p className="text-sm leading-6 text-text-muted">
         {madeTotal === 0
           ? "Turn this source into things you can actually study. Everything is a draft until you approve it."
@@ -90,7 +90,7 @@ export default function SourceCreatePanel({
                 aria-checked={active}
                 disabled={drafting !== null}
                 onClick={() => setDepth(option.value)}
-                className={`rounded-[1rem] border p-2.5 text-left transition duration-fast disabled:cursor-not-allowed disabled:opacity-60 ${
+                className={`rounded-md border p-2.5 text-left transition duration-fast disabled:cursor-not-allowed disabled:opacity-60 ${
                   active
                     ? "border-[var(--color-accent)] bg-[var(--color-accent-muted)]"
                     : "border-[var(--color-border)] hover:border-border-strong hover:bg-[var(--color-glass-medium)]"
@@ -116,7 +116,7 @@ export default function SourceCreatePanel({
           return (
             <div
               key={option.kind}
-              className="flex flex-wrap items-center justify-between gap-3 rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3"
+              className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-3"
             >
               <div className="min-w-0">
                 <div className="text-sm font-semibold text-text-primary">{option.label}</div>

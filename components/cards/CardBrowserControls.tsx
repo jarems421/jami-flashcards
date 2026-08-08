@@ -40,7 +40,7 @@ export default function CardBrowserControls({
   const { filters, results, search } = browser;
 
   return (
-    <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-[1.35rem] border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
+    <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-lg font-semibold text-text-primary">
@@ -103,7 +103,7 @@ export default function CardBrowserControls({
       </div>
 
       {filters.controlsVisible ? (
-        <div className="grid gap-3 rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3 sm:grid-cols-2 xl:grid-cols-4">
           <label className="block">
             <span className="mb-1.5 block text-xs font-semibold text-text-muted">
               Deck

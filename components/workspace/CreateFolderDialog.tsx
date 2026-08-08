@@ -142,7 +142,7 @@ export default function CreateFolderDialog({
             />
           </div>
 
-          <div className="app-subtle-panel rounded-[1.3rem] p-4 sm:p-5">
+          <div className="app-subtle-panel rounded-xl p-4 sm:p-5">
             <ObjectStylePicker
               color={color}
               icon={icon}

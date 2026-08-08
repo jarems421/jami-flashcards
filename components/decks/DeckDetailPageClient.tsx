@@ -411,7 +411,7 @@ export default function DeckDetailPageClient() {
           </nav>
           <div className="grid gap-3 sm:gap-4 lg:grid-cols-[minmax(0,1.12fr)_320px]">
             <SurfaceCard padding="lg">
-              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">
                 Deck
               </div>
               <div className="mt-3 flex items-center gap-4">
@@ -440,7 +440,7 @@ export default function DeckDetailPageClient() {
             </SurfaceCard>
 
             <SurfaceCard tone="warm" padding="md">
-              <div className="text-[0.72rem] font-semibold uppercase tracking-[0.22em] text-text-muted">
+              <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">
                 At a glance
               </div>
               <div className="mt-4 grid gap-4">
@@ -456,7 +456,7 @@ export default function DeckDetailPageClient() {
               <details className="group/export mt-5">
                 <summary
                   aria-disabled={cards.length === 0}
-                  className={`app-button-secondary inline-flex min-h-[2.75rem] min-w-[7.5rem] list-none items-center justify-center rounded-[2rem] px-5 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden ${
+                  className={`app-button-secondary inline-flex min-h-[2.75rem] min-w-[7.5rem] list-none items-center justify-center rounded-2xl px-5 py-2 text-sm font-semibold [&::-webkit-details-marker]:hidden ${
                     cards.length === 0
                       ? "pointer-events-none opacity-60"
                       : "cursor-pointer"

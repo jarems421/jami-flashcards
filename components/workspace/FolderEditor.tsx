@@ -101,7 +101,7 @@ export default function FolderEditor({
               onChange={(event) => setSubject(event.target.value)}
             />
           </div>
-          <div className="app-subtle-panel rounded-[1rem] p-2">
+          <div className="app-subtle-panel rounded-md p-2">
             <FolderObjectCard
               title={name.trim() || "Folder preview"}
               color={color}

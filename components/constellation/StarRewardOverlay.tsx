@@ -97,7 +97,7 @@ export default function StarRewardOverlay({ reward, onDone }: StarRewardOverlayP
           </div>
         </div>
         <div className="star-reward-copy relative flex flex-col items-center gap-1.5">
-          <div className="text-[0.66rem] font-semibold uppercase tracking-[0.24em] text-text-muted">
+          <div className="text-2xs font-semibold uppercase tracking-[0.24em] text-text-muted">
             Star earned
           </div>
           <div className="max-w-[17rem] text-lg font-semibold leading-snug text-text-primary">

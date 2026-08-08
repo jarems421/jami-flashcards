@@ -43,7 +43,7 @@ const MAX_RECENT_SOURCES = 6;
 
 function Chip({ children }: { children: React.ReactNode }) {
   return (
-    <span className="app-chip rounded-full px-2.5 py-1 text-[0.68rem] font-semibold">
+    <span className="app-chip rounded-full px-2.5 py-1 text-2xs font-semibold">
       {children}
     </span>
   );
@@ -157,7 +157,7 @@ export default function TutorPage() {
         description="Pick something for Jami to read and it can explain it, quiz you, or draft cards and questions from it."
         action={<ButtonLink href="/dashboard/library">Choose a source</ButtonLink>}
         aside={
-          <div className="app-subtle-panel grid w-full min-w-0 gap-3 rounded-[1.4rem] p-4 sm:min-w-[15rem]">
+          <div className="app-subtle-panel grid w-full min-w-0 gap-3 rounded-xl p-4 sm:min-w-[15rem]">
             <div className="flex items-start gap-2.5">
               <IconBubble size="xs" shape="circle" className="app-chip mt-0.5 shrink-0">
                 1
@@ -220,7 +220,7 @@ export default function TutorPage() {
             draftGroups.map((group) => (
               <div
                 key={group.sourceId ?? "__unsourced__"}
-                className="app-subtle-panel flex flex-col gap-4 rounded-[1.35rem] p-4 sm:flex-row sm:items-center"
+                className="app-subtle-panel flex flex-col gap-4 rounded-xl p-4 sm:flex-row sm:items-center"
               >
                 <IconBubble
                   size="md"
@@ -285,7 +285,7 @@ export default function TutorPage() {
                 <a
                   key={source.id}
                   href={getSourcePanelHref(source.id, "tutor")}
-                  className="app-subtle-panel flex items-center gap-3 rounded-[1.35rem] p-3.5 transition duration-fast hover:-translate-y-[1px] hover:border-[var(--color-border-strong)]"
+                  className="app-subtle-panel flex items-center gap-3 rounded-xl p-3.5 transition duration-fast hover:-translate-y-[1px] hover:border-[var(--color-border-strong)]"
                 >
                   <IconBubble
                     size="md"

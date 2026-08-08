@@ -620,7 +620,7 @@ export default function JamiAssistantDrawer({
                   Ask about what you are studying, or choose a useful starting point.
                 </p>
                 {emptyStateNote ? (
-                  <p className="mt-3 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-xs leading-5 text-text-muted">
+                  <p className="mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2 text-xs leading-5 text-text-muted">
                     {emptyStateNote}
                   </p>
                 ) : null}
@@ -662,7 +662,7 @@ export default function JamiAssistantDrawer({
                 >
                   <div className="max-w-[90%]">
                     <div
-                      className={`rounded-[1.35rem] px-4 py-3 text-sm leading-relaxed ${
+                      className={`rounded-xl px-4 py-3 text-sm leading-relaxed ${
                         message.role === "user"
                           ? "rounded-br-md bg-accent text-white"
                           : "rounded-bl-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] text-text-primary"
@@ -679,7 +679,7 @@ export default function JamiAssistantDrawer({
                     </div>
                     {message.role === "assistant" ? (
                       <>
-                        <div className="mt-1.5 px-1 text-[0.68rem] leading-relaxed text-text-muted">
+                        <div className="mt-1.5 px-1 text-2xs leading-relaxed text-text-muted">
                           {message.used && message.used.length > 0
                             ? formatJamiAssistantUsedContext(message.used)
                             : "Used: General knowledge"}
@@ -692,7 +692,7 @@ export default function JamiAssistantDrawer({
                               <button
                                 key={`${followUp.label}:${followUp.prompt}`}
                                 type="button"
-                                className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-[0.7rem] font-medium text-text-muted transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
+                                className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-2xs font-medium text-text-muted transition duration-fast hover:border-border-strong hover:bg-[var(--color-glass-subtle)] hover:text-text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45"
                                 onClick={() => void sendMessage(followUp.prompt)}
                               >
                                 {followUp.label}
@@ -713,7 +713,7 @@ export default function JamiAssistantDrawer({
               */}
               {loading && !answerHasStarted ? (
                 <div className="flex justify-start">
-                  <div className="app-chip rounded-[1.35rem] rounded-bl-md px-4 py-3 text-sm text-text-muted" role="status">
+                  <div className="app-chip rounded-xl rounded-bl-md px-4 py-3 text-sm text-text-muted" role="status">
                     <span className="inline-flex items-center gap-2">
                       <span key={waitingLabel} className="ai-waiting-label inline-block">
                         {waitingLabel}
@@ -733,16 +733,16 @@ export default function JamiAssistantDrawer({
 
         <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           {historyOpen ? (
-            <div className="text-center text-[0.65rem] text-text-muted">
+            <div className="text-center text-2xs text-text-muted">
               Saved chats keep their messages, not source files or notebook snapshots.
             </div>
           ) : viewingForeignThread ? (
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-[1.2rem] border border-accent/20 bg-accent/8 px-4 py-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-accent/20 bg-accent/8 px-4 py-3">
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-semibold text-text-primary">
                   This chat belongs to another study context
                 </p>
-                <p className="mt-1 text-[0.7rem] leading-relaxed text-text-muted">
+                <p className="mt-1 text-2xs leading-relaxed text-text-muted">
                   You can read it here. Start a new chat to ask about {historyContextLabel}.
                 </p>
               </div>
@@ -757,7 +757,7 @@ export default function JamiAssistantDrawer({
           ) : (
             <>
           {error ? (
-            <div className="mb-3 flex items-start justify-between gap-3 rounded-[1.25rem] border border-error/35 bg-error-muted px-3.5 py-3 text-xs text-[var(--color-error-text)]" role="alert">
+            <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-error/35 bg-error-muted px-3.5 py-3 text-xs text-[var(--color-error-text)]" role="alert">
               <span className="leading-relaxed">{error}</span>
               <button
                 type="button"
@@ -769,7 +769,7 @@ export default function JamiAssistantDrawer({
             </div>
           ) : null}
           {historyNotice ? (
-            <div className="mb-3 flex items-start justify-between gap-3 rounded-[1.15rem] border border-warning/30 bg-warning-muted px-3.5 py-3 text-xs text-text-secondary" role="status">
+            <div className="mb-3 flex items-start justify-between gap-3 rounded-lg border border-warning/30 bg-warning-muted px-3.5 py-3 text-xs text-text-secondary" role="status">
               <span className="leading-relaxed">{historyNotice}</span>
               <button
                 type="button"
@@ -781,7 +781,7 @@ export default function JamiAssistantDrawer({
             </div>
           ) : null}
 
-          <div className="relative rounded-[1.3rem] border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-[0_8px_24px_rgba(8,2,26,0.08)] transition duration-fast focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/15">
+          <div className="relative rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-[0_8px_24px_rgba(8,2,26,0.08)] transition duration-fast focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/15">
             <label htmlFor="jami-assistant-message" className="sr-only">
               Message Jami
             </label>
@@ -829,12 +829,12 @@ export default function JamiAssistantDrawer({
                   />
                 </svg>
               </summary>
-              <div className="mt-2 flex w-full items-center justify-between gap-4 rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
+              <div className="mt-2 flex w-full items-center justify-between gap-4 rounded-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
                 <span className="min-w-0">
                   <span className="block text-xs font-semibold text-text-primary">
                     Use related Jami material
                   </span>
-                  <span className="mt-0.5 block text-[0.68rem] leading-relaxed text-text-muted">
+                  <span className="mt-0.5 block text-2xs leading-relaxed text-text-muted">
                     Jami may choose up to five relevant sources when you ask.
                   </span>
                 </span>
@@ -859,7 +859,7 @@ export default function JamiAssistantDrawer({
                 </button>
               </div>
             </details>
-            <div className="px-1.5 pt-1 text-[0.65rem] text-text-muted">
+            <div className="px-1.5 pt-1 text-2xs text-text-muted">
               Jami can make mistakes. Check important answers.
             </div>
           </div>

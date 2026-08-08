@@ -40,7 +40,7 @@ export default function NotebookAddPagesDialog({
     >
       <DialogBackdrop className="absolute inset-0 bg-black/45 backdrop-blur-sm" />
       <DialogPanel
-        className="app-panel relative my-4 w-full max-w-lg overflow-hidden rounded-[1.45rem] p-3 backdrop-blur-md transition duration-fast sm:rounded-[1.9rem] sm:p-4"
+        className="app-panel relative my-4 w-full max-w-lg overflow-hidden rounded-xl p-3 backdrop-blur-md transition duration-fast sm:rounded-2xl sm:p-4"
       >
         <div>
           <DialogTitle className="text-sm font-semibold text-text-primary">

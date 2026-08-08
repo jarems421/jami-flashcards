@@ -21,7 +21,7 @@ export default function NotebookSaveIndicator({
       <button
         type="button"
         onClick={onRetry}
-        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--color-error-text)]/40 bg-[var(--color-error-text)]/10 px-2 py-0.5 text-[0.68rem] font-semibold text-[var(--color-error-text)] transition hover:bg-[var(--color-error-text)]/20 [&_svg]:h-3.5 [&_svg]:w-3.5"
+        className="inline-flex shrink-0 items-center gap-1 rounded-full border border-[var(--color-error-text)]/40 bg-[var(--color-error-text)]/10 px-2 py-0.5 text-2xs font-semibold text-[var(--color-error-text)] transition hover:bg-[var(--color-error-text)]/20 [&_svg]:h-3.5 [&_svg]:w-3.5"
       >
         <NotebookIcon name="alert" />
         Retry save

@@ -127,7 +127,7 @@ function NotebookTextEditor({
       onChange={(event) => onChangeText(block.id, event.target.value)}
       placeholder="Type here..."
       data-notebook-text-editor="true"
-      className={`notebook-text-editor h-full w-full resize-none rounded-[0.45rem] bg-transparent p-2 pr-16 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
+      className={`notebook-text-editor h-full w-full resize-none rounded-sm bg-transparent p-2 pr-16 text-sm font-medium leading-6 outline-none ${TEXT_COLOR_CLASS[pageColor]}`}
     />
   );
 }
@@ -189,7 +189,7 @@ function NotebookTextBlockLayer({
         return (
           <div
             key={block.id}
-            className={`notebook-text-object pointer-events-auto absolute rounded-[0.45rem] border bg-transparent transition-[border-color,box-shadow] duration-150 ${
+            className={`notebook-text-object pointer-events-auto absolute rounded-sm border bg-transparent transition-[border-color,box-shadow] duration-150 ${
               editing
                 ? `cursor-text ${frameBorderClass} shadow-[0_2px_12px_rgba(0,0,0,0.12)]`
                 : selected
@@ -266,7 +266,7 @@ function NotebookTextBlockLayer({
                   event.stopPropagation();
                   onSelect(block.id);
                 }}
-                className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-[0.45rem] border-0 bg-transparent p-2 pr-10 text-left text-sm font-medium leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${
+                className={`h-full w-full overflow-hidden whitespace-pre-wrap rounded-sm border-0 bg-transparent p-2 pr-10 text-left text-sm font-medium leading-6 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-selected-border)] ${
                   onBlack ? "text-[#f8fafc]" : "text-slate-950"
                 } ${block.text.trim() ? "" : "opacity-60"}`}
               >

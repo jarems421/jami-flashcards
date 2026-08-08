@@ -22,16 +22,16 @@ export default function AppTopBar({
       className={className}
       style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.45rem)" }}
     >
-      <div className="app-topbar rounded-[1.45rem] border-[1.5px] border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-3 py-3 shadow-[var(--topbar-shadow)] backdrop-blur-xl sm:rounded-[1.8rem] sm:px-4">
+      <div className="app-topbar rounded-xl border-[1.5px] border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-3 py-3 shadow-[var(--topbar-shadow)] backdrop-blur-xl sm:rounded-2xl sm:px-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <BrandMark size="lg" />
             <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2 text-[0.68rem] font-semibold uppercase tracking-[0.2em] text-text-muted">
+              <div className="flex min-w-0 items-center gap-2 text-2xs font-semibold uppercase tracking-[0.2em] text-text-muted">
                 <span className="hidden sm:inline">Jami learning loop</span>
                 <span className="sm:hidden">Jami</span>
               </div>
-              <h1 className="mt-1 truncate text-[1.05rem] font-semibold leading-tight text-text-primary sm:text-[1.25rem]">
+              <h1 className="mt-1 truncate text-base font-semibold leading-tight text-text-primary sm:text-xl">
                 {title}
               </h1>
             </div>

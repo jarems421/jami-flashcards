@@ -411,7 +411,7 @@ export default function TopicDetailPage() {
             <summary className="app-button-secondary inline-flex min-h-11 cursor-pointer list-none items-center rounded-full px-4 text-sm font-medium [&::-webkit-details-marker]:hidden">
               Manage
             </summary>
-            <div className="app-panel absolute right-0 top-[calc(100%+0.5rem)] z-30 grid min-w-48 gap-1 rounded-[1rem] p-2 shadow-shell">
+            <div className="app-panel absolute right-0 top-[calc(100%+0.5rem)] z-30 grid min-w-48 gap-1 rounded-md p-2 shadow-shell">
               <button
                 type="button"
                 className="rounded-xl px-3 py-2 text-left text-sm text-text-secondary hover:bg-[var(--color-glass-subtle)]"
@@ -507,7 +507,7 @@ export default function TopicDetailPage() {
               sectionItems.map((item) => (
                 <div
                   key={item.id}
-                  className="app-subtle-panel flex items-center justify-between gap-3 rounded-[1rem] p-3"
+                  className="app-subtle-panel flex items-center justify-between gap-3 rounded-md p-3"
                 >
                   <Link href={item.href} className="min-w-0 flex-1">
                     <div className="truncate text-sm font-semibold text-text-primary">

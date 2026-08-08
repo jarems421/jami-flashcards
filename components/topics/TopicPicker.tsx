@@ -138,7 +138,7 @@ export default function TopicPicker({
         ) : null}
       </div>
       {query.trim() ? (
-        <div className="mt-2 max-h-44 overflow-y-auto rounded-[1rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-2">
+        <div className="mt-2 max-h-44 overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-2">
           {matches.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {matches.map((topic) => (
@@ -172,7 +172,7 @@ export default function TopicPicker({
         </p>
       ) : null}
       {error ? (
-        <p className="app-danger mt-2 rounded-[0.9rem] px-3 py-2 text-xs">
+        <p className="app-danger mt-2 rounded-md px-3 py-2 text-xs">
           {error}
         </p>
       ) : null}

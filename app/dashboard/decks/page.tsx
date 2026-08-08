@@ -306,7 +306,7 @@ export default function DecksPage() {
                     <select
                       value={createFolderId}
                       onChange={(event) => setCreateFolderId(event.target.value)}
-                      className="app-field min-h-[2.9rem] w-full min-w-0 appearance-none truncate rounded-[1.6rem] px-3 py-3 text-sm leading-6 outline-none"
+                      className="app-field min-h-[2.9rem] w-full min-w-0 appearance-none truncate rounded-2xl px-3 py-3 text-sm leading-6 outline-none"
                     >
                       <option value="">No folder</option>
                       {folders.map((folder) => (
@@ -380,9 +380,9 @@ export default function DecksPage() {
                     <div className="min-w-0 basis-full">
                       {rows.isEditing(deck.id) ? (
                         <div className="space-y-3">
-                          <div className="app-subtle-panel space-y-3 rounded-[1.4rem] p-3">
+                          <div className="app-subtle-panel space-y-3 rounded-xl p-3">
                             <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">Deck cover</div>
-                            <div className="app-chip flex flex-wrap items-center gap-3 rounded-[1rem] p-3 sm:flex-nowrap">
+                            <div className="app-chip flex flex-wrap items-center gap-3 rounded-md p-3 sm:flex-nowrap">
                               <DeckCoverIcon
                                 colorPreset={draft.colorPreset}
                                 iconPreset={draft.iconPreset}

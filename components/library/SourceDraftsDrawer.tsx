@@ -116,7 +116,7 @@ export default function SourceDraftsDrawer({
         />
 
         {drafts.length === 0 ? (
-          <p className="rounded-[1.15rem] border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm leading-6 text-text-muted">
+          <p className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 text-sm leading-6 text-text-muted">
             Nothing is waiting for review. Anything you make above lands here
             first, so you can edit it before it reaches Learn or a notebook.
           </p>
@@ -147,13 +147,13 @@ export default function SourceDraftsDrawer({
                 type="button"
                 onClick={() => onSelectDraft(draft.id)}
                 className={
-                  "min-w-[13rem] rounded-[1rem] border p-3 text-left transition " +
+                  "min-w-[13rem] rounded-md border p-3 text-left transition " +
                   (active
                     ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] text-text-primary"
                     : "border-[var(--color-border)] text-text-secondary hover:bg-[var(--color-glass-subtle)]")
                 }
               >
-                <div className="text-[0.68rem] font-semibold uppercase tracking-[0.14em] text-text-muted">
+                <div className="text-2xs font-semibold uppercase tracking-[0.14em] text-text-muted">
                   Draft {index + 1}
                 </div>
                 <div className="mt-1 line-clamp-2 text-sm font-semibold text-text-primary">

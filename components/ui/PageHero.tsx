@@ -32,10 +32,10 @@ export default function PageHero({
         }`}
       >
         <div className={`min-w-0 flex-1 ${compact ? "max-w-xl" : "max-w-3xl"}`}>
-          <div className="text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-text-secondary">
+          <div className="text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
             {eyebrow}
           </div>
-          <h2 className={`${compact ? "mt-2" : "mt-3"} text-[1.3rem] font-medium leading-tight tracking-tight text-text-primary sm:text-[1.55rem] xl:text-[1.85rem]`}>
+          <h2 className={`${compact ? "mt-2" : "mt-3"} text-xl font-medium leading-tight tracking-tight text-text-primary sm:text-2xl xl:text-3xl`}>
             {title}
           </h2>
           {description ? (
