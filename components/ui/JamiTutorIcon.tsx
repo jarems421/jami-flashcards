@@ -3,88 +3,57 @@ type JamiTutorIconProps = {
 };
 
 /**
- * How far down each braid bead sits, from the top of the braid.
+ * The letter, as the area a pen of a given width would cover.
  *
- * Four a side. The reference has more, but a bead is a filled dot under a
- * pixel across in a sidebar, and a fifth only closes the gaps between the
- * others into a bar.
+ * A flat head, a straight stem, and a hook that is a true circle -- and every
+ * part of it is a straight line or an exact arc, so it is right at any size
+ * rather than an approximation that facets when drawn large. The two ends are
+ * round, which is what a stroked version of the same letter would give.
+ *
+ * Solid rather than outlined because that is the language the sidebar already
+ * speaks: every other entry there is a filled shape, and a single outlined mark
+ * among them reads as belonging to a different set however well it is drawn.
+ *
+ * The stem is three units on a twenty-four grid, which is what sits it with its
+ * neighbours -- lighter and it reads thin beside them, heavier and the counter
+ * inside the hook starts to close at the twenty pixels a nav row draws it at.
  */
-const BRAID_BEADS = [0, 1.9, 3.8, 5.7];
+const LETTER =
+  "M7.5 3.6H14.1a1.5 1.5 0 0 1 1.5 1.5v8.1a4.6 4.6 0 0 1-9.2 0 1.5 1.5 0 0 1 3 0 1.6 1.6 0 0 0 3.2 0V6.6H7.5a1.5 1.5 0 0 1 0-3Z";
 
 /**
- * Jami herself: the mark for the tutor, wherever the tutor is offered.
+ * Her star, three times over, scattered rather than arranged.
  *
- * Mostly strokes on a 24 grid rather than filled silhouettes, so the lenses,
- * the smile and the gaps between the braids stay open at the sizes this is used
- * at -- a filled version of the same drawing closes them into a blob as soon as
- * it goes in a nav row. The beads and the star are filled for the opposite
- * reason: a ring that small has no middle left to show.
+ * Three sizes, none of them the same distance from the letter and no two lined
+ * up with each other -- placed evenly they read as a border around the mark
+ * instead of as something in the air near it. The smallest two are the first to
+ * go at a nav row's size, which is why the largest sits alone in the corner
+ * with the most room around it.
+ */
+const STARS = [
+  "M19.5 2.5l.65 1.25 1.25.65-1.25.65-.65 1.25-.65-1.25-1.25-.65 1.25-.65z",
+  "M4.6 11.4l.34.66.66.34-.66.34-.34.66-.34-.66-.66-.34.66-.34z",
+  "M18.2 15.3l.44.86.86.44-.86.44-.44.86-.44-.86-.86-.44.86-.44z",
+];
+
+/**
+ * Jami's mark: her initial, and her star.
  *
- * `currentColor` throughout, so it takes the colour of whatever offers it --
- * muted in a resting nav row, accent in the assistant header, inherited on a
- * button.
+ * Drawn wherever the tutor is offered, so a student recognises who they are
+ * about to talk to before they read the label. `currentColor` throughout, so it
+ * is muted in a resting nav row, accent in the assistant header, and inherited
+ * on a button.
  */
 export default function JamiTutorIcon({ className = "" }: JamiTutorIconProps) {
   return (
     <svg
       viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={1.4}
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      fill="currentColor"
       aria-hidden="true"
       className={className}
     >
-      {/* Face, down to a rounded chin. Its top is left open: the cap covers it. */}
-      <path d="M8 9.7v2.6a4 4 0 008 0V9.7" />
-
-      {/* Shoulders. */}
-      <path d="M8.1 16.9c-1.9.8-3.1 2.2-3.1 3.9h14c0-1.7-1.2-3.1-3.1-3.9" />
-
-      {/* Mortarboard: the board, then the cap under it. */}
-      <path d="M12 2.7 20.9 6 12 9.3 3.1 6z" />
-      <path d="M7.5 7.7v1.3c0 1.3 2 2.1 4.5 2.1s4.5-.8 4.5-2.1V7.7" />
-
-      {/* Tassel, hanging from the left corner of the board. */}
-      <path d="M3.7 6.4v2.4" />
-      <circle cx="3.7" cy="9.8" r="0.95" fill="currentColor" stroke="none" />
-
-      {/* The Jami star, at the right corner of the board. */}
-      <path
-        d="m20.5 6.6.66 1.36L22.5 8.6l-1.34.64L20.5 10.6l-.66-1.36L18.5 8.6l1.34-.64z"
-        fill="currentColor"
-        stroke="none"
-      />
-
-      {/* Glasses: two lenses and the bridge between them. */}
-      <circle cx="10" cy="12.1" r="1.5" />
-      <circle cx="14" cy="12.1" r="1.5" />
-      <path d="M11.5 12.1h1" />
-
-      {/* A smile, not a mouth: one stroke reads at every size. */}
-      <path d="M10.8 14.7a1.9 1.9 0 002.4 0" />
-
-      {/* Box braids, down both sides of the face. */}
-      {BRAID_BEADS.map((offset) => (
-        <circle
-          key={`left-${offset}`}
-          cx="6.1"
-          cy={10.9 + offset}
-          r="0.9"
-          fill="currentColor"
-          stroke="none"
-        />
-      ))}
-      {BRAID_BEADS.map((offset) => (
-        <circle
-          key={`right-${offset}`}
-          cx="17.9"
-          cy={10.9 + offset}
-          r="0.9"
-          fill="currentColor"
-          stroke="none"
-        />
+      {[LETTER, ...STARS].map((shape) => (
+        <path key={shape} fillRule="evenodd" clipRule="evenodd" d={shape} />
       ))}
     </svg>
   );

@@ -147,9 +147,9 @@ describe("the sidebar", () => {
 });
 
 /**
- * The tutor is a person, not a glyph, so its mark is a drawing rather than one
- * path string. Everywhere the tutor is offered shows the same face -- a student
- * should recognise who they are about to talk to before they read the label.
+ * The tutor's mark is her initial and her star. Everywhere the tutor is offered
+ * shows the same one -- a student should recognise who they are about to talk
+ * to before they read the label.
  */
 describe("Jami's own mark", () => {
   const icon = readFileSync(
@@ -157,27 +157,86 @@ describe("Jami's own mark", () => {
     "utf8"
   );
 
-  it("carries the cap, the glasses, the smile, the braids and the star", () => {
-    expect(icon).toMatch(/mortarboard/i);
-    expect(icon).toMatch(/tassel/i);
-    expect(icon).toMatch(/glasses/i);
-    expect(icon).toMatch(/smile/i);
-    expect(icon).toMatch(/braid/i);
-    expect(icon).toMatch(/star/i);
-    // Two lenses and two runs of braids, one each side.
-    expect(icon.match(/cx="1?[0-9.]+"/g)?.length).toBeGreaterThanOrEqual(4);
+  /** The letter first, then each star, straight out of the component. */
+  const shapes = () => [
+    icon.slice(icon.indexOf("const LETTER")).match(/"(M[^"]+)"/)![1],
+    ...[...icon.slice(icon.indexOf("const STARS")).matchAll(/"(M[^"]+)"/g)].map(
+      (match) => match[1]
+    ),
+  ];
+
+  /**
+   * The box a star occupies, by walking it.
+   *
+   * A star is a move followed by relative line segments, so its size is not any
+   * single number in the string -- reading one out and calling it the radius is
+   * how the first version of this test managed to disagree with a mark that was
+   * perfectly fine.
+   */
+  const extents = (path: string) => {
+    const numbers = path.match(/-?\d*\.?\d+/g)!.map(Number);
+    let [x, y] = numbers;
+    const box = { left: x, right: x, top: y, bottom: y };
+    for (let index = 2; index < numbers.length; index += 2) {
+      x += numbers[index];
+      y += numbers[index + 1];
+      box.left = Math.min(box.left, x);
+      box.right = Math.max(box.right, x);
+      box.top = Math.min(box.top, y);
+      box.bottom = Math.max(box.bottom, y);
+    }
+    return box;
+  };
+
+  it("is a letter and three stars", () => {
+    const [letter, ...stars] = shapes();
+    expect(letter, "the letter").toBeDefined();
+    expect(stars).toHaveLength(3);
+
+    // Three different sizes: evenly matched stars read as a border around the
+    // mark rather than as something in the air near it.
+    const widths = stars.map((star) => {
+      const box = extents(star);
+      return Number((box.right - box.left).toFixed(2));
+    });
+    expect(new Set(widths).size, widths.join(" ")).toBe(3);
+  });
+
+  it("is filled, like every other icon in the sidebar", () => {
+    // A single outlined mark among filled ones reads as belonging to a
+    // different set however well it is drawn, which is what put the earlier
+    // stroked version out of place.
+    expect(icon).toContain('fill="currentColor"');
+    expect(icon).not.toContain("stroke=");
+    expect(icon).toContain('fillRule="evenodd"');
+    expect(tabBar).toContain('fill={strokeIcon ? "none" : "currentColor"}');
+  });
+
+  it("draws the letter from lines and arcs rather than sampled points", () => {
+    // The version before this one was an outline of several hundred tiny
+    // straight runs, which facets as soon as the mark is drawn large. Exact
+    // geometry is both cleaner and a fraction of the size.
+    const [letter] = shapes();
+    expect(letter.length, letter).toBeLessThan(200);
+    expect(letter).toMatch(/a[\d.]/i);
+    expect((letter.match(/[Ll]/g) ?? []).length).toBeLessThan(4);
+  });
+
+  it("keeps every star inside the frame", () => {
+    // A star pushed off the grid is invisible at the edge and clipped in a
+    // round container, and neither shows up in a test that only counts shapes.
+    for (const star of shapes().slice(1)) {
+      const box = extents(star);
+      expect(box.left, star).toBeGreaterThanOrEqual(0);
+      expect(box.right, star).toBeLessThanOrEqual(24);
+      expect(box.top, star).toBeGreaterThanOrEqual(0);
+      expect(box.bottom, star).toBeLessThanOrEqual(24);
+    }
   });
 
   it("takes the colour of whatever offers it", () => {
-    expect(icon).toContain('stroke="currentColor"');
+    expect(icon).toContain('fill="currentColor"');
     expect(icon).not.toMatch(/#[0-9a-f]{3,6}/i);
-  });
-
-  it("stays open at small sizes", () => {
-    // Strokes for the parts with holes in them, fills only for the beads and
-    // the star, which have no middle left to show at a sidebar's size.
-    expect(icon).toContain('fill="none"');
-    expect(icon).toMatch(/fill="currentColor"\s+stroke="none"/);
   });
 
   it("is the sidebar's tutor icon, drawn rather than pathed", () => {
