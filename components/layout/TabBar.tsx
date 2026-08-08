@@ -67,13 +67,6 @@ const tabs: Tab[] = [
     icon: "M3 6.75A2.75 2.75 0 015.75 4h4.44c.73 0 1.43.29 1.945.805l1.06 1.06c.235.235.553.367.884.367h4.171A2.75 2.75 0 0121 8.982v8.268A2.75 2.75 0 0118.25 20h-12.5A2.75 2.75 0 013 17.25V6.75z",
   },
   {
-    href: "/dashboard/progress",
-    label: "Progress",
-    description: "See weak topics",
-    group: "support",
-    icon: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z",
-  },
-  {
     href: "/dashboard/decks",
     owns: ["/dashboard/cards"],
     label: "Flashcards",
@@ -112,6 +105,21 @@ const tabs: Tab[] = [
     group: "support",
     icon: "M10.788 3.21c.448-1.077 1.976-1.077 2.424 0l2.082 5.006 5.404.434c1.164.093 1.636 1.545.749 2.305l-4.117 3.527 1.257 5.273c.271 1.136-.964 2.033-1.96 1.425L12 18.354 7.373 21.18c-.996.608-2.231-.29-1.96-1.425l1.257-5.273-4.117-3.527c-.887-.76-.415-2.212.749-2.305l5.404-.434 2.082-5.005z",
   },
+  /*
+   * Last but one, directly above Account.
+   *
+   * Progress is somewhere you go to look back rather than a place work gets
+   * done, so it sat oddly at the head of the workspace group -- ahead of the
+   * material it reports on. Sitting with Account puts the two things you visit
+   * occasionally at the bottom together.
+   */
+  {
+    href: "/dashboard/progress",
+    label: "Progress",
+    description: "See weak topics",
+    group: "support",
+    icon: "M3 13.125C3 12.504 3.504 12 4.125 12h2.25c.621 0 1.125.504 1.125 1.125v6.75C7.5 20.496 6.996 21 6.375 21h-2.25A1.125 1.125 0 013 19.875v-6.75zM9.75 8.625c0-.621.504-1.125 1.125-1.125h2.25c.621 0 1.125.504 1.125 1.125v11.25c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V8.625zM16.5 4.125c0-.621.504-1.125 1.125-1.125h2.25C20.496 3 21 3.504 21 4.125v15.75c0 .621-.504 1.125-1.125 1.125h-2.25a1.125 1.125 0 01-1.125-1.125V4.125z",
+  },
   {
     href: "/dashboard/profile",
     label: "Account",
@@ -123,7 +131,7 @@ const tabs: Tab[] = [
 
 const navGroups: { id: TabGroup; label: string; helper: string }[] = [
   { id: "loop", label: "Learning loop", helper: "Today, memory, your work, and Jami" },
-  { id: "support", label: "Workspace", helper: "Material, progress, goals, rewards" },
+  { id: "support", label: "Workspace", helper: "Material, goals, rewards, progress" },
 ];
 
 function isActive(pathname: string, tab: Tab) {

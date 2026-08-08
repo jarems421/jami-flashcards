@@ -113,6 +113,14 @@ describe("the sidebar", () => {
     expect(byLabel.get("Tutor")).toBe("loop");
   });
 
+  it("puts the two you visit occasionally at the bottom, together", () => {
+    // Progress reports on the material above it, so leading the workspace group
+    // with it put the summary ahead of the thing being summarised.
+    const order = tabs.map((tab) => tab.label);
+    expect(order.at(-1)).toBe("Account");
+    expect(order.at(-2)).toBe("Progress");
+  });
+
   it("describes each group by what is actually in it", () => {
     const loop = tabBar.match(/id: "loop"[^}]*helper: "([^"]*)"/)?.[1] ?? "";
     const support = tabBar.match(/id: "support"[^}]*helper: "([^"]*)"/)?.[1] ?? "";
