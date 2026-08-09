@@ -773,7 +773,15 @@ export default function GoalsPage() {
                     </p>
                   ) : null}
                 </div>
-                <div className="relative h-40 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-44 lg:w-[230px] lg:max-w-full lg:justify-self-start lg:-translate-x-2">
+                {/*
+                  An inner glow, which is the opposite of elevation: it pushes
+                  light into the panel rather than lifting the panel off the
+                  page. No height on the scale describes a hollow.
+                */}
+                <div
+                  // eslint-disable-next-line no-restricted-syntax
+                  className="relative h-40 overflow-hidden rounded-xl border border-[rgba(238,225,255,0.18)] bg-[linear-gradient(180deg,#080416_0%,#060311_58%,#030108_100%)] shadow-[inset_0_0_34px_rgba(143,125,232,0.14)] sm:h-44 lg:w-[230px] lg:max-w-full lg:justify-self-start lg:-translate-x-2"
+                >
                   <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(143,125,232,0.16),rgba(6,3,17,0.66))]" />
                   <div className="absolute inset-0 z-10">
                     <ConstellationStar star={previewStar} variant="preview" />

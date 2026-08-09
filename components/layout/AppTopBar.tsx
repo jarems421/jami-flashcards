@@ -22,7 +22,7 @@ export default function AppTopBar({
       className={className}
       style={{ paddingTop: "calc(env(safe-area-inset-top, 0px) + 0.45rem)" }}
     >
-      <div className="app-topbar rounded-xl border-[1.5px] border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-3 py-3 shadow-[var(--topbar-shadow)] backdrop-blur-xl sm:rounded-2xl sm:px-4">
+      <div className="app-topbar rounded-xl border-[1.5px] border-[var(--topbar-border)] bg-[var(--topbar-bg)] px-3 py-3 shadow-topbar backdrop-blur-xl sm:rounded-2xl sm:px-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <BrandMark size="lg" />

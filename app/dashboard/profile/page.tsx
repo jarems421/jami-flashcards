@@ -69,7 +69,7 @@ function ThemePreferenceCard() {
               <span
                 className={`relative grid aspect-square w-full max-w-[4.5rem] place-items-center rounded-full border-2 transition duration-fast ${
                   active
-                    ? "border-[var(--color-accent)] shadow-[0_0_0_4px_var(--color-accent-muted)]"
+                    ? "border-[var(--color-accent)] shadow-ring"
                     : "border-[var(--color-border)] group-hover:border-border-strong"
                 }`}
                 style={{ backgroundImage: option.preview }}
@@ -82,7 +82,7 @@ function ThemePreferenceCard() {
                   contrast decision for every future theme.
                 */}
                 {active ? (
-                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-accent)] shadow-[0_1px_3px_rgba(0,0,0,0.35)]">
+                  <span className="grid h-7 w-7 place-items-center rounded-full bg-[var(--color-accent)] shadow-e0">
                     <svg viewBox="0 0 20 20" fill="none" className="h-4 w-4">
                       <path
                         d="m5 10.5 3.4 3.4L15 7.2"

@@ -86,7 +86,7 @@ function NotebookCardInner({
             aria-hidden="true"
           />
           <div
-            className="absolute inset-y-0 left-0 h-full w-[82%] rounded-sm border border-black/15 shadow-[0_9px_18px_rgba(15,23,42,0.18)] transition duration-200 group-hover/notebook:-rotate-[0.65deg]"
+            className="absolute inset-y-0 left-0 h-full w-[82%] rounded-sm border border-black/15 shadow-e1 transition duration-200 group-hover/notebook:-rotate-[0.65deg]"
             style={{
               backgroundColor: preset.base,
             }}
@@ -274,7 +274,7 @@ export function NotebookObjectCard(props: NotebookObjectCardProps) {
         </summary>
         <div
           className={cx(
-            "absolute right-0 z-30 grid min-w-44 gap-1 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-[0_18px_46px_rgba(0,0,0,0.28)]",
+            "absolute right-0 z-30 grid min-w-44 gap-1 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-e3",
             menuPositionClass
           )}
         >

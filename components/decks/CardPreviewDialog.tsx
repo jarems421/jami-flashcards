@@ -44,7 +44,7 @@ export default function CardPreviewDialog({
       onDismiss={() => onClose()}
     >
       <DialogBackdrop className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-      <DialogPanel className="relative w-full max-w-2xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-[0_28px_80px_rgba(0,0,0,0.45)] sm:p-7">
+      <DialogPanel className="relative w-full max-w-2xl rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-5 shadow-e3 sm:p-7">
         <div className="flex items-start justify-between gap-4">
           <div>
             <DialogTitle className="text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">

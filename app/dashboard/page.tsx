@@ -112,7 +112,7 @@ function GettingStartedChecklist({
             </div>
           </div>
           <IconBubble size="lg" shape="circle" className="h-16 w-16 border border-warm-border bg-warm-glow">
-            <span className="h-8 w-8 rounded-full bg-warm-accent shadow-[0_0_28px_rgba(255,214,246,0.35)]" />
+            <span className="h-8 w-8 rounded-full bg-warm-accent shadow-warm" />
           </IconBubble>
         </div>
       </Card>

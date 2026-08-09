@@ -32,7 +32,7 @@ export default function NotebookDraftConflictBanner({
       <Card
         padding="sm"
         role="alert"
-        className="border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-[var(--shadow-shell)]"
+        className="border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-shell"
       >
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>

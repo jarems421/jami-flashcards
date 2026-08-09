@@ -271,7 +271,7 @@ export default function JamiAssistantHistory({
                       >
                         <MoreIcon />
                       </summary>
-                      <div className="absolute right-0 top-10 z-20 w-36 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1 shadow-[0_12px_28px_rgba(8,3,20,0.16)]">
+                      <div className="absolute right-0 top-10 z-20 w-36 overflow-hidden rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1 shadow-e2">
                         <button
                           type="button"
                           className="flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"

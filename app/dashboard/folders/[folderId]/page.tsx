@@ -658,7 +658,7 @@ export default function FolderDetailPage() {
           action={
             <Link
               href="/dashboard/folders"
-              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 text-sm font-medium text-[var(--button-primary-text)] shadow-[var(--button-primary-shadow)]"
+              className="inline-flex min-h-[2.75rem] items-center justify-center rounded-full border border-[var(--button-primary-border)] bg-[var(--button-primary-bg)] px-4 text-sm font-medium text-[var(--button-primary-text)] shadow-button-primary"
             >
               Back to folders
             </Link>
@@ -822,7 +822,7 @@ export default function FolderDetailPage() {
                 onClick={() => selectFolderTab(value as FolderWorkspaceTab)}
                 className={`min-h-[2.4rem] rounded-full px-4 text-sm font-semibold transition ${
                   selected
-                    ? "bg-accent text-[var(--color-text-inverse)] shadow-[var(--shadow-accent)]"
+                    ? "bg-accent text-[var(--color-text-inverse)] shadow-accent"
                     : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
                 }`}
               >

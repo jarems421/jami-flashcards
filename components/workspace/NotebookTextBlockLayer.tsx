@@ -191,7 +191,7 @@ function NotebookTextBlockLayer({
             key={block.id}
             className={`notebook-text-object pointer-events-auto absolute rounded-sm border bg-transparent transition-[border-color,box-shadow] duration-150 ${
               editing
-                ? `cursor-text ${frameBorderClass} shadow-[0_2px_12px_rgba(0,0,0,0.12)]`
+                ? `cursor-text ${frameBorderClass} shadow-e0`
                 : selected
                   ? `cursor-grab touch-none select-none ${frameBorderClass} active:cursor-grabbing`
                   : `cursor-grab touch-none select-none ${idleBorderClass} active:cursor-grabbing`
@@ -237,7 +237,7 @@ function NotebookTextBlockLayer({
                   >
                     <span
                       aria-hidden="true"
-                      className={`rounded-full shadow-[0_1px_3px_rgba(0,0,0,0.3)] transition group-hover:scale-110 ${
+                      className={`rounded-full shadow-e0 transition group-hover:scale-110 ${
                         onBlack ? "bg-white/75" : "bg-slate-950/55"
                       } ${handle.gripClass}`}
                     />

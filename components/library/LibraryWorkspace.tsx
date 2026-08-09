@@ -152,7 +152,7 @@ export default function LibraryWorkspace({
                     </span>
                   ) : null}
                 </summary>
-                <div className="absolute right-0 z-40 mt-2 w-[15rem] max-w-[calc(100vw-3rem)] rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-3 shadow-[var(--shadow-shell)]">
+                <div className="absolute right-0 z-40 mt-2 w-[15rem] max-w-[calc(100vw-3rem)] rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-3 shadow-shell">
                   <div className="space-y-3">
                     <label className="block">
                       <span className="mb-1.5 block text-xs font-semibold text-text-muted">
@@ -408,7 +408,7 @@ export default function LibraryWorkspace({
                     >
                       <SourceActionIcon name="more" className="h-5 w-5" />
                     </summary>
-                    <div className="absolute right-0 top-[calc(100%+0.4rem)] z-40 grid min-w-48 gap-1 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[var(--shadow-shell)]">
+                    <div className="absolute right-0 top-[calc(100%+0.4rem)] z-40 grid min-w-48 gap-1 rounded-md border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-shell">
                       {canOpenSelectedSource ? (
                         <button
                           type="button"

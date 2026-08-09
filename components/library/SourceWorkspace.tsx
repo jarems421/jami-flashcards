@@ -180,7 +180,7 @@ export function SourceWorkspaceDrawer({
         className="absolute inset-0 bg-black/50"
       />
       <DialogPanel
-        className={`${styles.drawerPanel} relative flex h-[100dvh] max-h-[100dvh] w-full flex-col border-l border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)] ${
+        className={`${styles.drawerPanel} relative flex h-[100dvh] max-h-[100dvh] w-full flex-col border-l border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] shadow-shell ${
           wide ? "max-w-3xl" : "max-w-lg"
         }`}
       >
@@ -263,7 +263,7 @@ export function SourceFolderPicker({
               <path d="m6 8 4 4 4-4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </summary>
-          <div className="absolute left-0 right-0 z-40 mt-2 max-h-60 overflow-y-auto rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-2 shadow-[0_18px_46px_rgba(0,0,0,0.28)]">
+          <div className="absolute left-0 right-0 z-40 mt-2 max-h-60 overflow-y-auto rounded-lg border border-[var(--color-border-strong)] bg-[var(--color-surface-panel-strong)] p-2 shadow-e3">
             {folders.map((folder) => {
               const checked = selectedFolderIds.includes(folder.id);
               const selectionLimitReached =

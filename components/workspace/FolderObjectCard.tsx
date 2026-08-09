@@ -36,7 +36,7 @@ export default function FolderObjectCard({
     <div
       className={`group mx-auto flex h-full ${compact ? "min-h-[6.4rem] max-w-[5.8rem] px-1.5 py-2" : "min-h-[8.75rem] max-w-[7.25rem] px-2 py-2.5"} w-full cursor-pointer flex-col items-center rounded-lg border text-center transition duration-fast active:scale-[0.985] ${
         selected
-          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-[0_14px_28px_rgba(6,8,18,0.16)]"
+          ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-e2"
           : "border-transparent bg-transparent hover:-translate-y-0.5 hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
       } ${className}`}
     >

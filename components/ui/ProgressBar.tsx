@@ -30,6 +30,11 @@ export default function ProgressBar({
 
   return (
     <div
+      /*
+       * The track's own depth. An inset shadow makes the groove the bar sits in, so
+       * it is a hollow rather than a height.
+       */
+      // eslint-disable-next-line no-restricted-syntax
       className={`rounded-full bg-glass-medium shadow-[inset_0_2px_4px_rgba(0,0,0,0.2)] ${sizeClasses[size]} ${className}`}
     >
       <div

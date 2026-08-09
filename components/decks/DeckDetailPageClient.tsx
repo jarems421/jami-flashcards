@@ -426,7 +426,7 @@ export default function DeckDetailPageClient() {
               <div className="mt-6 flex flex-wrap gap-3 sm:mt-8">
                 <Link
                   href={getDeckStudyHref(deck.id)}
-                  className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-[var(--color-text-inverse)] shadow-[var(--shadow-accent)] transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-[0_20px_40px_rgba(183,124,255,0.42)]"
+                  className="inline-flex min-h-[3rem] items-center justify-center rounded-2xl bg-accent px-5 py-3 text-sm font-semibold text-[var(--color-text-inverse)] shadow-accent transition duration-fast ease-spring hover:-translate-y-[1px] hover:bg-accent-hover hover:shadow-accent"
                 >
                   Study this deck
                 </Link>
@@ -520,7 +520,7 @@ export default function DeckDetailPageClient() {
           eyebrow="Deck unavailable"
           title="This deck is not available"
           description="It may have been deleted or moved. Go back to your deck list to keep organising cards."
-          action={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-[var(--color-text-inverse)] shadow-[var(--shadow-accent)] transition duration-fast hover:bg-accent-hover">Back to decks</Link>}
+          action={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-[var(--color-text-inverse)] shadow-accent transition duration-fast hover:bg-accent-hover">Back to decks</Link>}
         />
       ) : null}
 

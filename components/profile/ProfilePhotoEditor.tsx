@@ -154,7 +154,7 @@ export default function ProfilePhotoEditor({
             }}
           />
         ) : (
-          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-warm-accent to-accent text-3xl font-bold text-surface-base shadow-[var(--shadow-accent)]">
+          <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-warm-accent to-accent text-3xl font-bold text-surface-base shadow-accent">
             {initial}
           </div>
         )}

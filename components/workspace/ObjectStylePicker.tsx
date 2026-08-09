@@ -55,7 +55,7 @@ export function ObjectStylePicker({
                 className={cx(
                   `${compact ? "h-8 w-8" : "h-9 w-9"} rounded-full border p-0.5 transition hover:-translate-y-0.5`,
                   selected
-                    ? "border-[var(--color-accent)] shadow-[0_0_0_3px_var(--color-accent-muted)]"
+                    ? "border-[var(--color-accent)] shadow-ring"
                     : "border-[var(--color-border)]",
                 )}
               >

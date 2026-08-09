@@ -33,7 +33,7 @@ export default function EmptyState({
     <>
       {emoji ? (
         <div
-          className={`${iconAlign} app-chip flex ${isCompact ? "h-11 min-w-11" : "h-14 min-w-14"} ${isWordIcon ? "px-3 text-2xs font-bold uppercase tracking-[0.14em]" : isCompact ? "w-11 text-2xl" : "w-14 text-3xl"} items-center justify-center rounded-xl shadow-[0_10px_24px_rgba(8,2,26,0.18)]`}
+          className={`${iconAlign} app-chip flex ${isCompact ? "h-11 min-w-11" : "h-14 min-w-14"} ${isWordIcon ? "px-3 text-2xs font-bold uppercase tracking-[0.14em]" : isCompact ? "w-11 text-2xl" : "w-14 text-3xl"} items-center justify-center rounded-xl shadow-e1`}
         >
           {emoji}
         </div>

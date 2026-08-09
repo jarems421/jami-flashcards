@@ -40,7 +40,7 @@ export default function CardBrowserControls({
   const { filters, results, search } = browser;
 
   return (
-    <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-[0_14px_30px_rgba(4,8,18,0.16)] backdrop-blur-xl">
+    <div className="sticky top-0 z-20 -mx-1 space-y-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-base)]/95 p-3 shadow-e2 backdrop-blur-xl">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <div className="text-lg font-semibold text-text-primary">

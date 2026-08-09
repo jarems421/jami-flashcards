@@ -24,9 +24,9 @@ const variantClasses: Record<ButtonVariant, string> = {
   secondary: "app-button-secondary active:translate-y-0 active:scale-[0.98]",
   ghost: "app-button-ghost active:scale-[0.98]",
   surface:
-    "border border-[var(--button-surface-border)] bg-[var(--button-surface-bg)] text-[var(--button-surface-text)] shadow-[var(--shadow-shell)] hover:-translate-y-[1px] hover:border-[var(--button-surface-border-hover)] hover:bg-[var(--button-surface-bg-hover)] hover:shadow-[var(--button-surface-shadow-hover)] active:translate-y-0 active:scale-[0.98]",
+    "border border-[var(--button-surface-border)] bg-[var(--button-surface-bg)] text-[var(--button-surface-text)] shadow-shell hover:-translate-y-[1px] hover:border-[var(--button-surface-border-hover)] hover:bg-[var(--button-surface-bg-hover)] hover:shadow-button-surface-hover active:translate-y-0 active:scale-[0.98]",
   danger:
-    "border border-transparent bg-error text-[var(--color-text-inverse)] shadow-[0_16px_30px_rgba(255,120,183,0.24)] hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0 active:scale-[0.98]",
+    "border border-transparent bg-error text-[var(--color-text-inverse)] shadow-warm hover:-translate-y-[1px] hover:brightness-110 active:translate-y-0 active:scale-[0.98]",
   warm: "app-button-warm active:translate-y-0 active:scale-[0.98]",
 };
 

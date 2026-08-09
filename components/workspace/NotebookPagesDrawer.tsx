@@ -49,6 +49,11 @@ function NotebookPagesDrawer({
   return (
     <aside
       aria-label="Notebook pages"
+      /*
+       * Thrown sideways, along the drawer's edge. No height describes a shadow that
+       * falls horizontally.
+       */
+      // eslint-disable-next-line no-restricted-syntax
       className="notebook-drawer-in notebook-drawer-surface absolute bottom-0 left-0 top-0 z-50 flex min-h-0 w-64 flex-col border-r border-[var(--color-border)] p-3 shadow-[18px_0_42px_rgba(0,0,0,0.2)]"
     >
       <div className="flex shrink-0 items-center justify-between gap-2 px-1 pb-2">
@@ -99,7 +104,7 @@ function NotebookPagesDrawer({
                 key={page.id}
                 className={`group relative rounded-md border transition ${
                   selected
-                    ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-[0_0_0_3px_rgba(143,125,232,0.14)]"
+                    ? "border-[var(--color-selected-border)] bg-[var(--color-selected-bg)] shadow-ring"
                     : "border-transparent hover:border-[var(--color-border)] hover:bg-[var(--color-glass-subtle)]"
                 }`}
               >
@@ -131,7 +136,7 @@ function NotebookPagesDrawer({
                       event.stopPropagation();
                       onRequestDeletePage(page);
                     }}
-                    className="absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full bg-error text-[var(--color-text-inverse)] shadow-[0_3px_10px_rgba(0,0,0,0.35)] transition hover:scale-105 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
+                    className="absolute right-3 top-3 inline-grid h-8 w-8 place-items-center rounded-full bg-error text-[var(--color-text-inverse)] shadow-e0 transition hover:scale-105 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-45"
                   >
                     {deleting ? (
                       <span className="text-2xs font-bold">...</span>

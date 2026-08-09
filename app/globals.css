@@ -99,7 +99,7 @@
     --nav-active-bg: linear-gradient(135deg, rgba(125, 224, 204, 0.15), rgba(255, 255, 255, 0.075));
     --nav-active-border: var(--color-warm-border);
     --nav-active-text: #fff8ff;
-    --nav-active-shadow: 0 14px 24px rgba(4, 7, 20, 0.24);
+    --nav-active-shadow: var(--elevation-1);
     --button-primary-bg: linear-gradient(180deg, #8f7de8 0%, #7565d6 100%);
     --button-primary-bg-hover: linear-gradient(180deg, #a994f4 0%, #8170e2 100%);
     --button-primary-border: rgba(255, 255, 255, 0.18);
@@ -158,14 +158,39 @@
     --radius-xl: 1.375rem;  /* 22px - cards */
     --radius-2xl: 1.75rem;  /* 28px - page shells, drawers, dialogs */
 
-    /* Shadows */
-    --shadow-glass: 0 18px 50px rgba(4, 0, 18, 0.38);
-    --shadow-card: 0 18px 34px rgba(5, 2, 20, 0.2);
-    --shadow-shell: 0 20px 38px rgba(4, 2, 17, 0.24);
+    /*
+     * Elevation. Four heights, and the only four.
+     *
+     * There were 26 shadow properties here and 36 more written straight into
+     * components, which is not a system for describing how far something sits
+     * off the page -- it is 62 separate guesses at one. Depth only reads as
+     * hierarchy when it is scarce and consistent: if every panel casts its own
+     * slightly different shadow, none of them looks raised, they just look
+     * blurry.
+     *
+     * Four heights, not three: a 28px dot needs a shadow narrower than itself,
+ * and level 1's twenty pixels of blur reads as a smudge under one.
+ *
+ * The second level keeps the weight the interface was built around; the
+     * other two are the same colour lifted less and more. Everything below is
+     * a name for one of these, or a coloured glow, which is a different thing
+     * -- it says "this is warm" or "this is active", not "this is above you".
+     */
+    --elevation-0: 0 2px 6px rgba(5, 2, 20, 0.182);
+    --elevation-1: 0 10px 20px rgba(5, 2, 20, 0.13);
+    --elevation-2: 0 18px 36px rgba(5, 2, 20, 0.2);
+    --elevation-3: 0 24px 60px rgba(5, 2, 20, 0.36);
+
+    --shadow-glass: var(--elevation-3);
+    --shadow-card: var(--elevation-2);
+    --shadow-shell: var(--elevation-2);
+    --shadow-bubble: var(--elevation-2);
+    --shadow-button-3d: var(--elevation-1);
+
     --shadow-accent: 0 16px 28px rgba(157, 99, 223, 0.18);
     --shadow-warm: 0 14px 28px rgba(255, 214, 246, 0.16);
-    --shadow-bubble: 0 18px 34px rgba(5, 2, 20, 0.2);
-    --shadow-button-3d: 0 10px 22px rgba(5, 2, 20, 0.18);
+    /* The ring on a selected swatch, page or option. Not a height. */
+    --ring-selected: 0 0 0 3px var(--color-accent-muted);
 
     /* Motion */
     --duration-fast: 160ms;
@@ -280,9 +305,13 @@
     --button-warm-border: rgba(255, 255, 255, 0.24);
     --button-warm-border-hover: rgba(255, 255, 255, 0.32);
     --button-warm-text: #160a23;
-    --shadow-card: 0 18px 34px rgba(7, 3, 13, 0.24);
-    --shadow-shell: 0 20px 38px rgba(7, 3, 13, 0.28);
-    --shadow-bubble: 0 18px 34px rgba(7, 3, 13, 0.24);
+    --shadow-card: var(--elevation-2);
+    --elevation-0: 0 2px 6px rgba(7, 3, 13, 0.218);
+    --elevation-1: 0 10px 20px rgba(7, 3, 13, 0.156);
+    --elevation-2: 0 18px 36px rgba(7, 3, 13, 0.24);
+    --elevation-3: 0 24px 60px rgba(7, 3, 13, 0.432);
+    --shadow-shell: var(--elevation-2);
+    --shadow-bubble: var(--elevation-2);
   }
 
   /*
@@ -374,9 +403,13 @@
     --button-disabled-bg: linear-gradient(180deg, rgba(122, 20, 74, 0.1), rgba(122, 20, 74, 0.06));
     --button-disabled-border: rgba(122, 20, 74, 0.22);
     --button-disabled-text: #7a5568;
-    --shadow-card: 0 18px 34px rgba(122, 20, 74, 0.12);
-    --shadow-shell: 0 20px 38px rgba(122, 20, 74, 0.12);
-    --shadow-bubble: 0 18px 34px rgba(122, 20, 74, 0.11);
+    --shadow-card: var(--elevation-2);
+    --elevation-0: 0 2px 6px rgba(122, 20, 74, 0.109);
+    --elevation-1: 0 10px 20px rgba(122, 20, 74, 0.078);
+    --elevation-2: 0 18px 36px rgba(122, 20, 74, 0.12);
+    --elevation-3: 0 24px 60px rgba(122, 20, 74, 0.216);
+    --shadow-shell: var(--elevation-2);
+    --shadow-bubble: var(--elevation-2);
   }
 
   html.app-theme-paper-white,
@@ -453,9 +486,13 @@
     --button-disabled-bg: linear-gradient(180deg, rgba(20, 28, 42, 0.11), rgba(20, 28, 42, 0.07));
     --button-disabled-border: rgba(20, 28, 42, 0.22);
     --button-disabled-text: #354155;
-    --shadow-card: 0 18px 34px rgba(43, 55, 83, 0.12);
-    --shadow-shell: 0 20px 38px rgba(43, 55, 83, 0.12);
-    --shadow-bubble: 0 18px 34px rgba(43, 55, 83, 0.11);
+    --shadow-card: var(--elevation-2);
+    --elevation-0: 0 2px 6px rgba(43, 55, 83, 0.109);
+    --elevation-1: 0 10px 20px rgba(43, 55, 83, 0.078);
+    --elevation-2: 0 18px 36px rgba(43, 55, 83, 0.12);
+    --elevation-3: 0 24px 60px rgba(43, 55, 83, 0.216);
+    --shadow-shell: var(--elevation-2);
+    --shadow-bubble: var(--elevation-2);
   }
 
   html.app-theme-soft-grey,
@@ -530,9 +567,13 @@
     --button-disabled-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.13), rgba(255, 255, 255, 0.075));
     --button-disabled-border: rgba(255, 255, 255, 0.22);
     --button-disabled-text: #e6e6e6;
-    --shadow-card: 0 18px 34px rgba(0, 0, 0, 0.24);
-    --shadow-shell: 0 20px 38px rgba(0, 0, 0, 0.28);
-    --shadow-bubble: 0 18px 34px rgba(0, 0, 0, 0.24);
+    --shadow-card: var(--elevation-2);
+    --elevation-0: 0 2px 6px rgba(0, 0, 0, 0.218);
+    --elevation-1: 0 10px 20px rgba(0, 0, 0, 0.156);
+    --elevation-2: 0 18px 36px rgba(0, 0, 0, 0.24);
+    --elevation-3: 0 24px 60px rgba(0, 0, 0, 0.432);
+    --shadow-shell: var(--elevation-2);
+    --shadow-bubble: var(--elevation-2);
   }
 
   /*
@@ -614,9 +655,13 @@
     --button-disabled-bg: linear-gradient(180deg, rgba(255, 255, 255, 0.12), rgba(255, 255, 255, 0.07));
     --button-disabled-border: rgba(255, 255, 255, 0.24);
     --button-disabled-text: #dcdcdc;
-    --shadow-card: 0 18px 34px rgba(0, 0, 0, 0.5);
-    --shadow-shell: 0 20px 38px rgba(0, 0, 0, 0.55);
-    --shadow-bubble: 0 18px 34px rgba(0, 0, 0, 0.5);
+    --shadow-card: var(--elevation-2);
+    --elevation-0: 0 2px 6px rgba(0, 0, 0, 0.455);
+    --elevation-1: 0 10px 20px rgba(0, 0, 0, 0.325);
+    --elevation-2: 0 18px 36px rgba(0, 0, 0, 0.5);
+    --elevation-3: 0 24px 60px rgba(0, 0, 0, 0.62);
+    --shadow-shell: var(--elevation-2);
+    --shadow-bubble: var(--elevation-2);
   }
 
   button,

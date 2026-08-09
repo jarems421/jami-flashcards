@@ -133,11 +133,32 @@ module.exports = {
         "2xs": ["0.6875rem", { lineHeight: "1rem" }],
       },
       boxShadow: {
+        /*
+         * Elevation, numbered because it is ordinal: e0 sits barely proud of
+         * what is under it, e3 is over the page entirely. Reach for the lowest
+         * one that reads -- depth only signals hierarchy while it is scarce.
+         */
+        e0: "var(--elevation-0)",
+        e1: "var(--elevation-1)",
+        e2: "var(--elevation-2)",
+        e3: "var(--elevation-3)",
+        /* Not heights: a glow says what something is, a ring says it is chosen. */
+        accent: "var(--shadow-accent)",
+        warm: "var(--shadow-warm)",
+        ring: "var(--ring-selected)",
+        /* Names kept for what they describe; each resolves to a level above. */
         glass: "var(--shadow-glass)",
         card: "var(--shadow-card)",
         shell: "var(--shadow-shell)",
         bubble: "var(--shadow-bubble)",
         "button-3d": "var(--shadow-button-3d)",
+        /* Surfaces that carry their own colour per theme. */
+        "nav-shell": "var(--nav-shell-shadow)",
+        "nav-active": "var(--nav-active-shadow)",
+        topbar: "var(--topbar-shadow)",
+        "button-primary": "var(--button-primary-shadow)",
+        "button-secondary": "var(--button-secondary-shadow)",
+        "button-surface-hover": "var(--button-surface-shadow-hover)",
       },
       transitionDuration: {
         fast: "var(--duration-fast)",

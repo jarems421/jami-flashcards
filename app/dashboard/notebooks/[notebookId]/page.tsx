@@ -2495,7 +2495,7 @@ export default function NotebookEditorPage() {
       className="notebook-editor-shell fixed inset-0 z-[70] flex min-w-0 flex-col overflow-hidden bg-[var(--color-surface-base)] text-text-primary"
     >
       <div className="flex h-full min-h-0 flex-col">
-        <header className="z-40 shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-[0_8px_20px_rgba(0,0,0,0.14)] backdrop-blur-xl">
+        <header className="z-40 shrink-0 border-b border-[var(--color-border)] bg-[var(--color-surface-panel-strong)]/95 px-3 pb-2 pt-[calc(env(safe-area-inset-top,0px)+0.5rem)] shadow-e1 backdrop-blur-xl">
           <div className="flex min-w-0 items-center gap-2">
             <Link
               href={`/dashboard/folders/${notebook.folderId}`}
@@ -2832,7 +2832,7 @@ export default function NotebookEditorPage() {
               >
                 <div
                   ref={createPageIndicatorRef}
-                  className={`grid h-16 w-16 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-[0_12px_30px_rgba(0,0,0,0.2)] ${
+                  className={`grid h-16 w-16 place-items-center rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] shadow-e2 ${
                     createPageBounce ? "notebook-create-page-pop" : ""
                   }`}
                   style={{

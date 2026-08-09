@@ -146,6 +146,14 @@ const eslintConfig = defineConfig([
      * Both forms are checked: a plain string className, and the template
      * literals that conditional class lists are built from.
      *
+     * Shadows are held to the same line, with elevation numbered because it is
+     * ordinal: e0 sits barely proud of what is under it, e3 is over the page.
+     * There were 26 shadow properties defined and 36 more written straight into
+     * components, which is not a way of describing depth so much as 62 guesses
+     * at it -- and depth only reads as hierarchy while it is scarce. A glow and
+     * a selection ring are exempt by being their own tokens rather than by
+     * being unchecked, because neither is a height.
+     *
      * `em` is deliberately not covered: it is relative to whatever it sits
      * inside, which is exactly right for a superscript or the halves of a
      * fraction, and is not something an absolute scale can express.
@@ -178,6 +186,16 @@ const eslintConfig = defineConfig([
           selector: String.raw`TemplateElement[value.raw=/text-\[[0-9.]+(rem|px)\]/]`,
           message:
             "Use the type scale: text-2xs is the floor, then text-xs, text-sm, text-base upwards.",
+        },
+        {
+          selector: String.raw`Literal[value=/shadow-\[(?!var\()/]`,
+          message:
+            "Use the elevation scale: shadow-e0|e1|e2|e3, or shadow-accent|warm|ring.",
+        },
+        {
+          selector: String.raw`TemplateElement[value.raw=/shadow-\[(?!var\()/]`,
+          message:
+            "Use the elevation scale: shadow-e0|e1|e2|e3, or shadow-accent|warm|ring.",
         },
       ],
       ...jsxA11y.flatConfigs.recommended.rules,

@@ -21,7 +21,7 @@ export default function OfflineBanner() {
   return (
     <div
       role="status"
-      className="fixed left-4 right-4 z-[80] mx-auto max-w-xl rounded-lg border border-warm-border bg-surface-panel-strong px-4 py-3 text-sm text-text-secondary shadow-[0_18px_48px_rgba(0,0,0,0.38)]"
+      className="fixed left-4 right-4 z-[80] mx-auto max-w-xl rounded-lg border border-warm-border bg-surface-panel-strong px-4 py-3 text-sm text-text-secondary shadow-e3"
       style={{
         bottom:
           "calc(env(safe-area-inset-bottom, 0px) + clamp(1rem, 12vw, 6.5rem))",

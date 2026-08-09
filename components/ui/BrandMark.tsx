@@ -31,7 +31,7 @@ export default function BrandMark({ size = "md", className = "" }: BrandMarkProp
       <svg
         viewBox="0 0 64 64"
         fill="none"
-        className="h-full w-full overflow-visible drop-shadow-[0_8px_16px_rgba(5,8,20,0.22)]"
+        className="h-full w-full overflow-visible drop-shadow-e1"
       >
         <rect
           x="15"

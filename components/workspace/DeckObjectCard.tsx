@@ -140,7 +140,7 @@ export default function DeckObjectCard({
             >
               ...
             </summary>
-            <div className="absolute right-0 top-9 grid min-w-44 gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-[0_16px_38px_rgba(0,0,0,0.28)]">
+            <div className="absolute right-0 top-9 grid min-w-44 gap-1 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 text-left shadow-e2">
               <button
                 type="button"
                 disabled={removing}

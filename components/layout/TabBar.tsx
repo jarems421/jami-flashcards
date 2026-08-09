@@ -189,7 +189,7 @@ function DesktopNavItem({
       data-agent-route={tab.href}
       className={`group relative flex min-h-[3.35rem] items-center justify-center gap-3 rounded-lg px-2.5 py-1.5 text-left transition duration-fast ease-spring lg:justify-start lg:px-3.5 ${
         active
-          ? "border border-[var(--nav-active-border)] bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-[var(--nav-active-shadow)]"
+          ? "border border-[var(--nav-active-border)] bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-nav-active"
           : "border border-transparent text-text-muted hover:border-[var(--color-border)] hover:bg-[var(--nav-hover-bg)] hover:text-text-primary"
       }`}
     >
@@ -232,7 +232,7 @@ function MobileNavItem({
       data-agent-route={tab.href}
       className={`relative flex min-h-[3.25rem] min-w-[4.35rem] flex-shrink-0 snap-center flex-col items-center justify-center gap-1 rounded-lg px-2 text-2xs leading-tight transition duration-fast ease-spring ${
         active
-          ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-[var(--nav-active-shadow)]"
+          ? "bg-[var(--nav-active-bg)] text-[var(--nav-active-text)] shadow-nav-active"
           : "text-text-muted active:text-text-primary"
       }`}
     >
@@ -421,7 +421,7 @@ export default function TabBar({
         onTouchStart={handleTouchStart}
         onTouchMove={handleTouchMove}
         onTouchEnd={handleTouchEnd}
-        className={`app-nav fixed left-3 right-3 z-30 mx-auto flex max-w-[31rem] snap-x snap-mandatory gap-1 overflow-x-auto rounded-xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-1.5 shadow-[var(--nav-shell-shadow)] backdrop-blur-xl scrollbar-hide transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
+        className={`app-nav fixed left-3 right-3 z-30 mx-auto flex max-w-[31rem] snap-x snap-mandatory gap-1 overflow-x-auto rounded-xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-1.5 shadow-nav-shell backdrop-blur-xl scrollbar-hide transition-transform duration-300 md:hidden ${mobileHidden ? "translate-y-[115%]" : "translate-y-0"}`}
         style={{ bottom: "calc(env(safe-area-inset-bottom, 0px) + 0.75rem)" }}
       >
         {tabs.map((tab) => {
@@ -435,7 +435,7 @@ export default function TabBar({
           type="button"
           aria-label="Show navigation"
           onClick={() => setMobileHidden(false)}
-          className="fixed inset-x-0 z-30 mx-auto flex h-8 w-28 items-center justify-center rounded-t-xl border border-b-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted shadow-[var(--nav-shell-shadow)] backdrop-blur-xl md:hidden"
+          className="fixed inset-x-0 z-30 mx-auto flex h-8 w-28 items-center justify-center rounded-t-xl border border-b-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-2xs font-semibold uppercase tracking-[0.18em] text-text-muted shadow-nav-shell backdrop-blur-xl md:hidden"
           style={{ bottom: "env(safe-area-inset-bottom, 0px)" }}
         >
           Show nav
@@ -456,7 +456,7 @@ export default function TabBar({
             aria-label="Show sidebar"
             title="Show sidebar"
             onClick={() => onDesktopHiddenChange?.(false)}
-            className="app-nav fixed left-0 top-1/2 z-40 hidden h-14 w-9 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-text-secondary shadow-[var(--nav-shell-shadow)] backdrop-blur-xl transition duration-fast hover:w-10 hover:text-text-primary md:flex"
+            className="app-nav fixed left-0 top-1/2 z-40 hidden h-14 w-9 -translate-y-1/2 items-center justify-center rounded-r-lg border border-l-0 border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] text-text-secondary shadow-nav-shell backdrop-blur-xl transition duration-fast hover:w-10 hover:text-text-primary md:flex"
           >
             <SidebarToggleIcon direction="show" />
           </button>
@@ -468,7 +468,7 @@ export default function TabBar({
         onTouchStart={handleSidebarTouchStart}
         onTouchMove={(event) => handleSidebarTouchMove(event, "hide")}
         onTouchEnd={(event) => handleSidebarTouchEnd(event, "hide")}
-        className={`app-nav fixed inset-y-4 left-4 z-30 hidden w-[5rem] flex-col rounded-2xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-2 shadow-[var(--nav-shell-shadow)] backdrop-blur-xl transition duration-300 md:flex lg:w-64 ${
+        className={`app-nav fixed inset-y-4 left-4 z-30 hidden w-[5rem] flex-col rounded-2xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-2 shadow-nav-shell backdrop-blur-xl transition duration-300 md:flex lg:w-64 ${
           desktopHidden ? "pointer-events-none -translate-x-[calc(100%+1.5rem)] opacity-0" : "translate-x-0 opacity-100"
         }`}
       >

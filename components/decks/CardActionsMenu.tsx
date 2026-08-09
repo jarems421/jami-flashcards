@@ -35,7 +35,7 @@ export default function CardActionsMenu({
           <circle cx="16" cy="10" r="1.35" />
         </svg>
       </summary>
-      <div className={`absolute right-0 z-30 min-w-44 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-[0_18px_46px_rgba(0,0,0,0.28)] ${menuPositionClass}`}>
+      <div className={`absolute right-0 z-30 min-w-44 overflow-hidden rounded-md border border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] p-1.5 shadow-e3 ${menuPositionClass}`}>
         <button
           type="button"
           disabled={disabled}

@@ -522,7 +522,7 @@ export default function JamiAssistantDrawer({
       <DialogBackdrop className="absolute inset-0 bg-black/55 backdrop-blur-[1px]" />
       <DialogPanel
         data-notebook-text-editor="true"
-        className="pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-[var(--shadow-shell)]"
+        className="pointer-events-auto relative flex h-[100dvh] max-h-[100dvh] w-full max-w-[32rem] flex-col overflow-hidden border-l border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] shadow-shell"
         /*
           The panel colour is a few percent translucent, which reads as depth
           over the scrim but lets the card show through once the scrim is gone.
@@ -781,7 +781,7 @@ export default function JamiAssistantDrawer({
             </div>
           ) : null}
 
-          <div className="relative rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-[0_8px_24px_rgba(8,2,26,0.08)] transition duration-fast focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/15">
+          <div className="relative rounded-xl border border-[var(--color-border-strong)] bg-[var(--color-surface-panel)] shadow-e1 transition duration-fast focus-within:border-accent/55 focus-within:ring-2 focus-within:ring-accent/15">
             <label htmlFor="jami-assistant-message" className="sr-only">
               Message Jami
             </label>
@@ -801,7 +801,7 @@ export default function JamiAssistantDrawer({
               type="button"
               aria-label="Send message to Jami"
               disabled={loading || !input.trim()}
-              className="absolute bottom-2 right-2 inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-white shadow-[0_6px_16px_rgba(124,92,255,0.22)] transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
+              className="absolute bottom-2 right-2 inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-white shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
               onClick={() => void sendMessage(input)}
             >
               <SendIcon />

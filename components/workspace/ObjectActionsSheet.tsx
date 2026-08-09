@@ -44,7 +44,7 @@ export default function ObjectActionsSheet({
       <DialogBackdrop className="absolute inset-0 bg-black/45 backdrop-blur-[2px]" />
       <DialogPanel
         data-mobile-object-actions={objectKind}
-        className="app-panel relative w-full rounded-xl p-3 shadow-[0_24px_60px_rgba(0,0,0,0.38)]"
+        className="app-panel relative w-full rounded-xl p-3 shadow-e3"
       >
         <div className="px-2 pb-3 pt-1">
           <DialogTitle className="truncate text-sm font-semibold text-text-primary">

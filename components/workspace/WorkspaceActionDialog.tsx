@@ -49,7 +49,7 @@ export default function WorkspaceActionDialog({
         className="absolute inset-0 bg-black/60 backdrop-blur-sm"
       />
       <DialogPanel
-        className={`app-panel relative flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-b-none rounded-t-2xl shadow-[0_28px_80px_rgba(0,0,0,0.5)] sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-2xl ${maxWidthClasses[maxWidth]}`}
+        className={`app-panel relative flex max-h-[calc(100dvh-1rem)] w-full flex-col overflow-hidden rounded-b-none rounded-t-2xl shadow-e3 sm:max-h-[calc(100dvh-2.5rem)] sm:rounded-2xl ${maxWidthClasses[maxWidth]}`}
       >
         <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[var(--color-border)] px-4 py-4 sm:px-6">
           <div className="min-w-0">
