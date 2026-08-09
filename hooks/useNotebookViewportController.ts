@@ -18,8 +18,11 @@ import {
   type PointerClientSample,
 } from "@/lib/workspace/notebook-inking";
 import {
+  clampNotebookViewportOrigin,
   createNotebookPinchFrameQueue,
   getNotebookViewportLayout,
+  isNotebookViewportZoomedIn,
+  NOTEBOOK_PAN_GESTURE_SLOP,
   type NotebookViewportLayout,
 } from "@/lib/workspace/notebook-viewport";
 
@@ -49,6 +52,20 @@ export type NotebookPinchZoomState = {
   pendingZoom: number;
   startPageHeight: number;
   startPageWidth: number;
+};
+
+/**
+ * One finger moving a zoomed sheet. Held from the moment the finger lands, but
+ * only `moving` once it has travelled far enough to mean it -- a tap on a
+ * zoomed page still belongs to whatever it landed on.
+ */
+export type NotebookPanGesture = {
+  pointerId: number;
+  startX: number;
+  startY: number;
+  basePanX: number;
+  basePanY: number;
+  moving: boolean;
 };
 
 export type CancelActivePinchOptions = {
@@ -146,6 +163,7 @@ export function useNotebookViewportController({
   onSwipeEnd,
 }: UseNotebookViewportControllerOptions): NotebookViewportController {
   const pinchZoomRef = useRef<NotebookPinchZoomState | null>(null);
+  const panGestureRef = useRef<NotebookPanGesture | null>(null);
   const pinchCommitPendingRef = useRef(false);
   const pagePanLiveRef = useRef<NotebookPagePan>({ x: 0, y: 0 });
   const touchPointersRef = useRef<Map<number, PointerClientSample>>(new Map());
@@ -239,6 +257,26 @@ export function useNotebookViewportController({
     });
   }, [pinchFrameQueue, writeLivePinchTransform]);
 
+  /**
+   * Writes the live pan straight to the compositor.
+   *
+   * Only a translation, so unlike the pinch there is no scale to reconcile
+   * afterwards: React's own transform for the settled pan is this same string,
+   * and the commit at the end of the gesture simply re-renders it.
+   */
+  const writeLivePanTransform = useCallback(() => {
+    const surface = pageSurfaceRef.current;
+    if (!surface) return;
+    surface.style.transformOrigin = "0 0";
+    surface.style.transform = `translate3d(${pagePanLiveRef.current.x}px, ${
+      pagePanLiveRef.current.y
+    }px, 0)`;
+  }, [pageSurfaceRef]);
+
+  const queueLivePanTransform = useCallback(() => {
+    pinchFrameQueue.queue(writeLivePanTransform);
+  }, [pinchFrameQueue, writeLivePanTransform]);
+
   const resetPageSurfaceTransform = useCallback(() => {
     pinchCommitPendingRef.current = false;
     const surface = pageSurfaceRef.current;
@@ -268,6 +306,7 @@ export function useNotebookViewportController({
         resetPageSurfaceTransform();
       }
       pinchZoomRef.current = null;
+      panGestureRef.current = null;
       if (options.clearPointers) touchPointersRef.current.clear();
       if (wasPinching && options.commitPan) setPagePan(pagePanLiveRef.current);
       return wasPinching;
@@ -278,6 +317,7 @@ export function useNotebookViewportController({
   const resetViewportGestures = useCallback(() => {
     cancelPinchAnimationFrame();
     pinchZoomRef.current = null;
+    panGestureRef.current = null;
     pinchCommitPendingRef.current = false;
     touchPointersRef.current.clear();
     pagePanLiveRef.current = { x: 0, y: 0 };
@@ -299,6 +339,9 @@ export function useNotebookViewportController({
     const [first, second] = Array.from(touchPointersRef.current.values());
     if (!first || !second) return;
     cancelPinchAnimationFrame();
+    // A second finger ends any pan outright rather than letting it commit when
+    // the first one lifts: from here the pinch owns where the sheet sits.
+    panGestureRef.current = null;
     onPinchTakeoverRef.current();
 
     const surface = pageSurfaceRef.current;
@@ -384,6 +427,18 @@ export function useNotebookViewportController({
         event.stopPropagation();
         return true;
       }
+      // Offered rather than claimed: the gesture is only a pan once the finger
+      // has actually travelled, so a tap still reaches the page underneath.
+      panGestureRef.current = isNotebookViewportZoomedIn(layoutRef.current.zoom)
+        ? {
+            pointerId: event.pointerId,
+            startX: event.clientX,
+            startY: event.clientY,
+            basePanX: layoutRef.current.pageOrigin.x,
+            basePanY: layoutRef.current.pageOrigin.y,
+            moving: false,
+          }
+        : null;
       return false;
     },
     [startPinchZoom, updateTouchPointer]
@@ -399,6 +454,35 @@ export function useNotebookViewportController({
       }
       updateTouchPointer(event);
       const pinch = pinchZoomRef.current;
+      const pan = panGestureRef.current;
+      if (
+        !pinch &&
+        pan &&
+        pan.pointerId === event.pointerId &&
+        touchPointersRef.current.size === 1
+      ) {
+        const dx = event.clientX - pan.startX;
+        const dy = event.clientY - pan.startY;
+        if (!pan.moving && Math.hypot(dx, dy) < NOTEBOOK_PAN_GESTURE_SLOP) {
+          return false;
+        }
+        if (!pan.moving) {
+          pan.moving = true;
+          const surface = pageSurfaceRef.current;
+          if (surface) surface.style.willChange = "transform";
+        }
+        // Bounds come from the live layout rather than gesture start: they
+        // depend only on zoom, which a single finger cannot change.
+        pagePanLiveRef.current = clampNotebookViewportOrigin({
+          origin: { x: pan.basePanX + dx, y: pan.basePanY + dy },
+          bounds: layoutRef.current.panBounds,
+        });
+        queueLivePanTransform();
+        onClearSwipeCandidateRef.current();
+        event.preventDefault();
+        event.stopPropagation();
+        return true;
+      }
       if (!pinch || touchPointersRef.current.size < 2) return false;
 
       const [first, second] = Array.from(touchPointersRef.current.values());
@@ -421,7 +505,12 @@ export function useNotebookViewportController({
       event.stopPropagation();
       return true;
     },
-    [queueLivePinchTransform, updateTouchPointer]
+    [
+      pageSurfaceRef,
+      queueLivePanTransform,
+      queueLivePinchTransform,
+      updateTouchPointer,
+    ]
   );
 
   const handleTouchPointerEnd = useCallback(
@@ -445,10 +534,34 @@ export function useNotebookViewportController({
         event.stopPropagation();
         return true;
       }
+
+      const pan = panGestureRef.current;
+      if (pan && pan.pointerId === event.pointerId) {
+        panGestureRef.current = null;
+        if (pan.moving) {
+          // Flush the newest position before committing, so the settled
+          // transform is the one the finger last saw.
+          cancelPinchAnimationFrame();
+          writeLivePanTransform();
+          const surface = pageSurfaceRef.current;
+          if (surface) surface.style.willChange = "";
+          setPagePan(pagePanLiveRef.current);
+          event.preventDefault();
+          event.stopPropagation();
+          return true;
+        }
+      }
+
       onSwipeEndRef.current(event, options);
       return true;
     },
-    [finalizePinchCommit]
+    [
+      cancelPinchAnimationFrame,
+      finalizePinchCommit,
+      pageSurfaceRef,
+      setPagePan,
+      writeLivePanTransform,
+    ]
   );
 
   return {

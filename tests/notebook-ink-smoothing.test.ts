@@ -103,6 +103,39 @@ describe("notebook ink smoothing", () => {
     expect(lag).toBeLessThan(maxExpectedLag);
   });
 
+  /**
+   * How far the ink is trailing when the pen lifts is how far it has left to
+   * travel after the stroke has been ended, which is what reads as ink
+   * extending past the pen. `makePrecisePenInputMapper` stops that arriving as
+   * a jump by filtering the endpoint too, but the distance itself is this
+   * filter's to keep small -- and quick strokes are where it is largest.
+   */
+  it.each([
+    ["a short flick", 12],
+    ["a full stroke", 60],
+  ])("trails %s by well under the old four pixels", (_name, sampleCount) => {
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    // 1500 px/s — a fast handwriting stroke, where the trail is largest.
+    const perSampleStep = (1500 * SAMPLE_INTERVAL_MS) / 1000;
+    const samples = makeSamples(
+      Array.from({ length: sampleCount }, (_, index) => ({
+        x: (index + 1) * perSampleStep,
+        y: 0,
+      }))
+    );
+
+    let trailingBy = 0;
+    for (const sample of samples) {
+      trailingBy = sample.x - smoother.next(sample).x;
+    }
+
+    // Derived from the constant that actually governs it, so the bound cannot
+    // drift away from `beta` if it is ever retuned.
+    expect(trailingBy).toBeLessThan(
+      1 / (2 * Math.PI * NOTEBOOK_INK_SMOOTHING.beta)
+    );
+  });
+
   it.each([8, 16])(
     "responds quickly at a %dms stylus sample interval",
     (sampleIntervalMs) => {

@@ -83,7 +83,25 @@ export function makePrecisePenInputMapper(
               time: current.timeStamp,
             })
           );
-        } else if (event.kind === jsDraw.InputEvtType.PointerMoveEvt) {
+        } else {
+          /*
+           * The lift is filtered too, and that is the whole point of this
+           * branch rather than a detail of it.
+           *
+           * js-draw ends a stroke by adding the `pointerup` position and
+           * finalising immediately. Sending the raw position there, while every
+           * sample before it was filtered, hands the stroke a last point that is
+           * as far ahead of the ink as the filter happened to be trailing --
+           * and the stroke closes that gap in one step, on the frame the pen
+           * leaves the glass. It reads as the ink carrying on past where the
+           * stroke was ended, and it is worst after a quick stroke, because
+           * that is when the filter trails furthest.
+           *
+           * Filtered, the endpoint is simply the next point on the same curve.
+           * The ink still ends a little short of the pen -- that is the lag,
+           * and `beta` is what answers it -- but it stops where it was going
+           * instead of lurching forward to catch up.
+           */
           const smoother = inkSmoothers.get(current.id);
           if (smoother) {
             const filtered = smoother.next({

@@ -24,6 +24,17 @@ export const NOTEBOOK_VIEWPORT_MIN_VISIBLE_PAGE = 120;
  */
 export const NOTEBOOK_VIEWPORT_FREE_PAN_ZOOM_RANGE = 0.15;
 
+/**
+ * How far one finger travels on a zoomed sheet before it is moving the page
+ * rather than touching it, in screen pixels.
+ *
+ * A tap on a zoomed page still has to be able to select a text block, and no
+ * finger lands and lifts without moving a little. Matched to the threshold the
+ * page swipe already uses, so a drag becomes a drag at the same distance
+ * whether it is turning the page or moving it.
+ */
+export const NOTEBOOK_PAN_GESTURE_SLOP = 8;
+
 export type NotebookViewportSize = {
   width: number;
   height: number;

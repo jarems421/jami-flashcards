@@ -44,18 +44,50 @@ export type NotebookInkSmoothingOptions = {
  * made. At 2 Hz only a sixth of each sample survived down there, and the ink
  * felt magnetic, dragged towards where it had just been.
  *
- * Raising `minCutoff` and dropping `beta` flattens the curve instead of
- * tilting it: about a third of each sample survives when the pen is crawling,
- * near enough to the original feel, while less than half survives at writing
- * speed, where the original let 78% of the sensor's noise straight through.
+ * `beta` was 0.04, which bounded the lag near `1 / (2π · beta)` -- about 4px at
+ * the top of a fast stroke -- on the reasoning that the eye is on the pen
+ * rather than the ink up there, so the lag is not seen.
  *
- * The cost is lag, bounded near `1 / (2π · beta)`, now about 4px at the top of
- * a fast stroke where the eye is on the pen rather than the ink. Lower
- * `minCutoff` if writing feels dragged; lower `beta` if it looks noisy.
+ * It is seen, at the one moment it cannot hide: the lift. Trailing ink has to
+ * arrive somewhere, and a fast stroke that has been trailing four pixels
+ * finishes four pixels after the pen has stopped. That is the report of quick
+ * strokes extending past where they were ended, and it is worst on a short
+ * flick, where four pixels is a fifth of the whole stroke.
+ *
+ * How much of that arrives as a *jump* is a separate question, settled in
+ * `makePrecisePenInputMapper`: the endpoint is now filtered like every other
+ * sample, so the ink stops rather than lurching. But the trailing distance is
+ * this constant's to answer, and 4px was too much of it.
+ *
+ * `beta` cannot simply be run up until the trail is gone, because it is the
+ * same knob that decides how much sensor noise survives at writing speed. The
+ * two are in real tension. Measured against a 1px alternating wobble at 220px/s
+ * -- ordinary writing -- alongside the trail left by a 1500px/s stroke:
+ *
+ *     beta   surviving wobble   trail at speed
+ *     0.04   0.39px             2.87px
+ *     0.08   0.48px             1.64px
+ *     0.11   0.53px             1.25px
+ *     0.25   0.67px             0.59px
+ *
+ * Half the wobble surviving is where a line starts to read as grainy, and that
+ * is the ceiling this sits under rather than a number chosen to fit: 0.08 is as
+ * far as `beta` goes without spending the steadiness of the line, and it buys
+ * back most of the trail on the way.
+ *
+ * The rest of the answer is not here. It is that the trail no longer arrives as
+ * a jump, which is what made three pixels of it so visible.
+ *
+ * The slow end is untouched, which is the end that matters for shape: at a
+ * crawl the cutoff is still near `minCutoff` and the trail is under half a
+ * pixel.
+ *
+ * Lower `minCutoff` if writing feels dragged; lower `beta` if fast strokes look
+ * noisy -- but raise it back if they start reaching past the pen again.
  */
 export const NOTEBOOK_INK_SMOOTHING: NotebookInkSmoothingOptions = {
   minCutoff: 9,
-  beta: 0.04,
+  beta: 0.08,
   derivativeCutoff: 16,
 };
 

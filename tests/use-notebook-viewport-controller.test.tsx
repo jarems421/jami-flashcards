@@ -409,4 +409,131 @@ describe("useNotebookViewportController", () => {
     });
     expect(handles.controller.layout.zoom).toBe(1);
   });
+
+  describe("one finger on a zoomed sheet", () => {
+    /** Zooms in and returns where the sheet currently sits. */
+    function zoomIn(zoom = 2) {
+      act(() => {
+        handles.setZoom(zoom);
+      });
+      return { ...handles.controller.layout.pageOrigin };
+    }
+
+    function drag(points: Array<{ x: number; y: number }>) {
+      act(() => {
+        handles.controller.handleTouchPointerDown(
+          pointerEvent({ pointerId: 1, clientX: points[0].x, clientY: points[0].y })
+        );
+      });
+      const consumed = points.slice(1).map((point) => {
+        let handled = false;
+        act(() => {
+          handled = handles.controller.handleTouchPointerMove(
+            pointerEvent({ pointerId: 1, clientX: point.x, clientY: point.y })
+          );
+        });
+        return handled;
+      });
+      const last = points[points.length - 1];
+      let endHandled = false;
+      act(() => {
+        endHandled = handles.controller.handleTouchPointerEnd(
+          pointerEvent({ pointerId: 1, clientX: last.x, clientY: last.y })
+        );
+      });
+      return { consumed, endHandled };
+    }
+
+    it("moves the sheet with the finger, in both directions at once", () => {
+      const origin = zoomIn();
+      drag([
+        { x: 400, y: 500 },
+        { x: 460, y: 540 },
+      ]);
+
+      expect(handles.pan.x).toBeCloseTo(origin.x + 60, 5);
+      expect(handles.pan.y).toBeCloseTo(origin.y + 40, 5);
+    });
+
+    it("writes the sheet to the compositor while the finger is down", () => {
+      zoomIn();
+      act(() => {
+        handles.controller.handleTouchPointerDown(
+          pointerEvent({ pointerId: 1, clientX: 400, clientY: 500 })
+        );
+        handles.controller.handleTouchPointerMove(
+          pointerEvent({ pointerId: 1, clientX: 460, clientY: 500 })
+        );
+      });
+      // Ahead of React: the gesture must not wait on a state commit per frame.
+      expect(surface.style.transform).toContain("translate3d");
+      expect(surface.style.willChange).toBe("transform");
+    });
+
+    it("leaves a tap alone so it still reaches the page", () => {
+      zoomIn();
+      const { consumed, endHandled } = drag([
+        { x: 400, y: 500 },
+        { x: 403, y: 502 },
+      ]);
+
+      // Under the slop: not a pan, so the page's own tap handling runs.
+      expect(consumed).toEqual([false]);
+      expect(endHandled).toBe(true);
+      expect(swipeEnd).toHaveBeenCalled();
+    });
+
+    it("keeps a graspable edge of the sheet on screen", () => {
+      zoomIn(4);
+      // Far further than the sheet can travel.
+      drag([
+        { x: 400, y: 500 },
+        { x: 9000, y: 9000 },
+      ]);
+
+      const { panBounds } = handles.controller.layout;
+      expect(handles.pan.x).toBeCloseTo(panBounds.maxX, 5);
+      expect(handles.pan.y).toBeCloseTo(panBounds.maxY, 5);
+    });
+
+    it("turns the page instead of moving it once zoomed back out", () => {
+      // Fitted, the sheet has nowhere to go and the drag belongs to the swipe.
+      const { consumed, endHandled } = drag([
+        { x: 400, y: 500 },
+        { x: 500, y: 500 },
+      ]);
+
+      expect(consumed).toEqual([false]);
+      expect(endHandled).toBe(true);
+      expect(swipeEnd).toHaveBeenCalled();
+      expect(handles.pan).toEqual({ x: 0, y: 0 });
+    });
+
+    it("hands the sheet to a pinch rather than committing the pan", () => {
+      zoomIn();
+      act(() => {
+        handles.controller.handleTouchPointerDown(
+          pointerEvent({ pointerId: 1, clientX: 400, clientY: 500 })
+        );
+        handles.controller.handleTouchPointerMove(
+          pointerEvent({ pointerId: 1, clientX: 460, clientY: 500 })
+        );
+        handles.controller.handleTouchPointerDown(
+          pointerEvent({ pointerId: 2, clientX: 600, clientY: 500 })
+        );
+      });
+      expect(handles.controller.isPinchActive()).toBe(true);
+
+      const committed = { ...handles.pan };
+      act(() => {
+        handles.controller.handleTouchPointerEnd(
+          pointerEvent({ pointerId: 1, clientX: 460, clientY: 500 })
+        );
+      });
+      // The pinch owns where the sheet sits from here; the abandoned pan must
+      // not commit its own idea of it as the first finger leaves.
+      expect(handles.pan).not.toEqual(committed);
+      expect(swipeEnd).not.toHaveBeenCalled();
+    });
+  });
 });

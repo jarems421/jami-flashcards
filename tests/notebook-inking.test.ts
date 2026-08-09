@@ -579,25 +579,27 @@ describe("notebook inking helpers", () => {
     ).toBeNull();
   });
 
-  it("swipes fitted pages and never lets one finger move the sheet", () => {
-    // Sideways from the fitted view is the one thing a single finger does.
+  it("turns fitted pages and moves zoomed ones, never both at once", () => {
+    // Fitted, the sheet has nowhere to go, so sideways can only mean the next
+    // page and up-and-down can only mean nothing.
     expect(getNotebookPageDragIntent({ axis: "horizontal", zoom: 1 })).toBe(
       "page"
     );
     expect(getNotebookPageDragIntent({ axis: "horizontal", zoom: 0.92 })).toBe(
       "page"
     );
-    // Zoomed in, a sideways drag would be a page turn mid-read: refused.
-    expect(getNotebookPageDragIntent({ axis: "horizontal", zoom: 1.2 })).toBe(
+    expect(getNotebookPageDragIntent({ axis: "vertical", zoom: 1 })).toBe(
       "none"
     );
-    expect(getNotebookPageDragIntent({ axis: "horizontal", zoom: 4 })).toBe(
-      "none"
-    );
-    // Up and down never moves the sheet at any zoom: that is the two-finger
-    // gesture's job, so the page cannot be shoved around by one finger.
-    for (const zoom of [1, 1.2, 2, 4]) {
-      expect(getNotebookPageDragIntent({ axis: "vertical", zoom })).toBe("none");
+
+    // Zoomed, most of the sheet is off screen and one finger reaches the rest,
+    // whichever way it is pushed. Turning the page is reached by zooming out,
+    // so the two gestures are never offered together.
+    for (const zoom of [1.2, 2, 4]) {
+      expect(getNotebookPageDragIntent({ axis: "horizontal", zoom })).toBe(
+        "pan"
+      );
+      expect(getNotebookPageDragIntent({ axis: "vertical", zoom })).toBe("pan");
     }
   });
 

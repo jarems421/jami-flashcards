@@ -170,23 +170,33 @@ export function shouldPointerSwipePages(pointerType: string) {
   return pointerType === "touch";
 }
 
-export type NotebookPageDragIntent = "page" | "none";
+export type NotebookPageDragIntent = "page" | "pan" | "none";
 
 /**
- * One finger never moves the sheet.
+ * What one finger does, decided by whether the whole sheet is on screen.
  *
- * Where the page sits belongs to the two-finger gesture, the way it does in a
- * paper notebook app: the sheet is something the reader looks at, not something
- * they shove around. So a single finger either turns the page -- and only from
- * the fitted view, where there is nothing else a sideways drag could mean -- or
- * does nothing at all.
+ * A fitted sheet has nowhere to go, so a sideways drag can only mean the next
+ * page, and a vertical one can only mean nothing. That much has always been
+ * true here.
+ *
+ * A zoomed sheet is the opposite case, and it used to be given the same answer:
+ * one finger did nothing at all, on the reasoning that where the page sits
+ * belongs to the two-finger gesture. That reads as the page being stuck. Most
+ * of it is off screen, the obvious way to reach the rest is to push it, and
+ * pushing it did nothing -- so the only way across a zoomed page was to pinch
+ * out and back in again.
+ *
+ * So zoomed in, one finger moves the sheet, in whichever direction it is
+ * pushed. Turning the page is then reached by zooming out, which is the same
+ * order the eye works in anyway: step back, then move on. It also means the two
+ * gestures can never be confused, because they are never both available.
  */
 export function getNotebookPageDragIntent(input: {
   axis: "horizontal" | "vertical";
   zoom?: number;
 }): NotebookPageDragIntent {
-  if (input.axis !== "horizontal") return "none";
-  return isNotebookViewportZoomedIn(input.zoom ?? 1) ? "none" : "page";
+  if (isNotebookViewportZoomedIn(input.zoom ?? 1)) return "pan";
+  return input.axis === "horizontal" ? "page" : "none";
 }
 
 export function shouldSuppressTouchAfterStylus(input: {
