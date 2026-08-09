@@ -21,6 +21,7 @@ import {
   type JamiAssistantThread,
 } from "@/lib/ai/jami-assistant-history";
 import { sendJamiAssistantMessage } from "@/services/ai/jami-assistant";
+import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import {
   deleteJamiAssistantThread,
   getJamiAssistantThreadMessages,
@@ -107,6 +108,32 @@ function SendIcon() {
   return (
     <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4">
       <path d="M12 18V6m0 0-4.5 4.5M12 6l4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function MicrophoneIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+      <path
+        d="M12 4.25a2.4 2.4 0 0 1 2.4 2.4v4.6a2.4 2.4 0 0 1-4.8 0v-4.6a2.4 2.4 0 0 1 2.4-2.4Z"
+        fill="currentColor"
+      />
+      <path
+        d="M6.9 11.1a5.1 5.1 0 0 0 10.2 0M12 16.2v3.55"
+        stroke="currentColor"
+        strokeWidth="1.7"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
+/** A filled square: the universal "this is recording, press to stop" mark. */
+function StopDictationIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" className="h-4 w-4">
+      <rect x="7.6" y="7.6" width="8.8" height="8.8" rx="2.2" fill="currentColor" />
     </svg>
   );
 }
@@ -502,10 +529,34 @@ export default function JamiAssistantDrawer({
     ]
   );
 
+  const dictation = useVoiceDictation({ onText: setInput, onError: setError });
+
+  /**
+   * Sends what is in the box, whether it was typed or spoken.
+   *
+   * Dictation is stopped first and its own reading of the box is used, because
+   * words the recogniser settles in the same tick as the send would otherwise
+   * be lost: `input` is a render behind at that moment.
+   */
+  const submitComposer = useCallback(() => {
+    const text = dictation.listening ? dictation.stop() : input;
+    void sendMessage(text);
+  }, [dictation, input, sendMessage]);
+
+  const toggleDictation = useCallback(() => {
+    if (dictation.listening) {
+      dictation.stop();
+      inputRef.current?.focus();
+      return;
+    }
+    setError(null);
+    dictation.start(input);
+  }, [dictation, input]);
+
   const handleComposerKeyDown = (event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
-      void sendMessage(input);
+      submitComposer();
     }
   };
 
@@ -793,20 +844,52 @@ export default function JamiAssistantDrawer({
               value={input}
               disabled={loading}
               placeholder="Ask Jami..."
-              className="min-h-[3.5rem] w-full resize-none bg-transparent py-3 pl-4 pr-14 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82]"
+              className={`min-h-[3.5rem] w-full resize-none bg-transparent py-3 pl-4 text-sm leading-relaxed text-text-primary outline-none placeholder:text-text-muted focus-visible:outline-none focus-visible:shadow-none disabled:cursor-not-allowed disabled:saturate-[0.82] ${
+                dictation.supported ? "pr-24" : "pr-14"
+              }`}
               onChange={(event) => setInput(event.target.value)}
               onKeyDown={handleComposerKeyDown}
             />
-            <button
-              type="button"
-              aria-label="Send message to Jami"
-              disabled={loading || !input.trim()}
-              className="absolute bottom-2 right-2 inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-white shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
-              onClick={() => void sendMessage(input)}
-            >
-              <SendIcon />
-            </button>
+            <div className="absolute bottom-2 right-2 flex items-center gap-1.5">
+              {dictation.supported ? (
+                <button
+                  type="button"
+                  aria-label={dictation.listening ? "Stop dictating" : "Dictate your message"}
+                  aria-pressed={dictation.listening}
+                  disabled={loading}
+                  className={`inline-grid h-9 w-9 place-items-center rounded-full transition duration-fast active:scale-95 disabled:cursor-not-allowed disabled:text-text-muted disabled:shadow-none ${
+                    dictation.listening
+                      ? "bg-error text-white shadow-e1 hover:brightness-110"
+                      : "text-text-secondary hover:bg-[var(--color-glass-subtle)] hover:text-text-primary"
+                  }`}
+                  onClick={toggleDictation}
+                >
+                  {dictation.listening ? <StopDictationIcon /> : <MicrophoneIcon />}
+                </button>
+              ) : null}
+              <button
+                type="button"
+                aria-label="Send message to Jami"
+                disabled={loading || (!input.trim() && !dictation.listening)}
+                className="inline-grid h-9 w-9 place-items-center rounded-full bg-accent text-white shadow-accent transition duration-fast hover:brightness-110 active:scale-95 disabled:cursor-not-allowed disabled:bg-[var(--color-glass-medium)] disabled:text-text-muted disabled:shadow-none"
+                onClick={submitComposer}
+              >
+                <SendIcon />
+              </button>
+            </div>
           </div>
+          {dictation.listening ? (
+            <p
+              className="mt-2 flex items-center gap-2 px-1 text-xs text-text-secondary"
+              role="status"
+            >
+              <span
+                aria-hidden="true"
+                className="h-1.5 w-1.5 shrink-0 animate-pulse rounded-full bg-error"
+              />
+              <span>Listening. Stop to edit what you said, or send it straight away.</span>
+            </p>
+          ) : null}
 
           <div className="mt-2 flex flex-wrap items-start justify-between gap-x-4 gap-y-1">
             <details className="group min-w-0 flex-1 basis-[15rem] text-xs text-text-muted">
