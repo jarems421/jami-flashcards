@@ -62,6 +62,7 @@ import {
   installNotebookInkViewportSynchronizer,
   installNotebookNativeInkGuards,
   keepNotebookStraightenedLineAimable,
+  relaxNotebookStraightenHold,
   positionNotebookEraserCursor,
   shouldContinueNotebookPrecisionGesture,
   shouldExpectNotebookCaptureLoss,
@@ -393,6 +394,9 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
             // js-draw must not put the angle it first snapped to back when the
             // pen lifts shortly after being moved.
             keepNotebookStraightenedLineAimable(primaryPen);
+            // And the hold that triggers the snap has to be one a hand resting
+            // on glass can actually satisfy.
+            relaxNotebookStraightenHold(primaryPen);
             penPreviewBatch = installBatchedNotebookPenPreview(
               primaryPen as unknown as NotebookBatchedPen
             );

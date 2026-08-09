@@ -196,6 +196,58 @@ export function keepNotebookStraightenedLineAimable(pen: object) {
   return true;
 }
 
+/**
+ * How still a hand actually is, and how long it has to stay that way.
+ *
+ * js-draw asks for an average speed under 8.5 screen pixels a second before it
+ * will call a pen stationary. That is under a seventh of a pixel per frame --
+ * far below what a hand resting a stylus on glass does. Every time the tremor
+ * crosses it the timer starts again, so the snap can take several seconds to
+ * arrive or never arrive at all, which reads as "hold it longer" rather than as
+ * a threshold nobody can meet.
+ *
+ * The wait is longer than js-draw's half second on purpose. Half a second of
+ * stillness happens in the middle of ordinary writing; a full second is a
+ * deliberate pause, and it is the pause -- not the shape of the stroke -- that
+ * is really being asked about.
+ */
+export const NOTEBOOK_STRAIGHTEN_HOLD = {
+  /** Screen pixels a second, averaged. Room for a hand, not for a stroke. */
+  maxSpeed: 42,
+  /** How far the tip may drift over the hold, in screen pixels. */
+  maxRadius: 16,
+  minTimeSeconds: 1,
+};
+
+type NotebookStationaryPen = {
+  stationaryDetector?: { config?: Record<string, number> } | null;
+  onPointerDown?: (...args: unknown[]) => unknown;
+};
+
+/**
+ * Makes the hold that straightens a line one a hand can actually hold.
+ *
+ * The detector is built fresh for each stroke and keeps its config by
+ * reference, reading it again on every move -- so replacing the object once the
+ * stroke has begun takes effect for that stroke, including the timer, which is
+ * reset on the first move after the change.
+ */
+export function relaxNotebookStraightenHold(pen: object) {
+  const target = pen as NotebookStationaryPen;
+  const onPointerDown = target.onPointerDown;
+  if (typeof onPointerDown !== "function") return false;
+
+  target.onPointerDown = function holdAwareOnPointerDown(...args: unknown[]) {
+    const handled = onPointerDown.apply(target, args);
+    const detector = target.stationaryDetector;
+    if (detector && detector.config) {
+      detector.config = { ...detector.config, ...NOTEBOOK_STRAIGHTEN_HOLD };
+    }
+    return handled;
+  };
+  return true;
+}
+
 export function dispatchBatchedNotebookPointerSamples<Sample>(input: {
   batch?: { beginBatch(): void; endBatch(): void };
   dispatch(sample: Sample): void;

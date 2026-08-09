@@ -433,6 +433,9 @@ describe("straightening a line", () => {
     ["a little wobbly", 0.06],
     ["visibly rough", 0.12],
     ["frankly squiggly", 0.19],
+    // The gesture is for lines somebody could not draw straight, so the
+    // tolerance was raised until it covered the ones they actually draw.
+    ["drawn on a bus", 0.3],
   ])("straightens %s a line", async (_label, roughness) => {
     const corrected = await makeBuilder(roughLine(roughness)).autocorrectShape!();
 
@@ -445,7 +448,11 @@ describe("straightening a line", () => {
   });
 
   it("still has a ceiling, so the tolerance is not simply anything", async () => {
-    expect(await makeBuilder(roughLine(0.35)).autocorrectShape!()).toBeNull();
+    // Raised from 0.22 to 0.38, so this moved with it. It is still a ceiling:
+    // past here the stroke is not a line anybody was reaching for, and what
+    // stops the looser tolerance taking curves with it is a separate test on
+    // which side of the line the wander sits, not this number.
+    expect(await makeBuilder(roughLine(0.55)).autocorrectShape!()).toBeNull();
   });
 
   it("leaves a shape that doubles back alone, however far apart its ends", () => {
@@ -497,5 +504,131 @@ describe("straightening a line", () => {
 
     expect(await builder.autocorrectShape!()).not.toBeNull();
     expect(await builder.autocorrectShape!()).toBeNull();
+  });
+});
+
+/**
+ * Hold a rough line still and it snaps straight; swing it and the angle
+ * follows. Both halves are easy to get subtly wrong in ways no other test
+ * notices -- one threshold quietly refusing every stroke a person actually
+ * draws, or a helpful angle that will not let go of one they meant.
+ */
+describe("straightening a held line", () => {
+  const viewportAt = (pixel: number) =>
+    ({
+      getSizeOfPixelOnCanvas: () => pixel,
+      visibleRect: { x: 0, y: 0, w: 2000, h: 2000 },
+    }) as never;
+
+  function held(points: [number, number][], width = 3) {
+    const built = points.map(([x, y]) => point(x, y, width));
+    const builder = createNotebookSmoothPenStrokeFactory(jsDraw)(
+      built[0],
+      viewportAt(1)
+    );
+    for (const next of built.slice(1)) builder.addPoint(next);
+    return builder;
+  }
+
+  /** A line that wanders `wobble` px either side of true. */
+  const wobbly = (wobble: number, waves = 3): [number, number][] =>
+    Array.from({ length: 121 }, (_, step) => {
+      const along = step / 120;
+      return [
+        20 + along * 300,
+        200 + Math.sin(along * waves * Math.PI * 2) * wobble,
+      ];
+    });
+
+  /** A stroke that bows to one side the whole way, as an arc does. */
+  const bowed = (sag: number): [number, number][] =>
+    Array.from({ length: 121 }, (_, step) => {
+      const along = step / 120;
+      return [20 + along * 300, 200 - Math.sin(along * Math.PI) * sag];
+    });
+
+  const segmented = (vertices: [number, number][]): [number, number][] => {
+    const out: [number, number][] = [];
+    for (let index = 0; index < vertices.length - 1; index += 1) {
+      const [x0, y0] = vertices[index];
+      const [x1, y1] = vertices[index + 1];
+      const steps = Math.max(2, Math.round(Math.hypot(x1 - x0, y1 - y0) / 2));
+      for (let step = 0; step < steps; step += 1) {
+        out.push([x0 + ((x1 - x0) * step) / steps, y0 + ((y1 - y0) * step) / steps]);
+      }
+    }
+    out.push(vertices[vertices.length - 1]);
+    return out;
+  };
+
+  it("straightens a line however badly it was drawn", async () => {
+    // The whole point of the gesture: nobody who could draw it straight would
+    // be holding still to have it fixed. Fifty pixels of wander on a
+    // three-hundred pixel stroke is a line drawn on a bus.
+    for (const wobble of [2, 8, 16, 30, 50]) {
+      const corrected = await held(wobbly(wobble)).autocorrectShape!();
+      expect(corrected, `${wobble}px of wobble`).not.toBeNull();
+    }
+  });
+
+  it("leaves a curve alone, however gentle", async () => {
+    // An arc is the shape somebody is least likely to want replaced by the
+    // chord across it, and on distance alone a shallow one is indistinguishable
+    // from a wobbly line -- it is being on one side throughout that gives it
+    // away.
+    for (const sag of [40, 80]) {
+      const corrected = await held(bowed(sag)).autocorrectShape!();
+      expect(corrected, `${sag}px of sag`).toBeNull();
+    }
+  });
+
+  it("leaves anything that comes back on itself", async () => {
+    const shapes: [string, [number, number][]][] = [
+      ["a v", segmented([[20, 150], [170, 260], [320, 150]])],
+      ["a w", segmented([[20, 150], [95, 260], [170, 150], [245, 260], [320, 150]])],
+      ["an l drawn up and back", segmented([[100, 260], [100, 90], [100, 250]])],
+      ["a circle", Array.from({ length: 121 }, (_, step) => {
+        const turn = (step / 120) * Math.PI * 2;
+        return [170 + Math.cos(turn) * 90, 200 + Math.sin(turn) * 90] as [number, number];
+      })],
+    ];
+
+    for (const [name, points] of shapes) {
+      expect(await held(points).autocorrectShape!(), name).toBeNull();
+    }
+  });
+
+  it("needs enough of a line to be sure", async () => {
+    expect(await held(segmented([[20, 200], [40, 202]])).autocorrectShape!()).toBeNull();
+  });
+
+  it("draws the aimed end onto upright, flat and the diagonals", async () => {
+    const aim = async (degrees: number) => {
+      const builder = held(wobbly(6));
+      await builder.autocorrectShape!();
+      const radians = (degrees * Math.PI) / 180;
+      builder.addPoint(
+        point(20 + Math.cos(radians) * 300, 200 + Math.sin(radians) * 300)
+      );
+
+      const path = (builder.build() as Stroke).getParts()[0].path;
+      const last = path.parts[path.parts.length - 1];
+      const end = "point" in last ? last.point : last.endPoint;
+      return (
+        (Math.atan2(end.y - path.startPoint.y, end.x - path.startPoint.x) * 180) /
+        Math.PI
+      );
+    };
+
+    // Inside the window it takes the guide angle.
+    for (const [aimed, expected] of [[2, 0], [43, 45], [86, 90], [137, 135]]) {
+      expect(await aim(aimed), `${aimed} degrees`).toBeCloseTo(expected, 1);
+    }
+
+    // Outside it, the angle asked for is the angle drawn. A guide that grabs an
+    // angle somebody meant is worse than no guide at all.
+    for (const aimed of [10, 30, 50, 70]) {
+      expect(await aim(aimed), `${aimed} degrees`).toBeCloseTo(aimed, 1);
+    }
   });
 });

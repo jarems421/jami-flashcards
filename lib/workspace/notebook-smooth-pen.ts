@@ -122,7 +122,7 @@ const TANGENT_SCALE = 1 / 3;
  * before it commits, so a snap that came out wrong is redirected rather than
  * redrawn.
  */
-const STRAIGHTEN_TOLERANCE = 0.22;
+const STRAIGHTEN_TOLERANCE = 0.38;
 
 /**
  * How far a stroke may run backwards along its own line and still be taken as
@@ -134,6 +134,32 @@ const STRAIGHTEN_TOLERANCE = 0.22;
  * shapes that only happen to start and end far apart.
  */
 const STRAIGHTEN_MAXIMUM_BACKTRACK = 0.12;
+
+/**
+ * How one-sided the wander may be before it is a curve rather than a wobble.
+ *
+ * Distance from the line was doing two jobs and could only do one. Loose enough
+ * to accept a genuinely squiggly line -- which is the whole gesture, since
+ * nobody who could draw it straight would be holding still to have it fixed --
+ * and it also accepted a deliberate arc, which is the one shape a person is
+ * least likely to want replaced by a chord.
+ *
+ * Measured on a 300px stroke: a 50px squiggle scores about 0.06 here, a 40px
+ * arc about 0.63. Nothing sits near the middle, so the threshold has room to be
+ * wrong by a lot and still be right.
+ */
+const STRAIGHTEN_MAXIMUM_BOW = 0.32;
+
+/**
+ * The eight angles a snapped line is drawn towards, and how near it has to be.
+ *
+ * Every 45 degrees: upright, flat, and the four diagonals. A window of five
+ * degrees either side is about the width of the tremor in a held hand and well
+ * under the ten or so at which a person can tell one angle from another, so it
+ * catches the miss without ever catching an angle that was meant.
+ */
+const GUIDE_ANGLE_STEP = Math.PI / 4;
+const GUIDE_ANGLE_WINDOW = (5 * Math.PI) / 180;
 
 /** Shorter than this and there is not enough of a line to be sure. */
 const STRAIGHTEN_MINIMUM_SPAN_RATIO = 8;
@@ -440,16 +466,70 @@ export function createNotebookSmoothPenStrokeFactory(
       let worstStray = 0;
       let furthestAlong = 0;
       let worstBacktrack = 0;
+      let signedTotal = 0;
       for (const point of shape) {
+        const offset = point.minus(from);
+        /*
+         * Which side of the line, not just how far off it.
+         *
+         * The distance alone cannot tell a wobble from a curve, and the two
+         * want opposite answers: a hand aiming for a line crosses it over and
+         * over, so its offsets cancel, while an arc stays out on one side the
+         * whole way and its offsets add up. Measured on a 300px stroke, a
+         * 50-pixel squiggle and a 40-pixel arc sit within a few pixels of each
+         * other on distance and at opposite ends of this.
+         */
+        signedTotal += along.x * offset.y - along.y * offset.x;
         worstStray = Math.max(worstStray, strayFromLine(point, from, to));
-        const travelled = point.minus(from).dot(along);
+        const travelled = offset.dot(along);
         worstBacktrack = Math.max(worstBacktrack, furthestAlong - travelled);
         furthestAlong = Math.max(furthestAlong, travelled);
       }
 
       if (worstStray > span * STRAIGHTEN_TOLERANCE) return null;
       if (worstBacktrack > span * STRAIGHTEN_MAXIMUM_BACKTRACK) return null;
+
+      // Averaged over the points, then measured against how far the worst of
+      // them strayed: a stroke that never crossed the line scores 1, one that
+      // spent equal time either side scores 0.
+      const bow = worstStray
+        ? Math.abs(signedTotal / shape.length) / worstStray
+        : 0;
+      if (bow > STRAIGHTEN_MAXIMUM_BOW) return null;
       return { from, to };
+    };
+
+    /**
+     * Where the aimed end of a snapped line actually goes.
+     *
+     * Once a line has snapped, swinging it is how the angle gets chosen, and
+     * the angles people are reaching for are almost always the same eight:
+     * upright, flat, and the diagonals between. Free aiming makes those the
+     * hardest to land, because they are the only ones where being a degree out
+     * is visible -- a line meant to be vertical and sitting at 89 looks wrong in
+     * a way that one at 34 does not.
+     *
+     * So near one of the eight, the line takes it. The length comes from how
+     * far along that direction the pen has reached rather than from the raw
+     * distance, so the far end stays level with the hand instead of running
+     * past it.
+     *
+     * The window is narrow on purpose. It only has to cover the last degree or
+     * two somebody cannot hold steady; wider than that and it stops being help
+     * and starts refusing the angle actually asked for.
+     */
+    const aimedAt = (from: Point2, to: Point2) => {
+      const reach = to.minus(from);
+      const length = reach.magnitude();
+      if (length < minimumStep) return to;
+
+      const angle = Math.atan2(reach.y, reach.x);
+      const nearest =
+        Math.round(angle / GUIDE_ANGLE_STEP) * GUIDE_ANGLE_STEP;
+      if (Math.abs(angle - nearest) > GUIDE_ANGLE_WINDOW) return to;
+
+      const direction = Vec2.of(Math.cos(nearest), Math.sin(nearest));
+      return from.plus(direction.times(reach.dot(direction)));
     };
 
     const renderablePath = (): RenderablePathSpec => {
@@ -576,7 +656,10 @@ export function createNotebookSmoothPenStrokeFactory(
         // Already a line: the pen is aiming its far end, not adding to a path.
         if (straightened) {
           if (next.distanceTo(straightened.to) >= minimumStep) {
-            straightened = { from: straightened.from, to: next };
+            straightened = {
+              from: straightened.from,
+              to: aimedAt(straightened.from, next),
+            };
           }
           return;
         }
