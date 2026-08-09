@@ -47,7 +47,17 @@ export type NotebookPenFeel = {
  * so the line goes exactly where it was taken -- wobble included.
  */
 const NO_SMOOTHING: NotebookPenFeel = {
-  cornerDegrees: 18,
+  /*
+   * Low enough that an ordinary turn is a turn.
+   *
+   * This was 18, which sounds faithful and is not: the threshold is what a
+   * turn has to exceed to survive as a point, and the turns handwriting is
+   * made of -- the shoulder of an 'n', the corner of a 'z', the change of
+   * direction at the top of a stem -- run from about twenty degrees up. At 18
+   * they only just cleared it, and at any setting above None they did not,
+   * which is why turning still felt assisted however far the slider came down.
+   */
+  cornerDegrees: 8,
   easeTowardsNeighbours: 0,
   cornerDominance: 1,
 };
@@ -88,11 +98,32 @@ export function getNotebookPenFeel(smoothingPercent: number): NotebookPenFeel {
   const towards = clampNotebookPenSmoothing(smoothingPercent) / 100;
   const between = (from: number, to: number) => from + (to - from) * towards;
 
+  /*
+   * The corner threshold rises slowly at first and steeply at the end.
+   *
+   * Straight interpolation put it at 34 degrees a quarter of the way along and
+   * 50 at the halfway point -- and handwriting turns are twenty to fifty
+   * degrees, so from Light upwards nearly every one of them was already being
+   * carried through as a curve. The slider had a faithful end and a smoothed
+   * end with almost nothing between: turning felt assisted wherever it was set.
+   *
+   * So the threshold now climbs slowly through the first half of the travel and
+   * quickly through the second, which gives the low settings to the range a
+   * hand actually turns in.
+   *
+   * Squaring it outright was the first attempt and went too far the other way:
+   * it dropped the default from 58 degrees to 36, and cursive at a small
+   * x-height went straight back to being drawn as a run of chords -- the
+   * complaint the default exists to answer. This leaves the default where it
+   * was and takes the slack out of the bottom instead.
+   */
+  const easedTowards = towards * towards * (3 - 2 * towards);
+
   return {
-    cornerDegrees: between(
-      NO_SMOOTHING.cornerDegrees,
-      FULL_SMOOTHING.cornerDegrees
-    ),
+    cornerDegrees:
+      NO_SMOOTHING.cornerDegrees +
+      (FULL_SMOOTHING.cornerDegrees - NO_SMOOTHING.cornerDegrees) *
+        easedTowards,
     easeTowardsNeighbours: between(
       NO_SMOOTHING.easeTowardsNeighbours,
       FULL_SMOOTHING.easeTowardsNeighbours
