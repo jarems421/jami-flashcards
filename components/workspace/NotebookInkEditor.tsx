@@ -979,7 +979,24 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         } else if (
           type === "pointermove" &&
           (activeTool === "pen" || activeTool === "highlighter") &&
-          pointerJsDraw
+          pointerJsDraw &&
+          /*
+           * Only while this contact is actually down.
+           *
+           * A Pencil reports pointermove as it hovers, before it has touched
+           * anything and after it has left, and a mouse reports it whenever it
+           * crosses the page. Without this, every one of those was fed to
+           * js-draw as drawing input on the fast path below -- so the stroke
+           * went on growing after the pen had been lifted, following it through
+           * the air.
+           *
+           * `buttons` is the second half of it. A contact can end without this
+           * component seeing the up -- capture lost to a system gesture, a
+           * pointer cancelled out from under it -- and the browser is the only
+           * one that always knows whether anything is currently pressed.
+           */
+          pointerLifecycleRef.current?.isDown(event.pointerId) &&
+          event.buttons !== 0
         ) {
           // Safari groups high-frequency Pencil input into coalesced packets.
           // Feed those exact points through js-draw's normal tool pipeline,

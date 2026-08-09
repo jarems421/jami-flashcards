@@ -89,6 +89,11 @@ export class NotebookInkPointerLifecycle {
     return this.activePointers.get(pointerId)?.generation === generation;
   }
 
+  /** Whether this particular contact is between its down and its up. */
+  isDown(pointerId: number) {
+    return this.activePointers.has(pointerId);
+  }
+
   reset() {
     this.activePointers.clear();
     this.pendingCaptureLosses.clear();

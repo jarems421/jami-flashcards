@@ -98,3 +98,41 @@ describe("notebook ink pointer lifecycle", () => {
     expect(lifecycle.begin(2).shouldCancelStaleGesture).toBe(true);
   });
 });
+
+/**
+ * A Pencil reports pointermove while it hovers, before it has touched anything
+ * and after it has left. Those moves used to reach the drawing path, so a
+ * stroke went on growing after the pen was lifted -- following it through the
+ * air.
+ */
+describe("knowing whether a contact is down", () => {
+  it("is true only between the down and the up", () => {
+    const lifecycle = new NotebookInkPointerLifecycle();
+
+    expect(lifecycle.isDown(1)).toBe(false);
+    lifecycle.begin(1);
+    expect(lifecycle.isDown(1)).toBe(true);
+    // A different pencil, or a finger, is not this contact.
+    expect(lifecycle.isDown(2)).toBe(false);
+
+    lifecycle.finish({ pointerId: 1, expectCaptureLoss: false, timeStamp: 0 });
+    expect(lifecycle.isDown(1)).toBe(false);
+  });
+
+  it("forgets a contact that was cancelled rather than lifted", () => {
+    const lifecycle = new NotebookInkPointerLifecycle();
+    lifecycle.begin(7);
+    lifecycle.reset();
+    expect(lifecycle.isDown(7)).toBe(false);
+  });
+
+  it("follows the newest contact when one replaces another", () => {
+    // Starting a stroke clears whatever was active, so a stale pointer that
+    // never reported its up cannot leave the gate propped open.
+    const lifecycle = new NotebookInkPointerLifecycle();
+    lifecycle.begin(3);
+    lifecycle.begin(4);
+    expect(lifecycle.isDown(3)).toBe(false);
+    expect(lifecycle.isDown(4)).toBe(true);
+  });
+});
