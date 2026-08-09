@@ -1,6 +1,10 @@
 import { deleteField, doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
+import {
+  normalizeStudyLevel,
+  type StudyLevel,
+} from "@/lib/profile/study-level";
 
 export const MAX_USERNAME_LENGTH = 32;
 
@@ -38,4 +42,31 @@ export async function saveInAppUsername(userId: string, username: string) {
   invalidateDashboardData(userId);
 
   return nextUsername || null;
+}
+
+export async function loadDefaultStudyLevel(
+  userId: string
+): Promise<StudyLevel | null> {
+  const snapshot = await getDoc(doc(db, "users", userId));
+  if (!snapshot.exists()) return null;
+
+  return normalizeStudyLevel(snapshot.data().defaultStudyLevel) ?? null;
+}
+
+export async function saveDefaultStudyLevel(
+  userId: string,
+  level: StudyLevel | null
+) {
+  const normalizedLevel = normalizeStudyLevel(level);
+  await setDoc(
+    doc(db, "users", userId),
+    {
+      defaultStudyLevel: normalizedLevel ?? deleteField(),
+      updatedAt: Date.now(),
+    },
+    { merge: true }
+  );
+  invalidateDashboardData(userId);
+
+  return normalizedLevel ?? null;
 }

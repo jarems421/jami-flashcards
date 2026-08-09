@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import StudyLevelSelect from "@/components/study/StudyLevelSelect";
 import FolderObjectCard from "@/components/workspace/FolderObjectCard";
 import { ObjectStylePicker } from "@/components/workspace/ObjectStylePicker";
 import { Button, Card, ConfirmDialog, Input } from "@/components/ui";
@@ -10,6 +11,7 @@ import {
   type ObjectColorId,
   type ObjectIconId,
 } from "@/lib/workspace/object-card-styles";
+import type { StudyLevel } from "@/lib/profile/study-level";
 import {
   MAX_STUDY_FOLDER_SUBJECT_LENGTH,
   type StudyFolder,
@@ -38,6 +40,9 @@ export default function FolderEditor({
 }: FolderEditorProps) {
   const [name, setName] = useState(folder.name);
   const [subject, setSubject] = useState(folder.subject ?? "");
+  const [studyLevel, setStudyLevel] = useState<StudyLevel | "">(
+    folder.studyLevel ?? ""
+  );
   const [color, setColor] = useState<ObjectColorId>(normalizeObjectColor(folder.color));
   const [icon, setIcon] = useState<ObjectIconId>(normalizeObjectIcon(folder.icon));
   const [saving, setSaving] = useState(false);
@@ -46,11 +51,18 @@ export default function FolderEditor({
   const save = async () => {
     setSaving(true);
     try {
-      await updateStudyFolder(userId, folder.id, { name, subject, color, icon });
+      await updateStudyFolder(userId, folder.id, {
+        name,
+        subject,
+        studyLevel: studyLevel || null,
+        color,
+        icon,
+      });
       onSaved({
         ...folder,
         name: name.trim() || folder.name,
         subject: subject.trim() || undefined,
+        studyLevel: studyLevel || undefined,
         color,
         icon,
         updatedAt: Date.now(),
@@ -82,7 +94,7 @@ export default function FolderEditor({
         <div className="text-center sm:text-left">
           <div className="text-sm font-semibold text-text-primary">Edit folder</div>
           <p className="mt-0.5 text-xs text-text-muted">
-            Update the folder name, subject detail, colour, or icon.
+            Update how this study space looks and how Jami explains its material.
           </p>
         </div>
         <div className="mx-auto mt-4 grid max-w-[28rem] gap-3 sm:grid-cols-[minmax(0,18rem)_8.5rem] sm:items-start">
@@ -99,6 +111,12 @@ export default function FolderEditor({
               placeholder="Optional"
               maxLength={MAX_STUDY_FOLDER_SUBJECT_LENGTH}
               onChange={(event) => setSubject(event.target.value)}
+            />
+            <StudyLevelSelect
+              value={studyLevel}
+              emptyLabel="Use account default"
+              description="Overrides your account preference only inside this folder."
+              onChange={setStudyLevel}
             />
           </div>
           <div className="app-subtle-panel rounded-md p-2">
