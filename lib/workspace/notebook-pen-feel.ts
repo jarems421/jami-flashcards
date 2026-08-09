@@ -29,6 +29,17 @@ export type NotebookPenFeel = {
    * neighbours, as a fraction of the way there.
    */
   easeTowardsNeighbours: number;
+  /**
+   * How much sharper than the turns either side of it a turn must be before it
+   * is drawn as a corner.
+   *
+   * One is no requirement at all: any turn past `cornerDegrees` is a point,
+   * which is what "None" has to mean. Above one, a turn also has to stand out
+   * from its neighbours, which is what stops a tightly drawn curve being read
+   * as a run of corners -- but it is smoothing, and applying it at the faithful
+   * end quietly rounded off turns somebody had asked to keep.
+   */
+  cornerDominance: number;
 };
 
 /**
@@ -38,6 +49,7 @@ export type NotebookPenFeel = {
 const NO_SMOOTHING: NotebookPenFeel = {
   cornerDegrees: 18,
   easeTowardsNeighbours: 0,
+  cornerDominance: 1,
 };
 
 /**
@@ -64,6 +76,7 @@ const NO_SMOOTHING: NotebookPenFeel = {
 const FULL_SMOOTHING: NotebookPenFeel = {
   cornerDegrees: 82,
   easeTowardsNeighbours: 0.34,
+  cornerDominance: 1.7,
 };
 
 export function clampNotebookPenSmoothing(value: number) {
@@ -83,6 +96,10 @@ export function getNotebookPenFeel(smoothingPercent: number): NotebookPenFeel {
     easeTowardsNeighbours: between(
       NO_SMOOTHING.easeTowardsNeighbours,
       FULL_SMOOTHING.easeTowardsNeighbours
+    ),
+    cornerDominance: between(
+      NO_SMOOTHING.cornerDominance,
+      FULL_SMOOTHING.cornerDominance
     ),
   };
 }

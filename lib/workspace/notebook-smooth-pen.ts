@@ -170,6 +170,15 @@ const STRAIGHTEN_MAXIMUM_BOW = 0.32;
  * The window can be wider than a hard one could be, because being inside it no
  * longer commits to anything.
  */
+/**
+ * Below this, the two directions through a point have cancelled.
+ *
+ * The sum of two unit vectors is twice the cosine of half the turn between
+ * them, so this is a turn of about 179.5 degrees -- a reversal by any reading,
+ * and far past the hundred at which the corner rule stops asking questions.
+ */
+const REVERSAL_BISECTOR_FLOOR = 0.01;
+
 const GUIDE_ANGLE_STEP = Math.PI / 4;
 const GUIDE_ANGLE_WINDOW = (8 * Math.PI) / 180;
 
@@ -216,26 +225,26 @@ const STRAIGHTEN_MINIMUM_SPAN_RATIO = 8;
  */
 const MINIMUM_CORNER_ARM_RATIO = MINIMUM_STEP_RATIO * 1.5;
 
-/**
- * How much sharper than the turns either side of it a turn must be to count as
- * a corner.
+/*
+ * Why a turn has to stand out from its neighbours before it is a corner, and
+ * why that is a setting rather than a rule -- see `cornerDominance`.
  *
  * The angle alone cannot tell a corner from a curve, because it depends on how
- * far apart the points are -- and thinning spaces points by curvature, so the
+ * far apart the points are, and thinning spaces points by curvature: the
  * tighter the curve the further it turns between one kept point and the next. A
  * small 'o' turns about fifty degrees a step, which is over any threshold low
- * enough to catch the cusp between two letters. So every point on it was drawn
- * as a corner, and since a corner takes its control arms from the strokes
- * either side, two in a row put both arms on the chord and the segment between
- * them came out as a literal straight line. Measured at a 12px 'o': three
- * kinked joins and two straight runs, which is a polygon.
+ * enough to catch the cusp between two letters, so every point on it was drawn
+ * as a corner -- and two corners in a row put both control arms on the chord
+ * between them, so the piece came out as a literal straight line.
  *
- * What actually separates the two is that a corner is *local*. Turning is
- * concentrated at one point and its neighbours are comparatively straight,
- * where on a curve every point turns about the same amount. That test does not
- * care how the points happen to be spaced.
+ * What separates them is that a corner is local: turning is concentrated at one
+ * point and its neighbours are comparatively straight, where on a curve every
+ * point turns about the same amount.
+ *
+ * But that is smoothing, and it does not belong at the faithful end of the
+ * slider. Applied there it rounded off turns somebody had explicitly asked to
+ * keep, which is what "even on 0 smoothness the ink is forced into a curve" was.
  */
-const CORNER_DOMINANCE = 1.7;
 
 /**
  * The run each side of a point that its turn is measured over, in screen
@@ -279,7 +288,7 @@ export function createNotebookSmoothPenStrokeFactory(
   feel: NotebookPenFeel = getNotebookPenFeel(NOTEBOOK_PEN_SMOOTHING_DEFAULT)
 ): ComponentBuilderFactory {
   const { PathCommandType, Rect2, Stroke, Vec2 } = jsDraw;
-  const { cornerDegrees, easeTowardsNeighbours } = feel;
+  const { cornerDegrees, cornerDominance, easeTowardsNeighbours } = feel;
 
   return (startPoint: StrokeDataPoint, viewport: Viewport): ComponentBuilder => {
     const color: Color4 = startPoint.color;
@@ -400,7 +409,7 @@ export function createNotebookSmoothPenStrokeFactory(
      *
      * Sharp enough on its own settles it. Otherwise the turn has to stand out
      * from the ones either side of it, which is what tells a deliberate point
-     * from a curve drawn tightly -- see `CORNER_DOMINANCE`.
+     * from a curve drawn tightly -- see `cornerDominance`.
      */
     const cornersAlong = (shape: Point2[]) => {
       const turns = turnsAlong(shape);
@@ -408,7 +417,7 @@ export function createNotebookSmoothPenStrokeFactory(
         if (turn >= unmistakableCorner) return true;
         if (turn < cornerRadians) return false;
         const around = Math.max(turns[index - 1] ?? 0, turns[index + 1] ?? 0);
-        return turn >= around * CORNER_DOMINANCE;
+        return turn >= around * cornerDominance;
       });
     };
 
@@ -643,7 +652,22 @@ export function createNotebookSmoothPenStrokeFactory(
          * to be smoothing. Normalising first weighs the two equally, so the
          * tangent bisects the turn however lopsided the spacing.
          */
-        return arriving.normalized().plus(leaving.normalized());
+        const bisector = arriving.normalized().plus(leaving.normalized());
+        /*
+         * Two opposite directions cancel, and normalising what is left is
+         * normalising rounding error -- the arm then points somewhere arbitrary
+         * and the curve leaving the point can set off backwards.
+         *
+         * A turn that sharp is a reversal, so the strokes either side of it are
+         * the honest answer anyway. The guard is here rather than left to the
+         * corner rule because the two measure the turn over different runs, and
+         * a near-reversal between two points a pixel apart can pass one while
+         * degenerating the other.
+         */
+        if (bisector.magnitude() < REVERSAL_BISECTOR_FLOOR) {
+          return outgoing ? leaving : arriving;
+        }
+        return bisector;
       };
 
       const commands: PathCommand[] = [];

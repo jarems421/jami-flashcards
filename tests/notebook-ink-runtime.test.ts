@@ -16,6 +16,20 @@ import {
 describe("relaxNotebookStraightenHold", () => {
   it("gives the detector a threshold a resting hand can meet", () => {
     expect(NOTEBOOK_STRAIGHTEN_HOLD.maxSpeed).toBeGreaterThan(8.5);
+
+    /*
+     * And does not buy that by making the snap easy to trip while writing.
+     *
+     * With the timer running for a second, the drift allowance is what decides
+     * how slowly somebody can be writing and still snap by accident: staying
+     * inside it for the whole second is only possible below `maxRadius` pixels
+     * a second. That band was briefly doubled, and a snap mid-word does not
+     * merely tidy the stroke -- everything drawn after it becomes a line
+     * swinging around after the pen.
+     */
+    const accidentalBelow =
+      NOTEBOOK_STRAIGHTEN_HOLD.maxRadius / NOTEBOOK_STRAIGHTEN_HOLD.minTimeSeconds;
+    expect(accidentalBelow).toBeLessThanOrEqual(11);
     // Longer than js-draw's half second, on purpose: half a second of
     // stillness happens in the middle of ordinary writing, and it is the pause
     // that is being asked about rather than the shape of the stroke.

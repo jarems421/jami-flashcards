@@ -212,13 +212,33 @@ export function keepNotebookStraightenedLineAimable(pen: object) {
  * is really being asked about.
  */
 export const NOTEBOOK_STRAIGHTEN_HOLD = {
-  /** Screen pixels a second, averaged. Room for a hand, not for a stroke. */
-  maxSpeed: 42,
-  /** How far the tip may drift over the hold, in screen pixels. */
-  maxRadius: 16,
+  /**
+   * Screen pixels a second, averaged. Room for a hand, not for a stroke.
+   *
+   * This was the broken one: 8.5 is under a seventh of a pixel per frame and a
+   * hand resting a stylus on glass never gets there, so the timer restarted on
+   * every tremor and the snap arrived late or not at all.
+   */
+  maxSpeed: 25,
+  /**
+   * How far the tip may drift over the hold, in screen pixels.
+   *
+   * Left near js-draw's, and that matters more than it looks: with the timer
+   * running for a second, this is what decides how slowly somebody can be
+   * writing and still trip the snap by accident. Ten pixels of drift over a
+   * second means anything above ten pixels a second is safe. Raising it to
+   * sixteen, as this briefly was, doubled the band of speeds that could snap
+   * mid-word -- and a snap mid-word does not just tidy the stroke, it turns the
+   * rest of it into a line that swings around after the pen.
+   */
+  maxRadius: 10,
+  /**
+   * Longer than js-draw's half second on purpose. Half a second of stillness
+   * happens in the middle of ordinary writing; a second is a deliberate pause,
+   * and it is the pause being asked about rather than the shape of the stroke.
+   */
   minTimeSeconds: 1,
 };
-
 type NotebookStationaryPen = {
   stationaryDetector?: { config?: Record<string, number> } | null;
   onPointerDown?: (...args: unknown[]) => unknown;

@@ -256,6 +256,37 @@ describe("pen smoothing", () => {
     }
   });
 
+  it("keeps every turn at the faithful end, which is what None means", async () => {
+    /*
+     * A turn only counts as a corner if it also stands out from the turns
+     * either side of it -- which is what stops a tightly drawn curve being read
+     * as a run of corners, and is exactly the wrong thing to do at zero.
+     * Applied there it quietly rounded off turns somebody had asked to keep,
+     * and the setting that promises "every turn you make is drawn as a point"
+     * stopped keeping them.
+     */
+    expect(getNotebookPenFeel(0).cornerDominance).toBe(1);
+    expect(getNotebookPenFeel(100).cornerDominance).toBeGreaterThan(1);
+
+    // A turn well past the threshold, sitting among others just like it: the
+    // shape a tight curve makes, and the case the dominance rule exists for.
+    // Tight enough that the line turns well past the faithful threshold
+    // between one kept point and the next, which is the whole situation the
+    // dominance rule was added for.
+    const points = Array.from({ length: 60 }, (_, step) => {
+      const turn = (step / 59) * Math.PI;
+      return point(120 + Math.cos(turn) * 12, 220 + Math.sin(turn) * 12);
+    });
+
+    const faithful = Math.max(...joinTurns(build(points, 0)), 0);
+    const flowing = Math.max(...joinTurns(build(points, 100)), 0);
+
+    // None keeps them; Strong carries them through. That difference is the
+    // entire point of the slider.
+    expect(faithful).toBeGreaterThan(5);
+    expect(flowing).toBeLessThan(1);
+  });
+
   it("moves both controls together and only within their bounds", () => {
     const faithful = getNotebookPenFeel(0);
     const flowing = getNotebookPenFeel(100);
