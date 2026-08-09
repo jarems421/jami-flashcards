@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const tabBar = readFileSync(
   join(process.cwd(), "components/layout/TabBar.tsx"),
-  "utf8"
+  "utf8",
 );
 
 type Tab = { label: string; group: string; icon: string };
@@ -13,7 +13,7 @@ type Tab = { label: string; group: string; icon: string };
 function readTabs(): Tab[] {
   const blocks = tabBar
     .slice(tabBar.indexOf("const tabs: Tab[] = ["), tabBar.indexOf("\n];"))
-    .split("  {\n")
+    .split(/  \{\r?\n/)
     .slice(1);
 
   return blocks.map((block) => ({
@@ -24,7 +24,16 @@ function readTabs(): Tab[] {
 }
 
 const ARGUMENT_COUNTS: Record<string, number> = {
-  m: 2, l: 2, h: 1, v: 1, c: 6, s: 4, q: 4, t: 2, a: 7, z: 0,
+  m: 2,
+  l: 2,
+  h: 1,
+  v: 1,
+  c: 6,
+  s: 4,
+  q: 4,
+  t: 2,
+  a: 7,
+  z: 0,
 };
 
 /**
@@ -76,7 +85,9 @@ function readArguments(raw: string, isArc: boolean): number[] | null {
  * looks like a design choice rather than a typo.
  */
 function findPathFault(pathData: string): string | null {
-  const commands = [...pathData.matchAll(/([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)/g)];
+  const commands = [
+    ...pathData.matchAll(/([MmLlHhVvCcSsQqTtAaZz])([^MmLlHhVvCcSsQqTtAaZz]*)/g),
+  ];
   if (commands.length === 0) return "no commands";
   if (!/^[Mm]/.test(pathData.trim())) return "does not start with a move";
 
@@ -123,7 +134,8 @@ describe("the sidebar", () => {
 
   it("describes each group by what is actually in it", () => {
     const loop = tabBar.match(/id: "loop"[^}]*helper: "([^"]*)"/)?.[1] ?? "";
-    const support = tabBar.match(/id: "support"[^}]*helper: "([^"]*)"/)?.[1] ?? "";
+    const support =
+      tabBar.match(/id: "support"[^}]*helper: "([^"]*)"/)?.[1] ?? "";
 
     // The loop caption used to promise "evidence", which was Progress.
     expect(loop).not.toMatch(/evidence/i);
@@ -155,23 +167,21 @@ describe("the sidebar", () => {
 });
 
 /**
- * The tutor's mark is her initial and her star. Everywhere the tutor is offered
- * shows the same one -- a student should recognise who they are about to talk
- * to before they read the label.
+ * The tutor's mark is a three-star constellation. Everywhere the tutor is
+ * offered shows the same one, so a student recognises who they are about to
+ * talk to before they read the label.
  */
 describe("Jami's own mark", () => {
   const icon = readFileSync(
     join(process.cwd(), "components/ui/JamiTutorIcon.tsx"),
-    "utf8"
+    "utf8",
   );
 
-  /** The letter first, then each star, straight out of the component. */
-  const shapes = () => [
-    icon.slice(icon.indexOf("const LETTER")).match(/"(M[^"]+)"/)![1],
-    ...[...icon.slice(icon.indexOf("const STARS")).matchAll(/"(M[^"]+)"/g)].map(
-      (match) => match[1]
-    ),
-  ];
+  /** Each star, straight out of the component. */
+  const shapes = () =>
+    [...icon.slice(icon.indexOf("const STARS")).matchAll(/"(M[^"]+)"/g)].map(
+      (match) => match[1],
+    );
 
   /**
    * The box a star occupies, by walking it.
@@ -196,9 +206,8 @@ describe("Jami's own mark", () => {
     return box;
   };
 
-  it("is a letter and three stars", () => {
-    const [letter, ...stars] = shapes();
-    expect(letter, "the letter").toBeDefined();
+  it("is three differently sized stars", () => {
+    const stars = shapes();
     expect(stars).toHaveLength(3);
 
     // Three different sizes: evenly matched stars read as a border around the
@@ -220,20 +229,19 @@ describe("Jami's own mark", () => {
     expect(tabBar).toContain('fill={strokeIcon ? "none" : "currentColor"}');
   });
 
-  it("draws the letter from lines and arcs rather than sampled points", () => {
-    // The version before this one was an outline of several hundred tiny
-    // straight runs, which facets as soon as the mark is drawn large. Exact
-    // geometry is both cleaner and a fraction of the size.
-    const [letter] = shapes();
-    expect(letter.length, letter).toBeLessThan(200);
-    expect(letter).toMatch(/a[\d.]/i);
-    expect((letter.match(/[Ll]/g) ?? []).length).toBeLessThan(4);
+  it("keeps each silhouette simple enough to stay crisp when small", () => {
+    for (const star of shapes()) {
+      expect(star.length, star).toBeLessThan(110);
+      expect(star).toMatch(/^M/);
+      expect(star).toMatch(/z$/i);
+      expect(star).not.toMatch(/[AaCcQq]/);
+    }
   });
 
   it("keeps every star inside the frame", () => {
     // A star pushed off the grid is invisible at the edge and clipped in a
     // round container, and neither shows up in a test that only counts shapes.
-    for (const star of shapes().slice(1)) {
+    for (const star of shapes()) {
       const box = extents(star);
       expect(box.left, star).toBeGreaterThanOrEqual(0);
       expect(box.right, star).toBeLessThanOrEqual(24);
@@ -268,12 +276,12 @@ describe("Jami's own mark", () => {
     }
   });
 
-  it("leaves the sparkle to the features that are not the tutor", () => {
-    // Card-back autocomplete is a different piece of AI, and saying it is Jami
-    // would promise a conversation that is not there.
+  it("keeps the generic Draft sparkle separate from the Tutor mark", () => {
+    // The two share a visual language, but card-back autocomplete remains a
+    // non-conversational drafting action rather than importing the Tutor mark.
     const autocomplete = readFileSync(
       join(process.cwd(), "components/decks/CardBackAutocomplete.tsx"),
-      "utf8"
+      "utf8",
     );
     expect(autocomplete).toContain("JamiSparklesIcon");
   });
