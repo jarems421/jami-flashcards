@@ -2,11 +2,16 @@ import {
   normalizeOptionalString,
   normalizeStringArray,
 } from "@/lib/material/content";
+import {
+  normalizeStudyLevel,
+  type StudyLevel,
+} from "@/lib/profile/study-level";
 
 export type StudyFolder = {
   id: string;
   name: string;
   subject?: string;
+  studyLevel?: StudyLevel;
   color?: string;
   icon?: string;
   topicIds: string[];
@@ -37,6 +42,7 @@ export function mapStudyFolderData(
     id,
     name: name || "Untitled folder",
     subject: normalizeStudyFolderSubject(data.subject),
+    studyLevel: normalizeStudyLevel(data.studyLevel),
     color: normalizeOptionalString(data.color, 80),
     icon: normalizeOptionalString(data.icon, 40),
     topicIds: normalizeStringArray(

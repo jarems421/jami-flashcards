@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useUser } from "@/components/providers/UserProvider";
 import AppPage from "@/components/layout/AppPage";
 import ProfilePhotoEditor from "@/components/profile/ProfilePhotoEditor";
+import StudyLevelPreferenceCard from "@/components/profile/StudyLevelPreferenceCard";
 import HowJamiWorksCard from "@/components/study/HowJamiWorksCard";
 import NotificationSettingsCard from "@/components/notifications/NotificationSettingsCard";
 import { Button, Card, Input, SectionHeader } from "@/components/ui";
@@ -332,6 +333,7 @@ export default function ProfilePage() {
         </Card>
 
         <div className="min-w-0 space-y-4 sm:space-y-6">
+          <StudyLevelPreferenceCard userId={user.uid} />
           <ThemePreferenceCard />
           <HowJamiWorksCard />
         </div>

@@ -151,6 +151,8 @@ beforeEach(() => {
     currentId: "card-1",
     currentLabel: "Current card",
     currentParts: [{ text: "Card front and answer" }],
+    studyLevelContext:
+      "Study-level preference: A level, IB or equivalent level (account default).",
     sources: [
       {
         id: "source-1",
@@ -227,7 +229,7 @@ describe("universal Jami assistant route", () => {
         }),
         request: expect.objectContaining({
           systemInstruction: expect.stringMatching(
-            /current context C1 is authoritative[\s\S]*valid TeX delimiters[\s\S]*BRIEF mode/
+            /A level, IB or equivalent[\s\S]*give it directly[\s\S]*specification defines expected scope[\s\S]*current context C1 is authoritative[\s\S]*valid TeX delimiters[\s\S]*BRIEF mode/
           ),
         }),
       })

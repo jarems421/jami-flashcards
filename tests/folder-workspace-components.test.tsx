@@ -47,6 +47,15 @@ function field(label: string) {
     : null;
 }
 
+function selectField(label: string) {
+  const labelElement = [...document.querySelectorAll("label")].find(
+    (element) => element.textContent === label
+  );
+  return labelElement
+    ? (document.getElementById(labelElement.htmlFor) as HTMLSelectElement | null)
+    : null;
+}
+
 function button(label: string, within: ParentNode = document) {
   return [...within.querySelectorAll<HTMLButtonElement>("button")].find(
     (candidate) => candidate.textContent?.trim() === label
@@ -60,6 +69,16 @@ function type(input: HTMLInputElement, value: string) {
       "value"
     )?.set?.call(input, value);
     input.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+}
+
+function select(input: HTMLSelectElement, value: string) {
+  act(() => {
+    Object.getOwnPropertyDescriptor(
+      HTMLSelectElement.prototype,
+      "value"
+    )?.set?.call(input, value);
+    input.dispatchEvent(new Event("change", { bubbles: true }));
   });
 }
 
@@ -103,6 +122,7 @@ describe("FolderEditor", () => {
 
     type(field("Folder name")!, "  Applied physics  ");
     type(field("Subject detail")!, "  Forces and motion  ");
+    select(selectField("Study level")!, "post-16-equivalent");
     await click(button("Save folder")!);
 
     expect(serviceMocks.updateStudyFolder).toHaveBeenCalledWith(
@@ -111,6 +131,7 @@ describe("FolderEditor", () => {
       expect.objectContaining({
         name: "  Applied physics  ",
         subject: "  Forces and motion  ",
+        studyLevel: "post-16-equivalent",
       })
     );
     expect(onSaved).toHaveBeenCalledWith(
@@ -118,6 +139,7 @@ describe("FolderEditor", () => {
         id: "folder-1",
         name: "Applied physics",
         subject: "Forces and motion",
+        studyLevel: "post-16-equivalent",
         updatedAt: expect.any(Number),
       })
     );

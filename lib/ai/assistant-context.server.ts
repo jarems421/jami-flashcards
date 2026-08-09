@@ -18,6 +18,7 @@ export type ResolvedJamiAssistantContext = {
   currentLabel: string;
   currentParts: AiContentPart[];
   sources: Source[];
+  studyLevelContext?: string;
 };
 
 export class JamiAssistantContextError extends Error {
