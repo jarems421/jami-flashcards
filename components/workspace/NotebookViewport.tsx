@@ -35,15 +35,8 @@ type NotebookSheetProps = {
   onPointerUp?: PointerEventHandler<HTMLDivElement>;
 };
 
-/*
- * The lift and the rim colour are in `globals.css`, against
- * `[data-notebook-sheet="true"]`, because both change with the theme: a page on
- * a near-black desk needs a pale hairline to be seen at all, and a page on a
- * pale one needs the opposite. There is no Tailwind class for "whichever of
- * those applies right now".
- */
 const NOTEBOOK_SHEET_BASE_CLASS =
-  "overflow-hidden rounded-sm after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-sm after:border after:content-['']";
+  "overflow-hidden rounded-sm shadow-none after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-sm after:border after:border-black after:content-['']";
 
 function getSheetStyle(
   geometry: NotebookViewportGeometry,

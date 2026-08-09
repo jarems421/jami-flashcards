@@ -45,15 +45,7 @@ describe("NotebookViewport", () => {
     expect(html).toContain("translate3d(-366px, 16px, 0)");
     expect(html).toContain("translate3d(100px, 16px, 0)");
     expect(html).toContain("translate3d(566px, 16px, 0)");
-    // Every sheet keeps an edge drawn above its ink, so a stroke taken to the
-    // margin stops cleanly instead of bleeding over it. The colour moved to
-    // CSS, because a page on a near-black desk needs a pale hairline and a page
-    // on a pale one needs a dark one, and no class expresses "whichever
-    // applies".
-    expect(html.match(/after:border\b/g)).toHaveLength(3);
-    expect(html).not.toContain("after:border-black");
-    // The lift is themed too, so it must not be pinned back to none here.
-    expect(html).not.toContain("shadow-none");
+    expect(html.match(/after:border-black/g)).toHaveLength(3);
     expect(html).not.toContain("box-border");
   });
 

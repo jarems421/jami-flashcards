@@ -192,27 +192,6 @@
     /* The ring on a selected swatch, page or option. Not a height. */
     --ring-selected: 0 0 0 3px var(--color-accent-muted);
 
-    /*
-     * A notebook page, lifted off the desk behind it.
-     *
-     * Not one of the four levels above, and deliberately: those describe a
-     * panel in a layout, where a page is a physical thing on a surface and is
-     * an order of magnitude bigger than any of them. A card's shadow under a
-     * sheet this size reads as a smudge along one edge.
-     *
-     * The blur is kept moderate all the same. The sheet is sized in pixels and
-     * those change every frame of a pinch, so its shadow is repainted every
-     * frame with it -- a dramatic one would be paid for in the smoothness of
-     * the zoom, which is the wrong trade on a drawing surface.
-     *
-     * The rim matters more than it looks. A dark shadow does nothing for a
-     * black page on a near-black desk, and that combination is reachable in
-     * three of the six themes; a hairline catching light along the edge is what
-     * separates them.
-     */
-    --notebook-page-lift: 0 18px 40px rgba(0, 0, 0, 0.5);
-    --notebook-page-edge: rgba(255, 255, 255, 0.17);
-
     /* Motion */
     --duration-fast: 160ms;
     --duration-normal: 260ms;
@@ -809,35 +788,6 @@
 
   .notebook-page-surface {
     touch-action: none;
-  }
-
-  /*
-   * The sheet, resting above the desk rather than drawn onto it.
-   *
-   * It used to carry `shadow-none` and a solid black edge, which is a rectangle
-   * printed on the background: nothing between the page and the surface, and an
-   * outline that only reads on a pale page.
-   *
-   * The rim sits on the same pseudo-element the outline did, above the ink, so
-   * a stroke taken right to the margin still stops at a clean edge instead of
-   * bleeding over it.
-   */
-  [data-notebook-sheet="true"] {
-    box-shadow: var(--notebook-page-lift);
-  }
-
-  [data-notebook-sheet="true"]::after {
-    border-color: var(--notebook-page-edge);
-  }
-
-  /*
-   * The two sheets waiting either side during a page swipe are hidden, but a
-   * shadow is painted outside the box and a hidden element's is not clipped by
-   * its own bounds -- so without this the next page's shadow creeps in at the
-   * edge of the current one before the swipe starts.
-   */
-  .notebook-page-swipe-preview {
-    box-shadow: none;
   }
 
   .notebook-page-track {
@@ -1471,16 +1421,6 @@
 
   .study-flashcard-face-back {
     background-color: var(--color-surface-panel-strong);
-  }
-
-  /*
-   * On a pale desk the page is the lighter thing, so the shadow does the work
-   * and the rim goes dark: a white hairline on white paper over a white desk
-   * is three shades of nothing.
-   */
-  body.app-theme-light {
-    --notebook-page-lift: 0 14px 32px rgba(15, 23, 42, 0.16);
-    --notebook-page-edge: rgba(15, 23, 42, 0.14);
   }
 
   body.app-theme-light .text-white {
