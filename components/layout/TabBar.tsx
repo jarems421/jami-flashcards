@@ -88,7 +88,7 @@ const tabs: Tab[] = [
     label: "Tutor",
     description: "Ask Jami, review drafts",
     group: "loop",
-    icon: "M5 4h14a3 3 0 013 3v8a3 3 0 01-3 3h-7l-4.8 3.4A1 1 0 016 20.4V18H5a3 3 0 01-3-3V7a3 3 0 013-3z M12 6.6l1.15 2.75L15.9 10.5l-2.75 1.15L12 14.4l-1.15-2.75L8.1 10.5l2.75-1.15z",
+    icon: "M12 2.5l1.25 3.75 3.75 1.25-3.75 1.25-1.25 3.75-1.25-3.75-3.75-1.25 3.75-1.25z M17.8 12l.85 2.35 2.35.85-2.35.85-.85 2.35-.85-2.35-2.35-.85 2.35-.85z M6 14.4l.55 1.65 1.65.55-1.65.55-.55 1.65-.55-1.65-1.65-.55 1.65-.55z",
   },
   {
     href: "/dashboard/goals",
@@ -130,15 +130,23 @@ const tabs: Tab[] = [
 ];
 
 const navGroups: { id: TabGroup; label: string; helper: string }[] = [
-  { id: "loop", label: "Learning loop", helper: "Today, memory, your work, and Jami" },
-  { id: "support", label: "Workspace", helper: "Material, goals, rewards, progress" },
+  {
+    id: "loop",
+    label: "Learning loop",
+    helper: "Today, memory, your work, and Jami",
+  },
+  {
+    id: "support",
+    label: "Workspace",
+    helper: "Material, goals, rewards, progress",
+  },
 ];
 
 function isActive(pathname: string, tab: Tab) {
   // Home is the only exact match; everything else owns its subtree.
   if (tab.href === "/dashboard") return pathname === "/dashboard";
   return [tab.href, ...(tab.owns ?? [])].some((route) =>
-    pathname.startsWith(route)
+    pathname.startsWith(route),
   );
 }
 
@@ -163,24 +171,13 @@ function NavIcon({ tab, active }: { tab: Tab; active: boolean }) {
       className={sizing}
     >
       {(typeof tab.icon === "string" ? [tab.icon] : tab.icon).map((shape) => (
-        <path
-          key={shape}
-          fillRule="evenodd"
-          clipRule="evenodd"
-          d={shape}
-        />
+        <path key={shape} fillRule="evenodd" clipRule="evenodd" d={shape} />
       ))}
     </svg>
   );
 }
 
-function DesktopNavItem({
-  tab,
-  active,
-}: {
-  tab: Tab;
-  active: boolean;
-}) {
+function DesktopNavItem({ tab, active }: { tab: Tab; active: boolean }) {
   return (
     <Link
       href={tab.href}
@@ -208,7 +205,9 @@ function DesktopNavItem({
         <NavIcon tab={tab} active={active} />
       </IconBubble>
       <span className="hidden min-w-0 lg:block">
-        <span className="block truncate text-sm font-semibold">{tab.label}</span>
+        <span className="block truncate text-sm font-semibold">
+          {tab.label}
+        </span>
         <span className="mt-0.5 block truncate text-xs text-text-muted">
           {tab.description}
         </span>
@@ -217,13 +216,7 @@ function DesktopNavItem({
   );
 }
 
-function MobileNavItem({
-  tab,
-  active,
-}: {
-  tab: Tab;
-  active: boolean;
-}) {
+function MobileNavItem({ tab, active }: { tab: Tab; active: boolean }) {
   return (
     <Link
       href={tab.href}
@@ -236,7 +229,9 @@ function MobileNavItem({
           : "text-text-muted active:text-text-primary"
       }`}
     >
-      {active ? <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-warm-accent" /> : null}
+      {active ? (
+        <span className="absolute inset-x-5 top-1 h-0.5 rounded-full bg-warm-accent" />
+      ) : null}
       <NavIcon tab={tab} active={active} />
       <span className={active ? "font-semibold" : "font-medium"}>
         {tab.mobileLabel ?? tab.label}
@@ -289,7 +284,11 @@ export default function TabBar({
     const nav = mobileNavRef.current;
     if (!nav) return;
     const active = nav.querySelector<HTMLElement>("[aria-current='page']");
-    active?.scrollIntoView({ inline: "center", block: "nearest", behavior: "smooth" });
+    active?.scrollIntoView({
+      inline: "center",
+      block: "nearest",
+      behavior: "smooth",
+    });
   }, [pathname]);
 
   const handleTouchStart = (event: TouchEvent<HTMLElement>) => {
@@ -308,7 +307,12 @@ export default function TabBar({
     const moveX = event.touches[0]?.clientX ?? null;
     const moveY = event.touches[0]?.clientY ?? null;
 
-    if (startX === null || startY === null || moveX === null || moveY === null) {
+    if (
+      startX === null ||
+      startY === null ||
+      moveX === null ||
+      moveY === null
+    ) {
       return;
     }
 
@@ -357,7 +361,7 @@ export default function TabBar({
 
   const handleSidebarTouchMove = (
     event: TouchEvent<HTMLElement>,
-    action: "hide" | "show"
+    action: "hide" | "show",
   ) => {
     if (sidebarSwipeHandledRef.current) {
       return;
@@ -368,7 +372,12 @@ export default function TabBar({
     const moveX = event.touches[0]?.clientX ?? null;
     const moveY = event.touches[0]?.clientY ?? null;
 
-    if (startX === null || startY === null || moveX === null || moveY === null) {
+    if (
+      startX === null ||
+      startY === null ||
+      moveX === null ||
+      moveY === null
+    ) {
       return;
     }
 
@@ -385,7 +394,7 @@ export default function TabBar({
 
   const handleSidebarTouchEnd = (
     event: TouchEvent<HTMLElement>,
-    action: "hide" | "show"
+    action: "hide" | "show",
   ) => {
     const startX = sidebarTouchStartXRef.current;
     const startY = sidebarTouchStartYRef.current;
@@ -469,14 +478,18 @@ export default function TabBar({
         onTouchMove={(event) => handleSidebarTouchMove(event, "hide")}
         onTouchEnd={(event) => handleSidebarTouchEnd(event, "hide")}
         className={`app-nav fixed inset-y-4 left-4 z-30 hidden w-[5rem] flex-col rounded-2xl border-[1.5px] border-[var(--nav-shell-border)] bg-[var(--nav-shell-bg)] p-2 shadow-nav-shell backdrop-blur-xl transition duration-300 md:flex lg:w-64 ${
-          desktopHidden ? "pointer-events-none -translate-x-[calc(100%+1.5rem)] opacity-0" : "translate-x-0 opacity-100"
+          desktopHidden
+            ? "pointer-events-none -translate-x-[calc(100%+1.5rem)] opacity-0"
+            : "translate-x-0 opacity-100"
         }`}
       >
         <div className="flex flex-col items-center gap-2 border-b border-[var(--color-border)] px-1 pb-3 pt-2 lg:flex-row lg:justify-between lg:px-2">
           <div className="flex min-w-0 items-center gap-3">
             <BrandMark size="md" />
             <div className="hidden min-w-0 lg:block">
-              <div className="text-base font-semibold text-text-primary">Jami</div>
+              <div className="text-base font-semibold text-text-primary">
+                Jami
+              </div>
               <div className="mt-0.5 truncate text-xs text-text-muted">
                 Learning loop
               </div>
