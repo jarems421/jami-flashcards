@@ -102,8 +102,8 @@ function cursive(xHeight: number, spread = 2.2) {
 const kinkCount = (stroke: Stroke) =>
   joinTurns(stroke).filter((turn) => turn > 1).length;
 
-/** How far the drawn line ends up from the points the pen actually visited. */
-function meanDeviation(stroke: Stroke, points: StrokeDataPoint[]) {
+/** Samples the committed cubic path closely enough to catch a visible lobe. */
+function sampledStrokePoints(stroke: Stroke) {
   const path = stroke.getParts()[0].path;
   const drawn: Array<{ x: number; y: number }> = [];
   let from = path.startPoint;
@@ -130,6 +130,13 @@ function meanDeviation(stroke: Stroke, points: StrokeDataPoint[]) {
     }
     from = part.endPoint;
   }
+
+  return drawn;
+}
+
+/** How far the drawn line ends up from the points the pen actually visited. */
+function meanDeviation(stroke: Stroke, points: StrokeDataPoint[]) {
+  const drawn = sampledStrokePoints(stroke);
 
   let total = 0;
   for (const sample of points) {
@@ -207,6 +214,42 @@ describe("pen smoothing", () => {
       Math.max(0, ...joinTurns(build(bend, NOTEBOOK_PEN_SMOOTHING_DEFAULT)))
     ).toBeGreaterThan(50);
     expect(Math.max(0, ...joinTurns(build(bend, 100)))).toBeLessThan(1);
+  });
+
+  it("does not turn a tiny fast-stroke backstep into outward loops", () => {
+    /*
+     * Coalesced stylus packets can leave one short sideways/backwards sample
+     * between much longer forward runs. Corner detection deliberately reaches
+     * across that sample because its angle is mostly digitiser noise. The
+     * curve tangent must use the same reach: letting the tiny local segment aim
+     * a long neighbouring control arm bends the ink several pixels outside the
+     * narrow band the pen actually visited, once per noisy sample.
+     */
+    const points = [
+      point(0, 100),
+      point(24, 100),
+      point(23, 102),
+      point(48, 100),
+      point(72, 100),
+    ];
+
+    for (const smoothing of [
+      0,
+      25,
+      50,
+      NOTEBOOK_PEN_SMOOTHING_DEFAULT,
+      75,
+      100,
+    ]) {
+      const drawn = sampledStrokePoints(build(points, smoothing));
+      const ys = drawn.map(({ y }) => y);
+      expect(Math.min(...ys), `smoothing ${smoothing}`).toBeGreaterThanOrEqual(
+        99.75
+      );
+      expect(Math.max(...ys), `smoothing ${smoothing}`).toBeLessThanOrEqual(
+        102.25
+      );
+    }
   });
 
   it("buys fewer corners without the line fighting the hand", () => {

@@ -355,6 +355,38 @@ export function createNotebookSmoothPenStrokeFactory(
     const shapePoints = () => (pending ? [...points, pending] : points);
 
     /**
+     * The neighbours far enough away for a direction through `index` to mean
+     * more than one short digitiser wobble.
+     *
+     * The same reach has to govern both corner detection and curve tangents.
+     * Using it only to decide that a short sideways/backwards sample was not a
+     * corner, then letting that sample aim the tangent anyway, gives a tiny
+     * noisy step control of the much longer cubic beside it. During fast
+     * writing that produces an outward lobe for every uneven packet.
+     */
+    const turnNeighbourIndicesAt = (shape: Point2[], index: number) => {
+      const last = shape.length - 1;
+      const here = shape[index];
+      let back = Math.max(0, index - 1);
+      while (
+        back > 0 &&
+        index - back < TURN_ARM_MAXIMUM_REACH &&
+        here.distanceTo(shape[back]) < turnArm
+      ) {
+        back -= 1;
+      }
+      let forward = Math.min(last, index + 1);
+      while (
+        forward < last &&
+        forward - index < TURN_ARM_MAXIMUM_REACH &&
+        here.distanceTo(shape[forward]) < turnArm
+      ) {
+        forward += 1;
+      }
+      return { back, forward };
+    };
+
+    /**
      * How far the line turns at each point, in radians. Ends count as none.
      *
      * A turn measured across a run barely longer than the pen's own step is
@@ -375,23 +407,7 @@ export function createNotebookSmoothPenStrokeFactory(
       const last = shape.length - 1;
       for (let index = 1; index < last; index += 1) {
         const here = shape[index];
-        let back = index - 1;
-        while (
-          back > 0 &&
-          index - back < TURN_ARM_MAXIMUM_REACH &&
-          here.distanceTo(shape[back]) < turnArm
-        ) {
-          back -= 1;
-        }
-        let forward = index + 1;
-        while (
-          forward < last &&
-          forward - index < TURN_ARM_MAXIMUM_REACH &&
-          here.distanceTo(shape[forward]) < turnArm
-        ) {
-          forward += 1;
-        }
-
+        const { back, forward } = turnNeighbourIndicesAt(shape, index);
         const arriving = here.minus(shape[back]);
         const leaving = shape[forward].minus(here);
         if (arriving.magnitude() === 0 || leaving.magnitude() === 0) continue;
@@ -630,15 +646,29 @@ export function createNotebookSmoothPenStrokeFactory(
        * the point survives.
        */
       const tangentAt = (index: number, outgoing: boolean) => {
-        const previous = at(index - 1);
         const here = at(index);
-        const next = at(index + 1);
+        const immediatePrevious = at(index - 1);
+        const immediateNext = at(index + 1);
+        if (corners[index]) {
+          const arriving = here.minus(immediatePrevious);
+          const leaving = immediateNext.minus(here);
+          return outgoing ? leaving : arriving;
+        }
+
+        /*
+         * Match the wider measurement that decided this was a curve. A point
+         * too close to carry a trustworthy angle is also too close to aim a
+         * long control arm; otherwise sparse fast input grows a row of loops
+         * outside the narrow band the pen visited.
+         */
+        const { back, forward } = turnNeighbourIndicesAt(raw, index);
+        const previous = at(back);
+        const next = at(forward);
         const arriving = here.minus(previous);
         const leaving = next.minus(here);
         if (arriving.magnitude() === 0 || leaving.magnitude() === 0) {
           return next.minus(previous);
         }
-        if (corners[index]) return outgoing ? leaving : arriving;
         /*
          * The direction through the point, taken from the two segments as
          * directions rather than as the chord between the outer points.
