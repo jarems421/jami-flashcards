@@ -835,7 +835,7 @@ export default function FolderDetailPage() {
         {activeTab === "notebooks" ? (
           <section className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <SectionHeader eyebrow="Notebooks" title="Workbooks" />
+              <SectionHeader title="Notebooks" />
               <div className="flex flex-wrap gap-2">
                 <Button type="button" size="sm" onClick={openNotebookForm}>
                   Create notebook
@@ -923,7 +923,7 @@ export default function FolderDetailPage() {
         {activeTab === "decks" ? (
           <section className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <SectionHeader eyebrow="Decks" title="Flashcard decks" />
+              <SectionHeader title="Decks" />
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"
@@ -991,7 +991,7 @@ export default function FolderDetailPage() {
         {activeTab === "sources" ? (
           <section className="space-y-4">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-              <SectionHeader eyebrow="Sources" title="Saved sources" />
+              <SectionHeader title="Sources" />
               <div className="flex flex-wrap gap-2">
                 <Button
                   type="button"

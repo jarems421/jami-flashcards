@@ -115,7 +115,6 @@ export default function CardBrowserWorkspace({
       ) : cards.length === 0 ? (
         <EmptyState
           emoji="Cards"
-          eyebrow="No cards yet"
           title="No cards yet"
           description="Create a card to start review."
           helperText={decks.length === 0 ? "Create a deck first." : undefined}
@@ -134,7 +133,6 @@ export default function CardBrowserWorkspace({
         browser.results.matchingCards.length === 0 ? (
         <EmptyState
           emoji="Search"
-          eyebrow="No match"
           title="No cards match"
           description={
             browser.search.debouncedValue

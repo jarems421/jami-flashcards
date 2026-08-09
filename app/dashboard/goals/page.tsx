@@ -815,7 +815,6 @@ export default function GoalsPage() {
             {activeGoals.length === 0 ? (
               <EmptyState
                 emoji="Goal"
-                eyebrow="No active goals"
                 title="No active goals"
                 description="Create a goal to earn stars."
                 action={

@@ -517,8 +517,8 @@ export default function DeckDetailPageClient() {
       ) : !loadingCards ? (
         <EmptyState
           emoji="Deck"
-          eyebrow="Deck unavailable"
-          title="This deck is not available"
+          eyebrow="Deck"
+          title="This deck could not be loaded"
           description="It may have been deleted or moved. Go back to your deck list to keep organising cards."
           action={<Link href="/dashboard/decks" className="inline-flex min-h-[2.75rem] items-center justify-center rounded-2xl bg-accent px-4 py-2 text-sm font-semibold text-[var(--color-text-inverse)] shadow-accent transition duration-fast hover:bg-accent-hover">Back to decks</Link>}
         />
@@ -563,7 +563,6 @@ export default function DeckDetailPageClient() {
           {filteredCards.length === 0 ? (
             <EmptyState
               emoji="Search"
-              eyebrow="No match"
               title="No cards match"
               description={`No cards match "${searchTerm.trim()}". Try a shorter search or check the global Cards page.`}
               action={<Button type="button" variant="secondary" onClick={() => setSearchTerm("")}>Clear search</Button>}
