@@ -28,8 +28,9 @@ import {
 } from "@/lib/app/theme-preference";
 
 function ThemePreferenceCard() {
-  const [selectedTheme, setSelectedTheme] =
-    useState<AppThemePreference>(() => readAppThemePreference());
+  const [selectedTheme, setSelectedTheme] = useState<AppThemePreference>(() =>
+    readAppThemePreference(),
+  );
 
   const handleSelectTheme = (value: AppThemePreference) => {
     setSelectedTheme(value);
@@ -37,10 +38,11 @@ function ThemePreferenceCard() {
   };
 
   return (
-    <Card padding="md" className="sm:p-6">
+    <Card padding="lg">
       <SectionHeader
-        title="Theme"
-        description="Choose the app look on this device. This changes the whole shell, not your study data."
+        eyebrow="Appearance"
+        title="Choose your study atmosphere"
+        description="Saved only on this device. Your notes and study data do not change."
       />
       {/*
         Read as a palette rather than a list of settings: the swatch is the
@@ -51,7 +53,7 @@ function ThemePreferenceCard() {
       <div
         role="radiogroup"
         aria-label="App theme"
-        className="mt-5 grid grid-cols-3 gap-x-3 gap-y-4 sm:grid-cols-6"
+        className="mt-5 grid grid-cols-3 gap-x-3 gap-y-4"
       >
         {APP_THEME_OPTIONS.map((option) => {
           const active = selectedTheme === option.value;
@@ -67,7 +69,7 @@ function ThemePreferenceCard() {
               className="group flex flex-col items-center gap-2 rounded-lg p-1.5 outline-none transition duration-fast focus-visible:ring-2 focus-visible:ring-accent/45"
             >
               <span
-                className={`relative grid aspect-square w-full max-w-[4.5rem] place-items-center rounded-full border-2 transition duration-fast ${
+                className={`relative grid aspect-square w-full max-w-[3.75rem] place-items-center rounded-full border-2 transition duration-fast ${
                   active
                     ? "border-[var(--color-accent)] shadow-ring"
                     : "border-[var(--color-border)] group-hover:border-border-strong"
@@ -97,7 +99,9 @@ function ThemePreferenceCard() {
               </span>
               <span
                 className={`text-center text-xs font-semibold leading-4 transition duration-fast ${
-                  active ? "text-text-primary" : "text-text-muted group-hover:text-text-primary"
+                  active
+                    ? "text-text-primary"
+                    : "text-text-muted group-hover:text-text-primary"
                 }`}
               >
                 {option.label}
@@ -134,7 +138,7 @@ export default function ProfilePage() {
     user.displayName ||
     (user.email ? user.email.split("@")[0] : "User");
   const canReauthenticateWithGoogle = user.providerData.some(
-    (provider) => provider.providerId === "google.com"
+    (provider) => provider.providerId === "google.com",
   );
   const needsPasswordForReauthentication =
     !canReauthenticateWithGoogle &&
@@ -187,18 +191,17 @@ export default function ProfilePage() {
         code: getAccountDeletionErrorCode(nextError) ?? "unknown",
       });
       if (
-        getAccountDeletionErrorCode(nextError) ===
-        "auth/requires-recent-login"
+        getAccountDeletionErrorCode(nextError) === "auth/requires-recent-login"
       ) {
         setRequiresRecentLogin(true);
         setError(
-          "For security, verify your sign-in again before Jami removes the account."
+          "For security, verify your sign-in again before Jami removes the account.",
         );
       } else {
         setError(
           nextError instanceof Error
             ? nextError.message
-            : "Jami could not finish deleting your account. Your sign-in was kept so you can retry."
+            : "Jami could not finish deleting your account. Your sign-in was kept so you can retry.",
         );
       }
     } finally {
@@ -228,7 +231,7 @@ export default function ProfilePage() {
           ? "Enter your current password to continue."
           : accountCode === "account/unsupported-provider"
             ? "Sign out, sign back in, and then try deleting your account again."
-            : getFriendlyAuthError(getAuthErrorCode(nextError))
+            : getFriendlyAuthError(getAuthErrorCode(nextError)),
       );
       setIsDeleting(false);
       setDeletionPhase(null);
@@ -255,188 +258,241 @@ export default function ProfilePage() {
   };
 
   return (
-    <AppPage title="Account" backHref="/dashboard" backLabel="Today" width="xl" contentClassName="space-y-4 sm:space-y-6">
-      <Card tone="warm" className="sm:p-6" padding="md">
-        <div className="flex flex-col items-center gap-5">
-          <ProfilePhotoEditor
-            userId={user.uid}
-            displayName={displayName}
-            fallbackPhotoURL={user.photoURL}
+    <AppPage
+      title="Account"
+      backHref="/dashboard"
+      backLabel="Today"
+      width="2xl"
+      contentClassName="space-y-4 sm:space-y-6"
+    >
+      <div className="grid min-w-0 gap-4 sm:gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(20rem,0.9fr)] lg:items-start">
+        <Card id="profile" tone="warm" padding="lg">
+          <SectionHeader
+            eyebrow="Profile"
+            title="How you appear in Jami"
+            description="Your photo and display name are separate from the details you use to sign in."
           />
-          <div className="min-w-0 text-center">
-            <div className="truncate text-xl font-medium">{displayName}</div>
-            {user.email ? (
-              <div className="mt-1 truncate text-sm text-text-muted">
-                {user.email}
-              </div>
-            ) : null}
-          </div>
-          <div className="w-full max-w-md space-y-2">
-            <Input
-              label="Name in Jami"
-              value={usernameInput}
-              onChange={(event) => {
-                setUsernameInput(event.target.value);
-                setUsernameSaved(false);
-                if (usernameError) {
-                  setUsernameError(null);
-                }
-              }}
-              maxLength={MAX_USERNAME_LENGTH}
-              placeholder="How your name appears in Jami"
-              disabled={loadingUsername || savingUsername}
+
+          <div className="mt-6 grid min-w-0 gap-6 sm:grid-cols-[auto_minmax(0,1fr)] sm:items-start">
+            <ProfilePhotoEditor
+              userId={user.uid}
+              displayName={displayName}
+              fallbackPhotoURL={user.photoURL}
             />
-            <p className="text-xs text-text-muted">
-              This is how your name appears around the app. Your sign-in details stay the same.
-            </p>
-            {usernameError ? (
-              <p className="text-xs text-rose-200">{usernameError}</p>
-            ) : null}
-            {usernameSaved ? (
-              <p className="text-xs text-emerald-200">Name saved.</p>
-            ) : null}
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => void handleSaveUsername()}
-              disabled={loadingUsername || savingUsername}
-              className="w-full justify-center sm:w-auto"
-            >
-              {savingUsername ? "Saving..." : "Save name"}
-            </Button>
-          </div>
-        </div>
-      </Card>
 
-      <Button
-        onClick={() => void handleSignOut()}
-        variant="secondary"
-        size="lg"
-        className="w-full justify-start"
-      >
-        Sign out
-      </Button>
+            <div className="min-w-0">
+              <div className="min-w-0 border-b border-[var(--color-border)] pb-5">
+                <div className="truncate text-xl font-medium text-text-primary">
+                  {displayName}
+                </div>
+                {user.email ? (
+                  <div className="mt-1 truncate text-sm text-text-muted">
+                    {user.email}
+                  </div>
+                ) : null}
+              </div>
 
-      <HowJamiWorksCard />
-
-      <ThemePreferenceCard />
-
-      <div className="space-y-4">
-        <NotificationSettingsCard userId={user.uid} />
-      </div>
-
-      <Card tone="subtle" className="border-error-muted bg-error-muted/20 sm:p-6" padding="md">
-        <SectionHeader
-          title={<span className="text-rose-200">Danger zone</span>}
-          description="Permanently remove your sign-in and all data stored by Jami."
-        />
-
-        {error ? (
-          <p className="mt-3 text-sm leading-6 text-rose-200" role="alert">
-            {error}
-          </p>
-        ) : null}
-
-        {!showDeleteConfirm ? (
-          <Button
-            onClick={() => {
-              setShowDeleteConfirm(true);
-              setRequiresRecentLogin(false);
-              setDeletePassword("");
-              setError(null);
-            }}
-            variant="danger"
-            className="mt-4"
-          >
-            Delete Account
-          </Button>
-        ) : (
-          <div className="app-subtle-panel mt-4 rounded-lg p-4">
-            <p className="text-sm font-semibold text-text-primary">
-              This cannot be undone.
-            </p>
-            <p className="mt-2 text-sm leading-6 text-text-secondary">
-              Jami will remove your decks, cards, folders, notebooks and pages,
-              uploaded files, sources, Topics, Tutor history, AI usage records,
-              goals, stars, study history, notification data, profile, and
-              Firebase sign-in.
-            </p>
-
-            {requiresRecentLogin ? (
-              <div className="mt-4 border-t border-[var(--color-border)] pt-4">
-                <p className="text-sm font-semibold text-text-primary">
-                  Verify it is you
+              <div className="mt-5 space-y-2">
+                <Input
+                  label="Name in Jami"
+                  value={usernameInput}
+                  onChange={(event) => {
+                    setUsernameInput(event.target.value);
+                    setUsernameSaved(false);
+                    if (usernameError) {
+                      setUsernameError(null);
+                    }
+                  }}
+                  maxLength={MAX_USERNAME_LENGTH}
+                  placeholder="How your name appears in Jami"
+                  disabled={loadingUsername || savingUsername}
+                />
+                <p className="text-xs leading-5 text-text-muted">
+                  Used around the app. Your sign-in details stay the same.
                 </p>
-                <p className="mt-1 text-xs leading-5 text-text-muted">
-                  {needsPasswordForReauthentication
-                    ? "Enter your current password. Jami will then retry the deletion."
-                    : "Continue with your sign-in provider. Jami will then retry the deletion."}
-                </p>
-                {needsPasswordForReauthentication ? (
-                  <Input
-                    type="password"
-                    label="Current password"
-                    value={deletePassword}
-                    onChange={(event) => setDeletePassword(event.target.value)}
-                    autoComplete="current-password"
-                    disabled={isDeleting}
-                    containerClassName="mt-3 max-w-md"
-                  />
+                {usernameError ? (
+                  <p className="text-xs text-rose-200">{usernameError}</p>
+                ) : null}
+                {usernameSaved ? (
+                  <p className="text-xs text-emerald-200">Name saved.</p>
                 ) : null}
                 <Button
                   type="button"
-                  disabled={
-                    isDeleting ||
-                    (needsPasswordForReauthentication && !deletePassword)
-                  }
-                  onClick={() => void handleReauthenticateAndDelete()}
-                  variant="danger"
-                  className="mt-3"
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => void handleSaveUsername()}
+                  disabled={loadingUsername || savingUsername}
+                  className="mt-1 w-full justify-center sm:w-auto"
                 >
-                  {deletionPhase === "reauthenticating"
-                    ? "Verifying..."
-                    : needsPasswordForReauthentication
-                      ? "Verify and delete"
-                      : "Verify sign-in and delete"}
+                  {savingUsername ? "Saving..." : "Save name"}
                 </Button>
               </div>
-            ) : null}
+            </div>
+          </div>
+        </Card>
 
-            {deletionPhase ? (
-              <p className="mt-4 text-sm font-medium text-text-secondary" role="status">
-                {deletionPhase === "authorizing"
-                  ? "Verifying your account..."
-                  : deletionPhase === "deleting"
-                    ? "Removing your data and uploaded files. Keep this page open..."
-                    : "Verifying your sign-in..."}
+        <div className="min-w-0 space-y-4 sm:space-y-6">
+          <ThemePreferenceCard />
+          <HowJamiWorksCard />
+        </div>
+      </div>
+
+      <section id="reminders" aria-label="Study reminders">
+        <NotificationSettingsCard userId={user.uid} />
+      </section>
+
+      <Card id="account-actions" padding="lg">
+        <SectionHeader
+          eyebrow="Account"
+          title="Sign-in and data"
+          description="The controls here affect your session or permanently stored account data."
+        />
+
+        <div className="app-subtle-panel mt-5 overflow-hidden rounded-xl">
+          <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-center sm:justify-between sm:p-5">
+            <div>
+              <h3 className="text-sm font-semibold text-text-primary">
+                Sign out of Jami
+              </h3>
+              <p className="mt-1 text-xs leading-5 text-text-muted">
+                Your study data stays saved for your next visit.
+              </p>
+            </div>
+            <Button
+              onClick={() => void handleSignOut()}
+              variant="secondary"
+              className="w-full sm:w-auto"
+            >
+              Sign out
+            </Button>
+          </div>
+
+          <div className="border-t border-[var(--color-border)] p-4 sm:p-5">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3 className="text-sm font-semibold text-text-primary">
+                  Delete account
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-text-muted">
+                  Permanently remove your sign-in and everything stored by Jami.
+                </p>
+              </div>
+              {!showDeleteConfirm ? (
+                <Button
+                  onClick={() => {
+                    setShowDeleteConfirm(true);
+                    setRequiresRecentLogin(false);
+                    setDeletePassword("");
+                    setError(null);
+                  }}
+                  variant="danger"
+                  className="w-full sm:w-auto"
+                >
+                  Delete account
+                </Button>
+              ) : null}
+            </div>
+
+            {error ? (
+              <p className="mt-4 text-sm leading-6 text-rose-200" role="alert">
+                {error}
               </p>
             ) : null}
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              {!requiresRecentLogin ? (
-                <Button
-                  disabled={isDeleting}
-                  onClick={() => void handleDeleteAccount()}
-                  variant="danger"
-                >
-                  {isDeleting ? "Deleting..." : "Yes, delete everything"}
-                </Button>
-              ) : null}
-              <Button
-                disabled={isDeleting}
-                onClick={() => {
-                  setShowDeleteConfirm(false);
-                  setRequiresRecentLogin(false);
-                  setDeletePassword("");
-                  setError(null);
-                }}
-                variant="secondary"
-              >
-                Cancel
-              </Button>
-            </div>
+            {showDeleteConfirm ? (
+              <div className="mt-4 rounded-xl border border-error-muted bg-error-muted/20 p-4 sm:p-5">
+                <p className="text-sm font-semibold text-text-primary">
+                  This cannot be undone.
+                </p>
+                <p className="mt-2 text-sm leading-6 text-text-secondary">
+                  Jami will remove your decks, cards, folders, notebooks and
+                  pages, uploaded files, sources, Topics, Tutor history, AI
+                  usage records, goals, stars, study history, notification data,
+                  profile, and Firebase sign-in.
+                </p>
+
+                {requiresRecentLogin ? (
+                  <div className="mt-4 border-t border-[var(--color-border)] pt-4">
+                    <p className="text-sm font-semibold text-text-primary">
+                      Verify it is you
+                    </p>
+                    <p className="mt-1 text-xs leading-5 text-text-muted">
+                      {needsPasswordForReauthentication
+                        ? "Enter your current password. Jami will then retry the deletion."
+                        : "Continue with your sign-in provider. Jami will then retry the deletion."}
+                    </p>
+                    {needsPasswordForReauthentication ? (
+                      <Input
+                        type="password"
+                        label="Current password"
+                        value={deletePassword}
+                        onChange={(event) =>
+                          setDeletePassword(event.target.value)
+                        }
+                        autoComplete="current-password"
+                        disabled={isDeleting}
+                        containerClassName="mt-3 max-w-md"
+                      />
+                    ) : null}
+                    <Button
+                      type="button"
+                      disabled={
+                        isDeleting ||
+                        (needsPasswordForReauthentication && !deletePassword)
+                      }
+                      onClick={() => void handleReauthenticateAndDelete()}
+                      variant="danger"
+                      className="mt-3"
+                    >
+                      {deletionPhase === "reauthenticating"
+                        ? "Verifying..."
+                        : needsPasswordForReauthentication
+                          ? "Verify and delete"
+                          : "Verify sign-in and delete"}
+                    </Button>
+                  </div>
+                ) : null}
+
+                {deletionPhase ? (
+                  <p
+                    className="mt-4 text-sm font-medium text-text-secondary"
+                    role="status"
+                  >
+                    {deletionPhase === "authorizing"
+                      ? "Verifying your account..."
+                      : deletionPhase === "deleting"
+                        ? "Removing your data and uploaded files. Keep this page open..."
+                        : "Verifying your sign-in..."}
+                  </p>
+                ) : null}
+
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {!requiresRecentLogin ? (
+                    <Button
+                      disabled={isDeleting}
+                      onClick={() => void handleDeleteAccount()}
+                      variant="danger"
+                    >
+                      {isDeleting ? "Deleting..." : "Yes, delete everything"}
+                    </Button>
+                  ) : null}
+                  <Button
+                    disabled={isDeleting}
+                    onClick={() => {
+                      setShowDeleteConfirm(false);
+                      setRequiresRecentLogin(false);
+                      setDeletePassword("");
+                      setError(null);
+                    }}
+                    variant="secondary"
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : null}
           </div>
-        )}
+        </div>
       </Card>
     </AppPage>
   );

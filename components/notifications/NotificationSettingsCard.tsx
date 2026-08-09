@@ -20,7 +20,7 @@ import {
 } from "@/services/notifications";
 import { auth } from "@/services/firebase/client";
 import { getNotificationPermissionState } from "@/lib/app/notifications";
-import { Button, Card } from "@/components/ui";
+import { Button, Card, SectionHeader } from "@/components/ui";
 
 type FeedbackSection = "install" | "notifications";
 
@@ -42,7 +42,7 @@ export default function NotificationSettingsCard({
   userId: string;
 }) {
   const [preferences, setPreferences] = useState<NotificationPreferences>(
-    DEFAULT_NOTIFICATION_PREFERENCES
+    DEFAULT_NOTIFICATION_PREFERENCES,
   );
   const [loading, setLoading] = useState(true);
   const [savingField, setSavingField] = useState<string | null>(null);
@@ -57,11 +57,13 @@ export default function NotificationSettingsCard({
   const [isSecureContext, setIsSecureContext] = useState(false);
   const [isSupported, setIsSupported] = useState(false);
   const [hasSubscription, setHasSubscription] = useState(false);
-  const [currentSubscriptionId, setCurrentSubscriptionId] = useState<string | null>(null);
+  const [currentSubscriptionId, setCurrentSubscriptionId] = useState<
+    string | null
+  >(null);
   const [clientStateError, setClientStateError] = useState<string | null>(null);
-  const [permission, setPermission] = useState<NotificationPermission | "unsupported">(
-    "unsupported"
-  );
+  const [permission, setPermission] = useState<
+    NotificationPermission | "unsupported"
+  >("unsupported");
 
   const refreshClientState = useCallback(async () => {
     const supported = isPushSupported();
@@ -88,7 +90,7 @@ export default function NotificationSettingsCard({
       setHasSubscription(false);
       setCurrentSubscriptionId(null);
       setClientStateError(
-        "This device could not finish notification setup. Reload the app and try again."
+        "This device could not finish notification setup. Reload the app and try again.",
       );
     }
   }, []);
@@ -137,7 +139,10 @@ export default function NotificationSettingsCard({
     return () => {
       cancelled = true;
       mediaQuery.removeEventListener("change", handleStandaloneChange);
-      window.removeEventListener("beforeinstallprompt", handleBeforeInstallPrompt);
+      window.removeEventListener(
+        "beforeinstallprompt",
+        handleBeforeInstallPrompt,
+      );
       document.removeEventListener("visibilitychange", handleStandaloneChange);
     };
   }, [refreshClientState, userId]);
@@ -169,7 +174,8 @@ export default function NotificationSettingsCard({
     if (permission === "denied") {
       return {
         label: "Notifications blocked in browser settings.",
-        detail: "Re-enable notification permission before this device can receive reminders.",
+        detail:
+          "Re-enable notification permission before this device can receive reminders.",
         tone: "app-danger",
       };
     }
@@ -185,7 +191,8 @@ export default function NotificationSettingsCard({
     if (!hasSubscription) {
       return {
         label: "Reminder preference enabled.",
-        detail: "Enable notifications on this device to receive the reminder here.",
+        detail:
+          "Enable notifications on this device to receive the reminder here.",
         tone: "app-warning",
       };
     }
@@ -197,7 +204,10 @@ export default function NotificationSettingsCard({
     };
   }, [hasSubscription, isSupported, permission, preferences.enabled]);
 
-  const persistPreferences = async (updates: Partial<NotificationPreferences>, savingKey: string) => {
+  const persistPreferences = async (
+    updates: Partial<NotificationPreferences>,
+    savingKey: string,
+  ) => {
     setSavingField(savingKey);
     setFeedback(null);
 
@@ -224,7 +234,7 @@ export default function NotificationSettingsCard({
       {
         enabled: !preferences.enabled,
       },
-      "enabled"
+      "enabled",
     );
   };
 
@@ -274,7 +284,10 @@ export default function NotificationSettingsCard({
         section: "notifications",
       });
     } catch (error) {
-      console.error("Failed to enable push notifications on this device.", error);
+      console.error(
+        "Failed to enable push notifications on this device.",
+        error,
+      );
       setFeedback({
         type: "error",
         message:
@@ -301,7 +314,10 @@ export default function NotificationSettingsCard({
         section: "notifications",
       });
     } catch (error) {
-      console.error("Failed to disable push notifications on this device.", error);
+      console.error(
+        "Failed to disable push notifications on this device.",
+        error,
+      );
       setFeedback({
         type: "error",
         message: "Failed to disable notifications on this device.",
@@ -340,9 +356,11 @@ export default function NotificationSettingsCard({
       });
       // Proxy failures are not guaranteed to return JSON; status still drives
       // the stable fallback below.
-      const payload = (await response.json().catch(() => null)) as
-        | { error?: string; sent?: number; removed?: number }
-        | null;
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        sent?: number;
+        removed?: number;
+      } | null;
 
       if (!response.ok) {
         if (response.status === 400) {
@@ -351,7 +369,9 @@ export default function NotificationSettingsCard({
           });
           await refreshClientState();
         }
-        throw new Error(payload?.error || "Failed to send the test notification.");
+        throw new Error(
+          payload?.error || "Failed to send the test notification.",
+        );
       }
 
       setFeedback({
@@ -378,97 +398,164 @@ export default function NotificationSettingsCard({
   };
 
   return (
-    <>
-      <Card tone="warm" padding="md">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold">App install</h2>
-            <p className="mt-1 text-xs leading-6 text-text-muted">
-              Install for a more native mobile feel.
-            </p>
-          </div>
-          <div className="app-chip rounded-full px-3 py-1 text-2xs font-semibold uppercase tracking-[0.2em]">
-            {installLabel}
-          </div>
-        </div>
-
-        <div className="app-subtle-panel mt-4 rounded-lg p-4 text-sm">
-          <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">
-            Install status
-          </div>
-          <div className="mt-2 text-sm leading-6 text-text-primary">
-            {isStandalone
-              ? "Installed on this device."
-              : isAppleMobile
-                ? "On iPhone or iPad, open this site in Safari, tap Share, then Add to Home Screen. Reopen Jami from that Home Screen icon before enabling notifications."
-                : "Install from your browser menu."}
-          </div>
-
-          {!isStandalone && !installPromptEvent && !isAppleMobile ? (
-            <p className="mt-3 text-xs text-text-muted">
-              If the browser does not show an install prompt here, use its install or app menu directly.
-            </p>
-          ) : null}
-
-          {!isStandalone && installPromptEvent ? (
-            <Button
-              type="button"
-              disabled={installBusy}
-              onClick={() => void handleInstallApp()}
-              className="mt-4"
-            >
-              {installBusy ? "Opening install prompt..." : "Install app"}
-            </Button>
-          ) : null}
-        </div>
-
-        {feedback?.section === "install" ? (
-          <div
-            className={`mt-4 rounded-lg border p-3 text-sm ${
-              feedback.type === "error"
-                ? "app-danger"
-                : "app-success"
+    <Card padding="lg">
+      <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
+        <SectionHeader
+          eyebrow="Reminders"
+          title="Study reminders"
+          description="One optional nudge at 4pm London. Jami can wait until work is ready, or remind you every day."
+        />
+        <div className="flex shrink-0 items-center justify-between gap-3 sm:justify-end">
+          <span className="text-sm font-medium text-text-secondary">
+            {savingField === "enabled"
+              ? "Saving..."
+              : preferences.enabled
+                ? "On"
+                : "Off"}
+          </span>
+          <button
+            type="button"
+            role="switch"
+            aria-label="Daily study reminder"
+            aria-checked={preferences.enabled}
+            disabled={loading || savingField === "enabled"}
+            onClick={() => void handleMasterToggle()}
+            className={`relative h-7 w-12 shrink-0 rounded-full border transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 disabled:cursor-not-allowed disabled:saturate-[0.82] ${
+              preferences.enabled
+                ? "border-accent/40 bg-accent/65"
+                : "border-[var(--color-border-strong)] bg-[var(--color-glass-medium)]"
             }`}
           >
-            {feedback.message}
+            <span
+              aria-hidden="true"
+              className={`absolute top-0.5 h-5 w-5 rounded-full bg-[var(--color-text-inverse)] shadow-sm transition duration-fast ${
+                preferences.enabled ? "left-6" : "left-0.5"
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+
+      <div className={`${reminderStatus.tone} mt-5 rounded-xl px-4 py-3.5`}>
+        <div className="text-sm font-semibold">{reminderStatus.label}</div>
+        <p className="mt-1 text-xs leading-5 text-inherit/80">
+          {reminderStatus.detail}
+        </p>
+      </div>
+
+      {preferences.enabled ? (
+        <div className="mt-5">
+          <div className="text-sm font-semibold text-text-primary">
+            When should Jami remind you?
           </div>
-        ) : null}
-      </Card>
-
-      <Card padding="md">
-        <div>
-          <h2 className="text-sm font-semibold">Notifications</h2>
-          <p className="mt-1 text-xs leading-6 text-text-muted">
-            One daily reminder at 4pm London.
-          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {[
+              {
+                value: "smart" as NotificationMode,
+                label: "Only when work is waiting",
+                description:
+                  "A quieter reminder that follows your study queue.",
+              },
+              {
+                value: "always" as NotificationMode,
+                label: "Every study day",
+                description: "A daily nudge, even when your queue is clear.",
+              },
+            ].map((option) => {
+              const selected = preferences.mode === option.value;
+              return (
+                <button
+                  key={option.value}
+                  type="button"
+                  disabled={loading || savingField === "mode"}
+                  onClick={() => void handleModeChange(option.value)}
+                  className={`rounded-xl px-4 py-3.5 text-left transition duration-fast ${
+                    selected
+                      ? "app-selected"
+                      : "app-chip hover:border-border-strong hover:bg-[var(--color-glass-medium)]"
+                  } disabled:cursor-not-allowed disabled:saturate-[0.82]`}
+                >
+                  <span className="block text-sm font-semibold">
+                    {option.label}
+                  </span>
+                  <span className="mt-1 block text-xs leading-5 text-inherit/80">
+                    {option.description}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          {savingField === "mode" ? (
+            <p className="mt-3 text-xs text-text-muted">
+              Saving reminder mode...
+            </p>
+          ) : null}
         </div>
+      ) : null}
 
-        <div className={`${reminderStatus.tone} mt-4 rounded-lg px-4 py-3`}>
-          <div className="text-sm font-semibold">{reminderStatus.label}</div>
-          <p className="mt-1 text-xs leading-5 text-inherit/80">
-            {reminderStatus.detail}
-          </p>
+      {feedback?.section === "notifications" ? (
+        <div
+          className={`mt-4 rounded-xl border p-3 text-sm ${
+            feedback.type === "error" ? "app-danger" : "app-success"
+          }`}
+        >
+          {feedback.message}
         </div>
+      ) : null}
 
-        <div className="mt-4 grid gap-3 lg:grid-cols-2">
-          <div className="app-subtle-panel rounded-lg p-4 text-sm">
-            <div className="text-xs font-semibold uppercase tracking-[0.22em] text-text-muted">
-              Device status
-            </div>
-            <div className="mt-2 space-y-1 text-sm text-text-secondary">
-              <div>
-                Permission: <span className="text-text-primary">{permission}</span>
-              </div>
-              <div>
-                Push support: <span className="text-text-primary">{isSupported ? "available" : "not available"}</span>
-              </div>
-              <div>
-                Secure page: <span className="text-text-primary">{isSecureContext ? "yes" : "no"}</span>
-              </div>
-              <div>
-                This device: <span className="text-text-primary">{hasSubscription ? "subscribed" : "not subscribed"}</span>
-              </div>
-            </div>
+      <details className="group app-subtle-panel mt-5 overflow-hidden rounded-xl">
+        <summary className="flex min-h-14 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-left transition duration-fast hover:bg-[var(--color-glass-medium)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent/45 [&::-webkit-details-marker]:hidden">
+          <span className="min-w-0">
+            <span className="block text-sm font-semibold text-text-primary">
+              Device &amp; app setup
+            </span>
+            <span className="mt-0.5 block text-xs text-text-muted">
+              Permission, installation, and test controls
+            </span>
+          </span>
+          <span className="flex shrink-0 items-center gap-2">
+            <span className="app-chip hidden rounded-full px-2.5 py-1 text-2xs font-semibold sm:inline-flex">
+              {hasSubscription ? "This device on" : installLabel}
+            </span>
+            <svg
+              aria-hidden="true"
+              viewBox="0 0 20 20"
+              fill="none"
+              className="h-4 w-4 text-text-muted transition-transform duration-fast group-open:rotate-180"
+            >
+              <path
+                d="m5 7.5 5 5 5-5"
+                stroke="currentColor"
+                strokeWidth="1.7"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            </svg>
+          </span>
+        </summary>
+
+        <div className="grid gap-6 border-t border-[var(--color-border)] p-4 sm:p-5 lg:grid-cols-2">
+          <section>
+            <h3 className="text-sm font-semibold text-text-primary">
+              This device
+            </h3>
+            <dl className="mt-3 grid grid-cols-2 gap-2 text-xs">
+              {[
+                ["Permission", permission],
+                ["Push support", isSupported ? "Available" : "Unavailable"],
+                ["Secure page", isSecureContext ? "Yes" : "No"],
+                ["Subscription", hasSubscription ? "Enabled" : "Not enabled"],
+              ].map(([label, value]) => (
+                <div key={label} className="app-chip rounded-lg px-3 py-2.5">
+                  <dt className="text-2xs uppercase tracking-[0.16em] text-text-muted">
+                    {label}
+                  </dt>
+                  <dd className="mt-1 font-semibold text-text-primary">
+                    {value}
+                  </dd>
+                </div>
+              ))}
+            </dl>
 
             <div className="mt-4 flex flex-wrap gap-2">
               {hasSubscription ? (
@@ -478,16 +565,18 @@ export default function NotificationSettingsCard({
                     disabled={subscriptionBusy}
                     onClick={() => void handleDisableNotifications()}
                     variant="secondary"
+                    size="sm"
                   >
-                    {subscriptionBusy ? "Updating..." : "Disable on this device"}
+                    {subscriptionBusy ? "Updating..." : "Disable here"}
                   </Button>
                   <Button
                     type="button"
                     disabled={testingPush}
                     onClick={() => void handleSendTestPush()}
                     variant="secondary"
+                    size="sm"
                   >
-                    {testingPush ? "Sending test..." : "Send test push"}
+                    {testingPush ? "Sending..." : "Send test"}
                   </Button>
                 </>
               ) : (
@@ -495,6 +584,7 @@ export default function NotificationSettingsCard({
                   type="button"
                   disabled={subscriptionBusy || !canSubscribe}
                   onClick={() => void handleEnableNotifications()}
+                  size="sm"
                 >
                   {subscriptionBusy ? "Enabling..." : "Enable on this device"}
                 </Button>
@@ -503,12 +593,14 @@ export default function NotificationSettingsCard({
 
             {permission === "denied" ? (
               <p className="mt-3 text-xs text-[var(--color-error-text)]">
-                Notifications are blocked. Re-enable them from your browser or device settings.
+                Notifications are blocked. Re-enable them from your browser or
+                device settings.
               </p>
             ) : null}
             {!canSubscribe && isAppleMobile && !isStandalone ? (
-              <p className="mt-3 text-xs text-text-muted">
-                iPhone and iPad can only request permission from the installed Home Screen app, not the normal Safari tab.
+              <p className="mt-3 text-xs leading-5 text-text-muted">
+                iPhone and iPad can request permission only from the installed
+                Home Screen app.
               </p>
             ) : null}
             {!isSecureContext ? (
@@ -517,94 +609,62 @@ export default function NotificationSettingsCard({
               </p>
             ) : null}
             {clientStateError ? (
-              <p className="mt-3 text-xs text-[var(--color-error-text)]">{clientStateError}</p>
+              <p className="mt-3 text-xs text-[var(--color-error-text)]">
+                {clientStateError}
+              </p>
             ) : null}
-          </div>
+          </section>
 
-          <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-            <div className="flex items-center justify-between gap-3">
+          <section>
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="text-sm font-semibold text-text-primary">
-                  Daily reminder
-                </div>
-                <p className="mt-1 text-xs text-text-muted">
-                  <span className="font-semibold">4pm Europe/London</span>. One notification per study day.
+                <h3 className="text-sm font-semibold text-text-primary">
+                  Install Jami
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-text-muted">
+                  Optional, for a more native mobile feel.
                 </p>
               </div>
-              <label className="inline-flex items-center gap-2 text-sm text-text-primary">
-                <input
-                  type="checkbox"
-                  checked={preferences.enabled}
-                  disabled={loading || savingField === "enabled"}
-                  onChange={() => void handleMasterToggle()}
-                  className="h-4 w-4 rounded border-border bg-glass-subtle"
-                />
-                {savingField === "enabled" ? "Saving..." : "Enabled"}
-              </label>
+              <span className="app-chip rounded-full px-2.5 py-1 text-2xs font-semibold">
+                {installLabel}
+              </span>
             </div>
+            <p className="mt-3 text-sm leading-6 text-text-secondary">
+              {isStandalone
+                ? "Jami is installed on this device."
+                : isAppleMobile
+                  ? "Open Jami in Safari, tap Share, then Add to Home Screen. Reopen it from that icon before enabling notifications."
+                  : "Install Jami from your browser's app or install menu."}
+            </p>
 
-            <div className="mt-4 space-y-3">
+            {!isStandalone && !installPromptEvent && !isAppleMobile ? (
+              <p className="mt-2 text-xs leading-5 text-text-muted">
+                If no install prompt appears here, use the browser menu.
+              </p>
+            ) : null}
+            {!isStandalone && installPromptEvent ? (
+              <Button
+                type="button"
+                disabled={installBusy}
+                onClick={() => void handleInstallApp()}
+                className="mt-4"
+                size="sm"
+              >
+                {installBusy ? "Opening install prompt..." : "Install app"}
+              </Button>
+            ) : null}
+            {feedback?.section === "install" ? (
               <div
-                className={`rounded-lg border border-[var(--color-border)] p-3 ${
-                  preferences.enabled ? "bg-[var(--color-glass-subtle)]" : "bg-[var(--color-glass-subtle)] opacity-70"
+                className={`mt-4 rounded-xl border p-3 text-sm ${
+                  feedback.type === "error" ? "app-danger" : "app-success"
                 }`}
               >
-                <div className="text-sm font-medium text-text-primary">Reminder mode</div>
-                <p className="mt-1 text-xs text-text-muted">
-                  Choose when Jami nudges you.
-                </p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                  {([
-                    {
-                      value: "smart" as NotificationMode,
-                      label: "Smart",
-                      description: "Only when work is waiting.",
-                    },
-                    {
-                      value: "always" as NotificationMode,
-                      label: "Always",
-                      description: "Daily nudge, even when clear.",
-                    },
-                  ]).map((option) => {
-                    const selected = preferences.mode === option.value;
-                    return (
-                      <button
-                        key={option.value}
-                        type="button"
-                        disabled={loading || !preferences.enabled || savingField === "mode"}
-                        onClick={() => void handleModeChange(option.value)}
-                        className={`rounded-md border px-4 py-3 text-left transition duration-fast ${
-                          selected
-                            ? "app-selected"
-                            : "app-chip hover:border-border-strong hover:bg-[var(--color-glass-medium)]"
-                        } disabled:cursor-not-allowed disabled:opacity-60`}
-                      >
-                        <div className="text-sm font-semibold">{option.label}</div>
-                        <div className="mt-1 text-xs leading-5 text-inherit/80">{option.description}</div>
-                      </button>
-                    );
-                  })}
-                </div>
-                {savingField === "mode" ? (
-                  <p className="mt-3 text-xs text-text-muted">Saving reminder mode...</p>
-                ) : null}
+                {feedback.message}
               </div>
-            </div>
-          </div>
+            ) : null}
+          </section>
         </div>
-
-        {feedback?.section === "notifications" ? (
-          <div
-            className={`mt-4 rounded-lg border p-3 text-sm ${
-              feedback.type === "error"
-                ? "app-danger"
-                : "app-success"
-            }`}
-          >
-            {feedback.message}
-          </div>
-        ) : null}
-      </Card>
-    </>
+      </details>
+    </Card>
   );
 }
