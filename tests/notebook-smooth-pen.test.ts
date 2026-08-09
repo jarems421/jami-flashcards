@@ -602,7 +602,7 @@ describe("straightening a held line", () => {
     expect(await held(segmented([[20, 200], [40, 202]])).autocorrectShape!()).toBeNull();
   });
 
-  it("draws the aimed end onto upright, flat and the diagonals", async () => {
+  it("leans an aimed line towards upright, flat and the diagonals", async () => {
     const aim = async (degrees: number) => {
       const builder = held(wobbly(6));
       await builder.autocorrectShape!();
@@ -620,15 +620,62 @@ describe("straightening a held line", () => {
       );
     };
 
-    // Inside the window it takes the guide angle.
-    for (const [aimed, expected] of [[2, 0], [43, 45], [86, 90], [137, 135]]) {
-      expect(await aim(aimed), `${aimed} degrees`).toBeCloseTo(expected, 1);
+    // Near a guide the line reads as being on it. Half a degree out on a 300px
+    // line is under three pixels at the far end, which nobody sees.
+    for (const [aimed, guide] of [[2, 0], [43, 45], [88, 90], [136, 135]]) {
+      expect(Math.abs((await aim(aimed)) - guide), `${aimed} degrees`).toBeLessThan(0.5);
     }
 
-    // Outside it, the angle asked for is the angle drawn. A guide that grabs an
-    // angle somebody meant is worse than no guide at all.
-    for (const aimed of [10, 30, 50, 70]) {
+    // Outside the window the angle asked for is the angle drawn, exactly. A
+    // guide that keeps hold of an angle somebody meant is worse than no guide.
+    for (const aimed of [12, 30, 55, 70]) {
       expect(await aim(aimed), `${aimed} degrees`).toBeCloseTo(aimed, 1);
     }
+  });
+
+  it("never jumps, which is the whole point of it being an assist", async () => {
+    /*
+     * The first version switched on at a threshold, and a held hand wanders
+     * either side of any threshold: the far end of the line flicked back and
+     * forth by twenty-odd pixels. That is not something a test of where the
+     * line lands can see -- only the step between one hand position and the
+     * next shows it.
+     */
+    const aim = async (degrees: number) => {
+      const builder = held(wobbly(6));
+      await builder.autocorrectShape!();
+      const radians = (degrees * Math.PI) / 180;
+      builder.addPoint(
+        point(20 + Math.cos(radians) * 300, 200 + Math.sin(radians) * 300)
+      );
+      const path = (builder.build() as Stroke).getParts()[0].path;
+      const last = path.parts[path.parts.length - 1];
+      const end = "point" in last ? last.point : last.endPoint;
+      return (
+        (Math.atan2(end.y - path.startPoint.y, end.x - path.startPoint.x) * 180) /
+        Math.PI
+      );
+    };
+
+    const stepDegrees = 0.25;
+    // What the far end of a 300px line moves for that much hand movement, with
+    // no assist at all. The assisted line may travel faster than the hand -- it
+    // is correcting -- but a jump would be many times this.
+    const unassisted = Math.sin((stepDegrees * Math.PI) / 180) * 300;
+
+    let previous: number | null = null;
+    let worst = 0;
+    for (let degrees = 0; degrees <= 14; degrees += stepDegrees) {
+      const landed = await aim(degrees);
+      if (previous !== null) {
+        worst = Math.max(
+          worst,
+          Math.abs(landed - previous) * (Math.PI / 180) * 300
+        );
+      }
+      previous = landed;
+    }
+
+    expect(worst / unassisted).toBeLessThan(2.5);
   });
 });

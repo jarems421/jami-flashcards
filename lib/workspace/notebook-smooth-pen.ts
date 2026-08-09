@@ -153,13 +153,25 @@ const STRAIGHTEN_MAXIMUM_BOW = 0.32;
 /**
  * The eight angles a snapped line is drawn towards, and how near it has to be.
  *
- * Every 45 degrees: upright, flat, and the four diagonals. A window of five
- * degrees either side is about the width of the tremor in a held hand and well
- * under the ten or so at which a person can tell one angle from another, so it
- * catches the miss without ever catching an angle that was meant.
+ * Every 45 degrees: upright, flat, and the four diagonals.
+ *
+ * The pull fades to nothing at the edge of the window rather than stopping
+ * there. Switching it on at a threshold means the far end of the line jumps the
+ * moment the angle crosses it -- twenty-odd pixels on a long line -- and since a
+ * held hand wanders either side of any threshold you care to pick, it jumps
+ * back and forth. That is not an assist, it is a flicker, and it is worst
+ * exactly where the assist was supposed to help.
+ *
+ * So the correction is a fraction of the error, and the fraction falls away
+ * with distance from the guide: full attention right beside it, none at all at
+ * the edge, and no step anywhere in between. Squaring the falloff means it also
+ * arrives at the edge flat, so there is no seam where the pull stops.
+ *
+ * The window can be wider than a hard one could be, because being inside it no
+ * longer commits to anything.
  */
 const GUIDE_ANGLE_STEP = Math.PI / 4;
-const GUIDE_ANGLE_WINDOW = (5 * Math.PI) / 180;
+const GUIDE_ANGLE_WINDOW = (8 * Math.PI) / 180;
 
 /** Shorter than this and there is not enough of a line to be sure. */
 const STRAIGHTEN_MINIMUM_SPAN_RATIO = 8;
@@ -509,14 +521,15 @@ export function createNotebookSmoothPenStrokeFactory(
      * is visible -- a line meant to be vertical and sitting at 89 looks wrong in
      * a way that one at 34 does not.
      *
-     * So near one of the eight, the line takes it. The length comes from how
-     * far along that direction the pen has reached rather than from the raw
-     * distance, so the far end stays level with the hand instead of running
-     * past it.
+     * So near one of the eight, the line leans towards it -- by a share of how
+     * far off it is, not all the way. Close by, that share is nearly all of it
+     * and the line reads as exactly upright; further out it is a nudge; at the
+     * edge of the window it is nothing. The angle asked for is always still the
+     * angle being drawn, just flattered.
      *
-     * The window is narrow on purpose. It only has to cover the last degree or
-     * two somebody cannot hold steady; wider than that and it stops being help
-     * and starts refusing the angle actually asked for.
+     * The length comes from how far along that direction the pen has reached
+     * rather than from the raw distance, so the far end stays level with the
+     * hand instead of running past it.
      */
     const aimedAt = (from: Point2, to: Point2) => {
       const reach = to.minus(from);
@@ -524,11 +537,25 @@ export function createNotebookSmoothPenStrokeFactory(
       if (length < minimumStep) return to;
 
       const angle = Math.atan2(reach.y, reach.x);
-      const nearest =
-        Math.round(angle / GUIDE_ANGLE_STEP) * GUIDE_ANGLE_STEP;
-      if (Math.abs(angle - nearest) > GUIDE_ANGLE_WINDOW) return to;
+      const nearest = Math.round(angle / GUIDE_ANGLE_STEP) * GUIDE_ANGLE_STEP;
+      const error = angle - nearest;
+      const offBy = Math.abs(error) / GUIDE_ANGLE_WINDOW;
+      if (offBy >= 1) return to;
 
-      const direction = Vec2.of(Math.cos(nearest), Math.sin(nearest));
+      /*
+       * Squared twice over, so the well around a guide is deep and its rim is
+       * flat. Measured on a 300px line: two degrees off a guide leaves the far
+       * end 1.3px from true, which nobody can see, while the line never travels
+       * more than 1.8 times as fast as the hand moving it -- fast enough to feel
+       * like help, slow enough that there is nothing to catch on.
+       *
+       * A plain (1 - t) squared was gentler still at 1.3x, but left two degrees
+       * sitting 4.6px out, which is visible on a line meant to be upright: soft
+       * to the point of not doing the job.
+       */
+      const pull = (1 - offBy * offBy) * (1 - offBy * offBy);
+      const aimed = angle - error * pull;
+      const direction = Vec2.of(Math.cos(aimed), Math.sin(aimed));
       return from.plus(direction.times(reach.dot(direction)));
     };
 
