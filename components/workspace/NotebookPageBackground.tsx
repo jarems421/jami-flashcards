@@ -11,10 +11,36 @@ import type {
 } from "@/lib/workspace/notebooks";
 import { getNotebookPageStyleBackground } from "@/lib/workspace/notebook-page-content";
 
+/**
+ * How a page of each colour is painted, including the edge that separates it
+ * from the workspace behind it.
+ *
+ * The edge is taken from the page rather than from the theme, and that is the
+ * whole idea: a page is outlined in something the page is not. A black page had
+ * a black edge, so on any of the dark themes it sat on a dark workspace with
+ * nothing between the two and simply dissolved -- you could not see where the
+ * paper ended.
+ *
+ * Deciding it from the page instead of the background means it is right on all
+ * six themes without knowing about any of them, and stays right if more are
+ * added. The one case it does not flatter is a black page on a light theme,
+ * where a pale edge blends into the workspace -- but a near-black sheet on a
+ * pale background needs no help being found.
+ */
 export const PAGE_COLOR_CLASS: Record<NotebookPageColor, string> = {
-  white: "bg-white text-slate-950",
-  black: "bg-[#080a10] text-[#f8fafc]",
+  white: "bg-white text-slate-950 after:border-black",
+  black: "bg-[#080a10] text-[#f8fafc] after:border-white/55",
 };
+
+/**
+ * The edge itself, with no colour of its own -- that arrives with the page.
+ *
+ * Shared so a sheet and its thumbnail are bounded the same way. A thumbnail on
+ * a dark theme is the same problem in miniature, and a drop shadow, which is
+ * all it had, separates nothing on a dark background.
+ */
+export const PAGE_EDGE_CLASS =
+  "after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-sm after:border after:content-['']";
 
 export default function NotebookPageBackground({
   pageColor,

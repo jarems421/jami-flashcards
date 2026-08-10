@@ -45,7 +45,11 @@ describe("NotebookViewport", () => {
     expect(html).toContain("translate3d(-366px, 16px, 0)");
     expect(html).toContain("translate3d(100px, 16px, 0)");
     expect(html).toContain("translate3d(566px, 16px, 0)");
-    expect(html.match(/after:border-black/g)).toHaveLength(3);
+    // Every sheet is edged, but the shell never names the colour: that comes
+    // with the page, so a black page can be outlined in something visible
+    // against a dark workspace.
+    expect(html.match(/after:border /g)).toHaveLength(3);
+    expect(html).not.toContain("after:border-black");
     expect(html).not.toContain("box-border");
   });
 
