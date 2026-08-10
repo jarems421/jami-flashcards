@@ -21,9 +21,25 @@ export function installNotebookInkViewportSynchronizer<
   Transform,
 >(input: {
   createScreenSize(width: number, height: number): ScreenSize;
-  createTransform(scaleX: number, scaleY: number): Transform;
+  /**
+   * `offsetX`/`offsetY` are where the painted slice starts on the sheet, so a
+   * canvas covering only part of a zoomed page still puts page coordinates in
+   * the right place. Zero for a canvas covering the whole sheet.
+   */
+  createTransform(
+    scaleX: number,
+    scaleY: number,
+    offsetX: number,
+    offsetY: number
+  ): Transform;
   editor: NotebookInkViewportEditor<ScreenSize, Transform>;
   getDisplaySize(): { width: number; height: number };
+  /**
+   * The whole sheet in CSS pixels, which is what sets the scale. Only differs
+   * from the display size when the canvas is painting a slice of a zoomed page
+   * -- see `notebook-ink-window.ts`.
+   */
+  getSheetSize?(): { width: number; height: number; left: number; top: number };
   pageHeight: number;
   pageWidth: number;
   shouldSkip(): boolean;
@@ -34,9 +50,15 @@ export function installNotebookInkViewportSynchronizer<
     if (input.shouldSkip()) return;
 
     const displaySize = input.getDisplaySize();
+    const sheet = input.getSheetSize?.() ?? {
+      width: displaySize.width,
+      height: displaySize.height,
+      left: 0,
+      top: 0,
+    };
     const scale = getNotebookInkViewportScale({
-      displayWidth: displaySize.width,
-      displayHeight: displaySize.height,
+      displayWidth: sheet.width,
+      displayHeight: sheet.height,
       pageWidth: input.pageWidth,
       pageHeight: input.pageHeight,
     });
@@ -46,7 +68,12 @@ export function installNotebookInkViewportSynchronizer<
         displaySize.width,
         displaySize.height
       );
-      const transform = input.createTransform(scale.x, scale.y);
+      const transform = input.createTransform(
+        scale.x,
+        scale.y,
+        sheet.left,
+        sheet.top
+      );
       if (!input.editor.viewport.getScreenRectSize().eq(screenSize)) {
         input.editor.viewport.updateScreenSize(screenSize);
       }

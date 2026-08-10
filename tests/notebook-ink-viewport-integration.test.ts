@@ -66,6 +66,43 @@ describe("notebook ink viewport integration", () => {
     expect(calls).toEqual(["repaint:false"]);
   });
 
+  it("scales by the whole sheet and shifts by the painted slice", () => {
+    let screen = { width: 0, height: 0 };
+    let transform = { x: 0, y: 0, offsetX: 0, offsetY: 0 };
+    const editor = {
+      rerender() {},
+      viewport: {
+        getScreenRectSize: () => ({ eq: () => false }),
+        canvasToScreenTransform: { eq: () => false },
+        updateScreenSize(next: { width: number; height: number }) {
+          screen = next;
+        },
+        resetTransform(next: typeof transform) {
+          transform = next;
+        },
+      },
+    };
+
+    installNotebookInkViewportSynchronizer({
+      createScreenSize: (width, height) => ({ width, height }),
+      createTransform: (x, y, offsetX, offsetY) => ({ x, y, offsetX, offsetY }),
+      editor,
+      // The canvas covers a 400x600 slice of a sheet drawn at 2000x4000.
+      getDisplaySize: () => ({ width: 400, height: 600 }),
+      getSheetSize: () => ({ width: 2000, height: 4000, left: 640, top: 1280 }),
+      pageHeight: 2000,
+      pageWidth: 1000,
+      shouldSkip: () => false,
+    });
+
+    editor.rerender();
+    // The canvas is only as big as the slice...
+    expect(screen).toEqual({ width: 400, height: 600 });
+    // ...but a page coordinate still lands where the whole sheet would put it,
+    // shifted so the slice starts at the canvas origin.
+    expect(transform).toEqual({ x: 2, y: 2, offsetX: 640, offsetY: 1280 });
+  });
+
   it("installs cancelable native pen guards and removes them cleanly", () => {
     const surface = document.createElement("div");
     const removeGuards = installNotebookNativeInkGuards(
