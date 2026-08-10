@@ -1,4 +1,5 @@
 import { getNotebookInkViewportScale } from "@/lib/workspace/notebook-viewport";
+import type { NotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 
 type Comparable<Value> = {
   eq(other: Value): boolean;
@@ -33,13 +34,16 @@ export function installNotebookInkViewportSynchronizer<
     offsetY: number
   ): Transform;
   editor: NotebookInkViewportEditor<ScreenSize, Transform>;
+  /**
+   * The measured canvas. Used only when there is no window -- see below for why
+   * a window must not be paired with it.
+   */
   getDisplaySize(): { width: number; height: number };
   /**
-   * The whole sheet in CSS pixels, which is what sets the scale. Only differs
-   * from the display size when the canvas is painting a slice of a zoomed page
-   * -- see `notebook-ink-window.ts`.
+   * The slice of a zoomed sheet being painted, or null for the whole sheet.
+   * See `notebook-ink-window.ts`.
    */
-  getSheetSize?(): { width: number; height: number; left: number; top: number };
+  getRenderWindow?(): NotebookInkRenderWindow | null;
   pageHeight: number;
   pageWidth: number;
   shouldSkip(): boolean;
@@ -49,13 +53,36 @@ export function installNotebookInkViewportSynchronizer<
   const synchronize = () => {
     if (input.shouldSkip()) return;
 
-    const displaySize = input.getDisplaySize();
-    const sheet = input.getSheetSize?.() ?? {
-      width: displaySize.width,
-      height: displaySize.height,
-      left: 0,
-      top: 0,
-    };
+    /*
+     * The canvas size and the transform are taken from one snapshot, and that
+     * is the whole reason the window answers both.
+     *
+     * They used to share a source by construction: the size was measured, and
+     * the scale derived from that same measurement. A window breaks that, since
+     * it is pushed in synchronously by a layout effect while the matching size
+     * is reported by a ResizeObserver a beat later. Read separately, js-draw
+     * spends those frames holding a transform for the new slice against a size
+     * for the old one -- so its idea of what is on screen is the wrong size and
+     * in the wrong place, and the stroke being drawn is culled and simplified
+     * against it. Reading both from the window closes the gap.
+     */
+    const painted = input.getRenderWindow?.() ?? null;
+    const displaySize = painted
+      ? { width: painted.width, height: painted.height }
+      : input.getDisplaySize();
+    const sheet = painted
+      ? {
+          width: painted.sheetWidth,
+          height: painted.sheetHeight,
+          left: painted.left,
+          top: painted.top,
+        }
+      : {
+          width: displaySize.width,
+          height: displaySize.height,
+          left: 0,
+          top: 0,
+        };
     const scale = getNotebookInkViewportScale({
       displayWidth: sheet.width,
       displayHeight: sheet.height,

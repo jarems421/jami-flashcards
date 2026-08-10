@@ -423,26 +423,11 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
                 jsDraw.Vec2.of(-offsetX, -offsetY)
               ).rightMul(jsDraw.Mat33.scaling2D(jsDraw.Vec2.of(scaleX, scaleY))),
             editor,
-            // ResizeObserver supplies this geometry. Keeping it cached avoids
-            // a forced DOM layout read whenever js-draw repaints between rapid
-            // Pencil strokes.
+            // Only consulted for an unwindowed sheet: a window carries the size
+            // the host was given, and the synchronizer takes both from it so
+            // the two cannot fall out of step.
             getDisplaySize: () => measuredDisplaySize,
-            getSheetSize: () => {
-              const window = renderWindowRef.current;
-              return window
-                ? {
-                    width: window.sheetWidth,
-                    height: window.sheetHeight,
-                    left: window.left,
-                    top: window.top,
-                  }
-                : {
-                    width: measuredDisplaySize.width,
-                    height: measuredDisplaySize.height,
-                    left: 0,
-                    top: 0,
-                  };
-            },
+            getRenderWindow: () => renderWindowRef.current,
             pageHeight,
             pageWidth,
             shouldSkip: () => disposed,
