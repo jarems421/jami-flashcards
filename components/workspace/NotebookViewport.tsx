@@ -8,6 +8,7 @@ import {
   type Ref,
   type TransitionEventHandler,
 } from "react";
+import { PAGE_EDGE_CLASS } from "@/components/workspace/NotebookPageBackground";
 
 export type NotebookViewportGeometry = {
   pageHeight: number;
@@ -35,8 +36,13 @@ type NotebookSheetProps = {
   onPointerUp?: PointerEventHandler<HTMLDivElement>;
 };
 
-const NOTEBOOK_SHEET_BASE_CLASS =
-  "overflow-hidden rounded-sm shadow-none after:pointer-events-none after:absolute after:inset-0 after:z-[60] after:rounded-sm after:border after:border-black after:content-['']";
+/**
+ * Everything about the sheet edge except its colour, which belongs to the page
+ * rather than to the sheet -- see `PAGE_COLOR_CLASS`. Naming a colour here as
+ * well would leave two utilities of equal weight fighting over the same
+ * property, settled by whichever Tailwind happened to emit last.
+ */
+const NOTEBOOK_SHEET_BASE_CLASS = `overflow-hidden rounded-sm shadow-none ${PAGE_EDGE_CLASS}`;
 
 function getSheetStyle(
   geometry: NotebookViewportGeometry,

@@ -46,6 +46,10 @@ import {
 import type { NotebookScribbleSample } from "@/lib/workspace/notebook-scribble-erase";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
 import {
+  isWholeNotebookInkSheet,
+  type NotebookInkRenderWindow,
+} from "@/lib/workspace/notebook-ink-window";
+import {
   installBatchedNotebookPenPreview,
   type NotebookBatchedPen,
   type NotebookPenPreviewBatch,
@@ -90,6 +94,11 @@ export type PreparedNotebookStroke = NotebookStroke & {
 
 type Props = NotebookInkStyle & {
   initialSvg: string;
+  /**
+   * The slice of a zoomed sheet worth painting, or null for the whole sheet.
+   * See `notebook-ink-window.ts` for why a zoomed page is not painted whole.
+   */
+  inkWindow?: NotebookInkRenderWindow | null;
   pageHeight: number;
   pageId: string;
   pageWidth: number;
@@ -135,6 +144,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
       highlighterColor,
       highlighterThickness,
       initialSvg,
+      inkWindow = null,
       onChange,
       onHistoryChange,
       onInteractionChange,
@@ -172,6 +182,71 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const pointerLifecycleRef = useRef<NotebookInkPointerLifecycle | null>(null);
     pointerLifecycleRef.current ??= new NotebookInkPointerLifecycle();
     const inkSmoothersRef = useRef<Map<number, NotebookInkSmoother>>(new Map());
+    /**
+     * Read during a repaint rather than closed over, so the mounted editor
+     * always paints against the window the page is currently showing.
+     */
+    /*
+     * Taken apart into numbers deliberately.
+     *
+     * The page builds this object during render, so it is a new object every
+     * time even when the sheet has not moved an inch. Depending on it directly
+     * would resynchronise -- and so fully repaint -- the page on every render,
+     * which is the opposite of what the window is for.
+     */
+    const sheetWidth = inkWindow?.sheetWidth ?? 0;
+    const sheetHeight = inkWindow?.sheetHeight ?? 0;
+    const windowLeft = inkWindow?.left ?? 0;
+    const windowTop = inkWindow?.top ?? 0;
+    const windowWidth = inkWindow?.width ?? 0;
+    const windowHeight = inkWindow?.height ?? 0;
+    /**
+     * A window covering the whole sheet is no window at all: leaving it off
+     * keeps the fitted page on exactly the geometry it had before any of this
+     * existed, rather than on an equivalent-looking one.
+     */
+    const clipped = Boolean(inkWindow) && !isWholeNotebookInkSheet({
+      sheetWidth,
+      sheetHeight,
+      left: windowLeft,
+      top: windowTop,
+      width: windowWidth,
+      height: windowHeight,
+    });
+    const renderWindowRef = useRef<NotebookInkRenderWindow | null>(null);
+    const syncViewportRef = useRef<(() => void) | null>(null);
+
+    /*
+     * Repaint when the painted slice moves.
+     *
+     * A resize is already noticed by the ResizeObserver on the host, but a
+     * window that slides the same size across the sheet -- which is most pans
+     * that cross a grid line -- changes no dimension at all, so the offset has
+     * to be pushed in. A layout effect so the canvas and the sheet's own
+     * transform land in the same frame, and so this is in place before the
+     * editor mounts.
+     */
+    useLayoutEffect(() => {
+      renderWindowRef.current = clipped
+        ? {
+            sheetWidth,
+            sheetHeight,
+            left: windowLeft,
+            top: windowTop,
+            width: windowWidth,
+            height: windowHeight,
+          }
+        : null;
+      syncViewportRef.current?.();
+    }, [
+      clipped,
+      sheetHeight,
+      sheetWidth,
+      windowHeight,
+      windowLeft,
+      windowTop,
+      windowWidth,
+    ]);
     const penPreviewBatchRef = useRef<NotebookPenPreviewBatch | null>(null);
     const lastForwardedPointerSampleRef = useRef<Map<number, PointerEvent>>(
       new Map()
@@ -339,17 +414,25 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           const syncViewport = installNotebookInkViewportSynchronizer({
             createScreenSize: (width, height) =>
               jsDraw.Vec2.of(width, height),
-            createTransform: (scaleX, scaleY) =>
-              jsDraw.Mat33.scaling2D(jsDraw.Vec2.of(scaleX, scaleY)),
+            // Scale the page, then shift the painted slice to the top-left of
+            // the canvas. js-draw reads screen positions against this same
+            // element, so pointers and ink agree without either knowing there
+            // is a window at all.
+            createTransform: (scaleX, scaleY, offsetX, offsetY) =>
+              jsDraw.Mat33.translation(
+                jsDraw.Vec2.of(-offsetX, -offsetY)
+              ).rightMul(jsDraw.Mat33.scaling2D(jsDraw.Vec2.of(scaleX, scaleY))),
             editor,
-            // ResizeObserver supplies this geometry. Keeping it cached avoids
-            // a forced DOM layout read whenever js-draw repaints between rapid
-            // Pencil strokes.
+            // Only consulted for an unwindowed sheet: a window carries the size
+            // the host was given, and the synchronizer takes both from it so
+            // the two cannot fall out of step.
             getDisplaySize: () => measuredDisplaySize,
+            getRenderWindow: () => renderWindowRef.current,
             pageHeight,
             pageWidth,
             shouldSkip: () => disposed,
           });
+          syncViewportRef.current = syncViewport;
           editorRef.current = editor;
           editor.setReadOnly(readOnlyRef.current);
           // js-draw's display cache re-renders busy scenes from 600px
@@ -520,6 +603,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         editor?.remove();
         editorRef.current = null;
         jsDrawRef.current = null;
+        syncViewportRef.current = null;
       };
     }, [pageHeight, pageId, pageWidth]);
 
@@ -1084,7 +1168,17 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         <div
           ref={hostRef}
           aria-hidden="true"
-          className="notebook-js-draw-host pointer-events-none absolute inset-0"
+          className="notebook-js-draw-host pointer-events-none absolute"
+          style={
+            clipped
+              ? {
+                  left: windowLeft,
+                  top: windowTop,
+                  width: windowWidth,
+                  height: windowHeight,
+                }
+              : { inset: 0 }
+          }
         />
         <div
           ref={inkSurfaceRef}

@@ -116,6 +116,7 @@ import {
   shouldSuppressTouchAfterStylus,
   type NotebookPageDragIntent,
 } from "@/lib/workspace/notebook-inking";
+import { getNotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import {
   readBlobAsBase64,
   renderNotebookPageSnapshot,
@@ -2467,6 +2468,20 @@ export default function NotebookEditorPage() {
     pageY: viewportLayout.pageOrigin.y,
     swipeTravel: pageTrackTravelDistance,
   };
+  /*
+   * Only the sheet being written on is clipped. The adjacent sheets in the
+   * swipe track are only ever seen from the fitted view -- swiping is what one
+   * finger does when the page is not zoomed -- and a fitted sheet is painted
+   * whole anyway, so there is nothing here for them to gain.
+   */
+  const activeInkWindow = getNotebookInkRenderWindow({
+    sheetWidth: pageWidthPx,
+    sheetHeight: pageHeightPx,
+    pageX: viewportLayout.pageOrigin.x,
+    pageY: viewportLayout.pageOrigin.y,
+    frameWidth: viewportLayout.frameSize.width,
+    frameHeight: viewportLayout.frameSize.height,
+  });
 
   return (
     <main
@@ -2756,6 +2771,7 @@ export default function NotebookEditorPage() {
                         );
                       },
                       activeTool: tool,
+                      inkWindow: activeInkWindow,
                       eraserMode,
                       scribbleToErase,
                       penColor,

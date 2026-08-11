@@ -2,6 +2,7 @@
 
 import NotebookPageBackground, {
   PAGE_COLOR_CLASS,
+  PAGE_EDGE_CLASS,
 } from "@/components/workspace/NotebookPageBackground";
 import type {
   Notebook,
@@ -43,7 +44,7 @@ export default function NotebookPageThumbnail({
 
   return (
     <div
-      className={`relative aspect-[900/1240] overflow-hidden rounded-sm shadow-sm ${PAGE_COLOR_CLASS[pageColor]}`}
+      className={`relative aspect-[900/1240] overflow-hidden rounded-sm shadow-sm ${PAGE_EDGE_CLASS} ${PAGE_COLOR_CLASS[pageColor]}`}
       style={getNotebookPageStyleBackground(pageColor, pageStyle)}
     >
       <NotebookPageBackground

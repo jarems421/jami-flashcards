@@ -33,7 +33,9 @@ vi.mock("@/components/workspace/NotebookPdfPage", () => ({
 
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
 import NotebookPageThumbnail from "@/components/workspace/NotebookPageThumbnail";
-import NotebookPageBackground from "@/components/workspace/NotebookPageBackground";
+import NotebookPageBackground, {
+  PAGE_COLOR_CLASS,
+} from "@/components/workspace/NotebookPageBackground";
 
 function findRenderedElement(
   node: ReactNode,
@@ -106,6 +108,25 @@ const imageFile: NotebookFile = {
   fileType: "image/png",
   storagePath: "notebooks/diagram.png",
 };
+
+describe("notebook page edges", () => {
+  /**
+   * A black page used to be edged in black, so on a dark theme it sat on a
+   * dark workspace with nothing between the two and you could not see where
+   * the paper ended.
+   */
+  it("outlines each page in something the page is not", () => {
+    expect(PAGE_COLOR_CLASS.white).toContain("after:border-black");
+    expect(PAGE_COLOR_CLASS.black).toContain("after:border-white/55");
+  });
+
+  it("never lets a page share an edge colour with itself", () => {
+    // The failure this guards is the specific one that was reported: an edge
+    // the same colour as the paper it is meant to be bounding.
+    expect(PAGE_COLOR_CLASS.black).not.toContain("after:border-black");
+    expect(PAGE_COLOR_CLASS.white).not.toContain("after:border-white");
+  });
+});
 
 describe("notebook page backgrounds", () => {
   beforeEach(() => {

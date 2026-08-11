@@ -120,6 +120,19 @@ export class NotebookInkSmoother {
     this.lastTime = seed.time;
   }
 
+  /**
+   * Where the ink is now, without taking another step towards anything.
+   *
+   * This is what the end of a stroke is given. A stroke must not gain any
+   * geometry at the lift: whatever is added there is added in one frame, after
+   * the pen has left the glass, so it is seen arriving rather than being drawn
+   * -- which is the whole of the "ink extends after lifting" complaint. Ending
+   * on the point already painted makes that impossible rather than small.
+   */
+  current(): { x: number; y: number } {
+    return { x: this.x, y: this.y };
+  }
+
   next(sample: NotebookInkSample): { x: number; y: number } {
     const deltaSeconds = Math.max(
       MIN_DELTA_SECONDS,
