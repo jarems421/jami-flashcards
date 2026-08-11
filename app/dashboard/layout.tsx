@@ -5,6 +5,7 @@
 // marketing and auth route.
 import "katex/dist/katex.min.css";
 import DashboardAccessGate from "@/components/layout/DashboardAccessGate";
+import EmailVerificationBanner from "@/components/layout/EmailVerificationBanner";
 
 export default function DashboardLayout({
   children,
@@ -12,7 +13,10 @@ export default function DashboardLayout({
   children: React.ReactNode;
 }) {
   return (
-    <DashboardAccessGate>{children}</DashboardAccessGate>
+    <DashboardAccessGate>
+      <EmailVerificationBanner />
+      {children}
+    </DashboardAccessGate>
   );
 }
 

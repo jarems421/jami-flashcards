@@ -11,6 +11,11 @@ import {
 } from "@/services/auth";
 import { listenToAuth } from "@/services/auth/auth-listener";
 import { getAuthErrorCode, getFriendlyAuthError } from "@/lib/auth/errors";
+import {
+  assessPassword,
+  getPasswordRequirementMessage,
+  PASSWORD_MINIMUM_LENGTH,
+} from "@/lib/auth/password-strength";
 import AppPage from "@/components/layout/AppPage";
 import { Button, Card, Input, PageHero } from "@/components/ui";
 
@@ -80,6 +85,17 @@ export default function AuthPage() {
       return;
     }
 
+    // Only on the way in. Holding an existing password to a policy it predates
+    // would lock people out of their own accounts over a rule they never
+    // agreed to; the reset link is how an old password gets replaced.
+    if (!isSignInMode) {
+      const problem = getPasswordRequirementMessage(password, trimmedEmail);
+      if (problem) {
+        setError(problem);
+        return;
+      }
+    }
+
     setLoading(true);
     setError(null);
 
@@ -96,6 +112,9 @@ export default function AuthPage() {
       setLoading(false);
     }
   };
+
+  const passwordAssessment = assessPassword(password, email);
+  const passwordProblem = getPasswordRequirementMessage(password, email);
 
   const toggleMode = () => {
     setIsSignInMode((prev) => !prev);
@@ -250,14 +269,62 @@ export default function AuthPage() {
               autoComplete="email"
             />
 
-            <Input
-              type="password"
-              label="Password"
-              placeholder={isSignInMode ? "Enter your password" : "At least 6 characters"}
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              autoComplete={isSignInMode ? "current-password" : "new-password"}
-            />
+            <div>
+              <Input
+                type="password"
+                label="Password"
+                placeholder={
+                  isSignInMode
+                    ? "Enter your password"
+                    : `At least ${PASSWORD_MINIMUM_LENGTH} characters`
+                }
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                autoComplete={isSignInMode ? "current-password" : "new-password"}
+                aria-describedby={
+                  !isSignInMode && password ? "password-strength" : undefined
+                }
+              />
+              {!isSignInMode && password ? (
+                <div id="password-strength" className="mt-2.5" aria-live="polite">
+                  {/*
+                    * Four segments rather than a bar, so the scale reads as a
+                    * small number of steps you can actually reach rather than a
+                    * continuous score to be optimised against.
+                    */}
+                  <div className="flex items-center gap-2">
+                    <div className="flex flex-1 gap-1">
+                      {[0, 1, 2, 3].map((segment) => (
+                        <span
+                          key={segment}
+                          className={`h-1 flex-1 rounded-full transition duration-fast ${
+                            passwordAssessment.acceptable &&
+                            segment < passwordAssessment.strength
+                              ? passwordAssessment.strength >= 3
+                                ? "bg-success"
+                                : "bg-warning"
+                              : "bg-[var(--color-border)]"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                    <span
+                      className={`shrink-0 text-2xs font-semibold uppercase tracking-[0.14em] ${
+                        passwordAssessment.acceptable
+                          ? "text-text-secondary"
+                          : "text-text-muted"
+                      }`}
+                    >
+                      {passwordAssessment.label}
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs leading-5 text-text-muted">
+                    {passwordProblem ??
+                      "Good. Longer is stronger — a few ordinary words beat a short password with a symbol in it."}
+                  </p>
+                </div>
+              ) : null}
+            </div>
 
             {isSignInMode ? (
               <div className="flex justify-end">
