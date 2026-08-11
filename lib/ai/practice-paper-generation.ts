@@ -9,8 +9,10 @@ import {
   normalizePracticePaperMarkScheme,
   normalizePracticePaperQuestions,
   type PracticePaperFocus,
+  type PracticePaperGenerationAudit,
   type PracticePaperGenerationResponse,
   type PracticePaperLength,
+  type PracticePaperTimingMode,
 } from "@/lib/practice/practice-papers";
 
 export const MAX_PRACTICE_PAPER_REQUEST_LENGTH = 2_000;
@@ -23,7 +25,8 @@ export type PracticePaperGenerationRequest = {
   length: PracticePaperLength;
   focus: PracticePaperFocus;
   focusDetail: string;
-  timerEnabled: boolean;
+  timingMode: PracticePaperTimingMode;
+  tutorEnabled: boolean;
   sourceIds: string[];
 };
 
@@ -69,7 +72,7 @@ function normalizeTextList(value: unknown, maximum = 20) {
 }
 
 function isLength(value: unknown): value is PracticePaperLength {
-  return value === "quick" || value === "standard" || value === "full";
+  return value === "full";
 }
 
 function isFocus(value: unknown): value is PracticePaperFocus {
@@ -109,7 +112,8 @@ export function parsePracticePaperGenerationRequest(
     length,
     focus,
     focusDetail: normalizeText(request.focusDetail, 1_000),
-    timerEnabled: request.timerEnabled === true,
+    timingMode: request.timingMode === "untimed" ? "untimed" : "timed",
+    tutorEnabled: request.tutorEnabled === true,
     sourceIds,
   };
 }
@@ -250,6 +254,7 @@ export function parsePracticePaperModelAnswer(
 export function buildPracticePaperGenerationResponse(input: {
   parsed: ParsedPracticePaperModelAnswer;
   sourcesByRef: ReadonlyMap<string, Source>;
+  generationAudit?: PracticePaperGenerationAudit;
 }): PracticePaperGenerationResponse {
   const sources = input.parsed.sourceRefs
     .map((reference) => input.sourcesByRef.get(reference))
@@ -278,5 +283,6 @@ export function buildPracticePaperGenerationResponse(input: {
     sourceLabels,
     gradeGuidance: input.parsed.gradeGuidance,
     examinerInsights: input.parsed.examinerInsights,
+    generationAudit: input.generationAudit,
   };
 }

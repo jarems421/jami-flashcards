@@ -80,3 +80,32 @@ export function prepareUploadedPracticePaper(notebookId: string) {
 export function markPracticePaper(notebookId: string) {
   return runPracticePaperAction("mark", notebookId);
 }
+
+export async function remarkPracticePaperQuestion(input: {
+  notebookId: string;
+  questionId: string;
+  reason: string;
+}) {
+  const user = auth.currentUser;
+  if (!user) throw new Error("Not signed in");
+  const token = await user.getIdToken();
+  const response = await fetch("/api/ai/practice-papers/remark-question", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(input),
+  });
+  const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!response.ok) {
+    throw new Error(
+      friendlyError(
+        response.status,
+        typeof data?.error === "string" ? data.error : undefined
+      )
+    );
+  }
+  if (!data) throw new Error("Jami returned an incomplete question recheck.");
+  return mapPracticePaperData(input.notebookId, data);
+}

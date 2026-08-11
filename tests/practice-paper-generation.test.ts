@@ -72,10 +72,11 @@ describe("practice-paper generation request", () => {
       folderId: "folder-1",
       request: "Create a module exam",
       coverage: "Whole folder",
-      length: "standard",
+      length: "full",
       focus: "balanced",
       focusDetail: "",
-      timerEnabled: true,
+      timingMode: "timed",
+      tutorEnabled: false,
     };
     expect(
       parsePracticePaperGenerationRequest({
@@ -111,7 +112,7 @@ describe("practice-paper model response", () => {
   it("keeps a fixed one-to-one marking guide and source receipt", () => {
     const parsed = parsePracticePaperModelAnswer(JSON.stringify(readyPayload), {
       allowedSourceRefs: ["S1", "S2"],
-      length: "standard",
+      length: "full",
     });
     expect(parsed?.status).toBe("ready");
     if (!parsed || parsed.status !== "ready") throw new Error("Expected a paper");
@@ -143,13 +144,13 @@ describe("practice-paper model response", () => {
             items: readyPayload.markScheme.items.slice(0, 1),
           },
         }),
-        { allowedSourceRefs: ["S1", "S2"], length: "standard" }
+        { allowedSourceRefs: ["S1", "S2"], length: "full" }
       )
     ).toBeNull();
     expect(
       parsePracticePaperModelAnswer(
         JSON.stringify({ ...readyPayload, sourceRefs: ["S9"] }),
-        { allowedSourceRefs: ["S1", "S2"], length: "standard" }
+        { allowedSourceRefs: ["S1", "S2"], length: "full" }
       )
     ).toBeNull();
   });
@@ -162,7 +163,7 @@ describe("practice-paper model response", () => {
           clarificationQuestion: "Should this follow the AQA or Edexcel specification?",
           sourceRefs: ["S1"],
         }),
-        { allowedSourceRefs: ["S1"], length: "quick" }
+        { allowedSourceRefs: ["S1"], length: "full" }
       )
     ).toEqual({
       status: "needs_clarification",
@@ -181,7 +182,7 @@ describe("practice-paper model response", () => {
       choiceGroups: [{ id: "choice", label: "Answer one", requiredCount: 1, questionIds: ["q1", "q2"], selectionRule: "highest_scoring" }],
       gradeGuidance: { kind: "estimated", label: "Estimated grades", notice: "Not official", boundaries: [{ label: "First", minimumPercentage: 70 }] },
       examinerInsights: ["State assumptions before calculating."],
-    }), { allowedSourceRefs: ["S1", "S2"], length: "standard" });
+    }), { allowedSourceRefs: ["S1", "S2"], length: "full" });
     expect(parsed?.status).toBe("ready");
     if (!parsed || parsed.status !== "ready") throw new Error("Expected a paper");
     expect(parsed.questions[0].assets[0]).toMatchObject({ type: "graph" });

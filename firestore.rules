@@ -216,6 +216,19 @@ service cloud.firestore {
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();
       }
 
+      match /practicePaperDeadlineSnapshots/{snapshotId} {
+        allow read: if isSelf(userId);
+        // Deadline evidence is immutable once written.
+        allow create: if isSelf(userId) && !isDemoAccount();
+        allow update, delete: if false;
+      }
+
+      // Embeddings and extracted chunks are server-owned private indexes. The
+      // client receives only the grounded answer and source receipt.
+      match /sourceChunks/{chunkId} {
+        allow read, write: if false;
+      }
+
       match /pushSubscriptions/{subscriptionId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if isSelf(userId) && !isDemoAccount();

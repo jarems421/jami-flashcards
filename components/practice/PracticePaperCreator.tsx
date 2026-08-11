@@ -19,10 +19,7 @@ import PracticePaperSourcePicker from "@/components/practice/PracticePaperSource
 import { useFeedback } from "@/hooks/useFeedback";
 import type { Source } from "@/lib/material/sources";
 import { rankPracticePaperSources } from "@/lib/ai/practice-paper-generation";
-import type {
-  PracticePaperFocus,
-  PracticePaperLength,
-} from "@/lib/practice/practice-papers";
+import type { PracticePaperTimingMode } from "@/lib/practice/practice-papers";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
 import { generatePracticePaper } from "@/services/ai/practice-papers";
 import { getActiveStudyFolders } from "@/services/study/folders";
@@ -40,24 +37,22 @@ import { getActiveSourcesForFolderPage } from "@/services/study/sources";
 
 type CreationPath = "generate" | "upload";
 
-const LENGTH_OPTIONS: Array<{
-  value: PracticePaperLength;
+const TIMING_OPTIONS: Array<{
+  value: PracticePaperTimingMode;
   label: string;
   detail: string;
 }> = [
-  { value: "quick", label: "Quick", detail: "Around 20 marks" },
-  { value: "standard", label: "Standard", detail: "Around 50 marks" },
-  { value: "full", label: "Full paper", detail: "Around 100 marks" },
+  { value: "timed", label: "Timed", detail: "Use the real paper duration, with optional overtime" },
+  { value: "untimed", label: "Untimed", detail: "Work without a countdown or pacing comparison" },
 ];
 
-const FOCUS_OPTIONS: Array<{
-  value: PracticePaperFocus;
+const TUTOR_OPTIONS: Array<{
+  value: "off" | "on";
   label: string;
   detail: string;
 }> = [
-  { value: "balanced", label: "Balanced", detail: "Representative coverage" },
-  { value: "weak_areas", label: "Weak areas", detail: "Follow what I struggle with" },
-  { value: "custom", label: "Custom", detail: "Describe the weighting" },
+  { value: "off", label: "Exam conditions", detail: "Jami stays hidden during the sitting" },
+  { value: "on", label: "Tutor assisted", detail: "Normal Tutor help is available and the result is labelled assisted" },
 ];
 
 function ChoiceCards<T extends string>({
@@ -76,7 +71,7 @@ function ChoiceCards<T extends string>({
   return (
     <fieldset>
       <legend className="mb-2 text-sm font-medium text-text-secondary">{label}</legend>
-      <div className="grid gap-2 sm:grid-cols-3">
+      <div className="grid gap-2 sm:grid-cols-2">
         {options.map((option) => {
           const selected = option.value === value;
           return (
@@ -117,13 +112,12 @@ export default function PracticePaperCreator() {
   const [loadingSources, setLoadingSources] = useState(false);
   const [path, setPath] = useState<CreationPath>("generate");
   const [request, setRequest] = useState("");
-  const [coverage, setCoverage] = useState("Whole folder");
-  const [length, setLength] = useState<PracticePaperLength>("standard");
-  const [focus, setFocus] = useState<PracticePaperFocus>("balanced");
-  const [focusDetail, setFocusDetail] = useState("");
-  const [timerEnabled, setTimerEnabled] = useState(false);
+  const [coverage, setCoverage] = useState("Complete paper or module sitting");
+  const [timingMode, setTimingMode] = useState<PracticePaperTimingMode>("timed");
+  const [tutorChoice, setTutorChoice] = useState<"off" | "on">("off");
   const [automaticSources, setAutomaticSources] = useState(true);
   const [selectedSourceIds, setSelectedSourceIds] = useState<string[]>([]);
+  const [confirmedAutomaticSourceIds, setConfirmedAutomaticSourceIds] = useState<string[]>([]);
   const [clarificationQuestion, setClarificationQuestion] = useState("");
   const [clarificationAnswer, setClarificationAnswer] = useState("");
   const [clarificationContext, setClarificationContext] = useState("");
@@ -165,6 +159,7 @@ export default function PracticePaperCreator() {
     let active = true;
     setLoadingSources(true);
     setSelectedSourceIds([]);
+    setConfirmedAutomaticSourceIds([]);
     void getActiveSourcesForFolderPage(user.uid, folderId, { pageSize: 100 })
       .then((page) => {
         if (active) setSources(page.items);
@@ -184,6 +179,21 @@ export default function PracticePaperCreator() {
     () => folders.find((folder) => folder.id === folderId) ?? null,
     [folderId, folders]
   );
+  const proposedSources = useMemo(
+    () => rankPracticePaperSources(
+      sources,
+      path === "generate"
+        ? `${request} ${coverage}`
+        : `${uploadTitle} uploaded complete assessment`
+    ),
+    [coverage, path, request, sources, uploadTitle]
+  );
+  const proposedSourceIds = proposedSources.map((source) => source.id);
+  const automaticSourcesConfirmed =
+    proposedSourceIds.length === confirmedAutomaticSourceIds.length &&
+    proposedSourceIds.every((sourceId, index) =>
+      sourceId === confirmedAutomaticSourceIds[index]
+    );
 
   const createGenerated = async () => {
     if (!folderId) {
@@ -194,8 +204,8 @@ export default function PracticePaperCreator() {
       showError("Tell Jami what paper you want to practise.");
       return;
     }
-    if (focus === "custom" && !focusDetail.trim()) {
-      showError("Describe the custom focus for this paper.");
+    if (automaticSources && !automaticSourcesConfirmed) {
+      showError("Review and confirm the sources Jami proposes for this paper.");
       return;
     }
     if (clarificationQuestion && !clarificationAnswer.trim()) {
@@ -213,11 +223,12 @@ export default function PracticePaperCreator() {
         folderId,
         request: completeRequest,
         coverage: coverage.trim() || "Whole folder",
-        length,
-        focus,
-        focusDetail,
-        timerEnabled,
-        sourceIds: automaticSources ? [] : selectedSourceIds,
+        length: "full",
+        focus: "balanced",
+        focusDetail: "",
+        timingMode,
+        tutorEnabled: tutorChoice === "on",
+        sourceIds: automaticSources ? confirmedAutomaticSourceIds : selectedSourceIds,
       });
       if (generated.status === "needs_clarification") {
         setClarificationContext(nextClarificationContext);
@@ -230,10 +241,11 @@ export default function PracticePaperCreator() {
         folderId,
         request: completeRequest,
         coverage: coverage.trim() || "Whole folder",
-        length,
-        focus,
-        focusDetail,
-        timerEnabled,
+        length: "full",
+        focus: "balanced",
+        focusDetail: "",
+        timingMode,
+        tutorEnabled: tutorChoice === "on",
         generated,
       });
       router.push(`/dashboard/notebooks/${encodeURIComponent(workspace.notebook.id)}`);
@@ -247,6 +259,10 @@ export default function PracticePaperCreator() {
   const createUploaded = async () => {
     if (!folderId || !paperFile || !uploadTitle.trim()) {
       showError("Choose a folder, name the paper, and add the paper file.");
+      return;
+    }
+    if (automaticSources && !automaticSourcesConfirmed) {
+      showError("Review and confirm the sources Jami proposes for this paper.");
       return;
     }
     setWorking(true);
@@ -273,11 +289,9 @@ export default function PracticePaperCreator() {
           onProgress: setProgress,
         });
       }
-      const automaticIds = rankPracticePaperSources(
-        sources,
-        `${uploadTitle.trim()} uploaded assessment`
-      ).map((source) => source.id);
-      let sourceIds = automaticSources ? automaticIds : selectedSourceIds;
+      let sourceIds = automaticSources
+        ? confirmedAutomaticSourceIds
+        : selectedSourceIds;
       let sourceLabels = sourceIds.flatMap((sourceId) => {
         const source = sources.find((candidate) => candidate.id === sourceId);
         return source ? [source.title] : [];
@@ -293,7 +307,8 @@ export default function PracticePaperCreator() {
         sourceLabels,
         markSchemeSourceId: uploadedScheme?.id,
         durationMinutes: Number.parseInt(uploadedDuration, 10) || 0,
-        timerEnabled,
+        timingMode,
+        tutorEnabled: tutorChoice === "on",
       });
       router.push(`/dashboard/notebooks/${encodeURIComponent(imported.notebook.id)}`);
     } catch (error) {
@@ -421,14 +436,14 @@ export default function PracticePaperCreator() {
               <SectionHeader
                 eyebrow="Talk to Jami"
                 title="What should this paper prepare you for?"
-                description="Mention a module, paper, topic, format, or anything you want weighted differently."
+                description="Name the complete exam paper, component, module sitting, or repeated university format you want to practise."
               />
               <Textarea
                 className="mt-4"
                 rows={5}
                 value={request}
                 disabled={working}
-                placeholder="Create a 60-mark AQA GCSE Biology paper on cells and organisation. Focus more on microscopy because I'm weak at it."
+                placeholder="Create a complete AQA GCSE Biology Paper 1 in the current format, using my specification and past-paper sources."
                 onChange={(event) => setRequest(event.target.value)}
               />
             </div>
@@ -451,32 +466,15 @@ export default function PracticePaperCreator() {
               label="Coverage"
               value={coverage}
               disabled={working}
-              placeholder="Whole folder, selected topics, or a custom range"
+              placeholder="For example: Paper 1, whole module exam, or full final sitting"
               onChange={(event) => setCoverage(event.target.value)}
             />
-            <ChoiceCards
-              label="Paper length"
-              value={length}
-              options={LENGTH_OPTIONS}
-              disabled={working}
-              onChange={setLength}
-            />
-            <ChoiceCards
-              label="Question focus"
-              value={focus}
-              options={FOCUS_OPTIONS}
-              disabled={working}
-              onChange={setFocus}
-            />
-            {focus === "custom" ? (
-              <Input
-                label="Custom weighting"
-                value={focusDetail}
-                disabled={working}
-                placeholder="For example: mostly calculations, with one longer explanation"
-                onChange={(event) => setFocusDetail(event.target.value)}
-              />
-            ) : null}
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
+              <p className="text-sm font-semibold text-text-primary">Complete sitting</p>
+              <p className="mt-1 text-xs leading-5 text-text-muted">
+                Jami creates the full inferred exam format. Topic tests and single-question work stay separate from full-paper mode.
+              </p>
+            </div>
           </div>
         ) : (
           <div className="space-y-5">
@@ -532,31 +530,35 @@ export default function PracticePaperCreator() {
         ) : (
           <PracticePaperSourcePicker
             sources={sources}
+            proposedSources={proposedSources}
+            automaticConfirmed={automaticSourcesConfirmed}
             selectedIds={selectedSourceIds}
             automatic={automaticSources}
             disabled={working}
-            onAutomaticChange={setAutomaticSources}
+            onAutomaticChange={(value) => {
+              setAutomaticSources(value);
+              if (value) setConfirmedAutomaticSourceIds([]);
+            }}
+            onConfirmAutomatic={() => setConfirmedAutomaticSourceIds(proposedSourceIds)}
             onChange={setSelectedSourceIds}
           />
         )}
 
-        <div className="flex items-start gap-3 rounded-xl border border-[var(--color-border)] p-4">
-          <input
-            id="practice-paper-timer"
-            type="checkbox"
-            checked={timerEnabled}
-            disabled={working}
-            onChange={(event) => setTimerEnabled(event.target.checked)}
-            className="mt-1 h-4 w-4 accent-[var(--color-accent)]"
+        <div className="grid gap-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-5 lg:grid-cols-2">
+          <ChoiceCards
+            label="Attempt timing"
+            value={timingMode}
+            options={TIMING_OPTIONS}
+            disabled={working || (automaticSources && !automaticSourcesConfirmed)}
+            onChange={setTimingMode}
           />
-          <div>
-            <label htmlFor="practice-paper-timer" className="block cursor-pointer text-sm font-semibold text-text-primary">
-              Show an attempt timer
-            </label>
-            <p className="mt-1 text-xs leading-5 text-text-muted">
-              The timer is optional and never submits the paper automatically.
-            </p>
-          </div>
+          <ChoiceCards
+            label="Tutor during the sitting"
+            value={tutorChoice}
+            options={TUTOR_OPTIONS}
+            disabled={working}
+            onChange={setTutorChoice}
+          />
         </div>
 
         {working && progress !== null ? (

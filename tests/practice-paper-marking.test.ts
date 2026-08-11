@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { parsePracticePaperMarkingModelAnswer } from "@/lib/ai/practice-paper-marking";
+import {
+  mergePracticePaperQuestionRemark,
+  parsePracticePaperMarkingModelAnswer,
+} from "@/lib/ai/practice-paper-marking";
 import { mapPracticePaperData } from "@/lib/practice/practice-papers";
 import { applyPracticePaperMarkCorrection } from "@/lib/practice/practice-papers";
 
@@ -129,5 +132,30 @@ describe("practice-paper marking response", () => {
     });
     expect(result).toMatchObject({ awardedMarks: 8, percentage: 80, gradeLabel: "A" });
     expect(result.questionResults[0].manualReason).toBe("Handwriting was misread");
+  });
+
+  it("merges a question-only AI recheck and recalculates the total", () => {
+    const current = parsePracticePaperMarkingModelAnswer(JSON.stringify({
+      summary: "Initial report",
+      strengths: [],
+      priorities: [],
+      questionResults: [
+        { questionId: "q1", awardedMarks: 1, maxMarks: 2, feedback: "", strengths: [], improvements: [], confidence: "low", attempted: true },
+        { questionId: "q2", awardedMarks: 2, maxMarks: 3, feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+      ],
+    }), paper);
+    expect(current).not.toBeNull();
+    const merged = mergePracticePaperQuestionRemark({
+      paper,
+      current: current!,
+      replacement: {
+        ...current!.questionResults[0],
+        awardedMarks: 2,
+        confidence: "high",
+        manualReason: "AI recheck: final line was faint",
+      },
+    });
+    expect(merged).toMatchObject({ awardedMarks: 4, totalMarks: 5, percentage: 80 });
+    expect(merged?.questionResults[0].manualReason).toContain("AI recheck");
   });
 });

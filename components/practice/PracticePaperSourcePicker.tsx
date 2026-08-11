@@ -6,17 +6,23 @@ import { MAX_PRACTICE_PAPER_SOURCE_IDS } from "@/lib/practice/practice-papers";
 
 export default function PracticePaperSourcePicker({
   sources,
+  proposedSources,
+  automaticConfirmed,
   selectedIds,
   automatic,
   disabled,
   onAutomaticChange,
+  onConfirmAutomatic,
   onChange,
 }: {
   sources: Source[];
+  proposedSources: Source[];
+  automaticConfirmed: boolean;
   selectedIds: string[];
   automatic: boolean;
   disabled?: boolean;
   onAutomaticChange: (automatic: boolean) => void;
+  onConfirmAutomatic: () => void;
   onChange: (sourceIds: string[]) => void;
 }) {
   const toggle = (sourceId: string) => {
@@ -67,10 +73,39 @@ export default function PracticePaperSourcePicker({
         </div>
 
         {automatic ? (
-          <p className="text-sm leading-6 text-text-secondary">
-            Jami will compare up to 15 relevant sources, prioritising current specifications,
-            assessment briefs, rubrics, mark schemes and recent past papers.
-          </p>
+          <div>
+            <p className="text-sm leading-6 text-text-secondary">
+              Jami proposes up to 15 relevant sources, prioritising current specifications,
+              assessment briefs, rubrics, mark schemes and recent past papers.
+            </p>
+            {proposedSources.length > 0 ? (
+              <div className="mt-3 flex flex-wrap gap-2">
+                {proposedSources.map((source) => (
+                  <span key={source.id} className="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-panel)] px-3 py-1.5 text-xs text-text-secondary">
+                    {source.title}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-xs text-text-muted">
+                No folder sources are available. Jami will use the folder level and general knowledge.
+              </p>
+            )}
+            <Button
+              type="button"
+              size="sm"
+              className="mt-4"
+              variant={automaticConfirmed ? "secondary" : "primary"}
+              disabled={disabled || automaticConfirmed}
+              onClick={onConfirmAutomatic}
+            >
+              {automaticConfirmed
+                ? "Sources confirmed"
+                : proposedSources.length > 0
+                  ? `Use these ${proposedSources.length} sources`
+                  : "Continue without sources"}
+            </Button>
+          </div>
         ) : sources.length > 0 ? (
           <div className="grid gap-2 sm:grid-cols-2">
             {sources.map((source) => {

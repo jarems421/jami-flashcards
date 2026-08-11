@@ -135,9 +135,10 @@ export default function PracticePaperDetailsDialog({
           <div className="mt-5 space-y-4">
             <div className="grid gap-3 sm:grid-cols-2">
               <Detail label="Course or module" value={paper.assessmentProfile.qualificationOrModule} />
-              <Detail label="Attempt" value={`${paper.totalMarks} marks${paper.durationMinutes ? ` · ${paper.durationMinutes} minutes` : ""}`} />
+              <Detail label="Attempt" value={`${paper.totalMarks} marks${paper.durationMinutes ? ` · ${paper.durationMinutes} minutes` : ""} · ${paper.timingMode === "timed" ? "Timed" : "Untimed"}`} />
               <Detail label="Specification" value={[paper.assessmentProfile.awardingBodyOrInstitution, paper.assessmentProfile.specificationOrCourse, paper.assessmentProfile.tierOrComponent].filter(Boolean).join(" · ") || paper.assessmentProfile.studyLevel} />
               <Detail label="Marking basis" value={paper.markScheme.label} note={paper.markScheme.notice} />
+              <Detail label="Tutor during attempt" value={paper.tutorEnabled ? "Available · attempt labelled Tutor-assisted" : "Off · exam conditions"} />
             </div>
             {paper.assessmentProfile.formatSummary ? <Detail label="Format Jami followed" value={paper.assessmentProfile.formatSummary} /> : null}
             {paper.choiceGroups.map((group) => (
@@ -147,7 +148,7 @@ export default function PracticePaperDetailsDialog({
               <div className="rounded-xl bg-[var(--color-glass-subtle)] p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">Examiner-informed focus</p>
                 <ul className="mt-2 space-y-1.5 text-sm text-text-secondary">
-                  {paper.examinerInsights.map((insight) => <li key={insight}>· {insight}</li>)}
+                  {paper.examinerInsights.map((insight) => <li key={insight}>• {insight}</li>)}
                 </ul>
               </div>
             ) : null}
@@ -159,6 +160,14 @@ export default function PracticePaperDetailsDialog({
                   : <span className="text-sm text-text-muted">No folder sources were required.</span>}
               </div>
             </div>
+            {paper.generationAudit ? (
+              <p className="rounded-xl bg-accent/8 p-3 text-xs leading-5 text-text-muted">
+                Quality checked by an independent AI reviewer
+                {paper.generationAudit.issueCount > 0
+                  ? ` · ${paper.generationAudit.issueCount} issue${paper.generationAudit.issueCount === 1 ? "" : "s"} found${paper.generationAudit.repaired ? " and repaired" : ""}`
+                  : " · no structural issues found"}.
+              </p>
+            ) : null}
           </div>
         )}
 

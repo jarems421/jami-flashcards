@@ -8,7 +8,17 @@ import {
   type RulesTestEnvironment,
 } from "@firebase/rules-unit-testing";
 import { beforeAll, afterAll, afterEach, describe, it } from "vitest";
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import {
+  collection,
+  deleteDoc,
+  doc,
+  getDoc,
+  getDocs,
+  query,
+  setDoc,
+  updateDoc,
+  where,
+} from "firebase/firestore";
 
 const rootDir = fileURLToPath(new URL("..", import.meta.url));
 const rules = readFileSync(path.join(rootDir, "firestore.rules"), "utf8");
@@ -712,6 +722,50 @@ describe("Firestore security rules", () => {
         updatedAt: 1,
       })
     );
+  });
+
+  it("keeps deadline evidence immutable and source embeddings server-only", async () => {
+    await seedData();
+
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const bobDb = testEnv.authenticatedContext(BOB).firestore();
+    const deadlineRef = doc(
+      aliceDb,
+      "users",
+      ALICE,
+      "practicePaperDeadlineSnapshots",
+      "attempt-1_page-1"
+    );
+    await assertSucceeds(setDoc(deadlineRef, {
+      attemptId: "attempt-1",
+      paperId: "paper-1",
+      notebookId: "notebook-1",
+      pageId: "page-1",
+      capturedAt: 10,
+      page: { typedContent: "Within-time answer" },
+    }));
+    await assertSucceeds(getDoc(deadlineRef));
+    await assertFails(updateDoc(deadlineRef, { capturedAt: 11 }));
+    await assertFails(deleteDoc(deadlineRef));
+    await assertFails(getDoc(doc(
+      bobDb,
+      "users",
+      ALICE,
+      "practicePaperDeadlineSnapshots",
+      "attempt-1_page-1"
+    )));
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", ALICE, "sourceChunks", "source-1-0000"), {
+        sourceId: "source-1",
+        text: "Private extracted source text",
+        embedding: [0.1, 0.2],
+      });
+    });
+    const chunkRef = doc(aliceDb, "users", ALICE, "sourceChunks", "source-1-0000");
+    await assertFails(getDoc(chunkRef));
+    await assertFails(setDoc(chunkRef, { sourceId: "source-1", text: "changed" }));
+    await assertFails(getDocs(collection(aliceDb, "users", ALICE, "sourceChunks")));
   });
 
   it("blocks demo accounts from mutating decks and notification setup", async () => {

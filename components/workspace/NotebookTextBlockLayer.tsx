@@ -189,7 +189,9 @@ function NotebookTextBlockLayer({
         return (
           <div
             key={block.id}
-            className={`notebook-text-object pointer-events-auto absolute rounded-sm border bg-transparent transition-[border-color,box-shadow] duration-150 ${
+            className={`notebook-text-object absolute rounded-sm border bg-transparent transition-[border-color,box-shadow] duration-150 ${
+              editingEnabled ? "pointer-events-auto" : "pointer-events-none"
+            } ${
               editing
                 ? `cursor-text ${frameBorderClass} shadow-e0`
                 : selected

@@ -8,6 +8,7 @@ import {
   useLayoutEffect,
   useMemo,
   useRef,
+  useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
@@ -20,6 +21,7 @@ import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayer
 import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
 import NotebookPagesDrawer from "@/components/workspace/NotebookPagesDrawer";
+import NotebookPageNavigation from "@/components/workspace/NotebookPageNavigation";
 import NotebookDrawingToolbar, {
   type NotebookToolMenu,
 } from "@/components/workspace/NotebookDrawingToolbar";
@@ -148,6 +150,7 @@ import {
 } from "@/lib/workspace/notebook-pen-feel";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
 import { NOTEBOOK_ASSISTANT_QUICK_ACTIONS } from "@/lib/workspace/notebook-assistant";
+import { recordPracticePaperTutorUse } from "@/services/study/practice-papers";
 import {
   trackNotebookPdfCanvas,
   type NotebookPdfCanvasTracking,
@@ -309,6 +312,8 @@ export default function NotebookEditorPage() {
   } = useNotebookPanelState();
   const { practicePaperStatus, handlePracticePaperStatusChange } =
     usePracticePaperStatus(setAssistantOpen);
+  const [practicePaperEditingLocked, setPracticePaperEditingLocked] = useState(false);
+  const [practicePaperTutorLocked, setPracticePaperTutorLocked] = useState(false);
   const handlePracticePaperRetake = usePracticePaperRetake(pageState, setPages, setInkEditorMountRevision);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
@@ -2522,13 +2527,15 @@ export default function NotebookEditorPage() {
                 if (nextOpen) handleAssistantOpenChange(false);
               }}
             />
-            {practicePaperStatus !== "in_progress" &&
-            practicePaperStatus !== "submitted" ? (
+            {!practicePaperTutorLocked ? (
               <ToolbarIconButton
                 label="Jami Tutor"
                 icon="ai"
                 active={assistantOpen}
                 onClick={() => {
+                  if (!assistantOpen && practicePaperStatus === "in_progress" && user?.uid && notebook) {
+                    void recordPracticePaperTutorUse(user.uid, notebook.id).catch(() => undefined);
+                  }
                   handleAssistantOpenChange(!assistantOpen);
                 }}
               />
@@ -2541,6 +2548,8 @@ export default function NotebookEditorPage() {
               onStatusChange={handlePracticePaperStatusChange}
               onBeforeSubmit={prepareCurrentPageForNavigation}
               onRetake={handlePracticePaperRetake}
+              onEditingLockChange={setPracticePaperEditingLocked}
+              onTutorLockChange={setPracticePaperTutorLocked}
             />
           ) : null}
         </header>
@@ -2640,8 +2649,7 @@ export default function NotebookEditorPage() {
           onToggleFullEditing={() => setPhoneFullEditing((value) => !value)}
         />
 
-        {practicePaperStatus !== "in_progress" &&
-        practicePaperStatus !== "submitted" ? (
+        {!practicePaperTutorLocked ? (
         <JamiAssistantDrawer
           open={assistantOpen}
           onOpenChange={handleAssistantOpenChange}
@@ -2660,7 +2668,7 @@ export default function NotebookEditorPage() {
             notebook={notebook}
             selectedPageId={selectedPage?.id ?? null}
             deletingPageId={deletingPageId}
-            editingEnabled={fullNotebookEditingEnabled}
+            editingEnabled={fullNotebookEditingEnabled && !practicePaperEditingLocked}
             creatingPage={creatingPage}
             navigationBusy={Boolean(pageSwipeMotion)}
             resolvePageBackground={resolvePageBackground}
@@ -2715,7 +2723,9 @@ export default function NotebookEditorPage() {
                     )}
                     inkReady={inkReady}
                     editingEnabled={
-                      fullNotebookEditingEnabled && !selectedPageInkUnloaded
+                      fullNotebookEditingEnabled &&
+                      !practicePaperEditingLocked &&
+                      !selectedPageInkUnloaded
                     }
                     eraserWidth={eraserWidth}
                     inkEditorMountRevision={inkEditorMountRevision}
@@ -2811,7 +2821,7 @@ export default function NotebookEditorPage() {
                   <NotebookTextBlockLayer
                     textBlocks={textBlocks}
                     pageColor={pageColor}
-                    editingEnabled={fullNotebookEditingEnabled}
+                    editingEnabled={fullNotebookEditingEnabled && !practicePaperEditingLocked}
                     selectedTextBlockId={selectedTextBlockId}
                     editingTextBlockId={editingTextBlockId}
                     activeTextGestureId={activeTextGestureId}
@@ -2890,7 +2900,7 @@ export default function NotebookEditorPage() {
                 </div>
               </div>
             ) : null}
-            {fullNotebookEditingEnabled ? (
+            {fullNotebookEditingEnabled && !practicePaperEditingLocked ? (
               <NotebookDrawingToolbar
                 dock={toolbarDock}
                 toolbarRef={drawingToolbarRef}
@@ -2907,61 +2917,17 @@ export default function NotebookEditorPage() {
                 onRedo={handleToolbarRedo}
               />
             ) : null}
-            <div
-              className={`notebook-floating-control absolute right-3 z-20 flex items-center gap-1 rounded-full border border-[var(--color-border)] p-1 md:right-4 ${
-                fullNotebookEditingEnabled
-                  ? "bottom-[calc(var(--notebook-control-bottom-inset)+3.95rem)] md:bottom-[var(--notebook-control-bottom-inset)]"
-                  : "bottom-[var(--notebook-control-bottom-inset)]"
-              }`}
-              aria-label="Page navigation"
-            >
-              <button
-                type="button"
-                aria-label="Previous page"
-                title="Previous page"
-                disabled={selectedPageIndex <= 0 || Boolean(pageSwipeMotion)}
-                onClick={() => void selectPageByOffset(-1)}
-                className="inline-grid h-9 w-9 place-items-center rounded-full text-text-secondary transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-35"
-              >
-                <span className="rotate-90">
-                  <NotebookIcon name="chevron" />
-                </span>
-              </button>
-              <div className="min-w-[3.25rem] px-1 text-center text-xs font-semibold tabular-nums text-text-secondary">
-                {selectedPageIndex >= 0 ? selectedPageIndex + 1 : 0} / {pages.length || 0}
-              </div>
-              {selectedPageIndex >= 0 &&
-              selectedPageIndex >= pages.length - 1 &&
-              fullNotebookEditingEnabled ? (
-                <button
-                  type="button"
-                  aria-label="New page"
-                  title="New page"
-                  disabled={creatingPage || Boolean(pageSwipeMotion)}
-                  onClick={() => void createBlankPageAtEnd()}
-                  className="inline-grid h-9 w-9 place-items-center rounded-full text-[var(--color-selected-text)] transition hover:bg-[var(--color-selected-bg)] disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  <NotebookIcon name="plus" />
-                </button>
-              ) : (
-                <button
-                  type="button"
-                  aria-label="Next page"
-                  title="Next page"
-                  disabled={
-                    selectedPageIndex < 0 ||
-                    selectedPageIndex >= pages.length - 1 ||
-                    Boolean(pageSwipeMotion)
-                  }
-                  onClick={() => void selectPageByOffset(1)}
-                  className="inline-grid h-9 w-9 place-items-center rounded-full text-text-secondary transition hover:bg-[var(--color-glass-subtle)] hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-35"
-                >
-                  <span className="-rotate-90">
-                    <NotebookIcon name="chevron" />
-                  </span>
-                </button>
-              )}
-            </div>
+            <NotebookPageNavigation
+              selectedPageIndex={selectedPageIndex}
+              pageCount={pages.length}
+              navigationBusy={Boolean(pageSwipeMotion)}
+              editingToolbarVisible={fullNotebookEditingEnabled && !practicePaperEditingLocked}
+              canCreatePage={selectedPageIndex >= 0 && selectedPageIndex >= pages.length - 1 && fullNotebookEditingEnabled && !practicePaperEditingLocked}
+              creatingPage={creatingPage}
+              onPrevious={() => void selectPageByOffset(-1)}
+              onNext={() => void selectPageByOffset(1)}
+              onCreate={() => void createBlankPageAtEnd()}
+            />
             {touchInkHintVisible ? (
               <div
                 className={`notebook-floating-control pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-text-secondary ${
@@ -2973,7 +2939,9 @@ export default function NotebookEditorPage() {
                 Use Apple Pencil or stylus to write. Fingers move the page.
               </div>
             ) : null}
-            {selectedPageInkUnloaded && fullNotebookEditingEnabled ? (
+            {selectedPageInkUnloaded &&
+            fullNotebookEditingEnabled &&
+            !practicePaperEditingLocked ? (
               <div
                 role="status"
                 className={`notebook-floating-control pointer-events-none absolute left-1/2 z-20 -translate-x-1/2 rounded-full border border-[var(--color-border)] px-3 py-1.5 text-xs font-semibold text-text-secondary ${

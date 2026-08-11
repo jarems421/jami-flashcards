@@ -5,6 +5,7 @@ import {
   getDocs,
   increment,
   query,
+  runTransaction,
   setDoc,
   updateDoc,
   where,
@@ -22,6 +23,7 @@ import {
   type PracticePaperLength,
   type PracticePaperResult,
   type PracticePaperStatus,
+  type PracticePaperTimingMode,
   mapPracticePaperAttemptData,
   type PracticePaperAttempt,
   applyPracticePaperMarkCorrection,
@@ -77,7 +79,8 @@ export async function createGeneratedPracticePaperWorkspace(input: {
   length: PracticePaperLength;
   focus: PracticePaperFocus;
   focusDetail?: string;
-  timerEnabled: boolean;
+  timingMode: PracticePaperTimingMode;
+  tutorEnabled: boolean;
   generated: GeneratedPracticePaper;
 }) {
   const notebook = await createNotebook(input.userId, {
@@ -121,8 +124,18 @@ export async function createGeneratedPracticePaperWorkspace(input: {
       length: input.length,
       focus: input.focus,
       focusDetail: input.focusDetail,
-      durationMinutes: input.generated.durationMinutes,
-      timerEnabled: input.timerEnabled,
+    durationMinutes: input.generated.durationMinutes,
+    timingMode: input.timingMode,
+    timingState: "not_started",
+    deadlineAt: undefined,
+    pausedAt: undefined,
+    totalPausedMs: 0,
+    overtimeStartedAt: undefined,
+    deadlineSnapshotAt: undefined,
+    deadlineVersion: 0,
+    tutorEnabled: input.tutorEnabled,
+    tutorUsed: false,
+    timerEnabled: input.timingMode === "timed",
       instructions: input.generated.instructions,
       assessmentProfile: input.generated.assessmentProfile,
       questions: input.generated.questions,
@@ -132,6 +145,7 @@ export async function createGeneratedPracticePaperWorkspace(input: {
       preparedAt: Date.now(),
       gradeGuidance: input.generated.gradeGuidance,
       examinerInsights: input.generated.examinerInsights,
+      generationAudit: input.generated.generationAudit,
       attemptCount: 0,
     });
     await withTimeout(
@@ -161,7 +175,8 @@ export async function createUploadedPracticePaper(input: {
   sourceLabels: string[];
   markSchemeSourceId?: string;
   durationMinutes?: number;
-  timerEnabled: boolean;
+  timingMode: PracticePaperTimingMode;
+  tutorEnabled: boolean;
 }) {
   const now = Date.now();
   const payload = buildPracticePaperPayload({
@@ -177,7 +192,17 @@ export async function createUploadedPracticePaper(input: {
     length: "full",
     focus: "balanced",
     durationMinutes: Math.max(0, input.durationMinutes ?? 0),
-    timerEnabled: input.timerEnabled,
+    timingMode: input.timingMode,
+    timingState: "not_started",
+    deadlineAt: undefined,
+    pausedAt: undefined,
+    totalPausedMs: 0,
+    overtimeStartedAt: undefined,
+    deadlineSnapshotAt: undefined,
+    deadlineVersion: 0,
+    tutorEnabled: input.tutorEnabled,
+    tutorUsed: false,
+    timerEnabled: input.timingMode === "timed",
     instructions: [],
     assessmentProfile: {
       studyLevel: "To be inferred from the uploaded paper",
@@ -343,6 +368,18 @@ export async function startPracticePaperAttempt(
     attemptNumber,
     status: "in_progress",
     startedAt: now,
+    timingMode: paper.timingMode,
+    timingState: "running",
+    durationMinutes: paper.durationMinutes,
+    deadlineAt:
+      paper.timingMode === "timed" && paper.durationMinutes > 0
+        ? now + paper.durationMinutes * 60_000
+        : undefined,
+    totalPausedMs: 0,
+    deadlineVersion: 1,
+    tutorEnabled: paper.tutorEnabled,
+    tutorUsed: false,
+    assisted: paper.tutorEnabled,
     createdAt: now,
     updatedAt: now,
   };
@@ -352,6 +389,17 @@ export async function startPracticePaperAttempt(
     activeAttemptId: attemptDocument.id,
     attemptCount: attemptNumber,
     startedAt: now,
+    timingState: "running",
+    deadlineAt:
+      paper.timingMode === "timed" && paper.durationMinutes > 0
+        ? now + paper.durationMinutes * 60_000
+        : null,
+    pausedAt: null,
+    totalPausedMs: 0,
+    overtimeStartedAt: null,
+    deadlineSnapshotAt: null,
+    deadlineVersion: 1,
+    tutorUsed: false,
     submittedAt: null,
     markedAt: null,
     result: null,
@@ -365,6 +413,17 @@ export async function startPracticePaperAttempt(
     activeAttemptId: attemptDocument.id,
     attemptCount: attemptNumber,
     startedAt: now,
+    timingState: "running",
+    deadlineAt:
+      paper.timingMode === "timed" && paper.durationMinutes > 0
+        ? now + paper.durationMinutes * 60_000
+        : undefined,
+    pausedAt: undefined,
+    totalPausedMs: 0,
+    overtimeStartedAt: undefined,
+    deadlineSnapshotAt: undefined,
+    deadlineVersion: 1,
+    tutorUsed: false,
     submittedAt: null,
     markedAt: null,
     result: null,
@@ -380,18 +439,205 @@ export async function submitPracticePaperAttempt(
   const batch = writeBatch(db);
   batch.update(practicePaperRef(userId, paper.notebookId), {
     status: "submitted",
+    timingState: "submitted",
     submittedAt: now,
     updatedAt: now,
   });
   if (paper.activeAttemptId) {
     batch.update(practicePaperAttemptRef(userId, paper.activeAttemptId), {
       status: "submitted",
+      timingState: "submitted",
       submittedAt: now,
       updatedAt: now,
     });
   }
   await withTimeout(batch.commit(), WRITE_MS, "Submit paper attempt");
   return now;
+}
+
+export async function pausePracticePaperAttempt(
+  userId: string,
+  paper: PracticePaper
+) {
+  if (!paper.activeAttemptId) throw new Error("No active paper attempt.");
+  const now = Date.now();
+  const batch = writeBatch(db);
+  batch.update(practicePaperRef(userId, paper.notebookId), {
+    timingState: "paused",
+    pausedAt: now,
+    deadlineVersion: increment(1),
+    updatedAt: now,
+  });
+  batch.update(practicePaperAttemptRef(userId, paper.activeAttemptId), {
+    timingState: "paused",
+    pausedAt: now,
+    deadlineVersion: increment(1),
+    updatedAt: now,
+  });
+  await withTimeout(batch.commit(), WRITE_MS, "Pause paper attempt");
+  return mapPracticePaperData(paper.id, {
+    ...paper,
+    timingState: "paused",
+    pausedAt: now,
+    deadlineVersion: paper.deadlineVersion + 1,
+    updatedAt: now,
+  });
+}
+
+export async function resumePracticePaperAttempt(
+  userId: string,
+  paper: PracticePaper
+) {
+  if (!paper.activeAttemptId || !paper.pausedAt) {
+    throw new Error("This attempt is not paused.");
+  }
+  const now = Date.now();
+  const pausedFor = Math.max(0, now - paper.pausedAt);
+  const deadlineAt = paper.deadlineAt ? paper.deadlineAt + pausedFor : undefined;
+  const totalPausedMs = paper.totalPausedMs + pausedFor;
+  const batch = writeBatch(db);
+  const updates = {
+    timingState: "running" as const,
+    pausedAt: null,
+    deadlineAt: deadlineAt ?? null,
+    totalPausedMs,
+    deadlineVersion: increment(1),
+    updatedAt: now,
+  };
+  batch.update(practicePaperRef(userId, paper.notebookId), updates);
+  batch.update(practicePaperAttemptRef(userId, paper.activeAttemptId), updates);
+  await withTimeout(batch.commit(), WRITE_MS, "Resume paper attempt");
+  return mapPracticePaperData(paper.id, {
+    ...paper,
+    ...updates,
+    pausedAt: undefined,
+    deadlineAt,
+    deadlineVersion: paper.deadlineVersion + 1,
+  });
+}
+
+export async function capturePracticePaperDeadlineSnapshot(
+  userId: string,
+  paper: PracticePaper
+) {
+  if (!paper.activeAttemptId || paper.timingMode !== "timed") return paper;
+  const now = Date.now();
+  const paperRef = practicePaperRef(userId, paper.notebookId);
+  const attemptRef = practicePaperAttemptRef(userId, paper.activeAttemptId);
+  const transition = await runTransaction(db, async (transaction) => {
+    const snapshot = await transaction.get(paperRef);
+    if (!snapshot.exists()) return null;
+    const current = mapPracticePaperData(snapshot.id, snapshot.data());
+    if (
+      current.status !== "in_progress" ||
+      current.timingState !== "running" ||
+      !current.deadlineAt ||
+      current.deadlineAt > now
+    ) {
+      return null;
+    }
+    const deadlineVersion = current.deadlineVersion + 1;
+    const updates = {
+      timingState: "awaiting_overtime" as const,
+      deadlineSnapshotAt: now,
+      deadlineVersion,
+      updatedAt: now,
+    };
+    transaction.update(paperRef, updates);
+    transaction.update(attemptRef, updates);
+    return { current, deadlineVersion };
+  });
+  if (!transition) {
+    return (await getPracticePaperByNotebookId(userId, paper.notebookId)) ?? paper;
+  }
+
+  const pages = await withTimeout(
+    getDocs(query(
+      collection(db, "users", userId, "notebookPages"),
+      where("notebookId", "==", paper.notebookId)
+    )),
+    LOAD_MS,
+    "Load deadline pages"
+  );
+  const inkSnapshots = await Promise.all(
+    pages.docs.map((page) => getDoc(doc(db, "users", userId, "notebookPageInk", page.id)))
+  );
+  const batch = writeBatch(db);
+  pages.docs.forEach((page, index) => {
+    const ink = inkSnapshots[index];
+    const snapshotRef = doc(
+      db,
+      "users",
+      userId,
+      "practicePaperDeadlineSnapshots",
+      `${paper.activeAttemptId}_${page.id}`
+    );
+    batch.set(snapshotRef, {
+      attemptId: paper.activeAttemptId,
+      paperId: paper.id,
+      notebookId: paper.notebookId,
+      pageId: page.id,
+      deadlineVersion: transition.deadlineVersion,
+      capturedAt: now,
+      page: page.data(),
+      ink: ink.exists() ? ink.data() : null,
+    });
+  });
+  await withTimeout(batch.commit(), WRITE_MS, "Save deadline snapshot");
+  return mapPracticePaperData(paper.id, {
+    ...transition.current,
+    timingState: "awaiting_overtime",
+    deadlineSnapshotAt: now,
+    deadlineVersion: transition.deadlineVersion,
+    updatedAt: now,
+  });
+}
+
+export async function continuePracticePaperInOvertime(
+  userId: string,
+  paper: PracticePaper
+) {
+  if (!paper.activeAttemptId || paper.timingState !== "awaiting_overtime") {
+    throw new Error("This attempt is not awaiting an overtime choice.");
+  }
+  const now = Date.now();
+  const batch = writeBatch(db);
+  const updates = {
+    timingState: "overtime" as const,
+    overtimeStartedAt: now,
+    deadlineVersion: increment(1),
+    updatedAt: now,
+  };
+  batch.update(practicePaperRef(userId, paper.notebookId), updates);
+  batch.update(practicePaperAttemptRef(userId, paper.activeAttemptId), updates);
+  await withTimeout(batch.commit(), WRITE_MS, "Continue paper in overtime");
+  return mapPracticePaperData(paper.id, {
+    ...paper,
+    timingState: "overtime",
+    overtimeStartedAt: now,
+    deadlineVersion: paper.deadlineVersion + 1,
+    updatedAt: now,
+  });
+}
+
+export async function recordPracticePaperTutorUse(
+  userId: string,
+  notebookId: string
+) {
+  const paper = await getPracticePaperByNotebookId(userId, notebookId);
+  if (!paper?.activeAttemptId || !paper.tutorEnabled || paper.tutorUsed) return;
+  const now = Date.now();
+  const batch = writeBatch(db);
+  batch.update(practicePaperRef(userId, notebookId), {
+    tutorUsed: true,
+    updatedAt: now,
+  });
+  batch.update(practicePaperAttemptRef(userId, paper.activeAttemptId), {
+    tutorUsed: true,
+    assisted: true,
+    updatedAt: now,
+  });
+  await withTimeout(batch.commit(), WRITE_MS, "Record assisted paper attempt");
 }
 
 export async function correctPracticePaperMark(input: {

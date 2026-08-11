@@ -8,11 +8,12 @@ import {
   getAiTokenCap,
   refundAiBudget,
 } from "@/services/ai/budgets";
+import { isGeminiTimeoutError } from "@/lib/ai/gemini";
 import {
-  generateGeminiText,
-  isGeminiTimeoutError,
-  type GeminiResponseDiagnostics,
-} from "@/lib/ai/gemini";
+  generateAiText,
+  isAnyAiProviderConfigured,
+  type AiResponseDiagnostics,
+} from "@/lib/ai/provider-router";
 import {
   cleanGeneratedCardBack,
   detectCardBackSubject,
@@ -23,7 +24,6 @@ import { createLogger } from "@/lib/observability/logger";
 
 export const runtime = "nodejs";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const REQUEST_TIMEOUT_MS = 12_000;
 /**
  * A ceiling on the route as a whole.
@@ -163,7 +163,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  if (!GEMINI_API_KEY) {
+  if (!isAnyAiProviderConfigured()) {
     return Response.json(
       { error: "AI features are not configured" },
       { status: 503 },
@@ -301,7 +301,7 @@ export async function POST(request: NextRequest) {
 
   // Declared outside the attempt so the failure log can still say which models
   // were reached before it went wrong.
-  const providerDiagnostics: (GeminiResponseDiagnostics & {
+  const providerDiagnostics: (AiResponseDiagnostics & {
     stage: string;
   })[] = [];
 
@@ -337,8 +337,8 @@ ${relatedCardsPrompt}
 Write the best flashcard back. If there is already a draft, improve or complete it without making it bloated.`;
 
     const generateDraft = async (prompt: string, stage: string) => {
-      const text = await generateGeminiText({
-        apiKey: GEMINI_API_KEY,
+      const text = await generateAiText({
+        taskClass: "standard",
         timeoutMs: REQUEST_TIMEOUT_MS,
         deadlineAt,
         signal: request.signal,
@@ -354,10 +354,12 @@ Write the best flashcard back. If there is already a draft, improve or complete 
         onResponse: (diagnostics) => {
           providerDiagnostics.push({ ...diagnostics, stage });
         },
-        onRetry: ({ error, modelName, nextModelName }) => {
+        onRetry: ({ error, provider, modelName, nextProvider, nextModelName }) => {
           log.warn("provider.model_fallback", {
             stage,
+            provider,
             modelName,
+            nextProvider,
             nextModelName,
             error,
           });

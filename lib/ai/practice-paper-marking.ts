@@ -84,3 +84,22 @@ export function parsePracticePaperMarkingModelAnswer(
     gradeLabel: getPracticePaperGradeLabel(percentage, paper.gradeGuidance),
   };
 }
+
+export function mergePracticePaperQuestionRemark(input: {
+  paper: PracticePaper;
+  current: PracticePaperResult;
+  replacement: PracticePaperResult["questionResults"][number];
+}) {
+  const questionResults = input.current.questionResults.map((question) =>
+    question.questionId === input.replacement.questionId
+      ? input.replacement
+      : question
+  );
+  return parsePracticePaperMarkingModelAnswer(
+    JSON.stringify({
+      ...input.current,
+      questionResults,
+    }),
+    input.paper
+  );
+}

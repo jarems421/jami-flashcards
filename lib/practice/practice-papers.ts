@@ -13,8 +13,16 @@ export type PracticePaperStatus =
   | "in_progress"
   | "submitted"
   | "marked";
-export type PracticePaperLength = "quick" | "standard" | "full";
+export type PracticePaperLength = "full";
 export type PracticePaperFocus = "balanced" | "weak_areas" | "custom";
+export type PracticePaperTimingMode = "timed" | "untimed";
+export type PracticePaperTimingState =
+  | "not_started"
+  | "running"
+  | "paused"
+  | "awaiting_overtime"
+  | "overtime"
+  | "submitted";
 export type PracticePaperConfidence = "low" | "medium" | "high";
 export type PracticePaperMarkSchemeKind =
   | "generated"
@@ -67,6 +75,16 @@ export type PracticePaperGradeGuidance = {
   label: string;
   notice: string;
   boundaries: Array<{ label: string; minimumPercentage: number }>;
+  latestComparable?: {
+    label: string;
+    year: string;
+    boundaries: Array<{ label: string; minimumPercentage: number }>;
+  };
+  historicalMedian?: {
+    label: string;
+    years: string;
+    boundaries: Array<{ label: string; minimumPercentage: number }>;
+  };
 };
 
 export type PracticePaperMarkSchemeItem = {
@@ -85,12 +103,23 @@ export type PracticePaperMarkScheme = {
   items: PracticePaperMarkSchemeItem[];
 };
 
+export type PracticePaperCriterionResult = {
+  criterion: string;
+  awarded: boolean;
+  evidence: string;
+};
+
 export type PracticePaperQuestionResult = {
   questionId: string;
   label: string;
   awardedMarks: number;
   maxMarks: number;
   feedback: string;
+  criterionResults?: PracticePaperCriterionResult[];
+  evidence?: string[];
+  correction?: string;
+  nextStep?: string;
+  modelAnswer?: string;
   strengths: string[];
   improvements: string[];
   confidence: PracticePaperConfidence;
@@ -98,6 +127,36 @@ export type PracticePaperQuestionResult = {
   counted: boolean;
   manualReason?: string;
   attempted: boolean;
+};
+
+export type PracticePaperMarkingAudit = {
+  version: number;
+  primaryProvider: string;
+  verifierProvider: string;
+  primaryScores: Record<string, number>;
+  verifierScores: Record<string, number>;
+  disputedQuestionIds: string[];
+  adjudicatedQuestionIds: string[];
+  thirdViewQuestionIds: string[];
+  createdAt: number;
+};
+
+export type PracticePaperGenerationAudit = {
+  paperDesigner: string;
+  markSchemeDesigner: string;
+  auditor: string;
+  issueCount: number;
+  repaired: boolean;
+  createdAt: number;
+};
+
+export type PracticePaperRemarkAudit = {
+  questionId: string;
+  reason: string;
+  previousMarks: number;
+  revisedMarks: number;
+  markingAudit: PracticePaperMarkingAudit;
+  createdAt: number;
 };
 
 export type PracticePaperResult = {
@@ -119,9 +178,26 @@ export type PracticePaperAttempt = {
   attemptNumber: number;
   status: "in_progress" | "submitted" | "marked";
   startedAt: number;
+  timingMode: PracticePaperTimingMode;
+  timingState: PracticePaperTimingState;
+  durationMinutes: number;
+  deadlineAt?: number;
+  pausedAt?: number;
+  totalPausedMs: number;
+  overtimeStartedAt?: number;
+  deadlineSnapshotAt?: number;
+  deadlineVersion: number;
+  tutorEnabled: boolean;
+  tutorUsed: boolean;
+  assisted: boolean;
   submittedAt?: number;
   markedAt?: number;
   result?: PracticePaperResult;
+  withinTimeResult?: PracticePaperResult;
+  overtimeMarksGained?: number;
+  markingAudit?: PracticePaperMarkingAudit;
+  withinTimeMarkingAudit?: PracticePaperMarkingAudit;
+  remarkAudits?: PracticePaperRemarkAudit[];
   createdAt: number;
   updatedAt: number;
 };
@@ -141,6 +217,16 @@ export type PracticePaper = {
   focus: PracticePaperFocus;
   focusDetail?: string;
   durationMinutes: number;
+  timingMode: PracticePaperTimingMode;
+  timingState: PracticePaperTimingState;
+  deadlineAt?: number;
+  pausedAt?: number;
+  totalPausedMs: number;
+  overtimeStartedAt?: number;
+  deadlineSnapshotAt?: number;
+  deadlineVersion: number;
+  tutorEnabled: boolean;
+  tutorUsed: boolean;
   timerEnabled: boolean;
   instructions: string[];
   assessmentProfile: PracticePaperAssessmentProfile;
@@ -154,6 +240,12 @@ export type PracticePaper = {
   submittedAt?: number;
   markedAt?: number;
   result?: PracticePaperResult;
+  withinTimeResult?: PracticePaperResult;
+  overtimeMarksGained?: number;
+  markingAudit?: PracticePaperMarkingAudit;
+  withinTimeMarkingAudit?: PracticePaperMarkingAudit;
+  remarkAudits?: PracticePaperRemarkAudit[];
+  generationAudit?: PracticePaperGenerationAudit;
   gradeGuidance: PracticePaperGradeGuidance;
   examinerInsights: string[];
   activeAttemptId?: string;
@@ -175,6 +267,7 @@ export type GeneratedPracticePaper = {
   sourceLabels: string[];
   gradeGuidance: PracticePaperGradeGuidance;
   examinerInsights: string[];
+  generationAudit?: PracticePaperGenerationAudit;
 };
 
 export type PracticePaperGenerationResponse =
@@ -211,7 +304,22 @@ function isStatus(value: unknown): value is PracticePaperStatus {
 }
 
 function isLength(value: unknown): value is PracticePaperLength {
-  return value === "quick" || value === "standard" || value === "full";
+  return value === "full";
+}
+
+function isTimingMode(value: unknown): value is PracticePaperTimingMode {
+  return value === "timed" || value === "untimed";
+}
+
+function isTimingState(value: unknown): value is PracticePaperTimingState {
+  return (
+    value === "not_started" ||
+    value === "running" ||
+    value === "paused" ||
+    value === "awaiting_overtime" ||
+    value === "overtime" ||
+    value === "submitted"
+  );
 }
 
 function isFocus(value: unknown): value is PracticePaperFocus {
@@ -351,8 +459,8 @@ export function normalizePracticePaperGradeGuidance(
   const guidance = value && typeof value === "object"
     ? (value as Record<string, unknown>)
     : {};
-  const boundaries = Array.isArray(guidance.boundaries)
-    ? guidance.boundaries.slice(0, 20).flatMap((candidate) => {
+  const normalizeBoundaries = (value: unknown) => Array.isArray(value)
+    ? value.slice(0, 20).flatMap((candidate) => {
         if (!candidate || typeof candidate !== "object") return [];
         const boundary = candidate as Record<string, unknown>;
         const label = normalizeOptionalString(boundary.label, 80) ?? "";
@@ -366,16 +474,54 @@ export function normalizePracticePaperGradeGuidance(
         }];
       })
     : [];
+  const boundaries = normalizeBoundaries(guidance.boundaries);
+  const latest = guidance.latestComparable &&
+    typeof guidance.latestComparable === "object"
+      ? guidance.latestComparable as Record<string, unknown>
+      : null;
+  const historical = guidance.historicalMedian &&
+    typeof guidance.historicalMedian === "object"
+      ? guidance.historicalMedian as Record<string, unknown>
+      : null;
+  const latestBoundaries = normalizeBoundaries(latest?.boundaries);
+  const historicalBoundaries = normalizeBoundaries(historical?.boundaries);
+  const primaryBoundaries = boundaries.length > 0 ? boundaries : latestBoundaries;
   const kind = guidance.kind === "official" || guidance.kind === "estimated"
     ? guidance.kind
     : "none";
   return {
-    kind: boundaries.length > 0 ? kind : "none",
+    kind: primaryBoundaries.length > 0 ? kind : "none",
     label: normalizeOptionalString(guidance.label, 160) ?? "No grade guidance",
     notice: normalizeOptionalString(guidance.notice, 500) ?? "",
-    boundaries: boundaries.sort(
+    boundaries: primaryBoundaries.sort(
       (left, right) => right.minimumPercentage - left.minimumPercentage
     ),
+    ...(latest && latestBoundaries.length > 0
+      ? {
+          latestComparable: {
+            label:
+              normalizeOptionalString(latest.label, 160) ??
+              "Latest comparable boundary",
+            year: normalizeOptionalString(latest.year, 40) ?? "",
+            boundaries: latestBoundaries.sort(
+              (left, right) => right.minimumPercentage - left.minimumPercentage
+            ),
+          },
+        }
+      : {}),
+    ...(historical && historicalBoundaries.length > 0
+      ? {
+          historicalMedian: {
+            label:
+              normalizeOptionalString(historical.label, 160) ??
+              "Historical median",
+            years: normalizeOptionalString(historical.years, 80) ?? "",
+            boundaries: historicalBoundaries.sort(
+              (left, right) => right.minimumPercentage - left.minimumPercentage
+            ),
+          },
+        }
+      : {}),
   };
 }
 
@@ -468,12 +614,30 @@ function normalizeQuestionResults(value: unknown) {
       const questionId = normalizeOptionalString(item.questionId, 80) ?? "";
       if (!questionId) return [];
       const maxMarks = Math.max(0, finiteInteger(item.maxMarks));
+      const criterionResults = Array.isArray(item.criterionResults)
+        ? item.criterionResults.slice(0, 40).flatMap((candidate) => {
+            if (!candidate || typeof candidate !== "object") return [];
+            const criterion = candidate as Record<string, unknown>;
+            const label = normalizeOptionalString(criterion.criterion, 800) ?? "";
+            if (!label) return [];
+            return [{
+              criterion: label,
+              awarded: criterion.awarded === true,
+              evidence: normalizeOptionalString(criterion.evidence, 1_000) ?? "",
+            }];
+          })
+        : [];
       return [{
         questionId,
         label: normalizeOptionalString(item.label, 80) ?? questionId,
         awardedMarks: Math.min(maxMarks, finiteInteger(item.awardedMarks)),
         maxMarks,
         feedback: normalizeOptionalString(item.feedback, 2_000) ?? "",
+        criterionResults,
+        evidence: normalizeTextList(item.evidence, 12, 1_000),
+        correction: normalizeOptionalString(item.correction, 2_000) ?? "",
+        nextStep: normalizeOptionalString(item.nextStep, 1_000) ?? "",
+        modelAnswer: normalizeOptionalString(item.modelAnswer, 4_000) ?? "",
         strengths: normalizeTextList(item.strengths, 8),
         improvements: normalizeTextList(item.improvements, 8),
         confidence: isConfidence(item.confidence) ? item.confidence : "medium",
@@ -515,6 +679,84 @@ export function normalizePracticePaperResult(value: unknown): PracticePaperResul
   };
 }
 
+export function normalizePracticePaperMarkingAudit(
+  value: unknown
+): PracticePaperMarkingAudit | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const audit = value as Record<string, unknown>;
+  const normalizeScores = (candidate: unknown) => {
+    if (!candidate || typeof candidate !== "object") return {};
+    return Object.fromEntries(
+      Object.entries(candidate as Record<string, unknown>)
+        .filter((entry): entry is [string, number] =>
+          Boolean(entry[0]) && typeof entry[1] === "number" && Number.isFinite(entry[1])
+        )
+        .slice(0, MAX_PRACTICE_PAPER_QUESTIONS)
+        .map(([key, score]) => [key.slice(0, 80), Math.max(0, Math.round(score))])
+    );
+  };
+  return {
+    version: Math.max(1, finiteInteger(audit.version, 1)),
+    primaryProvider: normalizeOptionalString(audit.primaryProvider, 120) ?? "primary",
+    verifierProvider: normalizeOptionalString(audit.verifierProvider, 120) ?? "verifier",
+    primaryScores: normalizeScores(audit.primaryScores),
+    verifierScores: normalizeScores(audit.verifierScores),
+    disputedQuestionIds: normalizeStringArray(
+      audit.disputedQuestionIds,
+      MAX_PRACTICE_PAPER_QUESTIONS,
+      80
+    ),
+    adjudicatedQuestionIds: normalizeStringArray(
+      audit.adjudicatedQuestionIds,
+      MAX_PRACTICE_PAPER_QUESTIONS,
+      80
+    ),
+    thirdViewQuestionIds: normalizeStringArray(
+      audit.thirdViewQuestionIds,
+      MAX_PRACTICE_PAPER_QUESTIONS,
+      80
+    ),
+    createdAt: finiteInteger(audit.createdAt),
+  };
+}
+
+function normalizePracticePaperGenerationAudit(
+  value: unknown
+): PracticePaperGenerationAudit | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const audit = value as Record<string, unknown>;
+  return {
+    paperDesigner: normalizeOptionalString(audit.paperDesigner, 120) ?? "designer",
+    markSchemeDesigner:
+      normalizeOptionalString(audit.markSchemeDesigner, 120) ?? "mark-scheme designer",
+    auditor: normalizeOptionalString(audit.auditor, 120) ?? "auditor",
+    issueCount: finiteInteger(audit.issueCount),
+    repaired: audit.repaired === true,
+    createdAt: finiteInteger(audit.createdAt),
+  };
+}
+
+function normalizePracticePaperRemarkAudits(
+  value: unknown
+): PracticePaperRemarkAudit[] {
+  if (!Array.isArray(value)) return [];
+  return value.slice(-30).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const audit = candidate as Record<string, unknown>;
+    const questionId = normalizeOptionalString(audit.questionId, 80) ?? "";
+    const markingAudit = normalizePracticePaperMarkingAudit(audit.markingAudit);
+    if (!questionId || !markingAudit) return [];
+    return [{
+      questionId,
+      reason: normalizeOptionalString(audit.reason, 500) ?? "AI recheck",
+      previousMarks: finiteInteger(audit.previousMarks),
+      revisedMarks: finiteInteger(audit.revisedMarks),
+      markingAudit,
+      createdAt: finiteInteger(audit.createdAt),
+    }];
+  });
+}
+
 export function mapPracticePaperAttemptData(
   id: string,
   data: Record<string, unknown>
@@ -530,9 +772,36 @@ export function mapPracticePaperAttemptData(
     attemptNumber: Math.max(1, finiteInteger(data.attemptNumber, 1)),
     status,
     startedAt: finiteInteger(data.startedAt),
+    timingMode: isTimingMode(data.timingMode)
+      ? data.timingMode
+      : data.timerEnabled === true
+        ? "timed"
+        : "untimed",
+    timingState: isTimingState(data.timingState)
+      ? data.timingState
+      : status === "in_progress"
+        ? "running"
+        : "submitted",
+    durationMinutes: finiteInteger(data.durationMinutes),
+    deadlineAt: finiteInteger(data.deadlineAt) || undefined,
+    pausedAt: finiteInteger(data.pausedAt) || undefined,
+    totalPausedMs: finiteInteger(data.totalPausedMs),
+    overtimeStartedAt: finiteInteger(data.overtimeStartedAt) || undefined,
+    deadlineSnapshotAt: finiteInteger(data.deadlineSnapshotAt) || undefined,
+    deadlineVersion: finiteInteger(data.deadlineVersion),
+    tutorEnabled: data.tutorEnabled === true,
+    tutorUsed: data.tutorUsed === true,
+    assisted: data.assisted === true || data.tutorEnabled === true,
     submittedAt: finiteInteger(data.submittedAt) || undefined,
     markedAt: finiteInteger(data.markedAt) || undefined,
     result: normalizePracticePaperResult(data.result),
+    withinTimeResult: normalizePracticePaperResult(data.withinTimeResult),
+    overtimeMarksGained: finiteInteger(data.overtimeMarksGained) || undefined,
+    markingAudit: normalizePracticePaperMarkingAudit(data.markingAudit),
+    withinTimeMarkingAudit: normalizePracticePaperMarkingAudit(
+      data.withinTimeMarkingAudit
+    ),
+    remarkAudits: normalizePracticePaperRemarkAudits(data.remarkAudits),
     createdAt: finiteInteger(data.createdAt),
     updatedAt: finiteInteger(data.updatedAt),
   };
@@ -560,11 +829,35 @@ export function mapPracticePaperData(
     sourceLabels: normalizeTextList(data.sourceLabels, MAX_PRACTICE_PAPER_SOURCE_IDS, 160),
     request: normalizeOptionalString(data.request, 2_000) ?? "",
     coverage: normalizeOptionalString(data.coverage, 1_000) ?? "Whole folder",
-    length: isLength(data.length) ? data.length : "standard",
+    // Legacy quick/standard records remain readable, but every new or reopened
+    // paper is treated as one complete sitting.
+    length: isLength(data.length) ? data.length : "full",
     focus: isFocus(data.focus) ? data.focus : "balanced",
     focusDetail: normalizeOptionalString(data.focusDetail, 1_000),
     durationMinutes: Math.max(0, finiteInteger(data.durationMinutes)),
-    timerEnabled: data.timerEnabled === true,
+    timingMode: isTimingMode(data.timingMode)
+      ? data.timingMode
+      : data.timerEnabled === true
+        ? "timed"
+        : "untimed",
+    timingState: isTimingState(data.timingState)
+      ? data.timingState
+      : data.status === "in_progress"
+        ? "running"
+        : data.status === "submitted" || data.status === "marked"
+          ? "submitted"
+          : "not_started",
+    deadlineAt: finiteInteger(data.deadlineAt) || undefined,
+    pausedAt: finiteInteger(data.pausedAt) || undefined,
+    totalPausedMs: finiteInteger(data.totalPausedMs),
+    overtimeStartedAt: finiteInteger(data.overtimeStartedAt) || undefined,
+    deadlineSnapshotAt: finiteInteger(data.deadlineSnapshotAt) || undefined,
+    deadlineVersion: finiteInteger(data.deadlineVersion),
+    tutorEnabled: data.tutorEnabled === true,
+    tutorUsed: data.tutorUsed === true,
+    timerEnabled: isTimingMode(data.timingMode)
+      ? data.timingMode === "timed"
+      : data.timerEnabled === true,
     instructions: normalizeTextList(data.instructions, 20),
     assessmentProfile: normalizePracticePaperAssessmentProfile(data.assessmentProfile),
     questions,
@@ -577,6 +870,14 @@ export function mapPracticePaperData(
     submittedAt: finiteInteger(data.submittedAt) || undefined,
     markedAt: finiteInteger(data.markedAt) || undefined,
     result: normalizePracticePaperResult(data.result),
+    withinTimeResult: normalizePracticePaperResult(data.withinTimeResult),
+    overtimeMarksGained: finiteInteger(data.overtimeMarksGained) || undefined,
+    markingAudit: normalizePracticePaperMarkingAudit(data.markingAudit),
+    withinTimeMarkingAudit: normalizePracticePaperMarkingAudit(
+      data.withinTimeMarkingAudit
+    ),
+    remarkAudits: normalizePracticePaperRemarkAudits(data.remarkAudits),
+    generationAudit: normalizePracticePaperGenerationAudit(data.generationAudit),
     gradeGuidance: normalizePracticePaperGradeGuidance(data.gradeGuidance),
     examinerInsights: normalizeTextList(data.examinerInsights, 12, 500),
     activeAttemptId: normalizeOptionalString(data.activeAttemptId, 160),
@@ -627,9 +928,11 @@ export function buildPracticePaperPayload(
 }
 
 export function getPracticePaperQuestionLimit(length: PracticePaperLength) {
-  return length === "quick" ? 6 : length === "standard" ? 12 : 30;
+  void length;
+  return 30;
 }
 
 export function getPracticePaperTargetMarks(length: PracticePaperLength) {
-  return length === "quick" ? 20 : length === "standard" ? 50 : 100;
+  void length;
+  return 100;
 }
