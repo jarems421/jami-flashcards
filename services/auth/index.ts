@@ -2,9 +2,13 @@ import { auth } from "../firebase/client";
 import {
   EmailAuthProvider,
   GoogleAuthProvider,
+  applyActionCode,
   browserLocalPersistence,
+  confirmPasswordReset,
   createUserWithEmailAndPassword,
   getRedirectResult,
+  reload,
+  verifyPasswordResetCode,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
   sendEmailVerification,
@@ -178,6 +182,50 @@ export const resendEmailVerification = async () => {
   const user = auth.currentUser;
   if (!user) throw new Error("Sign in first.");
   await withAuthTimeout(sendEmailVerification(user));
+};
+
+/**
+ * Re-reads the account from Firebase.
+ *
+ * `emailVerified` is baked into the token the browser is holding, so following
+ * the link in another tab changes nothing here until the account is fetched
+ * again. This is what the banner's "I have verified" does.
+ */
+export const refreshCurrentUser = async () => {
+  await initAuth();
+  const user = auth.currentUser;
+  if (!user) return null;
+  await withAuthTimeout(reload(user));
+  return auth.currentUser;
+};
+
+/** Whose address a reset link belongs to, and whether it is still good. */
+export const checkPasswordResetCode = async (code: string) => {
+  await initAuth();
+  return withAuthTimeout(verifyPasswordResetCode(auth, code));
+};
+
+/**
+ * Completes a password reset against Jami's policy rather than Firebase's.
+ *
+ * This is the whole reason the reset form lives in the app. Firebase's hosted
+ * action page enforces its own six-character floor and nothing else, so a
+ * password refused at sign-up could be set through the emailed link minutes
+ * later. Routed here, the same rule applies to both.
+ */
+export const completePasswordReset = async (code: string, password: string) => {
+  await initAuth();
+  const email = await withAuthTimeout(verifyPasswordResetCode(auth, code));
+  const problem = getPasswordRequirementMessage(password, email);
+  if (problem) throw new WeakPasswordError(problem);
+  await withAuthTimeout(confirmPasswordReset(auth, code, password));
+  return email;
+};
+
+/** Applies a verify-email or similar one-time code. */
+export const applyAuthActionCode = async (code: string) => {
+  await initAuth();
+  await withAuthTimeout(applyActionCode(auth, code));
 };
 
 // Email sign-in
