@@ -7,6 +7,7 @@ import {
   getRedirectResult,
   reauthenticateWithCredential,
   reauthenticateWithPopup,
+  sendEmailVerification,
   sendPasswordResetEmail,
   setPersistence,
   signInWithEmailAndPassword,
@@ -19,6 +20,7 @@ import {
   type AccountDeletionErrorCode,
   type AccountDeletionPhase,
 } from "@/lib/auth/account-deletion-contract";
+import { getPasswordRequirementMessage } from "@/lib/auth/password-strength";
 
 const provider = new GoogleAuthProvider();
 const AUTH_OPERATION_TIMEOUT_MS = 30_000;
@@ -123,12 +125,59 @@ export const logout = async () => {
 };
 
 // Email sign-up
+/**
+ * Thrown when a password is refused before an account is ever created.
+ *
+ * Carries a `code` so it travels the same path as a Firebase error, and its
+ * message is already the sentence to show -- it explains one specific problem,
+ * which no generic mapping could.
+ */
+export class WeakPasswordError extends Error {
+  readonly code = "jami/weak-password";
+  constructor(message: string) {
+    super(message);
+    this.name = "WeakPasswordError";
+  }
+}
+
 export const signUpWithEmail = async (email: string, password: string) => {
+  /*
+   * The policy is enforced here rather than only on the form, because this is
+   * the last point at which a password can still be refused. Once the account
+   * exists there is nothing left to check: Firebase's own floor is six
+   * characters and it will happily have accepted `123456`.
+   */
+  const problem = getPasswordRequirementMessage(password, email);
+  if (problem) throw new WeakPasswordError(problem);
+
   await initAuth();
   const result = await withAuthTimeout(
     createUserWithEmailAndPassword(auth, email, password)
   );
+
+  /*
+   * Sent, not enforced. Proving the address matters -- it is the only way back
+   * in after a forgotten password, and an unverified one may belong to someone
+   * else entirely -- but locking a new account out of the app until a mail
+   * arrives is a worse first minute than the risk warrants here. The account is
+   * usable now and the banner asks until it is done.
+   */
+  try {
+    await sendEmailVerification(result.user);
+  } catch {
+    // A verification mail that does not send must not fail the sign-up; the
+    // account exists and the banner offers to send it again.
+  }
+
   return result.user;
+};
+
+/** Sends the verification mail again, for the banner's "resend". */
+export const resendEmailVerification = async () => {
+  await initAuth();
+  const user = auth.currentUser;
+  if (!user) throw new Error("Sign in first.");
+  await withAuthTimeout(sendEmailVerification(user));
 };
 
 // Email sign-in
