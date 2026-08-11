@@ -104,7 +104,7 @@ describe("the tutor owns the sidebar entry sources used to have", () => {
 });
 
 /**
- * AGENTS.md: the tutor reads up to five deliberately selected sources on
+ * Tutor reads up to fifteen deliberately selected sources on
  * demand, and extracted content is never persisted. A surface that implied a
  * standing memory would have a student ask about a source they never selected
  * and be quietly answered from general knowledge instead.

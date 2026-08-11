@@ -14,6 +14,7 @@ import {
   where,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
+import { requestSourceIndex } from "@/services/ai/source-index";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
@@ -269,6 +270,7 @@ export async function createSource(
   );
   invalidateDashboardData(userId);
   invalidateLegacyActiveRecords(userId, SOURCES_COLLECTION);
+  void requestSourceIndex(docRef.id).catch(() => undefined);
 
   return docRef.id;
 }
@@ -315,9 +317,11 @@ export async function updateSource(
   );
   invalidateDashboardData(userId);
   invalidateLegacyActiveRecords(userId, SOURCES_COLLECTION);
+  void requestSourceIndex(sourceId).catch(() => undefined);
 }
 
 export async function deleteSource(userId: string, sourceId: string) {
+  await requestSourceIndex(sourceId, "DELETE").catch(() => undefined);
   await withTimeout(
     deleteDoc(doc(db, "users", userId, "sources", sourceId)),
     WRITE_MS,

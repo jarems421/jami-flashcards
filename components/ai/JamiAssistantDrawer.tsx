@@ -60,6 +60,7 @@ const WAITING_LABELS: Array<{ text: string; after: number }> = [
   { text: "Still going", after: 9_000 },
   { text: "Nearly there", after: 18_000 },
 ];
+const AI_NOTICE_STORAGE_KEY = "jami:ai-data-notice:v1";
 
 export type JamiAssistantQuickAction =
   | string
@@ -188,6 +189,7 @@ export default function JamiAssistantDrawer({
   const [threads, setThreads] = useState<JamiAssistantThread[]>([]);
   const [activeThread, setActiveThread] = useState<JamiAssistantThread | null>(null);
   const [useRelatedSources, setUseRelatedSources] = useState(true);
+  const [showAiNotice, setShowAiNotice] = useState(false);
   /*
    * Wide screens have room for the drawer to sit beside the work rather than
    * over it. Jami is meant to nudge you towards an answer you are looking at,
@@ -243,6 +245,24 @@ export default function JamiAssistantDrawer({
   }, [answerHasStarted, loading]);
 
   const waitingLabel = WAITING_LABELS[waitingStage].text;
+
+  useEffect(() => {
+    if (!open) return;
+    try {
+      setShowAiNotice(window.localStorage.getItem(AI_NOTICE_STORAGE_KEY) !== "seen");
+    } catch {
+      setShowAiNotice(true);
+    }
+  }, [open]);
+
+  const dismissAiNotice = () => {
+    setShowAiNotice(false);
+    try {
+      window.localStorage.setItem(AI_NOTICE_STORAGE_KEY, "seen");
+    } catch {
+      // Storage may be blocked; the notice remains non-blocking.
+    }
+  };
 
   useEffect(() => {
     if (previousResetKeyRef.current === resetKey) return;
@@ -782,6 +802,25 @@ export default function JamiAssistantDrawer({
           )}
         </div>
 
+        {showAiNotice && !historyOpen ? (
+          <div className="mx-5 mb-0 rounded-xl border border-accent/20 bg-accent/8 px-3.5 py-3 text-xs leading-5 text-text-secondary sm:mx-7">
+            <div className="flex items-start justify-between gap-3">
+              <p>
+                When you ask Jami, the relevant work and sources are sent securely
+                to an AI provider. Avoid personal or sensitive details, and check
+                important answers because AI can make mistakes.
+              </p>
+              <button
+                type="button"
+                className="shrink-0 font-semibold text-accent hover:underline"
+                onClick={dismissAiNotice}
+              >
+                Got it
+              </button>
+            </div>
+          </div>
+        ) : null}
+
         <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface-panel-strong)] px-5 pb-[max(1.25rem,env(safe-area-inset-bottom))] pt-4 sm:px-7 sm:pb-[max(1.5rem,env(safe-area-inset-bottom))]">
           {historyOpen ? (
             <div className="text-center text-2xs text-text-muted">
@@ -918,7 +957,7 @@ export default function JamiAssistantDrawer({
                     Use related Jami material
                   </span>
                   <span className="mt-0.5 block text-2xs leading-relaxed text-text-muted">
-                    Jami may choose up to five relevant sources when you ask.
+                    Jami may choose up to 15 relevant sources when you ask.
                   </span>
                 </span>
                 <button

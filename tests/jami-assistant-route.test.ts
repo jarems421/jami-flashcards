@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => {
     resolveContext: vi.fn(),
     checkBudget: vi.fn(),
     prepareSource: vi.fn(),
+    retrieveChunks: vi.fn(),
     generateText: vi.fn(),
     streamText: vi.fn(),
   };
@@ -68,6 +69,10 @@ vi.mock("@/services/ai/budgets", () => ({
 
 vi.mock("@/lib/ai/source-ingestion", () => ({
   prepareSourceForTutor: mocks.prepareSource,
+}));
+
+vi.mock("@/services/ai/source-index.server", () => ({
+  retrieveSourceChunks: mocks.retrieveChunks,
 }));
 
 vi.mock("@/lib/ai/gemini", () => ({
@@ -151,6 +156,8 @@ beforeEach(() => {
     currentId: "card-1",
     currentLabel: "Current card",
     currentParts: [{ text: "Card front and answer" }],
+    studyLevelContext:
+      "Study-level preference: A level, IB or equivalent level (account default).",
     sources: [
       {
         id: "source-1",
@@ -172,6 +179,7 @@ beforeEach(() => {
     inputBytes: 100,
     parts: [{ text: "Plants capture light energy." }],
   });
+  mocks.retrieveChunks.mockResolvedValue([]);
   const validAnswer = JSON.stringify({
     answer: "Plants turn light energy into stored chemical energy.",
     sourceRefs: ["S1"],
@@ -211,9 +219,9 @@ describe("universal Jami assistant route", () => {
     });
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        // Brief answers lead with the cheaper model and keep the other as the
-        // fallback the stream uses if the first one is unavailable.
-        modelNames: ["gemini-2.5-flash-lite", "gemini-2.5-flash"],
+        // The provider-neutral router invokes one deterministic model per
+        // attempt and owns fallback ordering itself.
+        modelNames: ["gemini-2.5-flash"],
         generationConfig: expect.objectContaining({
           maxOutputTokens: 1_500,
           responseSchema: expect.objectContaining({
@@ -227,7 +235,7 @@ describe("universal Jami assistant route", () => {
         }),
         request: expect.objectContaining({
           systemInstruction: expect.stringMatching(
-            /current context C1 is authoritative[\s\S]*valid TeX delimiters[\s\S]*BRIEF mode/
+            /A level, IB or equivalent[\s\S]*give it directly[\s\S]*specification defines expected scope[\s\S]*current context C1 is authoritative[\s\S]*valid TeX delimiters[\s\S]*BRIEF mode/
           ),
         }),
       })
@@ -283,7 +291,7 @@ describe("universal Jami assistant route", () => {
 
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelNames: ["gemini-2.5-flash", "gemini-2.5-flash-lite"],
+        modelNames: ["gemini-2.5-flash"],
         generationConfig: expect.objectContaining({ maxOutputTokens: 6_000 }),
         request: expect.objectContaining({
           systemInstruction: expect.stringContaining("DETAILED mode"),

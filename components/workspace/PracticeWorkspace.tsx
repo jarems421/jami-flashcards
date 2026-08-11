@@ -30,6 +30,7 @@ import CreateFolderDialog from "./CreateFolderDialog";
 import FolderObjectCard from "./FolderObjectCard";
 import NotebookEditorDialog from "./NotebookEditorDialog";
 import { NotebookObjectCard } from "./NotebookObjectCard";
+import PracticePaperProgress from "@/components/practice/PracticePaperProgress";
 
 function notebookTypeLabel(type: Notebook["type"]) {
   if (type === "uploaded_file") return "Uploaded file notebook";
@@ -37,6 +38,7 @@ function notebookTypeLabel(type: Notebook["type"]) {
   if (type === "general_working" || type === "free_working") return "Working notebook";
   if (type === "source_notes") return "Source notes";
   if (type === "past_paper") return "Paper notebook";
+  if (type === "practice_paper") return "Practice paper";
   if (type === "practice") return "Practice notebook";
   return "Blank notebook";
 }
@@ -204,9 +206,12 @@ export default function PracticeWorkspace() {
       backLabel="Today"
       width="3xl"
       action={
-        <Button type="button" onClick={() => setCreateFolderOpen(true)}>
-          Create folder
-        </Button>
+        <div className="flex items-center gap-2">
+          <ButtonLink href="/dashboard/practice/new">New paper</ButtonLink>
+          <Button type="button" variant="secondary" onClick={() => setCreateFolderOpen(true)}>
+            Create folder
+          </Button>
+        </div>
       }
       contentClassName="space-y-7 sm:space-y-9"
     >
@@ -292,6 +297,7 @@ export default function PracticeWorkspace() {
         </div>
       ) : (
         <>
+          <PracticePaperProgress userId={user.uid} />
           <section className="space-y-4">
             <SectionHeader eyebrow="Continue working" title="Recent notebooks" />
             {notebooksUnavailable ? (

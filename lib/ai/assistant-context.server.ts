@@ -4,7 +4,7 @@ import type { AiContentPart } from "@/lib/ai/content-parts";
 import { JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES } from "@/lib/ai/jami-assistant";
 import type { Source } from "@/lib/material/sources";
 
-const MAX_RELATED_SOURCES = 5;
+const MAX_RELATED_SOURCES = 15;
 
 export type SourceRelations = {
   currentSourceIds: string[];
@@ -18,6 +18,7 @@ export type ResolvedJamiAssistantContext = {
   currentLabel: string;
   currentParts: AiContentPart[];
   sources: Source[];
+  studyLevelContext?: string;
 };
 
 export class JamiAssistantContextError extends Error {

@@ -11,9 +11,10 @@ import { parseGeneratedCardDrafts } from "@/lib/ai/card-generation";
 import { cleanGeneratedStudyText } from "@/lib/ai/card-autocomplete";
 import { CARD_TEXT_FORMAT_PROMPT } from "@/lib/ai/response-format";
 import {
-  generateGeminiText,
-  type GeminiResponseDiagnostics,
-} from "@/lib/ai/gemini";
+  generateAiText,
+  isAnyAiProviderConfigured,
+  type AiResponseDiagnostics,
+} from "@/lib/ai/provider-router";
 import { createLogger } from "@/lib/observability/logger";
 import { parseGeneratedQuestionDrafts } from "@/lib/ai/question-generation";
 import {
@@ -31,7 +32,6 @@ import { mapSourceData } from "@/lib/material/sources";
 
 export const runtime = "nodejs";
 
-const GEMINI_API_KEY = process.env.GEMINI_API_KEY?.trim() ?? "";
 const MAX_FOCUS_LENGTH = 1_500;
 const REQUEST_TIMEOUT_MS = 20_000;
 /** A ceiling on the call as a whole, so a model fallback cannot double it. */
@@ -77,7 +77,7 @@ ${CARD_TEXT_FORMAT_PROMPT}`;
 }
 
 export async function POST(request: NextRequest) {
-  if (!GEMINI_API_KEY) {
+  if (!isAnyAiProviderConfigured()) {
     return Response.json({ error: "AI features are not configured" }, { status: 503 });
   }
 
@@ -174,7 +174,7 @@ export async function POST(request: NextRequest) {
 
   // Declared outside the attempt so the failure log can still say which model
   // was reached before it went wrong.
-  const providerDiagnostics: GeminiResponseDiagnostics[] = [];
+  const providerDiagnostics: AiResponseDiagnostics[] = [];
 
   try {
     const [folderSnapshots, topicSnapshots] = await Promise.all([
@@ -277,8 +277,8 @@ export async function POST(request: NextRequest) {
       }
     };
 
-    const generated = await generateGeminiText({
-      apiKey: GEMINI_API_KEY,
+    const generated = await generateAiText({
+      taskClass: "standard",
       timeoutMs: REQUEST_TIMEOUT_MS,
       deadlineAt: startedAt + REQUEST_DEADLINE_MS,
       signal: request.signal,
@@ -324,9 +324,11 @@ ${source.contentText.slice(0, 12_000)}`,
       onResponse: (diagnostics) => {
         providerDiagnostics.push(diagnostics);
       },
-      onRetry: ({ error, modelName, nextModelName }) => {
+      onRetry: ({ error, provider, modelName, nextProvider, nextModelName }) => {
         log.warn("provider.model_fallback", {
+          provider,
           modelName,
+          nextProvider,
           nextModelName,
           error,
         });

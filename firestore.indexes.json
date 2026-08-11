@@ -1,6 +1,23 @@
 {
   "indexes": [
     {
+      "collectionGroup": "sourceChunks",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {
+          "fieldPath": "sourceId",
+          "order": "ASCENDING"
+        },
+        {
+          "fieldPath": "embedding",
+          "vectorConfig": {
+            "dimension": 768,
+            "flat": {}
+          }
+        }
+      ]
+    },
+    {
       "collectionGroup": "practiceSets",
       "queryScope": "COLLECTION",
       "fields": [

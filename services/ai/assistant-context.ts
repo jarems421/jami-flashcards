@@ -15,6 +15,10 @@ import {
 import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
 import { mapSourceData, type Source } from "@/lib/material/sources";
 import {
+  getStudyLevelTutorLabel,
+  normalizeStudyLevel,
+} from "@/lib/profile/study-level";
+import {
   mapNotebookData,
   mapNotebookPageData,
 } from "@/lib/workspace/notebooks";
@@ -25,8 +29,79 @@ const MAX_SOURCE_CANDIDATES_PER_RELATION =
   MAX_SOURCE_METADATA_CANDIDATES / 2;
 const LEARN_RELATED_CARD_SCAN_LIMIT = 20;
 const LEARN_MAX_RELATED_CARDS = 6;
+const NOTEBOOK_CONTEXT_PAGE_LIMIT = 60;
+const NOTEBOOK_CONTEXT_PAGE_TEXT_LIMIT = 700;
+const NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT = 12_000;
 
 type AdminDb = ReturnType<typeof getAdminDb>;
+
+async function loadTutorStudyLevel(input: {
+  db: AdminDb;
+  uid: string;
+  folderIds: readonly string[];
+}) {
+  const userRef = input.db.collection("users").doc(input.uid);
+  const folderIds = Array.from(new Set(input.folderIds.filter(Boolean))).slice(0, 12);
+  const [userSnapshot, folderSnapshots] = await Promise.all([
+    userRef.get(),
+    Promise.all(
+      folderIds.map((folderId) =>
+        userRef.collection("studyFolders").doc(folderId).get()
+      )
+    ),
+  ]);
+
+  const folderLevels = Array.from(
+    new Set(
+      folderSnapshots
+        .filter((snapshot) => snapshot.exists)
+        .map((snapshot) => normalizeStudyLevel(snapshot.data()?.studyLevel))
+        .filter((level) => level !== undefined)
+    )
+  );
+  const accountLevel = normalizeStudyLevel(
+    userSnapshot.exists ? userSnapshot.data()?.defaultStudyLevel : undefined
+  );
+  const level = folderLevels.length === 1 ? folderLevels[0] : accountLevel;
+  if (!level) return undefined;
+
+  const source = folderLevels.length === 1 ? "folder override" : "account default";
+  return `Study-level preference: ${getStudyLevelTutorLabel(level)} (${source}). Use this to calibrate vocabulary, assumed knowledge, examples, and explanation depth. It describes the material, not the student's ability. If the student's current request explicitly asks for a different level or style, follow that request instead.`;
+}
+
+function getNotebookPageText(page: ReturnType<typeof mapNotebookPageData>) {
+  return [page.typedContent, ...page.textBlocks.map((block) => block.text)]
+    .filter(Boolean)
+    .join(" ")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, NOTEBOOK_CONTEXT_PAGE_TEXT_LIMIT);
+}
+
+function buildNotebookPageMap(
+  pages: ReturnType<typeof mapNotebookPageData>[],
+  currentPageId: string
+) {
+  if (pages.length <= 1) return "";
+
+  const lines = pages.map((page) => {
+    const pageText = getNotebookPageText(page);
+    const details = [
+      page.title && !/^Page \d+$/i.test(page.title) ? `title: ${page.title}` : "",
+      page.questionPrompt ? `question: ${page.questionPrompt.slice(0, 500)}` : "",
+      pageText
+        ? `typed content: ${pageText}`
+        : "no typed summary available",
+    ].filter(Boolean);
+    return `- Page ${page.pageNumber}${
+      page.id === currentPageId ? " (current)" : ""
+    }: ${details.join("; ")}`;
+  });
+
+  return `Notebook page map (loaded when the student asked; handwriting and page imagery are available only for the current page):\n${lines
+    .join("\n")
+    .slice(0, NOTEBOOK_CONTEXT_TOTAL_TEXT_LIMIT)}`;
+}
 
 /**
  * Nearby cards from the same deck, so the tutor can spot the mix-ups and
@@ -284,9 +359,15 @@ async function resolveNotebookContext(input: {
   context: Extract<JamiAssistantContext, { surface: "notebook" }>;
 }) {
   const userRef = input.db.collection("users").doc(input.uid);
-  const [notebookSnapshot, pageSnapshot] = await Promise.all([
+  const [notebookSnapshot, pageSnapshot, notebookPagesSnapshot] = await Promise.all([
     userRef.collection("notebooks").doc(input.context.notebookId).get(),
     userRef.collection("notebookPages").doc(input.context.pageId).get(),
+    userRef
+      .collection("notebookPages")
+      .where("notebookId", "==", input.context.notebookId)
+      .orderBy("pageNumber", "asc")
+      .limit(NOTEBOOK_CONTEXT_PAGE_LIMIT)
+      .get(),
   ]);
   if (!notebookSnapshot.exists || !pageSnapshot.exists) {
     throw new JamiAssistantContextError("This notebook page could not be found.");
@@ -308,11 +389,19 @@ async function resolveNotebookContext(input: {
       .join("\n\n")
       .slice(0, 12_000);
   const questionPrompt = input.context.questionPrompt || page.questionPrompt || "";
+  const notebookPages = notebookPagesSnapshot.docs
+    .map((snapshot) =>
+      mapNotebookPageData(snapshot.id, snapshot.data() as Record<string, unknown>)
+    )
+    .filter((candidate) => candidate.notebookId === notebook.id);
+  const notebookPageMap = buildNotebookPageMap(notebookPages, page.id);
   const currentParts: AiContentPart[] = [
     {
       text: `Notebook: ${notebook.title}\nPage: ${page.pageNumber}${
         questionPrompt ? `\nQuestion prompt: ${questionPrompt}` : ""
-      }${typedText ? `\nTyped page content:\n${typedText}` : ""}`,
+      }${typedText ? `\nTyped page content:\n${typedText}` : ""}${
+        notebookPageMap ? `\n\n${notebookPageMap}` : ""
+      }`,
     },
   ];
   if (input.context.snapshot) {
@@ -355,19 +444,27 @@ export async function resolveJamiAssistantContext(input: {
       : input.context.surface === "sources"
         ? await resolveSourcesContext({ db, uid, context: input.context })
         : await resolveNotebookContext({ db, uid, context: input.context });
-  const sources = await selectSources({
-    db,
-    uid,
-    relations: resolved.relations,
-    message: input.message,
-    includeRelated: input.useRelatedSources,
-  });
+  const [sources, studyLevelContext] = await Promise.all([
+    selectSources({
+      db,
+      uid,
+      relations: resolved.relations,
+      message: input.message,
+      includeRelated: input.useRelatedSources,
+    }),
+    loadTutorStudyLevel({
+      db,
+      uid,
+      folderIds: resolved.relations.folderIds,
+    }),
+  ]);
 
   return {
     currentId: resolved.currentId,
     currentLabel: resolved.currentLabel,
     currentParts: resolved.currentParts,
     sources,
+    studyLevelContext,
   };
 }
 

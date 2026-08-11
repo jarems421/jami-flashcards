@@ -1,7 +1,5 @@
 "use client";
-
 import "js-draw/Editor.css";
-
 import {
   forwardRef,
   useCallback,
@@ -11,12 +9,8 @@ import {
   useRef,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import type {
-  Editor as JsDrawEditor,
-} from "js-draw";
-import type {
-  NotebookStroke,
-} from "@/lib/workspace/notebooks";
+import type { Editor as JsDrawEditor } from "js-draw";
+import type { NotebookStroke } from "@/lib/workspace/notebooks";
 import {
   getContinuousNotebookEraserSamples,
   getNotebookEraserCursorDiameter,
@@ -45,10 +39,7 @@ import {
 } from "@/lib/workspace/notebook-scribble-gesture";
 import type { NotebookScribbleSample } from "@/lib/workspace/notebook-scribble-erase";
 import { NotebookInkSmoother } from "@/lib/workspace/notebook-ink-smoothing";
-import {
-  isWholeNotebookInkSheet,
-  type NotebookInkRenderWindow,
-} from "@/lib/workspace/notebook-ink-window";
+import type { NotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import {
   installBatchedNotebookPenPreview,
   type NotebookBatchedPen,
@@ -73,7 +64,7 @@ import {
   shouldUseNotebookPrecisionGesture,
   suppressNotebookEraserPreview,
 } from "@/lib/workspace/notebook-ink-runtime";
-
+import { useNotebookInkRenderWindow } from "@/hooks/useNotebookInkRenderWindow";
 export type { NotebookInkTool };
 
 export type NotebookInkEditorHandle = {
@@ -182,71 +173,8 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
     const pointerLifecycleRef = useRef<NotebookInkPointerLifecycle | null>(null);
     pointerLifecycleRef.current ??= new NotebookInkPointerLifecycle();
     const inkSmoothersRef = useRef<Map<number, NotebookInkSmoother>>(new Map());
-    /**
-     * Read during a repaint rather than closed over, so the mounted editor
-     * always paints against the window the page is currently showing.
-     */
-    /*
-     * Taken apart into numbers deliberately.
-     *
-     * The page builds this object during render, so it is a new object every
-     * time even when the sheet has not moved an inch. Depending on it directly
-     * would resynchronise -- and so fully repaint -- the page on every render,
-     * which is the opposite of what the window is for.
-     */
-    const sheetWidth = inkWindow?.sheetWidth ?? 0;
-    const sheetHeight = inkWindow?.sheetHeight ?? 0;
-    const windowLeft = inkWindow?.left ?? 0;
-    const windowTop = inkWindow?.top ?? 0;
-    const windowWidth = inkWindow?.width ?? 0;
-    const windowHeight = inkWindow?.height ?? 0;
-    /**
-     * A window covering the whole sheet is no window at all: leaving it off
-     * keeps the fitted page on exactly the geometry it had before any of this
-     * existed, rather than on an equivalent-looking one.
-     */
-    const clipped = Boolean(inkWindow) && !isWholeNotebookInkSheet({
-      sheetWidth,
-      sheetHeight,
-      left: windowLeft,
-      top: windowTop,
-      width: windowWidth,
-      height: windowHeight,
-    });
-    const renderWindowRef = useRef<NotebookInkRenderWindow | null>(null);
-    const syncViewportRef = useRef<(() => void) | null>(null);
-
-    /*
-     * Repaint when the painted slice moves.
-     *
-     * A resize is already noticed by the ResizeObserver on the host, but a
-     * window that slides the same size across the sheet -- which is most pans
-     * that cross a grid line -- changes no dimension at all, so the offset has
-     * to be pushed in. A layout effect so the canvas and the sheet's own
-     * transform land in the same frame, and so this is in place before the
-     * editor mounts.
-     */
-    useLayoutEffect(() => {
-      renderWindowRef.current = clipped
-        ? {
-            sheetWidth,
-            sheetHeight,
-            left: windowLeft,
-            top: windowTop,
-            width: windowWidth,
-            height: windowHeight,
-          }
-        : null;
-      syncViewportRef.current?.();
-    }, [
-      clipped,
-      sheetHeight,
-      sheetWidth,
-      windowHeight,
-      windowLeft,
-      windowTop,
-      windowWidth,
-    ]);
+    const { inkHostStyle, renderWindowRef, syncViewportRef } =
+      useNotebookInkRenderWindow(inkWindow);
     const penPreviewBatchRef = useRef<NotebookPenPreviewBatch | null>(null);
     const lastForwardedPointerSampleRef = useRef<Map<number, PointerEvent>>(
       new Map()
@@ -605,7 +533,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
         jsDrawRef.current = null;
         syncViewportRef.current = null;
       };
-    }, [pageHeight, pageId, pageWidth]);
+    }, [pageHeight, pageId, pageWidth, renderWindowRef, syncViewportRef]);
 
     useEffect(() => {
       const editor = editorRef.current;
@@ -1169,16 +1097,7 @@ export const NotebookInkEditor = forwardRef<NotebookInkEditorHandle, Props>(
           ref={hostRef}
           aria-hidden="true"
           className="notebook-js-draw-host pointer-events-none absolute"
-          style={
-            clipped
-              ? {
-                  left: windowLeft,
-                  top: windowTop,
-                  width: windowWidth,
-                  height: windowHeight,
-                }
-              : { inset: 0 }
-          }
+          style={inkHostStyle}
         />
         <div
           ref={inkSurfaceRef}

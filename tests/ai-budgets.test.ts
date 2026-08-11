@@ -62,6 +62,8 @@ describe("AI budget configuration", () => {
       [
         "assistant",
         "autocompleteCard",
+        "practicePaperGeneration",
+        "practicePaperMarking",
         "sourceFlashcardDrafts",
         "sourcePracticeDrafts",
       ].sort()

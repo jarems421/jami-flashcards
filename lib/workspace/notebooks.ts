@@ -2,6 +2,10 @@ import {
   normalizeOptionalString,
   normalizeStringArray,
 } from "@/lib/material/content";
+import {
+  normalizeQuestionAssets,
+  type PracticePaperQuestionAsset,
+} from "@/lib/practice/practice-papers";
 import { normalizeInkPressure, normalizeInkTime } from "@/lib/workspace/notebook-ink-engine";
 import type { NotebookStrokeTool } from "@/lib/workspace/notebook-ink-types";
 
@@ -15,6 +19,7 @@ export type NotebookType =
   | "free_working"
   | "practice"
   | "past_paper"
+  | "practice_paper"
   | "generated_drill"
   | "source_notes";
 
@@ -144,6 +149,7 @@ export type NotebookPage = {
   pageStyle: NotebookPageStyle;
   status: NotebookPageStatus;
   questionPrompt?: string;
+  questionAssets?: PracticePaperQuestionAsset[];
   linkedQuestionId?: string;
   linkedSourceId?: string;
   linkedPastPaperId?: string;
@@ -200,6 +206,7 @@ export function isNotebookType(value: unknown): value is NotebookType {
     value === "free_working" ||
     value === "practice" ||
     value === "past_paper" ||
+    value === "practice_paper" ||
     value === "generated_drill" ||
     value === "source_notes"
   );
@@ -704,6 +711,7 @@ export function mapNotebookPageData(
     pageStyle: isNotebookPageStyle(data.pageStyle) ? data.pageStyle : "plain",
     status: isNotebookPageStatus(data.status) ? data.status : "blank",
     questionPrompt: normalizeOptionalString(data.questionPrompt, 4_000),
+    questionAssets: normalizeQuestionAssets(data.questionAssets),
     linkedQuestionId: normalizeOptionalString(data.linkedQuestionId, 160),
     linkedSourceId: normalizeOptionalString(data.linkedSourceId, 160),
     linkedPastPaperId: normalizeOptionalString(data.linkedPastPaperId, 160),
@@ -784,6 +792,7 @@ export function buildNotebookPagePayload(input: {
   pageStyle?: NotebookPageStyle;
   status?: NotebookPageStatus;
   questionPrompt?: string;
+  questionAssets?: PracticePaperQuestionAsset[];
   linkedQuestionId?: string;
   linkedSourceId?: string;
   linkedPastPaperId?: string;
@@ -866,6 +875,7 @@ export function buildNotebookPagePayload(input: {
     pageStyle: input.pageStyle ?? "plain",
     status: input.status ?? "blank",
     questionPrompt: normalizeOptionalString(input.questionPrompt, 4_000) ?? null,
+    questionAssets: normalizeQuestionAssets(input.questionAssets),
     linkedQuestionId: normalizeOptionalString(input.linkedQuestionId, 160) ?? null,
     linkedSourceId: normalizeOptionalString(input.linkedSourceId, 160) ?? null,
     linkedPastPaperId: normalizeOptionalString(input.linkedPastPaperId, 160) ?? null,

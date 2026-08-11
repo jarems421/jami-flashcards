@@ -68,7 +68,7 @@ function normalizeSavedContext(value: unknown): JamiAssistantSavedContext | null
     return cardId ? { surface: "learn", cardId } : null;
   }
   if (context.surface === "sources") {
-    const sourceIds = normalizeStringArray(context.sourceIds, 5).sort();
+    const sourceIds = normalizeStringArray(context.sourceIds, 15).sort();
     return sourceIds.length > 0 ? { surface: "sources", sourceIds } : null;
   }
   if (context.surface === "notebook") {

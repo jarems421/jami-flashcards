@@ -31,6 +31,10 @@ import {
   normalizeStudyFolderName,
   type StudyFolder,
 } from "@/lib/workspace/study-folders";
+import {
+  normalizeStudyLevel,
+  type StudyLevel,
+} from "@/lib/profile/study-level";
 
 const LOAD_MS = 30_000;
 const WRITE_MS = 30_000;
@@ -210,6 +214,7 @@ export async function updateStudyFolder(
   input: Partial<{
     name: string;
     subject: string;
+    studyLevel: StudyLevel | null;
     color: string;
     icon: string;
     topicIds: string[];
@@ -238,6 +243,9 @@ export async function updateStudyFolder(
   }
   if (input.subject !== undefined) {
     updates.subject = input.subject.trim().slice(0, 120) || null;
+  }
+  if (input.studyLevel !== undefined) {
+    updates.studyLevel = normalizeStudyLevel(input.studyLevel) ?? null;
   }
   if (input.color !== undefined) {
     updates.color = input.color.trim().slice(0, 80) || null;
