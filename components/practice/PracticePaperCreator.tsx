@@ -9,13 +9,17 @@ import {
   Card,
   EmptyState,
   FeedbackBanner,
+  FileField,
   Input,
   JamiSparklesIcon,
-  SectionHeader,
+  OptionSwitch,
+  ProgressBar,
+  Select,
   Skeleton,
   Textarea,
 } from "@/components/ui";
 import PracticePaperSourcePicker from "@/components/practice/PracticePaperSourcePicker";
+import PracticeStep from "@/components/practice/PracticeStep";
 import { useFeedback } from "@/hooks/useFeedback";
 import type { Source } from "@/lib/material/sources";
 import { rankPracticePaperSources } from "@/lib/ai/practice-paper-generation";
@@ -367,91 +371,89 @@ export default function PracticePaperCreator() {
         <FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={clear} />
       ) : null}
 
-      <Card tone="warm" padding="lg" className="overflow-hidden">
-        <div className="flex items-start gap-4">
-          <span className="grid h-12 w-12 shrink-0 place-items-center rounded-2xl bg-accent/12 text-accent">
-            <JamiSparklesIcon className="h-7 w-7" />
-          </span>
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-warm-accent">
-              Exam-aware practice
-            </p>
-            <h1 className="mt-1 text-2xl font-semibold text-text-primary sm:text-3xl">
-              Build a paper that fits the course.
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-text-secondary">
-              Jami checks the study level, specification or module documents, recent paper formats,
-              and marking guidance before fixing the questions and rubric.
-            </p>
-          </div>
+      <div className="flex items-start gap-3.5">
+        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-accent/12 text-accent">
+          <JamiSparklesIcon className="h-6 w-6" />
+        </span>
+        <div className="min-w-0">
+          <h1 className="text-xl font-semibold tracking-tight text-text-primary sm:text-2xl">
+            Build a paper that fits the course.
+          </h1>
+          <p className="mt-1 max-w-2xl text-sm leading-6 text-text-secondary">
+            Jami reads the level, specification, and paper formats in this folder
+            before fixing the questions and the marking guide.
+          </p>
         </div>
-      </Card>
+      </div>
 
-      <Card padding="lg" className="space-y-6">
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
-          <label className="block">
-            <span className="mb-2 block text-sm font-medium text-text-secondary">Study folder</span>
-            <select
+      <Card padding="lg" className="space-y-8">
+        <PracticeStep
+          step={1}
+          title="Which folder is this for?"
+          description="The folder decides which sources Jami can read and what level it writes to."
+        >
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Select
+              label="Study folder"
               value={folderId}
               disabled={working}
               onChange={(event) => setFolderId(event.target.value)}
-              className="app-field min-h-[3.25rem] w-full rounded-2xl px-4 text-sm"
             >
               {folders.map((folder) => (
-                <option key={folder.id} value={folder.id}>{folder.name}</option>
+                <option key={folder.id} value={folder.id}>
+                  {folder.name}
+                </option>
               ))}
-            </select>
-          </label>
-          <div>
-            <span className="mb-2 block text-sm font-medium text-text-secondary">Start from</span>
-            <div className="app-subtle-panel grid grid-cols-2 gap-1 rounded-2xl p-1">
-              {([
-                ["generate", "Generate with Jami"],
-                ["upload", "Upload a paper"],
-              ] as const).map(([value, label]) => (
-                <button
-                  key={value}
-                  type="button"
-                  disabled={working}
-                  aria-pressed={path === value}
-                  onClick={() => {
-                    setPath(value);
-                    setClarificationQuestion("");
-                    clear();
-                  }}
-                  className={`min-h-11 rounded-xl px-3 text-sm font-semibold transition ${
-                    path === value ? "app-selected border" : "text-text-muted hover:text-text-primary"
-                  }`}
-                >
-                  {label}
-                </button>
-              ))}
-            </div>
+            </Select>
           </div>
-        </div>
+          <OptionSwitch
+            label="Start from"
+            value={path}
+            disabled={working}
+            options={[
+              {
+                value: "generate" as const,
+                label: "Generate with Jami",
+                detail: "An original paper in your exam's format",
+              },
+              {
+                value: "upload" as const,
+                label: "Upload a paper",
+                detail: "A real paper you already have as a file",
+              },
+            ]}
+            onChange={(value) => {
+              setPath(value);
+              setClarificationQuestion("");
+              clear();
+            }}
+          />
+        </PracticeStep>
+
+        <div className="h-px bg-[var(--color-border)]" />
 
         {path === "generate" ? (
-          <div className="space-y-6">
-            <div>
-              <SectionHeader
-                eyebrow="Talk to Jami"
-                title="What should this paper prepare you for?"
-                description="Name the complete exam paper, component, module sitting, or repeated university format you want to practise."
-              />
-              <Textarea
-                className="mt-4"
-                rows={5}
-                value={request}
-                disabled={working}
-                placeholder="Create a complete AQA GCSE Biology Paper 1 in the current format, using my specification and past-paper sources."
-                onChange={(event) => setRequest(event.target.value)}
-              />
-            </div>
+          <PracticeStep
+            step={2}
+            title="What should it prepare you for?"
+            description="Name the paper, component, or module sitting you want to practise. Jami builds the complete format, not a topic test."
+          >
+            <Textarea
+              rows={4}
+              value={request}
+              disabled={working}
+              placeholder="A complete AQA GCSE Biology Paper 1 in the current format, using my specification and past papers."
+              onChange={(event) => setRequest(event.target.value)}
+            />
 
             {clarificationQuestion ? (
-              <div className="rounded-xl border border-accent/25 bg-accent/8 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">Jami needs one detail</p>
-                <p className="mt-2 text-sm leading-6 text-text-primary">{clarificationQuestion}</p>
+              <div className="rounded-2xl border border-accent/30 bg-accent/8 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
+                  Jami needs one detail
+                </p>
+                <p className="mt-2 text-sm leading-6 text-text-primary">
+                  {clarificationQuestion}
+                </p>
                 <Input
                   containerClassName="mt-3"
                   label="Your answer"
@@ -466,121 +468,132 @@ export default function PracticePaperCreator() {
               label="Coverage"
               value={coverage}
               disabled={working}
-              placeholder="For example: Paper 1, whole module exam, or full final sitting"
+              placeholder="Paper 1, whole module exam, or full final sitting"
               onChange={(event) => setCoverage(event.target.value)}
             />
-            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4">
-              <p className="text-sm font-semibold text-text-primary">Complete sitting</p>
-              <p className="mt-1 text-xs leading-5 text-text-muted">
-                Jami creates the full inferred exam format. Topic tests and single-question work stay separate from full-paper mode.
-              </p>
-            </div>
-          </div>
+          </PracticeStep>
         ) : (
-          <div className="space-y-5">
-            <SectionHeader
-              eyebrow="Use an existing paper"
-              title="Add the paper and, if you have it, the official marking guide."
-              description="The paper stays immutable underneath your notebook ink. Without an official guide, Jami clearly labels its marking as estimated."
-            />
+          <PracticeStep
+            step={2}
+            title="Add the paper"
+            description="Your paper stays exactly as it is underneath your ink. With no official mark scheme, Jami labels its marking as estimated."
+          >
             <Input
               label="Paper title"
               value={uploadTitle}
               disabled={working}
               onChange={(event) => setUploadTitle(event.target.value)}
             />
-            <div className="grid gap-4 sm:grid-cols-2">
-              <label className="app-subtle-panel rounded-xl p-4">
-                <span className="block text-sm font-semibold text-text-primary">Paper file</span>
-                <span className="mt-1 block text-xs leading-5 text-text-muted">PDF, JPG, PNG or WebP</span>
-                <input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png,image/webp"
-                  disabled={working}
-                  onChange={(event) => setPaperFile(event.target.files?.[0] ?? null)}
-                  className="app-field mt-3 block w-full rounded-lg p-2 text-xs"
-                />
-              </label>
-              <label className="app-subtle-panel rounded-xl p-4">
-                <span className="block text-sm font-semibold text-text-primary">Official mark scheme</span>
-                <span className="mt-1 block text-xs leading-5 text-text-muted">Optional, but gives the most reliable marking</span>
-                <input
-                  type="file"
-                  accept="application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,.pdf,.docx,.pptx,.txt"
-                  disabled={working}
-                  onChange={(event) => setMarkSchemeFile(event.target.files?.[0] ?? null)}
-                  className="app-field mt-3 block w-full rounded-lg p-2 text-xs"
-                />
-              </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <FileField
+                label="Paper file"
+                hint="PDF, JPG, PNG or WebP"
+                accept="application/pdf,image/jpeg,image/png,image/webp"
+                file={paperFile}
+                disabled={working}
+                onChange={setPaperFile}
+              />
+              <FileField
+                label="Official mark scheme"
+                hint="Optional — but it makes the marking far more reliable"
+                accept="application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,.pdf,.docx,.pptx,.txt"
+                file={markSchemeFile}
+                disabled={working}
+                onChange={setMarkSchemeFile}
+              />
             </div>
-            <Input
-              label="Duration in minutes (optional)"
-              type="number"
-              min={0}
-              max={360}
-              value={uploadedDuration}
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Input
+                label="Duration in minutes"
+                type="number"
+                min={0}
+                max={360}
+                value={uploadedDuration}
+                disabled={working}
+                placeholder="Optional"
+                onChange={(event) => setUploadedDuration(event.target.value)}
+              />
+            </div>
+          </PracticeStep>
+        )}
+
+        <div className="h-px bg-[var(--color-border)]" />
+
+        <PracticeStep
+          step={3}
+          title="What should Jami read?"
+          description="Sources are what keep the questions in your course rather than in general knowledge."
+        >
+          {loadingSources ? (
+            <Skeleton className="h-16 rounded-2xl" />
+          ) : (
+            <PracticePaperSourcePicker
+              sources={sources}
+              proposedSources={proposedSources}
+              automaticConfirmed={automaticSourcesConfirmed}
+              selectedIds={selectedSourceIds}
+              automatic={automaticSources}
               disabled={working}
-              onChange={(event) => setUploadedDuration(event.target.value)}
+              onAutomaticChange={(value) => {
+                setAutomaticSources(value);
+                if (value) setConfirmedAutomaticSourceIds([]);
+              }}
+              onConfirmAutomatic={() =>
+                setConfirmedAutomaticSourceIds(proposedSourceIds)
+              }
+              onChange={setSelectedSourceIds}
+            />
+          )}
+        </PracticeStep>
+
+        <div className="h-px bg-[var(--color-border)]" />
+
+        <PracticeStep
+          step={4}
+          title="How do you want to sit it?"
+          description="Both of these can be changed before you start the attempt."
+        >
+          <div className="grid gap-5 lg:grid-cols-2">
+            <ChoiceCards
+              label="Attempt timing"
+              value={timingMode}
+              options={TIMING_OPTIONS}
+              disabled={working || (automaticSources && !automaticSourcesConfirmed)}
+              onChange={setTimingMode}
+            />
+            <ChoiceCards
+              label="Tutor during the sitting"
+              value={tutorChoice}
+              options={TUTOR_OPTIONS}
+              disabled={working}
+              onChange={setTutorChoice}
             />
           </div>
-        )}
-
-        {loadingSources ? (
-          <Skeleton className="h-16 rounded-xl" />
-        ) : (
-          <PracticePaperSourcePicker
-            sources={sources}
-            proposedSources={proposedSources}
-            automaticConfirmed={automaticSourcesConfirmed}
-            selectedIds={selectedSourceIds}
-            automatic={automaticSources}
-            disabled={working}
-            onAutomaticChange={(value) => {
-              setAutomaticSources(value);
-              if (value) setConfirmedAutomaticSourceIds([]);
-            }}
-            onConfirmAutomatic={() => setConfirmedAutomaticSourceIds(proposedSourceIds)}
-            onChange={setSelectedSourceIds}
-          />
-        )}
-
-        <div className="grid gap-5 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-panel)] p-5 lg:grid-cols-2">
-          <ChoiceCards
-            label="Attempt timing"
-            value={timingMode}
-            options={TIMING_OPTIONS}
-            disabled={working || (automaticSources && !automaticSourcesConfirmed)}
-            onChange={setTimingMode}
-          />
-          <ChoiceCards
-            label="Tutor during the sitting"
-            value={tutorChoice}
-            options={TUTOR_OPTIONS}
-            disabled={working}
-            onChange={setTutorChoice}
-          />
-        </div>
+        </PracticeStep>
 
         {working && progress !== null ? (
           <div>
             <div className="mb-2 flex justify-between text-xs font-medium text-text-muted">
-              <span>Adding files</span><span>{progress}%</span>
+              <span>Adding files</span>
+              <span className="tabular-nums">{progress}%</span>
             </div>
-            <div className="h-2 overflow-hidden rounded-full bg-[var(--color-glass-medium)]">
-              <div className="h-full rounded-full bg-accent transition-[width]" style={{ width: `${progress}%` }} />
-            </div>
+            <ProgressBar progress={progress} size="sm" />
           </div>
         ) : null}
 
-        <div className="flex flex-col-reverse gap-2 border-t border-[var(--color-border)] pt-5 sm:flex-row sm:items-center sm:justify-between">
-          <p className="text-xs leading-5 text-text-muted">
-            Generated questions are original. The marking guide is fixed before the attempt begins.
+        <div className="flex flex-col-reverse gap-3 border-t border-[var(--color-border)] pt-6 sm:flex-row sm:items-center sm:justify-between">
+          <p className="max-w-sm text-xs leading-5 text-text-muted">
+            Generated questions are original, and the marking guide is fixed
+            before your attempt begins.
           </p>
           <Button
             type="button"
             size="lg"
+            className="sm:min-w-[14rem] sm:justify-center"
             disabled={working}
-            onClick={() => void (path === "generate" ? createGenerated() : createUploaded())}
+            onClick={() =>
+              void (path === "generate" ? createGenerated() : createUploaded())
+            }
           >
             {working
               ? path === "generate"

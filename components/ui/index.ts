@@ -12,6 +12,10 @@ export {
 } from "./Dialog";
 export type { DialogDismissReason } from "./Dialog";
 export { default as EmptyState } from "./EmptyState";
+export { default as FileField } from "./FileField";
+export { default as OptionSwitch } from "./OptionSwitch";
+export type { OptionSwitchOption } from "./OptionSwitch";
+export { default as Select } from "./Select";
 export { default as FeedbackBanner } from "./FeedbackBanner";
 export { default as IconBubble } from "./IconBubble";
 export { default as Input } from "./Input";
