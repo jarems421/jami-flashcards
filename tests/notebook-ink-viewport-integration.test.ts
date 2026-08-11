@@ -319,6 +319,55 @@ describe("notebook ink viewport integration", () => {
     );
   });
 
+  it("ends a stroke on the point it was already drawn to", () => {
+    const emitted: Array<{ current: { screenPos: { x: number; y: number } } }> = [];
+    class InputMapper {
+      emit(event: unknown) {
+        emitted.push(event as (typeof emitted)[number]);
+        return true;
+      }
+    }
+    const viewport = { id: "viewport" };
+    function withScreenPosition(
+      this: Record<string, unknown>,
+      screenPos: { x: number; y: number }
+    ) {
+      return { ...this, screenPos, withScreenPosition };
+    }
+    const pointerAt = (x: number, y: number, timeStamp: number) => ({
+      id: 7,
+      screenPos: { x, y },
+      timeStamp,
+      withScreenPosition,
+    });
+    const jsDraw = {
+      InputMapper,
+      InputEvtType: { PointerDownEvt: 1, PointerMoveEvt: 2, PointerUpEvt: 3 },
+      Vec2: { of: (x: number, y: number) => ({ x, y }) },
+    };
+    const mapper = makePrecisePenInputMapper(
+      jsDraw as never,
+      { viewport } as never,
+      new Map()
+    ) as unknown as { onEvent(event: unknown): boolean };
+
+    const send = (kind: number, pointer: ReturnType<typeof pointerAt>) =>
+      mapper.onEvent({ kind, current: pointer, allPointers: [pointer] });
+
+    // A quick stroke: the gap between the last move and the lift is a whole
+    // event's worth of travel, and it used to be added as ink.
+    send(jsDraw.InputEvtType.PointerDownEvt, pointerAt(0, 0, 0));
+    for (let step = 1; step <= 12; step += 1) {
+      send(jsDraw.InputEvtType.PointerMoveEvt, pointerAt(step * 12, 0, step * 8));
+    }
+    const lastDrawn = emitted[emitted.length - 1].current.screenPos;
+    send(jsDraw.InputEvtType.PointerUpEvt, pointerAt(12 * 12 + 40, 0, 13 * 8));
+
+    // The lift carries the pen well past the last move, and none of it becomes
+    // ink: the stroke ends exactly where it was last painted.
+    expect(emitted[emitted.length - 1].current.screenPos).toEqual(lastDrawn);
+  });
+
   it("keeps an active precision gesture routed after tool props change", () => {
     const continuing = shouldContinueNotebookPrecisionGesture({
       activePointerId: 17,

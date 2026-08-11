@@ -136,6 +136,18 @@ describe("notebook ink smoothing", () => {
     );
   });
 
+  it("holds its position when asked, so a lift adds no ink", () => {
+    const smoother = new NotebookInkSmoother({ x: 0, y: 0, time: 0 });
+    let latest = { x: 0, y: 0 };
+    for (let step = 1; step <= 20; step += 1) {
+      latest = smoother.next({ x: step * 12, y: step * 3, time: step * 8 });
+    }
+
+    // The same point the stroke was last drawn to, and unmoved by asking.
+    expect(smoother.current()).toEqual(latest);
+    expect(smoother.current()).toEqual(latest);
+  });
+
   it.each([8, 16])(
     "responds quickly at a %dms stylus sample interval",
     (sampleIntervalMs) => {

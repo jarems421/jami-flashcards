@@ -85,32 +85,41 @@ export function makePrecisePenInputMapper(
           );
         } else {
           /*
-           * The lift is filtered too, and that is the whole point of this
-           * branch rather than a detail of it.
+           * A stroke ends on the point it was already drawn to, and gains
+           * nothing at the lift.
            *
            * js-draw ends a stroke by adding the `pointerup` position and
-           * finalising immediately. Sending the raw position there, while every
-           * sample before it was filtered, hands the stroke a last point that is
-           * as far ahead of the ink as the filter happened to be trailing --
-           * and the stroke closes that gap in one step, on the frame the pen
-           * leaves the glass. It reads as the ink carrying on past where the
-           * stroke was ended, and it is worst after a quick stroke, because
-           * that is when the filter trails furthest.
+           * finalising immediately, so whatever that position is becomes a
+           * final segment -- one that appears in a single frame, after the pen
+           * has left the glass. It is not seen being drawn, it is seen
+           * arriving, and that is exactly the ink appearing to carry on past
+           * where the stroke was ended.
            *
-           * Filtered, the endpoint is simply the next point on the same curve.
-           * The ink still ends a little short of the pen -- that is the lag,
-           * and `beta` is what answers it -- but it stops where it was going
-           * instead of lurching forward to catch up.
+           * Filtering that position rather than taking it raw made the segment
+           * shorter and did not remove it, because filtering still steps
+           * towards the lift. The pointer-up carries its own position, some
+           * milliseconds of travel beyond the last move -- at speed that is
+           * still a visible tick of ink.
+           *
+           * So the lift holds the filter where it is instead of stepping it.
+           * The last point of the stroke is then identical to the last point
+           * already painted, which makes a jump impossible rather than small.
+           * The cost is that a stroke ends a fraction short of where the pen
+           * physically left -- and ink that is not there cannot be seen, where
+           * ink arriving late very much can.
            */
           const smoother = inkSmoothers.get(current.id);
           if (smoother) {
-            const filtered = smoother.next({
-              x: current.screenPos.x,
-              y: current.screenPos.y,
-              time: current.timeStamp,
-            });
+            const settled =
+              event.kind === jsDraw.InputEvtType.PointerUpEvt
+                ? smoother.current()
+                : smoother.next({
+                    x: current.screenPos.x,
+                    y: current.screenPos.y,
+                    time: current.timeStamp,
+                  });
             current = current.withScreenPosition(
-              jsDraw.Vec2.of(filtered.x, filtered.y),
+              jsDraw.Vec2.of(settled.x, settled.y),
               editor.viewport
             );
           }
