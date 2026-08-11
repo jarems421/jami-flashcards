@@ -48,6 +48,22 @@
     --color-warning-muted: rgba(255, 214, 166, 0.18);
     --color-warning-text: #fff1dc;
 
+    /*
+     * Semantic marks: a solid fill in the status colour -- a stripe, a meter,
+     * a timeline dot -- as opposed to text or a tinted panel.
+     *
+     * Neither existing token can do this job across themes. The bare tokens
+     * above are dark-theme pastels and are never redefined, so they vanish on
+     * a light surface; the `-text` tokens flip per theme, but their dark values
+     * are three near-identical whites, so a set of marks drawn in them is
+     * legible and completely uninformative. These carry the saturated colour on
+     * dark and the deep one on light, which is the only combination that keeps
+     * a mark both visible and distinguishable in both.
+     */
+    --color-success-mark: #7de0cc;
+    --color-error-mark: #ff78b7;
+    --color-warning-mark: #ffd6a6;
+
     /* Warm accent (blush highlight from the star body) */
     --color-warm-glow: rgba(255, 214, 246, 0.12);
     --color-warm-border: rgba(214, 163, 255, 0.26);
@@ -344,6 +360,9 @@
     --color-error-text: #9f123e;
     --color-warning-muted: rgba(126, 82, 16, 0.12);
     --color-warning-text: #70470d;
+    --color-success-mark: #126855;
+    --color-error-mark: #9f123e;
+    --color-warning-mark: #70470d;
     --color-warm-glow: rgba(229, 57, 159, 0.1);
     --color-warm-border: rgba(229, 57, 159, 0.24);
     /* Deep enough to stay legible as text on blush, unlike the accent. */
@@ -431,6 +450,9 @@
     --color-error-text: #8a123d;
     --color-warning-muted: rgba(126, 82, 16, 0.12);
     --color-warning-text: #70470d;
+    --color-success-mark: #126855;
+    --color-error-mark: #8a123d;
+    --color-warning-mark: #70470d;
     --color-warm-glow: rgba(116, 100, 207, 0.1);
     --color-warm-border: rgba(116, 100, 207, 0.22);
     --color-warm-accent: #5b4ebe;

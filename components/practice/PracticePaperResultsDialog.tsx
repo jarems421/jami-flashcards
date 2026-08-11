@@ -5,13 +5,14 @@ import {
   Button,
   Dialog,
   DialogBackdrop,
-  DialogDescription,
   DialogPanel,
   DialogTitle,
   Input,
   ProgressBar,
+  SectionHeader,
   StudyText,
 } from "@/components/ui";
+import { ScoreMeter, scoreBand } from "./ScoreBand";
 import type {
   PracticePaper,
   PracticePaperAttempt,
@@ -116,19 +117,24 @@ export default function PracticePaperResultsDialog({
     <Dialog open={open} onDismiss={onClose}>
       <DialogBackdrop />
       <DialogPanel className="max-h-[92vh] max-w-5xl overflow-y-auto p-0">
+        {/*
+          * The header carries what this attempt *was* -- which attempt, sat
+          * under which conditions, marked against which scheme -- and then gets
+          * out of the way. It used to also explain how to read the page below
+          * it ("See the result first, then open any question…"), which is a
+          * caption on something the reader can already see, sitting between
+          * them and the score they opened the dialog for.
+          */}
         <div className="border-b border-[var(--color-border)] px-5 pb-0 pt-5 sm:px-7 sm:pt-7">
-          <div className="flex flex-wrap items-start justify-between gap-4">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">
-                Attempt {paper.attemptCount}
+          <div className="flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
+            <div className="min-w-0">
+              <DialogTitle>Your paper, marked</DialogTitle>
+              <p className="mt-1.5 truncate text-sm text-text-muted">
+                {paper.title}
               </p>
-              <DialogTitle className="mt-1">Your paper, marked</DialogTitle>
-              <DialogDescription className="mt-2 max-w-2xl">
-                See the result first, then open any question for the evidence,
-                correction and next step.
-              </DialogDescription>
             </div>
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <StatusPill>Attempt {paper.attemptCount}</StatusPill>
               <StatusPill>
                 {paper.tutorEnabled
                   ? paper.tutorUsed
@@ -140,20 +146,25 @@ export default function PracticePaperResultsDialog({
             </div>
           </div>
           <div className="mt-5 flex gap-6" role="tablist" aria-label="Result view">
-            {(["report", "history"] as const).map((value) => (
+            {(
+              [
+                ["report", "This attempt"],
+                ["history", "All attempts"],
+              ] as const
+            ).map(([value, label]) => (
               <button
                 key={value}
                 type="button"
                 role="tab"
                 aria-selected={tab === value}
                 onClick={() => setTab(value)}
-                className={`border-b-2 px-0.5 pb-3 text-sm font-semibold capitalize transition ${
+                className={`border-b-2 px-0.5 pb-3 text-sm font-semibold transition duration-fast ${
                   tab === value
                     ? "border-accent text-text-primary"
                     : "border-transparent text-text-muted hover:text-text-secondary"
                 }`}
               >
-                {value}
+                {label}
               </button>
             ))}
           </div>
@@ -227,17 +238,11 @@ export default function PracticePaperResultsDialog({
               </div>
 
               <div className="space-y-3">
-                <div className="flex items-end justify-between gap-3">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-                      Question review
-                    </p>
-                    <h3 className="mt-1 text-lg font-semibold text-text-primary">
-                      Where each mark came from
-                    </h3>
-                  </div>
-                  <p className="text-xs text-text-muted">Open a question to review</p>
-                </div>
+                <SectionHeader
+                  eyebrow="Question review"
+                  title="Where each mark came from"
+                  action={<BandSummary questions={result.questionResults} />}
+                />
                 {result.questionResults.map((question) => (
                   <QuestionResultCard
                     key={question.questionId}
@@ -301,6 +306,15 @@ export default function PracticePaperResultsDialog({
   );
 }
 
+/**
+ * The headline score.
+ *
+ * Deliberately *not* banded red/amber/green, unlike the question list. The
+ * bands exist so twenty questions can be sorted at a glance; there is only one
+ * headline, so there is nothing to sort, and colouring a whole result red stops
+ * being navigation and becomes a verdict on the person reading it. The bands
+ * earn their place below, where the reader is choosing what to work on next.
+ */
 function ScorePanel({
   eyebrow,
   result,
@@ -312,24 +326,24 @@ function ScorePanel({
 }) {
   return (
     <div className={primary ? "p-5 sm:p-6" : ""}>
-      <div className="flex items-end justify-between gap-4">
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">
-            {eyebrow}
-          </p>
-          <p className="mt-1 text-4xl font-semibold tracking-tight text-text-primary">
-            {result.awardedMarks}
-            <span className="text-xl text-text-muted">/{result.totalMarks}</span>
-          </p>
-        </div>
-        <div className="text-right">
-          <p className="text-2xl font-semibold text-text-primary">
-            {result.percentage}%
-          </p>
-          {result.gradeLabel ? (
-            <p className="text-sm font-semibold text-accent">{result.gradeLabel}</p>
-          ) : null}
-        </div>
+      <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-accent">
+        {eyebrow}
+      </p>
+      <div className="mt-2 flex flex-wrap items-baseline gap-x-4 gap-y-1">
+        <p className="text-4xl font-semibold tracking-tight tabular-nums text-text-primary">
+          {result.awardedMarks}
+          <span className="text-xl font-medium text-text-muted">
+            /{result.totalMarks}
+          </span>
+        </p>
+        <p className="text-xl font-semibold tabular-nums text-text-secondary">
+          {result.percentage}%
+        </p>
+        {result.gradeLabel ? (
+          <span className="rounded-full border border-accent/35 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
+            {result.gradeLabel}
+          </span>
+        ) : null}
       </div>
       <ProgressBar progress={result.percentage} className="mt-4" />
       <StudyText
@@ -337,6 +351,60 @@ function ScorePanel({
         as="p"
         className="mt-4 text-sm leading-6 text-text-secondary"
       />
+    </div>
+  );
+}
+
+/**
+ * The shape of the paper as three counts, before any of it is scrolled.
+ *
+ * This is the one place the band colours belong at paper level: it is a
+ * navigation aid ("three questions scored nothing, go there first"), not a
+ * verdict on the total.
+ */
+function BandSummary({ questions }: { questions: PracticePaperQuestionResult[] }) {
+  const counted = questions.filter((question) => question.counted);
+  if (counted.length === 0) return null;
+
+  const bands = (["full", "part", "none"] as const).map((band) => ({
+    band,
+    tone: scoreBand(
+      band === "full"
+        ? { awardedMarks: 1, maxMarks: 1 }
+        : band === "part"
+          ? { awardedMarks: 1, maxMarks: 2 }
+          : { awardedMarks: 0, maxMarks: 1 }
+    ),
+    label:
+      band === "full"
+        ? "Full marks"
+        : band === "part"
+          ? "Part marks"
+          : "No marks",
+    count: counted.filter(
+      (question) => scoreBand(question).band === band
+    ).length,
+  }));
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {bands.map((entry) => (
+        <span
+          key={entry.band}
+          className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-glass-subtle)] py-1.5 pl-2.5 pr-3.5 text-xs font-medium text-text-secondary"
+        >
+          <span
+            aria-hidden="true"
+            className={`h-2 w-2 rounded-full ${entry.tone.mark} ${
+              entry.count === 0 ? "opacity-30" : ""
+            }`}
+          />
+          <span className="tabular-nums font-semibold text-text-primary">
+            {entry.count}
+          </span>
+          {entry.label}
+        </span>
+      ))}
     </div>
   );
 }
@@ -374,46 +442,10 @@ function QuestionResultCard({
 }) {
   const criteria = question.criterionResults ?? [];
   const evidence = question.evidence ?? [];
-  const scoredShare =
-    question.maxMarks > 0
-      ? Math.round((question.awardedMarks / question.maxMarks) * 100)
-      : 0;
-  /*
-   * Three bands rather than a gradient, because the reader is sorting rather
-   * than measuring: what went well, what needs another look, and what was not
-   * earned at all. A continuous scale would need reading to be understood,
-   * which is the thing the numbers already do.
-   */
-  const scoreTone = !question.counted
-    ? {
-        stripe: "bg-[var(--color-border-strong)]",
-        fill: "bg-[var(--color-border-strong)]",
-        badge: "bg-[var(--color-glass-medium)] text-text-secondary",
-        caption: "Not counted",
-      }
-    : scoredShare >= 100
-      ? {
-          stripe: "bg-success",
-          fill: "bg-success",
-          badge: "bg-success/15 text-success",
-          caption: "Full marks",
-        }
-      : scoredShare > 0
-        ? {
-            stripe: "bg-warning",
-            fill: "bg-warning",
-            badge: "bg-warning-muted text-[var(--color-warning-text)]",
-            caption: "Part marks — worth reviewing",
-          }
-        : {
-            stripe: "bg-error",
-            fill: "bg-error",
-            badge: "bg-error-muted text-[var(--color-error-text)]",
-            caption: "No marks — start here",
-          };
+  const scoreTone = scoreBand(question);
   return (
     <details
-      className={`group overflow-hidden rounded-2xl border bg-[var(--color-surface)] ${
+      className={`group overflow-hidden rounded-2xl border bg-[var(--color-surface-raised)] ${
         question.counted
           ? "border-[var(--color-border)]"
           : "border-dashed border-[var(--color-border)] opacity-75"
@@ -431,10 +463,16 @@ function QuestionResultCard({
           */}
         <span
           aria-hidden="true"
-          className={`h-9 w-1 shrink-0 rounded-full ${scoreTone.stripe}`}
+          className={`h-9 w-1 shrink-0 rounded-full ${scoreTone.mark}`}
         />
         <span className="min-w-0 flex-1">
-          <span className="block truncate text-sm font-semibold text-text-primary">
+          {/*
+            * Two lines on phones, one on wider screens. The label is how a
+            * question is identified, and at 390px a single truncated line was
+            * cutting "1 (b) Find the stationary point…" off before the part
+            * that says which question it is.
+            */}
+          <span className="line-clamp-2 text-sm font-semibold text-text-primary sm:block sm:truncate">
             {question.label}
           </span>
           <span className="mt-1 block truncate text-xs text-text-muted">
@@ -446,14 +484,12 @@ function QuestionResultCard({
           </span>
         </span>
         <span className="flex shrink-0 items-center gap-3">
-          <span className="hidden w-16 sm:block" aria-hidden="true">
-            <span className="block h-1.5 overflow-hidden rounded-full bg-[var(--color-glass-medium)]">
-              <span
-                className={`block h-full rounded-full ${scoreTone.fill}`}
-                style={{ width: `${scoredShare}%` }}
-              />
-            </span>
-          </span>
+          <ScoreMeter
+            awardedMarks={question.awardedMarks}
+            maxMarks={question.maxMarks}
+            tone={scoreTone}
+            className="hidden w-16 sm:block"
+          />
           <span
             className={`rounded-full px-3 py-1.5 text-sm font-semibold tabular-nums ${scoreTone.badge}`}
           >
@@ -498,38 +534,89 @@ function QuestionResultCard({
 
         {criteria.length > 0 ? (
           <div>
-            <h4 className="text-xs font-semibold uppercase tracking-[0.13em] text-text-muted">
-              Marking criteria
-            </h4>
-            <div className="mt-2 space-y-2">
+            <div className="flex items-baseline justify-between gap-3">
+              <h4 className="text-2xs font-semibold uppercase tracking-[0.16em] text-text-secondary">
+                Marking criteria
+              </h4>
+              <p className="text-xs tabular-nums text-text-muted">
+                {criteria.filter((criterion) => criterion.awarded).length} of{" "}
+                {criteria.length} met
+              </p>
+            </div>
+            {/*
+              * A checklist, so the misses are found by shape rather than by
+              * reading every row. The two states used to be a tick and an
+              * en-dash in near-identical grey circles, which put the whole
+              * distinction inside a glyph a few pixels wide -- and the awarded
+              * tick used the bare `success` token, invisible in the light
+              * themes. Colour, weight and a rule now separate them.
+              */}
+            <ul className="mt-2.5 space-y-1.5">
               {criteria.map((criterion, index) => (
-                <div
+                <li
                   key={`${criterion.criterion}-${index}`}
-                  className="flex gap-3 rounded-xl bg-[var(--color-glass-subtle)] p-3"
+                  /*
+                    * The fill sits on the criteria that were *missed*. Filling
+                    * the awarded rows instead -- which is the reflex -- puts
+                    * the visual weight on the marks already banked, on a page
+                    * whose entire purpose is finding the ones that were not.
+                    */
+                  className={`flex gap-3 rounded-xl border-l-2 py-2.5 pl-3 pr-3.5 ${
+                    criterion.awarded
+                      ? "border-l-[var(--color-success-text)] bg-transparent"
+                      : "border-l-[var(--color-border-strong)] bg-[var(--color-glass-subtle)]"
+                  }`}
                 >
                   <span
-                    className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                    aria-hidden="true"
+                    /*
+                      * The tick is drawn in the mark colour on a tinted disc
+                      * rather than knocked out of a solid one. Knocking it out
+                      * needs to know the colour behind the row, and the token
+                      * that was reached for -- `--color-surface` -- does not
+                      * exist, so the tick was being drawn in whatever colour it
+                      * inherited: white on white, an empty circle.
+                      */
+                    className={`mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full ${
                       criterion.awarded
-                        ? "bg-success/15 text-success"
-                        : "bg-[var(--color-glass-medium)] text-text-muted"
+                        ? "bg-[var(--color-success-muted)] text-[var(--color-success-mark)]"
+                        : "border border-[var(--color-border-strong)]"
                     }`}
-                    aria-label={criterion.awarded ? "Awarded" : "Not awarded"}
                   >
-                    {criterion.awarded ? "✓" : "–"}
-                  </span>
-                  <div>
-                    <p className="text-sm font-medium text-text-primary">
-                      {criterion.criterion}
-                    </p>
-                    {criterion.evidence ? (
-                      <p className="mt-1 text-xs leading-5 text-text-muted">
-                        {criterion.evidence}
-                      </p>
+                    {criterion.awarded ? (
+                      <svg viewBox="0 0 12 12" fill="none" className="h-3 w-3">
+                        <path
+                          d="m2.5 6.2 2.4 2.4 4.6-5"
+                          stroke="currentColor"
+                          strokeWidth="1.8"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      </svg>
                     ) : null}
-                  </div>
-                </div>
+                  </span>
+                  <span className="min-w-0">
+                    <span className="sr-only">
+                      {criterion.awarded ? "Awarded: " : "Not awarded: "}
+                    </span>
+                    <span
+                      className={`block text-sm leading-6 ${
+                        criterion.awarded
+                          ? "text-text-secondary"
+                          : "font-medium text-text-primary"
+                      }`}
+                    >
+                      {criterion.criterion}
+                    </span>
+                    {criterion.evidence ? (
+                      <span className="mt-0.5 block text-xs leading-5 text-text-muted">
+                        {criterion.evidence}
+                      </span>
+                    ) : null}
+                  </span>
+                </li>
               ))}
-            </div>
+            </ul>
           </div>
         ) : null}
 
@@ -660,45 +747,145 @@ function StatusPill({ children }: { children: ReactNode }) {
   );
 }
 
+/**
+ * Every attempt at this paper, oldest at the bottom.
+ *
+ * Sequence is the whole reason this view exists -- a single attempt is already
+ * on the other tab -- so the list is built as a timeline with a spine running
+ * through it, and each row says how it moved against the attempt before. The
+ * flat rows this replaced showed four attempts as four unrelated facts, and
+ * left the reader subtracting percentages in their head to find the trend they
+ * came here for.
+ */
 function AttemptHistory({ attempts }: { attempts: PracticePaperAttempt[] }) {
   if (attempts.length === 0) {
     return (
-      <p className="rounded-2xl bg-[var(--color-glass-subtle)] p-5 text-sm text-text-muted">
-        No completed attempts yet.
-      </p>
+      <div className="rounded-2xl border border-dashed border-[var(--color-border)] p-8 text-center">
+        <p className="text-sm font-medium text-text-secondary">
+          No completed attempts yet
+        </p>
+        <p className="mx-auto mt-1.5 max-w-sm text-xs leading-5 text-text-muted">
+          Once you sit and submit this paper, every attempt lands here so you can
+          see how it moved.
+        </p>
+      </div>
     );
   }
+
+  const headline = (attempt: PracticePaperAttempt) =>
+    attempt.withinTimeResult && attempt.overtimeStartedAt
+      ? attempt.withinTimeResult.percentage
+      : (attempt.result?.percentage ?? null);
+
   return (
-    <div className="space-y-3">
-      {attempts.map((attempt) => (
-        <div
-          key={attempt.id}
-          className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-[var(--color-border)] p-4"
-        >
-          <div>
-            <p className="text-sm font-semibold text-text-primary">
-              Attempt {attempt.attemptNumber}
-            </p>
-            <p className="mt-1 text-xs text-text-muted">
-              {new Date(attempt.startedAt).toLocaleDateString()} · {attempt.status.replace("_", " ")} · {attempt.assisted ? "Tutor-assisted" : "Exam conditions"}
-            </p>
-          </div>
-          {attempt.result ? (
-            <div className="text-right">
-              <p className="text-lg font-semibold text-text-primary">
-                {attempt.withinTimeResult && attempt.overtimeStartedAt
-                  ? `${attempt.withinTimeResult.percentage}% in time`
-                  : `${attempt.result.percentage}%`}
-              </p>
-              <p className="text-xs text-text-muted">
-                {attempt.result.awardedMarks}/{attempt.result.totalMarks}
-                {attempt.result.gradeLabel ? ` · ${attempt.result.gradeLabel}` : ""}
-              </p>
+    // The spine is centred on the dots: they are 16px wide and the first item
+    // in each row, so their centre sits 8px in from the list's edge.
+    <ol className="relative space-y-2 before:absolute before:bottom-6 before:left-2 before:top-6 before:w-px before:bg-[var(--color-border)]">
+      {attempts.map((attempt, index) => {
+        const result = attempt.result;
+        const current = headline(attempt);
+        // Attempts arrive newest first, so the one to compare against is the
+        // next in the array, not the previous.
+        const earlier = attempts[index + 1];
+        const previous = earlier ? headline(earlier) : null;
+        const change =
+          current !== null && previous !== null
+            ? Math.round((current - previous) * 10) / 10
+            : null;
+        const tone = result
+          ? scoreBand({
+              awardedMarks: result.awardedMarks,
+              maxMarks: result.totalMarks,
+            })
+          : null;
+
+        return (
+          <li key={attempt.id} className="relative flex gap-4">
+            <span
+              aria-hidden="true"
+              className={`z-10 mt-3.5 grid h-4 w-4 shrink-0 place-items-center rounded-full ring-4 ring-[var(--color-surface-raised)] ${
+                tone ? tone.mark : "bg-[var(--color-border-strong)]"
+              }`}
+            />
+            <div className="flex min-w-0 flex-1 flex-wrap items-center justify-between gap-x-4 gap-y-2 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-raised)] p-4">
+              <div className="min-w-0">
+                <p className="text-sm font-semibold text-text-primary">
+                  Attempt {attempt.attemptNumber}
+                  {index === 0 ? (
+                    <span className="ml-2 rounded-full bg-accent/10 px-2 py-0.5 text-2xs font-semibold uppercase tracking-[0.1em] text-accent">
+                      Latest
+                    </span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-text-muted">
+                  {new Date(attempt.startedAt).toLocaleDateString()} ·{" "}
+                  {attempt.status.replace("_", " ")} ·{" "}
+                  {attempt.assisted ? "Tutor-assisted" : "Exam conditions"}
+                </p>
+              </div>
+              {result ? (
+                <div className="flex items-center gap-4">
+                  {change !== null ? <ChangeChip change={change} /> : null}
+                  <div className="text-right">
+                    <p className="text-lg font-semibold tabular-nums text-text-primary">
+                      {current}%
+                      {attempt.withinTimeResult && attempt.overtimeStartedAt ? (
+                        <span className="ml-1 text-xs font-medium text-text-muted">
+                          in time
+                        </span>
+                      ) : null}
+                    </p>
+                    <p className="text-xs tabular-nums text-text-muted">
+                      {result.awardedMarks}/{result.totalMarks}
+                      {result.gradeLabel ? ` · ${result.gradeLabel}` : ""}
+                    </p>
+                  </div>
+                </div>
+              ) : null}
             </div>
-          ) : null}
-        </div>
-      ))}
-    </div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+/** How this attempt moved against the one before it. */
+function ChangeChip({ change }: { change: number }) {
+  if (change === 0) {
+    return (
+      <span className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-2xs font-semibold text-text-muted">
+        Level
+      </span>
+    );
+  }
+  const up = change > 0;
+  return (
+    <span
+      className={`inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-2xs font-semibold tabular-nums ${
+        up ? "app-success" : "app-warning"
+      }`}
+    >
+      <svg
+        viewBox="0 0 12 12"
+        fill="none"
+        aria-hidden="true"
+        className={`h-2.5 w-2.5 ${up ? "" : "rotate-180"}`}
+      >
+        <path
+          d="M6 9.5V2.5m0 0L3 5.5M6 2.5l3 3"
+          stroke="currentColor"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </svg>
+      {up ? "+" : ""}
+      {change}
+      <span className="sr-only">
+        {up ? " percent up on" : " percent down on"} the previous attempt
+      </span>
+    </span>
   );
 }
 
