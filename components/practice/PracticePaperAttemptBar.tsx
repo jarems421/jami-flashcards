@@ -259,49 +259,199 @@ export default function PracticePaperAttemptBar({
     }
   };
 
-  if (loading) return <div className="mt-2 h-10 animate-pulse rounded-xl bg-[var(--color-glass-subtle)]" />;
+  if (loading) return <div className="mt-2 h-14 animate-pulse rounded-xl bg-[var(--color-glass-subtle)]" />;
   if (!paper) return null;
   const result = paper.result;
 
+  /*
+   * The state, said once, in three separate places rather than one run-on
+   * string.
+   *
+   * It used to read "18/40 complete · 45% · Grade 5" in a single truncated
+   * line of `text-xs` -- so the result of an entire paper was both the
+   * smallest text in the bar and the first thing cut off on a narrow screen.
+   * A pill carries the state, a headline carries the fact, and the numbers
+   * get their own space below.
+   */
+  const statusPill = (() => {
+    if (paper.status === "ready") {
+      return {
+        label: "Ready",
+        className: "bg-accent/12 text-accent",
+        headline: paper.totalMarks
+          ? `${paper.totalMarks} marks`
+          : "Practice paper",
+        detail: paper.markScheme.notice,
+      };
+    }
+    if (paper.status === "in_progress") {
+      return {
+        label: paper.timingState === "paused" ? "Paused" : "Sitting",
+        className:
+          paper.timingState === "paused"
+            ? "bg-[var(--color-glass-medium)] text-text-secondary"
+            : "bg-warm-accent/15 text-warm-accent",
+        headline: `Attempt ${paper.attemptCount}`,
+        detail:
+          paper.timingState === "paused"
+            ? "Writing and Tutor are locked while paused"
+            : paper.tutorEnabled
+              ? "Tutor assisted"
+              : "Exam conditions",
+      };
+    }
+    if (paper.status === "submitted") {
+      return {
+        label: "Submitted",
+        className: "bg-accent/12 text-accent",
+        headline: "Ready to mark",
+        detail: paper.markScheme.notice,
+      };
+    }
+    if (paper.status === "marked" && result) {
+      return {
+        label: "Marked",
+        className: "bg-success/15 text-success",
+        headline: `Attempt ${paper.attemptCount}`,
+        detail: paper.markScheme.notice,
+      };
+    }
+    return {
+      label: "Setup",
+      className: "bg-[var(--color-glass-medium)] text-text-secondary",
+      headline: "Practice paper setup",
+      detail: paper.markScheme.notice,
+    };
+  })();
+
+  const timed = paper.status === "in_progress" && paper.timingMode === "timed";
+  const showClock = timed;
+  /** Under five minutes is when the clock stops being background information. */
+  const runningLow =
+    remaining !== null && remaining > 0 && remaining <= 5 * 60 * 1000;
+  const clockTone: "normal" | "low" | "overtime" =
+    timed && paper.timingState === "overtime"
+      ? "overtime"
+      : timed && paper.timingState === "running" && runningLow
+        ? "low"
+        : "normal";
+  const clockValue =
+    paper.timingState === "paused"
+      ? remaining !== null
+        ? formatRemaining(remaining)
+        : "--:--"
+      : paper.timingState === "awaiting_overtime"
+        ? "0:00"
+        : overtime !== null
+          ? `+${formatRemaining(overtime)}`
+          : remaining !== null
+            ? formatRemaining(remaining)
+            : "--:--";
+  const clockCaption =
+    paper.timingState === "paused"
+      ? "Paused"
+      : paper.timingState === "awaiting_overtime"
+        ? "Time reached"
+        : overtime !== null
+          ? "Overtime"
+          : "Remaining";
+
   return (
     <>
-      <div className="mt-2 rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] px-3 py-2">
-        <div className="flex min-h-9 flex-wrap items-center justify-between gap-2">
-          <div className="min-w-0">
-            <p className="truncate text-xs font-semibold text-text-primary">
-              {paper.status === "ready"
-                ? `${paper.totalMarks || "Practice"} ${paper.totalMarks ? "marks" : "paper"} · marking guide ready`
-                : paper.status === "in_progress"
-                  ? `Attempt ${paper.attemptCount} in progress${paper.tutorEnabled ? " · Tutor assisted" : " · Exam conditions"}`
-                  : paper.status === "submitted"
-                    ? "Attempt submitted · ready to mark"
-                    : paper.status === "marked" && result
-                      ? `${paper.withinTimeResult ? `${paper.withinTimeResult.awardedMarks}/${paper.withinTimeResult.totalMarks} in time · ` : ""}${result.awardedMarks}/${result.totalMarks} complete · ${result.percentage}%${result.gradeLabel ? ` · ${result.gradeLabel}` : ""}`
-                      : "Practice paper setup"}
-            </p>
-            {paper.status === "in_progress" && paper.timingMode === "timed" ? (
-              <p className={`mt-0.5 text-xs font-medium tabular-nums ${paper.timingState === "overtime" ? "text-warm" : "text-text-muted"}`}>
-                {paper.timingState === "paused"
-                  ? "Paused — writing and Tutor locked"
-                  : paper.timingState === "awaiting_overtime"
-                    ? "Time reached — choose submit or overtime"
-                    : overtime !== null
-                      ? `Overtime +${formatRemaining(overtime)}`
-                      : remaining !== null
-                        ? `${formatRemaining(remaining)} remaining`
-                        : "Timed attempt"}
+      <div
+        className={`mt-2 rounded-xl border px-3 py-2.5 transition duration-fast ${
+          clockTone === "overtime"
+            ? "border-warm/45 bg-warm-muted"
+            : clockTone === "low"
+              ? "border-warning/40 bg-warning-muted"
+              : "border-[var(--color-border)] bg-[var(--color-glass-subtle)]"
+        }`}
+      >
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+          <div className="flex min-w-0 flex-1 items-center gap-3">
+            <span
+              className={`shrink-0 rounded-full px-2.5 py-1 text-2xs font-semibold uppercase tracking-[0.12em] ${statusPill.className}`}
+            >
+              {statusPill.label}
+            </span>
+            <div className="min-w-0">
+              <p className="truncate text-xs font-semibold text-text-primary">
+                {statusPill.headline}
               </p>
-            ) : <p className="mt-0.5 truncate text-2xs text-text-muted">{paper.markScheme.notice}</p>}
+              <p className="mt-0.5 truncate text-2xs text-text-muted">
+                {statusPill.detail}
+              </p>
+            </div>
           </div>
-          <div className="flex shrink-0 flex-wrap gap-2">
-            {paper.questions.length > 0 && paper.status !== "in_progress" ? <Button type="button" size="sm" variant="secondary" onClick={() => setDetailsOpen(true)}>Paper details</Button> : null}
+
+          {/*
+            * The clock, at the size the only number that matters should be.
+            *
+            * It was a line of grey `text-xs` under the title -- smaller than
+            * the status text beside it -- which is the wrong way round for
+            * somebody sitting a timed paper, where the time left is the whole
+            * reason to look at this bar at all. It also now colours the bar,
+            * so the last few minutes and overtime are seen without reading.
+            */}
+          {showClock ? (
+            <div className="shrink-0 text-right">
+              <div
+                className={`text-xl font-semibold leading-none tabular-nums sm:text-2xl ${
+                  clockTone === "overtime"
+                    ? "text-warm"
+                    : clockTone === "low"
+                      ? "text-[var(--color-warning-text)]"
+                      : "text-text-primary"
+                }`}
+                role="timer"
+                aria-live={clockTone === "normal" ? "off" : "polite"}
+              >
+                {clockValue}
+              </div>
+              <div className="mt-1 text-2xs font-medium uppercase tracking-[0.12em] text-text-muted">
+                {clockCaption}
+              </div>
+            </div>
+          ) : null}
+
+          {result && paper.status === "marked" ? (
+            <div className="flex shrink-0 items-center gap-4">
+              {paper.withinTimeResult ? (
+                <div className="text-right">
+                  <div className="text-sm font-semibold tabular-nums text-text-secondary">
+                    {paper.withinTimeResult.awardedMarks}/
+                    {paper.withinTimeResult.totalMarks}
+                  </div>
+                  <div className="mt-0.5 text-2xs uppercase tracking-[0.12em] text-text-muted">
+                    In time
+                  </div>
+                </div>
+              ) : null}
+              <div className="text-right">
+                <div className="text-xl font-semibold leading-none tabular-nums text-text-primary sm:text-2xl">
+                  {result.percentage}%
+                </div>
+                <div className="mt-1 text-2xs font-medium uppercase tracking-[0.12em] text-text-muted">
+                  {result.awardedMarks}/{result.totalMarks}
+                  {result.gradeLabel ? ` · ${result.gradeLabel}` : ""}
+                </div>
+              </div>
+            </div>
+          ) : null}
+
+          <div className="flex shrink-0 flex-wrap items-center gap-2">
+            {paper.questions.length > 0 && paper.status !== "in_progress" ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => setDetailsOpen(true)}>
+                Paper details
+              </Button>
+            ) : null}
             {paper.status === "ready" ? (
               <Button type="button" size="sm" disabled={busy !== null} onClick={() => void start()}>
                 {busy === "prepare" ? "Preparing..." : busy === "start" ? "Starting..." : paper.origin === "uploaded" && paper.questions.length === 0 ? "Prepare paper" : "Start attempt"}
               </Button>
             ) : null}
             {paper.status === "in_progress" && paper.timingState === "running" ? (
-              <Button type="button" size="sm" variant="secondary" disabled={busy !== null} onClick={() => void pause()}>
+              <Button type="button" size="sm" variant="ghost" disabled={busy !== null} onClick={() => void pause()}>
                 {busy === "pause" ? "Pausing..." : "Pause"}
               </Button>
             ) : null}
@@ -314,13 +464,13 @@ export default function PracticePaperAttemptBar({
             {paper.status === "submitted" ? <Button type="button" size="sm" disabled={busy !== null} onClick={() => void submitAndMark()}>{busy === "mark" ? "Marking..." : "Mark paper"}</Button> : null}
             {paper.status === "marked" && result ? (
               <>
-                <Button type="button" size="sm" variant="secondary" onClick={() => setReportOpen(true)}>View results</Button>
-                <Button type="button" size="sm" onClick={() => setConfirmRetake(true)}>Retake</Button>
+                <Button type="button" size="sm" onClick={() => setReportOpen(true)}>View results</Button>
+                <Button type="button" size="sm" variant="ghost" onClick={() => setConfirmRetake(true)}>Retake</Button>
               </>
             ) : null}
           </div>
         </div>
-        {feedback ? <div className="mt-2"><FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={clear} /></div> : null}
+        {feedback ? <div className="mt-2.5"><FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={clear} /></div> : null}
       </div>
 
       <ConfirmDialog open={confirmSubmit} title="Submit this paper for marking?" description="Your current page will be saved first. Jami Tutor stays unavailable until marking finishes." confirmLabel="Submit and mark" busy={busy === "mark"} onConfirm={() => void submitAndMark()} onClose={() => setConfirmSubmit(false)} />
