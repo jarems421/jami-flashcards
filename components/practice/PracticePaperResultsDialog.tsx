@@ -374,6 +374,43 @@ function QuestionResultCard({
 }) {
   const criteria = question.criterionResults ?? [];
   const evidence = question.evidence ?? [];
+  const scoredShare =
+    question.maxMarks > 0
+      ? Math.round((question.awardedMarks / question.maxMarks) * 100)
+      : 0;
+  /*
+   * Three bands rather than a gradient, because the reader is sorting rather
+   * than measuring: what went well, what needs another look, and what was not
+   * earned at all. A continuous scale would need reading to be understood,
+   * which is the thing the numbers already do.
+   */
+  const scoreTone = !question.counted
+    ? {
+        stripe: "bg-[var(--color-border-strong)]",
+        fill: "bg-[var(--color-border-strong)]",
+        badge: "bg-[var(--color-glass-medium)] text-text-secondary",
+        caption: "Not counted",
+      }
+    : scoredShare >= 100
+      ? {
+          stripe: "bg-success",
+          fill: "bg-success",
+          badge: "bg-success/15 text-success",
+          caption: "Full marks",
+        }
+      : scoredShare > 0
+        ? {
+            stripe: "bg-warning",
+            fill: "bg-warning",
+            badge: "bg-warning-muted text-[var(--color-warning-text)]",
+            caption: "Part marks — worth reviewing",
+          }
+        : {
+            stripe: "bg-error",
+            fill: "bg-error",
+            badge: "bg-error-muted text-[var(--color-error-text)]",
+            caption: "No marks — start here",
+          };
   return (
     <details
       className={`group overflow-hidden rounded-2xl border bg-[var(--color-surface)] ${
@@ -382,21 +419,60 @@ function QuestionResultCard({
           : "border-dashed border-[var(--color-border)] opacity-75"
       }`}
     >
-      <summary className="flex min-h-16 cursor-pointer list-none items-center justify-between gap-4 px-4 sm:px-5 [&::-webkit-details-marker]:hidden">
-        <span className="min-w-0">
+      <summary className="flex min-h-16 cursor-pointer list-none items-center gap-4 px-4 sm:px-5 [&::-webkit-details-marker]:hidden">
+        {/*
+          * A stripe carrying how the question went, before anything is read.
+          *
+          * The score badge used to be accent-coloured whatever it said, so a
+          * zero and full marks looked identical until you read the numbers --
+          * on the one page whose entire job is letting somebody find the
+          * questions that went badly. Colour and a filled proportion do that
+          * at a glance; the numbers are still there for the exact answer.
+          */}
+        <span
+          aria-hidden="true"
+          className={`h-9 w-1 shrink-0 rounded-full ${scoreTone.stripe}`}
+        />
+        <span className="min-w-0 flex-1">
           <span className="block truncate text-sm font-semibold text-text-primary">
             {question.label}
           </span>
-          <span className="mt-1 block text-xs text-text-muted">
+          <span className="mt-1 block truncate text-xs text-text-muted">
             {!question.counted
               ? "Optional answer — not counted"
               : question.confidence === "low"
                 ? "Low-confidence reading — worth checking"
-                : `${question.awardedMarks === question.maxMarks ? "Full marks" : "Review feedback"}`}
+                : scoreTone.caption}
           </span>
         </span>
-        <span className="shrink-0 rounded-full bg-accent/10 px-3 py-1.5 text-sm font-semibold text-accent">
-          {question.awardedMarks}/{question.maxMarks}
+        <span className="flex shrink-0 items-center gap-3">
+          <span className="hidden w-16 sm:block" aria-hidden="true">
+            <span className="block h-1.5 overflow-hidden rounded-full bg-[var(--color-glass-medium)]">
+              <span
+                className={`block h-full rounded-full ${scoreTone.fill}`}
+                style={{ width: `${scoredShare}%` }}
+              />
+            </span>
+          </span>
+          <span
+            className={`rounded-full px-3 py-1.5 text-sm font-semibold tabular-nums ${scoreTone.badge}`}
+          >
+            {question.awardedMarks}/{question.maxMarks}
+          </span>
+          <svg
+            aria-hidden="true"
+            viewBox="0 0 16 16"
+            fill="none"
+            className="h-4 w-4 shrink-0 text-text-muted transition-transform duration-fast group-open:rotate-180"
+          >
+            <path
+              d="m4 6 4 4 4-4"
+              stroke="currentColor"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
         </span>
       </summary>
       <div className="space-y-5 border-t border-[var(--color-border)] p-4 sm:p-5">
