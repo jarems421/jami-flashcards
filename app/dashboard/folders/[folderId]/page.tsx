@@ -837,6 +837,12 @@ export default function FolderDetailPage() {
             <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
               <SectionHeader title="Notebooks" />
               <div className="flex flex-wrap gap-2">
+                <ButtonLink
+                  href={`/dashboard/practice/new?folder=${encodeURIComponent(folder.id)}`}
+                  size="sm"
+                >
+                  New practice paper
+                </ButtonLink>
                 <Button type="button" size="sm" onClick={openNotebookForm}>
                   Create notebook
                 </Button>

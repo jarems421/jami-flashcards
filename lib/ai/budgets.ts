@@ -3,6 +3,8 @@ import "server-only";
 export type AiBudgetAction =
   | "autocompleteCard"
   | "assistant"
+  | "practicePaperGeneration"
+  | "practicePaperMarking"
   | "sourceFlashcardDrafts"
   | "sourcePracticeDrafts";
 
@@ -80,6 +82,22 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     tokenCap: 8_000,
     // Comfortably above a full set of chosen sources and well below the model's
     // window, so it only ever catches a request that is genuinely outsized.
+    inputTokenCap: 250_000,
+  },
+  practicePaperGeneration: {
+    dailyRequestLimit: 6,
+    burstRequestLimit: 2,
+    burstWindowMs: 60_000,
+    burstScope: "sourceDrafts",
+    tokenCap: 24_000,
+    inputTokenCap: 250_000,
+  },
+  practicePaperMarking: {
+    dailyRequestLimit: 8,
+    burstRequestLimit: 2,
+    burstWindowMs: 60_000,
+    burstScope: "sourceDrafts",
+    tokenCap: 18_000,
     inputTokenCap: 250_000,
   },
   // The source text is sliced to a fixed length before it is sent.

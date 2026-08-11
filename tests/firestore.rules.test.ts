@@ -537,6 +537,16 @@ describe("Firestore security rules", () => {
     );
     await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "practiceSets", "set-1")));
     await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "pastPapers", "paper-1")));
+    await assertSucceeds(
+      setDoc(doc(aliceDb, "users", ALICE, "practicePaperAttempts", "attempt-1"), {
+        paperId: "paper-1",
+        status: "in_progress",
+        createdAt: 1,
+        updatedAt: 1,
+      })
+    );
+    await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "practicePaperAttempts", "attempt-1")));
+    await assertFails(getDoc(doc(bobDb, "users", ALICE, "practicePaperAttempts", "attempt-1")));
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "practiceSets", "set-1")));
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "pastPapers", "paper-1")));
 

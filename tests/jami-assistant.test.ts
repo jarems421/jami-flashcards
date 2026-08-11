@@ -96,7 +96,7 @@ describe("Jami assistant request contract", () => {
         ...base,
         context: {
           surface: "sources",
-          sourceIds: ["1", "2", "3", "4", "5", "6"],
+          sourceIds: Array.from({ length: 16 }, (_, index) => String(index + 1)),
         },
       })
     ).toBeNull();
@@ -276,8 +276,8 @@ describe("Jami assistant related-source ranking", () => {
     ).toEqual(["direct", "topical"]);
   });
 
-  it("never selects more than five related sources", () => {
-    const candidates = Array.from({ length: 8 }, (_, index) =>
+  it("never selects more than fifteen related sources", () => {
+    const candidates = Array.from({ length: 18 }, (_, index) =>
       source(`source-${index}`, { folderIds: ["biology"], updatedAt: index })
     );
     expect(
@@ -286,7 +286,7 @@ describe("Jami assistant related-source ranking", () => {
         relations,
         message: "Help with biology",
       })
-    ).toHaveLength(5);
+    ).toHaveLength(15);
   });
 
 });

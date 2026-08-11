@@ -918,7 +918,7 @@ export default function JamiAssistantDrawer({
                     Use related Jami material
                   </span>
                   <span className="mt-0.5 block text-2xs leading-relaxed text-text-muted">
-                    Jami may choose up to five relevant sources when you ask.
+                    Jami may choose up to 15 relevant sources when you ask.
                   </span>
                 </span>
                 <button

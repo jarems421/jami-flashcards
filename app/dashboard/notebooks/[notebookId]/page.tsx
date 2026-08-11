@@ -13,6 +13,8 @@ import {
 } from "react";
 import AppPage from "@/components/layout/AppPage";
 import JamiAssistantDrawer from "@/components/ai/JamiAssistantDrawer";
+import PracticePaperAttemptBar from "@/components/practice/PracticePaperAttemptBar";
+import PracticePaperAssets from "@/components/practice/PracticePaperAssets";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
 import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
@@ -55,6 +57,8 @@ import {
 import { useNotebookTextBlockController } from "@/hooks/useNotebookTextBlockController";
 import { useNotebookToolbarDocking } from "@/hooks/useNotebookToolbarDocking";
 import { useNotebookViewportController } from "@/hooks/useNotebookViewportController";
+import { usePracticePaperStatus } from "@/hooks/usePracticePaperStatus";
+import { usePracticePaperRetake } from "@/hooks/usePracticePaperRetake";
 import {
   useNotebookDrawingToolState,
   useNotebookNavigationState,
@@ -92,8 +96,6 @@ import {
   safelySetPointerCapture,
   shouldSuppressNotebookNativeEvent,
 } from "@/lib/workspace/notebook-interaction-lock";
-import {
-} from "@/lib/workspace/notebook-autosave";
 import {
   clampNotebookPagePan,
   clampNotebookThicknessPercent,
@@ -144,6 +146,7 @@ import {
   saveNotebookPenSmoothingPreference,
 } from "@/lib/workspace/notebook-pen-feel";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
+import { NOTEBOOK_ASSISTANT_QUICK_ACTIONS } from "@/lib/workspace/notebook-assistant";
 import {
   trackNotebookPdfCanvas,
   type NotebookPdfCanvasTracking,
@@ -166,28 +169,6 @@ type PageSwipeState = {
 };
 const CANVAS_WIDTH = NOTEBOOK_PAGE_COORDINATE_WIDTH;
 const CANVAS_HEIGHT = NOTEBOOK_PAGE_COORDINATE_HEIGHT;
-const NOTEBOOK_ASSISTANT_QUICK_ACTIONS = [
-  {
-    label: "Check my work",
-    prompt:
-      "Check the work on this page. Point out any mistakes and explain how to improve them without rewriting everything for me.",
-  },
-  {
-    label: "Give me a hint",
-    prompt:
-      "Give me one useful hint for the work on this page without revealing the full answer.",
-  },
-  {
-    label: "Explain this page",
-    prompt:
-      "Explain the ideas and working on this page clearly, including anything important I may have missed.",
-  },
-  {
-    label: "Quiz me",
-    prompt:
-      "Quiz me on the main idea from this page. Ask one question at a time and do not reveal the answer yet.",
-  },
-] as const;
 // Each edge keeps a generous 32px invisible hit area, but the visible
 // affordance is a slim grip bar sitting on the border, not a bubble.
 
@@ -325,6 +306,9 @@ export default function NotebookEditorPage() {
     assistantOpen, setAssistantOpen, pagesDrawerOpen, setPagesDrawerOpen,
     isPhoneLayout, setIsPhoneLayout, phoneFullEditing, setPhoneFullEditing,
   } = useNotebookPanelState();
+  const { practicePaperStatus, handlePracticePaperStatusChange } =
+    usePracticePaperStatus(setAssistantOpen);
+  const handlePracticePaperRetake = usePracticePaperRetake(pageState, setPages, setInkEditorMountRevision);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
   const pagePreviewLayerRef = useRef<HTMLDivElement | null>(null);
@@ -2523,15 +2507,27 @@ export default function NotebookEditorPage() {
                 if (nextOpen) handleAssistantOpenChange(false);
               }}
             />
-            <ToolbarIconButton
-              label="Jami Tutor"
-              icon="ai"
-              active={assistantOpen}
-              onClick={() => {
-                handleAssistantOpenChange(!assistantOpen);
-              }}
-            />
+            {practicePaperStatus !== "in_progress" &&
+            practicePaperStatus !== "submitted" ? (
+              <ToolbarIconButton
+                label="Jami Tutor"
+                icon="ai"
+                active={assistantOpen}
+                onClick={() => {
+                  handleAssistantOpenChange(!assistantOpen);
+                }}
+              />
+            ) : null}
           </div>
+          {notebook.type === "practice_paper" && user?.uid ? (
+            <PracticePaperAttemptBar
+              userId={user.uid}
+              notebookId={notebook.id}
+              onStatusChange={handlePracticePaperStatusChange}
+              onBeforeSubmit={prepareCurrentPageForNavigation}
+              onRetake={handlePracticePaperRetake}
+            />
+          ) : null}
         </header>
         <div className="relative isolate min-h-0 flex-1 overflow-hidden">
         <NotebookToolSettingsPopover
@@ -2629,6 +2625,8 @@ export default function NotebookEditorPage() {
           onToggleFullEditing={() => setPhoneFullEditing((value) => !value)}
         />
 
+        {practicePaperStatus !== "in_progress" &&
+        practicePaperStatus !== "submitted" ? (
         <JamiAssistantDrawer
           open={assistantOpen}
           onOpenChange={handleAssistantOpenChange}
@@ -2639,6 +2637,7 @@ export default function NotebookEditorPage() {
           getContext={getNotebookAssistantContext}
           quickActions={NOTEBOOK_ASSISTANT_QUICK_ACTIONS}
         />
+        ) : null}
 
         {pagesDrawerOpen ? (
           <NotebookPagesDrawer
@@ -2679,9 +2678,10 @@ export default function NotebookEditorPage() {
                   }`}
                 >
                   <Card tone="warm" padding="sm">
-                    <p className="text-sm leading-6 text-text-primary">
+                    <p className="whitespace-pre-wrap text-sm leading-6 text-text-primary">
                       {selectedPage.questionPrompt}
                     </p>
+                    <PracticePaperAssets assets={selectedPage.questionAssets ?? []} />
                   </Card>
                 </div>
               ) : null

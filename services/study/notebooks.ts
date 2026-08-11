@@ -347,6 +347,7 @@ export async function updateNotebook(
     type: NotebookType;
     topicIds: string[];
     sourceIds: string[];
+    pastPaperId: string;
     color: string;
     icon: string;
     pageStyle: NotebookPageStyle;
@@ -379,6 +380,9 @@ export async function updateNotebook(
   if (input.type !== undefined) updates.type = input.type;
   if (input.topicIds !== undefined) updates.topicIds = input.topicIds;
   if (input.sourceIds !== undefined) updates.sourceIds = input.sourceIds;
+  if (input.pastPaperId !== undefined) {
+    updates.pastPaperId = input.pastPaperId.trim().slice(0, 160) || null;
+  }
   if (input.color !== undefined) updates.color = input.color.trim().slice(0, 80) || null;
   if (input.icon !== undefined) updates.icon = input.icon.trim().slice(0, 40) || null;
   if (input.pageStyle !== undefined) updates.pageStyle = input.pageStyle;
@@ -567,6 +571,11 @@ export async function createNotebookPages(
     pageColor?: NotebookPageColor;
     pageStyle?: NotebookPageStyle;
     status?: NotebookPageStatus;
+    questionPrompt?: string;
+    questionAssets?: import("@/lib/practice/practice-papers").PracticePaperQuestionAsset[];
+    linkedQuestionId?: string;
+    linkedSourceId?: string;
+    linkedPastPaperId?: string;
     backgroundFileId?: string;
     pdfPageIndex?: number;
   }>
@@ -602,6 +611,7 @@ export async function updateNotebookPage(
     pageStyle: NotebookPageStyle;
     status: NotebookPageStatus;
     questionPrompt: string;
+    questionAssets: import("@/lib/practice/practice-papers").PracticePaperQuestionAsset[];
     linkedQuestionId: string;
     linkedSourceId: string;
     linkedPastPaperId: string;

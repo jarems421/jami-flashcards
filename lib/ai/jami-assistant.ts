@@ -6,7 +6,7 @@ import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 export const JAMI_ASSISTANT_MAX_HISTORY_MESSAGES = 12;
 export const JAMI_ASSISTANT_MAX_HISTORY_TEXT_LENGTH = 4_000;
 export const JAMI_ASSISTANT_MAX_MESSAGE_LENGTH = 2_000;
-export const JAMI_ASSISTANT_MAX_SOURCE_IDS = 5;
+export const JAMI_ASSISTANT_MAX_SOURCE_IDS = 15;
 export const JAMI_ASSISTANT_MAX_SNAPSHOT_BYTES = 3 * 1024 * 1024;
 export const JAMI_ASSISTANT_MAX_SNAPSHOT_EDGE = 4_096;
 export const JAMI_ASSISTANT_MAX_TYPED_TEXT_LENGTH = 12_000;

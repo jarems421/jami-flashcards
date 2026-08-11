@@ -1,0 +1,133 @@
+import { describe, expect, it } from "vitest";
+import { parsePracticePaperMarkingModelAnswer } from "@/lib/ai/practice-paper-marking";
+import { mapPracticePaperData } from "@/lib/practice/practice-papers";
+import { applyPracticePaperMarkCorrection } from "@/lib/practice/practice-papers";
+
+const paper = mapPracticePaperData("paper-1", {
+  notebookId: "paper-1",
+  folderId: "folder-1",
+  title: "Test paper",
+  status: "submitted",
+  questions: [
+    { id: "q1", label: "Question 1", prompt: "One", marks: 2 },
+    { id: "q2", label: "Question 2", prompt: "Two", marks: 3 },
+  ],
+  markScheme: {
+    kind: "generated",
+    items: [
+      { questionId: "q1", answer: "One", criteria: [], acceptableAlternatives: [], commonMistakes: [] },
+      { questionId: "q2", answer: "Two", criteria: [], acceptableAlternatives: [], commonMistakes: [] },
+    ],
+  },
+});
+
+describe("practice-paper marking response", () => {
+  it("uses the fixed paper marks rather than model-provided maxima", () => {
+    const result = parsePracticePaperMarkingModelAnswer(
+      JSON.stringify({
+        summary: "Good progress.",
+        strengths: ["Clear method"],
+        priorities: ["Check units"],
+        questionResults: [
+          {
+            questionId: "q1",
+            awardedMarks: 9,
+            maxMarks: 9,
+            feedback: "Method shown.",
+            strengths: [],
+            improvements: [],
+            confidence: "high",
+          },
+          {
+            questionId: "q2",
+            awardedMarks: 2,
+            maxMarks: 3,
+            feedback: "One step missing.",
+            strengths: [],
+            improvements: ["Show the final substitution"],
+            confidence: "medium",
+          },
+        ],
+      }),
+      paper
+    );
+    expect(result).toMatchObject({
+      awardedMarks: 4,
+      totalMarks: 5,
+      percentage: 80,
+    });
+    expect(result?.questionResults[0]).toMatchObject({
+      questionId: "q1",
+      awardedMarks: 2,
+      maxMarks: 2,
+    });
+  });
+
+  it("rejects a report that silently omits a question", () => {
+    expect(
+      parsePracticePaperMarkingModelAnswer(
+        JSON.stringify({
+          questionResults: [
+            {
+              questionId: "q1",
+              awardedMarks: 1,
+              maxMarks: 2,
+              feedback: "Partial credit.",
+              strengths: [],
+              improvements: [],
+              confidence: "high",
+            },
+          ],
+        }),
+        paper
+      )
+    ).toBeNull();
+  });
+
+  it("marks every optional question but counts only the required best result", () => {
+    const choicePaper = mapPracticePaperData("choice-paper", {
+      ...paper,
+      questions: [
+        { id: "q1", label: "Question 1", prompt: "Required", marks: 5 },
+        { id: "q2", label: "Question 2", prompt: "Option A", marks: 10 },
+        { id: "q3", label: "Question 3", prompt: "Option B", marks: 10 },
+      ],
+      choiceGroups: [{
+        id: "choice-1",
+        label: "Answer one",
+        requiredCount: 1,
+        questionIds: ["q2", "q3"],
+        selectionRule: "highest_scoring",
+      }],
+    });
+    const result = parsePracticePaperMarkingModelAnswer(JSON.stringify({
+      questionResults: [
+        { questionId: "q1", awardedMarks: 4, maxMarks: 5, feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+        { questionId: "q2", awardedMarks: 3, maxMarks: 10, feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+        { questionId: "q3", awardedMarks: 8, maxMarks: 10, feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+      ],
+    }), choicePaper);
+    expect(result).toMatchObject({ awardedMarks: 12, totalMarks: 15, percentage: 80 });
+    expect(result?.questionResults.find((item) => item.questionId === "q2")?.counted).toBe(false);
+    expect(result?.questionResults.find((item) => item.questionId === "q3")?.counted).toBe(true);
+  });
+
+  it("recalculates grade guidance after a manual correction", () => {
+    const result = applyPracticePaperMarkCorrection({
+      awardedMarks: 7,
+      totalMarks: 10,
+      percentage: 70,
+      summary: "",
+      strengths: [],
+      priorities: [],
+      questionResults: [{ questionId: "q1", label: "Q1", awardedMarks: 7, maxMarks: 10, feedback: "", strengths: [], improvements: [], confidence: "low", counted: true, attempted: true }],
+    }, "q1", 8, "Handwriting was misread", {
+      kind: "official",
+      label: "Boundaries",
+      notice: "Official",
+      boundaries: [{ label: "A", minimumPercentage: 80 }],
+    });
+    expect(result).toMatchObject({ awardedMarks: 8, percentage: 80, gradeLabel: "A" });
+    expect(result.questionResults[0].manualReason).toBe("Handwriting was misread");
+  });
+});
