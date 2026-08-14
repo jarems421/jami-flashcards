@@ -32,6 +32,7 @@ export type AiRouteReason =
   | "insufficient_reasoning"
   | "explicit_role"
   | "provider_escalation"
+  | "provider_standby"
   | "visual_specialist";
 
 export type AiRouteDecision = {
@@ -51,6 +52,16 @@ export type AiCapability = {
   maxContextTokens: number;
   maxOutputTokens: number;
   reasoning: boolean;
+  /**
+   * A different model meeting the same bar, tried only after the primary has
+   * already failed twice. The role's contract is unchanged — same allowlist
+   * discipline, same precision floor, same output cap — so a standby is a
+   * change of endpoint, never a relaxation of the requirements.
+   */
+  standby?: {
+    modelId: string;
+    providerAllowlist: readonly string[];
+  };
 };
 
 export type AiUsage = {
@@ -114,6 +125,29 @@ const DEFAULT_PROVIDERS = {
   juror: ["moonshotai", "siliconflow", "parasail"],
 } as const;
 
+/**
+ * Standbys, for roles where the approved endpoint pool is dangerously thin.
+ *
+ * The supervisor generates papers, marks as primary and adjudicates disputes,
+ * and of the whole zero-retention catalogue exactly one endpoint serves its
+ * model at full context with structured output support. Widening the allowlist
+ * cannot help: the other endpoints for that model fail on context or do not
+ * advertise structured responses at all. A second model is the only remedy.
+ *
+ * Kimi K3 on DeepInfra meets every supervisor requirement — full context,
+ * BF16, multimodal, reasoning, structured outputs, zero retention. Note it
+ * shares a family with the juror's K2.6: while the supervisor is on standby an
+ * adjudication and its third view are no longer fully independent, which is a
+ * real if temporary weakening. A correlated third view still beats a marking
+ * run that cannot complete.
+ */
+const DEFAULT_STANDBY = {
+  supervisor: {
+    modelId: "moonshotai/kimi-k3",
+    providerAllowlist: ["deepinfra"] as readonly string[],
+  },
+} as const;
+
 const QUALITY_QUANTIZATIONS = ["fp32", "fp16", "bf16", "fp8"] as const;
 const JUROR_QUANTIZATIONS = [
   "fp32",
@@ -175,6 +209,17 @@ export function buildAiCapabilityRegistry(
       maxContextTokens: 1_000_000,
       maxOutputTokens: 32_768,
       reasoning: true,
+      standby: {
+        modelId: envValue(
+          env,
+          "OPENROUTER_SUPERVISOR_STANDBY_MODEL",
+          DEFAULT_STANDBY.supervisor.modelId
+        ),
+        providerAllowlist: providerList(
+          env.OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS,
+          DEFAULT_STANDBY.supervisor.providerAllowlist
+        ),
+      },
     },
     juror: {
       role: "juror",
@@ -356,6 +401,30 @@ function attemptFor(
   };
 }
 
+function standbyAttemptFor(
+  role: AiGenerationRole,
+  policy: AiProviderPolicy
+): AiProviderAttempt | null {
+  const capability = policy.capabilities[role];
+  const standby = capability.standby;
+  // A standby is an alternative endpoint for the same role, so everything the
+  // role guarantees — precision floor, reasoning, output cap — carries over
+  // untouched. Only the model and the approved providers differ.
+  if (!standby || !standby.modelId || standby.providerAllowlist.length === 0) {
+    return null;
+  }
+  if (standby.modelId === capability.modelId) return null;
+  return {
+    provider: capability.provider,
+    role,
+    model: standby.modelId,
+    providerAllowlist: standby.providerAllowlist,
+    quantizations: capability.quantizations,
+    thinking: capability.reasoning,
+    routeReason: "provider_standby",
+  };
+}
+
 export function buildAiProviderPlan(input: {
   role?: AiGenerationRole;
   taskClass?: AiTaskClass;
@@ -378,12 +447,14 @@ export function buildAiProviderPlan(input: {
 
   if (!capabilityIsReady(role, input.policy)) return [];
   const primary = attemptFor(role, input.policy, reason);
+  const attempts = [primary, { ...primary }];
   if (role === "worker") {
-    const attempts = [primary, { ...primary }];
     if (capabilityIsReady("supervisor", input.policy)) {
       attempts.push(attemptFor("supervisor", input.policy, "provider_escalation"));
     }
     return attempts;
   }
-  return [primary, { ...primary }];
+  const standby = standbyAttemptFor(role, input.policy);
+  if (standby) attempts.push(standby);
+  return attempts;
 }

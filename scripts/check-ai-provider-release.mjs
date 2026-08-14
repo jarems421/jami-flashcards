@@ -29,6 +29,19 @@ const ROLES = [
     requiredParameters: ["reasoning", "max_tokens", "response_format", "structured_outputs"],
   },
   {
+    // Held in reserve for the supervisor, whose primary model has exactly one
+    // compliant endpoint. It is checked to the same bar as the role it stands
+    // in for: a standby only discovered to be stale mid-outage is not one.
+    name: "supervisor standby",
+    modelKey: "OPENROUTER_SUPERVISOR_STANDBY_MODEL",
+    providersKey: "OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS",
+    fallbackModel: "moonshotai/kimi-k3",
+    minimumContext: 1_000_000,
+    requiresImageInput: true,
+    acceptableQuantizations: ["fp8", "bf16", "fp16", "fp32"],
+    requiredParameters: ["reasoning", "max_tokens", "response_format", "structured_outputs"],
+  },
+  {
     name: "juror",
     modelKey: "OPENROUTER_JUROR_MODEL",
     providersKey: "OPENROUTER_JUROR_PROVIDERS",

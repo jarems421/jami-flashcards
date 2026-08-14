@@ -89,6 +89,9 @@ describe("AI provider policy", () => {
     expect(plan.map((attempt) => attempt.routeReason)).toEqual([
       "low_confidence",
       "low_confidence",
+      // The standby carries its own reason so a failover is legible in
+      // content-free diagnostics rather than looking like an ordinary call.
+      "provider_standby",
     ]);
   });
 
@@ -98,12 +101,78 @@ describe("AI provider policy", () => {
       role: "supervisor",
       hasVisualInput: false,
       policy,
-    }).map(({ role }) => role)).toEqual(["supervisor", "supervisor"]);
+    }).map(({ role }) => role)).toEqual(["supervisor", "supervisor", "supervisor"]);
     expect(buildAiProviderPlan({
       role: "juror",
       hasVisualInput: true,
       policy,
     }).map(({ role }) => role)).toEqual(["juror", "juror"]);
+  });
+
+  /**
+   * The supervisor's model has one compliant endpoint in the entire ZDR
+   * catalogue, so it alone carries a standby: a different model held to the
+   * identical bar, reached only once the primary has already failed twice.
+   */
+  describe("supervisor standby", () => {
+    it("appends a different model after the primary has been tried twice", () => {
+      const plan = buildAiProviderPlan({
+        role: "supervisor",
+        hasVisualInput: false,
+        policy: resolveAiProviderPolicy(approved),
+      });
+      expect(plan.map(({ model }) => model)).toEqual([
+        "minimax/minimax-m3",
+        "minimax/minimax-m3",
+        "moonshotai/kimi-k3",
+      ]);
+      expect(plan[2].providerAllowlist).toEqual(["deepinfra"]);
+    });
+
+    it("holds the standby to the role's own precision and reasoning bar", () => {
+      const plan = buildAiProviderPlan({
+        role: "supervisor",
+        hasVisualInput: false,
+        policy: resolveAiProviderPolicy(approved),
+      });
+      expect(plan[2].quantizations).toEqual(plan[0].quantizations);
+      expect(plan[2].quantizations).not.toContain("int4");
+      expect(plan[2].thinking).toBe(true);
+    });
+
+    it("gives no other role a standby", () => {
+      const policy = resolveAiProviderPolicy(approved);
+      for (const role of ["worker", "juror", "documentVision"] as const) {
+        const plan = buildAiProviderPlan({ role, hasVisualInput: false, policy });
+        expect(plan.every((attempt) => attempt.routeReason !== "provider_standby")).toBe(true);
+      }
+    });
+
+    it("ignores a standby configured as the model it stands in for", () => {
+      const plan = buildAiProviderPlan({
+        role: "supervisor",
+        hasVisualInput: false,
+        policy: resolveAiProviderPolicy({
+          ...approved,
+          OPENROUTER_SUPERVISOR_STANDBY_MODEL: "minimax/minimax-m3",
+        }),
+      });
+      expect(plan).toHaveLength(2);
+    });
+
+    it("is overridable without touching code", () => {
+      const plan = buildAiProviderPlan({
+        role: "supervisor",
+        hasVisualInput: false,
+        policy: resolveAiProviderPolicy({
+          ...approved,
+          OPENROUTER_SUPERVISOR_STANDBY_MODEL: "qwen/qwen3.5-397b-a17b",
+          OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "parasail, deepinfra",
+        }),
+      });
+      expect(plan[2].model).toBe("qwen/qwen3.5-397b-a17b");
+      expect(plan[2].providerAllowlist).toEqual(["parasail", "deepinfra"]);
+    });
   });
 
   it("uses Gemini only for an explicit specialist role", () => {

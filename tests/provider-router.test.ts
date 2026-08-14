@@ -101,9 +101,40 @@ describe("provider router", () => {
       request,
       timeoutMs: 5_000,
     })).rejects.toThrow("supervisor unavailable");
+    // Exhausts the primary, then the standby, then fails closed. Supervisor
+    // work is never quietly served by a smaller model.
     expect(mocks.generateOpenRouterText.mock.calls.map((call) => call[0].model)).toEqual([
       "minimax/minimax-m3",
       "minimax/minimax-m3",
+      "moonshotai/kimi-k3",
+    ]);
+  });
+
+  it("reaches the supervisor standby only after the primary has failed twice", async () => {
+    mocks.generateOpenRouterText
+      .mockRejectedValueOnce(new Error("parasail down"))
+      .mockRejectedValueOnce(new Error("parasail down"))
+      .mockResolvedValueOnce("standby answer");
+
+    const retries: string[] = [];
+    await expect(generateAiText({
+      role: "supervisor",
+      request,
+      timeoutMs: 5_000,
+      onRetry: (info) => retries.push(`${info.modelName}->${info.nextModelName}`),
+    })).resolves.toBe("standby answer");
+
+    const calls = mocks.generateOpenRouterText.mock.calls.map((call) => call[0]);
+    expect(calls.map((call) => call.model)).toEqual([
+      "minimax/minimax-m3",
+      "minimax/minimax-m3",
+      "moonshotai/kimi-k3",
+    ]);
+    expect(calls[2].providerAllowlist).toEqual(["deepinfra"]);
+    expect(calls[2].quantizations).toEqual(["fp32", "fp16", "bf16", "fp8"]);
+    expect(retries).toEqual([
+      "minimax/minimax-m3->minimax/minimax-m3",
+      "minimax/minimax-m3->moonshotai/kimi-k3",
     ]);
   });
 });
