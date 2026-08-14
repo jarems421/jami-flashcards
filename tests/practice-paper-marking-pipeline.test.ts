@@ -115,23 +115,16 @@ describe("formal blind marking pipeline", () => {
 
   it("gives Kimi only the unresolved question evidence before M3 reconciles", async () => {
     let supervisorCall = 0;
-    generateAiText.mockImplementation(async ({
-      role,
-      request,
-    }: {
-      role: string;
-      request: { systemInstruction: string };
-    }) => {
+    generateAiText.mockImplementation(async ({ role }: { role: string }) => {
       if (role === "worker") return report({ q1: 0, q2: 3 });
       if (role === "juror") return report({ q1: 1 }, { questionIds: ["q1"] });
       supervisorCall += 1;
       if (supervisorCall === 1) return report({ q1: 2, q2: 3 });
-      if (request.systemInstruction.includes("adjudicator") && supervisorCall === 2) {
-        return report({ q1: 1, q2: 3 }, { lowConfidence: ["q1"] });
-      }
       return report({ q1: 1, q2: 3 });
     });
 
+    // q1 escalates because the blind markers landed two marks apart (2 v 0),
+    // not because either of them said it felt unsure.
     const result = await markPracticePaperWithAudit(input());
     expect(result.audit).toMatchObject({
       disputedQuestionIds: ["q1"],
@@ -148,5 +141,62 @@ describe("formal blind marking pipeline", () => {
     expect(jurorEvidence).not.toContain("ANSWER q2");
     expect(jurorEvidence).not.toContain("cTItaW1hZ2U=");
     expect(jurorEvidence).not.toContain("cGFwZXItaW1hZ2U=");
+  });
+
+  /**
+   * Whichever report an adjudicator reads first wins disputes more often than
+   * it should, so the two are unnamed and their order is drawn per marking.
+   */
+  describe("adjudicator position bias", () => {
+    async function adjudicationPrompt(primaryFirst: boolean) {
+      generateAiText.mockReset();
+      let supervisorCall = 0;
+      generateAiText.mockImplementation(async ({ role }: { role: string }) => {
+        if (role === "worker") return report({ q1: 0, q2: 3 });
+        if (role === "juror") return report({ q1: 1 }, { questionIds: ["q1"] });
+        supervisorCall += 1;
+        return supervisorCall === 1
+          ? report({ q1: 2, q2: 3 })
+          : report({ q1: 1, q2: 3 });
+      });
+
+      const random = vi
+        .spyOn(Math, "random")
+        .mockReturnValue(primaryFirst ? 0.1 : 0.9);
+      try {
+        await markPracticePaperWithAudit(input());
+      } finally {
+        random.mockRestore();
+      }
+
+      const call = generateAiText.mock.calls
+        .map((entry) => entry[0])
+        .find((entry) => JSON.stringify(entry.request.contents).includes("Report A"));
+      expect(call).toBeTruthy();
+      return JSON.stringify(call.request.contents);
+    }
+
+    it("never names either marker to the adjudicator", async () => {
+      const prompt = await adjudicationPrompt(true);
+      expect(prompt).toContain("Report A");
+      expect(prompt).toContain("Report B");
+      expect(prompt).not.toContain("Primary report");
+      expect(prompt).not.toContain("Independent verifier report");
+      expect(prompt).toContain("Neither has priority");
+    });
+
+    it("puts the primary first or second depending on the draw", async () => {
+      const marksInOrder = (prompt: string) => {
+        const a = prompt.indexOf("Report A");
+        const b = prompt.indexOf("Report B");
+        return [prompt.slice(a, b), prompt.slice(b)] as const;
+      };
+
+      const [firstWhenPrimary] = marksInOrder(await adjudicationPrompt(true));
+      expect(firstWhenPrimary).toContain('\\"awardedMarks\\":2');
+
+      const [firstWhenVerifier] = marksInOrder(await adjudicationPrompt(false));
+      expect(firstWhenVerifier).toContain('\\"awardedMarks\\":0');
+    });
   });
 });

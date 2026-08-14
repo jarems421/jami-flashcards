@@ -676,6 +676,24 @@ export function normalizePracticePaperGradeGuidance(
   };
 }
 
+/**
+ * A whole-number percentage, always rounded down.
+ *
+ * Two reasons it is not `Math.round`. A tenth of a percent implies a precision
+ * this marking does not have, and rounding up walks a student across a grade
+ * boundary they did not reach: 69.6% is not a Grade 7, and no board would give
+ * it. `getPracticePaperGradeLabel` compares against this value, so flooring
+ * here is what keeps the boundary honest.
+ */
+export function calculatePracticePaperPercentage(
+  awardedMarks: number,
+  totalMarks: number
+) {
+  return totalMarks > 0
+    ? Math.max(0, Math.floor((awardedMarks / totalMarks) * 100))
+    : 0;
+}
+
 export function getPracticePaperGradeLabel(
   percentage: number,
   guidance: PracticePaperGradeGuidance
@@ -705,9 +723,7 @@ export function applyPracticePaperMarkCorrection(
     (total, question) => total + (question.counted ? question.awardedMarks : 0),
     0
   );
-  const percentage = result.totalMarks > 0
-    ? Math.round((awarded / result.totalMarks) * 1_000) / 10
-    : 0;
+  const percentage = calculatePracticePaperPercentage(awarded, result.totalMarks);
   return {
     ...result,
     questionResults,
@@ -818,10 +834,7 @@ export function normalizePracticePaperResult(value: unknown): PracticePaperResul
   return {
     awardedMarks,
     totalMarks,
-    percentage:
-      totalMarks > 0
-        ? Math.round((awardedMarks / totalMarks) * 1_000) / 10
-        : 0,
+    percentage: calculatePracticePaperPercentage(awardedMarks, totalMarks),
     summary: normalizeOptionalString(result.summary, 2_000) ?? "",
     strengths: normalizeTextList(result.strengths, 10),
     priorities: normalizeTextList(result.priorities, 10),

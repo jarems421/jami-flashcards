@@ -168,6 +168,38 @@ export function comparePracticePaperMarkings(
   });
 }
 
+/**
+ * Which disputed questions deserve the independent third view.
+ *
+ * This deliberately does not consult the marker's own `confidence`. Models
+ * report confidence in a narrow, generous band and almost never emit "low", so
+ * routing on it produced a safety net that looked present and never caught
+ * anything. The two signals here are observable from outside the model: how far
+ * apart the blind markers actually landed, and whether reading the work was
+ * flagged as ambiguous. A single mark of daylight is ordinary marking variance;
+ * two or more is a substantive disagreement about the work.
+ */
+export function selectThirdViewQuestionIds(input: {
+  adjudicated: PracticePaperResult;
+  primary: PracticePaperResult;
+  verifier: PracticePaperResult;
+  disputedQuestionIds: string[];
+}) {
+  const marksFor = (marking: PracticePaperResult, questionId: string) =>
+    marking.questionResults.find((item) => item.questionId === questionId)?.awardedMarks;
+
+  return input.adjudicated.questionResults
+    .filter((question) => {
+      if (!input.disputedQuestionIds.includes(question.questionId)) return false;
+      if (question.transcriptionNote) return true;
+      const left = marksFor(input.primary, question.questionId);
+      const right = marksFor(input.verifier, question.questionId);
+      if (left === undefined || right === undefined) return true;
+      return Math.abs(left - right) >= 2;
+    })
+    .map((question) => question.questionId);
+}
+
 export async function markPracticePaperWithAudit(input: PracticePaperMarkingInput): Promise<{
   result: PracticePaperResult;
   audit: PracticePaperMarkingAudit;
@@ -195,23 +227,35 @@ export async function markPracticePaperWithAudit(input: PracticePaperMarkingInpu
   let thirdViewQuestionIds: string[] = [];
 
   if (disputedQuestionIds.length > 0) {
+    const disputedFrom = (marking: PracticePaperResult) =>
+      marking.questionResults.filter((item) =>
+        disputedQuestionIds.includes(item.questionId)
+      );
+    // Whichever report is presented first wins disputes more often than it
+    // should, so neither marker is named and the order is drawn per marking.
+    // The adjudicator returns a whole report, so nothing needs unmapping.
+    const primaryFirst = Math.random() < 0.5;
+    const [firstReport, secondReport] = primaryFirst
+      ? [primary.result, verifier.result]
+      : [verifier.result, primary.result];
     const adjudication = await callMarker({
       ...input,
       role: "adjudicator",
       modelRole: "supervisor",
       extraPrompt: `Resolve only these disputed questions: ${disputedQuestionIds.join(", ")}.
-Primary report: ${JSON.stringify(primary.result.questionResults.filter((item) => disputedQuestionIds.includes(item.questionId)))}
-Independent verifier report: ${JSON.stringify(verifier.result.questionResults.filter((item) => disputedQuestionIds.includes(item.questionId)))}
+Two independent markers of equal standing produced these reports. Neither has priority; judge each disputed question on the fixed guide and the student's own work.
+Report A: ${JSON.stringify(disputedFrom(firstReport))}
+Report B: ${JSON.stringify(disputedFrom(secondReport))}
 Return the complete final report for every question, preserving agreed questions unless the fixed rubric proves a deterministic error.`,
     });
     result = adjudication.result;
     adjudicatedQuestionIds = disputedQuestionIds;
-    thirdViewQuestionIds = result.questionResults
-      .filter((question) =>
-        disputedQuestionIds.includes(question.questionId) &&
-        (question.confidence === "low" || Boolean(question.transcriptionNote))
-      )
-      .map((question) => question.questionId);
+    thirdViewQuestionIds = selectThirdViewQuestionIds({
+      adjudicated: result,
+      primary: primary.result,
+      verifier: verifier.result,
+      disputedQuestionIds,
+    });
   }
 
   if (thirdViewQuestionIds.length > 0) {

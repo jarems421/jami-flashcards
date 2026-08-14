@@ -1,5 +1,6 @@
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
 import {
+  calculatePracticePaperPercentage,
   getPracticePaperGradeLabel,
   normalizePracticePaperResult,
   type PracticePaper,
@@ -75,9 +76,7 @@ export function parsePracticePaperMarkingModelAnswer(
     (total, result) => total + (result.counted ? result.awardedMarks : 0),
     0
   );
-  const percentage = totalMarks > 0
-    ? Math.round((awardedMarks / totalMarks) * 1_000) / 10
-    : 0;
+  const percentage = calculatePracticePaperPercentage(awardedMarks, totalMarks);
   return {
     ...normalized,
     questionResults: countedResults,

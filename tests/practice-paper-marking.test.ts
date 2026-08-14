@@ -4,7 +4,11 @@ import {
   parsePracticePaperMarkingModelAnswer,
 } from "@/lib/ai/practice-paper-marking";
 import { mapPracticePaperData } from "@/lib/practice/practice-papers";
-import { applyPracticePaperMarkCorrection } from "@/lib/practice/practice-papers";
+import {
+  applyPracticePaperMarkCorrection,
+  calculatePracticePaperPercentage,
+  getPracticePaperGradeLabel,
+} from "@/lib/practice/practice-papers";
 
 const paper = mapPracticePaperData("paper-1", {
   notebookId: "paper-1",
@@ -159,5 +163,39 @@ describe("practice-paper marking response", () => {
     });
     expect(merged).toMatchObject({ awardedMarks: 4, totalMarks: 5, percentage: 80 });
     expect(merged?.questionResults[0].manualReason).toContain("AI recheck");
+  });
+});
+
+/**
+ * A tenth of a percent claims a precision this marking does not have, and
+ * rounding one up walks a student across a boundary they did not reach.
+ */
+describe("practice-paper percentage", () => {
+  const guidance = {
+    kind: "official" as const,
+    label: "Grades",
+    notice: "",
+    boundaries: [{ label: "Grade 7", minimumPercentage: 70 }],
+  };
+
+  it("floors to a whole number rather than rounding", () => {
+    expect(calculatePracticePaperPercentage(48, 69)).toBe(69);
+    expect(calculatePracticePaperPercentage(2, 3)).toBe(66);
+  });
+
+  it("never rounds a near miss up across a grade boundary", () => {
+    const percentage = calculatePracticePaperPercentage(174, 250);
+    expect(percentage).toBe(69);
+    expect(getPracticePaperGradeLabel(percentage, guidance)).toBeUndefined();
+  });
+
+  it("still awards the boundary when it is genuinely reached", () => {
+    const percentage = calculatePracticePaperPercentage(175, 250);
+    expect(percentage).toBe(70);
+    expect(getPracticePaperGradeLabel(percentage, guidance)).toBe("Grade 7");
+  });
+
+  it("is zero when the paper carries no marks", () => {
+    expect(calculatePracticePaperPercentage(0, 0)).toBe(0);
   });
 });
