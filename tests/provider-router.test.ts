@@ -37,7 +37,7 @@ describe("provider router", () => {
     mocks.generateOpenRouterText.mockResolvedValue("ok");
   });
 
-  it("pins the juror to Moonshot while omitting unsupported sampling controls", async () => {
+  it("pins the juror to approved endpoints while omitting unsupported sampling controls", async () => {
     await generateAiText({
       role: "juror",
       routeReason: "second_correction",
@@ -49,7 +49,7 @@ describe("provider router", () => {
     expect(mocks.generateOpenRouterText).toHaveBeenCalledWith(
       expect.objectContaining({
         model: "moonshotai/kimi-k2.6",
-        providerAllowlist: ["moonshotai"],
+        providerAllowlist: ["moonshotai", "siliconflow", "parasail"],
         quantizations: expect.arrayContaining(["int4"]),
         temperature: undefined,
         topP: undefined,

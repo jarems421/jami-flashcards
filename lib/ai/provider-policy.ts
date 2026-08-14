@@ -108,7 +108,10 @@ const DEFAULT_PROVIDERS = {
   // The supervisor always returns validated JSON. Of the current full-context
   // FP8 ZDR endpoints, Parasail advertises structured response support.
   supervisor: ["parasail"],
-  juror: ["moonshotai"],
+  // Moonshot's own endpoint serves Kimi at INT4; SiliconFlow serves the same
+  // model at FP8 on an equally full-context ZDR endpoint, so the juror is no
+  // longer pinned to a single provider or to the lowest precision available.
+  juror: ["moonshotai", "siliconflow", "parasail"],
 } as const;
 
 const QUALITY_QUANTIZATIONS = ["fp32", "fp16", "bf16", "fp8"] as const;

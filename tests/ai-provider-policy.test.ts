@@ -45,7 +45,9 @@ describe("AI provider policy", () => {
     expect(registry.juror).toMatchObject({
       provider: "openrouter",
       modelId: "moonshotai/kimi-k2.6",
-      providerAllowlist: ["moonshotai"],
+      // More than one approved endpoint, so a single provider outage does not
+      // take the independent third view down with it.
+      providerAllowlist: ["moonshotai", "siliconflow", "parasail"],
       quantizations: expect.arrayContaining(["int4"]),
     });
     expect(registry.embedding.modelId).toBe("gemini-embedding-2");
