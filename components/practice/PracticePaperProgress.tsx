@@ -1,22 +1,48 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Card, SectionHeader, Skeleton, StatTile } from "@/components/ui";
-import type { PracticePaperAttempt } from "@/lib/practice/practice-papers";
+import { ButtonLink, Card, ProgressBar, SectionHeader, Skeleton, StatTile } from "@/components/ui";
+import type {
+  PracticePaperAttempt,
+  PracticePaperJob,
+} from "@/lib/practice/practice-papers";
+import {
+  PRACTICE_PAPER_JOB_STAGE_LABELS,
+  canCancelPracticePaperJob,
+} from "@/lib/practice/practice-paper-jobs";
+import { getRecentPracticePaperJobs } from "@/services/ai/practice-papers";
 import { getRecentPracticePaperAttempts } from "@/services/study/practice-papers";
 import { scoreBand } from "./ScoreBand";
 
 export default function PracticePaperProgress({ userId }: { userId: string }) {
   const [attempts, setAttempts] = useState<PracticePaperAttempt[]>([]);
+  const [jobs, setJobs] = useState<PracticePaperJob[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    void getRecentPracticePaperAttempts(userId, 12)
-      .then((items) => { if (active) setAttempts(items); })
-      .catch(() => { if (active) setAttempts([]); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = async () => {
+      const [attemptResult, jobResult] = await Promise.allSettled([
+        getRecentPracticePaperAttempts(userId, 12),
+        getRecentPracticePaperJobs(),
+      ]);
+      if (!active) return;
+      setAttempts(attemptResult.status === "fulfilled" ? attemptResult.value : []);
+      setJobs(jobResult.status === "fulfilled" ? jobResult.value : []);
+      setLoading(false);
+      if (
+        jobResult.status === "fulfilled" &&
+        jobResult.value.some((job) => canCancelPracticePaperJob(job.status))
+      ) {
+        timer = setTimeout(() => void load(), 5_000);
+      }
+    };
+    void load();
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
   }, [userId]);
 
   /*
@@ -42,10 +68,73 @@ export default function PracticePaperProgress({ userId }: { userId: string }) {
   }, [marked]);
 
   if (loading) return <Skeleton className="h-36 rounded-xl" />;
-  if (marked.length === 0) return null;
+  const visibleJobs = jobs.filter((job) =>
+    job.status === "queued" ||
+    job.status === "running" ||
+    job.status === "ready" ||
+    job.status === "needs_clarification" ||
+    job.status === "failed"
+  ).slice(0, 4);
+
+  if (marked.length === 0 && visibleJobs.length === 0) return null;
 
   return (
-    <Card padding="lg" className="space-y-5">
+    <div className="space-y-4">
+      {visibleJobs.length > 0 ? (
+        <Card padding="lg" className="space-y-4">
+          <SectionHeader
+            eyebrow="Paper builder"
+            title={visibleJobs.some((job) => canCancelPracticePaperJob(job.status))
+              ? "Jami is building your papers"
+              : "Your papers are ready"}
+          />
+          <ul className="space-y-2">
+            {visibleJobs.map((job) => (
+              <li
+                key={job.id}
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3.5"
+              >
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-text-primary">
+                      {job.title}
+                    </p>
+                    <p className="mt-0.5 text-xs text-text-muted">
+                      {job.status === "needs_clarification"
+                        ? "Jami needs one more detail"
+                        : job.status === "failed"
+                          ? job.failureMessage ?? "This paper could not be completed."
+                          : PRACTICE_PAPER_JOB_STAGE_LABELS[job.stage]}
+                    </p>
+                  </div>
+                  {job.status === "ready" ? (
+                    <ButtonLink
+                      href={`/dashboard/notebooks/${encodeURIComponent(job.paperId)}`}
+                      size="sm"
+                    >
+                      Open paper
+                    </ButtonLink>
+                  ) : job.status === "needs_clarification" ? (
+                    <ButtonLink
+                      href={`/dashboard/practice/new?job=${encodeURIComponent(job.id)}`}
+                      size="sm"
+                      variant="secondary"
+                    >
+                      Continue
+                    </ButtonLink>
+                  ) : null}
+                </div>
+                {canCancelPracticePaperJob(job.status) ? (
+                  <ProgressBar progress={job.progress} size="sm" className="mt-3" />
+                ) : null}
+              </li>
+            ))}
+          </ul>
+        </Card>
+      ) : null}
+
+      {marked.length > 0 ? (
+      <Card padding="lg" className="space-y-5">
       {/*
        * The heading used to read "A calm view across your attempts", which
        * describes the mood of the card rather than telling anyone what is in
@@ -120,6 +209,8 @@ export default function PracticePaperProgress({ userId }: { userId: string }) {
           );
         })}
       </ul>
-    </Card>
+      </Card>
+      ) : null}
+    </div>
   );
 }

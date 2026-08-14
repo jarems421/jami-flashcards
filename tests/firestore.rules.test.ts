@@ -538,16 +538,18 @@ describe("Firestore security rules", () => {
       setDoc(doc(aliceDb, "users", ALICE, "pastPapers", "paper-1"), {
         folderId: "folder-linear-algebra",
         title: "2024 Linear Algebra paper",
-        year: "2024",
-        module: "Linear Algebra",
-        archived: false,
+        origin: "uploaded",
+        status: "ready",
+        questions: [],
+        totalMarks: 0,
+        markScheme: { kind: "missing", label: "No guide", notice: "", items: [] },
         createdAt: 1,
         updatedAt: 1,
       })
     );
     await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "practiceSets", "set-1")));
     await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "pastPapers", "paper-1")));
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(aliceDb, "users", ALICE, "practicePaperAttempts", "attempt-1"), {
         paperId: "paper-1",
         status: "in_progress",
@@ -555,6 +557,14 @@ describe("Firestore security rules", () => {
         updatedAt: 1,
       })
     );
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(context.firestore(), "users", ALICE, "practicePaperAttempts", "attempt-1"), {
+        paperId: "paper-1",
+        status: "in_progress",
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
     await assertSucceeds(getDoc(doc(aliceDb, "users", ALICE, "practicePaperAttempts", "attempt-1")));
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "practicePaperAttempts", "attempt-1")));
     await assertFails(getDoc(doc(bobDb, "users", ALICE, "practiceSets", "set-1")));
@@ -579,7 +589,7 @@ describe("Firestore security rules", () => {
       })
     );
 
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(aliceDb, "users", ALICE, "assistantThreads", "assistant-thread-1"), {
         title: "Explain this page",
         surface: "notebook",
@@ -594,7 +604,7 @@ describe("Firestore security rules", () => {
         updatedAt: 1,
       })
     );
-    await assertSucceeds(
+    await assertFails(
       setDoc(doc(aliceDb, "users", ALICE, "assistantMessages", "assistant-message-1"), {
         threadId: "assistant-thread-1",
         role: "assistant",
@@ -602,6 +612,19 @@ describe("Firestore security rules", () => {
         createdAt: 1,
       })
     );
+    // Seed server-owned history so the owner can still read it.
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await setDoc(doc(adminDb, "users", ALICE, "assistantThreads", "assistant-thread-1"), {
+        title: "Explain this page",
+        surface: "notebook",
+        contextKey: "notebook:notebook-1:page:page-1",
+        contextLabel: "Eigenvalues practice - Page 1",
+        context: { surface: "notebook", notebookId: "notebook-1", pageId: "page-1" },
+        createdAt: 1,
+        updatedAt: 1,
+      });
+    });
     await assertSucceeds(
       getDoc(
         doc(aliceDb, "users", ALICE, "assistantThreads", "assistant-thread-1")
@@ -736,14 +759,30 @@ describe("Firestore security rules", () => {
       "practicePaperDeadlineSnapshots",
       "attempt-1_page-1"
     );
-    await assertSucceeds(setDoc(deadlineRef, {
+    await assertFails(setDoc(deadlineRef, {
       attemptId: "attempt-1",
       paperId: "paper-1",
       notebookId: "notebook-1",
       pageId: "page-1",
       capturedAt: 10,
-      page: { typedContent: "Within-time answer" },
+      page: { typedContent: "Forged answer" },
     }));
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(doc(
+        context.firestore(),
+        "users",
+        ALICE,
+        "practicePaperDeadlineSnapshots",
+        "attempt-1_page-1"
+      ), {
+        attemptId: "attempt-1",
+        paperId: "paper-1",
+        notebookId: "notebook-1",
+        pageId: "page-1",
+        capturedAt: 10,
+        page: { typedContent: "Within-time answer" },
+      });
+    });
     await assertSucceeds(getDoc(deadlineRef));
     await assertFails(updateDoc(deadlineRef, { capturedAt: 11 }));
     await assertFails(deleteDoc(deadlineRef));
@@ -786,6 +825,98 @@ describe("Firestore security rules", () => {
         enabled: true,
         mode: "smart",
         updatedAt: 1,
+      })
+    );
+  });
+
+  it("keeps durable practice-paper job internals server-only", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await setDoc(
+        doc(
+          context.firestore(),
+          "users",
+          ALICE,
+          "practicePaperJobs",
+          "job-1"
+        ),
+        {
+          paperId: "paper-1",
+          status: "queued",
+          request: { instructions: "private workflow input" },
+        }
+      );
+    });
+
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    const jobRef = doc(
+      aliceDb,
+      "users",
+      ALICE,
+      "practicePaperJobs",
+      "job-1"
+    );
+    await assertFails(getDoc(jobRef));
+    await assertFails(setDoc(jobRef, { status: "cancelled" }, { merge: true }));
+    await assertFails(
+      getDocs(collection(aliceDb, "users", ALICE, "practicePaperJobs"))
+    );
+  });
+
+  it("keeps answer-bearing practice-paper rubrics inaccessible before submission", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await Promise.all([
+        setDoc(doc(adminDb, "users", ALICE, "pastPapers", "safe-paper"), {
+          status: "ready",
+          markScheme: {
+            kind: "generated",
+            label: "Jami-generated marking guide",
+            notice: "Hidden until marking",
+            items: [],
+          },
+        }),
+        setDoc(doc(adminDb, "users", ALICE, "pastPapers", "legacy-leak"), {
+          status: "ready",
+          markScheme: {
+            kind: "generated",
+            label: "Jami-generated marking guide",
+            notice: "Hidden until marking",
+            items: [{ questionId: "q1", answer: "secret answer" }],
+          },
+        }),
+        setDoc(doc(adminDb, "users", ALICE, "practicePaperSecrets", "safe-paper"), {
+          markScheme: {
+            items: [{ questionId: "q1", answer: "secret answer" }],
+          },
+        }),
+        setDoc(doc(adminDb, "users", ALICE, "practicePaperJobArtifacts", "job-1"), {
+          generated: { markScheme: { items: [{ answer: "secret answer" }] } },
+        }),
+      ]);
+    });
+
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    await assertSucceeds(
+      getDoc(doc(aliceDb, "users", ALICE, "pastPapers", "safe-paper"))
+    );
+    await assertFails(
+      getDoc(doc(aliceDb, "users", ALICE, "pastPapers", "legacy-leak"))
+    );
+    await assertFails(
+      getDoc(doc(aliceDb, "users", ALICE, "practicePaperSecrets", "safe-paper"))
+    );
+    await assertFails(
+      getDoc(doc(aliceDb, "users", ALICE, "practicePaperJobArtifacts", "job-1"))
+    );
+    await assertFails(
+      setDoc(doc(aliceDb, "users", ALICE, "pastPapers", "attempted-leak"), {
+        status: "ready",
+        markScheme: {
+          kind: "generated",
+          label: "Guide",
+          notice: "",
+          items: [{ questionId: "q1", answer: "secret answer" }],
+        },
       })
     );
   });

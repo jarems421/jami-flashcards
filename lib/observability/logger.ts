@@ -35,7 +35,6 @@ const LEVEL_ORDER: Record<LogLevel, number> = {
 const RESERVED_KEYS = ["level", "event", "time"] as const;
 const REDACTED = "[redacted]";
 const MAX_STRING_LENGTH = 512;
-const MAX_STACK_LENGTH = 2_000;
 const MAX_DEPTH = 4;
 const MAX_ARRAY_ITEMS = 20;
 
@@ -64,6 +63,8 @@ const REDACTED_KEYS = new Set([
   "password",
   "secret",
   "token",
+  "uid",
+  "userid",
   // Model input and output
   "buffer",
   "content",
@@ -112,24 +113,39 @@ function describeError(error: unknown): LogFields {
   if (error instanceof Error) {
     const status = (error as { status?: unknown }).status;
     const code = (error as { code?: unknown }).code;
+    const errorCategory =
+      error.name === "AbortError" || /timed?\s*out|timeout/i.test(error.message)
+        ? "timeout"
+        : status === 429
+          ? "rate_limited"
+          : typeof status === "number" && status >= 500
+            ? "upstream_failure"
+            : typeof status === "number" && status >= 400
+              ? "request_rejected"
+              : "unknown";
     return {
       name: error.name,
-      message: truncate(error.message, MAX_STRING_LENGTH),
+      errorCategory,
       ...(typeof status === "number" ? { status } : {}),
       ...(typeof code === "string" ? { code } : {}),
-      ...(error.stack ? { stack: truncate(error.stack, MAX_STACK_LENGTH) } : {}),
     };
   }
 
-  // A thrown plain object stringifies to "[object Object]", which is the very
-  // thing this function exists to prevent, so keep its shape instead.
+  // Provider SDKs sometimes throw response-shaped objects. Their arbitrary
+  // keys can contain echoed prompts or document text, so retain no payload.
   if (error !== null && typeof error === "object") {
-    return { name: "NonError", value: sanitizeValue(error, 1) };
+    const record = error as Record<string, unknown>;
+    return {
+      name: "NonError",
+      errorCategory: "unknown",
+      ...(typeof record.status === "number" ? { status: record.status } : {}),
+      ...(typeof record.code === "string" ? { code: record.code } : {}),
+    };
   }
 
   return {
     name: "NonError",
-    message: truncate(String(error), MAX_STRING_LENGTH),
+    errorCategory: "unknown",
   };
 }
 

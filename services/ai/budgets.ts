@@ -28,6 +28,8 @@ export async function checkAiBudget(input: {
   uid: string;
   action: AiBudgetAction;
   now?: number;
+  /** Durable jobs may queue the remaining daily allowance in one interaction. */
+  skipBurstLimit?: boolean;
 }): Promise<AiBudgetDecision> {
   const now = input.now ?? Date.now();
   const config = AI_BUDGETS[input.action];
@@ -55,11 +57,12 @@ export async function checkAiBudget(input: {
       };
     }
 
-    const burstSnapshot =
-      burstDocId === dailyDocId
+    const burstSnapshot = input.skipBurstLimit
+      ? null
+      : burstDocId === dailyDocId
         ? dailySnapshot
         : await transaction.get(burstRef);
-    const burstData = burstSnapshot.data();
+    const burstData = burstSnapshot?.data();
     const storedWindowStartedAt =
       typeof burstData?.burstWindowStartedAt === "number" &&
       Number.isFinite(burstData.burstWindowStartedAt)
@@ -76,7 +79,7 @@ export async function checkAiBudget(input: {
       ? getNonNegativeInteger(burstData?.burstCount)
       : 0;
 
-    if (burstCount >= config.burstRequestLimit) {
+    if (!input.skipBurstLimit && burstCount >= config.burstRequestLimit) {
       return {
         allowed: false,
         reason: "burst_limit",
@@ -93,7 +96,7 @@ export async function checkAiBudget(input: {
       dayKey,
       count: count + 1,
       updatedAt: now,
-      ...(burstDocId === dailyDocId
+      ...(!input.skipBurstLimit && burstDocId === dailyDocId
         ? {
             burstScope: config.burstScope,
             burstCount: burstCount + 1,
@@ -103,7 +106,7 @@ export async function checkAiBudget(input: {
     };
     transaction.set(dailyRef, dailyUpdate, { merge: true });
 
-    if (burstDocId !== dailyDocId) {
+    if (!input.skipBurstLimit && burstDocId !== dailyDocId) {
       transaction.set(
         burstRef,
         {
@@ -127,6 +130,7 @@ export async function checkAiBudget(input: {
         action: input.action,
         dayKey,
         burstWindowStartedAt,
+        burstCharged: !input.skipBurstLimit,
       },
     };
   });
@@ -162,6 +166,7 @@ export async function refundAiBudget(grant: AiBudgetGrant) {
     const count = getNonNegativeInteger(dailyData?.count);
     const burstCount = getNonNegativeInteger(burstData?.burstCount);
     const refundsBurst =
+      grant.burstCharged !== false &&
       burstData?.burstWindowStartedAt === grant.burstWindowStartedAt &&
       burstCount > 0;
 
@@ -191,6 +196,8 @@ export async function refundAiBudget(grant: AiBudgetGrant) {
 
 const DAILY_LIMIT_MESSAGES: Record<AiBudgetAction, string> = {
   assistant: "Jami has reached today's AI limit. Try again tomorrow.",
+  tutorIllustration:
+    "Jami has reached today's illustration limit. Try again tomorrow.",
   practicePaperGeneration:
     "Jami has reached today's practice-paper generation limit. Try again tomorrow.",
   practicePaperMarking:

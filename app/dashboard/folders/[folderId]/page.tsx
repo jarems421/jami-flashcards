@@ -56,6 +56,7 @@ import {
 } from "@/services/study/sources";
 import { getActiveTopics } from "@/services/study/topics";
 import { isFirebasePermissionDenied } from "@/services/firebase/errors";
+import { deletePracticePaper } from "@/services/study/practice-papers";
 
 const FOLDER_ASSET_PAGE_SIZE = 30;
 
@@ -499,7 +500,11 @@ export default function FolderDetailPage() {
     setDeletingNotebookId(notebook.id);
     clearFeedback();
     try {
-      await updateNotebook(user.uid, notebook.id, { archived: true });
+      if (notebook.type === "practice_paper") {
+        await deletePracticePaper(user.uid, notebook.pastPaperId ?? notebook.id);
+      } else {
+        await updateNotebook(user.uid, notebook.id, { archived: true });
+      }
       setNotebooks((current) =>
         current.filter((item) => item.id !== notebook.id)
       );
@@ -704,8 +709,16 @@ export default function FolderDetailPage() {
         <ConfirmDialog
           open={notebookPendingDelete !== null}
           title={`Delete ${notebookPendingDelete?.title ?? "this notebook"}?`}
-          description="This removes the notebook from your workspace. Its saved pages are retained so it can be recovered later."
-          confirmLabel="Delete notebook"
+          description={
+            notebookPendingDelete?.type === "practice_paper"
+              ? "This permanently deletes the paper, its attempts, saved pages, marking data, and attached files. This cannot be undone."
+              : "This removes the notebook from your workspace. Its saved pages are retained so it can be recovered later."
+          }
+          confirmLabel={
+            notebookPendingDelete?.type === "practice_paper"
+              ? "Delete paper permanently"
+              : "Delete notebook"
+          }
           busy={
             notebookPendingDelete !== null &&
             deletingNotebookId === notebookPendingDelete.id

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { makeNotebookInkData } from "@/lib/workspace/notebook-ink-data";
 import {
   buildNotebookPagePayload,
+  createCenteredNotebookImageRef,
   MAX_NOTEBOOK_IMAGE_REFS,
   MAX_NOTEBOOK_INK_SVG_LENGTH,
   MAX_NOTEBOOK_STROKE_POINTS,
@@ -9,7 +10,10 @@ import {
   MAX_NOTEBOOK_TEXT_BLOCK_TEXT,
   NotebookPagePersistenceError,
   mapNotebookPageData,
+  moveNotebookImageRef,
+  normalizeNotebookImageRefs,
   prepareNotebookPageSnapshotForPersistence,
+  resizeNotebookImageRef,
   type NotebookTextBlock,
 } from "@/lib/workspace/notebooks";
 
@@ -155,5 +159,37 @@ describe("notebook page persistence contract", () => {
         }),
       "too-many-images"
     );
+  });
+
+  it("normalizes, centres, moves and proportionally resizes notebook visuals", () => {
+    const centred = createCenteredNotebookImageRef({
+      id: "image-1",
+      storagePath: "users/user-1/notebookFiles/notebook-1/asset.png",
+      width: 1600,
+      height: 900,
+      altText: "A labelled cell",
+      sourceAssetId: "assistant-asset-1",
+    });
+    expect(centred.displayWidth).toBe(520);
+    expect(centred.displayHeight).toBe(293);
+    expect(centred.x).toBe(190);
+
+    const moved = moveNotebookImageRef(centred, 10_000, -10_000);
+    expect(moved.x).toBe(900 - moved.displayWidth!);
+    expect(moved.y).toBe(0);
+
+    const resized = resizeNotebookImageRef(centred, 120, 0);
+    expect(resized.displayWidth).toBeGreaterThan(centred.displayWidth!);
+    expect(
+      resized.displayWidth! / resized.displayHeight!
+    ).toBeCloseTo(centred.displayWidth! / centred.displayHeight!, 1);
+
+    expect(
+      normalizeNotebookImageRefs([{ id: "legacy-image" }])[0]
+    ).toMatchObject({
+      id: "legacy-image",
+      displayWidth: 480,
+      displayHeight: 360,
+    });
   });
 });

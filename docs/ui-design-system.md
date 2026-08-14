@@ -147,8 +147,11 @@ Sources is a focused reference workspace, not a file manager.
 - Make the selected source feel central: source list, source preview, source actions.
 - Source actions should feed the Jami loop through explicit Tutor help, topics, Today, and Progress.
 - Saving or uploading a source must never trigger AI work or draft creation automatically.
-- Tutor may read up to five deliberately selected sources only after the student submits a request. This may include bounded on-demand document extraction, image understanding, and public-link reading.
-- On-demand source processing must not become background scanning, persistent OCR/indexing, automatic draft creation, always-on document understanding, or PDF editing. Keep originals immutable and do not persist extracted source text.
+- Tutor may automatically rank relevant passages from up to fifteen sources in the current folder after the student submits a request. Keep the unobtrusive source opt-out on by default, and do not make students select pages for ordinary Tutor use. This may include bounded on-demand document extraction, image understanding, and public-link reading.
+- On-demand source processing must not become always-on scanning, persistent OCR,
+  automatic draft creation, ambient document understanding, or PDF mutation. Keep
+  originals immutable; reuse the existing explicit source indexes, and render only
+  the relevant pages when a visual or scanned document needs on-demand inspection.
 
 ## Component Rules
 
@@ -212,8 +215,7 @@ Do not use or build:
 - Automatic or background PDF text extraction and semantic parsing
 - Source file storage upload
 - PDF editing or mutation (notebook ink overlays on immutable raster pages are allowed)
-- full-paper mode
-- automatic mark schemes
+- topic-paper or short-paper experiences that duplicate ordinary Practice and Mark my work
 - browser extension
 - always-on screen watching
 - iPad or desktop companion

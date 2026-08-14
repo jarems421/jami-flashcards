@@ -37,6 +37,7 @@ describe("practice-paper marking response", () => {
             awardedMarks: 9,
             maxMarks: 9,
             feedback: "Method shown.",
+            evidence: ["The student showed the required method."],
             strengths: [],
             improvements: [],
             confidence: "high",
@@ -46,6 +47,7 @@ describe("practice-paper marking response", () => {
             awardedMarks: 2,
             maxMarks: 3,
             feedback: "One step missing.",
+            evidence: ["The student completed the first two steps."],
             strengths: [],
             improvements: ["Show the final substitution"],
             confidence: "medium",
@@ -105,9 +107,9 @@ describe("practice-paper marking response", () => {
     });
     const result = parsePracticePaperMarkingModelAnswer(JSON.stringify({
       questionResults: [
-        { questionId: "q1", awardedMarks: 4, maxMarks: 5, feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
-        { questionId: "q2", awardedMarks: 3, maxMarks: 10, feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
-        { questionId: "q3", awardedMarks: 8, maxMarks: 10, feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+        { questionId: "q1", awardedMarks: 4, maxMarks: 5, evidence: ["Required method"], feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+        { questionId: "q2", awardedMarks: 3, maxMarks: 10, evidence: ["Partial response"], feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+        { questionId: "q3", awardedMarks: 8, maxMarks: 10, evidence: ["Developed response"], feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
       ],
     }), choicePaper);
     expect(result).toMatchObject({ awardedMarks: 12, totalMarks: 15, percentage: 80 });
@@ -140,8 +142,8 @@ describe("practice-paper marking response", () => {
       strengths: [],
       priorities: [],
       questionResults: [
-        { questionId: "q1", awardedMarks: 1, maxMarks: 2, feedback: "", strengths: [], improvements: [], confidence: "low", attempted: true },
-        { questionId: "q2", awardedMarks: 2, maxMarks: 3, feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
+        { questionId: "q1", awardedMarks: 1, maxMarks: 2, evidence: ["Partial answer"], feedback: "", strengths: [], improvements: [], confidence: "low", attempted: true },
+        { questionId: "q2", awardedMarks: 2, maxMarks: 3, evidence: ["Two credit points"], feedback: "", strengths: [], improvements: [], confidence: "high", attempted: true },
       ],
     }), paper);
     expect(current).not.toBeNull();

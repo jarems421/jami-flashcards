@@ -1,4 +1,24 @@
 import type { PracticePaperQuestionAsset } from "@/lib/practice/practice-papers";
+import { useEffect, useState } from "react";
+import { getStorageFileDownloadUrl } from "@/services/firebase/storage-files";
+
+function PrivatePaperImage({ asset }: { asset: PracticePaperQuestionAsset }) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    let active = true;
+    if (!asset.storagePath) return;
+    void getStorageFileDownloadUrl(asset.storagePath)
+      .then((nextUrl) => { if (active) setUrl(nextUrl); })
+      .catch(() => { if (active) setUrl(""); });
+    return () => { active = false; };
+  }, [asset.storagePath]);
+  if (!url) {
+    return <div className="aspect-[4/3] animate-pulse rounded-lg bg-[var(--color-glass-subtle)]" />;
+  }
+  // Private Firebase URLs are resolved only for the signed-in owner.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={url} alt={asset.altText} className="h-auto w-full rounded-lg object-contain" />;
+}
 
 function parseRows(content: string) {
   return content
@@ -159,10 +179,13 @@ export default function PracticePaperAssets({ assets }: { assets: PracticePaperQ
               <Graph content={asset.content} altText={asset.altText} />
             ) : asset.type === "diagram" ? (
               <div role="img" aria-label={asset.altText || asset.title} className="rounded-lg bg-[var(--color-glass-subtle)] p-3 text-center text-xs leading-6 whitespace-pre-wrap">{asset.content}</div>
+            ) : (asset.type === "image" || asset.type === "illustration") && asset.storagePath ? (
+              <PrivatePaperImage asset={asset} />
             ) : (
               <pre className="whitespace-pre-wrap font-sans text-xs leading-5 text-text-secondary">{asset.content}</pre>
             )}
             {asset.altText ? <p className="sr-only">{asset.altText}</p> : null}
+            {asset.caption ? <p className="mt-2 text-xs leading-5 text-text-muted">{asset.caption}</p> : null}
           </figure>
         );
       })}

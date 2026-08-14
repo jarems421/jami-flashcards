@@ -101,6 +101,7 @@ const mocks = vi.hoisted(() => {
     verifyIdToken: vi.fn(async () => ({ uid: "user-1" })),
     checkBudget: vi.fn(),
     generateText: vi.fn(),
+    providerConfigured: true,
     db: { collection: (name: string) => collectionFor(name) },
   };
 });
@@ -135,8 +136,11 @@ vi.mock("@/services/ai/budgets", () => ({
     ),
 }));
 
-vi.mock("@/lib/ai/gemini", () => ({
-  generateGeminiText: mocks.generateText,
+// The route reaches the providers through the role router, never a named
+// provider module, so the router is the seam a route test stubs.
+vi.mock("@/lib/ai/provider-router", () => ({
+  generateAiText: mocks.generateText,
+  isAnyAiProviderConfigured: () => mocks.providerConfigured,
 }));
 
 let postDrafts: (request: NextRequest) => Promise<Response>;
@@ -169,6 +173,7 @@ beforeAll(async () => {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.providerConfigured = true;
   mocks.added.length = 0;
   mocks.pendingDrafts.length = 0;
   mocks.pendingQueryCalls.length = 0;
@@ -564,6 +569,17 @@ describe("source draft generation", () => {
 
     const failure = records.find((record) => record.event === "provider.failed");
     expect(failure?.error).toMatchObject({ status: 503 });
-    expect(failure).toMatchObject({ uid: "user-1", kind: "flashcard" });
+    expect(failure).toMatchObject({ uid: "[redacted]", kind: "flashcard" });
+  });
+
+  it("fails closed when no compliant provider is configured", async () => {
+    mocks.providerConfigured = false;
+
+    const response = await postDrafts(
+      request({ sourceId: "source-1", kind: "flashcard" })
+    );
+
+    expect(response.status).toBe(503);
+    expect(mocks.generateText).not.toHaveBeenCalled();
   });
 });

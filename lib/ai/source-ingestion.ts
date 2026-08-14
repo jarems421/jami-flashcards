@@ -20,12 +20,35 @@ const MAX_WEB_SOURCE_BYTES = 2 * 1024 * 1024;
 const MAX_EXTRACTED_TEXT_LENGTH = 30_000;
 const MAX_REDIRECTS = 3;
 
-type PreparedSource = {
+export type PreparedSource = {
   sourceId: string;
   label: string;
   parts: AiContentPart[];
   inputBytes: number;
 };
+
+/**
+ * OpenRouter text roles never receive raw PDFs or source images. A specialist
+ * may inspect those private bytes, but only its bounded text evidence brief is
+ * allowed to cross the worker/supervisor boundary.
+ */
+export async function normalizePreparedTutorSourceForTextModel(
+  prepared: PreparedSource,
+  extractEvidence: (parts: readonly AiContentPart[]) => Promise<string>
+): Promise<PreparedSource> {
+  if (prepared.parts.every((part) => "text" in part)) return prepared;
+  const evidenceBrief = normalizeExtractedText(
+    await extractEvidence(prepared.parts)
+  );
+  if (!evidenceBrief) {
+    throw new Error("The visual document did not contain readable evidence.");
+  }
+  return {
+    ...prepared,
+    inputBytes: Buffer.byteLength(evidenceBrief),
+    parts: [{ text: evidenceBrief }],
+  };
+}
 
 type CacheEntry = {
   value: PreparedSource;

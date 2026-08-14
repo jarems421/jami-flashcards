@@ -62,6 +62,7 @@ describe("AI budget configuration", () => {
       [
         "assistant",
         "autocompleteCard",
+        "tutorIllustration",
         "practicePaperGeneration",
         "practicePaperMarking",
         "sourceFlashcardDrafts",
@@ -86,6 +87,11 @@ describe("AI budget configuration", () => {
       burstScope: "sourceDrafts",
     });
     expect(AI_BUDGETS.sourcePracticeDrafts.burstScope).toBe("sourceDrafts");
+    expect(AI_BUDGETS.tutorIllustration).toMatchObject({
+      dailyRequestLimit: 10,
+      burstRequestLimit: 3,
+      burstScope: "tutorIllustrations",
+    });
   });
 
   it("exposes a token cap for each action", () => {
@@ -190,6 +196,21 @@ describe("checkAiBudget", () => {
     await expect(
       checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts", now })
     ).resolves.toMatchObject({ allowed: false, reason: "burst_limit" });
+  });
+
+  it("lets durable jobs queue without consuming the shared short-window burst", async () => {
+    const now = 1_700_000_000_000;
+    for (let index = 0; index < 6; index += 1) {
+      await expect(checkAiBudget({
+        uid: "user-1",
+        action: "practicePaperGeneration",
+        now,
+        skipBurstLimit: true,
+      })).resolves.toMatchObject({ allowed: true });
+    }
+    await expect(
+      checkAiBudget({ uid: "user-1", action: "sourceFlashcardDrafts", now })
+    ).resolves.toMatchObject({ allowed: true });
   });
 
   it("keeps the daily allowance separate for each source draft kind", async () => {

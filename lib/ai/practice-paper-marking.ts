@@ -34,6 +34,9 @@ export function parsePracticePaperMarkingModelAnswer(
     const question = questions.get(result.questionId);
     if (!question || seen.has(result.questionId)) return [];
     seen.add(result.questionId);
+    const hasEvidence = (result.evidence?.some((item) => item.trim()) ?? false) ||
+      (result.criterionResults?.some((criterion) => criterion.evidence.trim()) ?? false);
+    if (result.awardedMarks > 0 && !hasEvidence) return [];
     return [{
       ...result,
       label: question.label,

@@ -4,10 +4,12 @@ import type {
   JamiAssistantSourceFailure,
 } from "@/lib/ai/jami-assistant";
 import {
+  normalizeAssistantCitations,
   normalizeFollowUps,
   normalizeUsedContext,
 } from "@/lib/ai/jami-assistant-normalize";
 import { auth } from "@/services/firebase/client";
+import { mapJamiAssistantThread } from "@/lib/ai/jami-assistant-history";
 
 function getFriendlyAssistantError(
   status: number,
@@ -164,10 +166,23 @@ export async function sendJamiAssistantMessage(
 
   const sourceFailures = normalizeSourceFailures(data?.sourceFailures);
   const followUps = normalizeFollowUps(data?.followUps);
+  const citations = normalizeAssistantCitations(data?.citations);
+  const savedThreadData =
+    data?.savedThread &&
+    typeof data.savedThread === "object" &&
+    !Array.isArray(data.savedThread)
+      ? (data.savedThread as Record<string, unknown>)
+      : null;
+  const savedThread = savedThreadData
+    ? mapJamiAssistantThread(String(savedThreadData.id ?? ""), savedThreadData)
+    : null;
   return {
     reply,
     used,
     ...(followUps.length > 0 ? { followUps } : {}),
     ...(sourceFailures.length > 0 ? { sourceFailures } : {}),
+    ...(citations.length > 0 ? { citations } : {}),
+    ...(data?.canIllustrate === true ? { canIllustrate: true } : {}),
+    ...(savedThread ? { savedThread } : {}),
   };
 }

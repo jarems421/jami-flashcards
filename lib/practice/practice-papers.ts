@@ -34,7 +34,18 @@ export type PracticePaperAssetType =
   | "graph"
   | "diagram"
   | "formula_sheet"
-  | "source_extract";
+  | "source_extract"
+  | "image"
+  | "illustration";
+
+export type PracticePaperAssetSource =
+  | "deterministic"
+  | "generated"
+  | "uploaded";
+export type PracticePaperAssetValidationStatus =
+  | "pending"
+  | "valid"
+  | "invalid";
 
 export type PracticePaperQuestionAsset = {
   id: string;
@@ -42,6 +53,53 @@ export type PracticePaperQuestionAsset = {
   title: string;
   content: string;
   altText: string;
+  caption?: string;
+  storagePath?: string;
+  mimeType?: string;
+  width?: number;
+  height?: number;
+  source?: PracticePaperAssetSource;
+  validationStatus?: PracticePaperAssetValidationStatus;
+};
+
+export type PracticePaperJobStatus =
+  | "queued"
+  | "running"
+  | "needs_clarification"
+  | "ready"
+  | "failed"
+  | "cancelled";
+
+export type PracticePaperJobStage =
+  | "queued"
+  | "reading_sources"
+  | "researching"
+  | "designing"
+  | "building_mark_scheme"
+  | "auditing"
+  | "creating_figures"
+  | "final_checks"
+  | "ready";
+
+export type PracticePaperJob = {
+  id: string;
+  paperId: string;
+  folderId: string;
+  status: PracticePaperJobStatus;
+  stage: PracticePaperJobStage;
+  progress: number;
+  title: string;
+  clarificationQuestion?: string;
+  failureCode?: string;
+  failureMessage?: string;
+  workflowRunId?: string;
+  cancellationRequested: boolean;
+  readyUnread: boolean;
+  retryCount: number;
+  createdAt: number;
+  startedAt?: number;
+  completedAt?: number;
+  updatedAt: number;
 };
 
 export type PracticePaperAssessmentProfile = {
@@ -131,8 +189,6 @@ export type PracticePaperQuestionResult = {
 
 export type PracticePaperMarkingAudit = {
   version: number;
-  primaryProvider: string;
-  verifierProvider: string;
   primaryScores: Record<string, number>;
   verifierScores: Record<string, number>;
   disputedQuestionIds: string[];
@@ -142,12 +198,23 @@ export type PracticePaperMarkingAudit = {
 };
 
 export type PracticePaperGenerationAudit = {
-  paperDesigner: string;
-  markSchemeDesigner: string;
-  auditor: string;
   issueCount: number;
   repaired: boolean;
   createdAt: number;
+};
+
+export type PracticePaperResearchCitation = {
+  title: string;
+  url: string;
+  authority: "official" | "primary" | "credible";
+  role: "specification" | "format" | "guidance" | "background";
+};
+
+export type PracticePaperResearchReceipt = {
+  used: boolean;
+  summary: string;
+  confidence: PracticePaperConfidence;
+  citations: PracticePaperResearchCitation[];
 };
 
 export type PracticePaperRemarkAudit = {
@@ -246,6 +313,7 @@ export type PracticePaper = {
   withinTimeMarkingAudit?: PracticePaperMarkingAudit;
   remarkAudits?: PracticePaperRemarkAudit[];
   generationAudit?: PracticePaperGenerationAudit;
+  researchReceipt?: PracticePaperResearchReceipt;
   gradeGuidance: PracticePaperGradeGuidance;
   examinerInsights: string[];
   activeAttemptId?: string;
@@ -268,6 +336,7 @@ export type GeneratedPracticePaper = {
   gradeGuidance: PracticePaperGradeGuidance;
   examinerInsights: string[];
   generationAudit?: PracticePaperGenerationAudit;
+  researchReceipt?: PracticePaperResearchReceipt;
 };
 
 export type PracticePaperGenerationResponse =
@@ -341,26 +410,108 @@ function isAssetType(value: unknown): value is PracticePaperAssetType {
     value === "graph" ||
     value === "diagram" ||
     value === "formula_sheet" ||
-    value === "source_extract"
+    value === "source_extract" ||
+    value === "image" ||
+    value === "illustration"
   );
+}
+
+function isAssetSource(value: unknown): value is PracticePaperAssetSource {
+  return value === "deterministic" || value === "generated" || value === "uploaded";
+}
+
+function isAssetValidationStatus(
+  value: unknown
+): value is PracticePaperAssetValidationStatus {
+  return value === "pending" || value === "valid" || value === "invalid";
 }
 
 export function normalizeQuestionAssets(value: unknown): PracticePaperQuestionAsset[] {
   if (!Array.isArray(value)) return [];
-  return value.slice(0, 5).flatMap((candidate, index) => {
+  const seenIds = new Set<string>();
+  return value.slice(0, 8).flatMap((candidate, index) => {
     if (!candidate || typeof candidate !== "object") return [];
     const asset = candidate as Record<string, unknown>;
     if (!isAssetType(asset.type)) return [];
     const content = normalizeOptionalString(asset.content, 6_000) ?? "";
-    if (!content) return [];
+    const storagePath = normalizeOptionalString(asset.storagePath, 1_000);
+    if (!content && !storagePath) return [];
+    const requestedId = normalizeOptionalString(asset.id, 80)
+      ?.replace(/[^A-Za-z0-9_-]/g, "-")
+      .replace(/^-+|-+$/g, "") || `asset-${index + 1}`;
+    let id = requestedId;
+    for (let suffix = 2; seenIds.has(id); suffix += 1) {
+      id = `${requestedId.slice(0, 70)}-${suffix}`;
+    }
+    seenIds.add(id);
     return [{
-      id: normalizeOptionalString(asset.id, 80) ?? `asset-${index + 1}`,
+      id,
       type: asset.type,
       title: normalizeOptionalString(asset.title, 160) ?? "Supporting material",
       content,
       altText: normalizeOptionalString(asset.altText, 500) ?? "",
+      caption: normalizeOptionalString(asset.caption, 500),
+      storagePath,
+      mimeType: normalizeOptionalString(asset.mimeType, 120),
+      width: finiteInteger(asset.width) || undefined,
+      height: finiteInteger(asset.height) || undefined,
+      source: isAssetSource(asset.source) ? asset.source : undefined,
+      validationStatus: isAssetValidationStatus(asset.validationStatus)
+        ? asset.validationStatus
+        : undefined,
     }];
   });
+}
+
+function isPracticePaperJobStatus(value: unknown): value is PracticePaperJobStatus {
+  return (
+    value === "queued" ||
+    value === "running" ||
+    value === "needs_clarification" ||
+    value === "ready" ||
+    value === "failed" ||
+    value === "cancelled"
+  );
+}
+
+function isPracticePaperJobStage(value: unknown): value is PracticePaperJobStage {
+  return (
+    value === "queued" ||
+    value === "reading_sources" ||
+    value === "researching" ||
+    value === "designing" ||
+    value === "building_mark_scheme" ||
+    value === "auditing" ||
+    value === "creating_figures" ||
+    value === "final_checks" ||
+    value === "ready"
+  );
+}
+
+export function mapPracticePaperJobData(
+  id: string,
+  data: Record<string, unknown>
+): PracticePaperJob {
+  return {
+    id,
+    paperId: normalizeOptionalString(data.paperId, 160) ?? "",
+    folderId: normalizeOptionalString(data.folderId, 160) ?? "",
+    status: isPracticePaperJobStatus(data.status) ? data.status : "queued",
+    stage: isPracticePaperJobStage(data.stage) ? data.stage : "queued",
+    progress: Math.min(100, finiteInteger(data.progress)),
+    title: normalizeOptionalString(data.title, 160) ?? "Practice paper",
+    clarificationQuestion: normalizeOptionalString(data.clarificationQuestion, 600),
+    failureCode: normalizeOptionalString(data.failureCode, 120),
+    failureMessage: normalizeOptionalString(data.failureMessage, 500),
+    workflowRunId: normalizeOptionalString(data.workflowRunId, 200),
+    cancellationRequested: data.cancellationRequested === true,
+    readyUnread: data.readyUnread === true,
+    retryCount: finiteInteger(data.retryCount),
+    createdAt: finiteInteger(data.createdAt),
+    startedAt: finiteInteger(data.startedAt) || undefined,
+    completedAt: finiteInteger(data.completedAt) || undefined,
+    updatedAt: finiteInteger(data.updatedAt),
+  };
 }
 
 export function normalizePracticePaperAssessmentProfile(
@@ -697,8 +848,6 @@ export function normalizePracticePaperMarkingAudit(
   };
   return {
     version: Math.max(1, finiteInteger(audit.version, 1)),
-    primaryProvider: normalizeOptionalString(audit.primaryProvider, 120) ?? "primary",
-    verifierProvider: normalizeOptionalString(audit.verifierProvider, 120) ?? "verifier",
     primaryScores: normalizeScores(audit.primaryScores),
     verifierScores: normalizeScores(audit.verifierScores),
     disputedQuestionIds: normalizeStringArray(
@@ -726,13 +875,64 @@ function normalizePracticePaperGenerationAudit(
   if (!value || typeof value !== "object") return undefined;
   const audit = value as Record<string, unknown>;
   return {
-    paperDesigner: normalizeOptionalString(audit.paperDesigner, 120) ?? "designer",
-    markSchemeDesigner:
-      normalizeOptionalString(audit.markSchemeDesigner, 120) ?? "mark-scheme designer",
-    auditor: normalizeOptionalString(audit.auditor, 120) ?? "auditor",
     issueCount: finiteInteger(audit.issueCount),
     repaired: audit.repaired === true,
     createdAt: finiteInteger(audit.createdAt),
+  };
+}
+
+/**
+ * Practice-paper documents are readable by the student while they sit the
+ * paper, so they may contain rubric metadata but never the answer-bearing
+ * items. The complete guide belongs in the server-only
+ * `practicePaperSecrets` collection.
+ */
+export function toPublicPracticePaperMarkScheme(
+  value: PracticePaperMarkScheme
+): PracticePaperMarkScheme {
+  return {
+    kind: value.kind,
+    label: value.label.trim().slice(0, 160),
+    notice: value.notice.trim().slice(0, 500),
+    items: [],
+  };
+}
+
+export function normalizePracticePaperResearchReceipt(
+  value: unknown
+): PracticePaperResearchReceipt | undefined {
+  if (!value || typeof value !== "object") return undefined;
+  const receipt = value as Record<string, unknown>;
+  const citations = Array.isArray(receipt.citations)
+    ? receipt.citations.slice(0, 20).flatMap((candidate) => {
+        if (!candidate || typeof candidate !== "object") return [];
+        const citation = candidate as Record<string, unknown>;
+        const title = normalizeOptionalString(citation.title, 240) ?? "";
+        const url = normalizeOptionalString(citation.url, 2_000) ?? "";
+        if (!title || !/^https?:\/\//i.test(url)) return [];
+        const authority: PracticePaperResearchCitation["authority"] =
+          citation.authority === "official" || citation.authority === "primary"
+            ? citation.authority
+            : "credible";
+        const role: PracticePaperResearchCitation["role"] =
+          citation.role === "specification" ||
+          citation.role === "format" ||
+          citation.role === "guidance"
+            ? citation.role
+            : "background";
+        return [{
+          title,
+          url,
+          authority,
+          role,
+        }];
+      })
+    : [];
+  return {
+    used: receipt.used === true && citations.length > 0,
+    summary: normalizeOptionalString(receipt.summary, 500) ?? "",
+    confidence: isConfidence(receipt.confidence) ? receipt.confidence : "low",
+    citations,
   };
 }
 
@@ -878,6 +1078,7 @@ export function mapPracticePaperData(
     ),
     remarkAudits: normalizePracticePaperRemarkAudits(data.remarkAudits),
     generationAudit: normalizePracticePaperGenerationAudit(data.generationAudit),
+    researchReceipt: normalizePracticePaperResearchReceipt(data.researchReceipt),
     gradeGuidance: normalizePracticePaperGradeGuidance(data.gradeGuidance),
     examinerInsights: normalizeTextList(data.examinerInsights, 12, 500),
     activeAttemptId: normalizeOptionalString(data.activeAttemptId, 160),
@@ -910,9 +1111,8 @@ export function buildPracticePaperPayload(
       input.choiceGroups,
       input.questions
     ),
-    markScheme: normalizePracticePaperMarkScheme(
-      input.markScheme,
-      input.questions
+    markScheme: toPublicPracticePaperMarkScheme(
+      normalizePracticePaperMarkScheme(input.markScheme, input.questions)
     ),
     focusDetail: input.focusDetail?.trim().slice(0, 1_000) || null,
     markSchemeSourceId: input.markSchemeSourceId?.trim().slice(0, 160) || null,

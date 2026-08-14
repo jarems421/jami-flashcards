@@ -23,15 +23,26 @@ import PracticeStep from "@/components/practice/PracticeStep";
 import { useFeedback } from "@/hooks/useFeedback";
 import type { Source } from "@/lib/material/sources";
 import { rankPracticePaperSources } from "@/lib/ai/practice-paper-generation";
-import type { PracticePaperTimingMode } from "@/lib/practice/practice-papers";
+import {
+  type PracticePaperJob,
+  type PracticePaperTimingMode,
+} from "@/lib/practice/practice-papers";
+import {
+  PRACTICE_PAPER_JOB_STAGE_LABELS,
+  canCancelPracticePaperJob,
+} from "@/lib/practice/practice-paper-jobs";
 import type { StudyFolder } from "@/lib/workspace/study-folders";
-import { generatePracticePaper } from "@/services/ai/practice-papers";
+import {
+  cancelPracticePaperJob,
+  clarifyPracticePaperJob,
+  createPracticePaperJob,
+  getPracticePaperJob,
+} from "@/services/ai/practice-papers";
 import { getActiveStudyFolders } from "@/services/study/folders";
 import { importUploadedNotebook } from "@/services/study/notebook-import";
 import { deleteNotebookFile } from "@/services/study/notebook-files";
 import { deleteNotebookImportRecords } from "@/services/study/notebooks";
 import {
-  createGeneratedPracticePaperWorkspace,
   createUploadedPracticePaper,
 } from "@/services/study/practice-papers";
 import { createUploadedSource } from "@/services/study/source-upload";
@@ -124,14 +135,38 @@ export default function PracticePaperCreator() {
   const [confirmedAutomaticSourceIds, setConfirmedAutomaticSourceIds] = useState<string[]>([]);
   const [clarificationQuestion, setClarificationQuestion] = useState("");
   const [clarificationAnswer, setClarificationAnswer] = useState("");
-  const [clarificationContext, setClarificationContext] = useState("");
   const [uploadTitle, setUploadTitle] = useState("");
   const [paperFile, setPaperFile] = useState<File | null>(null);
   const [markSchemeFile, setMarkSchemeFile] = useState<File | null>(null);
+  const [supportingFiles, setSupportingFiles] = useState<File[]>([]);
   const [uploadedDuration, setUploadedDuration] = useState("");
   const [working, setWorking] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
+  const [activeJob, setActiveJob] = useState<PracticePaperJob | null>(null);
   const requestedFolderApplied = useRef(false);
+
+  useEffect(() => {
+    const jobId = new URLSearchParams(window.location.search).get("job")?.trim();
+    if (!jobId) return;
+    let active = true;
+    void getPracticePaperJob(jobId)
+      .then((job) => {
+        if (!active) return;
+        setActiveJob(job);
+        setPath("generate");
+        if (job.status === "needs_clarification") {
+          setClarificationQuestion(
+            job.clarificationQuestion ?? "What assessment format should this follow?"
+          );
+        } else if (job.status === "ready") {
+          router.push(`/dashboard/notebooks/${encodeURIComponent(job.paperId)}`);
+        }
+      })
+      .catch((error) => {
+        if (active) showThrownError(error, "Could not reopen that paper request.");
+      });
+    return () => { active = false; };
+  }, [router, showThrownError]);
 
   useEffect(() => {
     let active = true;
@@ -179,6 +214,47 @@ export default function PracticePaperCreator() {
     };
   }, [folderId, showThrownError, user.uid]);
 
+  useEffect(() => {
+    if (!activeJob || !canCancelPracticePaperJob(activeJob.status)) return;
+    let active = true;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const poll = async () => {
+      try {
+        const job = await getPracticePaperJob(activeJob.id);
+        if (!active) return;
+        setActiveJob(job);
+        if (job.status === "ready") {
+          setWorking(false);
+          router.push(`/dashboard/notebooks/${encodeURIComponent(job.paperId)}`);
+          return;
+        }
+        if (job.status === "needs_clarification") {
+          setWorking(false);
+          setClarificationQuestion(job.clarificationQuestion ?? "What exam format should this follow?");
+          setClarificationAnswer("");
+          return;
+        }
+        if (job.status === "failed" || job.status === "cancelled") {
+          setWorking(false);
+          if (job.status === "failed") {
+            showError(job.failureMessage ?? "Jami could not finish that paper just now.");
+          }
+          return;
+        }
+        timer = setTimeout(() => void poll(), 2_500);
+      } catch (error) {
+        if (!active) return;
+        timer = setTimeout(() => void poll(), 5_000);
+        console.warn("Could not refresh practice-paper progress.", error);
+      }
+    };
+    timer = setTimeout(() => void poll(), 1_000);
+    return () => {
+      active = false;
+      if (timer) clearTimeout(timer);
+    };
+  }, [activeJob, router, showError]);
+
   const selectedFolder = useMemo(
     () => folders.find((folder) => folder.id === folderId) ?? null,
     [folderId, folders]
@@ -200,6 +276,27 @@ export default function PracticePaperCreator() {
     );
 
   const createGenerated = async () => {
+    if (activeJob?.status === "needs_clarification") {
+      if (!clarificationAnswer.trim()) {
+        showError("Answer Jami's question before continuing.");
+        return;
+      }
+      setWorking(true);
+      clear();
+      try {
+        const resumed = await clarifyPracticePaperJob(
+          activeJob.id,
+          clarificationAnswer.trim()
+        );
+        setActiveJob(resumed);
+        setClarificationQuestion("");
+        setClarificationAnswer("");
+      } catch (error) {
+        showThrownError(error, "Could not resume this practice paper.");
+        setWorking(false);
+      }
+      return;
+    }
     if (!folderId) {
       showError("Choose a folder for this paper.");
       return;
@@ -216,47 +313,59 @@ export default function PracticePaperCreator() {
       showError("Answer Jami's question before continuing.");
       return;
     }
+    const baseSourceIds = automaticSources
+      ? confirmedAutomaticSourceIds
+      : selectedSourceIds;
+    if (baseSourceIds.length + supportingFiles.length > 15) {
+      showError("Use no more than 15 folder sources and supporting files in total.");
+      return;
+    }
     setWorking(true);
     clear();
+    let queued = false;
+    const temporarySources: Array<{ id: string; storagePath: string }> = [];
     try {
-      const nextClarificationContext = clarificationQuestion
-        ? `${clarificationContext}\n\nJami asked: ${clarificationQuestion}\nStudent answered: ${clarificationAnswer.trim()}`
-        : clarificationContext;
-      const completeRequest = `${request.trim()}${nextClarificationContext}`;
-      const generated = await generatePracticePaper({
-        folderId,
-        request: completeRequest,
-        coverage: coverage.trim() || "Whole folder",
-        length: "full",
-        focus: "balanced",
-        focusDetail: "",
-        timingMode,
-        tutorEnabled: tutorChoice === "on",
-        sourceIds: automaticSources ? confirmedAutomaticSourceIds : selectedSourceIds,
-      });
-      if (generated.status === "needs_clarification") {
-        setClarificationContext(nextClarificationContext);
-        setClarificationQuestion(generated.question);
-        setClarificationAnswer("");
-        return;
+      for (const file of supportingFiles) {
+        const uploaded = await createUploadedSource({
+          userId: user.uid,
+          folderId,
+          title: `Temporary paper context: ${file.name}`,
+          file,
+        });
+        temporarySources.push({ id: uploaded.id, storagePath: uploaded.storagePath });
       }
-      const workspace = await createGeneratedPracticePaperWorkspace({
-        userId: user.uid,
+      const job = await createPracticePaperJob({
         folderId,
-        request: completeRequest,
+        request: request.trim(),
         coverage: coverage.trim() || "Whole folder",
         length: "full",
         focus: "balanced",
         focusDetail: "",
         timingMode,
         tutorEnabled: tutorChoice === "on",
-        generated,
-      });
-      router.push(`/dashboard/notebooks/${encodeURIComponent(workspace.notebook.id)}`);
+        sourceIds: [...baseSourceIds, ...temporarySources.map((source) => source.id)],
+      }, crypto.randomUUID(), temporarySources.map((source) => source.id));
+      queued = true;
+      setActiveJob(job);
     } catch (error) {
+      await Promise.all(temporarySources.flatMap((source) => [
+        deleteSourceFile(source.storagePath).catch(() => undefined),
+        deleteSource(user.uid, source.id).catch(() => undefined),
+      ]));
       showThrownError(error, "Could not create this practice paper.");
     } finally {
+      if (!queued) setWorking(false);
+    }
+  };
+
+  const cancelGeneratedJob = async () => {
+    if (!activeJob || !canCancelPracticePaperJob(activeJob.status)) return;
+    try {
+      const cancelled = await cancelPracticePaperJob(activeJob.id);
+      setActiveJob(cancelled);
       setWorking(false);
+    } catch (error) {
+      showThrownError(error, "Could not cancel this paper.");
     }
   };
 
@@ -544,6 +653,32 @@ export default function PracticePaperCreator() {
               onChange={setSelectedSourceIds}
             />
           )}
+          {path === "generate" ? (
+            <div className="rounded-2xl border border-dashed border-[var(--color-border-strong)] p-4">
+              <label className="text-sm font-semibold text-text-primary" htmlFor="paper-supporting-files">
+                Temporary supporting files
+              </label>
+              <p className="mt-1 text-xs leading-5 text-text-muted">
+                Optional PDFs, documents or images for this build only. They count towards the 15-source total and are removed after the job ends.
+              </p>
+              <input
+                id="paper-supporting-files"
+                className="mt-3 block w-full text-xs text-text-secondary file:mr-3 file:rounded-lg file:border-0 file:bg-accent/10 file:px-3 file:py-2 file:font-semibold file:text-accent"
+                type="file"
+                multiple
+                accept="application/pdf,image/jpeg,image/png,image/webp,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain,.pdf,.docx,.pptx,.txt"
+                disabled={working}
+                onChange={(event) => setSupportingFiles(
+                  Array.from(event.target.files ?? []).slice(0, Math.max(0, 15 - (automaticSources ? confirmedAutomaticSourceIds.length : selectedSourceIds.length)))
+                )}
+              />
+              {supportingFiles.length > 0 ? (
+                <ul className="mt-2 space-y-1 text-xs text-text-muted">
+                  {supportingFiles.map((file) => <li key={`${file.name}-${file.size}`}>{file.name}</li>)}
+                </ul>
+              ) : null}
+            </div>
+          ) : null}
         </PracticeStep>
 
         <div className="h-px bg-[var(--color-border)]" />
@@ -571,7 +706,29 @@ export default function PracticePaperCreator() {
           </div>
         </PracticeStep>
 
-        {working && progress !== null ? (
+        {activeJob && canCancelPracticePaperJob(activeJob.status) ? (
+          <div className="rounded-2xl border border-accent/25 bg-accent/8 p-4" role="status">
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-semibold text-text-primary">
+                  {PRACTICE_PAPER_JOB_STAGE_LABELS[activeJob.stage]}
+                </p>
+                <p className="mt-1 text-xs leading-5 text-text-muted">
+                  You can leave this page. The paper will appear in Practice when it is ready.
+                </p>
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                onClick={() => void cancelGeneratedJob()}
+              >
+                Cancel
+              </Button>
+            </div>
+            <ProgressBar progress={activeJob.progress} size="sm" className="mt-3" />
+          </div>
+        ) : working && progress !== null ? (
           <div>
             <div className="mb-2 flex justify-between text-xs font-medium text-text-muted">
               <span>Adding files</span>

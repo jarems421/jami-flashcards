@@ -51,6 +51,7 @@ const mocks = vi.hoisted(() => {
     verifyIdToken: vi.fn(async () => ({ uid: "user-1" })),
     checkBudget: vi.fn(),
     generateText: vi.fn(),
+    providerConfigured: true,
     db: { collection },
   };
 });
@@ -87,9 +88,15 @@ vi.mock("@/services/ai/budgets", () => ({
 }));
 
 vi.mock("@/lib/ai/gemini", () => ({
-  generateGeminiText: mocks.generateText,
   isGeminiTimeoutError: (error: unknown) =>
     error instanceof Error && error.message === "Request timed out",
+}));
+
+// The route reaches the providers through the role router, never a named
+// provider module, so the router is the seam a route test stubs.
+vi.mock("@/lib/ai/provider-router", () => ({
+  generateAiText: mocks.generateText,
+  isAnyAiProviderConfigured: () => mocks.providerConfigured,
 }));
 
 vi.mock("@/lib/app/feature-flags", () => ({
@@ -126,6 +133,7 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.flags.enableFlashcardAi = true;
+  mocks.providerConfigured = true;
   mocks.verifyIdToken.mockResolvedValue({ uid: "user-1" });
   mocks.checkBudget.mockResolvedValue({
     allowed: true,
@@ -342,6 +350,17 @@ describe("card back autocomplete", () => {
 
     const failure = records.find((record) => record.event === "provider.failed");
     expect(failure?.error).toMatchObject({ status: 503 });
-    expect(failure?.uid).toBe("user-1");
+    expect(failure?.uid).toBe("[redacted]");
+  });
+
+  it("fails closed when no compliant provider is configured", async () => {
+    mocks.providerConfigured = false;
+
+    const response = await postAutocomplete(
+      request({ front: "Solve $x^2 + 3x = 0$", deckId: "deck-1" })
+    );
+
+    expect(response.status).toBe(503);
+    expect(mocks.generateText).not.toHaveBeenCalled();
   });
 });

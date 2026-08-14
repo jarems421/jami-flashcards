@@ -174,6 +174,57 @@ export function rankPracticePaperSources(
     .slice(0, Math.max(1, Math.min(15, maximum)));
 }
 
+const AUTHORITATIVE_ASSESSMENT_SOURCE =
+  /specification|syllabus|module handbook|course handbook|assessment brief|rubric|mark scheme|markscheme|past paper|exam paper|specimen|examiner report/i;
+
+export function practicePaperNeedsWebResearch(
+  sources: readonly Pick<Source, "title" | "fileName">[]
+) {
+  return !sources.some((source) =>
+    AUTHORITATIVE_ASSESSMENT_SOURCE.test(
+      `${source.title} ${source.fileName ?? ""}`
+    )
+  );
+}
+
+export function buildPracticePaperResearchQuery(input: {
+  subject: string;
+  studyLevel: string;
+  request: string;
+}) {
+  const publicSubjectTerms = new Set([
+    "accounting", "anatomy", "art", "biology", "business", "calculus",
+    "chemistry", "computing", "computer", "design", "economics", "engineering",
+    "english", "finance", "french", "geography", "german", "history", "italian",
+    "language", "languages", "latin", "law", "literature", "mathematics", "maths",
+    "medicine", "music", "nursing", "philosophy", "physics", "politics", "psychology",
+    "religious", "science", "sociology", "spanish", "statistics", "studies",
+  ]);
+  const subject = (input.subject.toLowerCase().match(/[a-z]{3,}/g) ?? [])
+    .filter((term) => publicSubjectTerms.has(term))
+    .slice(0, 4)
+    .join(" ");
+  const studyLevel = input.studyLevel.match(
+    /\b(?:GCSE|IGCSE|A[ -]?level|AS[ -]?level|IB|BTEC|T[ -]?level|AP|undergraduate|postgraduate|university)\b/i
+  )?.[0];
+  const qualification = input.request.match(
+    /\b(?:GCSE|IGCSE|A[ -]?level|AS[ -]?level|IB|BTEC|T[ -]?level|AP)\b/i
+  )?.[0];
+  const board = input.request.match(
+    /\b(?:AQA|Pearson Edexcel|Edexcel|OCR|WJEC|Eduqas|CCEA|Cambridge International)\b/i
+  )?.[0];
+  const moduleCode = input.request.match(/\b[A-Z]{2,8}[ -]?\d{2,5}[A-Z]?\b/)?.[0];
+  const parts = [
+    subject,
+    qualification,
+    board,
+    moduleCode,
+    studyLevel,
+    "official assessment specification exam format",
+  ].filter((value): value is string => Boolean(value));
+  return Array.from(new Set(parts)).join(" ").replace(/\s+/g, " ").slice(0, 500);
+}
+
 function unwrapJson(value: string) {
   const trimmed = value
     .trim()

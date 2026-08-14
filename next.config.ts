@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withWorkflow } from "workflow/next";
 
 /**
  * Directives that cannot break resource loading, so they are safe to enforce
@@ -59,7 +60,7 @@ const SECURITY_HEADERS = [
   },
 ];
 
-const nextConfig: NextConfig = {
+export const nextConfig: NextConfig = {
   serverExternalPackages: ["mammoth", "officeparser"],
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
@@ -75,4 +76,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withWorkflow(nextConfig);

@@ -58,6 +58,8 @@ describe("redaction", () => {
     "apiKey",
     "authorization",
     "token",
+    "uid",
+    "userId",
   ])("redacts %s, whatever the call site passes", (key) => {
     const record = buildLogRecord({
       level: "info",
@@ -150,7 +152,7 @@ describe("redaction", () => {
 });
 
 describe("error fields", () => {
-  it("unpacks an Error into searchable parts", () => {
+  it("keeps a content-free error category and status", () => {
     const error = Object.assign(new Error("Gemini is overloaded"), {
       status: 503,
     });
@@ -163,10 +165,10 @@ describe("error fields", () => {
 
     expect(record.error).toMatchObject({
       name: "Error",
-      message: "Gemini is overloaded",
+      errorCategory: "upstream_failure",
       status: 503,
     });
-    expect(typeof (record.error as { stack: string }).stack).toBe("string");
+    expect(JSON.stringify(record)).not.toContain("Gemini is overloaded");
   });
 
   it("describes a thrown non-Error instead of logging [object Object]", () => {
@@ -176,10 +178,7 @@ describe("error fields", () => {
       fields: { error: { reason: "nope" } },
     });
 
-    expect(record.error).toEqual({
-      name: "NonError",
-      value: { reason: "nope" },
-    });
+    expect(record.error).toEqual({ name: "NonError", errorCategory: "unknown" });
     expect(JSON.stringify(record)).not.toContain("[object Object]");
   });
 
@@ -192,8 +191,10 @@ describe("error fields", () => {
 
     expect(record.error).toEqual({
       name: "NonError",
-      value: { front: "[redacted]", status: 500 },
+      errorCategory: "unknown",
+      status: 500,
     });
+    expect(JSON.stringify(record)).not.toContain("photosynthesis");
   });
 });
 
@@ -238,7 +239,7 @@ describe("createLogger", () => {
     expect(parseCall(vi.mocked(console.error))).toMatchObject({
       route: "ai.assistant",
       requestId: "req-1",
-      uid: "user-1",
+      uid: "[redacted]",
     });
   });
 

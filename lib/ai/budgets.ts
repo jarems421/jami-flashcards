@@ -3,6 +3,7 @@ import "server-only";
 export type AiBudgetAction =
   | "autocompleteCard"
   | "assistant"
+  | "tutorIllustration"
   | "practicePaperGeneration"
   | "practicePaperMarking"
   | "sourceFlashcardDrafts"
@@ -12,7 +13,7 @@ type AiBudgetConfig = {
   dailyRequestLimit: number;
   burstRequestLimit: number;
   burstWindowMs: number;
-  burstScope: "assistantInteractive" | "sourceDrafts";
+  burstScope: "assistantInteractive" | "tutorIllustrations" | "sourceDrafts";
   tokenCap: number;
   /**
    * Ceiling on what one request may cost to *send*, or null where the input is
@@ -40,6 +41,8 @@ export type AiBudgetGrant = {
   action: AiBudgetAction;
   dayKey: string;
   burstWindowStartedAt: number;
+  /** False for durable jobs intentionally excluded from short-window limits. */
+  burstCharged?: boolean;
 };
 
 export type AiBudgetDecision =
@@ -83,6 +86,16 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     // Comfortably above a full set of chosen sources and well below the model's
     // window, so it only ever catches a request that is genuinely outsized.
     inputTokenCap: 250_000,
+  },
+  tutorIllustration: {
+    dailyRequestLimit: 10,
+    burstRequestLimit: 3,
+    burstWindowMs: 60_000,
+    burstScope: "tutorIllustrations",
+    // The image model can also return a short caption/alt-text payload. Image
+    // bytes are billed separately by Gemini and are limited by the route.
+    tokenCap: 1_024,
+    inputTokenCap: null,
   },
   practicePaperGeneration: {
     dailyRequestLimit: 6,

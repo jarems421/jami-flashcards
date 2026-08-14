@@ -166,4 +166,29 @@ describe("Storage security rules", () => {
 
     await assertFails(uploadBytes(fileRef, blob("application/javascript")));
   });
+
+  it("lets only the owner read server-created assistant and paper images", async () => {
+    const assistantPath =
+      "users/alice/assistantImages/asset-1/illustration.webp";
+    const paperPath =
+      "users/alice/generatedPaperAssets/paper-1/asset-2";
+
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await uploadBytes(ref(context.storage(), assistantPath), blob("image/webp"));
+      await uploadBytes(ref(context.storage(), paperPath), blob("image/png"));
+    });
+
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    const guestStorage = testEnv.unauthenticatedContext().storage();
+
+    await assertSucceeds(getBytes(ref(aliceStorage, assistantPath)));
+    await assertSucceeds(getBytes(ref(aliceStorage, paperPath)));
+    await assertFails(getBytes(ref(bobStorage, assistantPath)));
+    await assertFails(getBytes(ref(guestStorage, paperPath)));
+    await assertFails(
+      uploadBytes(ref(aliceStorage, assistantPath), blob("image/webp"))
+    );
+    await assertFails(deleteObject(ref(aliceStorage, paperPath)));
+  });
 });

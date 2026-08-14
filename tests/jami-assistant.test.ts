@@ -1,13 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   buildJamiAssistantReferenceParts,
+  extractTutorResearchUrls,
   formatJamiAssistantUsedContext,
   getJamiAssistantResponseGuidance,
+  getTutorRoutingSignals,
+  isRoutineNotebookMarkMyWork,
   JAMI_ASSISTANT_MAX_HISTORY_MESSAGES,
   normalizeJamiAssistantHistory,
   stripJamiAssistantReferenceMarkers,
   parseJamiAssistantModelAnswer,
   parseJamiAssistantRequest,
+  parseTutorRoutingPreflight,
+  sanitizeTutorResearchQuery,
+  shouldOfferTutorIllustration,
+  shouldRunTutorRoutingPreflight,
 } from "@/lib/ai/jami-assistant";
 import {
   rankJamiAssistantSources,
@@ -148,6 +155,7 @@ describe("Jami assistant model and receipt contract", () => {
       sourceRefs: ["S1"],
       usedCurrentContext: true,
       usedGeneralKnowledge: true,
+      usedWebResearch: false,
     });
     expect(
       parseJamiAssistantModelAnswer(
@@ -180,6 +188,114 @@ describe("Jami assistant model and receipt contract", () => {
         { kind: "general-knowledge", label: "general knowledge" },
       ])
     ).toBe("Used: Current page, Respiration.pdf and general knowledge");
+  });
+});
+
+describe("Jami automatic routing and privacy helpers", () => {
+  it("uses a hidden preflight only for ambiguous worker requests", () => {
+    expect(
+      shouldRunTutorRoutingPreflight({
+        message: "What is mitosis?",
+        routeRole: "worker",
+        routineNotebookMarking: false,
+      })
+    ).toBe(false);
+    expect(
+      shouldRunTutorRoutingPreflight({
+        message: "Can you help me decide the best way to approach this?",
+        routeRole: "worker",
+        routineNotebookMarking: false,
+      })
+    ).toBe(true);
+    expect(
+      parseTutorRoutingPreflight(
+        '{"role":"supervisor","confidence":"low","insufficientReasoning":true}'
+      )
+    ).toEqual({
+      role: "supervisor",
+      confidence: "low",
+      insufficientReasoning: true,
+    });
+  });
+
+  it("only activates the juror for a consecutive re-challenge", () => {
+    expect(
+      getTutorRoutingSignals({
+        message: "That is still wrong, check again.",
+        history: [
+          { role: "user", text: "That is wrong, check again." },
+          { role: "model", text: "I checked it again and corrected the sign." },
+        ],
+      }).repeatedSupervisorChallenge
+    ).toBe(true);
+    expect(
+      getTutorRoutingSignals({
+        message: "That is wrong.",
+        history: [
+          { role: "user", text: "You were wrong about a different topic." },
+          { role: "model", text: "Thanks." },
+          { role: "user", text: "Now explain respiration." },
+          { role: "model", text: "Respiration releases energy." },
+        ],
+      }).repeatedSupervisorChallenge
+    ).toBe(false);
+  });
+
+  it("keeps routine typed feedback cheap but escalates visual or formal marking", () => {
+    const typedContext = {
+      surface: "notebook" as const,
+      notebookId: "notebook-1",
+      pageId: "page-1",
+      typedText: "x = 4",
+      hasInk: false,
+      imageCount: 0,
+    };
+    expect(
+      isRoutineNotebookMarkMyWork({
+        message: "Mark my work and give indicative feedback.",
+        context: typedContext,
+      })
+    ).toBe(true);
+    expect(
+      isRoutineNotebookMarkMyWork({
+        message: "Mark my work.",
+        context: { ...typedContext, hasInk: true },
+      })
+    ).toBe(false);
+    expect(
+      isRoutineNotebookMarkMyWork({
+        message: "Award a formal grade using the mark scheme.",
+        context: typedContext,
+      })
+    ).toBe(false);
+  });
+
+  it("builds public research queries from bounded academic terms only", () => {
+    const query = sanitizeTutorResearchQuery(
+      'Search the latest AQA GCSE Biology specification for Alice Johnson. My answer is "my school is Northbridge Academy" and email me@example.com.'
+    );
+    expect(query).toBe("official latest aqa gcse biology specification");
+    expect(query).not.toMatch(/alice|johnson|northbridge|academy|example/i);
+    expect(
+      sanitizeTutorResearchQuery(
+        "Look online at my notebook: Jamie calculated a secret medication dose"
+      )
+    ).toBeNull();
+    expect(
+      extractTutorResearchUrls(
+        "Read https://www.aqa.org.uk/spec.pdf?student=Alice#answer and http://127.0.0.1/private"
+      )
+    ).toEqual(["https://www.aqa.org.uk/spec.pdf"]);
+  });
+
+  it("never offers a visual before a flashcard answer is revealed", () => {
+    expect(
+      shouldOfferTutorIllustration({
+        message: "Draw this process",
+        answer: "The withheld answer.",
+        context: { surface: "learn", cardId: "card-1", phase: "question" },
+      })
+    ).toBe(false);
   });
 });
 

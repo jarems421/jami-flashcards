@@ -46,5 +46,18 @@ service firebase.storage {
       allow create, update: if isSelf(userId) && !isDemoAccount() && isAllowedSourceFile();
       allow delete: if isSelf(userId) && !isDemoAccount();
     }
+
+    // AI-created images are written and deleted only by server routes using
+    // Firebase Admin. The owner may view the private object after the route
+    // has returned its storage path.
+    match /users/{userId}/assistantImages/{assetId}/{fileName} {
+      allow read: if isSelf(userId);
+      allow write: if false;
+    }
+
+    match /users/{userId}/generatedPaperAssets/{paperId}/{assetId} {
+      allow read: if isSelf(userId);
+      allow write: if false;
+    }
   }
 }

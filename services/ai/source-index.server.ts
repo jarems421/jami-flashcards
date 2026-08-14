@@ -4,7 +4,9 @@ import { FieldValue } from "firebase-admin/firestore";
 import {
   createGeminiEmbedding,
   createGeminiEmbeddings,
+  getConfiguredGeminiEmbeddingApiKey,
 } from "@/lib/ai/gemini-embeddings";
+import { resolveAiProviderPolicy } from "@/lib/ai/provider-policy";
 import {
   buildEmbeddingDocumentText,
   buildEmbeddingQueryText,
@@ -86,8 +88,10 @@ export function deleteAccountSourceIndex(uid: string) {
 }
 
 export async function rebuildSourceIndex(uid: string, sourceId: string) {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
-  if (!apiKey) throw new Error("Gemini embeddings are not configured.");
+  const apiKey = getConfiguredGeminiEmbeddingApiKey(process.env);
+  if (!apiKey || !resolveAiProviderPolicy(process.env).geminiReady) {
+    throw new Error("Gemini embeddings are not configured.");
+  }
   const userRef = getAdminDb().collection("users").doc(uid);
   const sourceRef = userRef.collection("sources").doc(sourceId);
   const snapshot = await sourceRef.get();
@@ -221,9 +225,14 @@ export async function retrieveSourceChunks(input: {
   limit?: number;
   includeNeighbors?: boolean;
 }) {
-  const apiKey = process.env.GEMINI_API_KEY?.trim();
+  const apiKey = getConfiguredGeminiEmbeddingApiKey(process.env);
   const sourceIds = Array.from(new Set(input.sourceIds.map((id) => id.trim()).filter(Boolean))).slice(0, 15);
-  if (!apiKey || sourceIds.length === 0 || !input.query.trim()) return [];
+  if (
+    !apiKey ||
+    !resolveAiProviderPolicy(process.env).geminiReady ||
+    sourceIds.length === 0 ||
+    !input.query.trim()
+  ) return [];
   const queryVector = await createGeminiEmbedding({
     apiKey,
     parts: [{ text: buildEmbeddingQueryText(input.query) }],

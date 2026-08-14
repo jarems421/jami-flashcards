@@ -85,6 +85,24 @@ describe("Jami assistant history", () => {
           { label: "Show steps", prompt: "Show me the steps." },
           { label: "", prompt: "Ignore this." },
         ],
+        citations: [
+          { title: "Official specification", url: "https://example.edu/spec" },
+          { title: "Unsafe", url: "javascript:alert(1)" },
+        ],
+        illustrations: [
+          {
+            id: "visual-1",
+            storagePath:
+              "users/user-1/assistantImages/visual-1/illustration.webp",
+            mimeType: "image/webp",
+            width: 1024,
+            height: 768,
+            altText: "A labelled diagram",
+            caption: "Labelled diagram",
+            createdAt: 9,
+          },
+        ],
+        canIllustrate: true,
         createdAt: 10,
       })
     ).toMatchObject({
@@ -93,6 +111,13 @@ describe("Jami assistant history", () => {
       role: "assistant",
       used: [{ kind: "source", label: "Lecture notes", id: "source-1" }],
       followUps: [{ label: "Show steps", prompt: "Show me the steps." }],
+      citations: [
+        { title: "Official specification", url: "https://example.edu/spec" },
+      ],
+      illustrations: [
+        expect.objectContaining({ id: "visual-1", mimeType: "image/webp" }),
+      ],
+      canIllustrate: true,
       createdAt: 10,
     });
   });

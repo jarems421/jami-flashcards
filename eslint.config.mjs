@@ -6,7 +6,7 @@ import nextTs from "eslint-config-next/typescript";
  * services describe model input with `@/lib/ai/content-parts` instead, so
  * adding or changing a provider stays inside `lib/ai/gemini.ts`. */
 const AI_SDK_RESTRICTION = {
-  name: "@google/generative-ai",
+  name: "@google/genai",
   message:
     "Import the provider SDK only from lib/ai/gemini.ts; use @/lib/ai/content-parts for model input shapes.",
 };

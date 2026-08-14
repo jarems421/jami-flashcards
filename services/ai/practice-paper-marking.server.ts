@@ -6,13 +6,14 @@ import {
   generateAiText,
   type AiResponseDiagnostics,
 } from "@/lib/ai/provider-router";
+import type { AiGenerationRole } from "@/lib/ai/provider-policy";
 import type {
   PracticePaper,
   PracticePaperMarkingAudit,
   PracticePaperResult,
 } from "@/lib/practice/practice-papers";
 
-type MarkingInput = {
+export type PracticePaperMarkingInput = {
   paper: PracticePaper;
   answerParts: AiContentPart[];
   thirdViewParts?: AiContentPart[];
@@ -83,9 +84,9 @@ Return JSON only:
 Return exactly one result for every question ID. Mark every optional answer; the app applies the fixed choice-group rule deterministically. Never invent unreadable work.`;
 }
 
-async function callMarker(input: MarkingInput & {
+async function callMarker(input: PracticePaperMarkingInput & {
   role: "primary" | "verifier" | "adjudicator" | "third-view";
-  forceModel?: "deepseek-v4-pro" | "deepseek-v4-flash" | "gemini-2.5-flash";
+  modelRole: AiGenerationRole;
   extraPrompt?: string;
 }) {
   const diagnostics: AiResponseDiagnostics[] = [];
@@ -103,9 +104,9 @@ async function callMarker(input: MarkingInput & {
       ],
     }],
   };
-  const call = (forceModel?: typeof input.forceModel) => generateAiText({
+  const call = () => generateAiText({
+    role: input.modelRole,
     taskClass: input.role === "verifier" ? "standard" : "important",
-    forceModel,
     timeoutMs: 60_000,
     deadlineAt: input.deadlineAt,
     signal: input.signal,
@@ -117,30 +118,18 @@ async function callMarker(input: MarkingInput & {
     },
     request,
     onResponse: (value) => diagnostics.push(value),
-    onRetry: (value) => input.logFallback?.({ role: input.role, ...value }),
+    onRetry: (value) => input.logFallback?.({ ...value, markerRole: input.role }),
   });
 
-  let generated: string;
-  try {
-    generated = await call(input.forceModel);
-  } catch (error) {
-    // A forced specialist may be gated or temporarily unavailable. The normal
-    // task ladder preserves availability while retaining the audit record.
-    input.logFallback?.({ role: input.role, forceModel: input.forceModel, error });
-    generated = await call();
-  }
+  let generated = await call();
   let result = parsePracticePaperMarkingModelAnswer(generated, input.paper);
   if (!result) {
     input.logFallback?.({
       role: input.role,
-      forceModel: input.forceModel,
+      modelRole: input.modelRole,
       error: "invalid_structured_marking_report",
     });
-    try {
-      generated = await call(input.forceModel);
-    } catch {
-      generated = await call();
-    }
+    generated = await call();
     result = parsePracticePaperMarkingModelAnswer(generated, input.paper);
   }
   if (!result) throw new Error(`${input.role} marker returned an invalid report.`);
@@ -179,22 +168,24 @@ export function comparePracticePaperMarkings(
   });
 }
 
-export async function markPracticePaperWithAudit(input: MarkingInput): Promise<{
+export async function markPracticePaperWithAudit(input: PracticePaperMarkingInput): Promise<{
   result: PracticePaperResult;
   audit: PracticePaperMarkingAudit;
 }> {
-  const primary = await callMarker({
-    ...input,
-    role: "primary",
-    forceModel: "deepseek-v4-pro",
-  });
-  // The verifier sees the paper, rubric and answers, but never the primary
-  // marker's scores. This makes agreement meaningful instead of suggestive.
-  const verifier = await callMarker({
-    ...input,
-    role: "verifier",
-    forceModel: "deepseek-v4-flash",
-  });
+  // Blind markers run concurrently. The verifier sees the paper, rubric and
+  // original answers, but never the primary marker's scores.
+  const [primary, verifier] = await Promise.all([
+    callMarker({
+      ...input,
+      role: "primary",
+      modelRole: "supervisor",
+    }),
+    callMarker({
+      ...input,
+      role: "verifier",
+      modelRole: "worker",
+    }),
+  ]);
   const disputedQuestionIds = comparePracticePaperMarkings(
     primary.result,
     verifier.result
@@ -207,7 +198,7 @@ export async function markPracticePaperWithAudit(input: MarkingInput): Promise<{
     const adjudication = await callMarker({
       ...input,
       role: "adjudicator",
-      forceModel: "deepseek-v4-pro",
+      modelRole: "supervisor",
       extraPrompt: `Resolve only these disputed questions: ${disputedQuestionIds.join(", ")}.
 Primary report: ${JSON.stringify(primary.result.questionResults.filter((item) => disputedQuestionIds.includes(item.questionId)))}
 Independent verifier report: ${JSON.stringify(verifier.result.questionResults.filter((item) => disputedQuestionIds.includes(item.questionId)))}
@@ -218,23 +209,57 @@ Return the complete final report for every question, preserving agreed questions
     thirdViewQuestionIds = result.questionResults
       .filter((question) =>
         disputedQuestionIds.includes(question.questionId) &&
-        question.confidence === "low" &&
-        Boolean(question.transcriptionNote)
+        (question.confidence === "low" || Boolean(question.transcriptionNote))
       )
       .map((question) => question.questionId);
   }
 
   if (thirdViewQuestionIds.length > 0) {
+    const unresolved = new Set(thirdViewQuestionIds);
+    const filteredThirdViewParts = filterReferencePartsForQuestions(
+      input.thirdViewParts ?? input.answerParts,
+      unresolved
+    );
+    const jurorPaper: PracticePaper = {
+      ...input.paper,
+      questions: input.paper.questions.filter((question) => unresolved.has(question.id)),
+      choiceGroups: [],
+      totalMarks: input.paper.questions
+        .filter((question) => unresolved.has(question.id))
+        .reduce((total, question) => total + question.marks, 0),
+      markScheme: {
+        ...input.paper.markScheme,
+        items: input.paper.markScheme.items.filter((item) =>
+          unresolved.has(item.questionId)
+        ),
+      },
+      gradeGuidance: {
+        kind: "none",
+        label: "Question-only independent view",
+        notice: "",
+        boundaries: [],
+      },
+    };
     const third = await callMarker({
       ...input,
+      paper: jurorPaper,
+      answerParts: filteredThirdViewParts,
+      thirdViewParts: filteredThirdViewParts,
+      originalPaperParts: undefined,
       role: "third-view",
-      forceModel: "gemini-2.5-flash",
-      extraPrompt: `Give an independent visual reading and mark only these unresolved questions: ${thirdViewQuestionIds.join(", ")}. Return a complete report shape.`,
+      modelRole: "juror",
+      extraPrompt: `Give an independent visual reading and mark only these unresolved questions: ${thirdViewQuestionIds.join(", ")}.
+Dispute summary: ${JSON.stringify(thirdViewQuestionIds.map((questionId) => ({
+  questionId,
+  primary: primary.result.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
+  verifier: verifier.result.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
+  adjudicated: result.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
+})))}. Return a complete report shape for these questions only.`,
     });
     const final = await callMarker({
       ...input,
       role: "adjudicator",
-      forceModel: "deepseek-v4-pro",
+      modelRole: "supervisor",
       extraPrompt: `Produce the final complete report. Give special attention to ${thirdViewQuestionIds.join(", ")}.
 Previous adjudication: ${JSON.stringify(result.questionResults)}
 Independent visual third view: ${JSON.stringify(third.result.questionResults.filter((item) => thirdViewQuestionIds.includes(item.questionId)))}`,
@@ -246,10 +271,6 @@ Independent visual third view: ${JSON.stringify(third.result.questionResults.fil
     result,
     audit: {
       version: 1,
-      primaryProvider:
-        primary.diagnostics.at(-1)?.modelName ?? "primary-fallback",
-      verifierProvider:
-        verifier.diagnostics.at(-1)?.modelName ?? "verifier-fallback",
       primaryScores: scoreMap(primary.result),
       verifierScores: scoreMap(verifier.result),
       disputedQuestionIds,
@@ -258,4 +279,22 @@ Independent visual third view: ${JSON.stringify(third.result.questionResults.fil
       createdAt: Date.now(),
     },
   };
+}
+
+function filterReferencePartsForQuestions(
+  parts: readonly AiContentPart[],
+  questionIds: ReadonlySet<string>
+) {
+  const selected: AiContentPart[] = [];
+  let include = false;
+  for (const part of parts) {
+    if ("text" in part && part.text.startsWith("--- BEGIN UNTRUSTED REFERENCE")) {
+      include = [...questionIds].some((questionId) => part.text.includes(questionId));
+    }
+    if (include) selected.push(part);
+    if ("text" in part && part.text.startsWith("--- END UNTRUSTED REFERENCE")) {
+      include = false;
+    }
+  }
+  return selected;
 }

@@ -61,16 +61,18 @@ These stay indefinitely, so existing links and bookmarks do not break:
 
 ## AI
 
-Google Gemini is the only model provider, reached exclusively through server-side
-Route Handlers under `app/api/ai/`. Three features use it: the Jami assistant,
-card-back autocomplete, and drafting study material from a source.
+Jami uses a server-side role router rather than exposing model choices to
+students. OpenRouter supplies the routine worker, difficult-task supervisor,
+and rare independent juror. Gemini remains the specialist for grounded web
+research, document vision, illustrations, and the existing embedding index.
+Long-running full-paper creation is orchestrated by Vercel Workflow.
 
 The design constraints are deliberate and enforced in code:
 
-- **Nothing is read that was not handed over.** The assistant reads up to five
-  sources the student selects for that request (`JAMI_ASSISTANT_MAX_SOURCE_IDS`).
-  There is no background indexing, no persistent extraction, and no retention of
-  source text between conversations.
+- **Context is relevant and bounded.** The assistant ranks passages from up to
+  fifteen sources in the current folder when source context is enabled. The
+  current page remains authoritative; source files are processed on demand and
+  are never treated as instructions.
 - **Nothing generated joins your studying unreviewed.** Drafted cards and questions
   land in a queue on the Tutor page and become study material only when accepted.
 - **Per-user budgets.** Daily and short-window request limits are counted in
@@ -78,8 +80,12 @@ The design constraints are deliberate and enforced in code:
   or is cancelled before producing anything.
 - **Untrusted content is fenced.** Source text is enclosed in per-request random
   boundary tokens so it cannot be read as instructions.
-- Requests carry a deadline and are cancelled when the client disconnects. Models
-  fall back down a ladder (`gemini-2.5-flash` → `gemini-2.5-flash-lite`).
+- **Provider privacy fails closed.** OpenRouter calls require ZDR, deny data
+  collection, and use explicit model/provider allowlists. A missing approved
+  endpoint is an error, not permission to use an unknown fallback.
+- Requests carry deadlines and are cancelled when the client disconnects.
+  Routine requests may escalate before any output is streamed; high-stakes paper
+  stages retry durably without silently downgrading quality.
 
 ## Technology
 
@@ -94,7 +100,7 @@ The design constraints are deliberate and enforced in code:
 | Rich text and maths | `react-markdown`, `remark-gfm`, `remark-math`, `rehype-katex`, KaTeX |
 | Charts | `recharts` |
 | Notifications | Web Push (`web-push`), sent by Vercel Cron |
-| AI | Google Gemini via `@google/generative-ai` |
+| AI | OpenRouter role routing, Google GenAI specialists, Vercel Workflow |
 | Testing | Vitest, Playwright, Firebase Rules Unit Testing |
 
 ## Repository layout
@@ -125,7 +131,7 @@ UI work must follow.
 - Node.js 22.13 or newer, and npm
 - A Firebase project with Authentication, Firestore, and Storage
 - Java 21, to run the Firebase emulators for rules and browser tests
-- A Gemini API key, only to exercise the AI endpoints
+- OpenRouter and paid-tier Gemini API keys, only to exercise AI endpoints
 
 ### Setup
 

@@ -39,7 +39,9 @@ const SKIP = new Set(["node_modules", ".next", "dist", "build"]);
  * turns one way from here.
  */
 const EXCEPTIONS = new Map([
-  ["app/dashboard/notebooks/[notebookId]/page.tsx", 3007],
+  // Lowered on 2026-08-14: the assistant-context builder moved out to
+  // hooks/useNotebookAssistantContext when the multi-model work pushed it over.
+  ["app/dashboard/notebooks/[notebookId]/page.tsx", 2967],
   ["app/dashboard/study/page.tsx", 2192],
 ]);
 

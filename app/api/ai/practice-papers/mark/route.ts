@@ -9,7 +9,10 @@ import {
 } from "@/lib/ai/provider-router";
 import { getBearerToken } from "@/lib/auth/bearer";
 import { createLogger } from "@/lib/observability/logger";
-import { mapPracticePaperData } from "@/lib/practice/practice-papers";
+import {
+  mapPracticePaperData,
+  toPublicPracticePaperMarkScheme,
+} from "@/lib/practice/practice-papers";
 import {
   mapNotebookPageData,
   normalizeNotebookInkData,
@@ -23,8 +26,10 @@ import {
 import {
   getAdminAuth,
   getAdminDb,
+  getAdminStorageBucket,
 } from "@/services/firebase/admin";
 import { markPracticePaperWithAudit } from "@/services/ai/practice-paper-marking.server";
+import { loadPracticePaperWithSecret } from "@/services/ai/practice-paper-secrets.server";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -64,6 +69,34 @@ async function inkSvgToPng(svg: string) {
   }
 }
 
+async function loadNotebookImageParts(
+  uid: string,
+  imageRefs: readonly { storagePath?: string; altText?: string }[]
+): Promise<AiContentPart[]> {
+  const prefix = `users/${uid}/`;
+  const bucket = getAdminStorageBucket();
+  const images = await Promise.all(imageRefs.slice(0, 6).map(async (image) => {
+    const storagePath = image.storagePath?.trim() ?? "";
+    if (!storagePath.startsWith(prefix)) return null;
+    try {
+      const [bytes] = await bucket.file(storagePath).download();
+      if (bytes.length === 0 || bytes.length > 15 * 1024 * 1024) return null;
+      const png = await sharp(bytes)
+        .resize({ width: 1_200, height: 1_600, fit: "inside", withoutEnlargement: true })
+        .flatten({ background: "#ffffff" })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+      return [
+        { text: `Student-inserted image${image.altText ? `: ${image.altText}` : ""}.` },
+        { inlineData: { mimeType: "image/png", data: png.toString("base64") } },
+      ] satisfies AiContentPart[];
+    } catch {
+      return null;
+    }
+  }));
+  return images.flatMap((parts) => parts ?? []);
+}
+
 async function transcribeVisualAnswerParts(input: {
   parts: AiContentPart[];
   signal: AbortSignal;
@@ -72,8 +105,8 @@ async function transcribeVisualAnswerParts(input: {
 }) {
   if (!input.parts.some((part) => "inlineData" in part)) return input.parts;
   const generated = await generateAiText({
+    role: "documentVision",
     taskClass: "visual",
-    forceModel: "gemini-2.5-flash",
     timeoutMs: 60_000,
     deadlineAt: input.deadlineAt,
     signal: input.signal,
@@ -133,13 +166,24 @@ export async function POST(request: NextRequest) {
       .collection("notebookPages")
       .where("notebookId", "==", notebookId)
       .orderBy("pageNumber", "asc")
-      .limit(MAX_MARKING_PAGES)
+      .limit(MAX_MARKING_PAGES + 1)
       .get(),
   ]);
   if (!paperSnapshot.exists || !notebookSnapshot.exists) {
     return responseError("Practice paper not found", 404, "paper_not_found");
   }
-  const paper = mapPracticePaperData(notebookId, paperSnapshot.data() ?? {});
+  if (pageSnapshots.size > MAX_MARKING_PAGES) {
+    return responseError(
+      `This paper has more than ${MAX_MARKING_PAGES} pages and cannot be marked safely in one pass.`,
+      413,
+      "paper_too_large"
+    );
+  }
+  const paper = await loadPracticePaperWithSecret({
+    uid,
+    paperId: notebookId,
+    paperData: paperSnapshot.data() ?? {},
+  });
   if (paper.status !== "submitted") {
     return responseError(
       "Submit the paper before asking Jami to mark it.",
@@ -192,6 +236,7 @@ export async function POST(request: NextRequest) {
         .join("\n")
         .slice(0, 20_000);
       const questionId = page.linkedQuestionId || `page-${page.pageNumber}`;
+      const imageParts = await loadNotebookImageParts(uid, page.imageRefs);
       answerParts.push(
         ...buildJamiAssistantReferenceParts({
           reference: `A${index + 1}`,
@@ -201,7 +246,7 @@ export async function POST(request: NextRequest) {
             {
               text: `Question link: ${questionId}\nTyped answer: ${
                 answerText || "(none)"
-              }\n${png ? "A handwriting image follows." : "No readable handwriting image was available."}`,
+              }\n${png ? "A handwriting image follows." : "No readable handwriting image was available."}${imageParts.length > 0 ? " Student-inserted evidence images follow." : ""}`,
             },
             ...(png
               ? [{
@@ -211,6 +256,7 @@ export async function POST(request: NextRequest) {
                   },
                 }]
               : []),
+            ...imageParts,
           ],
         })
       );
@@ -225,7 +271,9 @@ export async function POST(request: NextRequest) {
     });
     const completeMarking = await markPracticePaperWithAudit({
       paper,
-      answerParts: textAnswerParts,
+      // Both blind markers receive the original answer images. The independent
+      // transcription is supplemental evidence, never a replacement for them.
+      answerParts: [...answerParts, ...textAnswerParts],
       thirdViewParts: answerParts,
       signal: request.signal,
       deadlineAt,
@@ -267,6 +315,7 @@ export async function POST(request: NextRequest) {
             .join("\n")
             .slice(0, 20_000);
           const questionId = page.linkedQuestionId || `page-${page.pageNumber}`;
+          const imageParts = await loadNotebookImageParts(uid, page.imageRefs);
           deadlineParts.push(...buildJamiAssistantReferenceParts({
             reference: `T${index + 1}`,
             boundaryToken: randomUUID(),
@@ -274,6 +323,7 @@ export async function POST(request: NextRequest) {
             parts: [
               { text: `Question link: ${questionId}\nTyped answer: ${answerText || "(none)"}` },
               ...(png ? [{ inlineData: { mimeType: "image/png", data: png.toString("base64") } }] : []),
+              ...imageParts,
             ],
           }));
         }
@@ -285,7 +335,7 @@ export async function POST(request: NextRequest) {
         });
         const withinTimeMarking = await markPracticePaperWithAudit({
           paper,
-          answerParts: deadlineTextParts,
+          answerParts: [...deadlineParts, ...deadlineTextParts],
           thirdViewParts: deadlineParts,
           signal: request.signal,
           deadlineAt,
@@ -334,6 +384,7 @@ export async function POST(request: NextRequest) {
     await batch.commit();
     const markedPaper = mapPracticePaperData(notebookId, {
       ...paperSnapshot.data(),
+      markScheme: toPublicPracticePaperMarkScheme(paper.markScheme),
       status: "marked",
       result,
       withinTimeResult: withinTimeResult ?? null,

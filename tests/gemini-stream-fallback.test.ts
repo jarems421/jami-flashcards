@@ -1,11 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const generateContentStream = vi.fn();
-const getGenerativeModel = vi.fn(() => ({ generateContentStream }));
 
-vi.mock("@google/generative-ai", () => ({
-  GoogleGenerativeAI: class {
-    getGenerativeModel = getGenerativeModel;
+vi.mock("@google/genai", () => ({
+  GoogleGenAI: class {
+    models = { generateContentStream };
   },
 }));
 
@@ -15,12 +14,11 @@ const { streamGeminiText } = await import("@/lib/ai/gemini");
 
 /** A provider result that yields the given chunks and then finishes. */
 function streamOf(chunks: string[]) {
-  return {
-    stream: (async function* () {
-      for (const text of chunks) yield { text: () => text };
-    })(),
-    response: Promise.resolve({ candidates: [{ finishReason: "STOP" }] }),
-  };
+  return (async function* () {
+    for (const text of chunks) {
+      yield { text, candidates: [{ finishReason: "STOP" }] };
+    }
+  })();
 }
 
 function overloaded() {
@@ -42,7 +40,6 @@ const baseInput = {
 describe("streamGeminiText model fallback", () => {
   beforeEach(() => {
     generateContentStream.mockReset();
-    getGenerativeModel.mockClear();
   });
 
   it("falls back to the next model when the first is overloaded", async () => {
@@ -60,11 +57,11 @@ describe("streamGeminiText model fallback", () => {
     );
 
     expect(chunks.join("")).toBe("Hello world");
-    expect(getGenerativeModel).toHaveBeenNthCalledWith(
+    expect(generateContentStream).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({ model: "gemini-2.5-flash-lite" })
     );
-    expect(getGenerativeModel).toHaveBeenNthCalledWith(
+    expect(generateContentStream).toHaveBeenNthCalledWith(
       2,
       expect.objectContaining({ model: "gemini-2.5-flash" })
     );
@@ -77,13 +74,12 @@ describe("streamGeminiText model fallback", () => {
   });
 
   it("does not fall back once text has reached the student", async () => {
-    generateContentStream.mockReturnValueOnce({
-      stream: (async function* () {
-        yield { text: () => "Partial answer" };
+    generateContentStream.mockReturnValueOnce(
+      (async function* () {
+        yield { text: "Partial answer" };
         throw overloaded();
-      })(),
-      response: Promise.resolve({ candidates: [] }),
-    });
+      })()
+    );
 
     const received: string[] = [];
     await expect(
@@ -98,7 +94,7 @@ describe("streamGeminiText model fallback", () => {
     ).rejects.toThrow(/overloaded/);
 
     expect(received).toEqual(["Partial answer"]);
-    expect(getGenerativeModel).toHaveBeenCalledTimes(1);
+    expect(generateContentStream).toHaveBeenCalledTimes(1);
   });
 
   it("gives up when every model fails", async () => {
@@ -114,7 +110,7 @@ describe("streamGeminiText model fallback", () => {
         })
       )
     ).rejects.toThrow(/overloaded/);
-    expect(getGenerativeModel).toHaveBeenCalledTimes(2);
+    expect(generateContentStream).toHaveBeenCalledTimes(2);
   });
 
   it("does not retry an error the fallback cannot help with", async () => {
@@ -130,6 +126,6 @@ describe("streamGeminiText model fallback", () => {
         })
       )
     ).rejects.toThrow(/bad request/);
-    expect(getGenerativeModel).toHaveBeenCalledTimes(1);
+    expect(generateContentStream).toHaveBeenCalledTimes(1);
   });
 });

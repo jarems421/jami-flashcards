@@ -41,6 +41,14 @@ export type RenderNotebookPageSnapshotInput = {
   inkSvg: string;
   textBlocks: readonly NotebookTextBlock[];
   background?: NotebookPageSnapshotBackground | null;
+  overlayImages?: readonly {
+    bytes: Uint8Array;
+    mimeType: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }[];
   /** Intended for request-size enforcement and focused tests. */
   maxEncodedBytes?: number;
 };
@@ -523,6 +531,24 @@ async function decodeInk(inkSvg: string) {
   );
 }
 
+async function decodeOverlayImages(
+  images: RenderNotebookPageSnapshotInput["overlayImages"]
+) {
+  return Promise.all(
+    (images ?? []).map(async (image) => ({
+      source: await decodeBackground({
+        kind: "image-bytes",
+        bytes: image.bytes,
+        mimeType: image.mimeType,
+      }),
+      x: image.x,
+      y: image.y,
+      width: image.width,
+      height: image.height,
+    }))
+  );
+}
+
 function makeSnapshotCanvas(scale: number) {
   if (typeof document === "undefined") {
     throw new NotebookPageSnapshotError(
@@ -539,6 +565,13 @@ function makeSnapshotCanvas(scale: number) {
 async function renderAtScale(input: {
   background: DecodedCanvasSource | null;
   ink: DecodedCanvasSource | null;
+  overlayImages: Array<{
+    source: DecodedCanvasSource | null;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }>;
   pageColor: NotebookPageColor;
   pageStyle: NotebookPageStyle;
   scale: number;
@@ -562,6 +595,16 @@ async function renderAtScale(input: {
       }
       drawContainedSource(context, input.background);
     }
+    for (const image of input.overlayImages) {
+      if (!image.source || image.width <= 0 || image.height <= 0) continue;
+      context.drawImage(
+        image.source.source,
+        image.x,
+        image.y,
+        image.width,
+        image.height
+      );
+    }
     if (input.ink) drawContainedSource(context, input.ink);
     drawTextBlocks(context, input.textBlocks, input.pageColor);
     const encoded = await encodeCanvas(canvas);
@@ -584,9 +627,10 @@ export async function renderNotebookPageSnapshot(
     Number.isFinite(input.maxEncodedBytes) && (input.maxEncodedBytes ?? 0) > 0
       ? Math.max(1, Math.floor(input.maxEncodedBytes!))
       : NOTEBOOK_PAGE_SNAPSHOT_MAX_ENCODED_BYTES;
-  const [background, ink] = await Promise.all([
+  const [background, ink, overlayImages] = await Promise.all([
     decodeBackground(input.background),
     decodeInk(input.inkSvg),
+    decodeOverlayImages(input.overlayImages),
   ]);
   const typedText = getNotebookSnapshotTypedText(input.textBlocks);
 
@@ -598,6 +642,7 @@ export async function renderNotebookPageSnapshot(
       const rendered = await renderAtScale({
         background,
         ink,
+        overlayImages,
         pageColor: input.pageColor,
         pageStyle: input.pageStyle,
         scale,
@@ -615,6 +660,7 @@ export async function renderNotebookPageSnapshot(
   } finally {
     background?.release();
     ink?.release();
+    overlayImages.forEach((image) => image.source?.release());
   }
 
   throw new NotebookPageSnapshotError(

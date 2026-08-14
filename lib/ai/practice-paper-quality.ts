@@ -1,4 +1,5 @@
 import type { ParsedPracticePaperModelAnswer } from "@/lib/ai/practice-paper-generation";
+import { calculatePracticePaperTotalMarks } from "@/lib/practice/practice-papers";
 
 export type PracticePaperQualityIssue = {
   code: string;
@@ -11,12 +12,61 @@ export function isCompletePracticePaperCandidate(
   paper: ParsedPracticePaperModelAnswer
 ) {
   if (paper.status !== "ready") return false;
-  return (
-    paper.durationMinutes >= 30 &&
-    paper.totalMarks >= 20 &&
-    paper.questions.length >= 1 &&
-    paper.markScheme.items.length === paper.questions.length
+  if (
+    paper.durationMinutes < 30 ||
+    paper.durationMinutes > 360 ||
+    paper.totalMarks < 20 ||
+    paper.totalMarks > 500 ||
+    paper.questions.length < 2 ||
+    paper.questions.length > 30 ||
+    paper.markScheme.items.length !== paper.questions.length
+  ) return false;
+  const questionIds = new Set(paper.questions.map((question) => question.id));
+  if (questionIds.size !== paper.questions.length) return false;
+  if (paper.questions.some((question) =>
+    question.prompt.trim().length < 8 ||
+    question.label.trim().length === 0 ||
+    question.marks < 1 ||
+    question.marks > 100 ||
+    question.assets.some((asset) =>
+      !asset.id.trim() ||
+      !asset.title.trim() ||
+      !asset.altText.trim() ||
+      (!(asset.type === "image" || asset.type === "illustration") && !asset.content.trim()) ||
+      ((asset.type === "image" || asset.type === "illustration") && !asset.content.trim() && !asset.storagePath)
+    )
+  )) return false;
+  const rasterCount = paper.questions.reduce(
+    (total, question) => total + question.assets.filter(
+      (asset) => asset.type === "image" || asset.type === "illustration"
+    ).length,
+    0
   );
+  if (rasterCount > 8) return false;
+  const schemes = new Map(paper.markScheme.items.map((item) => [item.questionId, item]));
+  if (schemes.size !== paper.questions.length) return false;
+  if (paper.questions.some((question) => {
+    const scheme = schemes.get(question.id);
+    return !scheme ||
+      scheme.maxMarks !== question.marks ||
+      (!scheme.answer.trim() && scheme.criteria.length === 0);
+  })) return false;
+  const grouped = new Set<string>();
+  for (const group of paper.choiceGroups) {
+    if (
+      group.requiredCount < 1 ||
+      group.requiredCount > group.questionIds.length ||
+      new Set(group.questionIds).size !== group.questionIds.length ||
+      group.questionIds.some((questionId) =>
+        !questionIds.has(questionId) || grouped.has(questionId)
+      )
+    ) return false;
+    group.questionIds.forEach((questionId) => grouped.add(questionId));
+  }
+  return calculatePracticePaperTotalMarks(
+    paper.questions,
+    paper.choiceGroups
+  ) === paper.totalMarks;
 }
 
 export function sameFixedPaper(
@@ -24,15 +74,17 @@ export function sameFixedPaper(
   right: ParsedPracticePaperModelAnswer
 ) {
   if (left.status !== "ready" || right.status !== "ready") return false;
-  return JSON.stringify(left.questions.map((question) => ({
-    id: question.id,
-    marks: question.marks,
-    prompt: question.prompt,
-  }))) === JSON.stringify(right.questions.map((question) => ({
-    id: question.id,
-    marks: question.marks,
-    prompt: question.prompt,
-  })));
+  const fixed = (paper: Extract<ParsedPracticePaperModelAnswer, { status: "ready" }>) => ({
+    assessmentProfile: paper.assessmentProfile,
+    title: paper.title,
+    instructions: paper.instructions,
+    durationMinutes: paper.durationMinutes,
+    questions: paper.questions,
+    choiceGroups: paper.choiceGroups,
+    totalMarks: paper.totalMarks,
+    sourceRefs: paper.sourceRefs,
+  });
+  return JSON.stringify(fixed(left)) === JSON.stringify(fixed(right));
 }
 
 export function parsePracticePaperQualityAudit(value: string) {

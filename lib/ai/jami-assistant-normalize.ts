@@ -1,4 +1,5 @@
 import type {
+  JamiAssistantCitation,
   JamiAssistantFollowUp,
   JamiAssistantUsedContext,
 } from "@/lib/ai/jami-assistant";
@@ -27,6 +28,7 @@ export function normalizeUsedContext(
     const kind: JamiAssistantUsedContext["kind"] | null =
       item.kind === "current-context" ||
       item.kind === "source" ||
+      item.kind === "web" ||
       item.kind === "general-knowledge"
         ? item.kind
         : null;
@@ -39,6 +41,28 @@ export function normalizeUsedContext(
   return options.maxItems === undefined
     ? normalized
     : normalized.slice(0, options.maxItems);
+}
+
+export function normalizeAssistantCitations(value: unknown): JamiAssistantCitation[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  return value.flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const item = candidate as Record<string, unknown>;
+    const title = normalizeAssistantText(item.title, 200);
+    const rawUrl = normalizeAssistantText(item.url, 2_000);
+    if (!title || !rawUrl) return [];
+    try {
+      const url = new URL(rawUrl);
+      if ((url.protocol !== "https:" && url.protocol !== "http:") || seen.has(url.href)) {
+        return [];
+      }
+      seen.add(url.href);
+      return [{ title, url: url.href }];
+    } catch {
+      return [];
+    }
+  }).slice(0, 8);
 }
 
 export function normalizeFollowUps(value: unknown): JamiAssistantFollowUp[] {

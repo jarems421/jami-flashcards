@@ -1,4 +1,6 @@
 import { beforeAll, describe, expect, it, vi } from "vitest";
+import type { AiContentPart } from "@/lib/ai/content-parts";
+import type { PreparedSource } from "@/lib/ai/source-ingestion";
 import type { Source } from "@/lib/material/sources";
 
 vi.mock("server-only", () => ({}));
@@ -14,13 +16,19 @@ let prepareSourceForTutor: (
   parts: Array<{ text?: string; inlineData?: { mimeType: string; data: string } }>;
   inputBytes: number;
 }>;
+let normalizePreparedTutorSourceForTextModel: (
+  prepared: PreparedSource,
+  extractEvidence: (parts: readonly AiContentPart[]) => Promise<string>
+) => Promise<PreparedSource>;
 
 // The module pulls in officeparser, mammoth, and cheerio — a cold import can
 // take well over ten seconds on a slow disk, so give the hook extra room.
 beforeAll(async () => {
-  ({ isBlockedSourceAddress, prepareSourceForTutor } = await import(
-    "@/lib/ai/source-ingestion"
-  ));
+  ({
+    isBlockedSourceAddress,
+    prepareSourceForTutor,
+    normalizePreparedTutorSourceForTextModel,
+  } = await import("@/lib/ai/source-ingestion"));
 }, 120_000);
 
 describe("source Tutor network protection", () => {
@@ -87,6 +95,32 @@ describe("source Tutor network protection", () => {
       mimeType: "image/png",
       data: Buffer.from("image").toString("base64"),
     });
+  });
+
+  it("normalizes raw PDF/image parts to a bounded text-only evidence brief", async () => {
+    const extractEvidence = vi.fn(async () => "  Page 2\n\nA labelled cell membrane.  ");
+    const normalized = await normalizePreparedTutorSourceForTextModel(
+      {
+        sourceId: "source-scan",
+        label: "Scanned paper",
+        inputBytes: 1_000,
+        parts: [
+          {
+            inlineData: {
+              mimeType: "application/pdf",
+              data: Buffer.from("private-pdf").toString("base64"),
+            },
+          },
+        ],
+      },
+      extractEvidence
+    );
+
+    expect(extractEvidence).toHaveBeenCalledOnce();
+    expect(normalized.parts).toEqual([
+      { text: "Page 2\n\nA labelled cell membrane." },
+    ]);
+    expect(normalized.parts.some((part) => "inlineData" in part)).toBe(false);
   });
 
   it("isolates prepared-source cache entries by user", async () => {

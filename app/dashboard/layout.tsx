@@ -6,6 +6,7 @@
 import "katex/dist/katex.min.css";
 import DashboardAccessGate from "@/components/layout/DashboardAccessGate";
 import EmailVerificationBanner from "@/components/layout/EmailVerificationBanner";
+import PracticePaperReadyNotice from "@/components/practice/PracticePaperReadyNotice";
 
 export default function DashboardLayout({
   children,
@@ -15,6 +16,7 @@ export default function DashboardLayout({
   return (
     <DashboardAccessGate>
       <EmailVerificationBanner />
+      <PracticePaperReadyNotice />
       {children}
     </DashboardAccessGate>
   );

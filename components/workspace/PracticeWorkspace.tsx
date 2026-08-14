@@ -25,6 +25,7 @@ import {
   updateNotebook,
 } from "@/services/study/notebooks";
 import { getActiveTopics } from "@/services/study/topics";
+import { deletePracticePaper } from "@/services/study/practice-papers";
 import { useDashboardData } from "@/hooks/useDashboardData";
 import CreateFolderDialog from "./CreateFolderDialog";
 import FolderObjectCard from "./FolderObjectCard";
@@ -186,7 +187,11 @@ export default function PracticeWorkspace() {
     setDeletingNotebookId(notebook.id);
     clearFeedback();
     try {
-      await updateNotebook(user.uid, notebook.id, { archived: true });
+      if (notebook.type === "practice_paper") {
+        await deletePracticePaper(user.uid, notebook.pastPaperId ?? notebook.id);
+      } else {
+        await updateNotebook(user.uid, notebook.id, { archived: true });
+      }
       setNotebooks((current) =>
         current.filter((item) => item.id !== notebook.id)
       );
@@ -231,8 +236,16 @@ export default function PracticeWorkspace() {
       <ConfirmDialog
         open={notebookPendingDelete !== null}
         title={`Delete ${notebookPendingDelete?.title ?? "this notebook"}?`}
-        description="This removes the notebook from your workspace. Its saved pages are retained so it can be recovered later."
-        confirmLabel="Delete notebook"
+        description={
+          notebookPendingDelete?.type === "practice_paper"
+            ? "This permanently deletes the paper, its attempts, saved pages, marking data, and attached files. This cannot be undone."
+            : "This removes the notebook from your workspace. Its saved pages are retained so it can be recovered later."
+        }
+        confirmLabel={
+          notebookPendingDelete?.type === "practice_paper"
+            ? "Delete paper permanently"
+            : "Delete notebook"
+        }
         busy={
           notebookPendingDelete !== null &&
           deletingNotebookId === notebookPendingDelete.id

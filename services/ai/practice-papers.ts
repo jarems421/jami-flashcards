@@ -1,10 +1,11 @@
 import type {
   PracticePaperGenerationRequest,
 } from "@/lib/ai/practice-paper-generation";
-import type { PracticePaperGenerationResponse } from "@/lib/practice/practice-papers";
 import {
+  mapPracticePaperJobData,
   mapPracticePaperData,
   type PracticePaper,
+  type PracticePaperJob,
 } from "@/lib/practice/practice-papers";
 import { auth } from "@/services/firebase/client";
 
@@ -16,19 +17,20 @@ function friendlyError(status: number, message?: string) {
   return message || "Jami could not create that paper just now.";
 }
 
-export async function generatePracticePaper(
-  input: PracticePaperGenerationRequest
-): Promise<PracticePaperGenerationResponse> {
+async function authenticatedPaperJobRequest(
+  path: string,
+  init?: RequestInit
+) {
   const user = auth.currentUser;
   if (!user) throw new Error("Not signed in");
   const token = await user.getIdToken();
-  const response = await fetch("/api/ai/practice-papers/generate", {
-    method: "POST",
+  const response = await fetch(path, {
+    ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(init?.body ? { "Content-Type": "application/json" } : {}),
       Authorization: `Bearer ${token}`,
+      ...init?.headers,
     },
-    body: JSON.stringify(input),
   });
   const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   if (!response.ok) {
@@ -39,10 +41,67 @@ export async function generatePracticePaper(
       )
     );
   }
-  if (data?.status !== "ready" && data?.status !== "needs_clarification") {
-    throw new Error("Jami returned an incomplete practice paper. Try again.");
-  }
-  return data as PracticePaperGenerationResponse;
+  if (!data) throw new Error("Jami returned an incomplete paper job.");
+  return data;
+}
+
+export async function createPracticePaperJob(
+  input: PracticePaperGenerationRequest,
+  idempotencyKey: string,
+  temporarySourceIds: string[] = []
+): Promise<PracticePaperJob> {
+  const data = await authenticatedPaperJobRequest("/api/practice/paper-jobs", {
+    method: "POST",
+    headers: { "x-idempotency-key": idempotencyKey },
+    body: JSON.stringify({ ...input, temporarySourceIds }),
+  });
+  return mapPracticePaperJobData(
+    typeof data.id === "string" ? data.id : idempotencyKey,
+    data
+  );
+}
+
+export async function getPracticePaperJob(jobId: string) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-jobs/${encodeURIComponent(jobId)}`
+  );
+  return mapPracticePaperJobData(jobId, data);
+}
+
+export async function getRecentPracticePaperJobs(): Promise<PracticePaperJob[]> {
+  const data = await authenticatedPaperJobRequest("/api/practice/paper-jobs");
+  return Array.isArray(data.jobs)
+    ? data.jobs.flatMap((candidate) => {
+        if (!candidate || typeof candidate !== "object") return [];
+        const record = candidate as Record<string, unknown>;
+        const id = typeof record.id === "string" ? record.id : "";
+        return id ? [mapPracticePaperJobData(id, record)] : [];
+      })
+    : [];
+}
+
+export async function cancelPracticePaperJob(jobId: string) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-jobs/${encodeURIComponent(jobId)}`,
+    { method: "DELETE" }
+  );
+  return mapPracticePaperJobData(jobId, data);
+}
+
+export async function clarifyPracticePaperJob(jobId: string, answer: string) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-jobs/${encodeURIComponent(jobId)}/clarify`,
+    { method: "POST", body: JSON.stringify({ answer }) }
+  );
+  return mapPracticePaperJobData(jobId, data);
+}
+
+export async function acknowledgePracticePaperJob(jobId: string) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-jobs/${encodeURIComponent(jobId)}`,
+    { method: "PATCH" }
+  );
+  return mapPracticePaperJobData(jobId, data);
 }
 
 async function runPracticePaperAction(

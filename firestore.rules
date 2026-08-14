@@ -30,6 +30,17 @@ service cloud.firestore {
         );
     }
 
+    function containsOnlyPublicPracticePaperData(data) {
+      return !('markScheme' in data) ||
+        (
+          data.markScheme is map &&
+          (
+            !('items' in data.markScheme) ||
+            (data.markScheme.items is list && data.markScheme.items.size() == 0)
+          )
+        );
+    }
+
     function isOwnedDeckData(data) {
       return (('userId' in data) || ('uid' in data)) &&
         (!('userId' in data) || data.userId == request.auth.uid) &&
@@ -150,12 +161,18 @@ service cloud.firestore {
 
       match /assistantThreads/{threadId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        // Chat turns carry server-issued Tutor illustration entitlements and
+        // routing state, so clients may never forge or mutate them directly.
+        allow create, update, delete: if false;
       }
 
       match /assistantMessages/{messageId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if false;
+      }
+
+      match /assistantRouteState/{threadId} {
+        allow read, write: if false;
       }
 
       match /masteryEvents/{eventId} {
@@ -207,20 +224,47 @@ service cloud.firestore {
       }
 
       match /pastPapers/{pastPaperId} {
-        allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow read: if isSelf(userId) &&
+          containsOnlyPublicPracticePaperData(resource.data);
+        // Upload creation may originate in the browser, but no assessment
+        // definition, answer-bearing guide, result or timing transition does.
+        allow create: if isSelf(userId) && !isDemoAccount() &&
+          containsOnlyPublicPracticePaperData(request.resource.data) &&
+          request.resource.data.origin == 'uploaded' &&
+          request.resource.data.status == 'ready' &&
+          request.resource.data.questions is list &&
+          request.resource.data.questions.size() == 0 &&
+          request.resource.data.totalMarks == 0;
+        allow update, delete: if false;
+      }
+
+      // Answer-bearing rubrics and retry checkpoints are server-owned. The
+      // browser receives only a deliberately projected paper/job document.
+      match /practicePaperSecrets/{paperId} {
+        allow read, write: if false;
+      }
+
+      match /practicePaperJobArtifacts/{jobId} {
+        allow read, write: if false;
       }
 
       match /practicePaperAttempts/{attemptId} {
         allow read: if isSelf(userId);
-        allow create, update, delete: if isSelf(userId) && !isDemoAccount();
+        allow create, update, delete: if false;
       }
 
       match /practicePaperDeadlineSnapshots/{snapshotId} {
         allow read: if isSelf(userId);
-        // Deadline evidence is immutable once written.
-        allow create: if isSelf(userId) && !isDemoAccount();
-        allow update, delete: if false;
+        // Server-authenticated action routes create immutable deadline
+        // evidence from authoritative stored pages and server time.
+        allow create, update, delete: if false;
+      }
+
+      // Durable paper jobs contain server-only workflow input, allowance and
+      // retry state. Students read their safe projection through the
+      // authenticated job API rather than accessing these records directly.
+      match /practicePaperJobs/{jobId} {
+        allow read, write: if false;
       }
 
       // Embeddings and extracted chunks are server-owned private indexes. The

@@ -10,6 +10,7 @@ import { getBearerToken } from "@/lib/auth/bearer";
 import { createLogger } from "@/lib/observability/logger";
 import {
   mapPracticePaperData,
+  toPublicPracticePaperMarkScheme,
   type PracticePaper,
 } from "@/lib/practice/practice-papers";
 import {
@@ -23,7 +24,12 @@ import {
   refundAiBudget,
 } from "@/services/ai/budgets";
 import { markPracticePaperWithAudit } from "@/services/ai/practice-paper-marking.server";
-import { getAdminAuth, getAdminDb } from "@/services/firebase/admin";
+import { loadPracticePaperWithSecret } from "@/services/ai/practice-paper-secrets.server";
+import {
+  getAdminAuth,
+  getAdminDb,
+  getAdminStorageBucket,
+} from "@/services/firebase/admin";
 
 export const runtime = "nodejs";
 export const maxDuration = 180;
@@ -62,6 +68,34 @@ async function inkSvgToPng(svg: string) {
   }
 }
 
+async function loadNotebookImageParts(
+  uid: string,
+  imageRefs: readonly { storagePath?: string; altText?: string }[]
+): Promise<AiContentPart[]> {
+  const prefix = `users/${uid}/`;
+  const bucket = getAdminStorageBucket();
+  const images = await Promise.all(imageRefs.slice(0, 6).map(async (image) => {
+    const storagePath = image.storagePath?.trim() ?? "";
+    if (!storagePath.startsWith(prefix)) return null;
+    try {
+      const [bytes] = await bucket.file(storagePath).download();
+      if (bytes.length === 0 || bytes.length > 15 * 1024 * 1024) return null;
+      const png = await sharp(bytes)
+        .resize({ width: 1_200, height: 1_600, fit: "inside", withoutEnlargement: true })
+        .flatten({ background: "#ffffff" })
+        .png({ compressionLevel: 9 })
+        .toBuffer();
+      return [
+        { text: `Student-inserted image${image.altText ? `: ${image.altText}` : ""}.` },
+        { inlineData: { mimeType: "image/png", data: png.toString("base64") } },
+      ] satisfies AiContentPart[];
+    } catch {
+      return null;
+    }
+  }));
+  return images.flatMap((parts) => parts ?? []);
+}
+
 function unwrapJson(value: string) {
   const normalized = value
     .trim()
@@ -83,8 +117,8 @@ async function transcribeQuestion(input: {
 }) {
   if (!input.parts.some((part) => "inlineData" in part)) return input.parts;
   const generated = await generateAiText({
+    role: "documentVision",
     taskClass: "visual",
-    forceModel: "gemini-2.5-flash",
     timeoutMs: 60_000,
     deadlineAt: input.deadlineAt,
     signal: input.signal,
@@ -164,13 +198,24 @@ export async function POST(request: NextRequest) {
     userRef
       .collection("notebookPages")
       .where("notebookId", "==", notebookId)
-      .limit(40)
+      .limit(41)
       .get(),
   ]);
   if (!paperSnapshot.exists) {
     return responseError("Practice paper not found", 404, "paper_not_found");
   }
-  const paper = mapPracticePaperData(notebookId, paperSnapshot.data() ?? {});
+  if (pagesSnapshot.size > 40) {
+    return responseError(
+      "This paper has more than 40 pages and cannot be rechecked safely in one pass.",
+      413,
+      "paper_too_large"
+    );
+  }
+  const paper = await loadPracticePaperWithSecret({
+    uid,
+    paperId: notebookId,
+    paperData: paperSnapshot.data() ?? {},
+  });
   if (paper.status !== "marked" || !paper.result) {
     return responseError("This paper is not ready for a recheck.", 409, "paper_not_marked");
   }
@@ -227,6 +272,7 @@ export async function POST(request: NextRequest) {
         .filter(Boolean)
         .join("\n")
         .slice(0, 20_000);
+      const imageParts = await loadNotebookImageParts(uid, page.imageRefs);
       answerParts.push(...buildJamiAssistantReferenceParts({
         reference: `R${index + 1}`,
         boundaryToken: randomUUID(),
@@ -234,6 +280,7 @@ export async function POST(request: NextRequest) {
         parts: [
           { text: `Typed answer: ${answerText || "(none)"}` },
           ...(png ? [{ inlineData: { mimeType: "image/png", data: png.toString("base64") } }] : []),
+          ...imageParts,
         ],
       }));
     }
@@ -259,7 +306,7 @@ export async function POST(request: NextRequest) {
     };
     const recheck = await markPracticePaperWithAudit({
       paper: questionPaper,
-      answerParts: textParts,
+      answerParts: [...answerParts, ...textParts],
       thirdViewParts: answerParts,
       signal: request.signal,
       deadlineAt,
@@ -311,6 +358,7 @@ export async function POST(request: NextRequest) {
     });
     return Response.json(mapPracticePaperData(notebookId, {
       ...paperSnapshot.data(),
+      markScheme: toPublicPracticePaperMarkScheme(paper.markScheme),
       result,
       withinTimeResult:
         paper.withinTimeResult && !paper.overtimeStartedAt

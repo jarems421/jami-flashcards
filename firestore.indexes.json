@@ -404,6 +404,18 @@
   ],
   "fieldOverrides": [
     {
+      "collectionGroup": "practicePaperJobs",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
+      "collectionGroup": "practicePaperJobArtifacts",
+      "fieldPath": "expiresAt",
+      "ttl": true,
+      "indexes": []
+    },
+    {
       "collectionGroup": "notificationPreferences",
       "fieldPath": "enabled",
       "indexes": [

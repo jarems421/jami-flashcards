@@ -1,12 +1,26 @@
 import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
+import { resolveAiProviderPolicy } from "@/lib/ai/provider-policy";
 import { SOURCE_EMBEDDING_DIMENSIONS } from "@/lib/ai/source-chunking";
 
 const EMBEDDING_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent";
 const BATCH_EMBEDDING_URL =
   "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:batchEmbedContents";
+
+/**
+ * Embeddings preserve the existing index model, but still share Gemini's
+ * privacy, quality and emergency release gates with every other inference
+ * capability. Callers must not treat the mere presence of a key as approval.
+ */
+export function getConfiguredGeminiEmbeddingApiKey(
+  env: Record<string, string | undefined>
+) {
+  return resolveAiProviderPolicy(env).geminiReady
+    ? env.GEMINI_API_KEY?.trim() || null
+    : null;
+}
 
 function toProviderParts(parts: readonly AiContentPart[]) {
   return parts.map((part) => "text" in part

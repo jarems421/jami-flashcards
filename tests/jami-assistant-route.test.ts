@@ -26,11 +26,42 @@ const mocks = vi.hoisted(() => {
     retrieveChunks: vi.fn(),
     generateText: vi.fn(),
     streamText: vi.fn(),
+    refundBudget: vi.fn(),
+    persisted: [] as Array<{ kind: string; path: string; data?: unknown }>,
   };
 });
 
 vi.mock("@/services/firebase/admin", () => ({
   getAdminAuth: () => ({ verifyIdToken: mocks.verifyIdToken }),
+  getAdminDb: () => {
+    let autoId = 0;
+    const collection = (path: string): Record<string, unknown> => ({
+      path,
+      doc: (requestedId?: string) => {
+        const id = requestedId ?? `auto-${++autoId}`;
+        const documentPath = `${path}/${id}`;
+        return {
+          id,
+          path: documentPath,
+          collection: (name: string) => collection(`${documentPath}/${name}`),
+          get: vi.fn(async () => ({ exists: false, id, data: () => undefined })),
+        };
+      },
+      where: vi.fn(() => ({
+        get: vi.fn(async () => ({ empty: true, docs: [] })),
+      })),
+    });
+    return {
+      collection,
+      batch: () => ({
+        set: (ref: { path: string }, data: unknown) =>
+          mocks.persisted.push({ kind: "set", path: ref.path, data }),
+        create: (ref: { path: string }, data: unknown) =>
+          mocks.persisted.push({ kind: "create", path: ref.path, data }),
+        commit: vi.fn(async () => undefined),
+      }),
+    };
+  },
   getAdminStorageBucket: () => ({
     file: vi.fn(() => ({ download: vi.fn() })),
   }),
@@ -65,27 +96,36 @@ vi.mock("@/services/ai/budgets", () => ({
       }
     ),
   getAiTokenCap: () => 8_000,
+  refundAiBudget: mocks.refundBudget,
 }));
 
 vi.mock("@/lib/ai/source-ingestion", () => ({
   prepareSourceForTutor: mocks.prepareSource,
+  normalizePreparedTutorSourceForTextModel: async (prepared: unknown) => prepared,
 }));
 
 vi.mock("@/services/ai/source-index.server", () => ({
   retrieveSourceChunks: mocks.retrieveChunks,
 }));
 
-vi.mock("@/lib/ai/gemini", () => ({
-  generateGeminiText: mocks.generateText,
-  // The route streams the first attempt and falls back to generateGeminiText
-  // only when the structured output does not parse.
-  streamGeminiText: async function* (...args: unknown[]) {
+vi.mock("@/lib/ai/provider-router", () => ({
+  isAnyAiProviderConfigured: () => true,
+  countAiInputTokens: vi.fn(async () => 100),
+  generateAiText: (...args: unknown[]) => mocks.generateText(...args),
+  streamAiText: async function* (...args: unknown[]) {
     const text: string = await mocks.streamText(...args);
     const size = Math.max(1, Math.ceil(text.length / 3));
     for (let at = 0; at < text.length; at += size) {
       yield text.slice(at, at + size);
     }
   },
+}));
+
+vi.mock("@/lib/ai/gemini", () => ({
+  generateGroundedResearch: vi.fn(async () => ({
+    ok: false,
+    reason: "not_configured",
+  })),
 }));
 
 // No cleaner mock: the route uses the real cleanAiResponseText so these tests
@@ -109,7 +149,7 @@ function request(
 
 function validBody(overrides: Record<string, unknown> = {}) {
   return {
-    message: "Help me understand this.",
+    message: "What is photosynthesis?",
     history: [],
     context: { surface: "learn", cardId: "card-1", phase: "answer" },
     useRelatedSources: true,
@@ -140,17 +180,18 @@ async function readStream(response: Response) {
 }
 
 beforeAll(async () => {
-  process.env.GEMINI_API_KEY = "test-key";
   ({ POST: postAssistant } = await import("@/app/api/ai/assistant/route"));
 }, 120_000);
 
 beforeEach(() => {
   vi.clearAllMocks();
+  mocks.persisted.length = 0;
   mocks.verifyIdToken.mockResolvedValue({ uid: "user-1" });
   mocks.checkBudget.mockResolvedValue({
     allowed: true,
     reason: null,
     retryAfterSeconds: 0,
+    grant: { key: "assistant:user-1", action: "assistant" },
   });
   mocks.resolveContext.mockResolvedValue({
     currentId: "card-1",
@@ -185,6 +226,7 @@ beforeEach(() => {
     sourceRefs: ["S1"],
     usedCurrentContext: true,
     usedGeneralKnowledge: true,
+    usedWebResearch: false,
   });
   mocks.streamText.mockResolvedValue(validAnswer);
   mocks.generateText.mockResolvedValue(validAnswer);
@@ -199,7 +241,7 @@ describe("universal Jami assistant route", () => {
     expect(streamedText).toBe(
       "Plants turn light energy into stored chemical energy."
     );
-    expect(terminal).toEqual({
+    expect(terminal).toMatchObject({
       type: "done",
       reply: "Plants turn light energy into stored chemical energy.",
       used: [
@@ -213,15 +255,13 @@ describe("universal Jami assistant route", () => {
     });
     expect(mocks.resolveContext).toHaveBeenCalledWith({
       uid: "user-1",
-      message: "Help me understand this.",
+      message: "What is photosynthesis?",
       context: { surface: "learn", cardId: "card-1", phase: "answer" },
       useRelatedSources: true,
     });
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        // The provider-neutral router invokes one deterministic model per
-        // attempt and owns fallback ordering itself.
-        modelNames: ["gemini-2.5-flash"],
+        role: "worker",
         generationConfig: expect.objectContaining({
           maxOutputTokens: 1_500,
           responseSchema: expect.objectContaining({
@@ -230,6 +270,7 @@ describe("universal Jami assistant route", () => {
               "sourceRefs",
               "usedCurrentContext",
               "usedGeneralKnowledge",
+              "usedWebResearch",
             ],
           }),
         }),
@@ -291,7 +332,7 @@ describe("universal Jami assistant route", () => {
 
     expect(mocks.streamText).toHaveBeenCalledWith(
       expect.objectContaining({
-        modelNames: ["gemini-2.5-flash"],
+        role: "supervisor",
         generationConfig: expect.objectContaining({ maxOutputTokens: 6_000 }),
         request: expect.objectContaining({
           systemInstruction: expect.stringContaining("DETAILED mode"),
@@ -390,7 +431,7 @@ describe("universal Jami assistant route", () => {
     expect(mocks.generateText).toHaveBeenNthCalledWith(
       1,
       expect.objectContaining({
-        modelNames: ["gemini-2.5-flash"],
+        role: "worker",
         generationConfig: expect.objectContaining({ maxOutputTokens: 8_000 }),
         request: expect.objectContaining({
           systemInstruction: expect.stringContaining(
@@ -415,7 +456,7 @@ describe("universal Jami assistant route", () => {
     const { terminal } = await readStream(response);
 
     expect(response.status).toBe(200);
-    expect(terminal).toEqual({
+    expect(terminal).toMatchObject({
       type: "done",
       reply: "A general explanation.",
       used: [{ kind: "general-knowledge", label: "general knowledge" }],
@@ -520,6 +561,6 @@ describe("universal Jami assistant route", () => {
 
     const failure = records.find((record) => record.event === "provider.failed");
     expect(failure?.error).toMatchObject({ status: 503 });
-    expect(failure?.uid).toBe("user-1");
+    expect(failure?.uid).toBe("[redacted]");
   });
 });

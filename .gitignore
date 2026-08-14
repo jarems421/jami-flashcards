@@ -14,6 +14,7 @@
 /coverage
 /playwright-report
 /test-results
+/artifacts/ai-benchmark-report*.json
 
 # next.js
 /.next/
@@ -56,3 +57,4 @@ next-dev-*.log
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+/.swc

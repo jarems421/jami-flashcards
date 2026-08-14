@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildPracticePaperResearchQuery,
   buildPracticePaperGenerationResponse,
   parsePracticePaperGenerationRequest,
   parsePracticePaperModelAnswer,
@@ -172,6 +173,19 @@ describe("practice-paper model response", () => {
     });
   });
 
+  it("keeps private folder prose and student names out of web research queries", () => {
+    const query = buildPracticePaperResearchQuery({
+      subject: "Maya's private Biology tutoring notes for Dr Secret",
+      studyLevel: "GCSE for Maya at Greenhill School",
+      request: "Please mirror AQA GCSE BIO123 and use my private mock comments",
+    });
+    expect(query).toContain("biology");
+    expect(query).toContain("AQA");
+    expect(query).toContain("GCSE");
+    expect(query).toContain("BIO123");
+    expect(query).not.toMatch(/Maya|Secret|Greenhill|private|comments/i);
+  });
+
   it("keeps structured assets, choice groups and honest grade guidance", () => {
     const parsed = parsePracticePaperModelAnswer(JSON.stringify({
       ...readyPayload,
@@ -189,5 +203,41 @@ describe("practice-paper model response", () => {
     expect(parsed.choiceGroups[0]).toMatchObject({ requiredCount: 1 });
     expect(parsed.totalMarks).toBe(10);
     expect(parsed.gradeGuidance.kind).toBe("estimated");
+  });
+
+  it("normalises colliding and path-like asset IDs before persistence", () => {
+    const parsed = parsePracticePaperModelAnswer(JSON.stringify({
+      ...readyPayload,
+      questions: [{
+        ...readyPayload.questions[0],
+        assets: [
+          {
+            id: "../shared graph",
+            type: "graph",
+            title: "Graph one",
+            content: "0,1\n1,2",
+            altText: "An increasing line",
+          },
+          {
+            id: "../shared graph",
+            type: "graph",
+            title: "Graph two",
+            content: "0,2\n1,3",
+            altText: "Another increasing line",
+          },
+        ],
+      }],
+      markScheme: {
+        ...readyPayload.markScheme,
+        items: readyPayload.markScheme.items.slice(0, 1),
+      },
+    }), { allowedSourceRefs: ["S1", "S2"], length: "full" });
+    expect(parsed?.status).toBe("ready");
+    if (!parsed || parsed.status !== "ready") throw new Error("Expected a paper");
+    expect(parsed.questions[0].assets.map((asset) => asset.id)).toEqual([
+      "shared-graph",
+      "shared-graph-2",
+    ]);
+    expect(new Set(parsed.questions[0].assets.map((asset) => asset.id)).size).toBe(2);
   });
 });

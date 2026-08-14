@@ -17,6 +17,7 @@ import {
   writeBatch,
 } from "firebase/firestore";
 import { db } from "@/services/firebase/client";
+import { deleteStorageFile } from "@/services/firebase/storage-files";
 import { withTimeout } from "@/services/firebase/firestore";
 import { invalidateDashboardData } from "@/services/dashboard/cache";
 import {
@@ -38,13 +39,16 @@ import {
   mapNotebookPageData,
   getNotebookPagesAfterDelete,
   normalizeNotebookInkData,
+  normalizeNotebookImageRefs,
   normalizeNotebookStrokeData,
   normalizeNotebookTitle,
   normalizeNotebookPreviewSvg,
   prepareNotebookPageSnapshotForPersistence,
+  MAX_NOTEBOOK_IMAGE_REFS,
   type Notebook,
   type NotebookFile,
   type NotebookInkData,
+  type NotebookImageRef,
   type NotebookPageColor,
   type NotebookPageStyle,
   type NotebookPageStatus,
@@ -687,6 +691,61 @@ export async function updateNotebookPage(
   invalidateDashboardData(normalizedUserId);
 }
 
+/**
+ * Persists movable illustration placement with the same optimistic revision
+ * guard as ink/text autosave, so an image drag cannot overwrite a page edited
+ * on another device.
+ */
+export async function updateNotebookPageImages(
+  userId: string,
+  input: {
+    notebookId: string;
+    pageId: string;
+    imageRefs: NotebookImageRef[];
+    baseContentRevision: number;
+  }
+) {
+  const normalizedUserId = userId.trim();
+  const notebookId = input.notebookId.trim();
+  const pageId = input.pageId.trim();
+  if (!normalizedUserId || !notebookId || !pageId) {
+    throw new Error("Missing notebook image target.");
+  }
+  const imageRefs = normalizeNotebookImageRefs(input.imageRefs);
+  if (
+    imageRefs.length !== input.imageRefs.length ||
+    imageRefs.length > MAX_NOTEBOOK_IMAGE_REFS
+  ) {
+    throw new Error("One of the notebook images is invalid.");
+  }
+  const pageRef = doc(db, "users", normalizedUserId, "notebookPages", pageId);
+  const result = await withTimeout(
+    runTransaction(db, async (transaction) => {
+      const snapshot = await transaction.get(pageRef);
+      if (!snapshot.exists()) throw new Error("This notebook page no longer exists.");
+      const data = snapshot.data() as Record<string, unknown>;
+      if (data.notebookId !== notebookId) {
+        throw new Error("This page does not belong to the open notebook.");
+      }
+      const remoteRevision =
+        typeof data.contentRevision === "number" && Number.isFinite(data.contentRevision)
+          ? Math.max(0, Math.round(data.contentRevision))
+          : 0;
+      if (remoteRevision !== Math.max(0, Math.round(input.baseContentRevision))) {
+        throw new NotebookPageConflictError(remoteRevision);
+      }
+      const contentRevision = remoteRevision + 1;
+      const updatedAt = Date.now();
+      transaction.update(pageRef, { imageRefs, contentRevision, updatedAt });
+      return { contentRevision, updatedAt };
+    }),
+    WRITE_MS,
+    "Move notebook illustration"
+  );
+  invalidateDashboardData(normalizedUserId);
+  return result;
+}
+
 export async function saveNotebookPageSnapshot(
   userId: string,
   input: {
@@ -835,6 +894,11 @@ export async function deleteNotebookPage(
   });
 
   await withTimeout(batch.commit(), WRITE_MS, "Delete notebook page");
+  await Promise.allSettled(
+    pageToDelete.imageRefs.flatMap((image) =>
+      image.storagePath ? [deleteStorageFile(image.storagePath)] : []
+    )
+  );
   invalidateDashboardData(normalizedUserId);
   invalidateLegacyActiveRecords(normalizedUserId, NOTEBOOKS_COLLECTION);
 

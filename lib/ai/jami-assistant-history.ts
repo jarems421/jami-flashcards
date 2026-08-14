@@ -1,4 +1,6 @@
 import type {
+  AssistantIllustration,
+  JamiAssistantCitation,
   JamiAssistantContext,
   JamiAssistantFollowUp,
   JamiAssistantUsedContext,
@@ -6,9 +8,11 @@ import type {
 import {
   normalizeAssistantId as normalizeId,
   normalizeAssistantText as normalizeText,
+  normalizeAssistantCitations,
   normalizeFollowUps,
   normalizeUsedContext,
 } from "@/lib/ai/jami-assistant-normalize";
+import { normalizeAssistantIllustrations } from "@/lib/ai/jami-assistant";
 
 export const JAMI_ASSISTANT_MAX_SAVED_THREADS = 50;
 export const JAMI_ASSISTANT_MAX_THREAD_TITLE_LENGTH = 80;
@@ -41,6 +45,7 @@ export type JamiAssistantThread = {
   messageCount: number;
   createdAt: number;
   updatedAt: number;
+  lastAssistantMessageId?: string;
 };
 
 export type JamiAssistantStoredMessage = {
@@ -50,6 +55,9 @@ export type JamiAssistantStoredMessage = {
   text: string;
   used?: JamiAssistantUsedContext[];
   followUps?: JamiAssistantFollowUp[];
+  citations?: JamiAssistantCitation[];
+  illustrations?: AssistantIllustration[];
+  canIllustrate?: boolean;
   createdAt: number;
 };
 
@@ -151,6 +159,7 @@ export function mapJamiAssistantThread(
       typeof data.updatedAt === "number" && Number.isFinite(data.updatedAt)
         ? data.updatedAt
         : 0,
+    lastAssistantMessageId: normalizeId(data.lastAssistantMessageId) || undefined,
   };
 }
 
@@ -165,6 +174,8 @@ export function mapJamiAssistantStoredMessage(
   if (!threadId || !role || !text) return null;
   const used = normalizeUsedContext(data.used, { maxItems: 8 });
   const followUps = normalizeFollowUps(data.followUps);
+  const citations = normalizeAssistantCitations(data.citations);
+  const illustrations = normalizeAssistantIllustrations(data.illustrations);
   return {
     id,
     threadId,
@@ -172,6 +183,9 @@ export function mapJamiAssistantStoredMessage(
     text,
     ...(used.length > 0 ? { used } : {}),
     ...(followUps.length > 0 ? { followUps } : {}),
+    ...(citations.length > 0 ? { citations } : {}),
+    ...(illustrations.length > 0 ? { illustrations } : {}),
+    ...(data.canIllustrate === true ? { canIllustrate: true } : {}),
     createdAt:
       typeof data.createdAt === "number" && Number.isFinite(data.createdAt)
         ? data.createdAt

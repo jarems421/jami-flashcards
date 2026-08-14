@@ -1,6 +1,7 @@
 "use client";
 
 import { memo } from "react";
+import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
 import NotebookPageBackground from "@/components/workspace/NotebookPageBackground";
 import type {
   Notebook,
@@ -53,7 +54,9 @@ const NotebookPageStaticContent = memo(function NotebookPageStaticContent({
         pdfFadeIn={false}
         inkSvg={hasInk ? inkSvg : undefined}
         inkSizes="48rem"
+        inkClassName="pointer-events-none absolute inset-0 z-[12] object-fill"
       />
+      <NotebookImageLayer images={page.imageRefs} />
       {page.textBlocks.map((block) => (
         <div
           key={block.id}

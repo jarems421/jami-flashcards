@@ -86,8 +86,16 @@ export type NotebookImageRef = {
   id: string;
   storagePath?: string;
   localPreviewUrl?: string;
+  /** Intrinsic pixel dimensions of the private asset. */
   width?: number;
   height?: number;
+  /** Placement in the fixed 900 x 1240 notebook coordinate space. */
+  x?: number;
+  y?: number;
+  displayWidth?: number;
+  displayHeight?: number;
+  altText?: string;
+  sourceAssetId?: string;
 };
 
 export type NotebookTextBlock = {
@@ -194,6 +202,7 @@ export const MAX_NOTEBOOK_FILE_STORAGE_PATH_LENGTH = 1_000;
 export const MAX_NOTEBOOK_PREVIEW_SVG_LENGTH = 120_000;
 export const MIN_NOTEBOOK_TEXT_BLOCK_WIDTH = 120;
 export const MIN_NOTEBOOK_TEXT_BLOCK_HEIGHT = 48;
+export const MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE = 120;
 
 export type NotebookTextBlockResizeEdge = "top" | "right" | "bottom" | "left";
 
@@ -382,7 +391,12 @@ export function normalizeNotebookPreviewSvg(value: unknown) {
   return value;
 }
 
-function normalizeImageRefs(value: unknown): NotebookImageRef[] {
+function clampImageNumber(value: unknown, min: number, max: number, fallback: number) {
+  if (typeof value !== "number" || !Number.isFinite(value)) return fallback;
+  return Math.max(min, Math.min(max, Math.round(value)));
+}
+
+export function normalizeNotebookImageRefs(value: unknown): NotebookImageRef[] {
   if (!Array.isArray(value)) return [];
 
   const images: NotebookImageRef[] = [];
@@ -391,16 +405,125 @@ function normalizeImageRefs(value: unknown): NotebookImageRef[] {
     const image = entry as Record<string, unknown>;
     const id = normalizeOptionalString(image.id, 160);
     if (!id) continue;
+    const displayWidth = clampImageNumber(
+      image.displayWidth,
+      MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE,
+      NOTEBOOK_PAGE_COORDINATE_WIDTH,
+      480
+    );
+    const displayHeight = clampImageNumber(
+      image.displayHeight,
+      MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE,
+      NOTEBOOK_PAGE_COORDINATE_HEIGHT,
+      360
+    );
     images.push({
       id,
       storagePath: normalizeOptionalString(image.storagePath, 1_000),
       localPreviewUrl: normalizeOptionalString(image.localPreviewUrl, 4_000),
       width: typeof image.width === "number" ? image.width : undefined,
       height: typeof image.height === "number" ? image.height : undefined,
+      x: clampImageNumber(
+        image.x,
+        0,
+        NOTEBOOK_PAGE_COORDINATE_WIDTH - Math.min(displayWidth, NOTEBOOK_PAGE_COORDINATE_WIDTH),
+        Math.round((NOTEBOOK_PAGE_COORDINATE_WIDTH - displayWidth) / 2)
+      ),
+      y: clampImageNumber(
+        image.y,
+        0,
+        NOTEBOOK_PAGE_COORDINATE_HEIGHT - Math.min(displayHeight, NOTEBOOK_PAGE_COORDINATE_HEIGHT),
+        220
+      ),
+      displayWidth,
+      displayHeight,
+      altText: normalizeOptionalString(image.altText, 500),
+      sourceAssetId: normalizeOptionalString(image.sourceAssetId, 160),
     });
   }
 
   return images;
+}
+
+export function createCenteredNotebookImageRef(input: {
+  id: string;
+  storagePath: string;
+  width: number;
+  height: number;
+  altText?: string;
+  sourceAssetId?: string;
+}) {
+  const aspectRatio = input.width > 0 && input.height > 0 ? input.width / input.height : 4 / 3;
+  const displayWidth = 520;
+  const displayHeight = Math.max(
+    MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE,
+    Math.min(620, Math.round(displayWidth / aspectRatio))
+  );
+  return normalizeNotebookImageRefs([
+    {
+      ...input,
+      x: Math.round((NOTEBOOK_PAGE_COORDINATE_WIDTH - displayWidth) / 2),
+      y: Math.round((NOTEBOOK_PAGE_COORDINATE_HEIGHT - displayHeight) / 2),
+      displayWidth,
+      displayHeight,
+    },
+  ])[0]!;
+}
+
+function notebookImagePlacement(image: NotebookImageRef) {
+  return {
+    x: image.x ?? 0,
+    y: image.y ?? 0,
+    displayWidth: image.displayWidth ?? 480,
+    displayHeight: image.displayHeight ?? 360,
+  };
+}
+
+export function moveNotebookImageRef(
+  image: NotebookImageRef,
+  deltaX: number,
+  deltaY: number
+) {
+  const placement = notebookImagePlacement(image);
+  return normalizeNotebookImageRefs([
+    {
+      ...image,
+      x: placement.x + deltaX,
+      y: placement.y + deltaY,
+      displayWidth: placement.displayWidth,
+      displayHeight: placement.displayHeight,
+    },
+  ])[0]!;
+}
+
+export function resizeNotebookImageRef(
+  image: NotebookImageRef,
+  deltaX: number,
+  deltaY: number
+) {
+  const placement = notebookImagePlacement(image);
+  const aspectRatio = placement.displayWidth / placement.displayHeight;
+  const requestedWidth = Math.max(
+    MIN_NOTEBOOK_IMAGE_DISPLAY_SIZE,
+    placement.displayWidth + Math.max(deltaX, deltaY * aspectRatio)
+  );
+  let displayWidth = Math.min(
+    requestedWidth,
+    NOTEBOOK_PAGE_COORDINATE_WIDTH - placement.x
+  );
+  let displayHeight = displayWidth / aspectRatio;
+  if (placement.y + displayHeight > NOTEBOOK_PAGE_COORDINATE_HEIGHT) {
+    displayHeight = NOTEBOOK_PAGE_COORDINATE_HEIGHT - placement.y;
+    displayWidth = displayHeight * aspectRatio;
+  }
+  return normalizeNotebookImageRefs([
+    {
+      ...image,
+      ...placement,
+      displayWidth,
+      displayHeight,
+    },
+  ])[0]!;
 }
 
 function clampTextBlockNumber(value: unknown, min: number, max: number, fallback: number) {
@@ -699,7 +822,7 @@ export function mapNotebookPageData(
     inkData: normalizeNotebookInkData(data.inkData),
     strokeData: normalizeNotebookStrokeData(data.strokeData),
     thumbnail: normalizeThumbnailData(data.thumbnail),
-    imageRefs: normalizeImageRefs(data.imageRefs),
+    imageRefs: normalizeNotebookImageRefs(data.imageRefs),
     backgroundFileId: normalizeOptionalString(data.backgroundFileId, 160),
     pdfPageIndex:
       typeof data.pdfPageIndex === "number" &&
@@ -863,7 +986,7 @@ export function buildNotebookPagePayload(input: {
     textBlocks,
     inkData: inkData ?? null,
     strokeData: strokeData ?? null,
-    imageRefs: (input.imageRefs ?? []).map((image) => ({ ...image })),
+    imageRefs: normalizeNotebookImageRefs(input.imageRefs ?? []),
     backgroundFileId: normalizeOptionalString(input.backgroundFileId, 160) ?? null,
     pdfPageIndex:
       typeof input.pdfPageIndex === "number" &&

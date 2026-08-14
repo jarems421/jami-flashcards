@@ -1,82 +1,142 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildAiCapabilityRegistry,
   buildAiProviderPlan,
   classifyTutorTaskClass,
+  decideTutorRoute,
   resolveAiProviderPolicy,
 } from "@/lib/ai/provider-policy";
 
 const approved = {
-  AI_TEXT_PROVIDER: "deepseek",
-  DEEPSEEK_API_KEY: "test-key",
-  DEEPSEEK_ENABLED: "true",
-  DEEPSEEK_PRIVACY_APPROVED: "true",
-  DEEPSEEK_QUALITY_GATE_PASSED: "true",
+  OPENROUTER_API_KEY: "test-key",
+  OPENROUTER_ENABLED: "true",
+  OPENROUTER_PRIVACY_APPROVED: "true",
+  OPENROUTER_QUALITY_GATE_PASSED: "true",
   GEMINI_API_KEY: "gemini-key",
+  GEMINI_ENABLED: "true",
+  GEMINI_PRIVACY_APPROVED: "true",
+  GEMINI_QUALITY_GATE_PASSED: "true",
 };
 
 describe("AI provider policy", () => {
-  it("does not enable DeepSeek from an API key alone", () => {
+  it("does not enable OpenRouter from an API key alone", () => {
     expect(resolveAiProviderPolicy({
-      AI_TEXT_PROVIDER: "deepseek",
-      DEEPSEEK_API_KEY: "test-key",
+      OPENROUTER_API_KEY: "test-key",
       GEMINI_API_KEY: "gemini-key",
-    })).toEqual({
-      textProvider: "gemini",
-      deepSeekReady: false,
-      geminiReady: true,
+    })).toMatchObject({
+      openRouterReady: false,
+      geminiReady: false,
+      jurorReady: false,
     });
   });
 
-  it("routes standard text through Flash twice, Pro, then Gemini", () => {
-    const plan = buildAiProviderPlan({
-      taskClass: "standard",
-      hasVisualInput: false,
-      policy: resolveAiProviderPolicy(approved),
+  it("uses logical capabilities with pinned model and endpoint defaults", () => {
+    const registry = buildAiCapabilityRegistry({});
+    expect(registry.worker).toMatchObject({
+      provider: "openrouter",
+      modelId: "xiaomi/mimo-v2.5",
+      providerAllowlist: ["novita", "parasail"],
+      quantizations: ["fp32", "fp16", "bf16", "fp8"],
     });
-    expect(plan.map(({ model }) => model)).toEqual([
-      "deepseek-v4-flash",
-      "deepseek-v4-flash",
-      "deepseek-v4-pro",
-      "gemini-2.5-flash",
+    expect(registry.supervisor).toMatchObject({
+      provider: "openrouter",
+      modelId: "minimax/minimax-m3",
+    });
+    expect(registry.juror).toMatchObject({
+      provider: "openrouter",
+      modelId: "moonshotai/kimi-k2.6",
+      providerAllowlist: ["moonshotai"],
+      quantizations: expect.arrayContaining(["int4"]),
+    });
+    expect(registry.embedding.modelId).toBe("gemini-embedding-2");
+  });
+
+  it("allows server environment overrides without exposing model selection", () => {
+    const registry = buildAiCapabilityRegistry({
+      OPENROUTER_WORKER_MODEL: "approved/worker-version",
+      OPENROUTER_WORKER_PROVIDERS: "Approved One, Approved Two",
+    });
+    expect(registry.worker.modelId).toBe("approved/worker-version");
+    expect(registry.worker.providerAllowlist).toEqual([
+      "Approved One",
+      "Approved Two",
     ]);
   });
 
-  it("starts consequential work on Pro and keeps Flash as a candidate fallback", () => {
+  it("routes routine text through the worker before supervisor escalation", () => {
     const plan = buildAiProviderPlan({
-      taskClass: "important",
+      role: "worker",
       hasVisualInput: false,
       policy: resolveAiProviderPolicy(approved),
     });
-    expect(plan.map(({ model }) => model)).toEqual([
-      "deepseek-v4-pro",
-      "deepseek-v4-pro",
-      "deepseek-v4-flash",
-      "gemini-2.5-flash",
+    expect(plan.map(({ role, model }) => `${role}:${model}`)).toEqual([
+      "worker:xiaomi/mimo-v2.5",
+      "worker:xiaomi/mimo-v2.5",
+      "supervisor:minimax/minimax-m3",
+    ]);
+    expect(plan[2].routeReason).toBe("provider_escalation");
+  });
+
+  it("preserves provider-neutral route reasons in diagnostics plans", () => {
+    const plan = buildAiProviderPlan({
+      role: "supervisor",
+      routeReason: "low_confidence",
+      hasVisualInput: false,
+      policy: resolveAiProviderPolicy(approved),
+    });
+    expect(plan.map((attempt) => attempt.routeReason)).toEqual([
+      "low_confidence",
+      "low_confidence",
     ]);
   });
 
-  it("routes any visual input only to Gemini", () => {
-    const plan = buildAiProviderPlan({
-      taskClass: "important",
+  it("never downgrades supervisor or juror work to another role", () => {
+    const policy = resolveAiProviderPolicy(approved);
+    expect(buildAiProviderPlan({
+      role: "supervisor",
+      hasVisualInput: false,
+      policy,
+    }).map(({ role }) => role)).toEqual(["supervisor", "supervisor"]);
+    expect(buildAiProviderPlan({
+      role: "juror",
       hasVisualInput: true,
-      policy: resolveAiProviderPolicy(approved),
+      policy,
+    }).map(({ role }) => role)).toEqual(["juror", "juror"]);
+  });
+
+  it("uses Gemini only for an explicit specialist role", () => {
+    const policy = resolveAiProviderPolicy(approved);
+    const plan = buildAiProviderPlan({
+      role: "documentVision",
+      hasVisualInput: true,
+      policy,
     });
-    expect(plan.map(({ provider, model }) => `${provider}:${model}`)).toEqual([
-      "gemini:gemini-2.5-flash",
-      "gemini:gemini-2.5-flash-lite",
+    expect(plan.map(({ provider, role, model }) =>
+      `${provider}:${role}:${model}`
+    )).toEqual([
+      "gemini:documentVision:gemini-3.5-flash-lite",
+      "gemini:documentVision:gemini-3.5-flash-lite",
     ]);
   });
 
-  it("honours the provider kill switch immediately", () => {
-    const policy = resolveAiProviderPolicy({
+  it("honours global and juror kill switches immediately", () => {
+    expect(resolveAiProviderPolicy({
       ...approved,
-      DEEPSEEK_KILL_SWITCH: "true",
+      OPENROUTER_KILL_SWITCH: "true",
+    })).toMatchObject({ openRouterReady: false, jurorReady: false });
+    const jurorOff = resolveAiProviderPolicy({
+      ...approved,
+      OPENROUTER_JUROR_KILL_SWITCH: "true",
     });
-    expect(policy.deepSeekReady).toBe(false);
-    expect(policy.textProvider).toBe("gemini");
+    expect(jurorOff.openRouterReady).toBe(true);
+    expect(buildAiProviderPlan({
+      role: "juror",
+      hasVisualInput: false,
+      policy: jurorOff,
+    })).toEqual([]);
   });
 
-  it("escalates difficult Tutor work without promoting ordinary questions", () => {
+  it("escalates difficult, corrected, and repeatedly disputed Tutor work", () => {
     expect(classifyTutorTaskClass({
       message: "Can you remind me what mitosis means?",
       sourceCount: 2,
@@ -85,9 +145,14 @@ describe("AI provider policy", () => {
       message: "Give me a full solution and derive the result step by step.",
       sourceCount: 2,
     })).toBe("important");
-    expect(classifyTutorTaskClass({
-      message: "Synthesize the relevant course material.",
-      sourceCount: 10,
-    })).toBe("important");
+    expect(decideTutorRoute({
+      message: "That is wrong, please check again.",
+      sourceCount: 1,
+    })).toMatchObject({ role: "supervisor", reason: "student_correction" });
+    expect(decideTutorRoute({
+      message: "I still disagree.",
+      sourceCount: 1,
+      repeatedSupervisorChallenge: true,
+    })).toMatchObject({ role: "juror", reason: "student_correction" });
   });
 });

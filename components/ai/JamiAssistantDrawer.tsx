@@ -10,7 +10,10 @@ import {
 } from "react";
 import {
   formatJamiAssistantUsedContext,
+  isExplicitTutorIllustrationRequest,
   JAMI_ASSISTANT_MAX_HISTORY_MESSAGES,
+  type AssistantIllustration,
+  type JamiAssistantCitation,
   type JamiAssistantContext,
   type JamiAssistantFollowUp,
   type JamiAssistantUsedContext,
@@ -21,17 +24,25 @@ import {
   type JamiAssistantThread,
 } from "@/lib/ai/jami-assistant-history";
 import { sendJamiAssistantMessage } from "@/services/ai/jami-assistant";
+import {
+  createAssistantIllustration,
+  insertAssistantIllustration,
+} from "@/services/ai/assistant-illustrations";
 import { useVoiceDictation } from "@/hooks/useVoiceDictation";
 import {
   deleteJamiAssistantThread,
   getJamiAssistantThreadMessages,
   getJamiAssistantThreads,
   renameJamiAssistantThread,
-  saveJamiAssistantTurn,
   toDrawerMessages,
 } from "@/services/ai/jami-assistant-history";
 import { auth } from "@/services/firebase/client";
+import {
+  acknowledgeAiPrivacyNotice,
+  hasAcknowledgedAiPrivacyNotice,
+} from "@/services/ai/ai-privacy-notice";
 import JamiAssistantHistory from "@/components/ai/JamiAssistantHistory";
+import AssistantIllustrationCard from "@/components/ai/AssistantIllustrationCard";
 import AiResponse from "@/components/ai/AiResponse";
 import {
   Dialog,
@@ -41,6 +52,7 @@ import {
   JamiTutorIcon,
   StudyText,
 } from "@/components/ui";
+import type { NotebookImageRef } from "@/lib/workspace/notebooks";
 
 /**
  * A chip offered before the conversation starts. Most send a prompt, but a
@@ -60,7 +72,6 @@ const WAITING_LABELS: Array<{ text: string; after: number }> = [
   { text: "Still going", after: 9_000 },
   { text: "Nearly there", after: 18_000 },
 ];
-const AI_NOTICE_STORAGE_KEY = "jami:ai-data-notice:v1";
 
 export type JamiAssistantQuickAction =
   | string
@@ -88,13 +99,22 @@ type JamiAssistantDrawerProps = {
    * conversation begins.
    */
   emptyStateNote?: ReactNode;
+  onIllustrationInserted?: (input: {
+    imageRef: NotebookImageRef;
+    contentRevision: number;
+  }) => void;
+  onBeforeIllustrationInsert?: () => boolean | Promise<boolean>;
 };
 
 type DrawerMessage = {
+  id?: string;
   role: "user" | "assistant";
   text: string;
   used?: JamiAssistantUsedContext[];
   followUps?: JamiAssistantFollowUp[];
+  citations?: JamiAssistantCitation[];
+  illustrations?: AssistantIllustration[];
+  canIllustrate?: boolean;
 };
 
 function CloseIcon() {
@@ -176,6 +196,8 @@ export default function JamiAssistantDrawer({
   getContext,
   quickActions = [],
   emptyStateNote,
+  onIllustrationInserted,
+  onBeforeIllustrationInsert,
 }: JamiAssistantDrawerProps) {
   const [messages, setMessages] = useState<DrawerMessage[]>([]);
   const [input, setInput] = useState("");
@@ -190,6 +212,11 @@ export default function JamiAssistantDrawer({
   const [activeThread, setActiveThread] = useState<JamiAssistantThread | null>(null);
   const [useRelatedSources, setUseRelatedSources] = useState(true);
   const [showAiNotice, setShowAiNotice] = useState(false);
+  const [generatingIllustrationId, setGeneratingIllustrationId] = useState<string | null>(null);
+  const [insertingIllustrationId, setInsertingIllustrationId] = useState<string | null>(null);
+  const [insertedIllustrationIds, setInsertedIllustrationIds] = useState<Set<string>>(
+    () => new Set()
+  );
   /*
    * Wide screens have room for the drawer to sit beside the work rather than
    * over it. Jami is meant to nudge you towards an answer you are looking at,
@@ -248,20 +275,16 @@ export default function JamiAssistantDrawer({
 
   useEffect(() => {
     if (!open) return;
-    try {
-      setShowAiNotice(window.localStorage.getItem(AI_NOTICE_STORAGE_KEY) !== "seen");
-    } catch {
-      setShowAiNotice(true);
-    }
+    const controller = new AbortController();
+    void hasAcknowledgedAiPrivacyNotice(controller.signal)
+      .then((acknowledged) => setShowAiNotice(!acknowledged))
+      .catch(() => setShowAiNotice(true));
+    return () => controller.abort();
   }, [open]);
 
   const dismissAiNotice = () => {
     setShowAiNotice(false);
-    try {
-      window.localStorage.setItem(AI_NOTICE_STORAGE_KEY, "seen");
-    } catch {
-      // Storage may be blocked; the notice remains non-blocking.
-    }
+    void acknowledgeAiPrivacyNotice().catch(() => setShowAiNotice(true));
   };
 
   useEffect(() => {
@@ -276,6 +299,9 @@ export default function JamiAssistantDrawer({
     setHistoryOpen(false);
     setThreadLoading(false);
     setActiveThread(null);
+    setInsertedIllustrationIds(new Set());
+    setGeneratingIllustrationId(null);
+    setInsertingIllustrationId(null);
     onOpenChange(false);
   }, [abandonActiveRequest, onOpenChange, resetKey]);
 
@@ -331,6 +357,7 @@ export default function JamiAssistantDrawer({
     setHistoryOpen(false);
     setThreadLoading(false);
     setActiveThread(null);
+    setInsertedIllustrationIds(new Set());
     window.requestAnimationFrame(() => inputRef.current?.focus());
   }, [abandonActiveRequest]);
 
@@ -407,6 +434,95 @@ export default function JamiAssistantDrawer({
     (thread) => thread.contextKey === contextKey && thread.id !== activeThread?.id
   );
 
+  const requestIllustration = useCallback(
+    async (input: {
+      threadId: string;
+      messageId: string;
+      context?: JamiAssistantContext;
+    }) => {
+      if (generatingIllustrationId) return;
+      setGeneratingIllustrationId(input.messageId);
+      setError(null);
+      try {
+        const context = input.context ?? (await getContext());
+        if (getJamiAssistantContextKey(getJamiAssistantSavedContext(context)) !== contextKey) {
+          throw new Error("The study context changed. Open Jami again and retry.");
+        }
+        const illustration = await createAssistantIllustration({
+          ...input,
+          context,
+        });
+        setMessages((current) =>
+          current.map((message) =>
+            message.id === input.messageId
+              ? {
+                  ...message,
+                  illustrations: [...(message.illustrations ?? []), illustration],
+                }
+              : message
+          )
+        );
+      } catch (illustrationError) {
+        setError(
+          illustrationError instanceof Error
+            ? illustrationError.message
+            : "Jami could not create that visual just now."
+        );
+      } finally {
+        setGeneratingIllustrationId(null);
+      }
+    },
+    [contextKey, generatingIllustrationId, getContext]
+  );
+
+  const addIllustrationToPage = useCallback(
+    async (message: DrawerMessage, illustration: AssistantIllustration) => {
+      if (!message.id || insertingIllustrationId) return;
+      setInsertingIllustrationId(illustration.id);
+      setError(null);
+      try {
+        const context = await getContext();
+        if (context.surface !== "notebook") {
+          throw new Error("Open a notebook page before adding this visual.");
+        }
+        if (getJamiAssistantContextKey(getJamiAssistantSavedContext(context)) !== contextKey) {
+          throw new Error("The notebook page changed. Add the visual from the page you want it on.");
+        }
+        const ready = await onBeforeIllustrationInsert?.();
+        if (ready === false) {
+          throw new Error("Save this page before adding the visual.");
+        }
+        const inserted = await insertAssistantIllustration({
+          illustration,
+          messageId: message.id,
+          notebookId: context.notebookId,
+          pageId: context.pageId,
+        });
+        setInsertedIllustrationIds((current) => {
+          const next = new Set(current);
+          next.add(illustration.id);
+          return next;
+        });
+        onIllustrationInserted?.(inserted);
+      } catch (insertError) {
+        setError(
+          insertError instanceof Error
+            ? insertError.message
+            : "That visual could not be added to this page."
+        );
+      } finally {
+        setInsertingIllustrationId(null);
+      }
+    },
+    [
+      contextKey,
+      getContext,
+      insertingIllustrationId,
+      onBeforeIllustrationInsert,
+      onIllustrationInserted,
+    ]
+  );
+
   const sendMessage = useCallback(
     async (rawMessage: string) => {
       const message = rawMessage.trim();
@@ -451,6 +567,8 @@ export default function JamiAssistantDrawer({
               })),
             context,
             useRelatedSources,
+            threadId: activeThread?.id,
+            contextLabel: historyContextLabel,
           },
           (textSoFar) => {
             if (requestIdRef.current !== requestId) return;
@@ -473,6 +591,8 @@ export default function JamiAssistantDrawer({
           text: response.reply,
           used: response.used,
           followUps: response.followUps,
+          citations: response.citations,
+          canIllustrate: response.canIllustrate,
         };
         // Settle on the validated reply, replacing the streamed placeholder
         // rather than trusting the deltas that produced it.
@@ -482,28 +602,36 @@ export default function JamiAssistantDrawer({
             : [...current, assistantMessage]
         );
 
-        const user = auth.currentUser;
-        if (user) {
+        const savedThread = response.savedThread;
+        if (savedThread) {
           try {
-            const savedThread = await saveJamiAssistantTurn({
-              userId: user.uid,
-              thread: activeThread ?? undefined,
-              context: savedContext,
-              contextKey: resolvedContextKey,
-              contextLabel: historyContextLabel,
-              userMessage: message,
-              assistantMessage: {
-                text: response.reply,
-                used: response.used,
-                followUps: response.followUps,
-              },
-            });
             if (requestIdRef.current !== requestId) return;
+            const savedMessageId = savedThread.lastAssistantMessageId;
             setActiveThread(savedThread);
             setThreads((current) => [
               savedThread,
               ...current.filter((thread) => thread.id !== savedThread.id),
             ]);
+            if (savedMessageId) {
+              setMessages((current) => {
+                const next = [...current];
+                const finalIndex = next.length - 1;
+                if (next[finalIndex]?.role === "assistant") {
+                  next[finalIndex] = { ...next[finalIndex], id: savedMessageId };
+                }
+                return next;
+              });
+              if (
+                response.canIllustrate &&
+                isExplicitTutorIllustrationRequest(message)
+              ) {
+                void requestIllustration({
+                  threadId: savedThread.id,
+                  messageId: savedMessageId,
+                  context,
+                });
+              }
+            }
           } catch {
             // The answer already reached the student; only persisting it to
             // history failed. That is reported in the drawer rather than
@@ -546,6 +674,7 @@ export default function JamiAssistantDrawer({
       messages,
       useRelatedSources,
       viewingForeignThread,
+      requestIllustration,
     ]
   );
 
@@ -755,6 +884,57 @@ export default function JamiAssistantDrawer({
                             ? formatJamiAssistantUsedContext(message.used)
                             : "Used: General knowledge"}
                         </div>
+                        {message.citations?.length ? (
+                          <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 px-1" aria-label="Web sources">
+                            {message.citations.map((citation) => (
+                              <a
+                                key={citation.url}
+                                href={citation.url}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="max-w-full truncate text-2xs font-medium text-accent underline-offset-2 hover:underline"
+                              >
+                                {citation.title}
+                              </a>
+                            ))}
+                          </div>
+                        ) : null}
+                        {message.illustrations?.map((illustration) => (
+                          <AssistantIllustrationCard
+                            key={illustration.id}
+                            illustration={illustration}
+                            canInsert={
+                              Boolean(onIllustrationInserted) &&
+                              contextKey.startsWith("notebook:") &&
+                              !viewingForeignThread
+                            }
+                            inserted={insertedIllustrationIds.has(illustration.id)}
+                            inserting={insertingIllustrationId === illustration.id}
+                            onInsert={() => void addIllustrationToPage(message, illustration)}
+                          />
+                        ))}
+                        {message.canIllustrate &&
+                        message.id &&
+                        activeThread &&
+                        !viewingForeignThread ? (
+                          <div className="mt-2 px-1">
+                            <button
+                              type="button"
+                              disabled={generatingIllustrationId !== null}
+                              className="rounded-full border border-accent/25 bg-accent/8 px-2.5 py-1 text-2xs font-semibold text-accent transition hover:border-accent/40 hover:bg-accent/12 disabled:cursor-wait disabled:opacity-60"
+                              onClick={() => {
+                                void requestIllustration({
+                                  threadId: activeThread.id,
+                                  messageId: message.id!,
+                                });
+                              }}
+                            >
+                              {generatingIllustrationId === message.id
+                                ? "Creating visual..."
+                                : "Show visually"}
+                            </button>
+                          </div>
+                        ) : null}
                         {index === messages.length - 1 &&
                         !loading &&
                         message.followUps?.length ? (
@@ -806,16 +986,20 @@ export default function JamiAssistantDrawer({
           <div className="mx-5 mb-0 rounded-xl border border-accent/20 bg-accent/8 px-3.5 py-3 text-xs leading-5 text-text-secondary sm:mx-7">
             <div className="flex items-start justify-between gap-3">
               <p>
-                When you ask Jami, the relevant work and sources are sent securely
-                to an AI provider. Avoid personal or sensitive details, and check
-                important answers because AI can make mistakes.
+                When you use Jami, relevant work may be processed through OpenRouter
+                by Xiaomi, MiniMax or Moonshot under no-retention controls. Google
+                handles source documents, optional web checks and visuals. Web search
+                is used only when current or course-specific information needs
+                checking, and private student work is never put into a search query.
+                This notice explains how Jami processes a request. Avoid personal details
+                and check important answers because AI can make mistakes.
               </p>
               <button
                 type="button"
                 className="shrink-0 font-semibold text-accent hover:underline"
                 onClick={dismissAiNotice}
               >
-                Got it
+                I understand
               </button>
             </div>
           </div>
@@ -935,7 +1119,7 @@ export default function JamiAssistantDrawer({
               <summary className="flex min-h-7 cursor-pointer list-none items-center gap-1.5 rounded-full px-1.5 font-medium transition duration-fast hover:bg-[var(--color-glass-subtle)] hover:text-text-secondary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 [&::-webkit-details-marker]:hidden">
                 <span>Context</span>
                 <span aria-hidden="true" className="h-1 w-1 rounded-full bg-current opacity-45" />
-                <span>{useRelatedSources ? "Related material on" : "Related material off"}</span>
+                <span>{useRelatedSources ? "Folder sources on" : "Folder sources off"}</span>
                 <svg
                   aria-hidden="true"
                   viewBox="0 0 16 16"
@@ -954,7 +1138,7 @@ export default function JamiAssistantDrawer({
               <div className="mt-2 flex w-full items-center justify-between gap-4 rounded-md border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-3">
                 <span className="min-w-0">
                   <span className="block text-xs font-semibold text-text-primary">
-                    Use related Jami material
+                    Use folder sources
                   </span>
                   <span className="mt-0.5 block text-2xs leading-relaxed text-text-muted">
                     Jami may choose up to 15 relevant sources when you ask.
@@ -963,7 +1147,7 @@ export default function JamiAssistantDrawer({
                 <button
                   type="button"
                   role="switch"
-                  aria-label="Use related Jami material"
+                  aria-label="Use folder sources"
                   aria-checked={useRelatedSources}
                   className={`relative h-6 w-11 shrink-0 rounded-full border transition duration-fast focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent/45 ${
                     useRelatedSources

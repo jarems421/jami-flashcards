@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import nextConfig from "@/next.config";
+import { nextConfig } from "@/next.config";
 
 describe("Practice route compatibility", () => {
   it("keeps the legacy spelling as a permanent redirect", async () => {

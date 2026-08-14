@@ -18,6 +18,7 @@ import PracticePaperAttemptBar from "@/components/practice/PracticePaperAttemptB
 import PracticePaperAssets from "@/components/practice/PracticePaperAssets";
 import type { NotebookInkEditorHandle } from "@/components/workspace/NotebookInkEditor";
 import NotebookLivePageLayers from "@/components/workspace/NotebookLivePageLayers";
+import NotebookImageLayer from "@/components/workspace/NotebookImageLayer";
 import { PAGE_COLOR_CLASS } from "@/components/workspace/NotebookPageBackground";
 import NotebookPageStaticContent from "@/components/workspace/NotebookPageStaticContent";
 import NotebookPagesDrawer from "@/components/workspace/NotebookPagesDrawer";
@@ -67,9 +68,10 @@ import {
   useNotebookPageCreationState,
   useNotebookPanelState,
 } from "@/hooks/useNotebookWorkspaceState";
-import type { JamiAssistantContext } from "@/lib/ai/jami-assistant";
+import { useNotebookAssistantContext } from "@/hooks/useNotebookAssistantContext";
 import type {
   NotebookFile,
+  NotebookImageRef,
   NotebookPage,
   NotebookStrokeTool,
   NotebookTextBlock,
@@ -120,17 +122,11 @@ import {
 } from "@/lib/workspace/notebook-inking";
 import { getNotebookInkRenderWindow } from "@/lib/workspace/notebook-ink-window";
 import {
-  readBlobAsBase64,
-  renderNotebookPageSnapshot,
-} from "@/lib/workspace/notebook-page-snapshot";
-import {
   createNotebookPage,
   deleteNotebookPage,
+  updateNotebookPageImages,
 } from "@/services/study/notebooks";
 import { appendUploadedFileToNotebook } from "@/services/study/notebook-import";
-import {
-  getNotebookFileBytes,
-} from "@/services/study/notebook-files";
 import {
   legacyStrokesToJsDrawSvg,
 } from "@/lib/workspace/notebook-ink-data";
@@ -149,7 +145,7 @@ import {
   saveNotebookPenSmoothingPreference,
 } from "@/lib/workspace/notebook-pen-feel";
 import { resolveNotebookPageBackgroundFileId } from "@/lib/workspace/notebook-pdf";
-import { NOTEBOOK_ASSISTANT_QUICK_ACTIONS } from "@/lib/workspace/notebook-assistant";
+import { getNotebookAssistantQuickActions } from "@/lib/workspace/notebook-assistant";
 import { recordPracticePaperTutorUse } from "@/services/study/practice-papers";
 import {
   trackNotebookPdfCanvas,
@@ -314,6 +310,7 @@ export default function NotebookEditorPage() {
     usePracticePaperStatus(setAssistantOpen);
   const [practicePaperEditingLocked, setPracticePaperEditingLocked] = useState(false);
   const [practicePaperTutorLocked, setPracticePaperTutorLocked] = useState(false);
+  const [selectedImageId, setSelectedImageId] = useState<string | null>(null);
   const handlePracticePaperRetake = usePracticePaperRetake(pageState, setPages, setInkEditorMountRevision);
   const pageFrameRef = useRef<HTMLDivElement | null>(null);
   const pageTrackRef = useRef<HTMLDivElement | null>(null);
@@ -348,6 +345,22 @@ export default function NotebookEditorPage() {
   const selectedPageIndex = useMemo(
     () => pages.findIndex((page) => page.id === selectedPage?.id),
     [pages, selectedPage?.id]
+  );
+  const notebookPageHasWork = useMemo(
+    () =>
+      Boolean(
+        selectedPage?.typedContent?.trim() ||
+          textBlocks.some((block) => block.text.trim()) ||
+          inkHasContent ||
+          selectedPage?.inkData?.svg ||
+          (selectedPage?.strokeData?.strokes.length ?? 0) > 0 ||
+          (selectedPage?.imageRefs.length ?? 0) > 0
+      ),
+    [inkHasContent, selectedPage, textBlocks]
+  );
+  const notebookAssistantQuickActions = useMemo(
+    () => getNotebookAssistantQuickActions({ hasWork: notebookPageHasWork }),
+    [notebookPageHasWork]
   );
 
   // Each time the page changes, the ink editor remounts and re-deserializes the
@@ -532,154 +545,18 @@ export default function NotebookEditorPage() {
     setPenMenuOpen,
   ]);
 
-  const getNotebookAssistantContext = useCallback(
-    async (): Promise<JamiAssistantContext> => {
-      const page = pageState.read().selectedPage;
-      const currentNotebook = notebook;
-      const editor = inkEditorRef.current;
-      if (
-        !page ||
-        !currentNotebook ||
-        page.id !== selectedPage?.id ||
-        page.notebookId !== currentNotebook.id
-      ) {
-        throw new Error(
-          "This notebook page changed before Jami could read it. Try again on the page you want help with."
-        );
-      }
-      if (!editor || !inkReadyRef.current) {
-        throw new Error(
-          "This notebook page is still opening. Wait until the writing appears, then try again."
-        );
-      }
-      if (inkInteractionActiveRef.current || editor.isInteracting()) {
-        throw new Error(
-          "Finish the current pen stroke, then ask Jami again."
-        );
-      }
-
-      const capturedPageId = page.id;
-      const capturedContentRevision = pageState.read().contentRevision;
-      const capturedEditorRevision = editorRevisionRef.current;
-      const capturedTextBlocks = pageState.read().textBlocks.map((block) => ({
-        ...block,
-      }));
-      const capturedPageColor = pageState.read().pageColor;
-      const capturedPageStyle = pageState.read().pageStyle;
-
-      const assertCaptureIsCurrent = () => {
-        if (
-          pageState.read().selectedPage?.id !== capturedPageId ||
-          pageState.read().contentRevision !== capturedContentRevision ||
-          editorRevisionRef.current !== capturedEditorRevision ||
-          inkEditorRef.current !== editor
-        ) {
-          throw new Error(
-            "This notebook page changed while Jami was reading it. Try sending your question again."
-          );
-        }
-        if (inkInteractionActiveRef.current || editor.isInteracting()) {
-          throw new Error(
-            "Finish the current pen stroke, then ask Jami again."
-          );
-        }
-      };
-
-      const inkSvg = await editor.serializeAsync();
-      if (inkSvg === null) {
-        throw new Error(
-          "Finish the current pen stroke and wait for the page to settle, then try again."
-        );
-      }
-      assertCaptureIsCurrent();
-
-      let background:
-        | {
-            kind: "pdf-canvas";
-            canvas: HTMLCanvasElement;
-          }
-        | {
-            kind: "image-bytes";
-            bytes: Uint8Array;
-            mimeType: string;
-          }
-        | null = null;
-
-      if (
-        activeNotebookFile?.fileType === "application/pdf" &&
-        activeNotebookFile.storagePath
-      ) {
-        const pdfCanvasTracking = activePdfCanvasTrackingRef.current;
-        const pdfCanvas = pdfCanvasTracking.canvas;
-        if (
-          !activePdfRenderKey ||
-          !pdfCanvas ||
-          pdfCanvasTracking.renderKey !== activePdfRenderKey ||
-          pdfCanvas.width <= 0 ||
-          pdfCanvas.height <= 0
-        ) {
-          throw new Error(
-            "This PDF page is still loading. Wait until it appears, then ask Jami again."
-          );
-        }
-        background = { kind: "pdf-canvas", canvas: pdfCanvas };
-      } else if (
-        activeNotebookFile?.fileType.startsWith("image/") &&
-        activeNotebookFile.storagePath
-      ) {
-        let bytes: Uint8Array;
-        try {
-          bytes = await getNotebookFileBytes(activeNotebookFile.storagePath);
-        } catch {
-          // Replaced with wording the student can act on. The storage error
-          // names an internal path and would not tell them what to do next.
-          throw new Error(
-            "Jami could not read this page's image background. Wait a moment and try again."
-          );
-        }
-        assertCaptureIsCurrent();
-        background = {
-          kind: "image-bytes",
-          bytes,
-          mimeType: activeNotebookFile.fileType,
-        };
-      }
-
-      const snapshot = await renderNotebookPageSnapshot({
-        pageColor: capturedPageColor,
-        pageStyle: capturedPageStyle,
-        inkSvg,
-        textBlocks: capturedTextBlocks,
-        background,
-      });
-      assertCaptureIsCurrent();
-      const dataBase64 = await readBlobAsBase64(snapshot.blob);
-      assertCaptureIsCurrent();
-
-      return {
-        surface: "notebook",
-        notebookId: currentNotebook.id,
-        pageId: capturedPageId,
-        snapshot: {
-          mimeType: snapshot.mimeType,
-          width: snapshot.width,
-          height: snapshot.height,
-          dataBase64,
-        },
-        typedText: snapshot.typedText || undefined,
-        questionPrompt: page.questionPrompt?.trim() || undefined,
-      };
-    },
-    [
-      activeNotebookFile,
-      activePdfRenderKey,
-      inkInteractionActiveRef,
-      inkReadyRef,
-      notebook,
-      pageState,
-      selectedPage?.id,
-    ]
-  );
+  const getNotebookAssistantContext = useNotebookAssistantContext({
+    pageState,
+    notebook,
+    selectedPageId: selectedPage?.id,
+    activeNotebookFile,
+    activePdfRenderKey,
+    activePdfCanvasTrackingRef,
+    inkEditorRef,
+    inkReadyRef,
+    inkInteractionActiveRef,
+    editorRevisionRef,
+  });
 
   // `selectedPage` is derived from the pages list, so the store has to be told
   // about it. Handlers read the open page through `pageState.read()`.
@@ -851,6 +728,91 @@ export default function NotebookEditorPage() {
     commitUi: flushInkUiSync,
     scheduleUiCommit: scheduleInkUiSync,
   });
+
+  const handleIllustrationInserted = useCallback(
+    (input: { imageRef: NotebookImageRef; contentRevision: number }) => {
+      const pageId = pageState.read().selectedPage?.id;
+      if (!pageId) return;
+      setPages((current) =>
+        current.map((page) =>
+          page.id === pageId
+            ? {
+                ...page,
+                imageRefs: page.imageRefs.some(
+                  (image) => image.sourceAssetId === input.imageRef.sourceAssetId
+                )
+                  ? page.imageRefs
+                  : [...page.imageRefs, input.imageRef],
+                contentRevision: input.contentRevision,
+                updatedAt: Date.now(),
+              }
+            : page
+        )
+      );
+      pageState.setContentRevision(input.contentRevision);
+      setSelectedImageId(input.imageRef.id);
+      if (!isPhoneLayout) setTool("select");
+      setSaveStatus("saved");
+      success("Visual added to this page.");
+    },
+    [isPhoneLayout, pageState, setPages, setSaveStatus, setTool, success]
+  );
+
+  const handleNotebookImagesCommit = useCallback(
+    async (imageRefs: NotebookImageRef[]) => {
+      const pageId = pageState.read().selectedPage?.id;
+      if (!user?.uid || !notebookId || !pageId) return;
+      try {
+        // Flush ink/text first so the image transaction starts from the latest
+        // revision and never overwrites a concurrent notebook autosave.
+        await saveCurrentPage({ flush: true });
+        const baseContentRevision = pageState.read().contentRevision;
+        setSaveStatus("saving");
+        const result = await updateNotebookPageImages(user.uid, {
+          notebookId,
+          pageId,
+          imageRefs,
+          baseContentRevision,
+        });
+        setPages((current) =>
+          current.map((page) =>
+            page.id === pageId
+              ? {
+                  ...page,
+                  imageRefs,
+                  contentRevision: result.contentRevision,
+                  updatedAt: result.updatedAt,
+                }
+              : page
+          )
+        );
+        if (pageState.read().selectedPage?.id === pageId) {
+          pageState.setContentRevision(result.contentRevision);
+          setSaveStatus("saved");
+        }
+      } catch (error) {
+        setSaveStatus("saved");
+        showThrownError(error, "That visual could not be moved. Try again.");
+      }
+    },
+    [
+      notebookId,
+      pageState,
+      saveCurrentPage,
+      setPages,
+      setSaveStatus,
+      showThrownError,
+      user?.uid,
+    ]
+  );
+
+  useEffect(() => {
+    setSelectedImageId(null);
+  }, [selectedPage?.id]);
+
+  useEffect(() => {
+    if (tool !== "select") setSelectedImageId(null);
+  }, [tool]);
 
   // With js-draw as the single ink engine, switching tools only updates the
   // desired style; NotebookInkEditor defers applying it while a pointer is
@@ -2658,7 +2620,9 @@ export default function NotebookEditorPage() {
           contextLabel="Current notebook page"
           historyContextLabel={`${notebook.title} · Page ${Math.max(selectedPageIndex + 1, 1)}`}
           getContext={getNotebookAssistantContext}
-          quickActions={NOTEBOOK_ASSISTANT_QUICK_ACTIONS}
+          quickActions={notebookAssistantQuickActions}
+          onBeforeIllustrationInsert={() => saveCurrentPage({ flush: true })}
+          onIllustrationInserted={handleIllustrationInserted}
         />
         ) : null}
 
@@ -2817,6 +2781,18 @@ export default function NotebookEditorPage() {
                       onPointerUp: handlePagePointerUp,
                       onPointerCancel: handlePagePointerCancel,
                     }}
+                  />
+                  <NotebookImageLayer
+                    images={selectedPage.imageRefs}
+                    editingEnabled={
+                      tool === "select" &&
+                      fullNotebookEditingEnabled &&
+                      !isPhoneLayout &&
+                      !practicePaperEditingLocked
+                    }
+                    selectedImageId={selectedImageId}
+                    onSelect={setSelectedImageId}
+                    onCommit={handleNotebookImagesCommit}
                   />
                   <NotebookTextBlockLayer
                     textBlocks={textBlocks}
