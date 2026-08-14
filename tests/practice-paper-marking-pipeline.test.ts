@@ -144,6 +144,47 @@ describe("formal blind marking pipeline", () => {
   });
 
   /**
+   * The third view is an extra safeguard over an already-adjudicated dispute.
+   * The runbook offers OPENROUTER_JUROR_KILL_SWITCH as a juror-only measure,
+   * which it can only be if losing the juror does not lose the marking.
+   */
+  describe("juror unavailable", () => {
+    it("keeps the adjudicated marking when the third view cannot run", async () => {
+      let supervisorCall = 0;
+      generateAiText.mockImplementation(async ({ role }: { role: string }) => {
+        if (role === "worker") return report({ q1: 0, q2: 3 });
+        if (role === "juror") throw new Error("AI providers are not configured");
+        supervisorCall += 1;
+        return supervisorCall === 1
+          ? report({ q1: 2, q2: 3 })
+          : report({ q1: 1, q2: 3 });
+      });
+
+      const result = await markPracticePaperWithAudit(input());
+
+      expect(result.result.awardedMarks).toBe(4);
+      expect(result.audit).toMatchObject({
+        disputedQuestionIds: ["q1"],
+        adjudicatedQuestionIds: ["q1"],
+        // Never claim a third view that did not happen.
+        thirdViewQuestionIds: [],
+      });
+    });
+
+    it("still fails the marking when adjudication itself cannot run", async () => {
+      let supervisorCall = 0;
+      generateAiText.mockImplementation(async ({ role }: { role: string }) => {
+        if (role === "worker") return report({ q1: 0, q2: 3 });
+        supervisorCall += 1;
+        if (supervisorCall === 1) return report({ q1: 2, q2: 3 });
+        throw new Error("supervisor unavailable");
+      });
+
+      await expect(markPracticePaperWithAudit(input())).rejects.toThrow();
+    });
+  });
+
+  /**
    * Whichever report an adjudicator reads first wins disputes more often than
    * it should, so the two are unnamed and their order is drawn per marking.
    */

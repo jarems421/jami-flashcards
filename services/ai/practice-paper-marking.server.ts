@@ -258,6 +258,58 @@ Return the complete final report for every question, preserving agreed questions
     });
   }
 
+  // The third view is an extra safeguard over questions the adjudicator has
+  // already resolved, so losing it must not lose the marking with it. If the
+  // juror is unavailable -- an outage, or OPENROUTER_JUROR_KILL_SWITCH thrown
+  // deliberately, which the runbook offers as a juror-only measure -- the
+  // adjudicated result stands, exactly as it would had no question qualified.
+  //
+  // Adjudication itself is not treated this way and should not be: it resolves
+  // a genuine disagreement between two markers, and silently shipping one of
+  // them would bury the conflict rather than settle it.
+  try {
+    result = await runThirdView({
+      input,
+      result,
+      primary: primary.result,
+      verifier: verifier.result,
+      thirdViewQuestionIds,
+    });
+  } catch (error) {
+    if (input.signal?.aborted) throw error;
+    input.logFallback?.({
+      role: "third-view",
+      modelRole: "juror",
+      error,
+      degradedToAdjudication: true,
+    });
+    // The audit must not claim a third view that never happened.
+    thirdViewQuestionIds = [];
+  }
+
+  return {
+    result,
+    audit: {
+      version: 1,
+      primaryScores: scoreMap(primary.result),
+      verifierScores: scoreMap(verifier.result),
+      disputedQuestionIds,
+      adjudicatedQuestionIds,
+      thirdViewQuestionIds,
+      createdAt: Date.now(),
+    },
+  };
+}
+
+async function runThirdView(context: {
+  input: PracticePaperMarkingInput;
+  result: PracticePaperResult;
+  primary: PracticePaperResult;
+  verifier: PracticePaperResult;
+  thirdViewQuestionIds: string[];
+}) {
+  const { input, primary, verifier, thirdViewQuestionIds } = context;
+  let result = context.result;
   if (thirdViewQuestionIds.length > 0) {
     const unresolved = new Set(thirdViewQuestionIds);
     const filteredThirdViewParts = filterReferencePartsForQuestions(
@@ -295,8 +347,8 @@ Return the complete final report for every question, preserving agreed questions
       extraPrompt: `Give an independent visual reading and mark only these unresolved questions: ${thirdViewQuestionIds.join(", ")}.
 Dispute summary: ${JSON.stringify(thirdViewQuestionIds.map((questionId) => ({
   questionId,
-  primary: primary.result.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
-  verifier: verifier.result.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
+  primary: primary.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
+  verifier: verifier.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
   adjudicated: result.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
 })))}. Return a complete report shape for these questions only.`,
     });
@@ -310,19 +362,7 @@ Independent visual third view: ${JSON.stringify(third.result.questionResults.fil
     });
     result = final.result;
   }
-
-  return {
-    result,
-    audit: {
-      version: 1,
-      primaryScores: scoreMap(primary.result),
-      verifierScores: scoreMap(verifier.result),
-      disputedQuestionIds,
-      adjudicatedQuestionIds,
-      thirdViewQuestionIds,
-      createdAt: Date.now(),
-    },
-  };
+  return result;
 }
 
 function filterReferencePartsForQuestions(
