@@ -15,7 +15,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:sizes": "node scripts/check-file-sizes.mjs",
-    "check:ai-release": "node scripts/check-ai-provider-release.mjs --live",
+    "check:ai-release": "node --env-file-if-exists=.env.local scripts/check-ai-provider-release.mjs --live",
     "check:ai-benchmark": "node scripts/check-ai-benchmark.mjs",
     "check": "npm run typecheck && npm run lint && npm run check:sizes && npm test",
     "verify:all": "npm run check && npm run build && npm run test:rules && npm run test:e2e",
