@@ -70,6 +70,50 @@ describe("quadratic weighted kappa", () => {
   });
 });
 
+/**
+ * Real schemes award halves. Rounding them away turns a two-mark question's
+ * five-point scale into a three-point one, discarding exactly the partial
+ * credit this system exists to measure.
+ */
+describe("half-mark scales", () => {
+  const halves = (values: readonly [number, number][]): MarkPair[] =>
+    values.map(([reference, candidate]) => ({
+      questionId: "q21",
+      maxMarks: 2,
+      step: 0.5,
+      reference,
+      candidate,
+    }));
+
+  it("does not round a half mark into agreement", () => {
+    const summary = summariseAgreement(halves([[1.5, 1.5], [0.5, 1]]));
+    expect(summary.exact).toBe(0.5);
+    expect(summary.meanAbsoluteError).toBe(0.25);
+  });
+
+  it("counts one half-mark step as adjacent, not one whole mark", () => {
+    expect(summariseAgreement(halves([[1, 1.5], [1, 1.5]])).adjacent).toBe(1);
+    expect(summariseAgreement(halves([[0.5, 1.5], [0.5, 1.5]])).adjacent).toBe(0);
+  });
+
+  it("scores a half-mark scale as five points rather than three", () => {
+    // Marking every 1.5 as a 1 is real disagreement on a half-mark scale, and
+    // vanishes entirely if the scale is rounded to whole marks first.
+    const kappa = quadraticWeightedKappa(
+      halves([[0, 0], [1.5, 1], [2, 2], [0.5, 0.5]]),
+      2
+    );
+    expect(kappa).not.toBeNull();
+    expect(kappa!).toBeLessThan(1);
+  });
+
+  it("still treats a whole-mark question as whole marks", () => {
+    const summary = summariseAgreement(pairs([[3, 4]], 5));
+    expect(summary.adjacent).toBe(1);
+    expect(summary.meanAbsoluteError).toBe(1);
+  });
+});
+
 describe("agreement summary", () => {
   /**
    * The reason kappa is computed per question: a three-mark question and a

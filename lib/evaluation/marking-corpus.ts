@@ -230,12 +230,15 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     title: "Handwritten university exam dataset (data science)",
     level: "undergraduate",
     subjects: ["dataScience", "statistics", "maths"],
-    regimes: ["additive"],
+    // Two marks awarded in halves against a short list of expected points, which
+    // is what the parser records. It was catalogued as additive at first, and
+    // that was simply wrong: there are no method marks here to depend on.
+    regimes: ["pointPool"],
     licence: { id: "CC BY 4.0", redistributable: true, verified: false },
     handwritten: true,
     commentary: true,
     notes:
-      "Raw handwriting, teacher-annotated version, answer key and per-question human marks. The closest published match to Jami's own pipeline, and openly licensed, so it can serve measurement and exemplars both.",
+      "Raw handwriting, teacher-annotated version, answer key and per-question human marks. The closest published match to Jami's own pipeline. Ingested: 544 short-answer records from 50 students. Licence stays unverified — the payload ships no licence file and its README names no terms, so the CC BY claim rests on the repository page rather than on anything in the source. Do not read `Student_MCQ.csv` or `file.txt`: both still carry real student names and institutional ID numbers despite the README stating that all identifiers were anonymised. The scripts also arrived bundled into eleven transport packs; those are read only to check they reproduce the published per-student PDFs page for page, and their grouping is not part of the source.",
   },
   {
     id: "engsaf",

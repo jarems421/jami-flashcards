@@ -22,6 +22,13 @@ export type MarkPair = {
   reference: number;
   /** The mark under test. */
   candidate: number;
+  /**
+   * The smallest mark increment this question uses. Real schemes award halves,
+   * and rounding them away turns a five-point scale (0, .5, 1, 1.5, 2) into a
+   * three-point one, quietly discarding exactly the partial credit this whole
+   * system exists to measure. Defaults to whole marks.
+   */
+  step?: number;
 };
 
 export type AgreementSummary = {
@@ -38,9 +45,20 @@ export type AgreementSummary = {
   count: number;
 };
 
-function clampToScale(value: number, maxMarks: number) {
+/**
+ * A mark as a whole number of steps up the scale. A 2-mark question awarded in
+ * halves becomes 0..4, so half marks survive rather than being rounded away.
+ */
+function clampToScale(value: number, maxMarks: number, step = 1) {
+  const increment = step > 0 ? step : 1;
   if (!Number.isFinite(value)) return 0;
-  return Math.max(0, Math.min(maxMarks, Math.round(value)));
+  const steps = Math.round(value / increment);
+  return Math.max(0, Math.min(Math.round(maxMarks / increment), steps));
+}
+
+function scaleStepsFor(pairs: readonly Pick<MarkPair, "step">[]) {
+  const steps = pairs.map((pair) => pair.step).filter((step): step is number => Boolean(step && step > 0));
+  return steps.length > 0 ? Math.min(...steps) : 1;
 }
 
 /**
@@ -52,26 +70,28 @@ function clampToScale(value: number, maxMarks: number) {
  * and kappa is undefined rather than perfect.
  */
 export function quadraticWeightedKappa(
-  pairs: readonly Pick<MarkPair, "reference" | "candidate">[],
+  pairs: readonly Pick<MarkPair, "reference" | "candidate" | "step">[],
   maxMarks: number
 ): number | null {
   if (pairs.length < 2 || maxMarks < 1) return null;
 
-  const size = maxMarks + 1;
+  const step = scaleStepsFor(pairs);
+  const points = Math.round(maxMarks / step);
+  const size = points + 1;
   const observed = Array.from({ length: size }, () => new Array<number>(size).fill(0));
   const referenceTotals = new Array<number>(size).fill(0);
   const candidateTotals = new Array<number>(size).fill(0);
 
   for (const pair of pairs) {
-    const reference = clampToScale(pair.reference, maxMarks);
-    const candidate = clampToScale(pair.candidate, maxMarks);
+    const reference = clampToScale(pair.reference, maxMarks, step);
+    const candidate = clampToScale(pair.candidate, maxMarks, step);
     observed[reference][candidate] += 1;
     referenceTotals[reference] += 1;
     candidateTotals[candidate] += 1;
   }
 
   const total = pairs.length;
-  const denominator = (maxMarks) ** 2;
+  const denominator = points ** 2;
   let observedWeighted = 0;
   let expectedWeighted = 0;
 
@@ -128,11 +148,14 @@ export function summariseAgreement(pairs: readonly MarkPair[]): AgreementSummary
   let signedError = 0;
   let absoluteError = 0;
   for (const pair of pairs) {
-    const reference = clampToScale(pair.reference, pair.maxMarks);
-    const candidate = clampToScale(pair.candidate, pair.maxMarks);
+    const step = pair.step && pair.step > 0 ? pair.step : 1;
+    const reference = clampToScale(pair.reference, pair.maxMarks, step) * step;
+    const candidate = clampToScale(pair.candidate, pair.maxMarks, step) * step;
     const difference = candidate - reference;
     if (difference === 0) exact += 1;
-    if (Math.abs(difference) <= 1) adjacent += 1;
+    // "Adjacent" means one step on this question's own scale, so a half-mark
+    // question is not silently credited for being a whole mark out.
+    if (Math.abs(difference) <= step) adjacent += 1;
     signedError += difference;
     absoluteError += Math.abs(difference);
   }
@@ -165,7 +188,8 @@ export function markDistribution(
   const counts = new Array<number>(bands).fill(0);
   if (pairs.length === 0) return counts;
   for (const pair of pairs) {
-    const value = clampToScale(pair[select], pair.maxMarks);
+    const step = pair.step && pair.step > 0 ? pair.step : 1;
+    const value = clampToScale(pair[select], pair.maxMarks, step) * step;
     const share = pair.maxMarks === 0 ? 0 : value / pair.maxMarks;
     const band = Math.min(bands - 1, Math.floor(share * bands));
     counts[band] += 1;
