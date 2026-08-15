@@ -12,6 +12,12 @@
     "noUnusedLocals": true,
     "noUnusedParameters": true,
     "noEmit": true,
+    // The corpus parsers are loaded straight from source by `scripts/corpus-*`,
+    // using Node's own type stripping rather than a bundler or a loader. Node
+    // resolves ES module specifiers literally, so those files must import each
+    // other with the `.ts` extension written out. Safe here because nothing is
+    // emitted.
+    "allowImportingTsExtensions": true,
     "esModuleInterop": true,
     "module": "esnext",
     "moduleResolution": "bundler",

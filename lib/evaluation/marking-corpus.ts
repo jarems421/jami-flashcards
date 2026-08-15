@@ -116,13 +116,19 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     id: "medly-gcse",
     title: "Medly GCSE marking benchmark (public subset)",
     level: "gcse",
-    subjects: ["maths", "english", "biology", "chemistry", "physics"],
-    regimes: ["additive", "pointPool", "banded"],
-    licence: { id: "CC BY 4.0", redistributable: true, verified: false },
+    // The public subset holds English and maths only. It was catalogued with
+    // three sciences it does not contain, which made coverage look broader than
+    // it is.
+    subjects: ["english", "maths"],
+    regimes: ["additive", "banded", "weightedTraits"],
+    // Verified: the payload ships the full CC BY 4.0 licence text and the
+    // README names the licence. Evidence is inside the source, not on a page
+    // somewhere that has to be taken on trust.
+    licence: { id: "CC BY 4.0", redistributable: true, verified: true },
     handwritten: true,
     commentary: false,
     notes:
-      "Double-marked real responses with examiner marks. The public subset is small, so treat it as exemplars and human-disagreement calibration rather than a large test set.",
+      "The most valuable source in the corpus for its size. Ingested: 480 answers over 20 questions, half typed and half photographed handwriting, every one marked by two examiners independently. They disagree on 237 of 480, and the gap widens with the tariff — a mean of 0.05 marks on one-markers against 4.58 on the 40-mark essays, worst case 20. That curve is the bar Jami should be held to, because holding it to exact agreement would hold it to a standard the examiners themselves do not meet. Sixty answers also carry each examiner's split across assessment objectives. No written examiner commentary.",
   },
   {
     id: "qualifications-scotland",
@@ -257,11 +263,14 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     title: "JorGPT open-ended computer science responses",
     level: "undergraduate",
     subjects: ["computerScience"],
-    regimes: ["banded", "pointPool"],
-    licence: { id: "research dataset", redistributable: false, verified: false },
+    regimes: ["banded"],
+    // Verified from the Zenodo record preserved with the download, whose
+    // licence metadata is cc-by-4.0 linking to the CC BY 4.0 legal code.
+    licence: { id: "CC BY 4.0", redistributable: true, verified: true },
     handwritten: false,
-    commentary: false,
-    notes: "About 3,000 authentic responses to 50 open-ended questions.",
+    commentary: true,
+    notes:
+      "Ingested: 3,031 responses to 50 open-ended questions, each with a teacher's grade out of ten and written feedback — the largest body of marked work in the corpus and the only large source carrying the marker's reasoning. Ten empty answers were skipped. The file also holds four machine-generated grades per row (deepseek, qwen, gemini and an LLM judge); none is read, because measuring Jami against another model while calling it human agreement would make every number downstream meaningless. A Spanish twin, `dataset_es.csv`, is deliberately not ingested.",
   },
   {
     id: "mohler",
@@ -280,11 +289,18 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     title: "Graduate neural networks ASAG set",
     level: "postgraduate",
     subjects: ["computerScience", "maths"],
-    regimes: ["pointPool"],
-    licence: { id: "research dataset", redistributable: false, verified: false },
+    // The README's own scale -- completely incorrect, partially correct,
+    // perfect -- judges the whole answer rather than counting credited points.
+    regimes: ["banded"],
+    // The repository carries MPL 2.0, which is a software licence applied to a
+    // repository that is mostly data. It permits redistribution, but whether it
+    // was meant to cover the answers themselves is genuinely unclear, so this
+    // stays unverified until a human decides rather than being read favourably.
+    licence: { id: "MPL 2.0", redistributable: true, verified: false },
     handwritten: false,
     commentary: false,
-    notes: "646 answers graded incorrect / partially correct / correct at postgraduate level.",
+    notes:
+      "Ingested: 607 of 646 answers over 17 questions, graded 0 (completely incorrect), 1 (partially correct) or 2 (perfect). The 39 skipped are blank answers, which carry a grade but nothing to mark. One human judge, so this measures agreement and says nothing about human disagreement. Most of the file is the authors' own model output — embeddings, cosine similarities, alignment scores and stop-worded copies of the text — and none of it is ingested: it would put another system's opinion in the corpus and hand a marker under test a precomputed similarity score for the answer it is meant to be reading.",
   },
   {
     id: "university-model-solutions",

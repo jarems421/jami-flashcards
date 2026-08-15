@@ -75,8 +75,23 @@ describe("corpus licensing", () => {
     ).toBe(false);
   });
 
-  it("ships nothing until someone has actually read a licence", () => {
-    expect(MARKING_CORPUS_SOURCES.every((source) => !isShippableAsExemplar(source))).toBe(true);
+  /**
+   * This once asserted that nothing in the catalogue was shippable, which was
+   * true only because nobody had read a licence yet. Two sources now carry
+   * their licence in the payload — Medly ships the CC BY 4.0 text, JorGPT's
+   * Zenodo record was preserved with the download — so the standing rule is
+   * what gets tested: a source ships only when the terms were confirmed and
+   * permit it, and anything unverified stays measure-only however open it
+   * looks.
+   */
+  it("ships only what has an open licence someone has confirmed", () => {
+    for (const source of MARKING_CORPUS_SOURCES) {
+      if (!isShippableAsExemplar(source)) continue;
+      expect(source.licence.verified).toBe(true);
+      expect(source.licence.redistributable).toBe(true);
+    }
+    const unverified = MARKING_CORPUS_SOURCES.filter((source) => !source.licence.verified);
+    expect(unverified.every((source) => !isShippableAsExemplar(source))).toBe(true);
   });
 });
 

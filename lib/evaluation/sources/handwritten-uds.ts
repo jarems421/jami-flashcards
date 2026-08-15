@@ -1,4 +1,5 @@
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
+import { parseCsvLine } from "./csv.ts";
 
 /**
  * Parser for `handwritten-university-data-science`.
@@ -73,26 +74,6 @@ const SHORT_ANSWER_FIRST = 21;
 const SHORT_ANSWER_LAST = 35;
 const SHORT_ANSWER_MAX_MARKS = 2;
 
-function splitCsvLine(line: string) {
-  const cells: string[] = [];
-  let current = "";
-  let quoted = false;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    if (character === '"') {
-      if (quoted && line[index + 1] === '"') {
-        current += '"';
-        index += 1;
-      } else quoted = !quoted;
-    } else if (character === "," && !quoted) {
-      cells.push(current);
-      current = "";
-    } else current += character;
-  }
-  cells.push(current);
-  return cells.map((cell) => cell.trim());
-}
-
 /** Q21..Q35 prompts, keyed by number, from the exam paper. */
 export function parseQuestionPrompts(questionText: string) {
   const prompts = new Map<number, string>();
@@ -123,7 +104,7 @@ export function parseAnswerKey(answerKeyText: string) {
   const references = new Map<number, string>();
   for (const line of answerKeyText.split(/\r?\n/).slice(1)) {
     if (!line.trim()) continue;
-    const cells = splitCsvLine(line);
+    const cells = parseCsvLine(line);
     const number = Number(cells[0]);
     if (!Number.isFinite(number) || cells[1] !== "Short_Answer") continue;
     references.set(number, cells[2] ?? "");
@@ -146,7 +127,7 @@ export function parseHandwrittenUds(input: HandwrittenUdsInput): HandwrittenUdsR
     };
   }
 
-  const header = splitCsvLine(lines[0]);
+  const header = parseCsvLine(lines[0]);
   const columnFor = new Map<number, number>();
   header.forEach((name, index) => {
     const number = Number(name);
@@ -162,7 +143,7 @@ export function parseHandwrittenUds(input: HandwrittenUdsInput): HandwrittenUdsR
   let misalignedRows = 0;
 
   for (const line of lines.slice(1)) {
-    const cells = splitCsvLine(line);
+    const cells = parseCsvLine(line);
     const studentId = cells[0];
     if (!studentId) continue;
     students += 1;
@@ -380,13 +361,13 @@ export function mcqAggregateMismatches(input: {
 }) {
   const key = new Map<number, string>();
   for (const line of input.answerKeyText.split(/\r?\n/).slice(1)) {
-    const cells = splitCsvLine(line);
+    const cells = parseCsvLine(line);
     const number = Number(cells[0]);
     if (Number.isFinite(number) && cells[1] === "MCQ") key.set(number, (cells[2] ?? "").toUpperCase());
   }
 
   const lines = input.marksCsv.split(/\r?\n/).filter((line) => line.trim());
-  const header = splitCsvLine(lines[0]);
+  const header = parseCsvLine(lines[0]);
   const statedColumn = header.findIndex((name) => /mcq/i.test(name));
   const columnFor = new Map<number, number>();
   header.forEach((name, index) => {
@@ -396,7 +377,7 @@ export function mcqAggregateMismatches(input: {
 
   const mismatches: { studentId: string; stated: number; derived: number }[] = [];
   for (const line of lines.slice(1)) {
-    const cells = splitCsvLine(line);
+    const cells = parseCsvLine(line);
     if (!cells[0] || cells.length !== header.length) continue;
     let derived = 0;
     for (const [number, expected] of key) {
