@@ -58,6 +58,25 @@ export type MarkingCorpusSource = {
   notes: string;
 };
 
+/**
+ * A single mark in the scheme, and what the examiner did with it.
+ *
+ * This is the level Jami actually has to work at. A total says a script scored
+ * four out of six; a criterion says which mark was withheld and why, which is
+ * both what a student needs told and the only way to see whether Jami reached
+ * the right total for the right reasons rather than by luck.
+ */
+export type MarkingCriterion = {
+  /** The mark's identifier in the scheme, as the scheme writes it. */
+  id: string;
+  available: number;
+  awarded: number;
+  /** The examiner's stated reason, in their words. */
+  reason?: string;
+  /** Credited despite an earlier error, following the candidate's own work. */
+  followThrough?: boolean;
+};
+
 export type MarkingCorpusRecord = {
   id: string;
   sourceId: string;
@@ -74,6 +93,8 @@ export type MarkingCorpusRecord = {
   maxMarks: number;
   markScheme?: string;
   examinerCommentary?: string;
+  /** Present where the source marks criterion by criterion. */
+  criteria?: readonly MarkingCriterion[];
 };
 
 /**
@@ -133,14 +154,17 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
   {
     id: "qualifications-scotland",
     title: "Qualifications Scotland — Understanding Standards",
-    level: "gcse",
-    subjects: ["maths", "english", "biology", "chemistry", "physics", "history"],
-    regimes: ["additive", "pointPool", "banded"],
+    // Higher, which is what was downloaded. It sits above National 5 and
+    // alongside the first year of A-level; MarkingLevel has no closer bucket,
+    // and calling it GCSE, as this entry used to, understated it by a year.
+    level: "alevel",
+    subjects: ["maths"],
+    regimes: ["additive"],
     licence: { id: "board exemplar", redistributable: false, verified: false },
     handwritten: true,
     commentary: true,
     notes:
-      "Candidate scripts with marking instructions and commentary naming each mark and why it was withheld. The closest published thing to the criterion-by-criterion reasoning Jami must produce.",
+      "The closest published thing to the criterion-by-criterion reasoning Jami must produce, and the reason it was the first board source parsed. Ingested: 89 candidate scripts from Higher maths 2023 papers 1 and 2, carrying 361 individual marks — each one identified, awarded or withheld, 107 of them with the examiner's stated reason and 38 credited on follow-through from the candidate's own earlier error. Records are marked out of what the examiner actually ruled on, which is not always the question's full tariff: 11 commentaries stop short, and counting the marks they pass over in silence as refusals would invent judgements. Scripts are scans, so an answer is a page reference, and some pages carry two candidates. Question wording and the generic scheme are not yet extracted. Only Higher maths is on disk; the programme covers far more. Measure-only: the terms permit private reading but require written permission for commercial use.",
   },
   {
     id: "qualifications-scotland-advanced-higher",
@@ -203,11 +227,12 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     title: "AQA A-level English exemplars",
     level: "alevel",
     subjects: ["english"],
-    regimes: ["banded", "weightedTraits"],
+    regimes: ["banded"],
     licence: { id: "board exemplar", redistributable: false, verified: false },
     handwritten: false,
     commentary: true,
-    notes: "Deliberately spans bands 2 to 5, so it teaches what separates a middling essay from a top one rather than only what a good one looks like.",
+    notes:
+      "Deliberately spans bands 2 to 5, so it teaches what separates a middling essay from a top one rather than only what a good one looks like. Ingested: 4 essays, one per band, each with the examiner's overall verdict and a paragraph of commentary against all five assessment objectives. The objectives are discussed but never scored, so this is banded rather than weighted-trait. These pages award a band, not a mark out of the paper total: a record means \"placed in band N of 5\". Measure-only and likely to stay so — the pages carry AQA's copyright notice and no reuse grant.",
   },
   {
     id: "ocr-alevel",
@@ -277,12 +302,12 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     title: "Mohler short-answer benchmark",
     level: "undergraduate",
     subjects: ["computerScience"],
-    regimes: ["pointPool"],
+    regimes: ["banded"],
     licence: { id: "research dataset", redistributable: false, verified: false },
     handwritten: false,
     commentary: false,
     notes:
-      "Roughly 2,300 answers scored 0–5 by two graders each. The two-grader structure is the point: it measures how far humans are from each other, which is the bar Jami should actually be held to.",
+      "The two-grader structure is the point: it measures how far humans are from each other, which is the bar Jami should actually be held to. Ingested: 2,273 answers over 81 questions, each graded independently by the class TA and by one of the authors. They disagree on 1,010 of them — a mean gap of 0.73 on the five-point scale and 1.63 on the ten, with 58 answers more than six marks apart. Both grades are kept; the averaged file the dataset ships is never read, because an average cannot show the spread. Assignments 11 and 12 were graded out of ten and are recorded that way rather than rescaled. Six questions the authors exclude from their own work, being selection rather than short-answer, are excluded here too. Measure-only: the Hugging Face mirror declares CC BY 4.0 but is a mirror, and the original release states no terms.",
   },
   {
     id: "graduate-neural-networks",

@@ -31,7 +31,12 @@ async function readPdf(path, { withText = false } = {}) {
   if (withText) {
     for (let page = 1; page <= document.numPages; page += 1) {
       const content = await (await document.getPage(page)).getTextContent();
-      pages.push({ page, text: content.items.map((item) => item.str).join(" ") });
+      // Keep the line breaks. Some sources are read line by line, and a page
+      // flattened into one string loses every structural cue it had.
+      pages.push({
+        page,
+        text: content.items.map((item) => item.str + (item.hasEOL ? "\n" : "")).join(""),
+      });
     }
   }
   const count = document.numPages;
@@ -199,6 +204,26 @@ const SOURCES = [
     },
   },
   {
+    id: "aqa-alevel-english",
+    marker: "aqa-exemplar-1.html",
+    bases: [join(ROOT, "aqa-alevel-english")],
+    async run(dir) {
+      const { parseAqaAlevelEnglish } = await load("aqa-alevel-english");
+      const pages = readdirSync(dir)
+        .filter((name) => name.endsWith(".html"))
+        .sort()
+        .map((name) => ({ name, html: text(join(dir, name)) }));
+      const result = parseAqaAlevelEnglish({ pages });
+      return {
+        ...result,
+        notes: [
+          `bands covered           ${Object.keys(result.stats.bands).sort().join(", ")}`,
+          "band, not a mark out of the paper total: maxMarks is the number of bands",
+        ],
+      };
+    },
+  },
+  {
     id: "jorgpt",
     marker: "dataset_en.csv",
     bases: [join(ROOT, "jorgpt")],
@@ -212,6 +237,77 @@ const SOURCES = [
             ? "dataset_es.csv present and deliberately not ingested: it is the Spanish twin of the same exercise, and Jami marks English"
             : null,
         ].filter(Boolean),
+      };
+    },
+  },
+  {
+    id: "qualifications-scotland",
+    marker: "higher-2023-Paper 1 Commentary 2023.pdf",
+    bases: [join(ROOT, "qualifications-scotland")],
+    async run(dir) {
+      const { parseQualificationsScotland } = await load("qualifications-scotland");
+
+      const papers = [];
+      for (const number of [1, 2]) {
+        const commentary = join(dir, `higher-2023-Paper ${number} Commentary 2023.pdf`);
+        const evidence = join(dir, `higher-2023-Paper ${number} Candidate Evidence 2023.pdf`);
+        if (!existsSync(commentary) || !existsSync(evidence)) continue;
+        papers.push({
+          id: `paper-${number}`,
+          commentaryPages: (await readPdf(commentary, { withText: true })).pages,
+          evidencePages: (await readPdf(evidence, { withText: true })).pages,
+          evidenceFile: evidence,
+        });
+      }
+
+      const result = parseQualificationsScotland({
+        seriesId: "higher-maths-2023",
+        subject: "maths",
+        papers,
+      });
+      return {
+        ...result,
+        notes: [
+          `papers read             ${papers.length}`,
+          `criterion-level marks   ${result.stats.criteria}` +
+            ` (${result.stats.criteriaWithReason} with the examiner's reason)`,
+          "Higher maths 2023 only; the record level is alevel because Higher has no closer bucket",
+        ],
+      };
+    },
+  },
+  {
+    id: "mohler",
+    marker: join("data", "docs", "files"),
+    bases: [join(ROOT, "mohler")],
+    async run(dir) {
+      const { parseMohler } = await load("mohler");
+      const data = join(dir, "data");
+
+      const items = {};
+      for (const questionId of readdirSync(join(data, "raw"))) {
+        const scores = join(data, "scores", questionId);
+        if (!existsSync(scores)) continue;
+        items[questionId] = {
+          answers: text(join(data, "raw", questionId)),
+          taScores: text(join(scores, "other")),
+          authorScores: text(join(scores, "me")),
+        };
+      }
+
+      const result = parseMohler({
+        fileList: text(join(data, "docs", "files")),
+        questions: text(join(data, "raw", "questions")),
+        referenceAnswers: text(join(data, "raw", "answers")),
+        items,
+      });
+      return {
+        ...result,
+        notes: [
+          `graders disagreed on    ${result.stats.gradersDisagreed} of ${result.stats.ingested}` +
+            ` (widest gap ${result.stats.widestDisagreement})`,
+          "the shipped average in scores/x.y/ave is deliberately not read: it cannot show how far the two graders were apart",
+        ],
       };
     },
   },
