@@ -19,6 +19,7 @@
     "check:ai-benchmark": "node scripts/check-ai-benchmark.mjs",
     "corpus:report": "node --no-warnings scripts/corpus-report.mjs",
     "corpus:holdout": "node --no-warnings scripts/corpus-holdout.mjs",
+    "corpus:experiment": "node --no-warnings scripts/corpus-experiment.mjs",
     "check": "npm run typecheck && npm run lint && npm run check:sizes && npm test",
     "verify:all": "npm run check && npm run build && npm run test:rules && npm run test:e2e",
     "emulators:free": "node scripts/free-emulator-ports.mjs",
