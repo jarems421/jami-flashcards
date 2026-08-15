@@ -94,6 +94,59 @@ function eligiblePool(input: {
   return eligible as readonly MarkingCorpusRecord[];
 }
 
+const kindOf = (record: MarkingCorpusRecord) =>
+  `${record.level}/${record.subject}/${record.regime}`;
+
+/** Already ordered, so the first matches are deterministic. Stops when full. */
+function takeFirst(
+  ordered: readonly MarkingCorpusRecord[],
+  matches: (record: MarkingCorpusRecord) => boolean,
+  count: number
+) {
+  const chosen: MarkingCorpusRecord[] = [];
+  for (const record of ordered) {
+    if (chosen.length >= count) break;
+    if (matches(record)) chosen.push(record);
+  }
+  return chosen;
+}
+
+/**
+ * One from each kind of marked work in turn, rather than the first few of a
+ * fixed order.
+ *
+ * "Generic" has to mean a spread, or it does not mean anything. Nine tenths of
+ * the cleared pool is banded marking, so taking the first three of any single
+ * ordering hands the generic arm three banded exemplars and makes it a copy of
+ * the regime-matched arm — the two then score identically and appear to prove
+ * that matching does not matter, when in fact nothing was varied. Round-robin
+ * across level/subject/regime is what keeps the control honest.
+ */
+function spreadAcrossKinds(ordered: readonly MarkingCorpusRecord[], count: number) {
+  const byKind = new Map<string, MarkingCorpusRecord[]>();
+  for (const record of ordered) {
+    const kind = kindOf(record);
+    const existing = byKind.get(kind);
+    if (existing) existing.push(record);
+    else byKind.set(kind, [record]);
+  }
+
+  const queues = [...byKind.keys()].sort().map((kind) => byKind.get(kind) ?? []);
+  const chosen: MarkingCorpusRecord[] = [];
+  for (let round = 0; chosen.length < count; round += 1) {
+    let added = false;
+    for (const queue of queues) {
+      if (chosen.length >= count) break;
+      const next = queue[round];
+      if (!next) continue;
+      chosen.push(next);
+      added = true;
+    }
+    if (!added) break;
+  }
+  return chosen;
+}
+
 export function selectExemplars(input: {
   arm: ExemplarArm;
   target: MarkingCorpusRecord;
@@ -127,13 +180,10 @@ export function selectExemplars(input: {
     );
   };
 
-  // Already in a fixed order, so taking the first matches is deterministic and
-  // stops as soon as the arm is filled.
-  const exemplars: MarkingCorpusRecord[] = [];
-  for (const record of eligible) {
-    if (exemplars.length >= count) break;
-    if (matches(record)) exemplars.push(record);
-  }
+  const exemplars: MarkingCorpusRecord[] =
+    arm === "generic"
+      ? spreadAcrossKinds(eligible.filter(matches), count)
+      : takeFirst(eligible, matches, count);
 
   const shortfall =
     exemplars.length === 0

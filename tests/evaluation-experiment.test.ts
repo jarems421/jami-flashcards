@@ -56,6 +56,29 @@ describe("choosing exemplars for an arm", () => {
     expect(exemplars).toHaveLength(4);
   });
 
+  /**
+   * "Generic" has to mean a spread. If the pool is dominated by one kind of
+   * marking, taking the first three of any single ordering gives the generic
+   * arm three of that kind and makes it a copy of the regime-matched arm — the
+   * two then score identically and appear to show that matching does not
+   * matter, when nothing was varied.
+   */
+  it("spreads the generic arm across the kinds of marking available", () => {
+    const lopsided = [
+      record({ id: "b1", questionId: "q-b1", regime: "banded" }),
+      record({ id: "b2", questionId: "q-b2", regime: "banded" }),
+      record({ id: "b3", questionId: "q-b3", regime: "banded" }),
+      record({ id: "p1", questionId: "q-p1", regime: "pointPool" }),
+    ];
+    const { exemplars } = selectExemplars({
+      ...base,
+      arm: "generic",
+      pool: lopsided,
+      count: 2,
+    });
+    expect(new Set(exemplars.map((exemplar) => exemplar.regime)).size).toBe(2);
+  });
+
   it("restricts the regime arm to the same regime", () => {
     const { exemplars } = selectExemplars({ ...base, arm: "regime", count: 4 });
     expect(exemplars.every((record) => record.regime === "additive")).toBe(true);

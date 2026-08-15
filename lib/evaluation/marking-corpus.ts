@@ -13,12 +13,50 @@
  * over it should be a stratified sample. See `planEvaluation`.
  */
 
+/**
+ * The qualification a response was written for, not how old its writer was.
+ *
+ * These are specific awards, and they are not interchangeable: a US state
+ * assessment sat in Grade 10 is at a similar point in a similar education to
+ * GCSE, but it is not a GCSE. Calling it one would let the evaluation claim it
+ * had tested "GCSE-matched exemplars" using American essays, which is a claim
+ * nobody could check and which would be false.
+ */
 export type MarkingLevel =
   | "gcse"
   | "alevel"
   | "advancedHigher"
+  | "usStateAssessment"
   | "undergraduate"
   | "postgraduate";
+
+/**
+ * How far through an education a response sits, which is the thing that *is*
+ * comparable across countries. Two different qualifications at the same stage
+ * are a reasonable match for each other; the same qualification is a better
+ * one. Keeping both lets retrieval prefer an exact qualification and fall back
+ * to an equivalent stage, and lets a report say which it did.
+ */
+export type EducationStage =
+  | "lowerSecondary"
+  | "upperSecondary"
+  | "undergraduate"
+  | "postgraduate";
+
+const STAGE_FOR_LEVEL: Record<MarkingLevel, EducationStage> = {
+  gcse: "upperSecondary",
+  alevel: "upperSecondary",
+  advancedHigher: "upperSecondary",
+  // Spans both: the corpus holds grades 6 and 8 as well as 9 and 10, so a
+  // record may override this.
+  usStateAssessment: "upperSecondary",
+  undergraduate: "undergraduate",
+  postgraduate: "postgraduate",
+};
+
+export function stageForLevel(level: MarkingLevel): EducationStage {
+  return STAGE_FOR_LEVEL[level];
+}
 
 export type MarkingRegime =
   | "additive"
@@ -83,6 +121,13 @@ export type MarkingCorpusRecord = {
   id: string;
   sourceId: string;
   level: MarkingLevel;
+  /**
+   * Overrides the stage `level` implies, for a source spanning more than one.
+   * Read it through `stageOf` rather than directly.
+   */
+  stage?: EducationStage;
+  /** Finer identity within the qualification, e.g. "Grade 9". */
+  levelDetail?: string;
   subject: string;
   regime: MarkingRegime;
   questionId: string;
@@ -130,11 +175,30 @@ export function humanDisagreement(record: MarkingCorpusRecord) {
  * The catalogue. Breadth here costs nothing; it is the evaluation run that
  * costs, and that is sampled from whatever has actually been ingested.
  *
- * `verified: false` on every entry is deliberate — nobody has read the terms
- * yet, so nothing is shippable as an exemplar until someone does. Flip a
- * licence to verified only after actually reading it.
+ * A licence is only `verified` once evidence of the terms is held locally with
+ * the payload — a licence file, the source's own README, or a saved copy of the
+ * repository record. Four entries meet that bar. The rest stay measure-only
+ * however permissive they look, because a claim resting on a page nobody kept
+ * is not evidence.
  */
 export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
+  {
+    id: "asap-2",
+    title: "ASAP 2.0 — US state assessment persuasive essays",
+    // A US state writing assessment, not a GCSE. The similarity in age and
+    // stage is recorded per record as an education stage; the qualification
+    // stays what it was, so no report can claim GCSE coverage it does not have.
+    level: "usStateAssessment",
+    subjects: ["english"],
+    regimes: ["banded"],
+    // Verified: the corpus's own README states "The data is provided under a
+    // Attribution 4.0 International (CC BY 4.0) license" and links the terms.
+    licence: { id: "CC BY 4.0", redistributable: true, verified: true },
+    handwritten: false,
+    commentary: false,
+    notes:
+      "The source that ends the corpus's dependence on undergraduate computer science: until this arrived, every licence-cleared record was a university student writing about programming, which made the exemplar experiment unable to vary the thing it was testing. Ingested: 17,307 source-based persuasive essays from the published training split, written in grades 6, 8, 9 and 10 across seven prompts and scored holistically 1–6 against a rubric that ships with them and is attached to every record. Grades 6 and 8 are recorded as lower secondary, 9 and 10 as upper. No examiner commentary — its value is volume and breadth of real school-age writing, not reasoning. The demographic columns the corpus ships (race and ethnicity, gender, disability status, economic disadvantage, English-language-learner status) are never read: none of it bears on whether an essay earned its mark, and a record that could carry a child's disability status into a prompt would be indefensible however open the licence. A further ~7,000 essays sit in a password-protected test split and are deliberately not ingested.",
+  },
   {
     id: "medly-gcse",
     title: "Medly GCSE marking benchmark (public subset)",
@@ -268,11 +332,15 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     // is what the parser records. It was catalogued as additive at first, and
     // that was simply wrong: there are no method marks here to depend on.
     regimes: ["pointPool"],
-    licence: { id: "CC BY 4.0", redistributable: true, verified: false },
+    // Verified once the official Mendeley record was preserved locally
+    // (SOURCE_PAGE.html and MENDELEY_RECORD.json), whose embedded metadata
+    // states CC BY 4.0 for this DOI. The earlier measure-only status was never
+    // a doubt about the terms, only that nothing held locally stated them.
+    licence: { id: "CC BY 4.0", redistributable: true, verified: true },
     handwritten: true,
     commentary: true,
     notes:
-      "Raw handwriting, teacher-annotated version, answer key and per-question human marks. The closest published match to Jami's own pipeline. Ingested: 544 short-answer records from 50 students. Licence stays unverified — the payload ships no licence file and its README names no terms, so the CC BY claim rests on the repository page rather than on anything in the source. Do not read `Student_MCQ.csv` or `file.txt`: both still carry real student names and institutional ID numbers despite the README stating that all identifiers were anonymised. The scripts also arrived bundled into eleven transport packs; those are read only to check they reproduce the published per-student PDFs page for page, and their grouping is not part of the source.",
+      "Raw handwriting, teacher-annotated version, answer key and per-question human marks. The closest published match to Jami's own pipeline. Ingested: 544 short-answer records from 50 students. Licence verified against the official Mendeley record now preserved with the payload. Do not read `Student_MCQ.csv` or `file.txt`: both still carry real student names and institutional ID numbers despite the README stating that all identifiers were anonymised. The scripts also arrived bundled into eleven transport packs; those are read only to check they reproduce the published per-student PDFs page for page, and their grouping is not part of the source.",
   },
   {
     id: "engsaf",
@@ -343,6 +411,11 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
       "Questions and official solutions rather than marked student work, so it informs what a correct solution contains, not what a human awarded. Proof-style marking still has no proper corpus and needs a hand-marked regression set.",
   },
 ];
+
+/** The education stage of one record, whether stated or implied by its level. */
+export function stageOf(record: Pick<MarkingCorpusRecord, "level" | "stage">) {
+  return record.stage ?? stageForLevel(record.level);
+}
 
 export function corpusSource(sourceId: string) {
   return MARKING_CORPUS_SOURCES.find((source) => source.id === sourceId);

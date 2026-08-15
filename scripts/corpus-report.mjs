@@ -18,6 +18,7 @@ const LEVEL_LABELS = {
   gcse: "GCSE",
   alevel: "A-level",
   advancedHigher: "Advanced Higher",
+  usStateAssessment: "US state assessment",
   undergraduate: "Undergraduate",
   postgraduate: "Postgraduate",
 };

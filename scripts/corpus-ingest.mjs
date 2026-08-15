@@ -220,6 +220,66 @@ const SOURCES = [
     },
   },
   {
+    id: "asap-2",
+    marker: "ASAP_2_Final_github_train.csv",
+    bases: [join(ROOT, "asap-2")],
+    async run(dir) {
+      const { parseAsap2 } = await load("asap-2");
+
+      // The rubric ships as a .docx, which is a zip; its text lives in one XML
+      // part. Read here rather than in the parser, which stays free of I/O.
+      let rubric;
+      const rubricXml = join(dir, "rubric-extract", "word", "document.xml");
+      if (existsSync(rubricXml)) {
+        rubric = text(rubricXml)
+          .replace(/<w:p[ >]/g, "\n<w:p ")
+          .replace(/<[^>]+>/g, "")
+          .replace(/[ \t]+/g, " ")
+          .split("\n")
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .join("\n");
+      }
+
+      // Prompt names and file names describe the same thing differently:
+      // "Car-free cities" against "FL2_car-free_cities.pdf". Reducing both to
+      // letters and single spaces is what makes them meet.
+      const loosen = (value) =>
+        value
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, " ")
+          .trim();
+
+      const sourceTexts = {};
+      const sourceDir = join(dir, "ASAP2_source-texts");
+      if (existsSync(sourceDir)) {
+        for (const file of readdirSync(sourceDir)) {
+          const key = loosen(file.replace(/\.pdf$/i, "").replace(/^[A-Z]{2}\d+_/, ""));
+          sourceTexts[key] = join(sourceDir, file);
+        }
+      }
+
+      const result = parseAsap2({
+        essaysCsv: text(join(dir, "ASAP_2_Final_github_train.csv")),
+        rubric,
+        sourceTexts: new Proxy(sourceTexts, {
+          get: (target, property) =>
+            typeof property === "string" ? target[loosen(property)] : undefined,
+        }),
+      });
+
+      return {
+        ...result,
+        notes: [
+          `grades                  ${JSON.stringify(result.stats.byGrade)}`,
+          `scores                  ${JSON.stringify(result.stats.byScore)}`,
+          rubric ? "holistic rubric attached to every record" : "no rubric found",
+          "demographic columns (race, gender, disability, economic status, ELL) are never read",
+        ],
+      };
+    },
+  },
+  {
     id: "aqa-alevel-english",
     marker: "aqa-exemplar-1.html",
     bases: [join(ROOT, "aqa-alevel-english")],
