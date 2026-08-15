@@ -46,19 +46,39 @@ const readyPayload = {
     label: "Jami-generated marking guide",
     notice: "This is not an official mark scheme.",
     items: [
+      // One paper, two regimes: the calculation is additive and the evaluation
+      // is banded. This is the pairing a single sum-to-total rule would break,
+      // and the reason the marking model belongs to the question.
       {
         questionId: "q1",
+        marking: "additive",
         maxMarks: 5,
         answer: "A complete calculation.",
-        criteria: ["Method: 2", "Answer: 3"],
+        points: [
+          { id: "q1.m1", marks: 2, code: "M", text: "Correct elasticity formula." },
+          {
+            id: "q1.a1",
+            marks: 3,
+            code: "A",
+            text: "Correct value.",
+            dep: ["q1.m1"],
+            ft: true,
+            expected: { value: 1.5, tolerance: 0.05 },
+          },
+        ],
         acceptableAlternatives: [],
         commonMistakes: ["Inverting the ratio"],
       },
       {
         questionId: "q2",
+        marking: "banded",
         maxMarks: 10,
         answer: "A balanced evaluation.",
-        criteria: ["Relevant analysis", "Supported judgement"],
+        bands: [
+          { id: "q2.L1", label: "Level 1", minMarks: 0, maxMarks: 3, descriptor: "Assertion without support." },
+          { id: "q2.L2", label: "Level 2", minMarks: 4, maxMarks: 7, descriptor: "Relevant analysis, thin judgement." },
+          { id: "q2.L3", label: "Level 3", minMarks: 8, maxMarks: 10, descriptor: "Supported, weighed judgement." },
+        ],
         acceptableAlternatives: ["Either justified conclusion"],
         commonMistakes: [],
       },

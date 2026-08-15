@@ -2,6 +2,10 @@ import {
   normalizeOptionalString,
   normalizeStringArray,
 } from "@/lib/material/content";
+import {
+  normalizeMarkSchemeItem,
+  type PracticePaperMarkSchemeItem,
+} from "@/lib/practice/mark-schemes";
 
 export const MAX_PRACTICE_PAPER_SOURCE_IDS = 15;
 export const MAX_PRACTICE_PAPER_QUESTIONS = 30;
@@ -145,14 +149,15 @@ export type PracticePaperGradeGuidance = {
   };
 };
 
-export type PracticePaperMarkSchemeItem = {
-  questionId: string;
-  maxMarks: number;
-  answer: string;
-  criteria: string[];
-  acceptableAlternatives: string[];
-  commonMistakes: string[];
-};
+export type {
+  PracticePaperMarkSchemeItem,
+  PracticePaperMarkingModel,
+  PracticePaperMarkPoint,
+  PracticePaperMarkBand,
+  PracticePaperMarkTrait,
+  PracticePaperCompetency,
+  PracticePaperExpectedValue,
+} from "@/lib/practice/mark-schemes";
 
 export type PracticePaperMarkScheme = {
   kind: PracticePaperMarkSchemeKind;
@@ -750,15 +755,14 @@ export function normalizePracticePaperMarkScheme(
       const questionId = normalizeOptionalString(item.questionId, 80) ?? "";
       const question = questionById.get(questionId);
       if (!question || seen.has(questionId)) continue;
+      // An unreadable item is dropped rather than coerced, which shortens the
+      // list, which fails the count check in the quality gate, which fires the
+      // existing repair pass. Guessing a shape here would launder bad model
+      // output into a stored paper.
+      const parsed = normalizeMarkSchemeItem(item, question);
+      if (!parsed) continue;
       seen.add(questionId);
-      items.push({
-        questionId,
-        maxMarks: question.marks,
-        answer: normalizeOptionalString(item.answer, 4_000) ?? "",
-        criteria: normalizeTextList(item.criteria, 30),
-        acceptableAlternatives: normalizeTextList(item.acceptableAlternatives, 20),
-        commonMistakes: normalizeTextList(item.commonMistakes, 20),
-      });
+      items.push(parsed);
     }
   }
   return {

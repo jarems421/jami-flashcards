@@ -1,5 +1,49 @@
 import type { ParsedPracticePaperModelAnswer } from "@/lib/ai/practice-paper-generation";
 import { calculatePracticePaperTotalMarks } from "@/lib/practice/practice-papers";
+import {
+  validateMarkSchemeItem,
+  type MarkSchemeIssue,
+} from "@/lib/practice/mark-schemes";
+
+/**
+ * Everything wrong with a paper's marking guide, said specifically.
+ *
+ * This runs with no model in the loop, before anything is stored, and it is the
+ * one class of check that shared model bias cannot defeat: two markers can
+ * agree on a wrong mark, but they cannot agree that 1 + 1 + 1 is 5.
+ *
+ * It returns issues rather than a bare verdict so the repair pass can be told
+ * what to fix. A retry that only knows it failed is a retry that reproduces the
+ * same scheme.
+ */
+export function markSchemeIssues(
+  paper: Extract<ParsedPracticePaperModelAnswer, { status: "ready" }>
+): MarkSchemeIssue[] {
+  const issues: MarkSchemeIssue[] = [];
+  const schemes = new Map(paper.markScheme.items.map((item) => [item.questionId, item]));
+  for (const question of paper.questions) {
+    const scheme = schemes.get(question.id);
+    if (!scheme) {
+      // Also the landing point for an item the normalizer refused to read: a
+      // dropped item is a missing item by the time it reaches here.
+      issues.push({
+        questionId: question.id,
+        code: "missing_scheme",
+        detail: "No readable marking guide for this question.",
+      });
+      continue;
+    }
+    if (scheme.maxMarks !== question.marks) {
+      issues.push({
+        questionId: question.id,
+        code: "marks_mismatch",
+        detail: `Guide says ${scheme.maxMarks} marks; the fixed question is worth ${question.marks}.`,
+      });
+    }
+    issues.push(...validateMarkSchemeItem(scheme));
+  }
+  return issues;
+}
 
 export type PracticePaperQualityIssue = {
   code: string;
@@ -43,14 +87,7 @@ export function isCompletePracticePaperCandidate(
     0
   );
   if (rasterCount > 8) return false;
-  const schemes = new Map(paper.markScheme.items.map((item) => [item.questionId, item]));
-  if (schemes.size !== paper.questions.length) return false;
-  if (paper.questions.some((question) => {
-    const scheme = schemes.get(question.id);
-    return !scheme ||
-      scheme.maxMarks !== question.marks ||
-      (!scheme.answer.trim() && scheme.criteria.length === 0);
-  })) return false;
+  if (markSchemeIssues(paper).length > 0) return false;
   const grouped = new Set<string>();
   for (const group of paper.choiceGroups) {
     if (

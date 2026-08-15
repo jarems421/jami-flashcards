@@ -27,7 +27,7 @@ describe("complete practice-paper gate", () => {
         kind: "generated",
         label: "Guide",
         notice: "",
-        items: [{ questionId: "q1", maxMarks: 5, answer: "", criteria: [], acceptableAlternatives: [], commonMistakes: [] }],
+        items: [{ questionId: "q1", marking: "additive", maxMarks: 5, answer: "", points: [], acceptableAlternatives: [], commonMistakes: [] }],
       },
       sourceRefs: [],
       gradeGuidance: { kind: "none", label: "", notice: "", boundaries: [] },

@@ -270,7 +270,7 @@ Do not answer any questions as though you are the student. Do not omit low-mark 
         taskClass: "important",
         role: "supervisor",
         temperature: 0.05,
-        systemInstruction: "You are Jami's senior mark-scheme designer. The reconstructed uploaded paper is fixed. Build a fair estimated guide with partial credit, method rules and acceptable alternatives. Never claim it is official. Return the complete paper JSON, preserving every question exactly. Return valid JSON only.",
+        systemInstruction: "You are Jami's senior mark-scheme designer. The reconstructed uploaded paper is fixed. Build a fair estimated guide, choosing a marking model per question: additive M/A/B points that sum to the question's marks, a pointPool of 'any n from' with awardable set, contiguous banded levels covering the whole scale, weightedTraits whose marks sum to the question, or competency criteria. A paper commonly mixes models, so choose per question and never give a banded question a points array. Never claim the guide is official. Return the complete paper JSON, preserving every question exactly. Return valid JSON only.",
         prompt: JSON.stringify(reconstructed),
       });
       const schemeCandidate = parsePracticePaperModelAnswer(schemePass.text, {

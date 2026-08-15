@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai/practice-paper-generation";
 import {
   isCompletePracticePaperCandidate,
+  markSchemeIssues,
   parsePracticePaperQualityAudit,
   sameFixedPaper,
 } from "@/lib/ai/practice-paper-quality";
@@ -278,9 +279,9 @@ Return JSON only in this shape:
     "notice":"This is not an official mark scheme.",
     "items":[{
       "questionId":"q1",
+      "marking":"additive" | "pointPool" | "banded" | "weightedTraits" | "competency",
       "maxMarks":5,
       "answer":"complete correct answer",
-      "criteria":["credit point or method rule"],
       "acceptableAlternatives":["..."],
       "commonMistakes":["..."]
     }]
@@ -289,6 +290,20 @@ Return JSON only in this shape:
   "examinerInsights":["Concise teaching insight based on examiner reports, without copying them"],
   "sourceRefs":[${input.sourceRefs.map((reference) => `"${reference}"`).join(",")}]
 }
+
+Choose the marking model per question, using the boards' own conventions, and add exactly the one field that model requires:
+
+additive — method and accuracy marks, as in maths, physics and chemistry calculations. Add "points":[{"id":"q1.m1","marks":1,"code":"M"|"A"|"B","text":"...","dep":["earlier id"],"ft":true,"essentialTerms":["required wording"],"allow":["accepted equivalent"],"reject":["not creditworthy"],"expected":{"value":9.9,"tolerance":0.1,"unit":"m/s","significantFigures":2}}]. M is a method that could lead to a correct answer, A is accuracy following correct method, B is independent. Points must sum exactly to the question's marks. Use "dep" where a mark depends on an earlier one and "ft" only where follow-through credit is genuinely allowed. Include "expected" on every numerically answerable point.
+
+pointPool — "any n from" a list, as in most science short answers. Add the same "points" array with "code":"P", every point worth the same, plus "awardable":n. The pool must hold strictly more points than n.
+
+banded — levels of response, as in essays and extended science answers. Add "bands":[{"id":"q7.L1","label":"Level 1","minMarks":0,"maxMarks":3,"descriptor":"..."}]. Bands must be contiguous and cover 0 to the question's marks exactly. Never give a banded question a points array: levels marking is a judgement placed in a band, not a sum of ticks.
+
+weightedTraits — several dimensions marked separately, as in university rubrics, languages and separated assessment objectives. Add "traits":[{"id":"q9.t1","label":"Critical analysis","maxMarks":8,"learningOutcome":"...","bands":[...]}]. Trait maxMarks are marks, never percentages, and must sum to the question's marks; each trait's own bands must cover 0 to that trait's maxMarks.
+
+competency — criterion referenced pass/merit/distinction, as in vocational and practical work. Add "competencies":[{"id":"q3.c1","text":"...","level":"pass"|"merit"|"distinction"}].
+
+A single paper commonly mixes models: a physics paper holds additive calculations and a banded extended answer, a history paper holds point-based short answers and a banded essay. Choose per question, never per paper.
 
 sourceRefs must include only sources that materially informed the assessment profile, format, questions, marking guide, examiner insights, or grade guidance. For GCSE and A level, use the latest truly comparable official boundary as the main boundaries and add a historical median only from the same board, specification, tier/component and paper type across named years. Never mix incomparable papers. For university work, use the supplied rubric or otherwise give an estimated UK classification from percentage; do not invent institutional boundaries. Grade boundaries are official only when an authoritative source explicitly supplies them; otherwise label them estimated or return no boundaries. If status is needs_clarification, the paper fields may be empty arrays/strings, but all keys must still be present.`;
 }
@@ -650,7 +665,13 @@ export async function runPracticePaperGenerationRequest(
       allowedSourceRefs: sourceRefs,
       length: parsedRequest.length,
     });
-    if (!schemeCandidate || !sameFixedPaper(draft, schemeCandidate)) {
+    const schemeFaults =
+      schemeCandidate?.status === "ready" ? markSchemeIssues(schemeCandidate) : [];
+    if (
+      !schemeCandidate ||
+      !sameFixedPaper(draft, schemeCandidate) ||
+      schemeFaults.length > 0
+    ) {
       markSchemePass = await runPass({
         name: "mark_scheme_structured_retry",
         taskClass: "important",
@@ -658,7 +679,14 @@ export async function runPracticePaperGenerationRequest(
         systemInstruction: "Return one complete valid paper JSON. Preserve every fixed question ID, prompt, mark and asset byte-for-byte. Change only markScheme, gradeGuidance and examinerInsights. Include exactly one mark-scheme item for every question. No prose outside JSON.",
         contents: [{
           role: "user" as const,
-          parts: [{ text: fixedPaperJson }],
+          parts: [{
+            // A retry told only that it failed will reproduce the same guide.
+            text: schemeFaults.length > 0
+              ? `${fixedPaperJson}\n\n--- FAULTS TO CORRECT ---\n${schemeFaults
+                  .map((issue) => `${issue.questionId}: ${issue.code} — ${issue.detail}`)
+                  .join("\n")}`
+              : fixedPaperJson,
+          }],
         }],
         temperature: 0,
       });
