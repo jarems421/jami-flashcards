@@ -23,11 +23,27 @@ const only = process.argv.slice(3).filter((argument) => !argument.startsWith("-"
 const load = (name) => import(`../lib/evaluation/sources/${name}.ts`);
 
 /** Page count, and per-page text when asked for, from a PDF. */
-async function readPdf(path, { withText = false } = {}) {
+async function readPdf(path, { withText = false, withItems = false } = {}) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const task = pdfjs.getDocument({ data: new Uint8Array(readFileSync(path)) });
   const document = await task.promise;
   const pages = [];
+  const items = [];
+  // Column layouts cannot be read in reading order, so where a source needs it
+  // each run of text is kept with the position it was drawn at.
+  if (withItems) {
+    for (let page = 1; page <= document.numPages; page += 1) {
+      const content = await (await document.getPage(page)).getTextContent();
+      items.push({
+        page,
+        items: content.items.map((item) => ({
+          x: item.transform[4],
+          y: item.transform[5],
+          text: item.str,
+        })),
+      });
+    }
+  }
   if (withText) {
     for (let page = 1; page <= document.numPages; page += 1) {
       const content = await (await document.getPage(page)).getTextContent();
@@ -41,7 +57,7 @@ async function readPdf(path, { withText = false } = {}) {
   }
   const count = document.numPages;
   await task.destroy();
-  return { count, pages };
+  return { count, pages, items };
 }
 
 /**
@@ -241,6 +257,34 @@ const SOURCES = [
     },
   },
   {
+    id: "pearson-alevel",
+    marker: "ial-economics-unit-1-exemplar-responses.pdf",
+    bases: [join(ROOT, "pearson-alevel")],
+    async run(dir) {
+      const { parsePearsonAlevel } = await load("pearson-alevel");
+      const units = [];
+      for (const number of [1, 2]) {
+        const file = join(dir, `ial-economics-unit-${number}-exemplar-responses.pdf`);
+        if (!existsSync(file)) continue;
+        units.push({
+          id: `unit-${number}`,
+          pages: (await readPdf(file, { withText: true })).pages,
+          file,
+        });
+      }
+      const result = parsePearsonAlevel({ units });
+      return {
+        ...result,
+        notes: [
+          `booklets read           ${units.length}`,
+          `marked by regime        ${JSON.stringify(result.stats.byRegime)}`,
+          "the 2019 examiner report is not ingested: it is cohort feedback and marks no individual response",
+          "no question tariff exists in the payload, so each maximum is the best exemplar's mark",
+        ],
+      };
+    },
+  },
+  {
     id: "qualifications-scotland",
     marker: "higher-2023-Paper 1 Commentary 2023.pdf",
     bases: [join(ROOT, "qualifications-scotland")],
@@ -252,11 +296,15 @@ const SOURCES = [
         const commentary = join(dir, `higher-2023-Paper ${number} Commentary 2023.pdf`);
         const evidence = join(dir, `higher-2023-Paper ${number} Candidate Evidence 2023.pdf`);
         if (!existsSync(commentary) || !existsSync(evidence)) continue;
+        const instructions = join(dir, `higher-2023-2023 Marking instructions paper ${number}.pdf`);
         papers.push({
           id: `paper-${number}`,
           commentaryPages: (await readPdf(commentary, { withText: true })).pages,
           evidencePages: (await readPdf(evidence, { withText: true })).pages,
           evidenceFile: evidence,
+          ...(existsSync(instructions)
+            ? { instructionPages: (await readPdf(instructions, { withItems: true })).items }
+            : {}),
         });
       }
 

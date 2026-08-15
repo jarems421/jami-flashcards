@@ -71,6 +71,8 @@ export type MarkingCriterion = {
   id: string;
   available: number;
   awarded: number;
+  /** What the mark is for, from the mark scheme itself. */
+  description?: string;
   /** The examiner's stated reason, in their words. */
   reason?: string;
   /** Credited despite an earlier error, following the candidate's own work. */
@@ -215,12 +217,13 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
     id: "pearson-alevel",
     title: "Pearson Edexcel A-level exemplars",
     level: "alevel",
-    subjects: ["economics", "maths", "business", "biology", "chemistry", "physics"],
-    regimes: ["additive", "banded", "weightedTraits"],
+    subjects: ["economics"],
+    regimes: ["additive", "weightedTraits"],
     licence: { id: "board exemplar", redistributable: false, verified: false },
     handwritten: true,
     commentary: true,
-    notes: "Student answers with examiner comments, marks and common errors. Economics is the best available AO-style calibration.",
+    notes:
+      "The only source in the corpus marked by assessment objective — knowledge, application, analysis, evaluation — which is why it matters out of proportion to its size. Ingested: 42 real candidate responses to the June 2019 International A-level papers over 21 questions, each with the examiner's written rationale, averaging 900 characters. Answer-level, not criterion-level: Pearson writes paragraphs where Qualifications Scotland writes one bullet per mark, and only a handful of responses break the total into strand scores, so inferring a split from the rest would manufacture structure the examiner never wrote. Two limits: the question papers and mark schemes are page images with no text layer, so no prompt or scheme is captured, and nothing states any question's tariff — each maximum is the highest mark an exemplar actually received, a floor rather than the real total. The 2019 examiner report in the same folder is cohort feedback and marks no individual response, so it is not ingested. Only economics is on disk. Measure-only: Pearson reserves rights including text and data mining.",
   },
   {
     id: "aqa-alevel-english",

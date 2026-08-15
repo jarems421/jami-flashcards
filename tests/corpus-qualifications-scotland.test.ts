@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  parseMarkingInstructions,
   parseMarkStatement,
   parseQualificationsScotland,
   readCommentaryEntries,
@@ -140,6 +141,99 @@ describe("matching evidence to commentary", () => {
   });
 });
 
+/**
+ * The marking instructions are a four-column table. Reading order interleaves
+ * the generic and illustrative schemes, both of which bullet their entries
+ * identically, so only position tells them apart.
+ */
+describe("reading the marking instructions", () => {
+  const at = (x: number, y: number, text: string) => ({ x, y, text });
+
+  /** Question column ~47, generic ~125-200, illustrative ~309+, max ~504. */
+  const instructions = [
+    {
+      page: 1,
+      items: [
+        at(59, 779, "Question"),
+        at(171, 780, "Generic scheme"),
+        at(348, 780, "Illustrative scheme"),
+        at(497, 784, "Max"),
+        at(47, 752, "5."),
+        at(504, 752, "3"),
+        at(125, 747, "•"),
+        at(130, 751, "1 "),
+        at(139, 747, "use the discriminant"),
+        at(309, 747, "b2 − 4ac"),
+        at(125, 714, "•"),
+        at(130, 718, "2 "),
+        at(139, 714, "apply condition and express in"),
+        at(139, 700, "standard quadratic form"),
+        at(125, 672, "•"),
+        at(130, 676, "3 "),
+        at(139, 672, "process for p"),
+        at(47, 645, "Notes:"),
+        at(47, 630, "1."),
+        at(65, 630, "Where candidates state an incorrect condition"),
+        at(139, 615, "this text is below the table and is not a mark"),
+      ],
+    },
+  ];
+
+  it("reads what each mark is for, and the question's tariff", () => {
+    const schemes = parseMarkingInstructions(instructions);
+    expect(schemes.get(5)).toEqual({
+      tariff: 3,
+      descriptions: [
+        "use the discriminant",
+        "apply condition and express in standard quadratic form",
+        "process for p",
+      ],
+    });
+  });
+
+  it("takes only the generic scheme, not the illustrative one beside it", () => {
+    const schemes = parseMarkingInstructions(instructions);
+    expect(schemes.get(5)?.descriptions.join(" ")).not.toContain("b2 − 4ac");
+  });
+
+  /**
+   * The notes under each table number themselves "1.", "2." in the question
+   * column. Reading one as a question silently reassigns every description
+   * after it, so the tariff in the last column is what identifies a real
+   * question row.
+   */
+  it("does not mistake a numbered note for a new question", () => {
+    const schemes = parseMarkingInstructions(instructions);
+    expect(schemes.has(1)).toBe(false);
+  });
+
+  it("ignores everything below the table", () => {
+    const schemes = parseMarkingInstructions(instructions);
+    expect(schemes.get(5)?.descriptions.join(" ")).not.toContain("below the table");
+  });
+
+  it("keeps the table's own header out of the last description", () => {
+    const schemes = parseMarkingInstructions(instructions);
+    expect(schemes.get(5)?.descriptions.at(-1)).toBe("process for p");
+  });
+
+  /** A mark number is drawn above its own bullet, so it cannot anchor a line. */
+  it("starts a new mark from the bullet's position, not its number", () => {
+    const schemes = parseMarkingInstructions(instructions);
+    expect(schemes.get(5)?.descriptions).toHaveLength(3);
+  });
+
+  it("sums the tariff of a question that runs over two pages", () => {
+    const second = {
+      page: 2,
+      items: [at(47, 752, "5."), at(504, 752, "5"), at(125, 747, "•"), at(139, 747, "second part")],
+    };
+    const schemes = parseMarkingInstructions([...instructions, second]);
+    expect(schemes.get(5)?.tariff).toBe(8);
+    expect(schemes.get(5)?.descriptions).toHaveLength(4);
+  });
+});
+
 describe("qualifications-scotland records", () => {
   const paper = {
     id: "paper-1",
@@ -225,5 +319,88 @@ describe("qualifications-scotland records", () => {
     expect(stats.criteria).toBe(4);
     expect(stats.criteriaWithReason).toBe(1);
     expect(stats.followThrough).toBe(2);
+  });
+});
+
+/**
+ * A criterion is only useful if it says what the mark was for as well as what
+ * happened to it. That text comes from a different file than the verdict, so
+ * the two have to be lined up — and where they cannot be, saying nothing beats
+ * describing every mark as the wrong one.
+ */
+describe("attaching the scheme to the verdicts", () => {
+  const at = (x: number, y: number, text: string) => ({ x, y, text });
+  const scheme = (...marks: string[]) => [
+    {
+      page: 1,
+      items: [
+        at(47, 752, "2."),
+        at(504, 752, String(marks.length)),
+        ...marks.flatMap((mark, index) => [
+          at(125, 700 - index * 30, "•"),
+          at(139, 700 - index * 30, mark),
+        ]),
+      ],
+    },
+  ];
+
+  const paper = {
+    id: "paper-1",
+    evidenceFile: "/evidence.pdf",
+    commentaryPages: [
+      {
+        page: 1,
+        text: "Question 2\nCandidate 2\n♦ Mark 1 awarded\n♦ Mark 2 not awarded – error in gradient formula",
+      },
+    ],
+    evidencePages: [{ page: 1, text: "Question 2\nCandidate 2" }],
+  };
+  const input = { seriesId: "higher-maths-2023", subject: "maths", papers: [paper] };
+
+  it("says what each mark was for alongside what the examiner did with it", () => {
+    const result = parseQualificationsScotland({
+      ...input,
+      papers: [{ ...paper, instructionPages: scheme("find midpoint of PQ", "calculate gradient of PQ") }],
+    });
+    expect(result.records[0].criteria).toEqual([
+      { id: "Mark 1", available: 1, awarded: 1, description: "find midpoint of PQ" },
+      {
+        id: "Mark 2",
+        available: 1,
+        awarded: 0,
+        description: "calculate gradient of PQ",
+        reason: "error in gradient formula",
+      },
+    ]);
+    expect(result.stats.describedCriteria).toBe(2);
+  });
+
+  it("writes the description into the commentary too", () => {
+    const result = parseQualificationsScotland({
+      ...input,
+      papers: [{ ...paper, instructionPages: scheme("find midpoint of PQ", "calculate gradient of PQ") }],
+    });
+    expect(result.records[0].examinerCommentary).toContain("Mark 1 (find midpoint of PQ): awarded");
+  });
+
+  /**
+   * Some questions list alternative methods, each restarting its bullets, so
+   * the scheme holds more entries than the commentary numbers. Pairing those
+   * by position would give every mark somebody else's description.
+   */
+  it("withholds descriptions when the scheme and commentary do not line up", () => {
+    const result = parseQualificationsScotland({
+      ...input,
+      papers: [{ ...paper, instructionPages: scheme("method 1 step", "method 1 step 2", "method 2 step") }],
+    });
+    expect(result.records[0].criteria?.every((criterion) => !criterion.description)).toBe(true);
+    expect(result.stats.describedCriteria).toBe(0);
+    expect(result.issues.join(" ")).toContain("descriptions withheld");
+  });
+
+  it("still produces records when no marking instructions are supplied", () => {
+    const result = parseQualificationsScotland(input);
+    expect(result.records).toHaveLength(1);
+    expect(result.stats.describedCriteria).toBe(0);
   });
 });

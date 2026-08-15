@@ -1,4 +1,5 @@
 import type { MarkingCorpusRecord, MarkingCriterion } from "@/lib/evaluation/marking-corpus";
+import type { PdfPageText } from "./pdf-text.ts";
 
 /**
  * Parser for `qualifications-scotland` — Understanding Standards.
@@ -53,7 +54,40 @@ const FOOTER =
 const QUESTION_LABEL = /^Question (\d+)/;
 const CANDIDATE_LABEL = /^Candidate (\d+)/;
 
-export type PdfPageText = { page: number; text: string };
+export type { PdfPageText } from "./pdf-text.ts";
+
+/** A positioned run of text, needed to read the marking instructions' columns. */
+export type PositionedText = { x: number; y: number; text: string };
+export type PdfPageItems = { page: number; items: readonly PositionedText[] };
+
+/**
+ * Column boundaries in the marking instructions, in PDF points on a 595-point
+ * page. The table has four columns — question, generic scheme, illustrative
+ * scheme, max mark — and they cannot be told apart in reading order, because
+ * both scheme columns bullet their entries the same way and the extractor
+ * interleaves them. Position is the only thing that separates them.
+ *
+ * Notes beneath a table sit in the question column's range, which is what keeps
+ * them out of the criteria.
+ */
+const GENERIC_COLUMN_START = 120;
+/**
+ * Where a description's text starts, past the bullet and its number. A run
+ * left of this is the bullet marking a new mark; a run at or right of it is
+ * the description, including one that wrapped onto another line.
+ */
+const GENERIC_TEXT_START = 136;
+const ILLUSTRATIVE_COLUMN_START = 300;
+const MAX_MARK_COLUMN_START = 480;
+/**
+ * Two runs within this many points of each other are on the same line.
+ *
+ * Kept tight on purpose. Mark numbers are drawn a few points above their own
+ * bullet, so a loose tolerance chains them onto the row above — which put every
+ * mark number on the question heading's line and cost the parser two thirds of
+ * its descriptions.
+ */
+const LINE_TOLERANCE = 2;
 
 export type QsPaper = {
   /** Short identifier used in record ids, e.g. `paper-1`. */
@@ -62,6 +96,8 @@ export type QsPaper = {
   evidencePages: readonly PdfPageText[];
   /** Path to the candidate evidence PDF, for the record's answer. */
   evidenceFile: string;
+  /** Positioned text from the marking instructions, if they were supplied. */
+  instructionPages?: readonly PdfPageItems[];
 };
 
 export type QsInput = {
@@ -85,6 +121,8 @@ export type QsResult = {
     unmatchedEvidence: number;
     questionMismatches: number;
     unreadableStatements: number;
+    /** Criteria carrying the scheme's text for what the mark is for. */
+    describedCriteria: number;
   };
 };
 
@@ -226,6 +264,117 @@ export function readEvidenceIndex(pages: readonly PdfPageText[]) {
   return index;
 }
 
+export type QuestionScheme = {
+  /** What each mark is for, in the order the scheme lists them. */
+  descriptions: string[];
+  /** The question's real tariff, summed over the pages it spans. */
+  tariff: number;
+};
+
+/**
+ * Read the generic scheme out of the marking instructions.
+ *
+ * The generic scheme is the column that says what each mark is *for* — "use the
+ * discriminant", "apply condition and express in standard quadratic form" —
+ * which is the missing half of a criterion record. Without it a record says a
+ * mark was withheld and why; with it, it also says what the candidate was
+ * supposed to have done.
+ *
+ * A question can run over more than one page and can be split into parts, each
+ * restarting its bullets at 1. The commentaries number a question's marks
+ * straight through those parts, so the descriptions are concatenated in page
+ * order to match, and the tariff is summed the same way.
+ */
+export function parseMarkingInstructions(pages: readonly PdfPageItems[]) {
+  const schemes = new Map<number, QuestionScheme>();
+  let question: number | null = null;
+
+  for (const page of [...pages].sort((a, b) => a.page - b.page)) {
+    // Group the runs into lines by vertical position, top of the page first.
+    // Sorting before grouping keeps this independent of the order the
+    // extractor happened to emit the runs in.
+    const sorted = page.items.filter((item) => item.text.trim()).sort((a, b) => b.y - a.y);
+    const lines: PositionedText[][] = [];
+    for (const item of sorted) {
+      const current = lines[lines.length - 1];
+      if (current && Math.abs(current[0].y - item.y) <= LINE_TOLERANCE) current.push(item);
+      else lines.push([item]);
+    }
+
+    /**
+     * Each table is followed on the same page by the examiner's notes and a
+     * set of worked candidate responses. Those spill into the generic scheme's
+     * column and are not part of the scheme, so everything below the marker is
+     * ignored — without this the parser collected forty-two "marks" for a
+     * nine-mark question.
+     */
+    let belowTable = false;
+
+    for (const line of lines) {
+      const runs = [...line].sort((a, b) => a.x - b.x);
+      // Joined with spaces, unlike the cells themselves: this is only used to
+      // recognise the table's furniture, and "QuestionGeneric scheme" run
+      // together defeats the word boundary that recognises the header row.
+      const whole = runs.map((run) => run.text).join(" ").replace(/\s+/g, " ").trim();
+      if (/^(Notes:|Commonly Observed Responses)/i.test(whole)) belowTable = true;
+      if (belowTable) continue;
+      // Every page repeats the table's own header row, and a question running
+      // over a page break would otherwise collect it as more of its last mark.
+      if (/^Question\b/.test(whole) || /^Generic scheme$/i.test(whole)) continue;
+      const cell = (from: number, to: number) =>
+        runs
+          .filter((run) => run.x >= from && run.x < to)
+          .map((run) => run.text)
+          .join("")
+          .replace(/\s+/g, " ")
+          .trim();
+
+      const questionCell = cell(0, GENERIC_COLUMN_START);
+      const genericCell = cell(GENERIC_COLUMN_START, ILLUSTRATIVE_COLUMN_START);
+      const maxCell = cell(MAX_MARK_COLUMN_START, Number.MAX_SAFE_INTEGER);
+
+      /**
+       * A question heading, and not a numbered note.
+       *
+       * The notes beneath each table number themselves "1.", "2." in the same
+       * column as the question, so shape alone cannot tell them apart — and
+       * reading a note number as a question silently reassigns every
+       * description after it. What separates them is the tariff: a question's
+       * row carries its mark total in the last column, and a note never does.
+       */
+      const heading = /^(\d+)\.?$/.exec(questionCell);
+      const tariff = Number(maxCell);
+      if (heading && maxCell !== "" && Number.isFinite(tariff)) {
+        question = Number(heading[1]);
+        const scheme = schemes.get(question) ?? { descriptions: [], tariff: 0 };
+        scheme.tariff += tariff;
+        schemes.set(question, scheme);
+      }
+
+      if (question === null || !genericCell) continue;
+      const scheme = schemes.get(question);
+      if (!scheme) continue;
+
+      // A new mark is marked by its bullet's position, not by parsing its
+      // number: the number is drawn out of line with its own bullet and cannot
+      // be relied on to be in this cell at all. Position is what holds.
+      const startsMark = runs.some(
+        (run) => run.x >= GENERIC_COLUMN_START && run.x < GENERIC_TEXT_START
+      );
+      if (startsMark) {
+        const description = genericCell.replace(/^[•♦]?\s*\d*\s*/, "").trim();
+        // The stray mark number on its own is not a description.
+        if (description) scheme.descriptions.push(description);
+      } else if (scheme.descriptions.length > 0) {
+        // A description that wrapped onto the next line of the same cell.
+        scheme.descriptions[scheme.descriptions.length - 1] =
+          `${scheme.descriptions[scheme.descriptions.length - 1]} ${genericCell}`.trim();
+      }
+    }
+  }
+  return schemes;
+}
+
 export function parseQualificationsScotland(input: QsInput): QsResult {
   const records: MarkingCorpusRecord[] = [];
   const issues: string[] = [];
@@ -237,10 +386,15 @@ export function parseQualificationsScotland(input: QsInput): QsResult {
   let unmatchedEvidence = 0;
   let questionMismatches = 0;
   let unreadableStatements = 0;
+  let describedCriteria = 0;
+  const mismatchedSchemes = new Set<number>();
 
   for (const paper of input.papers) {
     const entries = readCommentaryEntries(paper.commentaryPages);
     const evidence = readEvidenceIndex(paper.evidencePages);
+    const schemes = paper.instructionPages
+      ? parseMarkingInstructions(paper.instructionPages)
+      : new Map<number, QuestionScheme>();
 
     // The question's tariff is the highest mark any candidate was judged on.
     // It is only used to notice a commentary that stops short, never to invent
@@ -295,9 +449,37 @@ export function parseQualificationsScotland(input: QsInput): QsResult {
         continue;
       }
 
+      /**
+       * Attach what each mark is for, but only where the scheme and the
+       * commentary agree on how many marks the question has. If they do not,
+       * the two are numbered differently and pairing them by position would
+       * describe every mark as the wrong one — a quieter and worse failure
+       * than having no description at all.
+       */
+      const scheme = schemes.get(entry.question);
+      const schemeMatches =
+        scheme !== undefined &&
+        scheme.descriptions.length === (tariff.get(entry.question) ?? scheme.descriptions.length);
+      if (scheme && !schemeMatches && !mismatchedSchemes.has(entry.question)) {
+        mismatchedSchemes.add(entry.question);
+        issues.push(
+          `${paper.id} question ${entry.question}: the scheme lists ${scheme.descriptions.length} marks but the commentaries go up to ${tariff.get(entry.question)}; descriptions withheld for this question.`
+        );
+      }
+      if (schemeMatches && scheme) {
+        for (const criterion of criteria) {
+          const number = Math.max(...markNumbers(criterion.id));
+          const description = scheme.descriptions[number - 1];
+          if (description) {
+            criterion.description = description;
+            describedCriteria += 1;
+          }
+        }
+      }
+
       const available = criteria.reduce((total, criterion) => total + criterion.available, 0);
       const awarded = criteria.reduce((total, criterion) => total + criterion.awarded, 0);
-      const questionTariff = tariff.get(entry.question) ?? available;
+      const questionTariff = scheme?.tariff || tariff.get(entry.question) || available;
       const partial = available < questionTariff;
       if (partial) partialCommentary += 1;
 
@@ -312,7 +494,8 @@ export function parseQualificationsScotland(input: QsInput): QsResult {
       const commentary = criteria
         .map(
           (criterion) =>
-            `${criterion.id}: ${criterion.awarded > 0 ? "awarded" : "not awarded"}` +
+            `${criterion.id}${criterion.description ? ` (${criterion.description})` : ""}: ` +
+            `${criterion.awarded > 0 ? "awarded" : "not awarded"}` +
             `${criterion.followThrough ? " on follow-through" : ""}` +
             `${criterion.reason ? ` — ${criterion.reason}` : ""}`
         )
@@ -366,6 +549,7 @@ export function parseQualificationsScotland(input: QsInput): QsResult {
       unmatchedEvidence,
       questionMismatches,
       unreadableStatements,
+      describedCriteria,
     },
   };
 }
