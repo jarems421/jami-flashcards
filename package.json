@@ -17,6 +17,7 @@
     "check:sizes": "node scripts/check-file-sizes.mjs",
     "check:ai-release": "node --env-file-if-exists=.env.local scripts/check-ai-provider-release.mjs --live",
     "check:ai-benchmark": "node scripts/check-ai-benchmark.mjs",
+    "corpus:report": "node --no-warnings scripts/corpus-report.mjs",
     "check": "npm run typecheck && npm run lint && npm run check:sizes && npm test",
     "verify:all": "npm run check && npm run build && npm run test:rules && npm run test:e2e",
     "emulators:free": "node scripts/free-emulator-ports.mjs",
@@ -25,7 +26,8 @@
     "emulators:rules": "firebase emulators:start --only firestore,storage",
     "firebase:login": "firebase login",
     "firebase:projects": "firebase projects:list",
-    "firebase:rules:deploy": "firebase deploy --only firestore:rules,firestore:indexes,storage"
+    "firebase:rules:deploy": "firebase deploy --only firestore:rules,firestore:indexes,storage",
+    "audit:ai-endpoints": "node --env-file-if-exists=.env.local scripts/audit-ai-endpoints.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.17.1",
