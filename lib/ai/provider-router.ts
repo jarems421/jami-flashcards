@@ -13,6 +13,7 @@ import {
 } from "@/lib/ai/openrouter";
 import {
   buildAiProviderPlan,
+  failoverProvidersFor,
   hasVisualAiInput,
   resolveAiProviderPolicy,
   type AiGenerationRole,
@@ -61,6 +62,12 @@ export type AiRouterOptions = {
   deadlineAt?: number;
   generationConfig?: RouterGenerationConfig;
   signal?: AbortSignal;
+  /**
+   * Send this call to a specific approved endpoint instead of the role's usual
+   * one. Rejected unless the role actually lists it as a failover, so this
+   * cannot be used to route around the allowlist.
+   */
+  providerOverride?: readonly string[];
   onRetry?: (info: {
     error: unknown;
     provider: AiProvider;
@@ -148,6 +155,30 @@ function recordFailure(attempt: AiProviderAttempt, error: unknown, latencyMs: nu
   });
 }
 
+/**
+ * The endpoints one attempt may use.
+ *
+ * An override is honoured only when the role actually lists it as a failover.
+ * The allowlist is the whole safety property here — it is what keeps traffic
+ * on endpoints someone checked for zero retention and precision — so a caller
+ * naming an arbitrary provider is refused rather than obeyed.
+ */
+function resolveProviderAllowlist(
+  attempt: AiProviderAttempt,
+  options: AiRouterOptions
+): readonly string[] {
+  const override = options.providerOverride ?? [];
+  if (override.length === 0) return attempt.providerAllowlist;
+  const approved = failoverProvidersFor(attempt.role);
+  const permitted = override.filter((provider) => approved.includes(provider));
+  if (permitted.length === 0) {
+    throw new Error(
+      `Provider override [${override.join(", ")}] is not an approved failover for ${attempt.role}.`
+    );
+  }
+  return permitted;
+}
+
 async function runBufferedAttempt(
   attempt: AiProviderAttempt,
   options: AiRouterOptions,
@@ -161,7 +192,7 @@ async function runBufferedAttempt(
     const text = await generateOpenRouterText({
       apiKey: process.env.OPENROUTER_API_KEY?.trim() ?? "",
       model: attempt.model,
-      providerAllowlist: attempt.providerAllowlist,
+      providerAllowlist: resolveProviderAllowlist(attempt, options),
       quantizations: attempt.quantizations,
       request: options.request,
       timeoutMs,

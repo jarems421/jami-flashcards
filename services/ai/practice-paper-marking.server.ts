@@ -7,7 +7,7 @@ import {
   generateAiText,
   type AiResponseDiagnostics,
 } from "@/lib/ai/provider-router";
-import type { AiGenerationRole } from "@/lib/ai/provider-policy";
+import { failoverProvidersFor, type AiGenerationRole } from "@/lib/ai/provider-policy";
 import { schemeCriteria } from "@/lib/practice/mark-schemes";
 import type {
   PracticePaper,
@@ -199,8 +199,9 @@ async function callMarker(input: PracticePaperMarkingInput & {
 }) {
   const diagnostics: AiResponseDiagnostics[] = [];
   const request = buildMarkerRequest(input);
-  const call = () => generateAiText({
+  const call = (providerOverride?: readonly string[]) => generateAiText({
     role: input.modelRole,
+    ...(providerOverride?.length ? { providerOverride } : {}),
     taskClass: input.role === "verifier" ? "standard" : "important",
     timeoutMs: MARKER_TIMEOUT_MS[input.modelRole] ?? MARKER_TIMEOUT_MS.default,
     deadlineAt: input.deadlineAt,
@@ -226,22 +227,26 @@ async function callMarker(input: PracticePaperMarkingInput & {
     });
 
   /**
-   * How many attempts a failure is worth.
+   * How many attempts a failure is worth, and where they go.
    *
-   * An empty `{}` is a two-byte response the supervisor returns for no reason
-   * anyone has been able to find: not the prompt, not its length, not the
+   * An empty `{}` is a two-byte response the supervisor's endpoint returns for
+   * no reason anyone could find: not the prompt, not its length, not the
    * exemplars, not concurrency, not the time of the run. Six probes ruled each
-   * of those out, and the rate still moves between runs. So it is treated as
-   * what it demonstrably is -- intermittent -- and simply asked again. Roughly
-   * two in five retries already succeed, and a failed attempt costs two tokens,
-   * which makes a third and fourth ask cheaper than the marking it saves.
+   * of those out.
    *
-   * Every other failure keeps the single retry it had. Those come back as full
-   * responses and cost real money, so paying repeatedly for one is a different
-   * proposition entirely.
+   * What they did establish is that it is *sticky*. Of thirteen affected calls
+   * in one run, eight returned `{}` on every one of four attempts. So asking
+   * the same endpoint again is close to worthless, and the retry deliberately
+   * moves to the role's approved failover instead — the same model at the same
+   * precision and price, hosted elsewhere. Three attempts, because a fourth on
+   * a second endpoint buys little that the move itself did not.
+   *
+   * Every other failure keeps its single retry on the primary. Those come back
+   * as full responses and cost real money, and none of them has shown the
+   * endpoint-sticky behaviour this exists for.
    */
-  const attemptsFor = (kind: string | undefined) =>
-    kind === "empty_object" || kind === "empty" ? 4 : 2;
+  const isEmpty = (kind: string | undefined) => kind === "empty_object" || kind === "empty";
+  const attemptsFor = (kind: string | undefined) => (isEmpty(kind) ? 3 : 2);
 
   let generated = await call();
   let result = parsePracticePaperMarkingModelAnswer(generated, input.paper);
@@ -263,7 +268,9 @@ async function callMarker(input: PracticePaperMarkingInput & {
       detail: failure?.detail ?? "",
       length: failure?.length ?? generated.length,
     });
-    generated = await call();
+    // A sticky empty response is the one failure a different endpoint fixes.
+    const failover = isEmpty(failure?.kind) ? failoverProvidersFor(input.modelRole) : [];
+    generated = await call(failover);
     result = parsePracticePaperMarkingModelAnswer(generated, input.paper);
     failure = result ? null : diagnose(generated);
   }

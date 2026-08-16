@@ -148,6 +148,42 @@ const DEFAULT_STANDBY = {
   },
 } as const;
 
+/**
+ * Where a role may deliberately go when its primary endpoint fails in a way
+ * retrying cannot fix.
+ *
+ * This is not load balancing and must not become it. The supervisor's endpoint
+ * intermittently answers with `{}` in sticky bursts — measured at eight of
+ * thirteen affected calls returning it on all four attempts — so asking the
+ * same endpoint again is close to worthless. Moving the retry elsewhere is the
+ * only thing that addresses the failure actually observed.
+ *
+ * DeepInfra serves the same model, MiniMax M3, at the same price and the same
+ * fp8 precision, so this changes where the work runs and not what runs. It is
+ * listed separately from the primary allowlist precisely so that a request has
+ * to ask for it: normal traffic still goes to one endpoint, and a fallback is
+ * a decision rather than a coin toss.
+ *
+ * Zero-retention still applies. Every OpenRouter request already carries
+ * `zdr: true` and `data_collection: "deny"`, which OpenRouter enforces per
+ * endpoint, so an endpoint that stopped qualifying would be refused rather
+ * than quietly used.
+ */
+const DEFAULT_FAILOVER_PROVIDERS = {
+  supervisor: ["deepinfra"],
+} as const;
+
+export function failoverProvidersFor(
+  role: AiGenerationRole,
+  env: NodeJS.ProcessEnv = process.env
+): readonly string[] {
+  if (role !== "supervisor") return [];
+  return providerList(
+    env.OPENROUTER_SUPERVISOR_FAILOVER_PROVIDERS,
+    DEFAULT_FAILOVER_PROVIDERS.supervisor
+  );
+}
+
 const QUALITY_QUANTIZATIONS = ["fp32", "fp16", "bf16", "fp8"] as const;
 const JUROR_QUANTIZATIONS = [
   "fp32",
