@@ -3,6 +3,7 @@ import type {
   MarkingLevel,
   MarkingRegime,
 } from "@/lib/evaluation/marking-corpus";
+import { referenceMark } from "./marking-corpus.ts";
 
 /**
  * Choosing what to actually mark, and refusing to spend more than intended.
@@ -205,6 +206,64 @@ export function planEvaluation(input: {
     estimate: estimateEvaluationCost(selected, input.pricing),
     omittedStrata: strata.filter((stratum) => stratum.selected === 0).map((s) => s.key),
   };
+}
+
+/**
+ * A fixed-size slice, spread across source, regime and attainment.
+ *
+ * `--limit` takes the first N in whatever order the corpus happens to be in,
+ * which for this corpus means one or two essay prompts and nothing else. A
+ * result from that is a result about one prompt, and would be read as a result
+ * about exemplars.
+ *
+ * Attainment is part of the stratification, not only subject and regime.
+ * Marking failures are not spread evenly up the scale: a marker that is
+ * competent in the middle and collapses at the extremes looks fine on a sample
+ * drawn from the middle, and the middle is where most responses are.
+ */
+export function stratifiedSlice(input: {
+  records: readonly MarkingCorpusRecord[];
+  size: number;
+  seed?: string;
+  /** How finely to divide the mark scale. */
+  bands?: number;
+}): MarkingCorpusRecord[] {
+  const bands = input.bands ?? 4;
+  const random = seededRandom(input.seed ?? "jami-slice");
+
+  const key = (record: MarkingCorpusRecord) => {
+    const share =
+      record.maxMarks > 0 ? referenceMark(record) / record.maxMarks : 0;
+    const band = Math.min(bands - 1, Math.max(0, Math.floor(share * bands)));
+    return `${record.sourceId}/${record.level}/${record.subject}/${record.regime}/band${band}`;
+  };
+
+  const buckets = new Map<string, MarkingCorpusRecord[]>();
+  for (const record of input.records) {
+    const bucket = buckets.get(key(record));
+    if (bucket) bucket.push(record);
+    else buckets.set(key(record), [record]);
+  }
+
+  const queues = [...buckets.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, records]) => shuffled(records, random));
+
+  // Round-robin, so a bucket with ten thousand responses and one with forty
+  // contribute equally until the small one runs out.
+  const chosen: MarkingCorpusRecord[] = [];
+  for (let round = 0; chosen.length < input.size; round += 1) {
+    let added = false;
+    for (const queue of queues) {
+      if (chosen.length >= input.size) break;
+      const next = queue[round];
+      if (!next) continue;
+      chosen.push(next);
+      added = true;
+    }
+    if (!added) break;
+  }
+  return chosen;
 }
 
 /**

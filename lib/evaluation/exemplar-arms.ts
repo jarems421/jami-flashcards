@@ -241,8 +241,22 @@ export function detectArmCollapse(input: {
   count?: number;
   seed?: string;
   sourceFor?: (sourceId: string) => MarkingCorpusSource | undefined;
+  /** Responses to check, if the caller has already worked them out. */
+  targets?: readonly MarkingCorpusRecord[];
+  /**
+   * How many to check. A collapse is a property of the pool's composition, not
+   * of any one response, so a spread of a few hundred settles it; checking tens
+   * of thousands only makes the answer slower to arrive.
+   */
+  sample?: number;
 }) {
-  const targets = commonBenchmark(input);
+  const available = input.targets ?? commonBenchmark(input);
+  const limit = input.sample ?? 400;
+  // Spread through the list rather than taking the head, which in this corpus
+  // would be one source and one prompt.
+  const step = Math.max(1, Math.floor(available.length / limit));
+  const targets =
+    available.length <= limit ? available : available.filter((_unused, index) => index % step === 0).slice(0, limit);
   const compared = EXEMPLAR_ARMS.filter((arm) => arm !== "none");
   const collapsed: { arms: ExemplarArm[]; records: number }[] = [];
 
