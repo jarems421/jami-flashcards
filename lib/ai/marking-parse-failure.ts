@@ -21,7 +21,8 @@ export type MarkingParseFailure =
   | "mark_out_of_range"
   | "missing_evidence"
   | "refusal"
-  | "empty";
+  | "empty"
+  | "empty_object";
 
 export type ParseFailureDiagnosis = {
   kind: MarkingParseFailure;
@@ -85,6 +86,13 @@ export function classifyMarkingParseFailure(input: {
     return { kind: "wrong_schema", detail: "Parsed, but not an object.", length };
   }
   const report = payload as Record<string, unknown>;
+  // `{}` is its own fault, not a schema mistake: the model answered with valid
+  // JSON containing nothing. It is intermittent, costs two tokens, and is worth
+  // simply asking again -- which is a different remedy from every other failure
+  // here, so it needs a different name.
+  if (!Array.isArray(report.questionResults) && Object.keys(report).length === 0) {
+    return { kind: "empty_object", detail: "The model returned {}.", length };
+  }
   const results = report.questionResults;
   if (!Array.isArray(results)) {
     return { kind: "wrong_schema", detail: "No questionResults array.", length };

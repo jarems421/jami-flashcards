@@ -75,3 +75,30 @@ describe("classifying an unreadable marking report", () => {
     expect(diagnose('{"a":1}').length).toBe(7);
   });
 });
+
+/**
+ * `{}` gets its own name because it gets its own remedy. Six probes failed to
+ * find a cause for it -- not the prompt, its length, the exemplars, the
+ * concurrency or the time of the run -- so it is treated as intermittent and
+ * simply asked again, which is not how any other failure here is handled.
+ */
+describe("the empty object", () => {
+  it("is not filed as a schema mistake", () => {
+    const result = diagnose("{}");
+    expect(result.kind).toBe("empty_object");
+    expect(result.detail).toContain("{}");
+  });
+
+  it("is recognised through whitespace and a code fence", () => {
+    expect(diagnose("```json\n{}\n```").kind).toBe("empty_object");
+    expect(diagnose("  {  }  ").kind).toBe("empty_object");
+  });
+
+  it("is distinct from returning nothing at all", () => {
+    expect(diagnose("").kind).toBe("empty");
+  });
+
+  it("does not swallow an object that merely lacks questionResults", () => {
+    expect(diagnose('{"awardedMarks":4}').kind).toBe("wrong_schema");
+  });
+});

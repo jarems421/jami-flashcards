@@ -131,6 +131,18 @@ export default async function main(args: string[]) {
       process.stdout.write(`  [${String(done).padStart(4)}/${maxRecords}] ${arm.padEnd(8)} ${record.padEnd(28)} ${outcome}\n`);
     },
     onFallback: (fields) => process.stdout.write(`  fallback: ${JSON.stringify(fields).slice(0, 160)}\n`),
+    onParseFailure: (failure) => {
+      // The model's own output, kept so a failure can be read rather than
+      // guessed at. Without this the last run could only say "wrong schema".
+      mkdirSync(REPORT, { recursive: true });
+      appendFileSync(
+        join(REPORT, `exemplar-${mode}-parse-failures.jsonl`),
+        `${JSON.stringify(failure)}\n`
+      );
+      process.stdout.write(
+        `  PARSE FAILURE ${failure.kind} (${failure.role}, ${failure.length} chars): ${failure.detail.slice(0, 80)}\n`
+      );
+    },
   });
 
   process.stdout.write(
@@ -169,7 +181,9 @@ export default async function main(args: string[]) {
   process.stdout.write(
     `\nMarked ${stats.marked} of ${stats.attempted} attempts in ${minutes} min` +
       ` (${stats.failed} failed, ${stats.unsupported} unsupported,` +
-      ` ${stats.adjudicated} adjudicated, ${stats.thirdView} went to the juror).\n`
+      ` ${stats.adjudicated} adjudicated, ${stats.thirdView} went to the juror,` +
+      ` ${stats.rateLimited} waited out a rate limit).\n` +
+      `unreadable reports by cause: ${JSON.stringify(stats.parseFailures)}\n`
   );
   for (const reason of stats.reasons.slice(0, 10)) process.stdout.write(`  ${reason}\n`);
 
