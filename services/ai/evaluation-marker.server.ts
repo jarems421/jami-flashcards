@@ -151,7 +151,17 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
       return null;
     }
 
-    const timeoutMs = options.timeoutMs ?? 240_000;
+    /**
+     * The whole marking's budget, which has to accommodate its slowest part.
+     *
+     * Four minutes was enough while the juror gave up at one. Now that it is
+     * allowed the three minutes it actually needs, a marking that goes pair,
+     * adjudication and third view can reach roughly two hundred seconds, and a
+     * four-minute ceiling leaves almost no margin — two of the last run's four
+     * failures were this deadline expiring rather than anything going wrong.
+     * A timeout recorded as a refusal thins the paired set for no reason.
+     */
+    const timeoutMs = options.timeoutMs ?? 420_000;
     try {
       const attempt = async () => {
         let lastError: unknown;
