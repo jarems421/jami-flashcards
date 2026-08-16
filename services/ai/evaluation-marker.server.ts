@@ -64,6 +64,24 @@ export type EvaluationMarkerOptions = {
     error?: string;
   }) => void;
   onFallback?: (fields: Record<string, unknown>) => void;
+  /**
+   * The marking audit, for diagnosing the ensemble itself.
+   *
+   * The audit already records what each blind marker awarded and which
+   * questions were disputed, which is enough to separate a real disagreement
+   * about marks from one triggered by something else — without changing a line
+   * of the marking path to find out.
+   */
+  onAudit?: (audit: {
+    record: string;
+    arm: string;
+    primary: number | undefined;
+    verifier: number | undefined;
+    final: number | undefined;
+    disputed: boolean;
+    adjudicated: boolean;
+    thirdView: boolean;
+  }) => void;
 };
 
 export type EvaluationMarkerStats = {
@@ -156,6 +174,16 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
       if (audit.thirdViewQuestionIds.length > 0) stats.thirdView += 1;
 
       const question = result.questionResults[0];
+      options.onAudit?.({
+        record: request.record.id,
+        arm: request.arm,
+        primary: Object.values(audit.primaryScores)[0],
+        verifier: Object.values(audit.verifierScores)[0],
+        final: question?.awardedMarks,
+        disputed: audit.disputedQuestionIds.length > 0,
+        adjudicated: audit.adjudicatedQuestionIds.length > 0,
+        thirdView: audit.thirdViewQuestionIds.length > 0,
+      });
       if (!question) {
         stats.failed += 1;
         stats.reasons.push(`${request.record.id}: marking returned no question result.`);
