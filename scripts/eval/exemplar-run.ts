@@ -1,4 +1,11 @@
-import { readFileSync, readdirSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
+import {
+  appendFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  readdirSync,
+  writeFileSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
@@ -131,8 +138,32 @@ export default async function main(args: string[]) {
       ` production marking path (blind pair, adjudication, juror third view).\n\n`
   );
 
+  /**
+   * Every marking is appended as it lands.
+   *
+   * The first real run was killed at 88% and every completed marking went with
+   * it, because results were only written at the end. A run this slow has to be
+   * able to lose its tail without losing its body.
+   */
+  mkdirSync(REPORT, { recursive: true });
+  const journal = join(REPORT, `exemplar-${mode}.jsonl`);
+  writeFileSync(journal, "");
+
   const started = Date.now();
-  const result = await runExperiment({ ...setup, benchmark: sample, mark });
+  const result = await runExperiment({
+    ...setup,
+    benchmark: sample,
+    mark,
+    // Marking is almost entirely waiting, and one model in the ensemble sits on
+    // a 60-second timeout, so running several at once stops the slow ones
+    // blocking everything behind them. Three rather than six: the supervisor is
+    // called two or three times per marking, and six put twenty of its calls in
+    // flight and drew rate limits.
+    concurrency: 3,
+    onOutcome: (outcome, arm) => {
+      appendFileSync(journal, `${JSON.stringify({ arm, ...outcome })}\n`);
+    },
+  });
   const minutes = ((Date.now() - started) / 60_000).toFixed(1);
 
   process.stdout.write(

@@ -30,6 +30,27 @@ import { markPracticePaperWithAudit } from "@/services/ai/practice-paper-marking
  * responses are shaped exactly as they are in production.
  */
 
+/**
+ * How long to wait before retrying a marking the provider rate-limited.
+ *
+ * An evaluation asks for work at a rate no student ever would: the supervisor
+ * is called two or three times per marking, so a handful of concurrent
+ * markings puts twenty of its calls in flight and the provider refuses some.
+ * Production has no such problem and should not be changed to accommodate one,
+ * so the *evaluation* backs off instead.
+ *
+ * This matters beyond tidiness. A rate-limited marking is recorded as a
+ * refusal, and refusals are not random — they cluster wherever the run happened
+ * to be busiest. Left alone they would quietly thin one arm more than another
+ * and the comparison would be between different sample sizes.
+ */
+const RATE_LIMIT_BACKOFF_MS = [4_000, 12_000, 30_000];
+
+const isRateLimited = (error: unknown) => {
+  const message = error instanceof Error ? error.message : String(error);
+  return /\b429\b|rate.?limit/i.test(message);
+};
+
 export type EvaluationMarkerOptions = {
   /** Hard ceiling on marking calls. The run stops rather than exceeding it. */
   maxRecords: number;
@@ -54,6 +75,8 @@ export type EvaluationMarkerStats = {
   adjudicated: number;
   /** Responses that additionally went to the juror. */
   thirdView: number;
+  /** Markings the provider rate-limited and the run waited out. */
+  rateLimited: number;
   reasons: string[];
 };
 
@@ -68,6 +91,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
     failed: 0,
     adjudicated: 0,
     thirdView: 0,
+    rateLimited: 0,
     reasons: [],
   };
 
@@ -98,14 +122,35 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
 
     const timeoutMs = options.timeoutMs ?? 240_000;
     try {
-      const { result, audit } = await markPracticePaperWithAudit({
-        paper: adapted.adapted.paper,
-        answerParts: adapted.adapted.answerParts,
-        exemplarParts: exemplarsToParts(request.exemplars),
-        deadlineAt: Date.now() + timeoutMs,
-        maxOutputTokens: getAiTokenCap("practicePaperMarking"),
-        logFallback: options.onFallback,
-      });
+      const attempt = async () => {
+        let lastError: unknown;
+        for (let index = 0; index <= RATE_LIMIT_BACKOFF_MS.length; index += 1) {
+          try {
+            return await markPracticePaperWithAudit({
+              paper: adapted.adapted.paper,
+              answerParts: adapted.adapted.answerParts,
+              exemplarParts: exemplarsToParts(request.exemplars),
+              deadlineAt: Date.now() + timeoutMs,
+              maxOutputTokens: getAiTokenCap("practicePaperMarking"),
+              logFallback: options.onFallback,
+            });
+          } catch (error) {
+            lastError = error;
+            const wait = RATE_LIMIT_BACKOFF_MS[index];
+            if (!isRateLimited(error) || wait === undefined) throw error;
+            stats.rateLimited += 1;
+            options.onFallback?.({
+              role: "evaluation",
+              error: "rate_limited",
+              waitingMs: wait,
+              record: request.record.id,
+            });
+            await new Promise((resolve) => setTimeout(resolve, wait));
+          }
+        }
+        throw lastError;
+      };
+      const { result, audit } = await attempt();
 
       if (audit.adjudicatedQuestionIds.length > 0) stats.adjudicated += 1;
       if (audit.thirdViewQuestionIds.length > 0) stats.thirdView += 1;

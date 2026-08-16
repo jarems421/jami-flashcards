@@ -88,6 +88,19 @@ export type ExperimentOptions = {
   /** Cap on responses marked per arm. */
   limit?: number;
   sourceFor?: (sourceId: string) => MarkingCorpusSource | undefined;
+  /**
+   * Markings in flight at once. One by default, so tests stay deterministic
+   * and ordered.
+   *
+   * Worth raising for a real run: marking is almost entirely waiting. A first
+   * run spent an hour on 42 responses because one model in the ensemble sits
+   * on a 60-second timeout, and sequential waiting turns each of those into
+   * dead wall-clock. Concurrency does not make any single marking faster; it
+   * stops the slow ones blocking everything behind them.
+   */
+  concurrency?: number;
+  /** Called as each marking lands, so a long run can be checkpointed. */
+  onOutcome?: (outcome: MarkOutcome, arm: ExemplarArm) => void;
 };
 
 export async function runExperiment(options: ExperimentOptions): Promise<ExperimentResult> {
@@ -111,24 +124,45 @@ export async function runExperiment(options: ExperimentOptions): Promise<Experim
 
   const targets = options.limit ? common.slice(0, options.limit) : common;
 
+  const concurrency = Math.max(1, options.concurrency ?? 1);
   const results: ArmResult[] = [];
   for (const arm of arms) {
-    const outcomes: MarkOutcome[] = [];
+    const scored = new Array<MarkOutcome | null>(targets.length).fill(null);
     let refusals = 0;
     let exemplarTotal = 0;
 
-    for (const record of targets) {
-      const { exemplars } = selectExemplars({ ...selection, arm, target: record });
-      exemplarTotal += exemplars.length;
-      const response = await options.mark({ record, arm, exemplars });
-      if (!response) {
-        refusals += 1;
-        continue;
+    // A shared cursor rather than fixed slices, so one slow marking holds up
+    // only its own worker instead of a whole block behind it.
+    let next = 0;
+    const worker = async () => {
+      for (;;) {
+        const index = next;
+        next += 1;
+        if (index >= targets.length) return;
+        const record = targets[index];
+        const { exemplars } = selectExemplars({ ...selection, arm, target: record });
+        exemplarTotal += exemplars.length;
+        const response = await options.mark({ record, arm, exemplars });
+        if (!response) {
+          refusals += 1;
+          continue;
+        }
+        const outcome = scoreMark({
+          record,
+          candidate: response.awardedMarks,
+          criteria: response.criteria,
+        });
+        // Placed by index, so results are in benchmark order whatever order
+        // they finished in and a rerun is comparable to this one.
+        scored[index] = outcome;
+        options.onOutcome?.(outcome, arm);
       }
-      outcomes.push(
-        scoreMark({ record, candidate: response.awardedMarks, criteria: response.criteria })
-      );
-    }
+    };
+
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, targets.length) }, () => worker())
+    );
+    const outcomes = scored.filter((outcome): outcome is MarkOutcome => outcome !== null);
 
     results.push({
       arm,
