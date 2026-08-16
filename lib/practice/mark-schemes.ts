@@ -474,6 +474,51 @@ export function creditUnitCount(item: PracticePaperMarkSchemeItem) {
   }
 }
 
+/**
+ * Stable identifiers for the things a marker can award, taken from the scheme
+ * before any model sees it.
+ *
+ * Two blind markers used to be compared on the prose they wrote for each
+ * criterion, which meant "Identifies the writer's use of metaphor" and
+ * "Identifies use of metaphor" counted as different criteria and forced an
+ * adjudication. Free text cannot be an identifier: it is generated
+ * independently by two different models and will essentially never match.
+ *
+ * The scheme already knows what is creditable, so the identity comes from
+ * there. Both markers are handed the same list and asked to answer against it,
+ * which makes their reports comparable by construction rather than by luck.
+ *
+ * Banded questions return nothing here on purpose. A band is a judgement about
+ * the whole response, not a list of separately awardable criteria, so there is
+ * nothing to line up and no comparison to make.
+ */
+export function schemeCriteria(item: PracticePaperMarkSchemeItem) {
+  const label = (index: number) => `C${index + 1}`;
+  switch (item.marking) {
+    case "additive":
+    case "pointPool":
+      return item.points.map((point, index) => ({
+        id: label(index),
+        text: point.text,
+        marks: point.marks,
+      }));
+    case "weightedTraits":
+      return item.traits.map((trait, index) => ({
+        id: label(index),
+        text: trait.label,
+        marks: trait.maxMarks,
+      }));
+    case "competency":
+      return item.competencies.map((competency, index) => ({
+        id: label(index),
+        text: competency.text,
+        marks: 0,
+      }));
+    case "banded":
+      return [];
+  }
+}
+
 /** Whether a numeric answer earns its point, decided without a model. */
 export function meetsExpectedValue(
   expected: PracticePaperExpectedValue,

@@ -167,6 +167,15 @@ export type PracticePaperMarkScheme = {
 };
 
 export type PracticePaperCriterionResult = {
+  /**
+   * The scheme's own identifier for this criterion, e.g. "C2".
+   *
+   * Optional because reports marked before criterion ids existed do not carry
+   * one, and those must keep loading. New reports should always have it: it is
+   * what makes two markers' criterion judgements comparable, since their prose
+   * never matches.
+   */
+  criterionId?: string;
   criterion: string;
   awarded: boolean;
   evidence: string;
@@ -790,9 +799,11 @@ function normalizeQuestionResults(value: unknown) {
             if (!candidate || typeof candidate !== "object") return [];
             const criterion = candidate as Record<string, unknown>;
             const label = normalizeOptionalString(criterion.criterion, 800) ?? "";
-            if (!label) return [];
+            const criterionId = normalizeOptionalString(criterion.criterionId, 16);
+            if (!label && !criterionId) return [];
             return [{
-              criterion: label,
+              ...(criterionId ? { criterionId } : {}),
+              criterion: label || (criterionId ?? ""),
               awarded: criterion.awarded === true,
               evidence: normalizeOptionalString(criterion.evidence, 1_000) ?? "",
             }];

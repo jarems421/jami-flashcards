@@ -19,7 +19,9 @@ function result(scores: [number, number], criteria: [boolean, boolean] = [true, 
       awardedMarks: scores[index],
       maxMarks: 5,
       feedback: "",
-      criterionResults: [{ criterion: "Correct method", awarded: criteria[index], evidence: "working" }],
+      criterionResults: [
+        { criterionId: "C1", criterion: "Correct method", awarded: criteria[index], evidence: "working" },
+      ],
       evidence: [],
       correction: "",
       nextStep: "",
@@ -40,6 +42,51 @@ describe("independent practice-paper marking", () => {
 
   it("also catches criterion disagreement when totals match", () => {
     expect(comparePracticePaperMarkings(result([4, 3]), result([4, 3], [false, true]))).toEqual(["q1"]);
+  });
+
+  /**
+   * Criterion identity comes from the scheme, never from the prose either
+   * model wrote. Two markers describing the same criterion differently used to
+   * be treated as disagreeing, which disputed every marking ever made -- the
+   * union of their labels always contained entries the other side had not
+   * used, and a missing entry compared unequal to a present one.
+   */
+  it("compares criteria by the scheme's id, not by how each marker worded it", () => {
+    const left = result([4, 3]);
+    const right = result([4, 3]);
+    left.questionResults[0].criterionResults = [
+      { criterionId: "C1", criterion: "Identifies the writer's use of metaphor", awarded: true, evidence: "" },
+    ];
+    right.questionResults[0].criterionResults = [
+      { criterionId: "C1", criterion: "identifies use of metaphor", awarded: true, evidence: "" },
+    ];
+    expect(comparePracticePaperMarkings(left, right)).toEqual([]);
+  });
+
+  it("ignores a criterion only one marker ruled on", () => {
+    const left = result([4, 3]);
+    const right = result([4, 3]);
+    left.questionResults[0].criterionResults = [
+      { criterionId: "C1", criterion: "Method", awarded: true, evidence: "" },
+      { criterionId: "C2", criterion: "Accuracy", awarded: false, evidence: "" },
+    ];
+    right.questionResults[0].criterionResults = [
+      { criterionId: "C1", criterion: "Method", awarded: true, evidence: "" },
+    ];
+    expect(comparePracticePaperMarkings(left, right)).toEqual([]);
+  });
+
+  /** Reports made before ids existed must keep loading, and never dispute. */
+  it("does not dispute on criteria that carry no id at all", () => {
+    const left = result([4, 3]);
+    const right = result([4, 3]);
+    left.questionResults[0].criterionResults = [
+      { criterion: "Method", awarded: true, evidence: "" },
+    ];
+    right.questionResults[0].criterionResults = [
+      { criterion: "Something else entirely", awarded: false, evidence: "" },
+    ];
+    expect(comparePracticePaperMarkings(left, right)).toEqual([]);
   });
 });
 

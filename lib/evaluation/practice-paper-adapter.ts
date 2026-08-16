@@ -6,6 +6,7 @@ import type {
 import type { PracticePaperMarkSchemeItem } from "@/lib/practice/mark-schemes";
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import { stageOf } from "@/lib/evaluation/marking-corpus";
+import { bandsForReferenceScale, parseBandsFromScheme } from "./mark-scheme-bands.ts";
 
 /**
  * A corpus record, dressed as a one-question practice paper.
@@ -100,21 +101,21 @@ function markSchemeFor(record: MarkingCorpusRecord): PracticePaperMarkScheme {
         ? { ...common, marking: "pointPool", points, awardable: record.maxMarks }
         : { ...common, marking: "additive", points };
   } else if (record.regime === "banded" || record.regime === "weightedTraits") {
-    // A single band spanning the scale, described by whatever the source's own
-    // scheme says. The published descriptors live in `answer`; splitting them
-    // into invented bands would be guessing at boundaries.
+    /**
+     * Real bands where the source published them, derived ones where it did
+     * not — never a single band across the whole scale.
+     *
+     * That single band was a measurement bug, not a simplification. A marker
+     * given one undifferentiated band from nought to maximum has no gradient
+     * to reason about, and one of the two blind markers responded by returning
+     * roughly the same mark whatever the tariff. It looked exactly like a
+     * broken model.
+     */
+    const published = parseBandsFromScheme(record.markScheme ?? "", record.maxMarks);
     item = {
       ...common,
       marking: "banded",
-      bands: [
-        {
-          id: "b1",
-          label: `0-${record.maxMarks}`,
-          minMarks: 0,
-          maxMarks: record.maxMarks,
-          descriptor: record.markScheme ?? "Judge the response as a whole against the stated standard.",
-        },
-      ],
+      bands: published.length > 0 ? published : bandsForReferenceScale(record.maxMarks),
     };
   } else {
     item = {
@@ -137,12 +138,23 @@ function markSchemeFor(record: MarkingCorpusRecord): PracticePaperMarkScheme {
     } as PracticePaperMarkSchemeItem;
   }
 
+  // Whether the band structure came from the source or was derived from its
+  // scale, said plainly rather than left for a reader to assume.
+  const derivedBands =
+    item.marking === "banded" && parseBandsFromScheme(record.markScheme ?? "", record.maxMarks).length === 0;
+
   return {
-    kind: record.markScheme ? "official" : "missing",
-    label: record.markScheme ? "Published mark scheme" : "No published scheme",
-    notice: record.markScheme
-      ? "Taken verbatim from the source that published this marked work."
-      : "The source published no scheme for this question; mark against the question alone.",
+    kind: !record.markScheme ? "missing" : derivedBands ? "estimated" : "official",
+    label: !record.markScheme
+      ? "No published scheme"
+      : derivedBands
+        ? "Reference answer, with a scale derived from it"
+        : "Published mark scheme",
+    notice: !record.markScheme
+      ? "The source published no scheme for this question; mark against the question alone."
+      : derivedBands
+        ? "The source published a reference answer but no band descriptors. The bands below describe how fully a response matches that reference, which is what the source states its scale to mean."
+        : "Taken verbatim from the source that published this marked work.",
     items: [item],
   };
 }

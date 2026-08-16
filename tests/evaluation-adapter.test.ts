@@ -51,8 +51,17 @@ describe("dressing a record as a practice paper", () => {
     );
   });
 
+  const publishedRubric = [
+    "SCORE OF 6: Clear and consistent mastery.",
+    "SCORE OF 5: Reasonably consistent mastery.",
+    "SCORE OF 4: Adequate mastery.",
+    "SCORE OF 3: Developing mastery.",
+    "SCORE OF 2: Little mastery.",
+    "SCORE OF 1: Very little or no mastery.",
+  ].join("\n");
+
   it("carries the published scheme rather than inventing one", () => {
-    const withScheme = adaptRecordToPaper(record({ markScheme: "SCORE OF 6: mastery." }));
+    const withScheme = adaptRecordToPaper(record({ markScheme: publishedRubric }));
     expect(withScheme.ok && withScheme.adapted.paper.markScheme.kind).toBe("official");
 
     const without = adaptRecordToPaper(record({ markScheme: undefined }));
@@ -81,14 +90,46 @@ describe("dressing a record as a practice paper", () => {
     expect(item.points[1].ft).toBe(true);
   });
 
-  it("marks a banded record as one band across the scale", () => {
-    const result = adaptRecordToPaper(record({ markScheme: "Band descriptors." }));
+  /**
+   * The failure this guards against cost a whole evaluation run. A single band
+   * spanning the entire scale is not a rubric: there is no gradient, and a
+   * marker handed one returned roughly the same mark whatever the tariff,
+   * which read as a broken model rather than an empty scheme.
+   */
+  it("never hands a marker one band across the whole scale", () => {
+    for (const scheme of [publishedRubric, "A reference answer with no bands at all."]) {
+      const result = adaptRecordToPaper(record({ markScheme: scheme }));
+      expect(result.ok).toBe(true);
+      if (!result.ok) continue;
+      const item = result.adapted.paper.markScheme.items[0];
+      expect(item.marking).toBe("banded");
+      if (item.marking !== "banded") continue;
+      expect(item.bands.length).toBeGreaterThan(1);
+    }
+  });
+
+  it("uses the source's own band descriptors when it published them", () => {
+    const result = adaptRecordToPaper(record({ markScheme: publishedRubric }));
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     const item = result.adapted.paper.markScheme.items[0];
-    expect(item.marking).toBe("banded");
-    if (item.marking !== "banded") return;
-    expect(item.bands[0]).toMatchObject({ minMarks: 0, maxMarks: 6 });
+    if (item.marking !== "banded") throw new Error("expected banded");
+    expect(item.bands).toHaveLength(6);
+    expect(item.bands.at(-1)).toMatchObject({ minMarks: 6, maxMarks: 6 });
+    expect(item.bands.at(-1)?.descriptor).toContain("consistent mastery");
+  });
+
+  /**
+   * Where only a reference answer was published, the bands are derived from
+   * the scale's stated meaning and the scheme says so, rather than presenting
+   * invented descriptors as though the source had written them.
+   */
+  it("marks a derived scale as estimated rather than official", () => {
+    const result = adaptRecordToPaper(record({ markScheme: "A reference answer, no bands." }));
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.adapted.paper.markScheme.kind).toBe("estimated");
+    expect(result.adapted.paper.markScheme.notice).toContain("no band descriptors");
   });
 
   /** A scan would have to be loaded and encoded; refused, not marked blind. */

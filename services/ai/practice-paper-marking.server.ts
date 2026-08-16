@@ -7,6 +7,7 @@ import {
   type AiResponseDiagnostics,
 } from "@/lib/ai/provider-router";
 import type { AiGenerationRole } from "@/lib/ai/provider-policy";
+import { schemeCriteria } from "@/lib/practice/mark-schemes";
 import type {
   PracticePaper,
   PracticePaperMarkingAudit,
@@ -37,10 +38,46 @@ export type PracticePaperMarkingInput = {
   logFallback?: (fields: Record<string, unknown>) => void;
 };
 
+/**
+ * How long each model in the ensemble gets, measured rather than assumed.
+ *
+ * One timeout for everyone was hiding a real fault. Sampled over 281 marking
+ * calls, the supervisor answers at a p90 of 10 seconds and the worker at 21,
+ * so a minute is ample for both. The juror is a different animal: 81% of its
+ * calls hit the 60-second ceiling, and probed without one it runs 45 to 85
+ * seconds with a median of 71 and no failures at all. Its budget was smaller
+ * than its work, so the third view — the safeguard over questions two markers
+ * already disagreed about — was mostly not happening.
+ *
+ * 180 seconds is deliberately generous rather than tuned. Six uncensored calls
+ * are enough to show 60 is wrong and not enough to choose the right number, so
+ * this buys headroom while a larger sample is collected; tighten it once the
+ * distribution is properly known rather than leaving it here by default.
+ */
+const MARKER_TIMEOUT_MS: Record<string, number> = {
+  default: 60_000,
+  supervisor: 60_000,
+  worker: 60_000,
+  juror: 180_000,
+};
+
+/**
+ * The criteria each question offers, keyed by question, taken from the scheme
+ * before either marker sees it. Both are handed the identical list, which is
+ * what makes their reports comparable.
+ */
+function criteriaByQuestion(paper: PracticePaper) {
+  const entries = paper.markScheme.items
+    .map((item) => [item.questionId, schemeCriteria(item)] as const)
+    .filter(([, criteria]) => criteria.length > 0);
+  return Object.fromEntries(entries);
+}
+
 function fixedGuide(paper: PracticePaper) {
   return {
     questions: paper.questions,
     markScheme: paper.markScheme,
+    criteria: criteriaByQuestion(paper),
     totalMarks: paper.totalMarks,
     assessmentProfile: paper.assessmentProfile,
     choiceGroups: paper.choiceGroups,
@@ -81,7 +118,7 @@ Return JSON only:
     "awardedMarks":4,
     "maxMarks":5,
     "feedback":"What earned and lost marks.",
-    "criterionResults":[{"criterion":"exact rubric criterion","awarded":true,"evidence":"specific student evidence"}],
+    "criterionResults":[{"criterionId":"C1","criterion":"the criterion in your own words","awarded":true,"evidence":"specific student evidence"}],
     "evidence":["short evidence quote or precise description"],
     "correction":"A concise corrected approach.",
     "nextStep":"One useful next action.",
@@ -94,7 +131,9 @@ Return JSON only:
   }]
 }
 
-Return exactly one result for every question ID. Mark every optional answer; the app applies the fixed choice-group rule deterministically. Never invent unreadable work.`;
+Return exactly one result for every question ID. Mark every optional answer; the app applies the fixed choice-group rule deterministically. Never invent unreadable work.
+
+Where the guide lists criteria for a question, return one criterionResult for each, using the guide's own criterionId. Your wording of the criterion is yours; the id must be the guide's, because two markers are compared on the ids and never on the wording.`;
 }
 
 async function callMarker(input: PracticePaperMarkingInput & {
@@ -131,7 +170,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
   const call = () => generateAiText({
     role: input.modelRole,
     taskClass: input.role === "verifier" ? "standard" : "important",
-    timeoutMs: 60_000,
+    timeoutMs: MARKER_TIMEOUT_MS[input.modelRole] ?? MARKER_TIMEOUT_MS.default,
     deadlineAt: input.deadlineAt,
     signal: input.signal,
     generationConfig: {
@@ -166,11 +205,20 @@ function scoreMap(result: PracticePaperResult) {
   );
 }
 
+/**
+ * A question's criterion verdicts, keyed by the scheme's id.
+ *
+ * Only criteria carrying an id are included. Prose is deliberately not used as
+ * a fallback key: it is written independently by two different models and
+ * never matches, so keying on it made every marking a dispute.
+ */
 function criterionMap(result: PracticePaperResult, questionId: string) {
   return new Map(
     result.questionResults
       .find((question) => question.questionId === questionId)
-      ?.criterionResults?.map((criterion) => [criterion.criterion, criterion.awarded]) ?? []
+      ?.criterionResults?.flatMap((criterion) =>
+        criterion.criterionId ? [[criterion.criterionId, criterion.awarded] as const] : []
+      ) ?? []
   );
 }
 
@@ -183,10 +231,14 @@ export function comparePracticePaperMarkings(
       (candidate) => candidate.questionId === question.questionId
     );
     if (!other || other.awardedMarks !== question.awardedMarks) return [question.questionId];
+    // Only criteria both markers ruled on. One marker mentioning a criterion
+    // the other passed over is not a disagreement about the work, and treating
+    // it as one -- which taking the union did -- disputed every marking ever
+    // made, including ones where both awarded exactly the same mark.
     const leftCriteria = criterionMap(primary, question.questionId);
     const rightCriteria = criterionMap(verifier, question.questionId);
-    const labels = new Set([...leftCriteria.keys(), ...rightCriteria.keys()]);
-    return [...labels].some((label) => leftCriteria.get(label) !== rightCriteria.get(label))
+    const shared = [...leftCriteria.keys()].filter((id) => rightCriteria.has(id));
+    return shared.some((id) => leftCriteria.get(id) !== rightCriteria.get(id))
       ? [question.questionId]
       : [];
   });
