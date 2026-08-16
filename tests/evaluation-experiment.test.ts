@@ -319,3 +319,69 @@ describe("estimating before spending", () => {
     expect(control.records).toBe(generic.records);
   });
 });
+
+/**
+ * The comparison must be paired. Markings fail, and they do not fail evenly:
+ * a run where the control lost none and one arm lost three produced a table
+ * showing exemplars comfortably ahead, which reversed the moment the arms were
+ * scored on the same responses. Attrition alone can manufacture an effect.
+ */
+describe("scoring the arms on the same responses", () => {
+  const benchmark = [
+    record({ id: "shared1", questionId: "q-s1", humanMarks: [4], maxMarks: 8 }),
+    record({ id: "shared2", questionId: "q-s2", humanMarks: [4], maxMarks: 8 }),
+    record({ id: "hard", questionId: "q-hard", humanMarks: [8], maxMarks: 8 }),
+  ];
+
+  /** Fails on the hard record for every arm but the control. */
+  const lopsided: Marker = async ({ record, arm }) => {
+    if (record.id === "hard" && arm !== "none") return null;
+    // The control is perfect on the hard one and wrong on the rest, so an
+    // unpaired average flatters the arms that never attempted it.
+    return { awardedMarks: record.id === "hard" ? record.humanMarks[0] : record.humanMarks[0] - 3 };
+  };
+
+  it("reports headline figures only over responses every arm marked", async () => {
+    const result = await runExperiment({
+      benchmark,
+      pool,
+      mark: lopsided,
+      sourceFor,
+      exemplarCount: 1,
+    });
+    expect(result.pairedSize).toBe(2);
+    for (const arm of result.arms) expect(arm.summary.count).toBe(2);
+  });
+
+  it("keeps each arm's own totals separately, without letting them lead", async () => {
+    const result = await runExperiment({
+      benchmark,
+      pool,
+      mark: lopsided,
+      sourceFor,
+      exemplarCount: 1,
+    });
+    const control = result.arms.find((arm) => arm.arm === "none")!;
+    const generic = result.arms.find((arm) => arm.arm === "generic")!;
+    expect(control.marked).toBe(3);
+    expect(generic.marked).toBe(2);
+    expect(generic.refusals).toBe(1);
+    // Unpaired, the control looks better only because it attempted more.
+    expect(control.unpairedSummary.count).toBe(3);
+    expect(control.summary.count).toBe(2);
+  });
+
+  it("finds no difference between arms that marked identically", async () => {
+    const result = await runExperiment({
+      benchmark,
+      pool,
+      mark: lopsided,
+      sourceFor,
+      exemplarCount: 1,
+    });
+    for (const entry of result.comparison) {
+      expect(entry.exactDelta).toBe(0);
+      expect(entry.maeDelta).toBe(0);
+    }
+  });
+});

@@ -49,10 +49,24 @@ export type ArmResult = {
   arm: ExemplarArm;
   label: string;
   outcomes: MarkOutcome[];
+  /**
+   * The headline figures, over the responses *every* arm marked.
+   *
+   * Not over everything this arm managed. Markings fail, and they do not fail
+   * evenly: a run where the control lost none and the regime arm lost three
+   * produced a table showing exemplars comfortably ahead, which reversed the
+   * moment the arms were compared on the same responses. Averaging each arm
+   * over its own surviving subset compares different exams and will invent an
+   * effect out of nothing but attrition.
+   */
   summary: OutcomeSummary;
   bySubject: { key: string; summary: OutcomeSummary }[];
   byLevel: { key: string; summary: OutcomeSummary }[];
   byRegime: { key: string; summary: OutcomeSummary }[];
+  /** Over everything this arm marked. Kept for reference, never the headline. */
+  unpairedSummary: OutcomeSummary;
+  /** How many responses this arm marked successfully. */
+  marked: number;
   /** Responses the marker declined or failed on. */
   refusals: number;
   exemplarsPerRecord: number;
@@ -60,8 +74,10 @@ export type ArmResult = {
 
 export type ExperimentResult = {
   arms: ArmResult[];
-  /** The responses every arm marked, which is what makes the arms comparable. */
+  /** Responses attempted by every arm. */
   benchmarkSize: number;
+  /** Responses every arm marked successfully; the headline figures use these. */
+  pairedSize: number;
   /** Held-out responses no arm could be filled for, and why. */
   excluded: { recordId: string; reason: string }[];
   comparison: ArmComparison[];
@@ -125,7 +141,12 @@ export async function runExperiment(options: ExperimentOptions): Promise<Experim
   const targets = options.limit ? common.slice(0, options.limit) : common;
 
   const concurrency = Math.max(1, options.concurrency ?? 1);
-  const results: ArmResult[] = [];
+  const collected: {
+    arm: ExemplarArm;
+    outcomes: MarkOutcome[];
+    refusals: number;
+    exemplarsPerRecord: number;
+  }[] = [];
   for (const arm of arms) {
     const scored = new Array<MarkOutcome | null>(targets.length).fill(null);
     let refusals = 0;
@@ -164,22 +185,43 @@ export async function runExperiment(options: ExperimentOptions): Promise<Experim
     );
     const outcomes = scored.filter((outcome): outcome is MarkOutcome => outcome !== null);
 
-    results.push({
+    collected.push({
       arm,
-      label: ARM_LABELS[arm],
       outcomes,
-      summary: summariseOutcomes(outcomes),
-      bySubject: summariseBy(outcomes, (outcome) => outcome.subject),
-      byLevel: summariseBy(outcomes, (outcome) => outcome.level),
-      byRegime: summariseBy(outcomes, (outcome) => outcome.regime),
       refusals,
       exemplarsPerRecord: targets.length === 0 ? 0 : exemplarTotal / targets.length,
     });
   }
 
+  // The responses every arm managed. Everything headline is computed over
+  // these and nothing else.
+  const marked = collected.map((entry) => new Set(entry.outcomes.map((o) => o.recordId)));
+  const paired = collected.length === 0
+    ? []
+    : [...marked[0]].filter((id) => marked.every((set) => set.has(id)));
+  const pairedSet = new Set(paired);
+
+  const results: ArmResult[] = collected.map((entry) => {
+    const pairedOutcomes = entry.outcomes.filter((outcome) => pairedSet.has(outcome.recordId));
+    return {
+      arm: entry.arm,
+      label: ARM_LABELS[entry.arm],
+      outcomes: entry.outcomes,
+      summary: summariseOutcomes(pairedOutcomes),
+      bySubject: summariseBy(pairedOutcomes, (outcome) => outcome.subject),
+      byLevel: summariseBy(pairedOutcomes, (outcome) => outcome.level),
+      byRegime: summariseBy(pairedOutcomes, (outcome) => outcome.regime),
+      unpairedSummary: summariseOutcomes(entry.outcomes),
+      marked: entry.outcomes.length,
+      refusals: entry.refusals,
+      exemplarsPerRecord: entry.exemplarsPerRecord,
+    };
+  });
+
   return {
     arms: results,
     benchmarkSize: targets.length,
+    pairedSize: paired.length,
     excluded,
     comparison: compareToControl(results),
   };

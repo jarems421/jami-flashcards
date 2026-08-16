@@ -173,6 +173,13 @@ export default async function main(args: string[]) {
   );
   for (const reason of stats.reasons.slice(0, 10)) process.stdout.write(`  ${reason}\n`);
 
+  process.stdout.write(
+    `
+Headline figures are paired: computed over the ${result.pairedSize} responses every arm marked.
+` +
+      `Averaging each arm over its own survivors compares different exams and invents effects from attrition.
+`
+  );
   const header =
     `${"arm".padEnd(36)}${"n".padStart(6)}${"exact".padStart(8)}${"±1".padStart(8)}${"MAE".padStart(8)}` +
     `${"norm".padStart(8)}${"bias".padStart(8)}${"inVar".padStart(8)}${"crit".padStart(8)}`;

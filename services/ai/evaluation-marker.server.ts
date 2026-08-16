@@ -64,6 +64,16 @@ export type EvaluationMarkerOptions = {
     error?: string;
   }) => void;
   onFallback?: (fields: Record<string, unknown>) => void;
+  /** Raw output of a report that could not be read, for diagnosis. */
+  onParseFailure?: (failure: {
+    record: string;
+    arm: string;
+    role: string;
+    kind: string;
+    detail: string;
+    length: number;
+    raw: string;
+  }) => void;
   /**
    * The marking audit, for diagnosing the ensemble itself.
    *
@@ -95,6 +105,8 @@ export type EvaluationMarkerStats = {
   thirdView: number;
   /** Markings the provider rate-limited and the run waited out. */
   rateLimited: number;
+  /** Unreadable reports by cause, so a failure rate can be acted on. */
+  parseFailures: Record<string, number>;
   reasons: string[];
 };
 
@@ -110,6 +122,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
     adjudicated: 0,
     thirdView: 0,
     rateLimited: 0,
+    parseFailures: {},
     reasons: [],
   };
 
@@ -151,6 +164,14 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
               deadlineAt: Date.now() + timeoutMs,
               maxOutputTokens: getAiTokenCap("practicePaperMarking"),
               logFallback: options.onFallback,
+              onParseFailure: (failure) => {
+                stats.parseFailures[failure.kind] = (stats.parseFailures[failure.kind] ?? 0) + 1;
+                options.onParseFailure?.({
+                  record: request.record.id,
+                  arm: request.arm,
+                  ...failure,
+                });
+              },
             });
           } catch (error) {
             lastError = error;

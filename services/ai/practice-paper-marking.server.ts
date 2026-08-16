@@ -2,6 +2,7 @@ import "server-only";
 
 import type { AiContentPart } from "@/lib/ai/content-parts";
 import { parsePracticePaperMarkingModelAnswer } from "@/lib/ai/practice-paper-marking";
+import { classifyMarkingParseFailure } from "@/lib/ai/marking-parse-failure";
 import {
   generateAiText,
   type AiResponseDiagnostics,
@@ -32,6 +33,22 @@ export type PracticePaperMarkingInput = {
    * in the prompt for the same reason student work is.
    */
   exemplarParts?: AiContentPart[];
+  /**
+   * Called when a report cannot be read, with the model's own output.
+   *
+   * Observation only, and off in production. "Invalid report" covered at least
+   * five distinct faults, and without the raw text there was no way to tell a
+   * truncated response from a refusal from one the parser discarded for
+   * quoting no evidence.
+   */
+  onParseFailure?: (failure: {
+    role: string;
+    modelRole: string;
+    raw: string;
+    kind: string;
+    detail: string;
+    length: number;
+  }) => void;
   signal?: AbortSignal;
   deadlineAt: number;
   maxOutputTokens: number;
@@ -184,18 +201,54 @@ async function callMarker(input: PracticePaperMarkingInput & {
     onRetry: (value) => input.logFallback?.({ ...value, markerRole: input.role }),
   });
 
+  const diagnose = (raw: string) =>
+    classifyMarkingParseFailure({
+      raw,
+      expectedQuestionIds: input.paper.questions.map((question) => question.id),
+      maxMarksByQuestion: Object.fromEntries(
+        input.paper.questions.map((question) => [question.id, question.marks])
+      ),
+    });
+
   let generated = await call();
   let result = parsePracticePaperMarkingModelAnswer(generated, input.paper);
+  let failure = result ? null : diagnose(generated);
   if (!result) {
     input.logFallback?.({
       role: input.role,
       modelRole: input.modelRole,
       error: "invalid_structured_marking_report",
+      parseFailure: failure?.kind,
+    });
+    input.onParseFailure?.({
+      role: input.role,
+      modelRole: input.modelRole,
+      raw: generated,
+      kind: failure?.kind ?? "unknown",
+      detail: failure?.detail ?? "",
+      length: failure?.length ?? generated.length,
     });
     generated = await call();
     result = parsePracticePaperMarkingModelAnswer(generated, input.paper);
+    if (!result) {
+      failure = diagnose(generated);
+      input.onParseFailure?.({
+        role: input.role,
+        modelRole: input.modelRole,
+        raw: generated,
+        kind: failure.kind,
+        detail: failure.detail,
+        length: failure.length,
+      });
+    }
   }
-  if (!result) throw new Error(`${input.role} marker returned an invalid report.`);
+  // Never coerced into a score: a report that could not be read means the
+  // marking did not happen, and the caller records a refusal.
+  if (!result) {
+    throw new Error(
+      `${input.role} marker returned an invalid report (${failure?.kind ?? "unknown"}: ${failure?.detail ?? ""})`
+    );
+  }
   return { result, diagnostics };
 }
 
