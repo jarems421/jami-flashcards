@@ -132,13 +132,40 @@ describe("dressing a record as a practice paper", () => {
     expect(result.adapted.paper.markScheme.notice).toContain("no band descriptors");
   });
 
-  /** A scan would have to be loaded and encoded; refused, not marked blind. */
-  it("refuses a scanned answer instead of sending nothing", () => {
+  /**
+   * A scan is markable, but only once somebody has loaded the page. Reading a
+   * PDF is I/O and this module is domain logic, so the images arrive from the
+   * caller — and a caller who has not loaded them is refused rather than
+   * handed a paper with no answer in it.
+   */
+  it("refuses a scanned answer when no image was supplied", () => {
     const result = adaptRecordToPaper(
       record({ answer: { kind: "image", paths: ["/script.pdf#page=3"] } })
     );
     expect(result.ok).toBe(false);
-    expect(result.ok === false && result.reason).toContain("scanned image");
+    expect(result.ok === false && result.reason).toContain("no image was supplied");
+  });
+
+  it("marks a scanned answer once its pages are supplied", () => {
+    const result = adaptRecordToPaper(
+      record({ answer: { kind: "image", paths: ["/script.pdf#page=3"] } }),
+      { answerImages: [{ inlineData: { mimeType: "image/png", data: "AAAA" } }] }
+    );
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const parts = result.adapted.answerParts;
+    expect(parts).toHaveLength(2);
+    expect("text" in parts[0] && parts[0].text).toContain("photographed below");
+    expect("inlineData" in parts[1] && parts[1].inlineData.mimeType).toBe("image/png");
+  });
+
+  /** Nothing invents a transcription of handwriting nobody has read. */
+  it("does not put any answer text on a scanned record", () => {
+    const result = adaptRecordToPaper(
+      record({ answer: { kind: "image", paths: ["/script.pdf"] } }),
+      { answerImages: [{ inlineData: { mimeType: "image/png", data: "AAAA" } }] }
+    );
+    expect(result.ok && JSON.stringify(result.adapted.answerParts)).not.toContain("Driverless");
   });
 
   it("refuses an empty answer", () => {

@@ -165,13 +165,29 @@ function describe(record: MarkingCorpusRecord) {
   return { subject, level };
 }
 
-export function adaptRecordToPaper(record: MarkingCorpusRecord): AdaptResult {
-  if (record.answer.kind !== "text") {
-    // Scanned scripts would need the page images loading and encoding, which
-    // the text-only slice does not do. Refused rather than marked blind.
-    return { ok: false, reason: `${record.id}: answer is a scanned image, which this runner cannot send.` };
+export type AdaptOptions = {
+  /**
+   * Pages of a scanned answer, already loaded and encoded.
+   *
+   * Passed in rather than read here, because this module is pure domain logic
+   * and opening a PDF is I/O. A caller that has not loaded them gets the same
+   * refusal as before, so a scan is never marked blind.
+   */
+  answerImages?: readonly AiContentPart[];
+};
+
+export function adaptRecordToPaper(
+  record: MarkingCorpusRecord,
+  options: AdaptOptions = {}
+): AdaptResult {
+  const scanned = record.answer.kind === "image";
+  if (scanned && (options.answerImages?.length ?? 0) === 0) {
+    return {
+      ok: false,
+      reason: `${record.id}: answer is a scanned page and no image was supplied.`,
+    };
   }
-  if (!record.answer.text.trim()) {
+  if (record.answer.kind === "text" && !record.answer.text.trim()) {
     return { ok: false, reason: `${record.id}: empty answer.` };
   }
 
@@ -233,9 +249,20 @@ export function adaptRecordToPaper(record: MarkingCorpusRecord): AdaptResult {
     ok: true,
     adapted: {
       paper,
-      answerParts: [
-        { text: `--- STUDENT ANSWER (Question 1) ---\n${record.answer.text}` },
-      ],
+      answerParts: scanned
+        ? [
+            {
+              text: `--- STUDENT ANSWER (Question 1) ---\nThe candidate's working is photographed below. Read it as written; do not assume anything the page does not show.`,
+            },
+            ...(options.answerImages ?? []),
+          ]
+        : [
+            {
+              text: `--- STUDENT ANSWER (Question 1) ---\n${
+                record.answer.kind === "text" ? record.answer.text : ""
+              }`,
+            },
+          ],
     },
   };
 }
