@@ -79,6 +79,21 @@ const MARKER_TIMEOUT_MS: Record<string, number> = {
 };
 
 /**
+ * A retry sent to the failover endpoint needs its own budget.
+ *
+ * The primary's sixty seconds was measured against an endpoint answering at a
+ * p90 of ten. The failover serves the same model roughly seven times slower --
+ * measured on real marking prompts at p50 34s, p90 56s, max 63s -- so it
+ * inherited a ceiling it could not meet, and a run where the failover fired
+ * often spent most of its time watching calls die at exactly sixty seconds.
+ *
+ * Three minutes is p90 plus threefold headroom. It is generous on purpose: by
+ * the time this call is made the primary has already failed, so waiting is
+ * strictly better than losing the marking.
+ */
+const FAILOVER_TIMEOUT_MS = 180_000;
+
+/**
  * The criteria each question offers, keyed by question, taken from the scheme
  * before either marker sees it. Both are handed the identical list, which is
  * what makes their reports comparable.
@@ -203,7 +218,9 @@ async function callMarker(input: PracticePaperMarkingInput & {
     role: input.modelRole,
     ...(providerOverride?.length ? { providerOverride } : {}),
     taskClass: input.role === "verifier" ? "standard" : "important",
-    timeoutMs: MARKER_TIMEOUT_MS[input.modelRole] ?? MARKER_TIMEOUT_MS.default,
+    timeoutMs: providerOverride?.length
+      ? FAILOVER_TIMEOUT_MS
+      : MARKER_TIMEOUT_MS[input.modelRole] ?? MARKER_TIMEOUT_MS.default,
     deadlineAt: input.deadlineAt,
     signal: input.signal,
     generationConfig: {

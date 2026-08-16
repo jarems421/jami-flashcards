@@ -12,7 +12,7 @@ import { failoverProvidersFor } from "@/lib/ai/provider-policy";
  */
 describe("deliberate provider failover", () => {
   it("offers the supervisor a second endpoint for the same model", () => {
-    expect(failoverProvidersFor("supervisor", {} as NodeJS.ProcessEnv)).toEqual(["deepinfra"]);
+    expect(failoverProvidersFor("supervisor", {} as unknown as NodeJS.ProcessEnv)).toEqual(["deepinfra"]);
   });
 
   /**
@@ -21,7 +21,7 @@ describe("deliberate provider failover", () => {
    */
   it("offers none to the roles that have not needed one", () => {
     for (const role of ["worker", "juror", "research", "documentVision"] as const) {
-      expect(failoverProvidersFor(role, {} as NodeJS.ProcessEnv)).toEqual([]);
+      expect(failoverProvidersFor(role, {} as unknown as NodeJS.ProcessEnv)).toEqual([]);
     }
   });
 
@@ -29,7 +29,7 @@ describe("deliberate provider failover", () => {
     expect(
       failoverProvidersFor("supervisor", {
         OPENROUTER_SUPERVISOR_FAILOVER_PROVIDERS: "gmicloud, streamlake",
-      } as NodeJS.ProcessEnv)
+      } as unknown as NodeJS.ProcessEnv)
     ).toEqual(["gmicloud", "streamlake"]);
   });
 
@@ -37,7 +37,7 @@ describe("deliberate provider failover", () => {
     expect(
       failoverProvidersFor("supervisor", {
         OPENROUTER_SUPERVISOR_FAILOVER_PROVIDERS: "  ",
-      } as NodeJS.ProcessEnv)
+      } as unknown as NodeJS.ProcessEnv)
     ).toEqual(["deepinfra"]);
   });
 
@@ -47,6 +47,6 @@ describe("deliberate provider failover", () => {
    * returns `{}` would keep serving a share of ordinary traffic.
    */
   it("is not the primary allowlist", () => {
-    expect(failoverProvidersFor("supervisor", {} as NodeJS.ProcessEnv)).not.toContain("parasail");
+    expect(failoverProvidersFor("supervisor", {} as unknown as NodeJS.ProcessEnv)).not.toContain("parasail");
   });
 });
