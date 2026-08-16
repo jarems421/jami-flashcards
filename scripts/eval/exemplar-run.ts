@@ -166,12 +166,18 @@ export default async function main(args: string[]) {
     ...setup,
     benchmark: sample,
     mark,
-    // Marking is almost entirely waiting, and one model in the ensemble sits on
-    // a 60-second timeout, so running several at once stops the slow ones
-    // blocking everything behind them. Three rather than six: the supervisor is
-    // called two or three times per marking, and six put twenty of its calls in
-    // flight and drew rate limits.
-    concurrency: 3,
+    /**
+     * Marking is almost entirely waiting, so running several at once is what
+     * makes a long run finish.
+     *
+     * Six drew rate limits: the supervisor is called two or three times per
+     * marking, so six markings put roughly twenty of its calls in flight. Three
+     * was safe but slow. Five is the middle now that two things have changed --
+     * rate limits are waited out rather than counted as failures, and empty
+     * responses fail over to a second endpoint, which spreads the supervisor's
+     * load across two providers rather than one.
+     */
+    concurrency: Number(flag("concurrency") ?? 5),
     onOutcome: (outcome, arm) => {
       appendFileSync(journal, `${JSON.stringify({ arm, ...outcome })}\n`);
     },
