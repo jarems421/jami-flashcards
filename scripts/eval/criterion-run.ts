@@ -81,23 +81,29 @@ export default async function main(args: string[]) {
   writeFileSync(journal, "");
 
   /**
-   * A known contamination, measured rather than assumed.
+   * Each candidate is shown their own work and nobody else's.
    *
-   * A quarter of these scripts share their page with another candidate, and
-   * the reference is to the page, so those records are shown work that is not
-   * theirs. Checked after the first run: on the 41 records whose page held
-   * only their own work the criterion agreement was 59.1%, against 63.2% on
-   * the 17 that were contaminated — so it did not inflate the result, and the
-   * headline survives. It should still be fixed, by pairing each image with
-   * the candidate label above it, before this benchmark is trusted at finer
-   * resolution than "about sixty per cent".
+   * A quarter of these scripts share a page, and the evidence reference is to
+   * the page, so the first run marked seventeen records while showing them a
+   * stranger's answer to the same question. The label printed above each piece
+   * of work is what says whose it is, so the record's own candidate number
+   * selects the band of the page beneath it.
+   *
+   * It fails closed: a label that is not on the page yields no images, and the
+   * record is refused rather than marked against whatever else was there.
    */
+  const candidateLabel = (record: MarkingCorpusRecord) => {
+    const number = record.id.split(":c")[1];
+    return number ? `Candidate ${number}` : undefined;
+  };
+
   const { mark, stats } = createEvaluationMarker({
     maxRecords: chosen.length + 8,
     loadAnswerImages: (record) =>
       loadScannedPages(record.answer.kind === "image" ? record.answer.paths[0] : "", {
         downscaleBy: 2,
         maxImages: 3,
+        belowLabel: candidateLabel(record),
       }),
     onProgress: ({ done, record, awarded, error }) =>
       process.stdout.write(

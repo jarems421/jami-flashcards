@@ -1,7 +1,7 @@
 import { inflateSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { downscale, encodePng, toRgb } from "@/lib/evaluation/pdf-page-image";
-import { parsePageReference } from "@/services/ai/scanned-page-loader.server";
+import { labelBand, parsePageReference } from "@/services/ai/scanned-page-loader.server";
 
 const solid = (width: number, height: number, rgb: [number, number, number]) => {
   const data = new Uint8Array(width * height * 3);
@@ -125,5 +125,46 @@ describe("reading a page reference", () => {
 
   it("keeps a Windows path intact", () => {
     expect(parsePageReference("C:\\data\\evidence.pdf#page=2").file).toBe("C:\\data\\evidence.pdf");
+  });
+});
+
+/**
+ * A quarter of the Qualifications Scotland pages carry two candidates, and the
+ * evidence reference is to the page. Sending both asks a marker to judge one
+ * script while looking at somebody else's, which the first criterion run did
+ * for seventeen records before anyone noticed.
+ */
+describe("attributing work to the candidate who wrote it", () => {
+  const labels = [
+    { text: "Candidate 5", y: 754 },
+    { text: "Candidate 6", y: 527 },
+  ];
+
+  it("gives a label the band from itself down to the next", () => {
+    expect(labelBand(labels, "Candidate 5")).toEqual({ top: 754, bottom: 527 });
+  });
+
+  it("lets the last label on a page run to the bottom", () => {
+    expect(labelBand(labels, "Candidate 6")).toEqual({
+      top: 527,
+      bottom: Number.NEGATIVE_INFINITY,
+    });
+  });
+
+  it("orders by position rather than by how the labels were listed", () => {
+    expect(labelBand([...labels].reverse(), "Candidate 5")).toEqual({ top: 754, bottom: 527 });
+  });
+
+  it("matches a label whatever its spacing or case", () => {
+    expect(labelBand([{ text: "  candidate  5 ", y: 700 }], "Candidate 5")).not.toBeNull();
+  });
+
+  /**
+   * Fails closed. A label that is not on the page means this candidate's work
+   * cannot be identified, which must refuse rather than fall back to sending
+   * everything.
+   */
+  it("returns nothing for a candidate who is not on the page", () => {
+    expect(labelBand(labels, "Candidate 99")).toBeNull();
   });
 });

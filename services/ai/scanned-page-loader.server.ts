@@ -32,7 +32,34 @@ export type ScannedPageOptions = {
   downscaleBy?: number;
   /** Refuse a reference that would send more than this many images. */
   maxImages?: number;
+  /**
+   * Take only the work sitting beneath this label, e.g. `Candidate 5`.
+   *
+   * A quarter of these pages carry two candidates, and sending both asks a
+   * marker to judge one script while looking at somebody else's. The label
+   * printed above each piece of work is what says whose it is, so an image is
+   * kept when the nearest label above it is this one.
+   */
+  belowLabel?: string;
 };
+
+/** A label printed on the page, with where it sits. Higher y is further up. */
+type PageLabel = { text: string; y: number };
+
+/**
+ * The vertical band a label owns: from the label down to the next one.
+ *
+ * Returns null when the label is not on the page, which the caller must treat
+ * as "cannot identify this candidate's work" rather than "take everything".
+ */
+export function labelBand(labels: readonly PageLabel[], wanted: string) {
+  const ordered = [...labels].sort((a, b) => b.y - a.y);
+  const index = ordered.findIndex(
+    (label) => label.text.replace(/\s+/g, " ").trim().toLowerCase() === wanted.toLowerCase()
+  );
+  if (index === -1) return null;
+  return { top: ordered[index].y, bottom: ordered[index + 1]?.y ?? Number.NEGATIVE_INFINITY };
+}
 
 /**
  * The images on the pages a record points at.
@@ -60,10 +87,60 @@ export async function loadScannedPages(
       const page = await document.getPage(pageNumber);
       const operators = await page.getOperatorList();
 
+      // Where each piece of work sits, so it can be attributed to whoever the
+      // page says wrote it.
+      let band: { top: number; bottom: number } | null = null;
+      if (options.belowLabel) {
+        const content = await page.getTextContent();
+        const labels: PageLabel[] = (
+          content.items as { str?: string; transform?: number[] }[]
+        )
+          .filter((item) => /^(Candidate|Question)\s+\d+/.test((item.str ?? "").trim()))
+          .map((item) => ({ text: (item.str ?? "").trim(), y: item.transform?.[5] ?? 0 }));
+        band = labelBand(labels, options.belowLabel);
+        // The label is not on this page, so nothing here can be shown to be
+        // theirs. Sending the page anyway is what this option exists to stop.
+        if (!band) continue;
+      }
+
+      // An image's placement lives in the transformation matrix in force when
+      // it is painted, so the matrix has to be tracked to know where it landed.
+      let matrix = [1, 0, 0, 1, 0, 0];
+      const stack: number[][] = [];
+
       for (let index = 0; index < operators.fnArray.length; index += 1) {
         if (parts.length >= maxImages) break;
         const operator = operators.fnArray[index];
+        if (operator === pdfjs.OPS.save) {
+          stack.push([...matrix]);
+          continue;
+        }
+        if (operator === pdfjs.OPS.restore) {
+          matrix = stack.pop() ?? matrix;
+          continue;
+        }
+        if (operator === pdfjs.OPS.transform) {
+          const [a, b, c, d, e, f] = operators.argsArray[index] as number[];
+          const [a0, b0, c0, d0, e0, f0] = matrix;
+          matrix = [
+            a * a0 + b * c0,
+            a * b0 + b * d0,
+            c * a0 + d * c0,
+            c * b0 + d * d0,
+            e * a0 + f * c0 + e0,
+            e * b0 + f * d0 + f0,
+          ];
+          continue;
+        }
         if (operator !== pdfjs.OPS.paintImageXObject) continue;
+
+        if (band) {
+          const bottom = matrix[5];
+          const top = bottom + Math.abs(matrix[3]);
+          // Attributed to the nearest label above it, which is this one only
+          // when the work starts below the label and above the next.
+          if (top > band.top || top <= band.bottom) continue;
+        }
         const name = operators.argsArray[index][0];
         // Image objects resolve asynchronously; asking for one before the
         // worker has decoded it throws rather than waiting.
