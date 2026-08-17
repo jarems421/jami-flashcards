@@ -39,7 +39,8 @@ export type MarkRequest = {
 
 export type MarkResponse = {
   awardedMarks: number;
-  criteria?: readonly { criterion: string; awarded: boolean }[];
+  /** The scheme's id is what makes these comparable; the prose is decoration. */
+  criteria?: readonly { criterionId?: string; criterion: string; awarded: boolean }[];
 };
 
 /** Injected. Returning null records a refusal rather than inventing a mark. */

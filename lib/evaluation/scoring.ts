@@ -96,7 +96,7 @@ function normaliseLabel(value: string) {
  */
 export function compareCriteria(
   human: readonly MarkingCriterion[],
-  candidate: readonly { criterion: string; awarded: boolean }[],
+  candidate: readonly { criterionId?: string; criterion: string; awarded: boolean }[],
   marksAgree: boolean
 ): CriterionOutcome {
   const remaining = [...candidate];
@@ -104,13 +104,29 @@ export function compareCriteria(
   let agreed = 0;
   let missed = 0;
 
-  for (const criterion of human) {
+  for (const [position, criterion] of human.entries()) {
+    /**
+     * The scheme's own numbering first, prose only as a fallback.
+     *
+     * Both markers are handed the criteria as `C1`, `C2`, ... in the order the
+     * source published them, so `C{n}` is the nth human criterion by
+     * construction. Matching on wording instead is what made two markers
+     * describing the same criterion look like a disagreement, and it would do
+     * the same here between a model's phrasing and an examiner's.
+     */
+    const schemeId = `c${position + 1}`;
     const id = normaliseLabel(criterion.id);
     const description = criterion.description ? normaliseLabel(criterion.description) : null;
-    const index = remaining.findIndex((entry) => {
-      const label = normaliseLabel(entry.criterion);
-      return label.includes(id) || (description !== null && label.includes(description));
-    });
+
+    let index = remaining.findIndex(
+      (entry) => entry.criterionId && normaliseLabel(entry.criterionId) === schemeId
+    );
+    if (index === -1) {
+      index = remaining.findIndex((entry) => {
+        const label = normaliseLabel(entry.criterion);
+        return label.includes(id) || (description !== null && label.includes(description));
+      });
+    }
     if (index === -1) {
       missed += 1;
       continue;
@@ -132,7 +148,7 @@ export function compareCriteria(
 export function scoreMark(input: {
   record: MarkingCorpusRecord;
   candidate: number;
-  criteria?: readonly { criterion: string; awarded: boolean }[];
+  criteria?: readonly { criterionId?: string; criterion: string; awarded: boolean }[];
 }): MarkOutcome {
   const { record, candidate } = input;
   const humans = record.humanMarks;

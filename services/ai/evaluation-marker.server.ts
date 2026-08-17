@@ -5,6 +5,8 @@ import {
   adaptRecordToPaper,
   exemplarsToParts,
 } from "@/lib/evaluation/practice-paper-adapter";
+import type { AiContentPart } from "@/lib/ai/content-parts";
+import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import type { Marker, MarkRequest, MarkResponse } from "@/lib/evaluation/experiment";
 import { markPracticePaperWithAudit } from "@/services/ai/practice-paper-marking.server";
 
@@ -56,6 +58,14 @@ export type EvaluationMarkerOptions = {
   maxRecords: number;
   /** Per-response wall-clock budget, matching the production deadline shape. */
   timeoutMs?: number;
+  /**
+   * Load the pages of a scanned answer, for sources whose work is photographed.
+   *
+   * Supplied by the caller because opening a PDF is I/O the adapter does not
+   * do, and because a run over typed answers should not pay to have a loader
+   * it never calls.
+   */
+  loadAnswerImages?: (record: MarkingCorpusRecord) => Promise<readonly AiContentPart[]>;
   onProgress?: (progress: {
     done: number;
     record: string;
@@ -137,7 +147,23 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
     }
     stats.attempted += 1;
 
-    const adapted = adaptRecordToPaper(request.record);
+    let answerImages: readonly AiContentPart[] = [];
+    if (request.record.answer.kind === "image" && options.loadAnswerImages) {
+      try {
+        answerImages = await options.loadAnswerImages(request.record);
+      } catch (error) {
+        // A page that cannot be read is a refusal, never a marking of a blank.
+        stats.unsupported += 1;
+        stats.reasons.push(
+          `${request.record.id}: could not load its pages (${
+            error instanceof Error ? error.message.slice(0, 80) : "unknown"
+          }).`
+        );
+        return null;
+      }
+    }
+
+    const adapted = adaptRecordToPaper(request.record, { answerImages });
     if (!adapted.ok) {
       stats.unsupported += 1;
       stats.reasons.push(adapted.reason);
@@ -232,6 +258,7 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
       return {
         awardedMarks: question.awardedMarks,
         criteria: question.criterionResults?.map((criterion) => ({
+          ...(criterion.criterionId ? { criterionId: criterion.criterionId } : {}),
           criterion: criterion.criterion,
           awarded: criterion.awarded,
         })),
