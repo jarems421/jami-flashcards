@@ -80,10 +80,20 @@ export default async function main(args: string[]) {
   const journal = join(REPORT, "criterion-run.jsonl");
   writeFileSync(journal, "");
 
+  /**
+   * A known contamination, measured rather than assumed.
+   *
+   * A quarter of these scripts share their page with another candidate, and
+   * the reference is to the page, so those records are shown work that is not
+   * theirs. Checked after the first run: on the 41 records whose page held
+   * only their own work the criterion agreement was 59.1%, against 63.2% on
+   * the 17 that were contaminated — so it did not inflate the result, and the
+   * headline survives. It should still be fixed, by pairing each image with
+   * the candidate label above it, before this benchmark is trusted at finer
+   * resolution than "about sixty per cent".
+   */
   const { mark, stats } = createEvaluationMarker({
     maxRecords: chosen.length + 8,
-    // Two candidates often share a page, so a couple of images is normal and
-    // more than that means the reference is wrong rather than generous.
     loadAnswerImages: (record) =>
       loadScannedPages(record.answer.kind === "image" ? record.answer.paths[0] : "", {
         downscaleBy: 2,
