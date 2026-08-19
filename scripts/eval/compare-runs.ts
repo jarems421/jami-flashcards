@@ -26,8 +26,24 @@ const percent = (value: number | null | undefined) =>
   value === null || value === undefined ? "    -" : `${(value * 100).toFixed(1)}%`;
 const signed = (value: number) => `${value >= 0 ? "+" : ""}${value.toFixed(2)}`;
 
-const load = (path: string): MarkOutcome[] =>
-  JSON.parse(readFileSync(resolve(path), "utf8")).outcomes;
+/**
+ * One side of the comparison, which may be spread over several files.
+ *
+ * A run that lost records to a provider outage is completed by a recovery pass
+ * rather than repeated, so its outcomes live in more than one file. Later
+ * files win on a repeated record: a recovery pass marked it because the first
+ * attempt did not produce a usable result.
+ */
+const load = (paths: string): MarkOutcome[] => {
+  const byRecord = new Map<string, MarkOutcome>();
+  for (const path of paths.split(",")) {
+    const outcomes: MarkOutcome[] = JSON.parse(
+      readFileSync(resolve(path.trim()), "utf8")
+    ).outcomes;
+    for (const outcome of outcomes) byRecord.set(outcome.recordId, outcome);
+  }
+  return [...byRecord.values()];
+};
 
 export default async function main(args: string[]) {
   const flag = (name: string) => args.find((value) => value.startsWith(`--${name}=`))?.split("=")[1];

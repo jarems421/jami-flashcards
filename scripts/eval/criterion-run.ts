@@ -63,12 +63,35 @@ export default async function main(args: string[]) {
    * sides to still exist.
    */
   const name = flag("out") ?? "criterion-run";
+  /**
+   * Mark only what an earlier run did not, so a lost record can be recovered
+   * without paying to re-mark the ones that succeeded.
+   *
+   * Losses are not random, which is why this exists rather than a note to run
+   * it again. A run pushed to concurrency 9 during the provider outage kept 37
+   * records averaging 3.59 marks and lost 52 averaging 4.38: the longer a
+   * question, the longer its marking, and the likelier it exceeded the
+   * deadline. Reporting the survivors would have measured Jami on the short
+   * questions and called it a benchmark.
+   */
+  const missingFrom = flag("missing");
 
   const all: MarkingCorpusRecord[] = [];
   for (const file of readdirSync(CORPUS).filter((name) => name.endsWith(".json"))) {
     all.push(...JSON.parse(readFileSync(join(CORPUS, file), "utf8")).records);
   }
-  const withCriteria = all.filter((record) => (record.criteria?.length ?? 0) > 0);
+  let withCriteria = all.filter((record) => (record.criteria?.length ?? 0) > 0);
+  if (missingFrom) {
+    const done: Set<string> = new Set(
+      JSON.parse(readFileSync(join(REPORT, `${missingFrom}.json`), "utf8")).outcomes.map(
+        (outcome: { recordId: string }) => outcome.recordId
+      )
+    );
+    withCriteria = withCriteria.filter((record) => !done.has(record.id));
+    process.stdout.write(`
+Recovering ${withCriteria.length} records ${missingFrom} did not mark.
+`);
+  }
   const chosen = limit > 0 ? withCriteria.slice(0, limit) : withCriteria;
 
   const criteria = chosen.reduce((total, record) => total + (record.criteria?.length ?? 0), 0);
