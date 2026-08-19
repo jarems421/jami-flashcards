@@ -68,6 +68,20 @@ export type AiRouterOptions = {
    * cannot be used to route around the allowlist.
    */
   providerOverride?: readonly string[];
+  /**
+   * What the standby attempt gets, when the role's usual endpoint is gone.
+   *
+   * `timeoutMs` is measured against the primary, and the standby is a
+   * different model on a different host: the supervisor's is Kimi K3 on
+   * DeepInfra, answering roughly seven times slower than MiniMax's p90 of ten
+   * seconds. Giving it the primary's budget means that during an outage --
+   * exactly when it is needed -- every call dies at the ceiling instead of
+   * answering, and the standby that exists to survive the outage cannot.
+   *
+   * Defaults to `timeoutMs`, so a caller that has not measured its standby is
+   * no worse off than before.
+   */
+  standbyTimeoutMs?: number;
   onRetry?: (info: {
     error: unknown;
     provider: AiProvider;
@@ -83,6 +97,15 @@ export type AiRouterOptions = {
 function remainingTimeout(timeoutMs: number, deadlineAt?: number) {
   if (deadlineAt === undefined) return timeoutMs;
   return Math.max(0, Math.min(timeoutMs, deadlineAt - Date.now()));
+}
+
+/** What one attempt gets, which is not the same for the standby. */
+function budgetFor(attempt: AiProviderAttempt, options: AiRouterOptions) {
+  const budget =
+    attempt.routeReason === "provider_standby"
+      ? options.standbyTimeoutMs ?? options.timeoutMs
+      : options.timeoutMs;
+  return remainingTimeout(budget, options.deadlineAt);
 }
 
 function planFor(options: AiRouterOptions) {
@@ -264,7 +287,7 @@ export async function generateAiText(options: AiRouterOptions) {
   let lastError: unknown = null;
   for (let index = 0; index < plan.length; index += 1) {
     const attempt = plan[index];
-    const timeoutMs = remainingTimeout(options.timeoutMs, options.deadlineAt);
+    const timeoutMs = budgetFor(attempt, options);
     if (timeoutMs <= 0) break;
     const startedAt = Date.now();
     try {
@@ -297,7 +320,7 @@ export async function* streamAiText(
   let lastError: unknown = null;
   for (let index = 0; index < plan.length; index += 1) {
     const attempt = plan[index];
-    const timeoutMs = remainingTimeout(options.timeoutMs, options.deadlineAt);
+    const timeoutMs = budgetFor(attempt, options);
     if (timeoutMs <= 0) break;
     let yielded = false;
     const startedAt = Date.now();

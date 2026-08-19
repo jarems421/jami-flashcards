@@ -138,3 +138,73 @@ describe("provider router", () => {
     ]);
   });
 });
+
+/**
+ * The standby exists to survive an outage of the role's usual endpoint, and it
+ * is a different model on a different host: the supervisor's is Kimi K3 on
+ * DeepInfra against MiniMax's own endpoint. Handing it the primary's budget
+ * meant that during an outage -- exactly when it is reached -- it died at the
+ * ceiling instead of answering. Four of six markings in one smoke run were
+ * lost this way, every one of them after the primary had returned 502.
+ */
+describe("what the standby is given to work with", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    Object.assign(process.env, {
+      OPENROUTER_API_KEY: "test-key",
+      OPENROUTER_ENABLED: "true",
+      OPENROUTER_PRIVACY_APPROVED: "true",
+      OPENROUTER_QUALITY_GATE_PASSED: "true",
+      OPENROUTER_KILL_SWITCH: "false",
+      OPENROUTER_JUROR_KILL_SWITCH: "false",
+    });
+  });
+
+  const failThenSucceed = () => {
+    mocks.generateOpenRouterText
+      .mockRejectedValueOnce(Object.assign(new Error("upstream"), { status: 502 }))
+      .mockRejectedValueOnce(Object.assign(new Error("upstream"), { status: 502 }))
+      .mockResolvedValueOnce("ok");
+  };
+
+  it("gives the standby its own budget once the primary is gone", async () => {
+    failThenSucceed();
+    await generateAiText({
+      role: "supervisor",
+      request,
+      timeoutMs: 60_000,
+      standbyTimeoutMs: 180_000,
+    });
+
+    const calls = mocks.generateOpenRouterText.mock.calls.map(([options]) => options);
+    expect(calls).toHaveLength(3);
+    expect(calls[0].timeoutMs).toBe(60_000);
+    expect(calls[1].timeoutMs).toBe(60_000);
+    expect(calls[2].model).toBe("moonshotai/kimi-k3");
+    expect(calls[2].timeoutMs).toBe(180_000);
+  });
+
+  /** A caller that has not measured its standby is no worse off than before. */
+  it("falls back to the primary's budget when none is given", async () => {
+    failThenSucceed();
+    await generateAiText({ role: "supervisor", request, timeoutMs: 60_000 });
+
+    const calls = mocks.generateOpenRouterText.mock.calls.map(([options]) => options);
+    expect(calls[2].timeoutMs).toBe(60_000);
+  });
+
+  /** The deadline still wins: a standby cannot outlive the whole marking. */
+  it("never lets the standby run past the deadline", async () => {
+    failThenSucceed();
+    await generateAiText({
+      role: "supervisor",
+      request,
+      timeoutMs: 60_000,
+      standbyTimeoutMs: 180_000,
+      deadlineAt: Date.now() + 20_000,
+    });
+
+    const calls = mocks.generateOpenRouterText.mock.calls.map(([options]) => options);
+    expect(calls[2].timeoutMs).toBeLessThanOrEqual(20_000);
+  });
+});
