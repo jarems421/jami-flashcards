@@ -106,15 +106,23 @@ describe("provider router", () => {
     expect(mocks.generateOpenRouterText.mock.calls.map((call) => call[0].model)).toEqual([
       "minimax/minimax-m3",
       "minimax/minimax-m3",
+      "minimax/minimax-m3",
       "moonshotai/kimi-k3",
     ]);
   });
 
-  it("reaches the supervisor standby only after the primary has failed twice", async () => {
+  /**
+   * The order matters as much as the fallbacks existing. When MiniMax's own
+   * endpoint went down it returned 502 in under half a second on every call,
+   * and the same model on DeepInfra answered in 1.4 seconds throughout, so
+   * reaching for a different model first would have swapped a working endpoint
+   * for an unnecessary change of marker.
+   */
+  it("tries the same model elsewhere before it tries a different model", async () => {
     mocks.generateOpenRouterText
       .mockRejectedValueOnce(new Error("parasail down"))
       .mockRejectedValueOnce(new Error("parasail down"))
-      .mockResolvedValueOnce("standby answer");
+      .mockResolvedValueOnce("failover answer");
 
     const retries: string[] = [];
     await expect(generateAiText({
@@ -122,19 +130,42 @@ describe("provider router", () => {
       request,
       timeoutMs: 5_000,
       onRetry: (info) => retries.push(`${info.modelName}->${info.nextModelName}`),
+    })).resolves.toBe("failover answer");
+
+    const calls = mocks.generateOpenRouterText.mock.calls.map((call) => call[0]);
+    expect(calls.map((call) => call.model)).toEqual([
+      "minimax/minimax-m3",
+      "minimax/minimax-m3",
+      "minimax/minimax-m3",
+    ]);
+    expect(calls[0].providerAllowlist).toEqual(["parasail"]);
+    expect(calls[2].providerAllowlist).toEqual(["deepinfra"]);
+    expect(calls[2].quantizations).toEqual(["fp32", "fp16", "bf16", "fp8"]);
+    expect(retries).toEqual([
+      "minimax/minimax-m3->minimax/minimax-m3",
+      "minimax/minimax-m3->minimax/minimax-m3",
+    ]);
+  });
+
+  it("reaches the different-model standby only once the failover is gone too", async () => {
+    mocks.generateOpenRouterText
+      .mockRejectedValueOnce(new Error("parasail down"))
+      .mockRejectedValueOnce(new Error("parasail down"))
+      .mockRejectedValueOnce(new Error("deepinfra down"))
+      .mockResolvedValueOnce("standby answer");
+
+    await expect(generateAiText({
+      role: "supervisor",
+      request,
+      timeoutMs: 5_000,
     })).resolves.toBe("standby answer");
 
     const calls = mocks.generateOpenRouterText.mock.calls.map((call) => call[0]);
     expect(calls.map((call) => call.model)).toEqual([
       "minimax/minimax-m3",
       "minimax/minimax-m3",
+      "minimax/minimax-m3",
       "moonshotai/kimi-k3",
-    ]);
-    expect(calls[2].providerAllowlist).toEqual(["deepinfra"]);
-    expect(calls[2].quantizations).toEqual(["fp32", "fp16", "bf16", "fp8"]);
-    expect(retries).toEqual([
-      "minimax/minimax-m3->minimax/minimax-m3",
-      "minimax/minimax-m3->moonshotai/kimi-k3",
     ]);
   });
 });
@@ -147,7 +178,7 @@ describe("provider router", () => {
  * ceiling instead of answering. Four of six markings in one smoke run were
  * lost this way, every one of them after the primary had returned 502.
  */
-describe("what the standby is given to work with", () => {
+describe("what an attempt off the primary is given to work with", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(process.env, {
@@ -167,20 +198,20 @@ describe("what the standby is given to work with", () => {
       .mockResolvedValueOnce("ok");
   };
 
-  it("gives the standby its own budget once the primary is gone", async () => {
+  it("gives every attempt off the primary its own budget", async () => {
     failThenSucceed();
     await generateAiText({
       role: "supervisor",
       request,
       timeoutMs: 60_000,
-      standbyTimeoutMs: 180_000,
+      fallbackTimeoutMs: 180_000,
     });
 
     const calls = mocks.generateOpenRouterText.mock.calls.map(([options]) => options);
     expect(calls).toHaveLength(3);
     expect(calls[0].timeoutMs).toBe(60_000);
     expect(calls[1].timeoutMs).toBe(60_000);
-    expect(calls[2].model).toBe("moonshotai/kimi-k3");
+    expect(calls[2].providerAllowlist).toEqual(["deepinfra"]);
     expect(calls[2].timeoutMs).toBe(180_000);
   });
 
@@ -200,7 +231,7 @@ describe("what the standby is given to work with", () => {
       role: "supervisor",
       request,
       timeoutMs: 60_000,
-      standbyTimeoutMs: 180_000,
+      fallbackTimeoutMs: 180_000,
       deadlineAt: Date.now() + 20_000,
     });
 

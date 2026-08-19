@@ -89,8 +89,9 @@ describe("AI provider policy", () => {
     expect(plan.map((attempt) => attempt.routeReason)).toEqual([
       "low_confidence",
       "low_confidence",
-      // The standby carries its own reason so a failover is legible in
-      // content-free diagnostics rather than looking like an ordinary call.
+      // Each fallback carries its own reason so leaving the primary is legible
+      // in content-free diagnostics rather than looking like an ordinary call.
+      "provider_failover",
       "provider_standby",
     ]);
   });
@@ -101,7 +102,12 @@ describe("AI provider policy", () => {
       role: "supervisor",
       hasVisualInput: false,
       policy,
-    }).map(({ role }) => role)).toEqual(["supervisor", "supervisor", "supervisor"]);
+    }).map(({ role }) => role)).toEqual([
+      "supervisor",
+      "supervisor",
+      "supervisor",
+      "supervisor",
+    ]);
     expect(buildAiProviderPlan({
       role: "juror",
       hasVisualInput: true,
@@ -124,9 +130,14 @@ describe("AI provider policy", () => {
       expect(plan.map(({ model }) => model)).toEqual([
         "minimax/minimax-m3",
         "minimax/minimax-m3",
+        // The same model on its second approved endpoint comes first: it is a
+        // smaller change than a different model, and during the outage that
+        // prompted this it was answering in 1.4 seconds throughout.
+        "minimax/minimax-m3",
         "moonshotai/kimi-k3",
       ]);
       expect(plan[2].providerAllowlist).toEqual(["deepinfra"]);
+      expect(plan[3].providerAllowlist).toEqual(["deepinfra"]);
     });
 
     it("holds the standby to the role's own precision and reasoning bar", () => {
@@ -135,9 +146,9 @@ describe("AI provider policy", () => {
         hasVisualInput: false,
         policy: resolveAiProviderPolicy(approved),
       });
-      expect(plan[2].quantizations).toEqual(plan[0].quantizations);
-      expect(plan[2].quantizations).not.toContain("int4");
-      expect(plan[2].thinking).toBe(true);
+      expect(plan[3].quantizations).toEqual(plan[0].quantizations);
+      expect(plan[3].quantizations).not.toContain("int4");
+      expect(plan[3].thinking).toBe(true);
     });
 
     it("gives no other role a standby", () => {
@@ -157,7 +168,9 @@ describe("AI provider policy", () => {
           OPENROUTER_SUPERVISOR_STANDBY_MODEL: "minimax/minimax-m3",
         }),
       });
-      expect(plan).toHaveLength(2);
+      // The primary twice and its failover endpoint; no standby.
+      expect(plan).toHaveLength(3);
+      expect(plan.every((attempt) => attempt.routeReason !== "provider_standby")).toBe(true);
     });
 
     it("is overridable without touching code", () => {
@@ -170,8 +183,8 @@ describe("AI provider policy", () => {
           OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "parasail, deepinfra",
         }),
       });
-      expect(plan[2].model).toBe("qwen/qwen3.5-397b-a17b");
-      expect(plan[2].providerAllowlist).toEqual(["parasail", "deepinfra"]);
+      expect(plan[3].model).toBe("qwen/qwen3.5-397b-a17b");
+      expect(plan[3].providerAllowlist).toEqual(["parasail", "deepinfra"]);
     });
   });
 

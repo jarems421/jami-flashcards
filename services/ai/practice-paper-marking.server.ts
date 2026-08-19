@@ -94,19 +94,17 @@ const MARKER_TIMEOUT_MS: Record<string, number> = {
 const FAILOVER_TIMEOUT_MS = 180_000;
 
 /**
- * The standby needs the same allowance, for the same reason.
+ * Both fallbacks need that allowance, not just the retry that asks for one.
  *
- * The failover and the standby are different mechanisms -- one retries a
- * specific fault on an approved second endpoint, the other takes over when the
- * role's endpoint is gone entirely -- but both leave MiniMax for a Kimi model
- * on somebody else's hardware, and both were handed a ceiling measured against
- * MiniMax. Fixing only the failover left the standby dying at exactly sixty
- * seconds during an outage: four of six markings in one smoke run, every one
- * of them after the primary had already returned 502.
- *
- * A standby that cannot finish is not a standby.
+ * The failover and the standby are different mechanisms -- one moves the same
+ * model to its second approved endpoint, the other takes over with a different
+ * model when the role's endpoint is gone -- but both run somewhere slower than
+ * the primary they were timed against. Giving the allowance only to the
+ * explicit retry left the plan's own fallbacks dying at exactly sixty seconds
+ * during an outage: four of six markings in one smoke run, every one after the
+ * primary had already returned 502.
  */
-const STANDBY_TIMEOUT_MS = 180_000;
+const FALLBACK_TIMEOUT_MS = 180_000;
 
 /**
  * The criteria each question offers, keyed by question, taken from the scheme
@@ -236,7 +234,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
     timeoutMs: providerOverride?.length
       ? FAILOVER_TIMEOUT_MS
       : MARKER_TIMEOUT_MS[input.modelRole] ?? MARKER_TIMEOUT_MS.default,
-    standbyTimeoutMs: STANDBY_TIMEOUT_MS,
+    fallbackTimeoutMs: FALLBACK_TIMEOUT_MS,
     deadlineAt: input.deadlineAt,
     signal: input.signal,
     generationConfig: {

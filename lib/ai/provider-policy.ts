@@ -32,6 +32,7 @@ export type AiRouteReason =
   | "insufficient_reasoning"
   | "explicit_role"
   | "provider_escalation"
+  | "provider_failover"
   | "provider_standby"
   | "visual_specialist";
 
@@ -461,6 +462,43 @@ function standbyAttemptFor(
   };
 }
 
+/**
+ * The same model on the second endpoint its role already approves.
+ *
+ * The failover list existed to answer a specific fault -- an endpoint
+ * returning `{}` in sticky bursts -- and was reachable only by a caller that
+ * had already parsed a reply and found it empty. An endpoint that is simply
+ * *gone* never gets that far: it throws, and the plan went straight past the
+ * same model on a healthy host to a different model entirely.
+ *
+ * That is what an outage looks like from here. MiniMax M3 on its primary
+ * endpoint returned 502 in under half a second on every call, so every marking
+ * fell to the Kimi K3 standby at once and was rate-limited there, while the
+ * same MiniMax M3 on DeepInfra answered in 1.4 seconds throughout.
+ *
+ * Ordered before the standby deliberately: the same model elsewhere is a
+ * smaller change than a different model, and precision, price and zero
+ * retention all carry over untouched.
+ */
+function failoverAttemptFor(
+  role: AiGenerationRole,
+  policy: AiProviderPolicy,
+  env: NodeJS.ProcessEnv = process.env
+): AiProviderAttempt | null {
+  const providers = failoverProvidersFor(role, env);
+  if (providers.length === 0) return null;
+  const capability = policy.capabilities[role];
+  return {
+    provider: capability.provider,
+    role,
+    model: capability.modelId,
+    providerAllowlist: providers,
+    quantizations: capability.quantizations,
+    thinking: capability.reasoning,
+    routeReason: "provider_failover",
+  };
+}
+
 export function buildAiProviderPlan(input: {
   role?: AiGenerationRole;
   taskClass?: AiTaskClass;
@@ -490,6 +528,8 @@ export function buildAiProviderPlan(input: {
     }
     return attempts;
   }
+  const failover = failoverAttemptFor(role, input.policy);
+  if (failover) attempts.push(failover);
   const standby = standbyAttemptFor(role, input.policy);
   if (standby) attempts.push(standby);
   return attempts;
