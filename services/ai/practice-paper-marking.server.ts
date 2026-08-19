@@ -79,32 +79,27 @@ const MARKER_TIMEOUT_MS: Record<string, number> = {
 };
 
 /**
- * A retry sent to the failover endpoint needs its own budget.
+ * What an attempt gets once it leaves the role's own endpoint.
  *
- * The primary's sixty seconds was measured against an endpoint answering at a
- * p90 of ten. The failover serves the same model roughly seven times slower --
- * measured on real marking prompts at p50 34s, p90 56s, max 63s -- so it
- * inherited a ceiling it could not meet, and a run where the failover fired
- * often spent most of its time watching calls die at exactly sixty seconds.
+ * This is a token budget wearing a clock's clothes, and reading it as a clock
+ * is what made it wrong twice. The marking is allowed 18,000 output tokens.
+ * The fallback endpoint generates at a rate that barely varies -- 3117 tokens
+ * in 117s, 3231 in 122s, 4046 in 159s, 2767 in 103s, so 26 per second give or
+ * take half of one -- which means a 180-second ceiling does not buy three
+ * minutes of patience. It buys about 4,700 tokens, a quarter of what the
+ * marking may produce, and every attempt that needed more died at exactly 180.
  *
- * Three minutes is p90 plus threefold headroom. It is generous on purpose: by
- * the time this call is made the primary has already failed, so waiting is
- * strictly better than losing the marking.
+ * That is why the long questions failed and the short ones did not, at every
+ * concurrency tried: a question with seven marks needs seven criterion results
+ * with evidence, and the report simply does not fit. The records lost averaged
+ * 4.79 marks against 3.72 for the records kept.
+ *
+ * Six minutes buys roughly 9,400 tokens, which covers every marking observed
+ * with room to spare. It is still a ceiling rather than a licence: the whole
+ * marking's deadline is checked against it on every attempt, so a slow
+ * fallback cannot outlive the request that is waiting for it.
  */
-const FAILOVER_TIMEOUT_MS = 180_000;
-
-/**
- * Both fallbacks need that allowance, not just the retry that asks for one.
- *
- * The failover and the standby are different mechanisms -- one moves the same
- * model to its second approved endpoint, the other takes over with a different
- * model when the role's endpoint is gone -- but both run somewhere slower than
- * the primary they were timed against. Giving the allowance only to the
- * explicit retry left the plan's own fallbacks dying at exactly sixty seconds
- * during an outage: four of six markings in one smoke run, every one after the
- * primary had already returned 502.
- */
-const FALLBACK_TIMEOUT_MS = 180_000;
+const FALLBACK_TIMEOUT_MS = 360_000;
 
 /**
  * The criteria each question offers, keyed by question, taken from the scheme
@@ -265,7 +260,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
     ...(providerOverride?.length ? { providerOverride } : {}),
     taskClass: input.role === "verifier" ? "standard" : "important",
     timeoutMs: providerOverride?.length
-      ? FAILOVER_TIMEOUT_MS
+      ? FALLBACK_TIMEOUT_MS
       : MARKER_TIMEOUT_MS[input.modelRole] ?? MARKER_TIMEOUT_MS.default,
     fallbackTimeoutMs: FALLBACK_TIMEOUT_MS,
     deadlineAt: input.deadlineAt,
