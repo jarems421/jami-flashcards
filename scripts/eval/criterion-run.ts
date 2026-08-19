@@ -75,21 +75,37 @@ export default async function main(args: string[]) {
    * questions and called it a benchmark.
    */
   const missingFrom = flag("missing");
+  /**
+   * Mark only what an earlier run did mark, for the other side of a comparison.
+   *
+   * A paired test can only use records both runs hold, so marking the ones the
+   * first run lost buys nothing and costs the same as the ones that count.
+   */
+  const matching = flag("matching");
 
   const all: MarkingCorpusRecord[] = [];
   for (const file of readdirSync(CORPUS).filter((name) => name.endsWith(".json"))) {
     all.push(...JSON.parse(readFileSync(join(CORPUS, file), "utf8")).records);
   }
   let withCriteria = all.filter((record) => (record.criteria?.length ?? 0) > 0);
-  if (missingFrom) {
-    const done: Set<string> = new Set(
-      JSON.parse(readFileSync(join(REPORT, `${missingFrom}.json`), "utf8")).outcomes.map(
+  const recordedBy = (name: string) =>
+    new Set<string>(
+      JSON.parse(readFileSync(join(REPORT, `${name}.json`), "utf8")).outcomes.map(
         (outcome: { recordId: string }) => outcome.recordId
       )
     );
+  if (missingFrom) {
+    const done = recordedBy(missingFrom);
     withCriteria = withCriteria.filter((record) => !done.has(record.id));
     process.stdout.write(`
 Recovering ${withCriteria.length} records ${missingFrom} did not mark.
+`);
+  }
+  if (matching) {
+    const done = recordedBy(matching);
+    withCriteria = withCriteria.filter((record) => done.has(record.id));
+    process.stdout.write(`
+Matching the ${withCriteria.length} records ${matching} marked.
 `);
   }
   const chosen = limit > 0 ? withCriteria.slice(0, limit) : withCriteria;
