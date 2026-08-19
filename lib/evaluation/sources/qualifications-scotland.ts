@@ -89,6 +89,29 @@ const MAX_MARK_COLUMN_START = 480;
  */
 const LINE_TOLERANCE = 2;
 
+/**
+ * One question of a paper, read off the PDFs by a vision pass.
+ *
+ * The question papers and marking instructions both carry a text layer, and
+ * neither survives extraction: `Given that 5 3 4 10 y x x , where 0 x , find
+ * dy dx` is question 1 with its operators, superscripts and relations dropped
+ * into symbol fonts that have no character map. A parser would put that in the
+ * corpus, where it would read as a question rather than as damage.
+ *
+ * So this arrives already transcribed, checked by hand against the source, and
+ * is treated here as data the parser trusts but does not verify beyond making
+ * sure it lines up with the commentaries.
+ */
+export type QsTranscribedQuestion = {
+  /** As the paper prints it: `13(a)(ii)` where it splits, `6` where it does not. */
+  questionId: string;
+  prompt: string;
+  /** The generic and illustrative scheme for this part, as printed. */
+  scheme: string;
+  /** One per numbered bullet in the generic scheme, in order. */
+  marks: readonly { id: string; description: string }[];
+};
+
 export type QsPaper = {
   /** Short identifier used in record ids, e.g. `paper-1`. */
   id: string;
@@ -98,6 +121,8 @@ export type QsPaper = {
   evidenceFile: string;
   /** Positioned text from the marking instructions, if they were supplied. */
   instructionPages?: readonly PdfPageItems[];
+  /** The paper's questions, transcribed, if a transcription was supplied. */
+  transcript?: readonly QsTranscribedQuestion[];
 };
 
 export type QsInput = {
@@ -375,6 +400,52 @@ export function parseMarkingInstructions(pages: readonly PdfPageItems[]) {
   return schemes;
 }
 
+/**
+ * The transcribed parts of one question, in the order the paper prints them.
+ *
+ * A record covers a whole question -- `q13` -- while the paper splits it into
+ * `13(a)(i)`, `13(a)(ii)`, `13(b)(i)` and `13(b)(ii)`. The commentaries number
+ * marks straight through that split, so the parts have to be put back in order
+ * before a mark number means anything.
+ */
+export function transcribedParts(
+  transcript: readonly QsTranscribedQuestion[],
+  question: number
+) {
+  return transcript.filter(
+    (entry) => Number(entry.questionId.match(/^\d+/)?.[0]) === question
+  );
+}
+
+/**
+ * The parts a commentary of `count` marks covers, or null when they cannot be
+ * identified.
+ *
+ * A commentary does not always rule on the whole question: eleven of the
+ * eighty-nine stop early, and one covering three marks of question 11 is
+ * ruling on 11(a), not on some three marks scattered through it. Every partial
+ * commentary in this source is a prefix, so the parts are taken in order until
+ * their marks add up.
+ *
+ * Returns null when they do not add up exactly. That happens where the parser
+ * and the paper disagree about how many marks a question has, and pairing them
+ * anyway would label every mark as the wrong one -- a quieter failure than no
+ * description at all, and the reason this fails closed rather than guessing.
+ */
+export function partsCovering(
+  parts: readonly QsTranscribedQuestion[],
+  count: number
+) {
+  const taken: QsTranscribedQuestion[] = [];
+  let marks = 0;
+  for (const part of parts) {
+    if (marks >= count) break;
+    marks += part.marks.length;
+    taken.push(part);
+  }
+  return marks === count && taken.length > 0 ? taken : null;
+}
+
 export function parseQualificationsScotland(input: QsInput): QsResult {
   const records: MarkingCorpusRecord[] = [];
   const issues: string[] = [];
@@ -395,6 +466,7 @@ export function parseQualificationsScotland(input: QsInput): QsResult {
     const schemes = paper.instructionPages
       ? parseMarkingInstructions(paper.instructionPages)
       : new Map<number, QuestionScheme>();
+    const transcript = paper.transcript ?? [];
 
     // The question's tariff is the highest mark any candidate was judged on.
     // It is only used to notice a commentary that stops short, never to invent
@@ -477,6 +549,45 @@ export function parseQualificationsScotland(input: QsInput): QsResult {
         }
       }
 
+      /**
+       * The question itself, and the scheme it is marked by.
+       *
+       * Without these a record is a photograph of somebody's working beside a
+       * list reading `Mark 1 ... Mark 7`, which is a harder job than the one
+       * the product does and makes any score off this source a floor rather
+       * than a measurement. Only the parts this commentary actually rules on
+       * are attached, so a marker is never shown a mark scheme for work it has
+       * not been asked to judge.
+       */
+      const parts = partsCovering(
+        transcribedParts(transcript, entry.question),
+        criteria.length
+      );
+      if (parts) {
+        const bullets = parts.flatMap((part) => part.marks);
+        for (const [position, criterion] of criteria.entries()) {
+          const description = bullets[position]?.description;
+          if (!description) continue;
+          /**
+           * The transcription wins where both read the same bullet.
+           *
+           * They agree on the words -- 114 of the 115 transcribed descriptions
+           * appear verbatim in the instruction PDF's own text layer -- but not
+           * on the spacing, because positioned text arrives with the gaps
+           * between runs missing. The instruction reader produced
+           * `calculatey-coordinate` for what the scheme prints as `calculate
+           * y-coordinate`, and a marker should not be told to look for a word
+           * that is not a word.
+           */
+          if (!criterion.description) describedCriteria += 1;
+          criterion.description = description;
+        }
+      } else if (transcript.length > 0) {
+        issues.push(
+          `${paper.id} candidate ${entry.candidate}: question ${entry.question}'s parts do not add up to the ${criteria.length} marks the commentary rules on; question text withheld for this candidate.`
+        );
+      }
+
       const available = criteria.reduce((total, criterion) => total + criterion.available, 0);
       const awarded = criteria.reduce((total, criterion) => total + criterion.awarded, 0);
       const questionTariff = scheme?.tariff || tariff.get(entry.question) || available;
@@ -512,7 +623,8 @@ export function parseQualificationsScotland(input: QsInput): QsResult {
         // on follow-through from a candidate's own earlier error.
         regime: "additive",
         questionId: `q${entry.question}`,
-        questionPrompt: "",
+        questionPrompt: parts ? parts.map((part) => part.prompt).join("\n\n") : "",
+        ...(parts ? { markScheme: parts.map((part) => part.scheme).join("\n\n") } : {}),
         answer: { kind: "image", paths: [reference] },
         humanMarks: [awarded],
         // The marks the examiner actually ruled on, which is not always the

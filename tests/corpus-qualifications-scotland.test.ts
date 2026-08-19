@@ -404,3 +404,131 @@ describe("attaching the scheme to the verdicts", () => {
     expect(result.stats.describedCriteria).toBe(0);
   });
 });
+
+/**
+ * The corpus used to hand a marker a photograph of somebody's working and a
+ * list reading "Mark 1 ... Mark 7", with no question and no scheme, because
+ * neither survives extraction from the source PDFs. They arrive transcribed
+ * instead, and the parser's job is to line them up with the commentaries
+ * without ever pairing a mark to somebody else's description.
+ */
+describe("attaching the transcribed question and scheme", () => {
+  const transcript = [
+    {
+      questionId: "13(a)",
+      prompt: "Functions f and g are defined by f(x) = 2 sin x.",
+      scheme: "Generic: state the composite function.",
+      marks: [{ id: "Mark 1", description: "interpret composite function" }],
+    },
+    {
+      questionId: "13(b)",
+      prompt: "Given that f(p) = 1/3, determine sin p.",
+      scheme: "Generic: apply the double angle formula.",
+      marks: [
+        { id: "Mark 1", description: "apply double angle formula" },
+        { id: "Mark 2", description: "state exact value" },
+      ],
+    },
+  ];
+
+  const at = (x: number, y: number, text: string) => ({ x, y, text });
+  const scheme = (...marks: string[]) => [
+    {
+      page: 1,
+      items: [
+        at(47, 752, "13."),
+        at(504, 752, String(marks.length)),
+        ...marks.flatMap((mark, index) => [
+          at(125, 700 - index * 30, "•"),
+          at(139, 700 - index * 30, mark),
+        ]),
+      ],
+    },
+  ];
+
+  const paperWith = (statement: string) => ({
+    id: "paper-1",
+    evidenceFile: "/evidence.pdf",
+    commentaryPages: [{ page: 1, text: `Question 13\nCandidate 2\n${statement}` }],
+    evidencePages: [{ page: 1, text: "Question 13\nCandidate 2" }],
+    transcript,
+  });
+  const input = (statement: string) => ({
+    seriesId: "higher-maths-2023",
+    subject: "maths",
+    papers: [paperWith(statement)],
+  });
+
+  it("joins the parts a commentary rules on, and numbers their marks straight through", () => {
+    const result = parseQualificationsScotland(
+      input("♦ Mark 1 awarded\n♦ Mark 2 awarded\n♦ Mark 3 not awarded")
+    );
+    const record = result.records[0];
+    expect(record.questionPrompt).toContain("2 sin x");
+    expect(record.questionPrompt).toContain("determine sin p");
+    expect(record.markScheme).toContain("double angle");
+    expect(record.criteria?.map((criterion) => criterion.description)).toEqual([
+      "interpret composite function",
+      "apply double angle formula",
+      "state exact value",
+    ]);
+  });
+
+  /**
+   * Eleven commentaries stop before the end of their question. Each is a
+   * prefix, so a commentary of one mark is ruling on 13(a) and must not be
+   * shown 13(b)'s scheme for work it was never asked to judge.
+   */
+  it("shows a partial commentary only the parts it covers", () => {
+    const result = parseQualificationsScotland(input("♦ Mark 1 awarded"));
+    const record = result.records[0];
+    expect(record.questionPrompt).toContain("2 sin x");
+    expect(record.questionPrompt).not.toContain("determine sin p");
+    expect(record.markScheme).not.toContain("double angle");
+  });
+
+  /**
+   * Fails closed. Where the parts cannot be made to add up, the marks are
+   * numbered differently on the two sides and attaching anything would label
+   * every mark as the wrong one — quieter and worse than attaching nothing.
+   */
+  it("withholds the question when the parts do not add up to the marks ruled on", () => {
+    const result = parseQualificationsScotland(input("♦ Mark 1 awarded\n♦ Mark 2 awarded"));
+    const record = result.records[0];
+    expect(record.questionPrompt).toBe("");
+    expect(record.markScheme).toBeUndefined();
+    expect(result.issues.join(" ")).toContain("do not add up");
+  });
+
+  /**
+   * Both readers see the same bullet and agree on its words; only the
+   * transcription gets the spaces, because positioned text arrives with the
+   * gaps between runs missing. The instruction reader turned "calculate
+   * y-coordinate" into "calculatey-coordinate", and a marker should not be
+   * told to look for a word that is not a word.
+   */
+  it("prefers the transcribed description over the instruction reader's spacing", () => {
+    const result = parseQualificationsScotland({
+      seriesId: "higher-maths-2023",
+      subject: "maths",
+      papers: [
+        {
+          ...paperWith("♦ Mark 1 awarded"),
+          instructionPages: scheme("interpretcomposite function"),
+        },
+      ],
+    });
+    expect(result.records[0].criteria?.[0].description).toBe("interpret composite function");
+    expect(result.stats.describedCriteria).toBe(1);
+  });
+
+  it("still produces records when no transcript is supplied", () => {
+    const result = parseQualificationsScotland({
+      seriesId: "higher-maths-2023",
+      subject: "maths",
+      papers: [{ ...paperWith("♦ Mark 1 awarded"), transcript: undefined }],
+    });
+    expect(result.records).toHaveLength(1);
+    expect(result.records[0].questionPrompt).toBe("");
+  });
+});

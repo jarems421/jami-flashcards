@@ -155,6 +155,49 @@ describe("criterion agreement", () => {
     expect(wrongTotalRightReasons.rightForTheRightReasons).toBe(false);
   });
 
+  /**
+   * The counts say how many marks agreed; these say which. Without them two
+   * runs cannot be compared mark against mark, and "why did I lose mark 3"
+   * can only be answered by inferring Jami's decisions from its total.
+   */
+  it("records each mark and what both sides decided about it", () => {
+    const outcome = compareCriteria(
+      human,
+      [
+        { criterion: "Mark 1", awarded: false },
+        { criterion: "Mark 2", awarded: false },
+      ],
+      false
+    );
+    expect(outcome.calls).toEqual([
+      { id: "Mark 1", human: true, jami: false },
+      { id: "Mark 2", human: false, jami: false },
+    ]);
+  });
+
+  it("records a mark the marker never addressed as null rather than withheld", () => {
+    const outcome = compareCriteria(human, [{ criterion: "Mark 2", awarded: false }], false);
+    expect(outcome.calls).toEqual([
+      { id: "Mark 1", human: true, jami: null },
+      { id: "Mark 2", human: false, jami: false },
+    ]);
+  });
+
+  /** A mark the examiner never ruled on has nothing to sit beside. */
+  it("leaves invented marks out of the calls and counts them as extra", () => {
+    const outcome = compareCriteria(
+      human,
+      [
+        { criterion: "Mark 1", awarded: true },
+        { criterion: "Mark 2", awarded: false },
+        { criterion: "Mark 3", awarded: true },
+      ],
+      true
+    );
+    expect(outcome.calls).toHaveLength(2);
+    expect(outcome.extra).toBe(1);
+  });
+
   it("is only reported when both sides carry criteria", () => {
     expect(scoreMark({ record: record(), candidate: 4 }).criterion).toBeNull();
     const withBoth = scoreMark({

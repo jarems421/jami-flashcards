@@ -351,12 +351,26 @@ const SOURCES = [
     async run(dir) {
       const { parseQualificationsScotland } = await load("qualifications-scotland");
 
+      // Transcribed by scripts/eval/transcribe-qs-papers.ts and checked by
+      // hand. The PDFs' own text layer drops the maths, so this is the only
+      // readable form of the questions the corpus has.
+      const transcribed = join(dir, "transcribed-papers.json");
+      const transcripts = existsSync(transcribed)
+        ? new Map(
+            JSON.parse(readFileSync(transcribed, "utf8")).papers.map((paper) => [
+              paper.paperId,
+              paper.questions,
+            ])
+          )
+        : new Map();
+
       const papers = [];
       for (const number of [1, 2]) {
         const commentary = join(dir, `higher-2023-Paper ${number} Commentary 2023.pdf`);
         const evidence = join(dir, `higher-2023-Paper ${number} Candidate Evidence 2023.pdf`);
         if (!existsSync(commentary) || !existsSync(evidence)) continue;
         const instructions = join(dir, `higher-2023-2023 Marking instructions paper ${number}.pdf`);
+        const transcript = transcripts.get(`paper-${number}`);
         papers.push({
           id: `paper-${number}`,
           commentaryPages: (await readPdf(commentary, { withText: true })).pages,
@@ -365,6 +379,7 @@ const SOURCES = [
           ...(existsSync(instructions)
             ? { instructionPages: (await readPdf(instructions, { withItems: true })).items }
             : {}),
+          ...(transcript ? { transcript } : {}),
         });
       }
 
@@ -379,6 +394,7 @@ const SOURCES = [
           `papers read             ${papers.length}`,
           `criterion-level marks   ${result.stats.criteria}` +
             ` (${result.stats.criteriaWithReason} with the examiner's reason)`,
+          `questions transcribed   ${[...transcripts.values()].reduce((total, questions) => total + questions.length, 0)}`,
           "Higher maths 2023 only; the record level is alevel because Higher has no closer bucket",
         ],
       };

@@ -62,6 +62,25 @@ export type MarkOutcome = {
   criterion: CriterionOutcome | null;
 };
 
+/**
+ * One mark, and what each side decided about it.
+ *
+ * The counts below say how many marks agreed; this says which. Two things need
+ * that. A paired comparison between runs has to line up mark against mark, and
+ * a count of four out of seven cannot be lined up with anything. And a person
+ * asking why a mark was lost is asking about a specific mark — answering from
+ * the counts alone means inferring Jami's decisions from its total, which only
+ * works when the total is unanimous.
+ */
+export type CriterionCall = {
+  /** The scheme's own identifier for the mark, e.g. `Mark 3`. */
+  id: string;
+  /** Whether the examiner awarded it. */
+  human: boolean;
+  /** Whether Jami awarded it, or null where Jami never addressed this mark. */
+  jami: boolean | null;
+};
+
 export type CriterionOutcome = {
   /** Criteria the human ruled on and Jami also addressed. */
   compared: number;
@@ -76,6 +95,13 @@ export type CriterionOutcome = {
    * compared criterion agrees. A total can be reached by luck; this cannot.
    */
   rightForTheRightReasons: boolean;
+  /**
+   * Every mark the examiner ruled on, in the order the source published them.
+   *
+   * Marks Jami invented are not here — they have no examiner decision to sit
+   * beside — and are counted in `extra` instead.
+   */
+  calls: CriterionCall[];
 };
 
 const mean = (values: readonly number[]) =>
@@ -100,6 +126,7 @@ export function compareCriteria(
   marksAgree: boolean
 ): CriterionOutcome {
   const remaining = [...candidate];
+  const calls: CriterionCall[] = [];
   let compared = 0;
   let agreed = 0;
   let missed = 0;
@@ -127,13 +154,16 @@ export function compareCriteria(
         return label.includes(id) || (description !== null && label.includes(description));
       });
     }
+    const awardedByHuman = criterion.awarded > 0;
     if (index === -1) {
       missed += 1;
+      calls.push({ id: criterion.id, human: awardedByHuman, jami: null });
       continue;
     }
     const [matched] = remaining.splice(index, 1);
     compared += 1;
-    if (matched.awarded === criterion.awarded > 0) agreed += 1;
+    if (matched.awarded === awardedByHuman) agreed += 1;
+    calls.push({ id: criterion.id, human: awardedByHuman, jami: matched.awarded });
   }
 
   return {
@@ -142,6 +172,7 @@ export function compareCriteria(
     missed,
     extra: remaining.length,
     rightForTheRightReasons: marksAgree && missed === 0 && compared > 0 && agreed === compared,
+    calls,
   };
 }
 
