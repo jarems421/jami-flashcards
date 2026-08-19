@@ -88,10 +88,19 @@ export default async function main(args: string[]) {
     all.push(...JSON.parse(readFileSync(join(CORPUS, file), "utf8")).records);
   }
   let withCriteria = all.filter((record) => (record.criteria?.length ?? 0) > 0);
-  const recordedBy = (name: string) =>
+  /**
+   * Every record a run holds, over the files it is spread across.
+   *
+   * A run that lost records to an outage is completed by a recovery pass, so
+   * one side of a comparison can live in more than one file and both halves
+   * have to count.
+   */
+  const recordedBy = (names: string) =>
     new Set<string>(
-      JSON.parse(readFileSync(join(REPORT, `${name}.json`), "utf8")).outcomes.map(
-        (outcome: { recordId: string }) => outcome.recordId
+      names.split(",").flatMap((name) =>
+        JSON.parse(readFileSync(join(REPORT, `${name.trim()}.json`), "utf8")).outcomes.map(
+          (outcome: { recordId: string }) => outcome.recordId
+        )
       )
     );
   if (missingFrom) {
