@@ -152,6 +152,27 @@ function fixedGuide(paper: PracticePaper) {
  * The last clause is newly possible rather than newly thought of. Until the
  * corpus carried the illustrative scheme there were no stated values for a
  * marker to check a candidate's against.
+ *
+ * Measured, and it did not pass. Against the same 58 records and 223 marks,
+ * paired: 12 marks fixed, 9 broken, McNemar exact p = 0.66. Agreement 80.7%
+ * to 82.1%, generous calls 36 to 32, bias +0.48 to +0.41. Every figure moved
+ * the right way and none moved enough, and 202 of the 223 marks did not change
+ * at all. The bar was written before the run -- p < 0.05 and fewer generous
+ * calls -- and only the second half of it was met.
+ *
+ * So this wording is kept on reasoning rather than on evidence, which is a
+ * weaker footing than it looks and should be said plainly to anyone changing
+ * it. What it has going for it is that the sentence it replaced stated one
+ * half of the awarding body's own principle and omitted the other, and that
+ * nothing here made the marking worse. What it does not have is a measurement
+ * showing it made the marking better.
+ *
+ * The test was also underpowered for a small effect: 21 discordant marks
+ * needed a 16-to-5 split to reach significance. A larger criterion corpus
+ * would settle it, and there is a prior question -- no source anywhere in the
+ * corpus records two examiners ruling on the same individual mark, so how
+ * often humans agree at this level, and therefore what is even reachable, is
+ * unknown.
  */
 function subjectAdapter(paper: PracticePaper) {
   const profile = `${paper.assessmentProfile.qualificationOrModule} ${paper.assessmentProfile.specificationOrCourse} ${paper.assessmentProfile.formatSummary}`.toLowerCase();
