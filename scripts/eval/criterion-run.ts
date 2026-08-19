@@ -54,6 +54,15 @@ export default async function main(args: string[]) {
    * thin the run for reasons that have nothing to do with marking.
    */
   const deadlineMs = Number(flag("deadline") ?? 0) * 1000;
+  /**
+   * What this run is called, because runs are compared against each other.
+   *
+   * Every run used to write over the last one. The 58-record measurement this
+   * work set out to improve on was destroyed by a six-record smoke, and only
+   * its console log survived to say what it had found. A comparison needs both
+   * sides to still exist.
+   */
+  const name = flag("out") ?? "criterion-run";
 
   const all: MarkingCorpusRecord[] = [];
   for (const file of readdirSync(CORPUS).filter((name) => name.endsWith(".json"))) {
@@ -88,7 +97,7 @@ export default async function main(args: string[]) {
   }
 
   mkdirSync(REPORT, { recursive: true });
-  const journal = join(REPORT, "criterion-run.jsonl");
+  const journal = join(REPORT, `${name}.jsonl`);
   writeFileSync(journal, "");
 
   /**
@@ -200,7 +209,7 @@ export default async function main(args: string[]) {
       ` (${percent(rightTotal.length > 0 ? rightTotalWrongMarks.length / rightTotal.length : null)})\n`
   );
 
-  const target = join(REPORT, "criterion-run.json");
+  const target = join(REPORT, `${name}.json`);
   writeFileSync(
     target,
     JSON.stringify(
