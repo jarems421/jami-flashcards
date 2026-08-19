@@ -74,6 +74,26 @@ export type EvaluationMarkerOptions = {
     error?: string;
   }) => void;
   onFallback?: (fields: Record<string, unknown>) => void;
+  /**
+   * What each marker in the ensemble said, before it was combined.
+   *
+   * The bias this exists to explain is stubborn: Jami has marked +0.5 marks
+   * generous through every configuration tried -- with and without the
+   * question and scheme, with and without a prompt telling it to check the
+   * working. Recording each marker separately is what allows a combination
+   * rule to be tested by arithmetic instead of by another paid run.
+   */
+  onMarkerReport?: (report: {
+    record: string;
+    arm: string;
+    role: string;
+    modelRole: string;
+    questions: {
+      questionId: string;
+      awardedMarks: number;
+      criteria: { criterionId: string; awarded: boolean }[];
+    }[];
+  }) => void;
   /** Raw output of a report that could not be read, for diagnosis. */
   onParseFailure?: (failure: {
     record: string;
@@ -200,6 +220,24 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
               deadlineAt: Date.now() + timeoutMs,
               maxOutputTokens: getAiTokenCap("practicePaperMarking"),
               logFallback: options.onFallback,
+              ...(options.onMarkerReport
+                ? {
+                    onMarkerReport: (report: {
+                      role: string;
+                      modelRole: string;
+                      questions: {
+                        questionId: string;
+                        awardedMarks: number;
+                        criteria: { criterionId: string; awarded: boolean }[];
+                      }[];
+                    }) =>
+                      options.onMarkerReport?.({
+                        record: request.record.id,
+                        arm: request.arm,
+                        ...report,
+                      }),
+                  }
+                : {}),
               onParseFailure: (failure) => {
                 stats.parseFailures[failure.kind] = (stats.parseFailures[failure.kind] ?? 0) + 1;
                 options.onParseFailure?.({

@@ -147,6 +147,16 @@ Matching the ${withCriteria.length} records ${matching} marked.
   mkdirSync(REPORT, { recursive: true });
   const journal = join(REPORT, `${name}.jsonl`);
   writeFileSync(journal, "");
+  /**
+   * What each marker in the ensemble said, kept separately from the outcome.
+   *
+   * The outcome records what Jami finally decided. This records how it got
+   * there, which is what a combination rule has to be simulated against: award
+   * only where both blind markers agreed, or let the verifier decide alone,
+   * and score each against the examiner without paying for another run.
+   */
+  const markerJournal = join(REPORT, `${name}-markers.jsonl`);
+  writeFileSync(markerJournal, "");
 
   /**
    * Each candidate is shown their own work and nobody else's.
@@ -174,6 +184,8 @@ Matching the ${withCriteria.length} records ${matching} marked.
         maxImages: 3,
         belowLabel: candidateLabel(record),
       }),
+    onMarkerReport: (report) => appendFileSync(markerJournal, `${JSON.stringify(report)}
+`),
     onProgress: ({ done, record, awarded, error }) =>
       process.stdout.write(
         `  [${String(done).padStart(3)}/${chosen.length}] ${record.padEnd(38)} ${

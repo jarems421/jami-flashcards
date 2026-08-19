@@ -49,6 +49,29 @@ export type PracticePaperMarkingInput = {
     detail: string;
     length: number;
   }) => void;
+  /**
+   * What one marker decided, before the ensemble combined it with anything.
+   *
+   * Observation only, off in production, and deliberately not part of the
+   * marking audit: that audit is persisted against real student papers, and a
+   * diagnostic has no business leaving a trace in their data.
+   *
+   * Every blind marker already produces full criterion decisions and the
+   * pipeline throws them away -- `scoreMap` keeps question totals, and
+   * `criterionMap` computes the rest only to detect a dispute before
+   * discarding it. Keeping them is what makes a combination rule answerable
+   * without building it: given what both markers said, whether requiring them
+   * to agree would have marked better is arithmetic rather than another run.
+   */
+  onMarkerReport?: (report: {
+    role: string;
+    modelRole: string;
+    questions: {
+      questionId: string;
+      awardedMarks: number;
+      criteria: { criterionId: string; awarded: boolean }[];
+    }[];
+  }) => void;
   signal?: AbortSignal;
   deadlineAt: number;
   maxOutputTokens: number;
@@ -371,6 +394,20 @@ async function callMarker(input: PracticePaperMarkingInput & {
       `${input.role} marker returned an invalid report (${failure?.kind ?? "unknown"}: ${failure?.detail ?? ""})`
     );
   }
+  input.onMarkerReport?.({
+    role: input.role,
+    modelRole: input.modelRole,
+    questions: result.questionResults.map((question) => ({
+      questionId: question.questionId,
+      awardedMarks: question.awardedMarks,
+      criteria: (question.criterionResults ?? []).flatMap((criterion) =>
+        criterion.criterionId
+          ? [{ criterionId: criterion.criterionId, awarded: criterion.awarded }]
+          : []
+      ),
+    })),
+  });
+
   return { result, diagnostics };
 }
 

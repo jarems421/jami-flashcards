@@ -307,3 +307,115 @@ describe("what a quantitative paper's marker is told", () => {
     expect(promptFor(quantitative)).toContain("the candidate's own line that earns or loses this mark");
   });
 });
+
+/**
+ * Jami has marked half a mark generous through every configuration tried this
+ * week -- with and without the question and scheme in front of it, and with
+ * and without a prompt telling it to check the working. Neither more
+ * information nor better instruction moved it, which points at how the
+ * ensemble combines its markers rather than at what any one of them knows.
+ *
+ * That question is answerable from data the pipeline already computes and
+ * throws away: each blind marker's own criterion decisions, kept only long
+ * enough to notice a dispute. Recorded, they let a rule -- award only where
+ * both markers agree, say -- be scored against the examiner by arithmetic
+ * rather than by another paid run.
+ */
+describe("reporting what each marker decided", () => {
+  beforeEach(() => {
+    generateAiText.mockReset();
+  });
+
+  const identified = (scores: Record<string, number>, awarded: boolean) =>
+    JSON.stringify({
+      summary: "Report.",
+      strengths: [],
+      priorities: [],
+      questionResults: ["q1", "q2"].map((questionId) => {
+        const question = paper.questions.find((item) => item.id === questionId)!;
+        return {
+          questionId,
+          label: question.label,
+          awardedMarks: scores[questionId] ?? 0,
+          maxMarks: question.marks,
+          feedback: "Feedback.",
+          criterionResults: [
+            { criterionId: "C1", criterion: "first", awarded, evidence: "Working" },
+            { criterionId: "C2", criterion: "second", awarded: false, evidence: "Working" },
+          ],
+          evidence: ["Working"],
+          strengths: [],
+          improvements: [],
+          confidence: "high",
+          attempted: true,
+        };
+      }),
+    });
+
+  it("fires once for each marker, carrying that marker's own decisions", async () => {
+    generateAiText.mockImplementation(({ role }: { role: string }) =>
+      Promise.resolve(
+        role === "supervisor" ? identified({ q1: 2, q2: 3 }, true) : identified({ q1: 2, q2: 3 }, false)
+      )
+    );
+
+    const reports: { role: string; criteria: { criterionId: string; awarded: boolean }[] }[] = [];
+    await markPracticePaperWithAudit({
+      ...input(),
+      onMarkerReport: (report) =>
+        reports.push({ role: report.role, criteria: report.questions[0].criteria }),
+    });
+
+    // Both markers reached the same totals and still disagreed about which
+    // criteria earned them, which is a dispute -- and exactly the case the
+    // recording exists for, since a total alone would have hidden it.
+    expect(reports.map((r) => r.role)).toContain("primary");
+    expect(reports.map((r) => r.role)).toContain("verifier");
+    expect(reports.map((r) => r.role)).toContain("adjudicator");
+    expect(reports.find((r) => r.role === "primary")?.criteria).toEqual([
+      { criterionId: "C1", awarded: true },
+      { criterionId: "C2", awarded: false },
+    ]);
+    // The verifier's own decisions, not the primary's, which is the whole point.
+    expect(reports.find((r) => r.role === "verifier")?.criteria).toEqual([
+      { criterionId: "C1", awarded: false },
+      { criterionId: "C2", awarded: false },
+    ]);
+  });
+
+  it("reports the adjudicator separately when the markers disagree", async () => {
+    generateAiText.mockImplementation(({ role }: { role: string }) =>
+      Promise.resolve(
+        role === "supervisor" ? identified({ q1: 2, q2: 3 }, true) : identified({ q1: 1, q2: 3 }, true)
+      )
+    );
+
+    const roles: string[] = [];
+    await markPracticePaperWithAudit({
+      ...input(),
+      onMarkerReport: (report) => roles.push(report.role),
+    });
+    expect(roles).toContain("adjudicator");
+  });
+
+  /** Observation must not change what is being observed. */
+  it("marks identically when nothing is listening", async () => {
+    generateAiText.mockResolvedValue(identified({ q1: 2, q2: 3 }, true));
+    const withReport = await markPracticePaperWithAudit({ ...input(), onMarkerReport: () => {} });
+    generateAiText.mockResolvedValue(identified({ q1: 2, q2: 3 }, true));
+    const without = await markPracticePaperWithAudit(input());
+    expect(without.result.awardedMarks).toBe(withReport.result.awardedMarks);
+    expect(without.audit.primaryScores).toEqual(withReport.audit.primaryScores);
+  });
+
+  /** A criterion the marker left unidentified cannot be paired with anything. */
+  it("omits criteria the marker returned without the guide's id", async () => {
+    generateAiText.mockResolvedValue(report({ q1: 2, q2: 3 }));
+    const reports: { criteria: unknown[] }[] = [];
+    await markPracticePaperWithAudit({
+      ...input(),
+      onMarkerReport: (r) => reports.push({ criteria: r.questions[0].criteria }),
+    });
+    expect(reports[0].criteria).toEqual([]);
+  });
+});
