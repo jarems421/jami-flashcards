@@ -43,6 +43,17 @@ export default async function main(args: string[]) {
   const flag = (name: string) => args.find((value) => value.startsWith(`--${name}=`))?.split("=")[1];
   const limit = Number(flag("limit") ?? 0);
   const concurrency = Number(flag("concurrency") ?? 4);
+  /**
+   * How long one response may take, which depends on where its models are.
+   *
+   * The default suits the supervisor's own endpoint. When that endpoint is
+   * unavailable the same model answers from the failover, measured on real
+   * marking prompts at p50 62s and p90 98s against a trivial probe's 3s, and
+   * three supervisor calls at that rate plus a juror overrun a seven-minute
+   * ceiling. A timeout is recorded as a refusal, so leaving it there would
+   * thin the run for reasons that have nothing to do with marking.
+   */
+  const deadlineMs = Number(flag("deadline") ?? 0) * 1000;
 
   const all: MarkingCorpusRecord[] = [];
   for (const file of readdirSync(CORPUS).filter((name) => name.endsWith(".json"))) {
@@ -99,6 +110,7 @@ export default async function main(args: string[]) {
 
   const { mark, stats } = createEvaluationMarker({
     maxRecords: chosen.length + 8,
+    ...(deadlineMs > 0 ? { timeoutMs: deadlineMs } : {}),
     loadAnswerImages: (record) =>
       loadScannedPages(record.answer.kind === "image" ? record.answer.paths[0] : "", {
         downscaleBy: 2,
@@ -147,6 +159,8 @@ export default async function main(args: string[]) {
 
   process.stdout.write(
     `\n${"=".repeat(72)}\nCRITERION BENCHMARK\n${"=".repeat(72)}\n` +
+      `concurrency ${concurrency}, deadline ${(deadlineMs || 420_000) / 1000}s
+` +
       `marked ${outcomes.length} of ${chosen.length} in ${minutes} min` +
       ` (${stats.failed} failed, ${stats.unsupported} unreadable,` +
       ` ${stats.adjudicated} adjudicated, ${stats.thirdView} juror)\n\n`
