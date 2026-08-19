@@ -5,7 +5,7 @@ const generateAiText = vi.hoisted(() => vi.fn());
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/ai/provider-router", () => ({ generateAiText }));
 
-const { markPracticePaperWithAudit } = await import(
+const { buildMarkerRequest, markPracticePaperWithAudit } = await import(
   "@/services/ai/practice-paper-marking.server"
 );
 
@@ -239,5 +239,71 @@ describe("formal blind marking pipeline", () => {
       const [firstWhenVerifier] = marksInOrder(await adjudicationPrompt(false));
       expect(firstWhenVerifier).toContain('\\"awardedMarks\\":0');
     });
+  });
+});
+
+/**
+ * The marking prompt adapts to the subject, and the quantitative branch used
+ * to say only its lenient half: award method marks, do not let a later slip
+ * erase a valid method. Nothing anywhere told the marker to check that the
+ * method had been carried out, and the criterion benchmark says that was read
+ * as permission -- 31 responses where Jami awarded a mark the examiner
+ * withheld against 13 the other way, including marks given for working with
+ * plainly wrong values in it.
+ *
+ * A measured claim now rests on this wording, so it is pinned.
+ */
+describe("what a quantitative paper's marker is told", () => {
+  const quantitative = mapPracticePaperData("paper-2", {
+    notebookId: "paper-2",
+    folderId: "folder-1",
+    title: "Higher Maths",
+    status: "submitted",
+    assessmentProfile: { qualificationOrModule: "Higher", specificationOrCourse: "mathematics" },
+    questions: [{ id: "q1", label: "Question 1", prompt: "Find the tangent.", marks: 4 }],
+    markScheme: {
+      kind: "generated",
+      items: [
+        { questionId: "q1", answer: "y = 7x - 8", criteria: ["gradient"], acceptableAlternatives: [], commonMistakes: [] },
+      ],
+    },
+  });
+
+  const promptFor = (subject: typeof paper) => {
+    const request = buildMarkerRequest({
+      paper: subject,
+      answerParts: [{ text: "working" }],
+      deadlineAt: Date.now() + 60_000,
+      maxOutputTokens: 1_000,
+      role: "primary",
+    });
+    return request.contents[0].parts
+      .map((part) => ("text" in part ? part.text : ""))
+      .join("\n");
+  };
+
+  it("keeps positive marking and error-carried-forward", () => {
+    const text = promptFor(quantitative);
+    expect(text).toContain("marks accumulate");
+    expect(text).toContain("never deducted");
+    expect(text).toMatch(/error does not stop the working after it being marked/);
+  });
+
+  /** The half that was missing, and the reason the benchmark ran generous. */
+  it("also tells the marker to check the working", () => {
+    const text = promptFor(quantitative);
+    expect(text).toContain("line by line");
+    expect(text).toMatch(/correct final answer as no evidence on its own/);
+    expect(text).toMatch(/candidate's own value must match it/);
+  });
+
+  it("leaves a non-quantitative paper on its own branch", () => {
+    const text = promptFor(paper);
+    expect(text).not.toContain("line by line");
+  });
+
+  /** Evidence has to locate the line, not summarise an impression of it. */
+  it("asks for the candidate's own line as evidence", () => {
+    expect(promptFor(quantitative)).toContain("the candidate's own line that earns or loses this mark");
   });
 });

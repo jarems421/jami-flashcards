@@ -130,10 +130,43 @@ function fixedGuide(paper: PracticePaper) {
   };
 }
 
+/**
+ * The quantitative branch, and why it says both halves.
+ *
+ * It used to say only the lenient half -- award method marks, do not let a
+ * later slip erase a valid method -- with nothing anywhere telling the marker
+ * to check that the method was actually carried out. Read on its own that is
+ * an instruction to be generous, and the benchmark says it was taken as one:
+ * of 49 responses carrying a disagreement, 31 were Jami awarding a mark the
+ * examiner withheld against 13 the other way, and reading them by hand found
+ * marks given for working with plainly wrong values in it. In one, a candidate
+ * substituted into the derivative, labelled the result the y-coordinate, built
+ * the tangent from the wrong gradient and reached the wrong line; every value
+ * is legible and each is one substitution from being checked. The examiner
+ * gave 1 of 4. Jami gave 4.
+ *
+ * The wording that follows is the awarding body's own, not an invention.
+ * Qualifications Scotland's general marking principles for Higher Mathematics
+ * carry both halves: (a) positive marking, marks accumulate and are never
+ * deducted; (d) working after an error is still marked; and (n), the half that
+ * was missing here -- "You must check all working carefully, even where a
+ * fundamental misunderstanding is apparent early in a candidate's response...
+ * The appearance of the correct answer does not necessarily indicate that you
+ * can award all the available marks to a candidate."
+ *
+ * The last clause is newly possible rather than newly thought of. Until the
+ * corpus carried the illustrative scheme there were no stated values for a
+ * marker to check a candidate's against.
+ */
 function subjectAdapter(paper: PracticePaper) {
   const profile = `${paper.assessmentProfile.qualificationOrModule} ${paper.assessmentProfile.specificationOrCourse} ${paper.assessmentProfile.formatSummary}`.toLowerCase();
   if (/math|physics|chem|engineering|statistics|calculus/.test(profile)) {
-    return "For quantitative work, award method marks and error-carried-forward credit exactly where the rubric permits; a later arithmetic slip must not erase a valid method.";
+    return (
+      "For quantitative work, mark positively: marks accumulate for what the candidate demonstrates, are never deducted, and an error does not stop the working after it being marked. " +
+      "But every mark names a specific achievement and only that achievement earns it. " +
+      "Check the working line by line, including where a misunderstanding is apparent early on, and treat a plausible-looking method or a correct final answer as no evidence on its own that a particular mark was earned. " +
+      "Where the guide states the value a mark is for, the candidate's own value must match it, or follow correctly from their own earlier error."
+    );
   }
   if (/essay|history|law|econom|politic|literature|sociology|psychology/.test(profile)) {
     return "For essays, separate knowledge, analysis, evidence, evaluation and judgement. Do not reward length by itself.";
@@ -163,7 +196,7 @@ Return JSON only:
     "awardedMarks":4,
     "maxMarks":5,
     "feedback":"What earned and lost marks.",
-    "criterionResults":[{"criterionId":"C1","criterion":"the criterion in your own words","awarded":true,"evidence":"specific student evidence"}],
+    "criterionResults":[{"criterionId":"C1","criterion":"the criterion in your own words","awarded":true,"evidence":"the candidate's own line that earns or loses this mark"}],
     "evidence":["short evidence quote or precise description"],
     "correction":"A concise corrected approach.",
     "nextStep":"One useful next action.",
