@@ -156,6 +156,48 @@ export function readPsychologySections(text: string): AssignmentAward | null {
   return sections.length > 0 ? { sections, total: Number(overall[1]) } : null;
 }
 
+/**
+ * What the candidate set out to do, which is the closest thing an open
+ * coursework task has to a question.
+ *
+ * Recorded because leaving it out would repeat the mistake this corpus exists
+ * to have caught: the Qualifications Scotland records carried no question and
+ * no scheme, and supplying them was worth twenty points of criterion
+ * agreement. An assignment has no printed question, but it does have the title
+ * or topic the candidate chose, and the commentary states it.
+ */
+export function readAssignmentTitle(text: string) {
+  const clean = stripFurniture(text);
+  const lower = clean.toLowerCase();
+  const at = ["title:", "topic:"]
+    .map((marker) => lower.indexOf(marker))
+    .filter((index) => index >= 0)
+    .sort((a, b) => a - b)[0];
+  if (at === undefined) return "";
+  const after = clean.slice(at + "title:".length, at + "title:".length + 160);
+
+  // Cut at whatever starts the commentary proper. A lookahead did this badly:
+  // the title runs straight into the prose with no full stop, so the shortest
+  // match that satisfied the lookahead was already longer than the title.
+  const stops = [
+    ". ",
+    " The candidate",
+    " Candidate ",
+    " Section ",
+    " Introduction",
+    " In lines",
+    " In line ",
+    " Framing the issue",
+  ];
+  const cut = stops
+    .map((stop) => after.indexOf(stop))
+    .filter((index) => index > 0)
+    .sort((a, b) => a - b)[0];
+  // A title is a sentence at most. Where none of the stops appear, length is the
+  // backstop, because half a paragraph in the prompt is worse than a short title.
+  return (cut === undefined ? after.slice(0, 90) : after.slice(0, cut)).trim();
+}
+
 export type SqaAssignmentCandidate = {
   /** Number within its series, used in the record id and to find the evidence. */
   candidate: number;
@@ -249,7 +291,7 @@ export function parseSqaAssignment(input: SqaAssignmentInput): SqaAssignmentResu
         // Sections carry different tariffs, which is what this regime means.
         regime: "weightedTraits",
         questionId: "assignment",
-        questionPrompt: "",
+        questionPrompt: readAssignmentTitle(candidate.text),
         answer: { kind: "image", paths: [candidate.evidence] },
         humanMarks: [award.total],
         // Replaced below by the summed section ceilings where none was supplied.

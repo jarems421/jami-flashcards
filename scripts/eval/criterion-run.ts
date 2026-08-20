@@ -83,6 +83,17 @@ export default async function main(args: string[]) {
    * first run lost buys nothing and costs the same as the ones that count.
    */
   const matching = flag("matching");
+  /** Mark only records from one source, so a new one can be measured alone. */
+  const onlySource = flag("source");
+  /**
+   * How far to shrink a scanned page.
+   *
+   * Two suits the Qualifications Scotland scripts, whose pages arrive around
+   * 30 KB. The assignment scans are a different animal -- up to 4.8 MB of
+   * base64 for three pages -- and sending those at the same factor spends most
+   * of a marking prompt on resolution no marker needs to read print.
+   */
+  const downscaleBy = Number(flag("downscale") ?? 2);
 
   const all: MarkingCorpusRecord[] = [];
   for (const file of readdirSync(CORPUS).filter((name) => name.endsWith(".json"))) {
@@ -110,6 +121,10 @@ export default async function main(args: string[]) {
     process.stdout.write(`
 Recovering ${withCriteria.length} records ${missingFrom} did not mark.
 `);
+  }
+  if (onlySource) {
+    withCriteria = withCriteria.filter((record) => record.sourceId === onlySource);
+    process.stdout.write(`\nRestricted to ${withCriteria.length} records from ${onlySource}.\n`);
   }
   if (matching) {
     const done = recordedBy(matching);
@@ -181,7 +196,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
     ...(deadlineMs > 0 ? { timeoutMs: deadlineMs } : {}),
     loadAnswerImages: (record) =>
       loadScannedPages(record.answer.kind === "image" ? record.answer.paths[0] : "", {
-        downscaleBy: 2,
+        downscaleBy,
         maxImages: 3,
         belowLabel: candidateLabel(record),
       }),
@@ -229,7 +244,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
 
   process.stdout.write(
     `\n${"=".repeat(72)}\nCRITERION BENCHMARK\n${"=".repeat(72)}\n` +
-      `concurrency ${concurrency}, deadline ${(deadlineMs || 420_000) / 1000}s
+      `concurrency ${concurrency}, deadline ${(deadlineMs || 420_000) / 1000}s, downscale ${downscaleBy}
 ` +
       `marked ${outcomes.length} of ${chosen.length} in ${minutes} min` +
       ` (${stats.failed} failed, ${stats.unsupported} unreadable,` +
