@@ -3,6 +3,7 @@ import { join, resolve } from "node:path";
 
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
 import { compareCriteria } from "@/lib/evaluation/scoring";
+import { compareValues } from "@/lib/evaluation/value-comparison";
 
 /**
  * What the ensemble would have marked under a different rule.
@@ -35,12 +36,23 @@ type MarkerReport = {
   questions: {
     questionId: string;
     awardedMarks: number;
-    criteria: { criterionId: string; awarded: boolean }[];
+    criteria: {
+      criterionId: string;
+      awarded: boolean;
+      schemeValue?: string;
+      candidateValue?: string;
+    }[];
   }[];
 };
 
-/** One marker's verdict on one record, as criterion id to awarded. */
-type Verdict = Map<string, boolean>;
+/** One marker's decision on one criterion, with the comparison behind it. */
+type Decision = {
+  awarded: boolean;
+  /** Whether the marker's own two values agree, where both were stated. */
+  selfMismatch: boolean;
+};
+
+type Verdict = Map<string, Decision>;
 
 /**
  * The markers that actually produced a record's final result.
@@ -57,7 +69,13 @@ export function lastVerdictPerRole(reports: readonly MarkerReport[]) {
     const verdict: Verdict = new Map();
     for (const question of report.questions) {
       for (const criterion of question.criteria) {
-        verdict.set(criterion.criterionId, criterion.awarded);
+        verdict.set(criterion.criterionId, {
+          awarded: criterion.awarded,
+          selfMismatch:
+            criterion.schemeValue !== undefined &&
+            criterion.candidateValue !== undefined &&
+            compareValues(criterion.schemeValue, criterion.candidateValue) === "differ",
+        });
       }
     }
     if (verdict.size > 0) byRole.set(report.role, verdict);
@@ -91,8 +109,13 @@ const RULES: {
       const verifier = r.get("verifier");
       if (!primary || !verifier) return null;
       const out: Verdict = new Map();
-      for (const [id, awarded] of primary) {
-        if (verifier.has(id)) out.set(id, awarded && verifier.get(id)!);
+      for (const [id, decision] of primary) {
+        const other = verifier.get(id);
+        if (!other) continue;
+        out.set(id, {
+          awarded: decision.awarded && other.awarded,
+          selfMismatch: decision.selfMismatch || other.selfMismatch,
+        });
       }
       return out.size > 0 ? out : null;
     },
@@ -105,10 +128,53 @@ const RULES: {
       const verifier = r.get("verifier");
       if (!primary || !verifier) return null;
       const out: Verdict = new Map();
-      for (const [id, awarded] of primary) {
-        if (verifier.has(id)) out.set(id, awarded || verifier.get(id)!);
+      for (const [id, decision] of primary) {
+        const other = verifier.get(id);
+        if (!other) continue;
+        out.set(id, {
+          awarded: decision.awarded || other.awarded,
+          selfMismatch: decision.selfMismatch || other.selfMismatch,
+        });
       }
       return out.size > 0 ? out : null;
+    },
+  },
+  {
+    /**
+     * The rule the whole structural change exists to test. A marker that writes
+     * "the scheme wants 7" beside "the candidate wrote 10" and awards the mark
+     * anyway has noticed and not acted, and noticing is the only part a model is
+     * needed for. Withholding on its own recorded mismatch costs no call.
+     */
+    name: "gate on own mismatch",
+    note: "withhold wherever the deciding marker's own two values differ",
+    decide: (r) => {
+      const source = r.get("adjudicator") ?? r.get("primary");
+      if (!source) return null;
+      const out: Verdict = new Map();
+      for (const [id, decision] of source) {
+        out.set(id, { ...decision, awarded: decision.awarded && !decision.selfMismatch });
+      }
+      return out;
+    },
+  },
+  {
+    name: "gate on either marker",
+    note: "withhold wherever either blind marker recorded a mismatch",
+    decide: (r) => {
+      const source = r.get("adjudicator") ?? r.get("primary");
+      const primary = r.get("primary");
+      const verifier = r.get("verifier");
+      if (!source || !primary || !verifier) return null;
+      const out: Verdict = new Map();
+      for (const [id, decision] of source) {
+        const flagged =
+          decision.selfMismatch ||
+          (primary.get(id)?.selfMismatch ?? false) ||
+          (verifier.get(id)?.selfMismatch ?? false);
+        out.set(id, { ...decision, awarded: decision.awarded && !flagged });
+      }
+      return out;
     },
   },
   {
@@ -174,10 +240,10 @@ export default async function main(args: string[]) {
       const verdict = rule.decide(lastVerdictPerRole(reports));
       if (!verdict) continue;
 
-      const criteria = [...verdict.entries()].map(([criterionId, isAwarded]) => ({
+      const criteria = [...verdict.entries()].map(([criterionId, decision]) => ({
         criterionId,
         criterion: criterionId,
-        awarded: isAwarded,
+        awarded: decision.awarded,
       }));
       const outcome = compareCriteria(record.criteria, criteria, false);
       compared += outcome.compared;

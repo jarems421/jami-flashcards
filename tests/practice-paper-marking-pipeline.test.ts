@@ -373,13 +373,13 @@ describe("reporting what each marker decided", () => {
     expect(reports.map((r) => r.role)).toContain("verifier");
     expect(reports.map((r) => r.role)).toContain("adjudicator");
     expect(reports.find((r) => r.role === "primary")?.criteria).toEqual([
-      { criterionId: "C1", awarded: true },
-      { criterionId: "C2", awarded: false },
+      { criterionId: "C1", awarded: true, evidence: "Working" },
+      { criterionId: "C2", awarded: false, evidence: "Working" },
     ]);
     // The verifier's own decisions, not the primary's, which is the whole point.
     expect(reports.find((r) => r.role === "verifier")?.criteria).toEqual([
-      { criterionId: "C1", awarded: false },
-      { criterionId: "C2", awarded: false },
+      { criterionId: "C1", awarded: false, evidence: "Working" },
+      { criterionId: "C2", awarded: false, evidence: "Working" },
     ]);
   });
 
@@ -406,6 +406,27 @@ describe("reporting what each marker decided", () => {
     const without = await markPracticePaperWithAudit(input());
     expect(without.result.awardedMarks).toBe(withReport.result.awardedMarks);
     expect(without.audit.primaryScores).toEqual(withReport.audit.primaryScores);
+  });
+
+  /**
+   * Evidence is the marker's own quotation of the line it judged, and
+   * confidence is its own claim about how sure it was. Neither changes a
+   * marking; both exist because hand-reading five disagreements is what found
+   * the generosity, and that does not scale without them.
+   */
+  it("carries the marker's quotation and its stated confidence", async () => {
+    generateAiText.mockResolvedValue(identified({ q1: 2, q2: 3 }, true));
+    const reports: { confidence: string; evidence?: string }[] = [];
+    await markPracticePaperWithAudit({
+      ...input(),
+      onMarkerReport: (r) =>
+        reports.push({
+          confidence: r.questions[0].confidence,
+          evidence: r.questions[0].criteria[0].evidence,
+        }),
+    });
+    expect(reports[0].confidence).toBe("high");
+    expect(reports[0].evidence).toBe("Working");
   });
 
   /** A criterion the marker left unidentified cannot be paired with anything. */

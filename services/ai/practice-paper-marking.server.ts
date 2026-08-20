@@ -69,11 +69,20 @@ export type PracticePaperMarkingInput = {
     questions: {
       questionId: string;
       awardedMarks: number;
+      /** How sure the marker said it was, which nothing has yet checked. */
+      confidence: string;
       criteria: {
         criterionId: string;
         awarded: boolean;
         schemeValue?: string;
         candidateValue?: string;
+        /**
+         * The marker's own quotation of the line it judged. Recorded because a
+         * verdict can be read at scale but only evidence can be checked against
+         * the page, and hand-reading five disagreements was what found the
+         * generosity in the first place.
+         */
+        evidence?: string;
       }[];
     }[];
   }) => void;
@@ -407,6 +416,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
     questions: result.questionResults.map((question) => ({
       questionId: question.questionId,
       awardedMarks: question.awardedMarks,
+      confidence: question.confidence,
       criteria: (question.criterionResults ?? []).flatMap((criterion) =>
         criterion.criterionId
           ? [
@@ -421,6 +431,7 @@ async function callMarker(input: PracticePaperMarkingInput & {
                 ...(criterion.candidateValue
                   ? { candidateValue: criterion.candidateValue }
                   : {}),
+                ...(criterion.evidence ? { evidence: criterion.evidence } : {}),
               },
             ]
           : []

@@ -91,11 +91,13 @@ export type EvaluationMarkerOptions = {
     questions: {
       questionId: string;
       awardedMarks: number;
+      confidence: string;
       criteria: {
         criterionId: string;
         awarded: boolean;
         schemeValue?: string;
         candidateValue?: string;
+        evidence?: string;
       }[];
     }[];
   }) => void;
@@ -233,11 +235,13 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
                       questions: {
                         questionId: string;
                         awardedMarks: number;
+                        confidence: string;
                         criteria: {
                           criterionId: string;
                           awarded: boolean;
                           schemeValue?: string;
                           candidateValue?: string;
+                          evidence?: string;
                         }[];
                       }[];
                     }) =>
