@@ -79,6 +79,12 @@ export type CriterionCall = {
   human: boolean;
   /** Whether Jami awarded it, or null where Jami never addressed this mark. */
   jami: boolean | null;
+  /** How many marks the criterion carries, where the source says. */
+  available: number;
+  /** How many the examiner gave. */
+  humanMarks: number;
+  /** How many Jami gave, where it said; null where it only gave a verdict. */
+  jamiMarks: number | null;
 };
 
 export type CriterionOutcome = {
@@ -95,6 +101,18 @@ export type CriterionOutcome = {
    * compared criterion agrees. A total can be reached by luck; this cannot.
    */
   rightForTheRightReasons: boolean;
+  /**
+   * Mean distance in marks between the two, over criteria worth more than one
+   * where both sides stated a number. Null where none qualify.
+   *
+   * The agreement figure above compares verdicts, which is exact when a
+   * criterion carries a single mark and close to meaningless when it carries
+   * ten: a section scored six against the examiner's nine agrees, and so does
+   * one scored two. Every criterion source was one-mark until the coursework
+   * assignments arrived, so this had never mattered before and quietly made the
+   * essay branch look measurable when it was not.
+   */
+  markGap: number | null;
   /**
    * Every mark the examiner ruled on, in the order the source published them.
    *
@@ -122,7 +140,12 @@ function normaliseLabel(value: string) {
  */
 export function compareCriteria(
   human: readonly MarkingCriterion[],
-  candidate: readonly { criterionId?: string; criterion: string; awarded: boolean }[],
+  candidate: readonly {
+    criterionId?: string;
+    criterion: string;
+    awarded: boolean;
+    awardedMarks?: number;
+  }[],
   marksAgree: boolean
 ): CriterionOutcome {
   const remaining = [...candidate];
@@ -155,16 +178,37 @@ export function compareCriteria(
       });
     }
     const awardedByHuman = criterion.awarded > 0;
+    const shared = {
+      id: criterion.id,
+      human: awardedByHuman,
+      available: criterion.available,
+      humanMarks: criterion.awarded,
+    };
     if (index === -1) {
       missed += 1;
-      calls.push({ id: criterion.id, human: awardedByHuman, jami: null });
+      calls.push({ ...shared, jami: null, jamiMarks: null });
       continue;
     }
     const [matched] = remaining.splice(index, 1);
     compared += 1;
     if (matched.awarded === awardedByHuman) agreed += 1;
-    calls.push({ id: criterion.id, human: awardedByHuman, jami: matched.awarded });
+    calls.push({
+      ...shared,
+      jami: matched.awarded,
+      jamiMarks: matched.awardedMarks ?? null,
+    });
   }
+
+  // Only criteria that carry more than one mark, since a boolean already says
+  // everything about the rest.
+  const graded = calls.filter(
+    (call) => call.available > 1 && call.jamiMarks !== null
+  );
+  const markGap =
+    graded.length > 0
+      ? graded.reduce((total, call) => total + Math.abs((call.jamiMarks ?? 0) - call.humanMarks), 0) /
+        graded.length
+      : null;
 
   return {
     compared,
@@ -172,6 +216,7 @@ export function compareCriteria(
     missed,
     extra: remaining.length,
     rightForTheRightReasons: marksAgree && missed === 0 && compared > 0 && agreed === compared,
+    markGap,
     calls,
   };
 }
@@ -179,7 +224,12 @@ export function compareCriteria(
 export function scoreMark(input: {
   record: MarkingCorpusRecord;
   candidate: number;
-  criteria?: readonly { criterionId?: string; criterion: string; awarded: boolean }[];
+  criteria?: readonly {
+    criterionId?: string;
+    criterion: string;
+    awarded: boolean;
+    awardedMarks?: number;
+  }[];
 }): MarkOutcome {
   const { record, candidate } = input;
   const humans = record.humanMarks;

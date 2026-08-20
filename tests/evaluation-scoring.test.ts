@@ -170,16 +170,16 @@ describe("criterion agreement", () => {
       false
     );
     expect(outcome.calls).toEqual([
-      { id: "Mark 1", human: true, jami: false },
-      { id: "Mark 2", human: false, jami: false },
+      { id: "Mark 1", human: true, jami: false, available: 1, humanMarks: 1, jamiMarks: null },
+      { id: "Mark 2", human: false, jami: false, available: 1, humanMarks: 0, jamiMarks: null },
     ]);
   });
 
   it("records a mark the marker never addressed as null rather than withheld", () => {
     const outcome = compareCriteria(human, [{ criterion: "Mark 2", awarded: false }], false);
     expect(outcome.calls).toEqual([
-      { id: "Mark 1", human: true, jami: null },
-      { id: "Mark 2", human: false, jami: false },
+      { id: "Mark 1", human: true, jami: null, available: 1, humanMarks: 1, jamiMarks: null },
+      { id: "Mark 2", human: false, jami: false, available: 1, humanMarks: 0, jamiMarks: null },
     ]);
   });
 
@@ -246,5 +246,69 @@ describe("summarising a run", () => {
 
   it("returns a zeroed summary rather than dividing by nothing", () => {
     expect(summariseOutcomes([])).toMatchObject({ count: 0, exact: 0, humanDisagreement: null });
+  });
+});
+
+/**
+ * A boolean is exact where a criterion carries one mark, and close to
+ * meaningless where it carries ten. The coursework assignments score a single
+ * section out of ten, so "awarded" is true whether the candidate got nine or
+ * two -- and the essay branch looked measurable through that lens when it was
+ * not.
+ */
+describe("criteria worth more than one mark", () => {
+  const sections = [
+    { id: "Section 1", available: 10, awarded: 9, description: "Knowledge" },
+    { id: "Section 2", available: 10, awarded: 4, description: "Analysis" },
+  ];
+
+  it("measures the distance in marks, not just the verdict", () => {
+    const outcome = compareCriteria(
+      sections,
+      [
+        { criterionId: "C1", criterion: "Knowledge", awarded: true, awardedMarks: 6 },
+        { criterionId: "C2", criterion: "Analysis", awarded: true, awardedMarks: 4 },
+      ],
+      false
+    );
+    // Both verdicts agree, and one is three marks out.
+    expect(outcome.agreed).toBe(2);
+    expect(outcome.markGap).toBe(1.5);
+  });
+
+  it("keeps each side's marks on the call, so a run can be read back", () => {
+    const outcome = compareCriteria(
+      sections,
+      [{ criterionId: "C1", criterion: "Knowledge", awarded: true, awardedMarks: 6 }],
+      false
+    );
+    expect(outcome.calls[0]).toEqual({
+      id: "Section 1",
+      human: true,
+      jami: true,
+      available: 10,
+      humanMarks: 9,
+      jamiMarks: 6,
+    });
+  });
+
+  /** A marker that gave only a verdict cannot be scored on distance. */
+  it("reports no gap where the marker stated no marks", () => {
+    const outcome = compareCriteria(
+      sections,
+      [{ criterionId: "C1", criterion: "Knowledge", awarded: true }],
+      false
+    );
+    expect(outcome.markGap).toBeNull();
+  });
+
+  /** One-mark criteria say everything in the verdict already. */
+  it("ignores one-mark criteria, where the verdict is the mark", () => {
+    const outcome = compareCriteria(
+      [{ id: "Mark 1", available: 1, awarded: 1 }],
+      [{ criterionId: "C1", criterion: "Mark 1", awarded: true, awardedMarks: 1 }],
+      true
+    );
+    expect(outcome.markGap).toBeNull();
   });
 });

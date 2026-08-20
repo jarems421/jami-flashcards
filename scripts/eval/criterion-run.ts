@@ -187,6 +187,18 @@ Matching the ${withCriteria.length} records ${matching} marked.
    * record is refused rather than marked against whatever else was there.
    */
   const candidateLabel = (record: MarkingCorpusRecord) => {
+    /**
+     * Only where a page actually carries more than one candidate.
+     *
+     * The Qualifications Scotland scripts share pages, and the label printed
+     * above each piece of work is what says whose it is. The assignment sources
+     * give each candidate their own file, and their pages carry no such label --
+     * the furniture reads "Candidate evidence 1", which is not a label above
+     * anybody's work. Asking for one there makes the loader fail closed and
+     * refuse every record, which is what it did: 12 of 12 unreadable, no calls
+     * made. Correct behaviour, wrong question.
+     */
+    if (!record.sourceId.startsWith("qualifications-scotland")) return undefined;
     const number = record.id.split(":c")[1];
     return number ? `Candidate ${number}` : undefined;
   };
@@ -284,8 +296,29 @@ Matching the ${withCriteria.length} records ${matching} marked.
   process.stdout.write(`  examiner's marks Jami never addressed  ${missed}\n`);
   process.stdout.write(`  marks Jami invented                   ${extra}\n`);
   process.stdout.write(
-    `  right total by the right route        ${percent(summary.rightForTheRightReasons)}\n\n`
+    `  right total by the right route        ${percent(summary.rightForTheRightReasons)}\n`
   );
+
+  /**
+   * Where criteria carry more than one mark, the verdict above says almost
+   * nothing: a section scored six against the examiner's nine agrees with it,
+   * and so does one scored two. This is the figure that means anything there.
+   */
+  const graded = scored.flatMap((outcome) =>
+    (outcome.criterion?.calls ?? []).filter((call) => call.available > 1 && call.jamiMarks !== null)
+  );
+  if (graded.length > 0) {
+    const gap =
+      graded.reduce((total, call) => total + Math.abs((call.jamiMarks ?? 0) - call.humanMarks), 0) /
+      graded.length;
+    const exact = graded.filter((call) => call.jamiMarks === call.humanMarks).length;
+    process.stdout.write(
+      `  criteria worth more than one mark     ${graded.length}\n` +
+        `  ...mean distance in marks             ${number(gap)}\n` +
+        `  ...scored exactly right               ${percent(exact / graded.length)}\n`
+    );
+  }
+  process.stdout.write(`\n`);
 
   /**
    * The comparison the headline number cannot make. A marker landing on the

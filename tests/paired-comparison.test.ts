@@ -9,7 +9,7 @@ import {
 
 const outcome = (
   recordId: string,
-  calls: { id: string; human: boolean; jami: boolean | null }[]
+  entries: { id: string; human: boolean; jami: boolean | null }[]
 ): MarkOutcome =>
   ({
     recordId,
@@ -18,9 +18,9 @@ const outcome = (
     subject: "maths",
     regime: "additive",
     questionId: "q1",
-    maxMarks: calls.length,
-    humanMarks: [calls.filter((call) => call.human).length],
-    candidate: calls.filter((call) => call.jami).length,
+    maxMarks: entries.length,
+    humanMarks: [entries.filter((call) => call.human).length],
+    candidate: entries.filter((call) => call.jami).length,
     perMarkerError: [0],
     consensusError: 0,
     normalisedConsensusError: 0,
@@ -32,12 +32,20 @@ const outcome = (
     intervalError: null,
     withinHumanVariation: null,
     criterion: {
-      compared: calls.filter((call) => call.jami !== null).length,
-      agreed: calls.filter((call) => call.jami === call.human).length,
-      missed: calls.filter((call) => call.jami === null).length,
+      compared: entries.filter((call) => call.jami !== null).length,
+      agreed: entries.filter((call) => call.jami === call.human).length,
+      missed: entries.filter((call) => call.jami === null).length,
       extra: 0,
       rightForTheRightReasons: false,
-      calls,
+      markGap: null,
+      // One-mark criteria, which is what every source but the coursework
+      // assignments publishes.
+      calls: entries.map((call) => ({
+        ...call,
+        available: 1,
+        humanMarks: call.human ? 1 : 0,
+        jamiMarks: call.jami === null ? null : call.jami ? 1 : 0,
+      })),
     },
   }) as MarkOutcome;
 

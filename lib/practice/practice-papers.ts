@@ -195,6 +195,21 @@ export type PracticePaperCriterionResult = {
    */
   schemeValue?: string;
   candidateValue?: string;
+  /**
+   * How many of this criterion's marks were given, where it carries more than
+   * one.
+   *
+   * A boolean is exact for a scheme awarding one mark per bullet, which is what
+   * every criterion source held until the coursework assignments arrived. There
+   * a single section is worth up to ten, and `awarded: true` says only that
+   * something was credited -- six out of ten and two out of ten are the same
+   * answer, and so is nine. The essay branch could not be measured at all
+   * through that lens.
+   *
+   * Optional: a one-mark criterion says everything in the boolean, and every
+   * marking already stored predates this.
+   */
+  awardedMarks?: number;
 };
 
 export type PracticePaperQuestionResult = {
@@ -827,6 +842,9 @@ function normalizeQuestionResults(value: unknown) {
                 : {}),
               ...(normalizeOptionalString(criterion.candidateValue, 200)
                 ? { candidateValue: normalizeOptionalString(criterion.candidateValue, 200)! }
+                : {}),
+              ...(Number.isFinite(Number(criterion.awardedMarks))
+                ? { awardedMarks: Math.max(0, finiteInteger(criterion.awardedMarks)) }
                 : {}),
             }];
           })
