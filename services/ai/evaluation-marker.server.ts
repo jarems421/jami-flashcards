@@ -91,7 +91,12 @@ export type EvaluationMarkerOptions = {
     questions: {
       questionId: string;
       awardedMarks: number;
-      criteria: { criterionId: string; awarded: boolean }[];
+      criteria: {
+        criterionId: string;
+        awarded: boolean;
+        schemeValue?: string;
+        candidateValue?: string;
+      }[];
     }[];
   }) => void;
   /** Raw output of a report that could not be read, for diagnosis. */
@@ -228,7 +233,12 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
                       questions: {
                         questionId: string;
                         awardedMarks: number;
-                        criteria: { criterionId: string; awarded: boolean }[];
+                        criteria: {
+                          criterionId: string;
+                          awarded: boolean;
+                          schemeValue?: string;
+                          candidateValue?: string;
+                        }[];
                       }[];
                     }) =>
                       options.onMarkerReport?.({

@@ -69,7 +69,12 @@ export type PracticePaperMarkingInput = {
     questions: {
       questionId: string;
       awardedMarks: number;
-      criteria: { criterionId: string; awarded: boolean }[];
+      criteria: {
+        criterionId: string;
+        awarded: boolean;
+        schemeValue?: string;
+        candidateValue?: string;
+      }[];
     }[];
   }) => void;
   signal?: AbortSignal;
@@ -252,7 +257,7 @@ Return exactly one result for every question ID. Mark every optional answer; the
 
 Where the guide lists criteria for a question, return one criterionResult for each, using the guide's own criterionId. Your wording of the criterion is yours; the id must be the guide's, because two markers are compared on the ids and never on the wording.
 
-For each criterion, fill schemeValue and candidateValue before deciding awarded: state what the guide requires for that mark, then what the candidate actually produced for it, quoting the candidate rather than paraphrasing. Where the mark is qualitative and no single value is meant, say so in a few words rather than inventing one. Decide awarded by comparing the two.`;
+For each criterion, fill schemeValue and candidateValue before deciding awarded. These are values, not sentences. Put the quantity, expression or condition the guide requires in schemeValue, and the corresponding thing the candidate actually produced in candidateValue, in the candidate's own notation. For example "7" against "10", or "y = 7x - 8" against "y = 10x - 3", or "integrable form" against "divided by the derivative". Where a mark is qualitative, name the required quality in a few words. Never write a sentence in either field and never describe the candidate in the third person. Then decide awarded by comparing the two.`;
 }
 
 /**
@@ -404,7 +409,20 @@ async function callMarker(input: PracticePaperMarkingInput & {
       awardedMarks: question.awardedMarks,
       criteria: (question.criterionResults ?? []).flatMap((criterion) =>
         criterion.criterionId
-          ? [{ criterionId: criterion.criterionId, awarded: criterion.awarded }]
+          ? [
+              {
+                criterionId: criterion.criterionId,
+                awarded: criterion.awarded,
+                // Recorded so a run can be checked for whether the comparison
+                // was actually stated, rather than assumed because it was asked
+                // for. A field the model quietly omits looks identical to one it
+                // filled in, everywhere except here.
+                ...(criterion.schemeValue ? { schemeValue: criterion.schemeValue } : {}),
+                ...(criterion.candidateValue
+                  ? { candidateValue: criterion.candidateValue }
+                  : {}),
+              },
+            ]
           : []
       ),
     })),
