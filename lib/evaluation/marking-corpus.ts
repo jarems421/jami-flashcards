@@ -218,6 +218,32 @@ export const MARKING_CORPUS_SOURCES: readonly MarkingCorpusSource[] = [
       "The most valuable source in the corpus for its size. Ingested: 480 answers over 20 questions, half typed and half photographed handwriting, every one marked by two examiners independently. They disagree on 237 of 480, and the gap widens with the tariff — a mean of 0.05 marks on one-markers against 4.58 on the 40-mark essays, worst case 20. That curve is the bar Jami should be held to, because holding it to exact agreement would hold it to a standard the examiners themselves do not meet. Sixty answers also carry each examiner's split across assessment objectives. No written examiner commentary.",
   },
   {
+    id: "sqa-higher-modern-studies-assignment",
+    title: "Qualifications Scotland — Higher Modern Studies assignment",
+    level: "alevel",
+    subjects: ["modernStudies"],
+    regimes: ["weightedTraits"],
+    licence: { id: "board exemplar", redistributable: false, verified: false },
+    // The scan is of typed coursework rather than handwriting, which is the
+    // whole reason this source was sought.
+    handwritten: false,
+    commentary: true,
+    notes:
+      "The first criterion-level records in the corpus that are not photographs of handwriting, which is why this was parsed before eleven larger sources. Every other criterion source is handwritten, so two explanations of Jami's generosity could not be told apart by measurement -- it may misread the work, or read it correctly and misjudge it -- and five failed experiments were left without a clean interpretation. These assignments are typed coursework, still scanned, and a vision model reads print essentially perfectly; if Jami marks them as generously as handwriting then reading was never the problem. Ingested: 16 candidates across four series (2015, 2023, 2024, 2025), each scored on five sections -- knowledge and understanding, analysing and synthesising, source evaluation, structure, reaching a decision -- with the examiner's narrative attributing marks to specific sentences of the candidate's own writing. Section tariffs are not published, so each is the highest any candidate reached; they sum to exactly 30, which is the assignment's published total, so the inference checks out. A candidate whose sections do not reach the examiner's own stated total is skipped rather than recorded short. Measure-only.",
+  },
+  {
+    id: "sqa-higher-psychology",
+    title: "Qualifications Scotland — Higher Psychology assignment",
+    level: "alevel",
+    subjects: ["psychology"],
+    regimes: ["weightedTraits"],
+    licence: { id: "board exemplar", redistributable: false, verified: false },
+    handwritten: false,
+    commentary: true,
+    notes:
+      "Typed coursework like the Modern Studies assignments, and finer: the commentary itemises individual marks inside each section, and sections A to H sum to the examiner's own stated total on every candidate, so each record checks itself. Ingested: only 2 candidates, because the assignment commentaries name just two; the folder's other files cover single sections across many more candidates in a different shape and are not yet read, which is where this source's remaining value sits. No assignment total is published anywhere in the material, so the maximum is summed from the section ceilings and rises as the source grows rather than being asserted. Measure-only.",
+  },
+  {
     id: "qualifications-scotland",
     title: "Qualifications Scotland — Understanding Standards",
     // Higher, which is what was downloaded. It sits above National 5 and

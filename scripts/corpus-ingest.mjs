@@ -23,6 +23,23 @@ const only = process.argv.slice(3).filter((argument) => !argument.startsWith("-"
 const load = (name) => import(`../lib/evaluation/sources/${name}.ts`);
 
 /** Page count, and per-page text when asked for, from a PDF. */
+/**
+ * A page as one string, with the runs separated.
+ *
+ * `readPdf`'s text mode joins runs with nothing and relies on the PDF's own end
+ * of line flags, which suits sources read line by line. These commentaries are
+ * prose: without a separator "10 marks" arrives as "10marks" and every pattern
+ * that reads a mark stops matching. Seven of sixteen candidates were being
+ * skipped as unbalanced for that reason alone.
+ */
+async function readSpacedPages(readPdf, file) {
+  const { items } = await readPdf(file, { withItems: true });
+  return items.map((page) => ({
+    page: page.page,
+    text: page.items.map((item) => item.text).join(" "),
+  }));
+}
+
 async function readPdf(path, { withText = false, withItems = false } = {}) {
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
   const task = pdfjs.getDocument({ data: new Uint8Array(readFileSync(path)) });
@@ -340,6 +357,123 @@ const SOURCES = [
           `marked by regime        ${JSON.stringify(result.stats.byRegime)}`,
           "the 2019 examiner report is not ingested: it is cohort feedback and marks no individual response",
           "no question tariff exists in the payload, so each maximum is the best exemplar's mark",
+        ],
+      };
+    },
+  },
+  {
+    id: "sqa-higher-modern-studies-assignment",
+    marker: "2023-24-h-mod-studies-assignment-commentaries.pdf",
+    bases: [join(ROOT, "sqa-higher-modern-studies-assignment")],
+    async run(dir) {
+      const { parseSqaAssignment, splitByCandidate } = await load("sqa-assignment");
+
+      // Each series names its files differently, and 2015 both writes one file
+      // per candidate and uses an older summary form.
+      const series = [];
+      for (const [id, commentary, evidence] of [
+        ["2023", "2023-24-h-mod-studies-assignment-commentaries.pdf", (n) => `2023-24-h-mod-studies-assignment-candidate-${n}-evidence.pdf`],
+        ["2024", "2024-25-h-modern-studies-assignment-commentaries.pdf", (n) => `2024-25-h-modern-studies-assignment-candidate-${n}-evidence.pdf`],
+        ["2025", "2025-26-h-modern-studies-assignment-commentary.pdf", (n) => `2025-26-h-modern-studies-assignment-candidate-evidence-${n}.pdf`],
+      ]) {
+        const file = join(dir, commentary);
+        if (!existsSync(file)) continue;
+        const pages = await readSpacedPages(readPdf, file);
+        const candidates = [];
+        for (const block of splitByCandidate(pages)) {
+          const evidenceFile = join(dir, evidence(block.candidate));
+          if (!existsSync(evidenceFile)) continue;
+          const { pages: evidencePages } = await readPdf(evidenceFile, { withText: true });
+          // Page one is a cover sheet; the work starts after it.
+          candidates.push({
+            candidate: block.candidate,
+            text: block.text,
+            evidence: `${evidenceFile}#page=2-${evidencePages.length}`,
+          });
+        }
+        if (candidates.length > 0) series.push({ id, form: "modernStudies", candidates });
+      }
+
+      /**
+       * 2015 is read but not ingested.
+       *
+       * Its commentaries parse cleanly -- the legacy reader handles them and is
+       * tested -- but the evidence PDFs draw the candidate's work inside form
+       * XObjects, which the scanned-page loader does not traverse, so every one
+       * of those four records would carry an answer that cannot be loaded. A
+       * record nothing can mark is worse than no record, and extending the
+       * loader to chase four of them risks the path that already works for
+       * every other scanned source.
+       */
+      const legacy = [];
+      for (let n = 1; n <= 0; n += 1) {
+        const commentary = join(dir, `HigherModernStudiesAssgn2015CommentaryCandidate${n}.pdf`);
+        const evidenceFile = join(dir, `HigherModernStudiesAssgn2015EvidenceCandidate${n}.pdf`);
+        if (!existsSync(commentary) || !existsSync(evidenceFile)) continue;
+        const pages = await readSpacedPages(readPdf, commentary);
+        const { pages: evidencePages } = await readPdf(evidenceFile, { withText: true });
+        legacy.push({
+          candidate: n,
+          text: pages.map((page) => page.text).join(String.fromCharCode(10)),
+          evidence: `${evidenceFile}#page=1-${evidencePages.length}`,
+        });
+      }
+      if (legacy.length > 0) series.push({ id: "2015", form: "modernStudiesLegacy", candidates: legacy });
+
+      const result = parseSqaAssignment({
+        sourceId: "sqa-higher-modern-studies-assignment",
+        subject: "modernStudies",
+        maxMarks: 30,
+        series,
+      });
+      return {
+        ...result,
+        notes: [
+          `series read            ${series.map((entry) => entry.id).join(", ")}`,
+          `sections skipped       ${result.stats.unbalanced} unbalanced, ${result.stats.unreadable} unreadable`,
+          "typed coursework, scanned: the only criterion-level records not in handwriting",
+          "2015 parses but is not ingested: its evidence draws the work in form XObjects the page loader cannot read",
+          "section tariffs are inferred from the best candidate on each; SQA publishes the total only",
+        ],
+      };
+    },
+  },
+  {
+    id: "sqa-higher-psychology",
+    marker: "2022-23-h-psychology-assignment-candidate1-commentaries.pdf",
+    bases: [join(ROOT, "sqa-higher-psychology")],
+    async run(dir) {
+      const { parseSqaAssignment } = await load("sqa-assignment");
+
+      const candidates = [];
+      for (let n = 1; n <= 8; n += 1) {
+        const commentary = join(dir, `2022-23-h-psychology-assignment-candidate${n}-commentaries.pdf`);
+        const evidenceFile = join(dir, `2022-23-h-psychology-assignment-candidate${n}-evidence.pdf`);
+        if (!existsSync(commentary) || !existsSync(evidenceFile)) continue;
+        const pages = await readSpacedPages(readPdf, commentary);
+        const { pages: evidencePages } = await readPdf(evidenceFile, { withText: true });
+        candidates.push({
+          candidate: n,
+          text: pages.map((page) => page.text).join(String.fromCharCode(10)),
+          evidence: `${evidenceFile}#page=2-${Math.min(evidencePages.length, 9)}`,
+        });
+      }
+
+      const result = parseSqaAssignment({
+        sourceId: "sqa-higher-psychology",
+        subject: "psychology",
+        // No total is published anywhere in this material, so it is summed from
+        // the sections rather than asserted.
+        series: candidates.length > 0 ? [{ id: "2022", form: "psychology", candidates }] : [],
+      });
+      return {
+        ...result,
+        notes: [
+          `candidates read        ${candidates.length}`,
+          "sections A-H sum to the examiner's own stated total, so each record is self-checked",
+          "evidence is capped at eight pages; a full research report is longer than a marking prompt needs",
+          "the assignment total is summed from the sections, since SQA publishes none here",
+          "the per-section commentary files carry more candidates with per-mark reasons; not yet read",
         ],
       };
     },
