@@ -455,7 +455,10 @@ const SOURCES = [
         candidates.push({
           candidate: n,
           text: pages.map((page) => page.text).join(String.fromCharCode(10)),
-          evidence: `${evidenceFile}#page=2-${Math.min(evidencePages.length, 9)}`,
+          // The whole report. How much of it a marking actually sends is the
+          // run's decision, not the corpus's -- capping it here once hid nine
+          // pages of a seventeen-page report behind a limit nothing reported.
+          evidence: `${evidenceFile}#page=2-${evidencePages.length}`,
         });
       }
 
@@ -471,7 +474,6 @@ const SOURCES = [
         notes: [
           `candidates read        ${candidates.length}`,
           "sections A-H sum to the examiner's own stated total, so each record is self-checked",
-          "evidence is capped at eight pages; a full research report is longer than a marking prompt needs",
           "the assignment total is summed from the sections, since SQA publishes none here",
           "the per-section commentary files carry more candidates with per-mark reasons; not yet read",
         ],

@@ -273,6 +273,33 @@ describe("the comparison behind a criterion verdict", () => {
     expect(criterion?.candidateValue).toBeUndefined();
   });
 
+  /**
+   * A section worth ten marks says nothing useful through a boolean, so the
+   * marker states how many it gave. The first typed run reported none of sixty,
+   * which is either a marker that will not say or a parser that drops it, and
+   * those need telling apart.
+   */
+  it("keeps how many marks the criterion earned", () => {
+    const criterion = firstCriterion(
+      reportWith({
+        criterionId: "C1",
+        criterion: "Knowledge and understanding",
+        awarded: true,
+        awardedMarks: 6,
+        evidence: "the candidate's paragraph on devolution",
+      })
+    );
+    expect(criterion?.awardedMarks).toBe(6);
+  });
+
+  it("leaves it out where the marker gave only a verdict", () => {
+    const criterion = firstCriterion(
+      reportWith({ criterionId: "C1", criterion: "Knowledge", awarded: true, evidence: "e" })
+    );
+    expect(criterion?.awardedMarks).toBeUndefined();
+    expect(criterion?.awarded).toBe(true);
+  });
+
   it("caps them, so a marker cannot restate the whole scheme in one", () => {
     const criterion = firstCriterion(
       reportWith({

@@ -94,6 +94,21 @@ export default async function main(args: string[]) {
    * of a marking prompt on resolution no marker needs to read print.
    */
   const downscaleBy = Number(flag("downscale") ?? 2);
+  /**
+   * How many pages of a response to send.
+   *
+   * Three was tuned for Qualifications Scotland, where one question's answer
+   * sits on one page, and it silently truncated everything longer. A Modern
+   * Studies assignment runs to four content pages and a Psychology research
+   * report to seventeen; both were marked on three, and the harshness tracked
+   * the share hidden almost exactly -- 100% of pages seen gave a bias of +0.45,
+   * 75% gave -1.00, and 18% gave -26.00 on a 35-mark assignment. A marker shown
+   * a fifth of a report and asked what it is worth is right to mark it down.
+   *
+   * So the ceiling belongs to the run, not to the loader, and coursework needs
+   * a far higher one than a single exam question.
+   */
+  const maxImages = Number(flag("pages") ?? 3);
 
   const all: MarkingCorpusRecord[] = [];
   for (const file of readdirSync(CORPUS).filter((name) => name.endsWith(".json"))) {
@@ -209,7 +224,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
     loadAnswerImages: (record) =>
       loadScannedPages(record.answer.kind === "image" ? record.answer.paths[0] : "", {
         downscaleBy,
-        maxImages: 3,
+        maxImages,
         belowLabel: candidateLabel(record),
       }),
     onMarkerReport: (report) => appendFileSync(markerJournal, `${JSON.stringify(report)}
@@ -256,7 +271,7 @@ Matching the ${withCriteria.length} records ${matching} marked.
 
   process.stdout.write(
     `\n${"=".repeat(72)}\nCRITERION BENCHMARK\n${"=".repeat(72)}\n` +
-      `concurrency ${concurrency}, deadline ${(deadlineMs || 420_000) / 1000}s, downscale ${downscaleBy}
+      `concurrency ${concurrency}, deadline ${(deadlineMs || 420_000) / 1000}s, downscale ${downscaleBy}, pages ${maxImages}
 ` +
       `marked ${outcomes.length} of ${chosen.length} in ${minutes} min` +
       ` (${stats.failed} failed, ${stats.unsupported} unreadable,` +

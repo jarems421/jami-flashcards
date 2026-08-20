@@ -249,7 +249,7 @@ Return JSON only:
     "awardedMarks":4,
     "maxMarks":5,
     "feedback":"What earned and lost marks.",
-    "criterionResults":[{"criterionId":"C1","criterion":"the criterion in your own words","schemeValue":"what the guide requires for this mark","candidateValue":"what the candidate actually produced for it","awarded":true,"awardedMarks":1,"evidence":"the candidate's own line that earns or loses this mark"}],
+    "criterionResults":[{"criterionId":"C1","criterion":"the criterion in your own words","schemeValue":"what the guide requires for this mark","candidateValue":"what the candidate actually produced for it","awarded":true,"awardedMarks":6,"evidence":"the candidate's own line that earns or loses this mark"}],
     "evidence":["short evidence quote or precise description"],
     "correction":"A concise corrected approach.",
     "nextStep":"One useful next action.",
@@ -268,7 +268,7 @@ Where the guide lists criteria for a question, return one criterionResult for ea
 
 For each criterion, fill schemeValue and candidateValue before deciding awarded. These are values, not sentences. schemeValue is the value the guide states for that mark, taken from the illustrative scheme where one is given -- not the name of the mark. Write "-1", not "calculate the y-coordinate". Only where the guide states no value at all should schemeValue name the condition instead. candidateValue is the corresponding thing the candidate actually produced, in their own notation, and must be the same kind of thing as schemeValue so the two can be compared. For example "7" against "10", or "y = 7x - 8" against "y = 10x - 3", or "integrable form" against "divided by the derivative". Where a mark is qualitative, name the required quality in a few words. Never write a sentence in either field and never describe the candidate in the third person. Then decide awarded by comparing the two.
 
-Where the guide gives a criterion more than one mark, awardedMarks is how many of them the candidate earned, and awarded is whether that is above zero. Where a criterion is worth one mark the two say the same thing.`;
+Every criterionResult must carry awardedMarks: how many of that criterion's marks the candidate earned, between zero and the marks the guide gives it. The guide states that number for each criterion. A criterion worth ten marks scored six is awardedMarks 6 with awarded true; scored zero it is awardedMarks 0 with awarded false. Do not copy the criterion's total into awardedMarks, and do not omit it. The question's awardedMarks must equal the sum of its criterionResults' awardedMarks.`;
 }
 
 /**
