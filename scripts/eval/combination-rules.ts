@@ -141,10 +141,18 @@ const RULES: {
   },
   {
     /**
-     * The rule the whole structural change exists to test. A marker that writes
-     * "the scheme wants 7" beside "the candidate wrote 10" and awards the mark
-     * anyway has noticed and not acted, and noticing is the only part a model is
-     * needed for. Withholding on its own recorded mismatch costs no call.
+     * The rule the structural change existed to test, and it does not work.
+     *
+     * Over 291 marks it removes 4 wrongly awarded marks and creates 15 wrongly
+     * withheld ones -- generous 53 to 49, harsh 14 to 29 -- and agreement falls
+     * from 77.0% to 73.2%. Widened to either blind marker it is worse again:
+     * generous 53 to 37, harsh 14 to 54.
+     *
+     * So a marker's own reported mismatch is a signal with roughly 21%
+     * precision. It fires on marks the candidate earned about four times as
+     * often as on marks they did not, which means the problem was never a
+     * missing signal to gate on. Kept because a negative result that cost a run
+     * should not have to be rediscovered.
      */
     name: "gate on own mismatch",
     note: "withhold wherever the deciding marker's own two values differ",
