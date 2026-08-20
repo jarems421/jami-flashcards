@@ -235,7 +235,7 @@ Return JSON only:
     "awardedMarks":4,
     "maxMarks":5,
     "feedback":"What earned and lost marks.",
-    "criterionResults":[{"criterionId":"C1","criterion":"the criterion in your own words","awarded":true,"evidence":"the candidate's own line that earns or loses this mark"}],
+    "criterionResults":[{"criterionId":"C1","criterion":"the criterion in your own words","schemeValue":"what the guide requires for this mark","candidateValue":"what the candidate actually produced for it","awarded":true,"evidence":"the candidate's own line that earns or loses this mark"}],
     "evidence":["short evidence quote or precise description"],
     "correction":"A concise corrected approach.",
     "nextStep":"One useful next action.",
@@ -250,7 +250,9 @@ Return JSON only:
 
 Return exactly one result for every question ID. Mark every optional answer; the app applies the fixed choice-group rule deterministically. Never invent unreadable work.
 
-Where the guide lists criteria for a question, return one criterionResult for each, using the guide's own criterionId. Your wording of the criterion is yours; the id must be the guide's, because two markers are compared on the ids and never on the wording.`;
+Where the guide lists criteria for a question, return one criterionResult for each, using the guide's own criterionId. Your wording of the criterion is yours; the id must be the guide's, because two markers are compared on the ids and never on the wording.
+
+For each criterion, fill schemeValue and candidateValue before deciding awarded: state what the guide requires for that mark, then what the candidate actually produced for it, quoting the candidate rather than paraphrasing. Where the mark is qualitative and no single value is meant, say so in a few words rather than inventing one. Decide awarded by comparing the two.`;
 }
 
 /**

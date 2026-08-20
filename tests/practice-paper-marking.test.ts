@@ -199,3 +199,92 @@ describe("practice-paper percentage", () => {
     expect(calculatePracticePaperPercentage(0, 0)).toBe(0);
   });
 });
+
+/**
+ * Marking ran half a mark generous through every attempt to fix it, and the one
+ * that asked the marker to check its working changed nothing -- 12 marks fixed
+ * against 9 broken, p = 0.66. Asking did not work, so the comparison is
+ * required in the output instead: a marker that has to write down what the
+ * guide wants and what the candidate produced is in a different position from
+ * one told to be careful.
+ */
+describe("the comparison behind a criterion verdict", () => {
+  const reportWith = (criterion: Record<string, unknown>) =>
+    JSON.stringify({
+      summary: "Report.",
+      strengths: [],
+      priorities: [],
+      questionResults: [
+        {
+          questionId: "q1",
+          label: "Question 1",
+          awardedMarks: 1,
+          maxMarks: 2,
+          feedback: "Feedback.",
+          criterionResults: [criterion],
+          evidence: ["y - 7 = 10(x - 1)"],
+          strengths: [],
+          improvements: [],
+          confidence: "high",
+        },
+        {
+          questionId: "q2",
+          label: "Question 2",
+          awardedMarks: 3,
+          maxMarks: 3,
+          feedback: "Feedback.",
+          evidence: ["Complete."],
+          strengths: [],
+          improvements: [],
+          confidence: "high",
+        },
+      ],
+    });
+
+  const firstCriterion = (raw: string) =>
+    parsePracticePaperMarkingModelAnswer(raw, paper)?.questionResults[0].criterionResults?.[0];
+
+  it("keeps what the guide wanted beside what the candidate produced", () => {
+    expect(
+      firstCriterion(
+        reportWith({
+          criterionId: "C1",
+          criterion: "calculate the gradient",
+          schemeValue: "7",
+          candidateValue: "10",
+          awarded: false,
+          evidence: "y - 7 = 10(x - 1)",
+        })
+      )
+    ).toMatchObject({ criterionId: "C1", schemeValue: "7", candidateValue: "10", awarded: false });
+  });
+
+  /**
+   * Every marking already stored predates these fields, and a qualitative
+   * criterion may have no single value to state. Neither may stop a report
+   * loading.
+   */
+  it("still reads a report that carries neither", () => {
+    const criterion = firstCriterion(
+      reportWith({ criterionId: "C1", criterion: "gradient", awarded: true, evidence: "m = 7" })
+    );
+    expect(criterion?.awarded).toBe(true);
+    expect(criterion?.schemeValue).toBeUndefined();
+    expect(criterion?.candidateValue).toBeUndefined();
+  });
+
+  it("caps them, so a marker cannot restate the whole scheme in one", () => {
+    const criterion = firstCriterion(
+      reportWith({
+        criterionId: "C1",
+        criterion: "gradient",
+        schemeValue: "x".repeat(500),
+        candidateValue: "y".repeat(500),
+        awarded: true,
+        evidence: "m = 7",
+      })
+    );
+    expect(criterion?.schemeValue?.length).toBeLessThanOrEqual(200);
+    expect(criterion?.candidateValue?.length).toBeLessThanOrEqual(200);
+  });
+});

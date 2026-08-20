@@ -7,6 +7,7 @@ import {
   mcnemarExact,
   pairCriterionCalls,
 } from "@/lib/evaluation/paired-comparison";
+import { humanBenchmark } from "@/lib/evaluation/agreement";
 import { summariseOutcomes, type MarkOutcome } from "@/lib/evaluation/scoring";
 
 /**
@@ -83,6 +84,32 @@ export default async function main(args: string[]) {
       `  ${beforeShared.length} records and ${total} individual marks in both\n\n`
   );
 
+  /**
+   * How much of each run this comparison could actually use.
+   *
+   * The benchmark's noise is not the model. Two runs of one configuration were
+   * 96.7% identical, mark for mark -- but they completed different records,
+   * because a marking that times out is a marking lost, and the losses skew
+   * long. Comparing "whatever both runs managed" once turned that attrition
+   * into a significant result: the same change measured p = 0.036 against a run
+   * with 64 records and p = 0.65 against one with 58, and on the records both
+   * held it was p = 0.61. The effect was the fifteen extra records, not the
+   * change.
+   *
+   * So coverage is stated, and a lopsided pair says so plainly.
+   */
+  const coverage = (side: readonly MarkOutcome[]) =>
+    side.length > 0 ? beforeShared.length / side.length : 1;
+  const worst = Math.min(coverage(before), coverage(after));
+  if (worst < 0.9) {
+    process.stdout.write(
+      `  ! only ${percent(worst)} of the smaller run is paired here. Attrition is not\n` +
+        `    random -- lost records skew toward longer questions -- so a difference\n` +
+        `    this comparison finds may be which records survived.\n\n`
+    );
+  }
+
+
   process.stdout.write(`THE INDIVIDUAL MARKS\n`);
   process.stdout.write(
     `  agreed before         ${String(beforeAgreed).padStart(4)} of ${total}  ${percent(beforeAgreed / total)}\n`
@@ -106,6 +133,24 @@ export default async function main(args: string[]) {
   process.stdout.write(
     `  harsh    (withheld where the examiner awarded)  ${String(beforeDirection.harsh).padStart(4)} -> ${afterDirection.harsh}\n\n`
   );
+
+  /**
+   * What a second human manages, so a bias figure has something to be judged
+   * against. Two markers on the same GCSE maths answer sit at -0.025: noisy
+   * about each other rather than skewed.
+   */
+  const humans = humanBenchmark(
+    JSON.parse(readFileSync(resolve("artifacts/corpus/medly-gcse.json"), "utf8")).records,
+    { subject: "maths", minMaxMarks: 3, maxMaxMarks: 5 }
+  );
+  if (humans) {
+    process.stdout.write(
+      `TWO HUMANS ON THE SAME ANSWER, AT A MATCHING TARIFF\n` +
+        `  exact agreement       ${percent(humans.exact)} over ${humans.count} answers\n` +
+        `  mean gap              ${humans.meanGap.toFixed(2)}\n` +
+        `  direction             ${signed(humans.bias)}\n\n`
+    );
+  }
 
   process.stdout.write(`THE TOTAL MARK\n`);
   process.stdout.write(

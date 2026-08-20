@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  humanBenchmark,
   markDistribution,
   quadraticWeightedKappa,
   summariseAgreement,
@@ -181,5 +182,69 @@ describe("mark distribution", () => {
 
   it("puts full marks in the top band rather than off the end", () => {
     expect(markDistribution(pairs([[5, 5]], 5), "candidate")[4]).toBe(1);
+  });
+});
+
+/**
+ * A percentage without a ceiling is unreadable. Jami's 53% exact agreement on
+ * Higher Maths looked catastrophic for a week while the corpus held the answer:
+ * two humans marking the same GCSE maths answer agree exactly 72% of the time.
+ * The bar was never 100%.
+ */
+describe("what two humans agree on", () => {
+  const record = (a: number, b: number | undefined, maxMarks: number, subject = "maths") => ({
+    humanMarks: b === undefined ? [a] : [a, b],
+    maxMarks,
+    subject,
+  });
+
+  it("measures only the records two people actually marked", () => {
+    const benchmark = humanBenchmark([
+      record(3, 3, 4),
+      record(2, 3, 4),
+      record(4, undefined, 4),
+    ]);
+    expect(benchmark?.count).toBe(2);
+    expect(benchmark?.exact).toBe(0.5);
+    expect(benchmark?.meanGap).toBe(0.5);
+  });
+
+  /**
+   * The distinction the whole benchmark turns on. Two markers can disagree
+   * often and still be unbiased about each other, which is a different fault
+   * from disagreeing in one direction.
+   */
+  it("reports no bias when markers disagree symmetrically", () => {
+    const benchmark = humanBenchmark([
+      record(3, 2, 4),
+      record(2, 3, 4),
+      record(4, 3, 4),
+      record(1, 2, 4),
+    ]);
+    expect(benchmark?.exact).toBe(0);
+    expect(benchmark?.meanGap).toBe(1);
+    expect(benchmark?.bias).toBe(0);
+  });
+
+  it("reports a direction when one marker is consistently harsher", () => {
+    const benchmark = humanBenchmark([record(3, 2, 4), record(4, 3, 4), record(2, 1, 4)]);
+    expect(benchmark?.bias).toBe(1);
+  });
+
+  /** Agreement falls sharply with tariff, so a comparison must match it. */
+  it("selects by subject and tariff", () => {
+    const records = [
+      record(1, 1, 1),
+      record(3, 2, 4),
+      record(5, 5, 5, "english"),
+    ];
+    expect(humanBenchmark(records, { minMaxMarks: 3, maxMaxMarks: 4 })?.count).toBe(1);
+    expect(humanBenchmark(records, { subject: "english" })?.count).toBe(1);
+    expect(humanBenchmark(records, { subject: "physics" })).toBeNull();
+  });
+
+  it("returns nothing rather than a figure when nothing was double-marked", () => {
+    expect(humanBenchmark([record(3, undefined, 4)])).toBeNull();
+    expect(humanBenchmark([])).toBeNull();
   });
 });

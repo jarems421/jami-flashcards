@@ -2,6 +2,7 @@ import { appendFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } f
 import { join, resolve } from "node:path";
 
 import type { MarkingCorpusRecord } from "@/lib/evaluation/marking-corpus";
+import { humanBenchmark } from "@/lib/evaluation/agreement";
 import { scoreMark, summariseOutcomes, type MarkOutcome } from "@/lib/evaluation/scoring";
 import { createEvaluationMarker } from "@/services/ai/evaluation-marker.server";
 import { loadScannedPages } from "@/services/ai/scanned-page-loader.server";
@@ -234,6 +235,25 @@ Matching the ${withCriteria.length} records ${matching} marked.
       ` (${stats.failed} failed, ${stats.unsupported} unreadable,` +
       ` ${stats.adjudicated} adjudicated, ${stats.thirdView} juror)\n\n`
   );
+
+  /**
+   * The ceiling, before the run's own figures, because a percentage without one
+   * is unreadable. 53% exact agreement read as catastrophic for a week until
+   * the corpus was asked what two humans manage on the same work.
+   */
+  const humans = humanBenchmark(all, { subject: "maths" });
+  const matched = humanBenchmark(all, { subject: "maths", minMaxMarks: 3, maxMaxMarks: 5 });
+  if (humans) {
+    process.stdout.write(
+      `TWO HUMANS ON THE SAME ANSWER — the bar, which is not 100%\n` +
+        `  exact agreement       ${percent(humans.exact)}` +
+        ` over ${humans.count} double-marked answers at ${number(humans.meanMaxMarks, 1)} marks\n` +
+        `  at a matching tariff  ${percent(matched?.exact)}\n` +
+        `  mean gap              ${number(humans.meanGap)}\n` +
+        `  direction             ${humans.bias >= 0 ? "+" : ""}${number(humans.bias, 3)}` +
+        `  (near zero means noisy about each other, not skewed)\n\n`
+    );
+  }
 
   process.stdout.write(`THE TOTAL MARK\n`);
   process.stdout.write(`  exact agreement       ${percent(summary.exact)}\n`);

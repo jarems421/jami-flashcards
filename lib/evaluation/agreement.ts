@@ -196,3 +196,75 @@ export function markDistribution(
   }
   return counts.map((count) => count / pairs.length);
 }
+
+/**
+ * What two humans marking the same work actually agree on.
+ *
+ * This exists because a percentage without a ceiling is unreadable. Jami's 53%
+ * exact agreement on Higher Maths looked catastrophic for a week, and the
+ * corpus held the answer the whole time: on 240 double-marked GCSE maths
+ * answers, two human markers agree exactly 72% of the time, and only 67-70% at
+ * the three and four mark tariffs that match. A perfect marker cannot score far
+ * above that against any *single* examiner, because that examiner's own
+ * colleague disagrees with them a third of the time.
+ *
+ * `bias` is the figure that turned out to matter. Two humans disagree by 0.40
+ * marks on average and in no direction at all -- 31 one way, 36 the other, mean
+ * -0.025. Jami disagrees by a comparable 0.61 and almost entirely upward. Human
+ * marking is noisy; Jami's is skewed, and those are different faults with
+ * different fixes.
+ *
+ * Derived from whatever double-marked records are held rather than written down
+ * as a constant, so it improves when the corpus does and cannot quietly go
+ * stale. Returns null where nothing in the selection carries two markers.
+ */
+export type HumanBenchmark = {
+  /** Records where two or more humans marked the same answer. */
+  count: number;
+  /** Share where they landed on exactly the same mark. */
+  exact: number;
+  /** Mean absolute distance between them, in marks. */
+  meanGap: number;
+  /**
+   * Mean signed distance, first marker minus second. Near zero means they are
+   * noisy about each other rather than one being systematically harsher.
+   */
+  bias: number;
+  /** Mean tariff, since agreement falls sharply as questions get longer. */
+  meanMaxMarks: number;
+};
+
+export function humanBenchmark(
+  records: readonly { humanMarks: readonly number[]; maxMarks: number; subject?: string }[],
+  filter: { subject?: string; minMaxMarks?: number; maxMaxMarks?: number } = {}
+): HumanBenchmark | null {
+  const doubled = records.filter(
+    (record) =>
+      record.humanMarks.length > 1 &&
+      (filter.subject === undefined || record.subject === filter.subject) &&
+      (filter.minMaxMarks === undefined || record.maxMarks >= filter.minMaxMarks) &&
+      (filter.maxMaxMarks === undefined || record.maxMarks <= filter.maxMaxMarks)
+  );
+  if (doubled.length === 0) return null;
+
+  let exact = 0;
+  let gap = 0;
+  let signed = 0;
+  let tariff = 0;
+  for (const record of doubled) {
+    // The first two markers, because a third would need a convention for which
+    // pair to measure and no source here supplies one.
+    const [first, second] = record.humanMarks;
+    if (first === second) exact += 1;
+    gap += Math.abs(first - second);
+    signed += first - second;
+    tariff += record.maxMarks;
+  }
+  return {
+    count: doubled.length,
+    exact: exact / doubled.length,
+    meanGap: gap / doubled.length,
+    bias: signed / doubled.length,
+    meanMaxMarks: tariff / doubled.length,
+  };
+}

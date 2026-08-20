@@ -179,6 +179,22 @@ export type PracticePaperCriterionResult = {
   criterion: string;
   awarded: boolean;
   evidence: string;
+  /**
+   * What the guide says this mark is for, and what the candidate actually
+   * produced, written down before the verdict.
+   *
+   * Marking ran half a mark generous through every attempt to fix it, and the
+   * one that asked the marker to check its working changed nothing: 12 marks
+   * fixed against 9 broken, p = 0.66. Asking did not work, so the comparison is
+   * required in the output instead -- a marker that has to write "the scheme
+   * wants 7, the candidate wrote 10" is in a different position from one told
+   * to be careful.
+   *
+   * Optional because every marking already stored predates them, and because a
+   * criterion can be qualitative enough that no single value is meant.
+   */
+  schemeValue?: string;
+  candidateValue?: string;
 };
 
 export type PracticePaperQuestionResult = {
@@ -806,6 +822,12 @@ function normalizeQuestionResults(value: unknown) {
               criterion: label || (criterionId ?? ""),
               awarded: criterion.awarded === true,
               evidence: normalizeOptionalString(criterion.evidence, 1_000) ?? "",
+              ...(normalizeOptionalString(criterion.schemeValue, 200)
+                ? { schemeValue: normalizeOptionalString(criterion.schemeValue, 200)! }
+                : {}),
+              ...(normalizeOptionalString(criterion.candidateValue, 200)
+                ? { candidateValue: normalizeOptionalString(criterion.candidateValue, 200)! }
+                : {}),
             }];
           })
         : [];
