@@ -20,7 +20,8 @@ export function paperQualityReviewerConfigured() {
 export async function authenticatePaperQualityReviewer(request: NextRequest) {
   const allowed = reviewerUids();
   if (allowed.size === 0) return { ok: false as const, status: 503, code: "reviewer_not_configured" };
-  const token = getBearerToken(request.headers.get("authorization"));
+  const token = getBearerToken(request.headers.get("authorization"))
+    ?? request.headers.get("x-jami-firebase-id-token")?.trim();
   if (!token) return { ok: false as const, status: 401, code: "unauthorized" };
   try {
     const decoded = await getAdminAuth().verifyIdToken(token);
