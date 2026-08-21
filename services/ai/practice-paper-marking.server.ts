@@ -145,50 +145,63 @@ async function checkpointedMarkerCall(
 }
 
 /**
- * How long each model in the ensemble gets, measured rather than assumed.
+ * How long each model gets, derived from what it actually writes.
  *
- * One timeout for everyone was hiding a real fault. Sampled over 281 marking
- * calls, the supervisor answers at a p90 of 10 seconds and the worker at 21,
- * so a minute is ample for both. The juror is a different animal: 81% of its
- * calls hit the 60-second ceiling, and probed without one it runs 45 to 85
- * seconds with a median of 71 and no failures at all. Its budget was smaller
- * than its work, so the third view — the safeguard over questions two markers
- * already disagreed about — was mostly not happening.
+ * The number this replaces asked to be replaced: "180 seconds is deliberately
+ * generous rather than tuned ... tighten it once the distribution is properly
+ * known rather than leaving it here by default." Six calls were the sample
+ * then. There are now 3,880.
  *
- * 180 seconds is deliberately generous rather than tuned. Six uncensored calls
- * are enough to show 60 is wrong and not enough to choose the right number, so
- * this buys headroom while a larger sample is collected; tighten it once the
- * distribution is properly known rather than leaving it here by default.
+ * A marking timeout is not a patience budget, it is a token budget wearing a
+ * clock's clothes, and reading it as a clock has now been wrong three times.
+ * A report either fits in the time or is cut off mid-JSON and thrown away, so
+ * the only honest way to choose the number is to divide what the role writes by
+ * how fast the slowest endpoint writes it.
+ *
+ * Both halves are measured. Output per role, p99 over every logged call:
+ * worker 1,636 tokens, supervisor 7,600, juror 9,598. Generation rate, p5 over
+ * all 3,880: 23.3 tokens per second, which is DeepInfra having a bad day.
+ *
+ * What that exposes is not a rounding error. The supervisor marks the paper and
+ * then adjudicates disputes, and its p99 report needs 327 seconds against a
+ * ceiling of 60. The juror needs 412 against 180. So the ensemble's two most
+ * expensive roles could not finish their work on the fast endpoint at all: they
+ * spent a minute, failed, and did it again somewhere slower. That is why
+ * coursework markings took 272 minutes for eight records.
  */
-const MARKER_TIMEOUT_MS: Record<string, number> = {
-  default: 60_000,
-  supervisor: 60_000,
-  worker: 60_000,
-  juror: 180_000,
+
+/** Output tokens a role's report reaches, p99 over every logged marking call. */
+const ROLE_OUTPUT_CEILING: Record<string, number> = {
+  worker: 1_636,
+  supervisor: 7_600,
+  juror: 9_598,
+  default: 7_600,
 };
 
 /**
- * What an attempt gets once it leaves the role's own endpoint.
+ * The slowest sustained generation observed, p5 over 3,880 calls.
  *
- * This is a token budget wearing a clock's clothes, and reading it as a clock
- * is what made it wrong twice. The marking is allowed 18,000 output tokens.
- * The fallback endpoint generates at a rate that barely varies -- 3117 tokens
- * in 117s, 3231 in 122s, 4046 in 159s, 2767 in 103s, so 26 per second give or
- * take half of one -- which means a 180-second ceiling does not buy three
- * minutes of patience. It buys about 4,700 tokens, a quarter of what the
- * marking may produce, and every attempt that needed more died at exactly 180.
- *
- * That is why the long questions failed and the short ones did not, at every
- * concurrency tried: a question with seven marks needs seven criterion results
- * with evidence, and the report simply does not fit. The records lost averaged
- * 4.79 marks against 3.72 for the records kept.
- *
- * Six minutes buys roughly 9,400 tokens, which covers every marking observed
- * with room to spare. It is still a ceiling rather than a licence: the whole
- * marking's deadline is checked against it on every attempt, so a slow
- * fallback cannot outlive the request that is waiting for it.
+ * Deliberately the slow tail rather than the median. A timeout sized on the
+ * median is wrong half the time by construction, and being wrong here does not
+ * mean waiting longer -- it means discarding a finished piece of work.
  */
-const FALLBACK_TIMEOUT_MS = 360_000;
+const FLOOR_TOKENS_PER_SECOND = 23.3;
+
+/** Room for a report longer than any yet seen, without licensing a stuck call. */
+const TIMEOUT_SAFETY = 1.25;
+
+export function markerTimeoutMs(modelRole: string) {
+  const tokens = ROLE_OUTPUT_CEILING[modelRole] ?? ROLE_OUTPUT_CEILING.default;
+  return Math.ceil((tokens / FLOOR_TOKENS_PER_SECOND) * TIMEOUT_SAFETY) * 1_000;
+}
+
+/**
+ * The same number for a fallback endpoint, because the floor rate already is
+ * the fallback on a bad day. Two constants existed to say that the second
+ * endpoint is slower; measuring the slow one directly says it better, and the
+ * whole marking's deadline still bounds every attempt.
+ */
+const fallbackTimeoutMs = markerTimeoutMs;
 
 /**
  * The criteria each question offers, keyed by question, taken from the scheme
@@ -374,9 +387,9 @@ async function callMarker(input: PracticePaperMarkingInput & {
     ...(providerOverride?.length ? { providerOverride } : {}),
     taskClass: input.role === "verifier" ? "standard" : "important",
     timeoutMs: providerOverride?.length
-      ? FALLBACK_TIMEOUT_MS
-      : MARKER_TIMEOUT_MS[input.modelRole] ?? MARKER_TIMEOUT_MS.default,
-    fallbackTimeoutMs: FALLBACK_TIMEOUT_MS,
+      ? fallbackTimeoutMs(input.modelRole)
+      : markerTimeoutMs(input.modelRole),
+    fallbackTimeoutMs: fallbackTimeoutMs(input.modelRole),
     deadlineAt: input.deadlineAt,
     signal: input.signal,
     generationConfig: {
@@ -419,7 +432,24 @@ async function callMarker(input: PracticePaperMarkingInput & {
    * endpoint-sticky behaviour this exists for.
    */
   const isEmpty = (kind: string | undefined) => kind === "empty_object" || kind === "empty";
-  const attemptsFor = (kind: string | undefined) => (isEmpty(kind) ? 3 : 2);
+  /**
+   * A truncated report is the one failure a retry cannot help.
+   *
+   * The others come back whole and wrong, and asking again can produce
+   * something different. Truncation means the report did not fit in the budget,
+   * and the same call with the same budget will not fit either -- so the retry
+   * was a guaranteed second failure that cost real money before recording the
+   * refusal it was always going to record.
+   *
+   * It should also now be rare. It was mostly the clock rather than the token
+   * cap, and the clock is derived from what the role writes rather than picked.
+   * What remains is a genuinely enormous report: the longest supervisor call
+   * observed ran to 16,491 tokens, and at the floor rate a report that size
+   * outruns even the derived timeout. If that starts appearing, the answer is a
+   * terser evidence instruction rather than more patience.
+   */
+  const attemptsFor = (kind: string | undefined) =>
+    isEmpty(kind) ? 3 : kind === "truncated" ? 1 : 2;
 
   let generated = await call();
   let result = parsePracticePaperMarkingModelAnswer(generated, input.paper);

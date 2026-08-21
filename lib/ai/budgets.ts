@@ -105,12 +105,15 @@ export const AI_BUDGETS: Record<AiBudgetAction, AiBudgetConfig> = {
     tokenCap: 24_000,
     inputTokenCap: 250_000,
   },
+  // Raised from 18,000 once the distribution was known: the longest supervisor
+  // report logged ran to 16,491 tokens, which left 8% of headroom under the old
+  // cap, and a report that hits the cap is discarded rather than shortened.
   practicePaperMarking: {
     dailyRequestLimit: 8,
     burstRequestLimit: 2,
     burstWindowMs: 60_000,
     burstScope: "sourceDrafts",
-    tokenCap: 18_000,
+    tokenCap: 24_000,
     inputTokenCap: 250_000,
   },
   // The source text is sliced to a fixed length before it is sent.

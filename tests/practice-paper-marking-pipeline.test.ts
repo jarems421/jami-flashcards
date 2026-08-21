@@ -5,7 +5,7 @@ const generateAiText = vi.hoisted(() => vi.fn());
 vi.mock("server-only", () => ({}));
 vi.mock("@/lib/ai/provider-router", () => ({ generateAiText }));
 
-const { buildMarkerRequest, markPracticePaperWithAudit } = await import(
+const { buildMarkerRequest, markPracticePaperWithAudit, markerTimeoutMs } = await import(
   "@/services/ai/practice-paper-marking.server"
 );
 
@@ -457,5 +457,65 @@ describe("reporting what each marker decided", () => {
       onMarkerReport: (r) => reports.push({ criteria: r.questions[0].criteria }),
     });
     expect(reports[0].criteria).toEqual([]);
+  });
+});
+
+/**
+ * A marking timeout is a token budget wearing a clock's clothes, and reading it
+ * as a clock was wrong three times. A report either fits in the time or is cut
+ * off mid-JSON and thrown away, so the number has to come from what the role
+ * writes divided by how fast the slowest endpoint writes it.
+ *
+ * These assertions exist so the derivation cannot quietly stop matching the
+ * measurements that justify it -- which is exactly how its predecessor went
+ * stale, having asked in its own comment to be replaced once a real sample
+ * existed.
+ */
+describe("how long a marker gets", () => {
+  /** Output p99 per role, over every logged marking call. */
+  const OBSERVED_P99 = { worker: 1_636, supervisor: 7_600, juror: 9_598 };
+  /** Generation rate p5, over 3,880 calls: DeepInfra having a bad day. */
+  const FLOOR_RATE = 23.3;
+
+  it("gives each role time to write what that role actually writes", () => {
+    for (const [role, tokens] of Object.entries(OBSERVED_P99)) {
+      const seconds = markerTimeoutMs(role) / 1_000;
+      expect(seconds, `${role} must cover its p99 report`).toBeGreaterThanOrEqual(
+        tokens / FLOOR_RATE
+      );
+    }
+  });
+
+  /**
+   * The fault this replaced. The supervisor marks the paper and then adjudicates
+   * disputes, and had 60 seconds against a p99 needing 327 -- so its longest
+   * reports could not finish on the fast endpoint at all, and were redone
+   * somewhere slower.
+   */
+  it("gives the supervisor and juror far more than the minute they had", () => {
+    expect(markerTimeoutMs("supervisor")).toBeGreaterThan(300_000);
+    expect(markerTimeoutMs("juror")).toBeGreaterThan(400_000);
+  });
+
+  /** The worker writes least, so a shorter ceiling is right rather than mean. */
+  it("scales with the role rather than giving everyone the same", () => {
+    expect(markerTimeoutMs("worker")).toBeLessThan(markerTimeoutMs("supervisor"));
+    expect(markerTimeoutMs("supervisor")).toBeLessThan(markerTimeoutMs("juror"));
+  });
+
+  it("falls back to the widest role for a name it does not know", () => {
+    expect(markerTimeoutMs("unknown-role")).toBe(markerTimeoutMs("supervisor"));
+  });
+
+  /**
+   * Being wrong here does not mean waiting longer, it means discarding a
+   * finished piece of work, so the ceiling must never be sized on the median
+   * rate -- which would be wrong half the time by construction.
+   */
+  it("is sized on the slow tail, not the typical case", () => {
+    const MEDIAN_RATE = 59.9;
+    expect(markerTimeoutMs("juror") / 1_000).toBeGreaterThan(
+      OBSERVED_P99.juror / MEDIAN_RATE
+    );
   });
 });
