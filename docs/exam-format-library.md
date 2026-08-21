@@ -41,6 +41,10 @@ allowlist. Access fails closed when it is empty. Benchmark cost projection also
 requires the measured `PAPER_BENCHMARK_CASE_COST_ESTIMATE_USD`; the application
 does not manufacture a default estimate.
 
+Authenticated reviewers may build or refresh private profiles before the
+student-facing library flag is enabled. Cron refresh and ordinary paper
+generation continue to honour `EXAM_FORMAT_LIBRARY_ENABLED`.
+
 ## Benchmark approval
 
 The owner workspace is `/dashboard/internal/paper-quality`. It freezes twelve

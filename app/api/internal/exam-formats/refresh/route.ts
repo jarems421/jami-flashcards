@@ -43,7 +43,7 @@ export async function POST(request: NextRequest) {
   if (typeof body.profileId === "string") {
     const definition = PAPER_GENERATION_BENCHMARK_DEFINITIONS.find((item) => item.profileId === body.profileId);
     if (!definition) return Response.json({ error: "unknown_profile" }, { status: 404 });
-    const profile = await researchExamFormatProfile(definition, { force: true });
+    const profile = await researchExamFormatProfile(definition, { force: true, allowDisabled: true });
     return Response.json({ profile });
   }
   if (
@@ -53,6 +53,7 @@ export async function POST(request: NextRequest) {
     return Response.json(await refreshExamFormatCatalogueSlice({
       board: body.board,
       qualification: body.qualification,
+      allowDisabled: true,
     }));
   }
   return Response.json({ error: "profile_or_slice_required" }, { status: 400 });
