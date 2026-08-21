@@ -203,4 +203,21 @@ describe("Storage security rules", () => {
     await assertFails(getBytes(ref(bobStorage, evidencePath)));
     await assertFails(deleteObject(ref(aliceStorage, evidencePath)));
   });
+
+  it("keeps exam-format imports and benchmark artifacts server-only", async () => {
+    const importPath = "internal/examFormatImports/import-1/specification.pdf";
+    const benchmarkPath = "internal/paperGenerationBenchmarks/run-1/case-1.json";
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await uploadBytes(ref(context.storage(), importPath), blob("application/pdf"));
+      await uploadBytes(ref(context.storage(), benchmarkPath), blob("application/json"));
+    });
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const guestStorage = testEnv.unauthenticatedContext().storage();
+    for (const path of [importPath, benchmarkPath]) {
+      await assertFails(getBytes(ref(aliceStorage, path)));
+      await assertFails(getBytes(ref(guestStorage, path)));
+      await assertFails(uploadBytes(ref(aliceStorage, path), blob("application/json")));
+      await assertFails(deleteObject(ref(aliceStorage, path)));
+    }
+  });
 });

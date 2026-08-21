@@ -43,6 +43,9 @@ allowance.
 | Grounded web/URL research | Set `AI_WEB_RESEARCH_ENABLED=false` |
 | Tutor illustrations | Set `AI_TUTOR_IMAGES_ENABLED=false` |
 | Paper raster illustrations | Set `AI_PAPER_IMAGES_ENABLED=false` |
+| Exam-format library | Set `EXAM_FORMAT_LIBRARY_ENABLED=false` |
+| Low-confidence format confirmation | Set `PAPER_FORMAT_CONFIRMATION_ENABLED=false` |
+| Owner paper-generation benchmark | Set `PAPER_GENERATION_BENCHMARK_ENABLED=false` |
 
 After changing a kill switch, redeploy or refresh the runtime environment,
 verify that the affected endpoint fails safely, and record the incident. A

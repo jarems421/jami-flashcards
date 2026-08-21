@@ -20,9 +20,19 @@ import {
   type PracticePaperQuestionAsset,
   type PracticePaperResearchReceipt,
 } from "@/lib/practice/practice-papers";
+import {
+  normalizePracticePaperBrief,
+  practicePaperFormatIssues,
+  type ExamFormatProfileVersion,
+  type PracticePaperBrief,
+} from "@/lib/practice/exam-formats";
 import { getPracticePaperJobProgress } from "@/lib/practice/practice-paper-jobs";
 import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
 import { runPracticePaperGenerationForWorkflow } from "@/services/ai/practice-paper-generation.server";
+import {
+  findOriginalPracticePaperConflicts,
+  resolvePracticePaperFormat,
+} from "@/services/ai/exam-format-library.server";
 import { practicePaperSecretRef } from "@/services/ai/practice-paper-secrets.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
 
@@ -32,12 +42,19 @@ type PrivateJob = {
   budgetGrant: AiBudgetGrant;
 };
 
-type WorkflowGenerationStatus = "cancelled" | "needs_clarification" | "ready";
+type WorkflowGenerationStatus = "cancelled" | "needs_confirmation" | "needs_clarification" | "ready";
 
 type PrivateJobArtifact = {
   research?: {
     brief: string;
     receipt: PracticePaperResearchReceipt | null;
+    completedAt: number;
+  };
+  format?: {
+    resolved: true;
+    profile?: ExamFormatProfileVersion;
+    brief?: PracticePaperBrief;
+    promptContext?: string;
     completedAt: number;
   };
   generation?: {
@@ -52,6 +69,10 @@ type PrivateJobArtifact = {
 };
 
 const TERMINAL_JOB_RETENTION_MS = 30 * 24 * 60 * 60_000;
+
+function formatConfirmationEnabled() {
+  return process.env.PAPER_FORMAT_CONFIRMATION_ENABLED === "true";
+}
 
 function firestoreSafe<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -149,9 +170,6 @@ async function buildResearchContext(uid: string, request: PracticePaperGeneratio
     .filter((snapshot) => snapshot.exists)
     .map((snapshot) => mapSourceData(snapshot.id, snapshot.data() ?? {}))
     .filter((source) => source.status === "active");
-  if (!practicePaperNeedsWebResearch(sources)) {
-    return { brief: "", receipt: null };
-  }
   const folderData = folder.data() ?? {};
   // Folder names are user-authored and may contain names or private prose.
   // Only the dedicated, sanitised subject field may enter a public query.
@@ -161,6 +179,9 @@ async function buildResearchContext(uid: string, request: PracticePaperGeneratio
     : typeof user.data()?.defaultStudyLevel === "string"
       ? user.data()?.defaultStudyLevel as string
       : "";
+  if (!practicePaperNeedsWebResearch(sources)) {
+    return { brief: "", receipt: null, subject, studyLevel };
+  }
   const sanitizedQuery = buildPracticePaperResearchQuery({
     subject,
     studyLevel,
@@ -172,7 +193,7 @@ async function buildResearchContext(uid: string, request: PracticePaperGeneratio
       source.type === "link" && source.externalUrl ? [source.externalUrl] : []
     ),
   });
-  if (!result.ok) return { brief: "", receipt: null };
+  if (!result.ok) return { brief: "", receipt: null, subject, studyLevel };
   const citations = result.citations.map((citation) => ({
     title: citation.title,
     url: citation.url,
@@ -188,7 +209,47 @@ async function buildResearchContext(uid: string, request: PracticePaperGeneratio
     confidence: officialCount >= 2 ? "high" : officialCount === 1 ? "medium" : "low",
     citations,
   };
-  return { brief: result.brief, receipt };
+  return { brief: result.brief, receipt, subject, studyLevel };
+}
+
+function inferredBrief(response: Extract<PracticePaperGenerationResponse, { status: "ready" }>): PracticePaperBrief {
+  const profile = response.assessmentProfile;
+  return {
+    board: profile.awardingBodyOrInstitution || "Not confirmed",
+    qualification: profile.qualificationOrModule || profile.studyLevel,
+    subject: profile.specificationOrCourse || profile.qualificationOrModule,
+    specification: profile.specificationOrCourse || "Not confirmed",
+    component: profile.tierOrComponent || "Complete written paper",
+    durationMinutes: response.durationMinutes,
+    totalMarks: response.totalMarks,
+    materials: response.companionDocuments?.map((document) => document.title) ?? [],
+    verificationStatus: "limited",
+    confidence: profile.confidence,
+    requiresConfirmation: profile.confidence === "low",
+    customFallbackAvailable: true,
+  };
+}
+
+async function verifiedFormatReleaseIssues(
+  payload: Extract<PracticePaperGenerationResponse, { status: "ready" }>,
+  profile: ExamFormatProfileVersion
+) {
+  const issues = practicePaperFormatIssues(payload, profile);
+  const requiredCompanions = profile.requiredMaterials.filter((material) =>
+    material.supplied && material.kind !== "permitted_text"
+  );
+  const companionRoles = new Set<string>(payload.companionDocuments?.map((document) => document.role) ?? []);
+  if (requiredCompanions.some((material) => !companionRoles.has(material.kind))) {
+    issues.push("A required candidate insert was not generated.");
+  }
+  const originalityConflicts = await findOriginalPracticePaperConflicts(
+    profile.profileId,
+    payload.questions
+  );
+  if (originalityConflicts.length > 0) {
+    issues.push("Distinctive wording overlapped a reference paper.");
+  }
+  return issues;
 }
 
 function rasterBriefs(generated: GeneratedPracticePaper) {
@@ -258,11 +319,12 @@ function replaceAsset(
   };
 }
 
-async function createPaperRasterAssets(input: {
+export async function createPaperRasterAssets(input: {
   uid: string;
   paperId: string;
   generated: GeneratedPracticePaper;
   persist: (generated: GeneratedPracticePaper) => Promise<void>;
+  storagePrefix?: string;
 }) {
   let current = input.generated;
   const briefs = rasterBriefs(current);
@@ -333,7 +395,9 @@ async function createPaperRasterAssets(input: {
     const extension = generatedImage.mimeType.includes("jpeg") ? "jpg" : "png";
     const safeAssetId = asset.id.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 100);
     const safeQuestionId = question.id.replace(/[^A-Za-z0-9_-]/g, "-").slice(0, 100);
-    const storagePath = `users/${input.uid}/generatedPaperAssets/${input.paperId}/${safeQuestionId}-${safeAssetId}.${extension}`;
+    const storageRoot = input.storagePrefix?.replace(/^\/+|\/+$/g, "")
+      || `users/${input.uid}/generatedPaperAssets/${input.paperId}`;
+    const storagePath = `${storageRoot}/${safeQuestionId}-${safeAssetId}.${extension}`;
     const bytes = Buffer.from(generatedImage.data, "base64");
     if (bytes.length === 0 || bytes.length > 12 * 1024 * 1024) {
       throw new Error(`Required visual ${asset.id} returned invalid image data.`);
@@ -374,7 +438,15 @@ export async function prepareQueuedPracticePaperResearch(
 ): Promise<WorkflowGenerationStatus> {
   const state = await loadPrivateState(uid, jobId);
   if (state.status === "cancelled") return "cancelled";
-  if (state.artifact.research) return "ready";
+  if (state.artifact.research && state.artifact.format) {
+    if (
+      formatConfirmationEnabled() &&
+      state.artifact.format.brief?.requiresConfirmation &&
+      state.jobData.formatConfirmed !== true &&
+      state.jobData.customFormatAllowed !== true
+    ) return "needs_confirmation";
+    return "ready";
+  }
   await state.jobRef.update({
     status: "running",
     stage: "researching",
@@ -382,15 +454,46 @@ export async function prepareQueuedPracticePaperResearch(
     updatedAt: Date.now(),
   });
   const research = await buildResearchContext(uid, state.job.request);
+  const format = await resolvePracticePaperFormat({
+    request: state.job.request.request,
+    coverage: state.job.request.coverage,
+    subject: research.subject,
+    studyLevel: research.studyLevel,
+  });
   const latestJob = await state.jobRef.get();
   if (!latestJob.exists || latestJob.data()?.cancellationRequested === true) {
     return "cancelled";
   }
   const now = Date.now();
   await state.artifactRef.set({
-    research: firestoreSafe({ ...research, completedAt: now }),
+    research: firestoreSafe({ brief: research.brief, receipt: research.receipt, completedAt: now }),
+    format: firestoreSafe({
+      resolved: true,
+      profile: format?.profile,
+      brief: format?.brief,
+      promptContext: format?.promptContext,
+      completedAt: now,
+    }),
     updatedAt: now,
   }, { merge: true });
+  if (format?.brief) {
+    await state.jobRef.update({ paperBrief: firestoreSafe(format.brief), updatedAt: now });
+  }
+  if (
+    formatConfirmationEnabled() &&
+    format?.brief.requiresConfirmation &&
+    state.jobData.formatConfirmed !== true &&
+    state.jobData.customFormatAllowed !== true
+  ) {
+    await state.jobRef.update({
+      status: "needs_confirmation",
+      paperBrief: firestoreSafe(format.brief),
+      expiresAt: Timestamp.fromMillis(now + TERMINAL_JOB_RETENTION_MS),
+      completedAt: now,
+      updatedAt: now,
+    });
+    return "needs_confirmation";
+  }
   return "ready";
 }
 
@@ -401,9 +504,12 @@ export async function generateQueuedPracticePaperDraft(
   const state = await loadPrivateState(uid, jobId);
   if (state.status === "cancelled") return "cancelled";
   if (state.artifact.generation) {
-    return state.artifact.generation.response.status === "needs_clarification"
-      ? "needs_clarification"
-      : "ready";
+    if (state.artifact.generation.response.status === "needs_clarification") return "needs_clarification";
+    const brief = normalizePracticePaperBrief(state.jobData.paperBrief);
+    if (formatConfirmationEnabled() && brief?.requiresConfirmation && state.jobData.formatConfirmed !== true && state.jobData.customFormatAllowed !== true) {
+      return "needs_confirmation";
+    }
+    return "ready";
   }
   await state.jobRef.update({ providerStartedAt: Date.now(), updatedAt: Date.now() });
   const response = await runPracticePaperGenerationForWorkflow({
@@ -411,13 +517,69 @@ export async function generateQueuedPracticePaperDraft(
     jobId,
     request: state.job.request,
     researchBrief: state.artifact.research?.brief ?? "",
+    formatContext: state.jobData.customFormatAllowed === true
+      ? undefined
+      : state.artifact.format?.promptContext,
   });
-  const payload = (await response.json().catch(() => null)) as
+  const rawPayload = (await response.json().catch(() => null)) as
     | (PracticePaperGenerationResponse & { error?: string; code?: string })
     | null;
-  if (!response.ok || !payload) {
-    if (payload?.code === "cancelled") return "cancelled";
-    throw new Error(payload?.error || "Jami could not finish that paper just now.");
+  if (!response.ok || !rawPayload) {
+    if (rawPayload?.code === "cancelled") return "cancelled";
+    throw new Error(rawPayload?.error || "Jami could not finish that paper just now.");
+  }
+  let payload = rawPayload;
+  if (payload.status === "ready") {
+    const profile = state.artifact.format?.profile;
+    if (profile && state.jobData.customFormatAllowed !== true) {
+      let releaseIssues = await verifiedFormatReleaseIssues(payload, profile);
+      if (releaseIssues.length > 0) {
+        const repairedResponse = await runPracticePaperGenerationForWorkflow({
+          uid,
+          jobId,
+          request: state.job.request,
+          researchBrief: state.artifact.research?.brief ?? "",
+          formatContext: [
+            state.artifact.format?.promptContext,
+            "The previous draft was rejected during final structural/originality validation.",
+            `Repair findings: ${releaseIssues.join(" ")}`,
+            "Generate a materially new complete paper, preserving the verified format exactly and avoiding distinctive reference wording.",
+          ].filter(Boolean).join("\n"),
+        });
+        const repairedPayload = (await repairedResponse.json().catch(() => null)) as
+          | (PracticePaperGenerationResponse & { error?: string; code?: string })
+          | null;
+        if (!repairedResponse.ok || !repairedPayload || repairedPayload.status !== "ready") {
+          throw new Error(repairedPayload?.error || "Jami could not repair the paper safely.");
+        }
+        payload = repairedPayload;
+        releaseIssues = await verifiedFormatReleaseIssues(payload, profile);
+        if (releaseIssues.length > 0) {
+          throw new Error(`The paper did not pass final format checks: ${releaseIssues.join(" ")}`);
+        }
+      }
+      payload = {
+        ...payload,
+        assessmentProfile: {
+          ...payload.assessmentProfile,
+          profileId: profile.profileId,
+          profileVersion: profile.version,
+          verificationStatus: profile.verificationStatus,
+          effectiveFrom: profile.effectiveFrom,
+          effectiveUntil: profile.effectiveUntil,
+        },
+      };
+    } else if (state.jobData.customFormatAllowed === true) {
+      payload = {
+        ...payload,
+        assessmentProfile: { ...payload.assessmentProfile, verificationStatus: "custom" },
+      };
+    } else {
+      payload = {
+        ...payload,
+        assessmentProfile: { ...payload.assessmentProfile, verificationStatus: "limited" },
+      };
+    }
   }
   const latestJob = await state.jobRef.get();
   if (!latestJob.exists || latestJob.data()?.cancellationRequested === true) {
@@ -440,6 +602,20 @@ export async function generateQueuedPracticePaperDraft(
       updatedAt: now,
     });
     return "needs_clarification";
+  }
+  const brief = state.artifact.format?.brief ?? inferredBrief(payload);
+  const waitingForConfirmation = formatConfirmationEnabled() && brief.requiresConfirmation &&
+    state.jobData.formatConfirmed !== true &&
+    state.jobData.customFormatAllowed !== true;
+  await state.jobRef.update({ paperBrief: firestoreSafe(brief), updatedAt: now });
+  if (waitingForConfirmation) {
+    await state.jobRef.update({
+      status: "needs_confirmation",
+      expiresAt: Timestamp.fromMillis(now + TERMINAL_JOB_RETENTION_MS),
+      completedAt: now,
+      updatedAt: now,
+    });
+    return "needs_confirmation";
   }
   return "ready";
 }
@@ -595,6 +771,7 @@ export async function finalizeQueuedPracticePaper(
     tutorUsed: false,
     timerEnabled: state.job.request.timingMode === "timed",
     instructions: generated.instructions,
+    companionDocuments: generated.companionDocuments ?? [],
     assessmentProfile: generated.assessmentProfile,
     questions: generated.questions,
     choiceGroups: generated.choiceGroups,

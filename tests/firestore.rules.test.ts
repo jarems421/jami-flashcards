@@ -883,6 +883,31 @@ describe("Firestore security rules", () => {
     }
   });
 
+  it("keeps exam-format and paper-quality namespaces server-only", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await Promise.all([
+        setDoc(doc(adminDb, "examFormatProfiles", "aqa-gcse-maths"), { activeVersion: "v1" }),
+        setDoc(doc(adminDb, "examFormatImports", "import-1"), { status: "processed" }),
+        setDoc(doc(adminDb, "examFormatReferenceFingerprints", "aqa-gcse-maths"), { windowHashes: ["deadbeef"] }),
+        setDoc(doc(adminDb, "paperGenerationBenchmarkRuns", "run-1"), { status: "running" }),
+        setDoc(doc(adminDb, "paperGenerationBenchmarkBaselines", "baseline-1"), { schemaVersion: 2 }),
+      ]);
+    });
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    for (const [collectionName, id] of [
+      ["examFormatProfiles", "aqa-gcse-maths"],
+      ["examFormatImports", "import-1"],
+      ["examFormatReferenceFingerprints", "aqa-gcse-maths"],
+      ["paperGenerationBenchmarkRuns", "run-1"],
+      ["paperGenerationBenchmarkBaselines", "baseline-1"],
+    ]) {
+      const reference = doc(aliceDb, collectionName, id);
+      await assertFails(getDoc(reference));
+      await assertFails(setDoc(reference, { exposed: true }, { merge: true }));
+    }
+  });
+
   it("keeps answer-bearing practice-paper rubrics inaccessible before submission", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();

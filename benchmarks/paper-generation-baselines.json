@@ -1,9 +1,18 @@
 {
-  "schemaVersion": 1,
-  "version": "2026-08-21.v1",
-  "branches": {
-    "gcse": { "approved": false, "status": "unmeasured" },
-    "alevel": { "approved": false, "status": "unmeasured" },
-    "university": { "approved": false, "status": "unmeasured" }
+  "schemaVersion": 2,
+  "version": "2026-08-21.uk-written.v2",
+  "components": {
+    "aqa-gcse-mathematics-higher-paper-1": { "approved": false, "status": "unmeasured", "profileId": "aqa-gcse-mathematics-8300-1h" },
+    "aqa-a-level-psychology-paper-1": { "approved": false, "status": "unmeasured", "profileId": "aqa-a-level-psychology-7182-1" },
+    "pearson-gcse-english-language-2-paper-1": { "approved": false, "status": "unmeasured", "profileId": "pearson-gcse-english-language-1en2-01" },
+    "pearson-a-level-mathematics-pure-1": { "approved": false, "status": "unmeasured", "profileId": "pearson-a-level-mathematics-9ma0-01" },
+    "ocr-gcse-computer-science-component-02": { "approved": false, "status": "unmeasured", "profileId": "ocr-gcse-computer-science-j277-02" },
+    "ocr-a-level-biology-unified-biology": { "approved": false, "status": "unmeasured", "profileId": "ocr-a-level-biology-h420-03" },
+    "eduqas-gcse-geography-b-component-1": { "approved": false, "status": "unmeasured", "profileId": "eduqas-gcse-geography-b-c112u10" },
+    "eduqas-a-level-english-literature-component-1": { "approved": false, "status": "unmeasured", "profileId": "eduqas-a-level-english-literature-a720u10" },
+    "wjec-gcse-history-2026-unit-1": { "approved": false, "status": "unmeasured", "profileId": "wjec-gcse-history-2026-unit-1" },
+    "wjec-a-level-chemistry-first-a2-written-unit": { "approved": false, "status": "unmeasured", "profileId": "wjec-a-level-chemistry-a2-first-written" },
+    "ccea-gcse-english-language-unit-1": { "approved": false, "status": "unmeasured", "profileId": "ccea-gcse-english-language-5030-unit-1" },
+    "ccea-gce-history-a2-unit-1": { "approved": false, "status": "unmeasured", "profileId": "ccea-a-level-history-a2-unit-1" }
   }
 }

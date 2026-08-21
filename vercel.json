@@ -8,6 +8,10 @@
     {
       "path": "/api/notifications/digest-winter",
       "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/api/internal/exam-formats/refresh",
+      "schedule": "0 3 * * *"
     }
   ]
 }

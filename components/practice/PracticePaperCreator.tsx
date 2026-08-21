@@ -19,6 +19,7 @@ import {
   Textarea,
 } from "@/components/ui";
 import PracticePaperSourcePicker from "@/components/practice/PracticePaperSourcePicker";
+import PracticePaperFormatConfirmation from "@/components/practice/PracticePaperFormatConfirmation";
 import PracticeStep from "@/components/practice/PracticeStep";
 import { useFeedback } from "@/hooks/useFeedback";
 import type { Source } from "@/lib/material/sources";
@@ -35,6 +36,7 @@ import type { StudyFolder } from "@/lib/workspace/study-folders";
 import {
   cancelPracticePaperJob,
   clarifyPracticePaperJob,
+  confirmPracticePaperFormat,
   createPracticePaperJob,
   getPracticePaperJob,
 } from "@/services/ai/practice-papers";
@@ -234,6 +236,11 @@ export default function PracticePaperCreator() {
           setClarificationAnswer("");
           return;
         }
+        if (job.status === "needs_confirmation") {
+          setWorking(false);
+          setClarificationQuestion("");
+          return;
+        }
         if (job.status === "failed" || job.status === "cancelled") {
           setWorking(false);
           if (job.status === "failed") {
@@ -276,6 +283,10 @@ export default function PracticePaperCreator() {
     );
 
   const createGenerated = async () => {
+    if (activeJob?.status === "needs_confirmation") {
+      showError("Confirm or correct the paper format before continuing.");
+      return;
+    }
     if (activeJob?.status === "needs_clarification") {
       if (!clarificationAnswer.trim()) {
         showError("Answer Jami's question before continuing.");
@@ -366,6 +377,22 @@ export default function PracticePaperCreator() {
       setWorking(false);
     } catch (error) {
       showThrownError(error, "Could not cancel this paper.");
+    }
+  };
+
+  const decidePaperFormat = async (
+    action: "confirm" | "correct" | "use_custom",
+    correction?: string
+  ) => {
+    if (!activeJob || activeJob.status !== "needs_confirmation") return;
+    setWorking(true);
+    clear();
+    try {
+      const resumed = await confirmPracticePaperFormat(activeJob.id, action, correction);
+      setActiveJob(resumed);
+    } catch (error) {
+      showThrownError(error, "Could not resume this practice paper.");
+      setWorking(false);
     }
   };
 
@@ -555,6 +582,17 @@ export default function PracticePaperCreator() {
               onChange={(event) => setRequest(event.target.value)}
             />
 
+            {activeJob?.status === "needs_confirmation" && activeJob.paperBrief ? (
+              <PracticePaperFormatConfirmation
+                brief={activeJob.paperBrief}
+                disabled={working}
+                onConfirm={() => void decidePaperFormat("confirm")}
+                onUseCustom={() => void decidePaperFormat("use_custom")}
+                onCorrect={(value) => void decidePaperFormat("correct", value)}
+                onCancel={() => void cancelGeneratedJob()}
+              />
+            ) : null}
+
             {clarificationQuestion ? (
               <div className="rounded-2xl border border-accent/30 bg-accent/8 p-4">
                 <p className="text-xs font-semibold uppercase tracking-[0.15em] text-accent">
@@ -706,7 +744,7 @@ export default function PracticePaperCreator() {
           </div>
         </PracticeStep>
 
-        {activeJob && canCancelPracticePaperJob(activeJob.status) ? (
+        {activeJob && canCancelPracticePaperJob(activeJob.status) && activeJob.status !== "needs_confirmation" ? (
           <div className="rounded-2xl border border-accent/25 bg-accent/8 p-4" role="status">
             <div className="flex items-start justify-between gap-4">
               <div>
@@ -747,7 +785,7 @@ export default function PracticePaperCreator() {
             type="button"
             size="lg"
             className="sm:min-w-[14rem] sm:justify-center"
-            disabled={working}
+            disabled={working || activeJob?.status === "needs_confirmation"}
             onClick={() =>
               void (path === "generate" ? createGenerated() : createUploaded())
             }
@@ -758,6 +796,8 @@ export default function PracticePaperCreator() {
                 : "Creating paper..."
               : clarificationQuestion
                 ? "Answer and continue"
+                : activeJob?.status === "needs_confirmation"
+                  ? "Confirm the paper format above"
                 : path === "generate"
                   ? "Generate practice paper"
                   : "Create uploaded paper"}

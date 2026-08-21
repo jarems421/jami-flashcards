@@ -1,5 +1,6 @@
 import type { Source } from "@/lib/material/sources";
 import { repairModelJsonBackslashes } from "@/lib/ai/model-json";
+import { normalizePracticePaperCompanionDocuments } from "@/lib/practice/exam-formats";
 import {
   getPracticePaperQuestionLimit,
   calculatePracticePaperTotalMarks,
@@ -41,6 +42,7 @@ export type ParsedPracticePaperModelAnswer =
       assessmentProfile: ReturnType<typeof normalizePracticePaperAssessmentProfile>;
       title: string;
       instructions: string[];
+      companionDocuments?: ReturnType<typeof normalizePracticePaperCompanionDocuments>;
       durationMinutes: number;
       questions: ReturnType<typeof normalizePracticePaperQuestions>;
       choiceGroups: ReturnType<typeof normalizePracticePaperChoiceGroups>;
@@ -287,6 +289,7 @@ export function parsePracticePaperModelAnswer(
     ),
     title,
     instructions: normalizeTextList(payload.instructions, 20),
+    companionDocuments: normalizePracticePaperCompanionDocuments(payload.companionDocuments),
     durationMinutes:
       typeof payload.durationMinutes === "number" &&
       Number.isFinite(payload.durationMinutes)
@@ -325,6 +328,7 @@ export function buildPracticePaperGenerationResponse(input: {
     assessmentProfile: input.parsed.assessmentProfile,
     title: input.parsed.title,
     instructions: input.parsed.instructions,
+    companionDocuments: input.parsed.companionDocuments ?? [],
     durationMinutes: input.parsed.durationMinutes,
     questions: input.parsed.questions,
     choiceGroups: input.parsed.choiceGroups,

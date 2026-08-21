@@ -4,6 +4,7 @@ import {
   type PracticePaperJobStatus,
 } from "@/lib/practice/practice-papers";
 import { normalizeOptionalString } from "@/lib/material/content";
+import { normalizePracticePaperBrief } from "@/lib/practice/exam-formats";
 
 function integer(value: unknown, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value)
@@ -12,7 +13,7 @@ function integer(value: unknown, fallback = 0) {
 }
 
 export function mapPracticePaperJobData(id: string, data: Record<string, unknown>): PracticePaperJob {
-  const statuses = new Set<PracticePaperJobStatus>(["queued", "running", "needs_clarification", "ready", "failed", "cancelled"]);
+  const statuses = new Set<PracticePaperJobStatus>(["queued", "running", "needs_confirmation", "needs_clarification", "ready", "failed", "cancelled"]);
   const stages = new Set<PracticePaperJobStage>(["queued", "reading_sources", "researching", "designing", "building_mark_scheme", "auditing", "creating_figures", "final_checks", "ready"]);
   return {
     id,
@@ -22,6 +23,7 @@ export function mapPracticePaperJobData(id: string, data: Record<string, unknown
     stage: stages.has(data.stage as PracticePaperJobStage) ? data.stage as PracticePaperJobStage : "queued",
     progress: Math.min(100, integer(data.progress)),
     title: normalizeOptionalString(data.title, 160) ?? "Practice paper",
+    paperBrief: normalizePracticePaperBrief(data.paperBrief),
     clarificationQuestion: normalizeOptionalString(data.clarificationQuestion, 600),
     failureCode: normalizeOptionalString(data.failureCode, 120),
     failureMessage: normalizeOptionalString(data.failureMessage, 500),
@@ -71,6 +73,7 @@ export function isTerminalPracticePaperJobStatus(
 ) {
   return (
     status === "ready" ||
+    status === "needs_confirmation" ||
     status === "needs_clarification" ||
     status === "failed" ||
     status === "cancelled"
@@ -81,6 +84,7 @@ export function canCancelPracticePaperJob(status: PracticePaperJobStatus) {
   return (
     status === "queued" ||
     status === "running" ||
+    status === "needs_confirmation" ||
     status === "needs_clarification"
   );
 }

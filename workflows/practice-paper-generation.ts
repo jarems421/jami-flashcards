@@ -3,6 +3,7 @@ import type { AiBudgetGrant } from "@/lib/ai/budgets";
 
 type GenerationStepStatus =
   | "cancelled"
+  | "needs_confirmation"
   | "needs_clarification"
   | "ready";
 

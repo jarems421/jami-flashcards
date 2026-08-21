@@ -6,6 +6,12 @@ import {
   normalizeMarkSchemeItem,
   type PracticePaperMarkSchemeItem,
 } from "@/lib/practice/mark-schemes";
+import {
+  normalizePracticePaperCompanionDocuments,
+  type ExamFormatVerificationStatus,
+  type PracticePaperBrief,
+  type PracticePaperCompanionDocument,
+} from "@/lib/practice/exam-formats";
 import { normalizeManualCorrectionAudits, normalizePracticePaperMarkRange, type PracticePaperManualCorrectionAudit, type PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
 export { mapPracticePaperMarkingJobData } from "@/lib/practice/practice-paper-marking-types";
 export { mapPracticePaperJobData } from "@/lib/practice/practice-paper-jobs";
@@ -73,6 +79,7 @@ export type PracticePaperQuestionAsset = {
 export type PracticePaperJobStatus =
   | "queued"
   | "running"
+  | "needs_confirmation"
   | "needs_clarification"
   | "ready"
   | "failed"
@@ -97,6 +104,7 @@ export type PracticePaperJob = {
   stage: PracticePaperJobStage;
   progress: number;
   title: string;
+  paperBrief?: PracticePaperBrief;
   clarificationQuestion?: string;
   failureCode?: string;
   failureMessage?: string;
@@ -118,6 +126,11 @@ export type PracticePaperAssessmentProfile = {
   tierOrComponent: string;
   formatSummary: string;
   confidence: PracticePaperConfidence;
+  profileId?: string;
+  profileVersion?: string;
+  verificationStatus?: ExamFormatVerificationStatus;
+  effectiveFrom?: string;
+  effectiveUntil?: string;
 };
 
 export type PracticePaperQuestion = {
@@ -352,6 +365,7 @@ export type PracticePaper = {
   tutorUsed: boolean;
   timerEnabled: boolean;
   instructions: string[];
+  companionDocuments?: PracticePaperCompanionDocument[];
   assessmentProfile: PracticePaperAssessmentProfile;
   questions: PracticePaperQuestion[];
   choiceGroups: PracticePaperChoiceGroup[];
@@ -383,6 +397,7 @@ export type GeneratedPracticePaper = {
   assessmentProfile: PracticePaperAssessmentProfile;
   title: string;
   instructions: string[];
+  companionDocuments?: PracticePaperCompanionDocument[];
   durationMinutes: number;
   questions: PracticePaperQuestion[];
   choiceGroups: PracticePaperChoiceGroup[];
@@ -404,6 +419,8 @@ export type PracticePaperGenerationResponse =
       sourceLabels: string[];
     }
   | ({ status: "ready" } & GeneratedPracticePaper);
+
+export type { PracticePaperBrief, PracticePaperCompanionDocument };
 
 function finiteInteger(value: unknown, fallback = 0) {
   return typeof value === "number" && Number.isFinite(value)
@@ -537,6 +554,17 @@ export function normalizePracticePaperAssessmentProfile(
     tierOrComponent: normalizeOptionalString(profile.tierOrComponent, 160) ?? "",
     formatSummary: normalizeOptionalString(profile.formatSummary, 1_200) ?? "",
     confidence: isConfidence(profile.confidence) ? profile.confidence : "low",
+    profileId: normalizeOptionalString(profile.profileId, 180),
+    profileVersion: normalizeOptionalString(profile.profileVersion, 120),
+    verificationStatus:
+      profile.verificationStatus === "verified" ||
+      profile.verificationStatus === "limited" ||
+      profile.verificationStatus === "conflicted" ||
+      profile.verificationStatus === "custom"
+        ? profile.verificationStatus
+        : undefined,
+    effectiveFrom: normalizeOptionalString(profile.effectiveFrom, 40),
+    effectiveUntil: normalizeOptionalString(profile.effectiveUntil, 40),
   };
 }
 
@@ -1116,6 +1144,7 @@ export function mapPracticePaperData(
       ? data.timingMode === "timed"
       : data.timerEnabled === true,
     instructions: normalizeTextList(data.instructions, 20),
+    companionDocuments: normalizePracticePaperCompanionDocuments(data.companionDocuments),
     assessmentProfile: normalizePracticePaperAssessmentProfile(data.assessmentProfile),
     questions,
     choiceGroups,
@@ -1164,6 +1193,7 @@ export function buildPracticePaperPayload(
       MAX_PRACTICE_PAPER_SOURCE_IDS,
       160
     ),
+    companionDocuments: normalizePracticePaperCompanionDocuments(input.companionDocuments),
     questions: normalizePracticePaperQuestions(input.questions),
     choiceGroups: normalizePracticePaperChoiceGroups(
       input.choiceGroups,

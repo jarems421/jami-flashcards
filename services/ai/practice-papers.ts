@@ -98,6 +98,18 @@ export async function clarifyPracticePaperJob(jobId: string, answer: string) {
   return mapPracticePaperJobData(jobId, data);
 }
 
+export async function confirmPracticePaperFormat(
+  jobId: string,
+  action: "confirm" | "correct" | "use_custom",
+  correction?: string
+) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-jobs/${encodeURIComponent(jobId)}/confirm-format`,
+    { method: "POST", body: JSON.stringify({ action, correction }) }
+  );
+  return mapPracticePaperJobData(jobId, data);
+}
+
 export async function acknowledgePracticePaperJob(jobId: string) {
   const data = await authenticatedPaperJobRequest(
     `/api/practice/paper-jobs/${encodeURIComponent(jobId)}`,

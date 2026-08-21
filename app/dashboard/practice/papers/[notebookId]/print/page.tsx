@@ -17,6 +17,13 @@ function buildTextExport(paper: PracticePaper, includeReport: boolean) {
     ...paper.instructions,
     "",
   ];
+  if (paper.companionDocuments?.length) {
+    lines.push("CANDIDATE MATERIALS", "");
+    paper.companionDocuments.forEach((document) => {
+      lines.push(document.title, document.instructions ?? "");
+      document.pages.forEach((page) => lines.push(page.title ?? "", page.content, ""));
+    });
+  }
   paper.questions.forEach((question) => {
     lines.push(`${question.label} [${question.marks} marks]`, question.prompt);
     question.assets.forEach((asset) =>
@@ -141,6 +148,19 @@ function PracticePaperPrintContent() {
           {paper.instructions.length > 0 ? <ul className="mt-4 list-disc space-y-1 pl-5 text-sm">{paper.instructions.map((instruction) => <li key={instruction}>{instruction}</li>)}</ul> : null}
           {paper.choiceGroups.map((group) => <p key={group.id} className="mt-2 text-sm font-semibold">{group.label}</p>)}
         </header>
+        {paper.companionDocuments?.map((document) => (
+          <section key={document.id} className="break-before-page space-y-4">
+            <h2 className="text-2xl font-semibold">{document.title}</h2>
+            {document.instructions ? <p className="text-sm leading-6">{document.instructions}</p> : null}
+            {document.pages.map((page) => (
+              <div key={page.id} className="break-inside-avoid rounded-lg border border-slate-300 p-4">
+                {page.title ? <h3 className="font-semibold">{page.title}</h3> : null}
+                <StudyText text={page.content} as="div" className="mt-2 whitespace-pre-wrap text-sm leading-6" />
+                {page.altText ? <p className="mt-2 text-xs text-slate-600">{page.altText}</p> : null}
+              </div>
+            ))}
+          </section>
+        ))}
         {paper.questions.map((question) => (
           <section key={question.id} className="break-inside-avoid border-b border-slate-200 pb-6">
             <div className="flex justify-between gap-4"><h2 className="text-base font-semibold">{question.label}</h2><span className="text-sm">[{question.marks}]</span></div>

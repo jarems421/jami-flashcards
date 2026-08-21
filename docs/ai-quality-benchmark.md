@@ -33,13 +33,14 @@ the release set.
    `npm run check:ai-benchmark -- <report.json>` in the release environment.
 
 Paper-generation baselines are tracked separately in
-`benchmarks/paper-generation-baselines.json`. GCSE, A-level, and university
-branches remain explicitly unmeasured until a qualified reviewer approves a
-paired baseline. Run `npm run check:paper-benchmark -- <report.json>` for each
-release. Approved branches block regressions; unmeasured branches are reported
-without pretending they have evidence. Every case must complete and every
-paper must receive human answerability and authenticity review before a branch
-can become measured.
+`benchmarks/paper-generation-baselines.json` using schema version 2. Each entry
+is an exact component and immutable format-profile version, never a broad
+`gcse` or `alevel` constant. Run `npm run check:paper-benchmark -- <report.json>`
+for each release. Approved components compare nine paired human-review score
+distributions and block hard failures, incomplete runs and statistically
+supported deterioration. Unmeasured exact components are reported without
+pretending they have evidence. See `docs/exam-format-library.md` for the frozen
+108-paper approval workflow.
 
 Release is always blocked by any fabricated citation, invalid score, leaked
 mark scheme, missing required figure, critical factual error, private/student

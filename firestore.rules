@@ -93,6 +93,26 @@ service cloud.firestore {
       allow delete: if !isDemoAccount() && isOwnedByRequestAuth(resource.data);
     }
 
+    // Official format profiles, imports, held-out papers, model output, spend
+    // and human review evidence are available only through owner-authenticated
+    // server routes. Firebase clients cannot enumerate or mutate them.
+    match /examFormatProfiles/{profileId} {
+      allow read, write: if false;
+      match /versions/{versionId} { allow read, write: if false; }
+    }
+    match /examFormatCatalogue/{entryId} { allow read, write: if false; }
+    match /examFormatCatalogueControl/{controlId} { allow read, write: if false; }
+    match /examFormatImports/{importId} { allow read, write: if false; }
+    match /examFormatReferenceFingerprints/{profileId} { allow read, write: if false; }
+    match /paperGenerationBenchmarkRuns/{runId} {
+      allow read, write: if false;
+      match /cases/{caseId} {
+        allow read, write: if false;
+        match /reviewAudits/{reviewId} { allow read, write: if false; }
+      }
+    }
+    match /paperGenerationBenchmarkBaselines/{baselineId} { allow read, write: if false; }
+
     match /users/{userId} {
       allow read: if isSelf(userId);
       allow create, update, delete: if isSelf(userId) && !isDemoAccount();

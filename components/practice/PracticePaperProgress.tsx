@@ -72,6 +72,7 @@ export default function PracticePaperProgress({ userId }: { userId: string }) {
     job.status === "queued" ||
     job.status === "running" ||
     job.status === "ready" ||
+    job.status === "needs_confirmation" ||
     job.status === "needs_clarification" ||
     job.status === "failed"
   ).slice(0, 4);
@@ -100,7 +101,9 @@ export default function PracticePaperProgress({ userId }: { userId: string }) {
                       {job.title}
                     </p>
                     <p className="mt-0.5 text-xs text-text-muted">
-                      {job.status === "needs_clarification"
+                      {job.status === "needs_confirmation"
+                        ? "Confirm the exam format before Jami continues"
+                        : job.status === "needs_clarification"
                         ? "Jami needs one more detail"
                         : job.status === "failed"
                           ? job.failureMessage ?? "This paper could not be completed."
@@ -114,7 +117,7 @@ export default function PracticePaperProgress({ userId }: { userId: string }) {
                     >
                       Open paper
                     </ButtonLink>
-                  ) : job.status === "needs_clarification" ? (
+                  ) : job.status === "needs_clarification" || job.status === "needs_confirmation" ? (
                     <ButtonLink
                       href={`/dashboard/practice/new?job=${encodeURIComponent(job.id)}`}
                       size="sm"

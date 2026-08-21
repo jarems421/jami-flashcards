@@ -65,5 +65,15 @@ service firebase.storage {
     match /users/{userId}/practicePaperMarkingEvidence/{attemptId}/{allPaths=**} {
       allow read, write: if false;
     }
+
+    // Official imports and held-out benchmark artifacts are not student
+    // assets. Owner review is projected through authenticated server APIs.
+    match /internal/examFormatImports/{allPaths=**} {
+      allow read, write: if false;
+    }
+
+    match /internal/paperGenerationBenchmarks/{allPaths=**} {
+      allow read, write: if false;
+    }
   }
 }

@@ -102,6 +102,35 @@ export default function PracticePaperDetailsDialog({
             </div>
           </div>
 
+          {paper.companionDocuments && paper.companionDocuments.length > 0 ? (
+            <div className="rounded-2xl border border-[var(--color-border)] p-4 sm:p-5">
+              <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
+                Candidate materials
+              </p>
+              <p className="mt-2 text-sm leading-6 text-text-muted">
+                These inserts are visible during the sitting and remain separate from the hidden marking guide.
+              </p>
+              <div className="mt-3 space-y-2">
+                {paper.companionDocuments.map((document) => (
+                  <details key={document.id} className="rounded-xl bg-[var(--color-glass-subtle)] p-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-text-primary">
+                      {document.title}
+                    </summary>
+                    {document.instructions ? <p className="mt-2 text-xs leading-5 text-text-muted">{document.instructions}</p> : null}
+                    <div className="mt-3 space-y-3">
+                      {document.pages.map((page) => (
+                        <div key={page.id} className="rounded-lg bg-[var(--color-surface)] p-3">
+                          {page.title ? <p className="text-xs font-semibold text-text-secondary">{page.title}</p> : null}
+                          <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-text-primary">{page.content}</p>
+                        </div>
+                      ))}
+                    </div>
+                  </details>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           {paper.examinerInsights.length > 0 ? (
             <div className="rounded-2xl bg-[var(--color-glass-subtle)] p-4 sm:p-5">
               <p className="text-2xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
