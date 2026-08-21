@@ -226,7 +226,7 @@ function sourceType(title: string, url: string): ExamFormatSourceReceipt["docume
   const value = `${title} ${url}`.toLowerCase();
   if (/specification|syllabus|(?:^|[\/_\-.])spec(?:[\/_\-.]|$)/.test(value)) return "specification";
   if (/mark.scheme|marking|(?:^|[\/_-])ms(?:[.\/_-]|$)/.test(value)) return "mark_scheme";
-  if (/specimen|sample(?:[\s_-]?assessment)?|(?:^|[\/_-])(?:sqp|sam|eams?)(?:[.\/_-]|$)/.test(value)) return "sample_paper";
+  if (/specimen|sample(?:[\s_-]?assessment)?|(?:^|[\/_-])(?:sqp|sams?|eams?)(?:[.\/_-]|$)/.test(value)) return "sample_paper";
   if (/question.paper|past.paper|(?:^|[\/_-])(?:qp|que|paper)(?:[.\/_-]|$)|\/oer\.(?:eduqas|wjec)\.co\.uk\//.test(value)) return "past_paper";
   if (/examiner|report/.test(value)) return "examiner_report";
   return "official_guidance";
@@ -329,11 +329,20 @@ export async function researchExamFormatProfile(
   const active = existing ? selectExamFormatVersion(existing.versions, new Date(now)) : undefined;
   if (active && !options.force && now - active.retrievedAt < PROFILE_MAX_AGE_MS) return active;
 
-  const grounded = await generateGroundedResearch({
+  let grounded = await generateGroundedResearch({
     sanitizedQuery: definition.officialQuery,
     urls: definition.officialUrls,
     timeoutMs: 60_000,
   });
+  // Some boards put otherwise-public PDFs behind anti-bot URL-context checks.
+  // Search grounding can still find the official evidence, while the configured
+  // URLs remain independently recorded and hashed below.
+  if (!grounded.ok && definition.officialUrls.length > 0) {
+    grounded = await generateGroundedResearch({
+      sanitizedQuery: definition.officialQuery,
+      timeoutMs: 60_000,
+    });
+  }
   if (!grounded.ok) {
     log.warn("profile.research_unavailable", { profileId: definition.profileId, reason: grounded.reason });
     return active ?? null;

@@ -191,7 +191,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     officialQuery: "OCR GCSE Computer Science J277/02 current specification sample paper mark scheme",
     officialUrls: [
       "https://www.ocr.org.uk/qualifications/gcse/computer-science-j277-from-2020/specification-at-a-glance/",
-      "https://www.ocr.org.uk/Images/552502-computational-thinking-algorithms-and-programming.pdf",
+      "https://www.ocr.org.uk/Images/552502-computational-thinking-algorithms-and-programming.pdf#sample-paper",
     ],
     aliases: ["ocr computer science component 02", "ocr j277/02", "computational thinking algorithms programming"],
   },
