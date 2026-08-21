@@ -7,6 +7,7 @@ import {
   E2E_USER_EMAIL,
   E2E_USER_PASSWORD,
 } from "./fixtures";
+import { FLASHCARDS_TITLE } from "@/lib/app/flashcard-views";
 
 type Surface = {
   name: string;
@@ -18,7 +19,10 @@ const surfaces: Surface[] = [
   {
     name: "Today",
     path: "/dashboard",
-    ready: (page) => page.getByText("Your next study step", { exact: true }),
+    // Was "Your next study step", a line that no longer exists anywhere in the
+    // app. A readiness check pinned to body copy fails the moment the copy is
+    // reworded, and says nothing about whether the screen loaded.
+    ready: (page) => page.getByRole("heading", { name: "Today", level: 1 }),
   },
   {
     name: "folder",
@@ -44,7 +48,8 @@ const surfaces: Surface[] = [
   {
     name: "Cards",
     path: "/dashboard/cards",
-    ready: (page) => page.getByRole("heading", { name: "Cards", level: 1 }),
+    ready: (page) =>
+      page.getByRole("heading", { name: FLASHCARDS_TITLE, level: 1 }),
   },
   {
     name: "Practice",

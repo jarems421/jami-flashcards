@@ -8,6 +8,23 @@ import {
   E2E_USER_EMAIL,
   E2E_USER_PASSWORD,
 } from "./fixtures";
+import { FLASHCARDS_TITLE } from "@/lib/app/flashcard-views";
+import { TUTOR_TITLE } from "@/lib/app/tutor-views";
+
+/**
+ * Headings come from the same constants the pages render, deliberately.
+ *
+ * Seven of these timed out for two days, waiting 45 seconds each for "Decks",
+ * "Cards" and "Sources". None of those headings existed: the surfaces were
+ * renamed to Flashcards and Tutor and the tests were not. Nothing was flaky and
+ * no timeout was too short -- raising one would only have made them fail
+ * slower.
+ *
+ * What a smoke test earns its place doing here is proving the screen loads and
+ * renders its own heading. Which words that heading uses is a product decision,
+ * and pinning it to a literal turns every rename into a red suite that says
+ * nothing about the thing it broke.
+ */
 
 /**
  * The browse screens had no browser coverage at all, so a page that threw on
@@ -64,7 +81,7 @@ test("relaunching returns to the page that was open, unless the app was closed",
   page,
 }) => {
   await signIn(page);
-  await openScreen(page, "/dashboard/decks", "Decks");
+  await openScreen(page, "/dashboard/decks", FLASHCARDS_TITLE);
 
   await page.goto("/");
   await page.waitForURL(/\/dashboard\/decks/, { timeout: 45_000 });
@@ -100,7 +117,7 @@ test("the legacy Practice route redirects permanently and keeps its query", asyn
 
 test("Sources lists saved sources and filters them", async ({ page }) => {
   await signIn(page);
-  const errors = await openScreen(page, "/dashboard/library", "Sources");
+  const errors = await openScreen(page, "/dashboard/library", TUTOR_TITLE);
 
   // The first screen in the run that reads anything, so it pays for the
   // Firestore connection and this route's first render on top of its own work.
@@ -122,7 +139,7 @@ test("Sources lists saved sources and filters them", async ({ page }) => {
 
 test("Cards lists seeded cards and searches their fronts", async ({ page }) => {
   await signIn(page);
-  const errors = await openScreen(page, "/dashboard/cards", "Cards");
+  const errors = await openScreen(page, "/dashboard/cards", FLASHCARDS_TITLE);
 
   const search = page.getByPlaceholder("Search card fronts");
   await search.fill(E2E_CARDS[0].front);
@@ -154,7 +171,7 @@ test("Topics lists topics and filters them", async ({ page }) => {
 
 test("Decks lists the seeded deck", async ({ page }) => {
   await signIn(page);
-  const errors = await openScreen(page, "/dashboard/decks", "Decks");
+  const errors = await openScreen(page, "/dashboard/decks", FLASHCARDS_TITLE);
 
   await expect(page.getByText(E2E_DECK_NAME).first()).toBeVisible({
     timeout: 45_000,
@@ -211,8 +228,8 @@ test("phone keeps the browse screens usable", async ({ page }) => {
   await signIn(page);
 
   for (const [path, heading] of [
-    ["/dashboard/cards", "Cards"],
-    ["/dashboard/decks", "Decks"],
+    ["/dashboard/cards", FLASHCARDS_TITLE],
+    ["/dashboard/decks", FLASHCARDS_TITLE],
     ["/dashboard/topics", "Topics"],
   ] as const) {
     await openScreen(page, path, heading);
