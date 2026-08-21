@@ -65,6 +65,29 @@ export const MARKING_CALIBRATION_PROFILES: CalibrationProfile[] = [
     regimes: ["additive", "pointPool"],
     questionLowerFraction: -0.34,
     questionUpperFraction: 0.18,
+    /**
+     * The paper band is the number a student actually reads, and it is the one
+     * nothing has measured. Every corpus record is one candidate answering one
+     * question, so no whole paper exists to check it against.
+     *
+     * Simulating one from real question outcomes says it is mis-centred rather
+     * than mis-sized. Jami's generosity is a bias, not noise, so it does not
+     * average out across questions: a whole paper lands about 10% high with far
+     * less spread than any single question. That makes the +8% upper edge cover
+     * a case which barely happens -- an examiner marking a whole paper above
+     * Jami -- while the lower edge stops short of the +22% errors that do.
+     *
+     * Same width, shifted down five points to -22% .. +3%, covers a great deal
+     * more: 84.9% against 75.2% on a ten-question paper, 91.5% against 81.9% on
+     * fifteen.
+     *
+     * Left alone deliberately. That is a simulation drawing questions
+     * independently, and real marking errors correlate -- a marker generous on
+     * one question tends to be generous on the next -- which would widen the
+     * true spread rather than narrow it. Simulated evidence is not measured
+     * evidence, and this profile claims to be measured. Changing a
+     * student-facing number wants the real thing.
+     */
     paperLowerFraction: -0.17,
     paperUpperFraction: 0.08,
     measured: true,
