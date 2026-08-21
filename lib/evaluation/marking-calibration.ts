@@ -8,7 +8,7 @@ import type {
 
 export const MARKING_CALIBRATION_VERSION = "2026-08-21.v1";
 
-type CalibrationProfile = {
+export type CalibrationProfile = {
   id: string;
   subjects: string[];
   stages: string[];
@@ -23,7 +23,19 @@ type CalibrationProfile = {
 // Content-free aggregates from the approved held-out reports. The first
 // profile reflects the currently measured upper-secondary quantitative slice;
 // every other branch deliberately receives a wider conservative interval.
-const PROFILES: CalibrationProfile[] = [
+/**
+ * Exported so a test can check a profile's claim against recorded outcomes.
+ *
+ * `measured: true` was a claim in a comment. Nothing computed these fractions,
+ * nothing referenced them outside this file, and the four tests covering this
+ * module all checked behaviour -- that a range is asymmetric, that a flagged
+ * question gets one -- and never whether a band matches what Jami does. They
+ * happen to be about right: the measured question band covers 76.9% of 212
+ * real questions and leans the correct way, wider downward because Jami marks
+ * generously. The problem is that nothing connects them to the evidence, so
+ * every accuracy change this month would have invalidated them silently.
+ */
+export const MARKING_CALIBRATION_PROFILES: CalibrationProfile[] = [
   {
     id: "upper-secondary-quantitative-subject-stage",
     subjects: ["maths", "physics", "chemistry", "statistics"],
@@ -103,7 +115,7 @@ export function selectMarkingCalibrationProfile(paper: PracticePaper) {
   const subject = subjectOf(paper);
   const stage = stageOf(paper);
   const regime = regimeOf(paper);
-  return PROFILES
+  return MARKING_CALIBRATION_PROFILES
     .filter((profile) =>
       (profile.subjects.includes(subject) || profile.subjects.includes("*")) &&
       (profile.stages.includes(stage) || profile.stages.includes("*")) &&
@@ -115,7 +127,7 @@ export function selectMarkingCalibrationProfile(paper: PracticePaper) {
         (profile.stages.includes("*") ? 0 : 2) +
         (profile.regimes.includes("*") ? 0 : 1);
       return score(right) - score(left);
-    })[0] ?? PROFILES[PROFILES.length - 1];
+    })[0] ?? MARKING_CALIBRATION_PROFILES[MARKING_CALIBRATION_PROFILES.length - 1];
 }
 
 function rangeAround(
@@ -139,6 +151,18 @@ function issueMessages(
     .map((issue) => issue.message.trim())
     .filter(Boolean))).slice(0, 4);
 }
+
+/**
+ * What a student is told where nothing has been measured for their subject.
+ *
+ * A range is a claim about measurement. Rendered in the same type, the same
+ * place and the same words as a measured one, an invented band is
+ * indistinguishable from evidence -- and only one of the five profiles here has
+ * any behind it. So the unmeasured branches show the mark alone and say why,
+ * rather than a wide interval and the word "estimate".
+ */
+export const UNCALIBRATED_NOTE =
+  "Jami has not yet measured its own accuracy on this subject, so it is not showing a likely range.";
 
 export function applyPracticePaperMarkRanges(input: {
   paper: PracticePaper;
@@ -185,11 +209,23 @@ export function applyPracticePaperMarkRanges(input: {
     if (challenged.has(question.questionId)) {
       reasons.push("This answer was rechecked after your challenge.");
     }
+    /**
+     * The reasons are true whatever the subject -- an ambiguous answer is
+     * ambiguous -- but the width of the band comes from the profile, so where
+     * the profile is a guess the band is too. Keep the reasons, drop the
+     * numbers.
+     */
+    if (!profile.measured) {
+      return {
+        ...question,
+        evidenceWarnings: Array.from(new Set([...warnings, ...reasons])).slice(0, 6),
+      };
+    }
     const markRange: PracticePaperMarkRange = {
       lower: Math.max(0, Math.min(base.lower, primary ?? base.lower, verifier ?? base.lower)),
       upper: Math.min(question.maxMarks, Math.max(base.upper, primary ?? base.upper, verifier ?? base.upper)),
       calibrationVersion: MARKING_CALIBRATION_VERSION,
-      earlyEstimate: !profile.measured,
+      earlyEstimate: false,
       reasons: Array.from(new Set(reasons)).slice(0, 6),
     };
     return { ...question, markRange, evidenceWarnings: warnings };
@@ -202,19 +238,22 @@ export function applyPracticePaperMarkRanges(input: {
     profile.paperUpperFraction
   );
   const overallReasons = issueMessages(evidenceIssues);
-  if (!profile.measured) {
-    overallReasons.push("This is an early estimate based on comparable marking evidence.");
-  }
   return {
     ...input.result,
     questionResults,
-    markRange: {
-      ...overall,
-      calibrationVersion: MARKING_CALIBRATION_VERSION,
-      earlyEstimate: !profile.measured,
-      reasons: Array.from(new Set(overallReasons)).slice(0, 6),
-    },
+    ...(profile.measured
+      ? {
+          markRange: {
+            ...overall,
+            calibrationVersion: MARKING_CALIBRATION_VERSION,
+            earlyEstimate: false,
+            reasons: Array.from(new Set(overallReasons)).slice(0, 6),
+          },
+        }
+      : { markRange: undefined }),
+    evidenceWarnings: Array.from(
+      new Set(profile.measured ? issueMessages(evidenceIssues) : [...issueMessages(evidenceIssues), UNCALIBRATED_NOTE])
+    ).slice(0, 6),
     gradeEstimateKind: input.paper.gradeGuidance.kind === "official" ? "official" as const : "estimated" as const,
-    evidenceWarnings: issueMessages(evidenceIssues),
   };
 }
