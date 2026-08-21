@@ -313,6 +313,20 @@ export function createEvaluationMarker(options: EvaluationMarkerOptions): {
           ...(criterion.criterionId ? { criterionId: criterion.criterionId } : {}),
           criterion: criterion.criterion,
           awarded: criterion.awarded,
+          /**
+           * Carried through, because dropping it here made the marker look like
+           * it was refusing to answer.
+           *
+           * A ten-mark section says nothing useful through a boolean, so the
+           * marking output was given a per-criterion mark and the prompt was
+           * rewritten twice to insist on it. Both runs came back with none of
+           * sixty, and the reading was that the models would not comply. They
+           * were never asked: the shape mapped here is what scoring sees, and
+           * it had no room for the field.
+           */
+          ...(criterion.awardedMarks === undefined
+            ? {}
+            : { awardedMarks: criterion.awardedMarks }),
         })),
       };
     } catch (error) {
