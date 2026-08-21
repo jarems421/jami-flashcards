@@ -241,7 +241,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
   },
   {
     id: "wjec-gcse-history-2026-unit-1",
-    profileId: "wjec-gcse-history-2026-unit-1",
+    profileId: "wjec-gcse-3130qs-3130ua-3130ub-3130uc",
     board: "wjec",
     qualification: "gcse",
     subject: "History",
@@ -256,7 +256,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
   },
   {
     id: "wjec-a-level-chemistry-first-a2-written-unit",
-    profileId: "wjec-a-level-chemistry-a2-first-written",
+    profileId: "wjec-a-level-1410qs-1410u30-1",
     board: "wjec",
     qualification: "a_level",
     subject: "Chemistry",
@@ -271,7 +271,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
   },
   {
     id: "ccea-gcse-english-language-unit-1",
-    profileId: "ccea-gcse-english-language-5030-unit-1",
+    profileId: "ccea-gcse-5030-gen11",
     board: "ccea",
     qualification: "gcse",
     subject: "English Language",
@@ -285,7 +285,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
   },
   {
     id: "ccea-gce-history-a2-unit-1",
-    profileId: "ccea-a-level-history-a2-unit-1",
+    profileId: "ccea-a-level-527-ahy11",
     board: "ccea",
     qualification: "a_level",
     subject: "History",
