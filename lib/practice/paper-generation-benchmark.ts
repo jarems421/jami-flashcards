@@ -10,6 +10,8 @@ export type PaperGenerationBenchmarkDefinition = {
   officialQuery: string;
   officialUrls: string[];
   aliases: string[];
+  /** Officially announced components for which the board has not released an assessment artifact yet. */
+  assessmentArtifactUnavailable?: boolean;
 };
 
 export type PaperGenerationBenchmarkCaseKind =
@@ -174,6 +176,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     officialQuery: "Pearson Edexcel A level Mathematics 9MA0/01 Pure Mathematics 1 current specification sample assessment",
     officialUrls: [
       "https://qualifications.pearson.com/en/qualifications/edexcel-a-levels/mathematics-2017.html",
+      "https://qualifications.pearson.com/content/dam/pdf/A%20Level/Mathematics/2017/specification-and-sample-assesment/a-level-l3-mathematics-specification-issue4.pdf",
       "https://qualifications.pearson.com/content/dam/pdf/A-Level/Mathematics/2017/Exam-materials/9ma0-01-que-20220608.pdf",
     ],
     aliases: ["edexcel a level maths pure 1", "pearson 9ma0/01", "pure mathematics 1"],
@@ -188,7 +191,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     officialQuery: "OCR GCSE Computer Science J277/02 current specification sample paper mark scheme",
     officialUrls: [
       "https://www.ocr.org.uk/qualifications/gcse/computer-science-j277-from-2020/specification-at-a-glance/",
-      "https://www.ocr.org.uk/qualifications/gcse/computer-science-j277-from-2020/assessment/",
+      "https://www.ocr.org.uk/Images/552502-computational-thinking-algorithms-and-programming.pdf",
     ],
     aliases: ["ocr computer science component 02", "ocr j277/02", "computational thinking algorithms programming"],
   },
@@ -217,6 +220,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     officialUrls: [
       "https://www.eduqas.co.uk/qualifications/geography-gcse-b/",
       "https://www.eduqas.co.uk/media/5ofdo23l/gcse-geog-b-spec.pdf",
+      "https://www.eduqas.co.uk/media/k0ngosbf/gcse-geog-b-sams.pdf",
     ],
     aliases: ["eduqas geography b component 1", "eduqas c112u10", "gcse geography b"],
   },
@@ -231,6 +235,7 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     officialUrls: [
       "https://www.eduqas.co.uk/qualifications/english-literature-asa-level/",
       "https://www.eduqas.co.uk/media/gkxh25ep/eduqas-a-level-english-lit-spec-from-2015-e.pdf",
+      "https://oer.eduqas.co.uk/Pages/ProjectByArgs.aspx?lvlid=1&subid=23",
     ],
     aliases: ["eduqas a level english literature component 1", "eduqas a720u10", "english literature poetry component"],
   },
@@ -242,8 +247,12 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     subject: "History",
     componentLabel: "2026 specification Unit 1",
     officialQuery: "WJEC GCSE History teaching from 2026 Unit 1 specification sample assessment materials",
-    officialUrls: ["https://www.wjec.co.uk/qualifications/gcse-history-teaching-from-2026/"],
+    officialUrls: [
+      "https://www.wjec.co.uk/qualifications/gcse-history-teaching-from-2026/",
+      "https://www.eduqas.co.uk/media/vxehgxuj/wjec-gcse-history-specification-e.pdf",
+    ],
     aliases: ["wjec gcse history 2026 unit 1", "made for wales history unit 1"],
+    assessmentArtifactUnavailable: true,
   },
   {
     id: "wjec-a-level-chemistry-first-a2-written-unit",
@@ -253,7 +262,11 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     subject: "Chemistry",
     componentLabel: "First A2 written unit",
     officialQuery: "WJEC GCE A level Chemistry first A2 written unit current specification sample assessment",
-    officialUrls: ["https://www.wjec.co.uk/qualifications/chemistry-asa-level/"],
+    officialUrls: [
+      "https://www.wjec.co.uk/qualifications/chemistry-asa-level/",
+      "https://www.eduqas.co.uk/media/akbbkvwh/wjec-gce-chemistry-spec-from-2015.pdf",
+      "https://oer.wjec.co.uk/Pages/ProjectByArgs.aspx?lvlid=1&subid=11",
+    ],
     aliases: ["wjec a level chemistry a2", "wjec chemistry first a2 written unit"],
   },
   {
@@ -264,7 +277,10 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     subject: "English Language",
     componentLabel: "Unit 1",
     officialQuery: "CCEA GCSE English Language 5030 Unit 1 current specification sample paper mark scheme",
-    officialUrls: ["https://ccea.org.uk/key-stage-4/gcse/subjects/gcse-english-language-2017"],
+    officialUrls: [
+      "https://ccea.org.uk/downloads/docs/Specifications/GCSE/GCSE%20English%20Language%20%282017%29/GCSE%20English%20Language%20%282017%29-specification-Standard_0.pdf",
+      "https://ccea.org.uk/downloads/docs/Past-Papers/cleared/GCSE/GCSE%20English%20Language%20%282017%29/2024-November/Standard/0/GCSE-English%20Language-490-November2024-Unit%201%2C%20Writing%20for%20Purpose%20and%20Audience%20and%20Reading%20to%20Access%20Non-fiction%20and%20Media%20Texts-Paper.pdf",
+    ],
     aliases: ["ccea gcse english language unit 1", "ccea 5030 unit 1"],
   },
   {
@@ -275,7 +291,10 @@ export const PAPER_GENERATION_BENCHMARK_DEFINITIONS: PaperGenerationBenchmarkDef
     subject: "History",
     componentLabel: "A2 Unit 1",
     officialQuery: "CCEA GCE History A2 Unit 1 current specification sample paper mark scheme",
-    officialUrls: ["https://ccea.org.uk/post-16/gce/subjects/gce-history-2019"],
+    officialUrls: [
+      "https://ccea.org.uk/downloads/docs/Specifications/GCE/GCE%20History%20%282019%29/GCE%20History%20%282019%29-specification-Standard.pdf",
+      "https://ccea.org.uk/downloads/docs/Past-Papers/cleared/GCE/GCE%20History%20%282019%29/2023-Summer/Standard/0/GCE-History-527-Summer2023-A2%201%2C%20Change%20Over%20Time-Paper.pdf",
+    ],
     aliases: ["ccea history a2 unit 1", "ccea gce history change over time"],
   },
 ];

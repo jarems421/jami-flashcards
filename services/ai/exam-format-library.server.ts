@@ -224,10 +224,10 @@ export async function getExamFormatProfileVersion(profileId: string, version?: s
 
 function sourceType(title: string, url: string): ExamFormatSourceReceipt["documentType"] {
   const value = `${title} ${url}`.toLowerCase();
-  if (/specification|syllabus/.test(value)) return "specification";
+  if (/specification|syllabus|(?:^|[\/_\-.])spec(?:[\/_\-.]|$)/.test(value)) return "specification";
   if (/mark.scheme|marking|(?:^|[\/_-])ms(?:[.\/_-]|$)/.test(value)) return "mark_scheme";
-  if (/specimen|sample|(?:^|[\/_-])sqp(?:[.\/_-]|$)/.test(value)) return "sample_paper";
-  if (/question.paper|past.paper|(?:^|[\/_-])qp(?:[.\/_-]|$)|(?:^|[\/_-])que(?:[.\/_-]|$)/.test(value)) return "past_paper";
+  if (/specimen|sample(?:[\s_-]?assessment)?|(?:^|[\/_-])(?:sqp|sam|eams?)(?:[.\/_-]|$)/.test(value)) return "sample_paper";
+  if (/question.paper|past.paper|(?:^|[\/_-])(?:qp|que|paper)(?:[.\/_-]|$)|\/oer\.(?:eduqas|wjec)\.co\.uk\//.test(value)) return "past_paper";
   if (/examiner|report/.test(value)) return "examiner_report";
   return "official_guidance";
 }
@@ -375,6 +375,7 @@ export async function researchExamFormatProfile(
       retrievedAt: now,
       createdAt: now,
       supersedesVersion: active?.version,
+      assessmentArtifactUnavailable: definition.assessmentArtifactUnavailable === true,
     }, { profileId: definition.profileId, board: definition.board, now });
     if (!normalized) return [];
     const version = immutableProfileVersionId(normalized);

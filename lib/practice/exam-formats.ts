@@ -150,8 +150,10 @@ const BOARD_HOSTS: Record<ExamBoardId, string[]> = {
   aqa: ["aqa.org.uk", "filestore.aqa.org.uk"],
   pearson_edexcel: ["qualifications.pearson.com"],
   ocr: ["ocr.org.uk"],
-  eduqas: ["eduqas.co.uk"],
-  wjec: ["wjec.co.uk"],
+  // WJEC owns Eduqas and serves official documents for both brands across
+  // these two domains, including WJEC specifications under eduqas.co.uk.
+  eduqas: ["eduqas.co.uk", "wjec.co.uk"],
+  wjec: ["wjec.co.uk", "eduqas.co.uk"],
   ccea: ["ccea.org.uk", "apps.ccea.org.uk"],
 };
 
@@ -259,12 +261,13 @@ function verificationIssues(input: {
   durationMinutes: number;
   totalMarks: number;
   componentCode: string;
+  assessmentArtifactUnavailable?: boolean;
 }) {
   const issues: ExamFormatVerificationIssue[] = [];
   if (!input.sources.some((source) => source.documentType === "specification")) {
     issues.push({ code: "missing_specification", message: "No official specification was confirmed." });
   }
-  if (!input.sources.some((source) =>
+  if (!input.assessmentArtifactUnavailable && !input.sources.some((source) =>
     source.documentType === "sample_paper" ||
     source.documentType === "past_paper" ||
     source.documentType === "mark_scheme"
@@ -289,7 +292,13 @@ export function normalizeExamFormatProfileVersion(
   const durationMinutes = integer(raw.durationMinutes, 600);
   const totalMarks = integer(raw.totalMarks, 1_000);
   const componentCode = text(raw.componentCode, 120);
-  const derivedIssues = verificationIssues({ sources, durationMinutes, totalMarks, componentCode });
+  const derivedIssues = verificationIssues({
+    sources,
+    durationMinutes,
+    totalMarks,
+    componentCode,
+    assessmentArtifactUnavailable: raw.assessmentArtifactUnavailable === true,
+  });
   const suppliedIssues: ExamFormatVerificationIssue[] = Array.isArray(raw.issues)
     ? raw.issues.slice(0, 20).flatMap((candidate) => {
         if (!candidate || typeof candidate !== "object") return [];
