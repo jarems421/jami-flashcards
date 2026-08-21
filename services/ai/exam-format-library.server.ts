@@ -67,6 +67,26 @@ function sha256(value: string) {
   return createHash("sha256").update(value).digest("hex");
 }
 
+/**
+ * Firestore rejects explicit `undefined` values, while the domain model keeps
+ * optional properties as `undefined` until they are needed. Remove only those
+ * absent properties at the persistence boundary so immutable profile payloads
+ * remain valid Firestore documents without changing their in-memory shape.
+ */
+function firestoreDocument<T>(value: T): T {
+  if (Array.isArray(value)) {
+    return value.map((item) => firestoreDocument(item)) as T;
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, firestoreDocument(item)])
+    ) as T;
+  }
+  return value;
+}
+
 function immutableProfileVersionId(profile: ExamFormatProfileVersion) {
   const base = profile.version.replace(/[^A-Za-z0-9_.-]/g, "-").slice(0, 100) || `${profile.retrievedAt}`;
   const fingerprint = sha256(JSON.stringify({
@@ -319,7 +339,7 @@ export async function researchExamFormatProfile(
     return active ?? null;
   }
   const generated = await generateAiText({
-    role: "supervisor",
+    role: "research",
     taskClass: "important",
     timeoutMs: 60_000,
     generationConfig: { temperature: 0, maxOutputTokens: 7_000, responseMimeType: "application/json" },
@@ -369,7 +389,9 @@ export async function researchExamFormatProfile(
     const versionRefs = normalizedVersions.map((profile) => profileRef.collection("versions").doc(profile.version));
     const currentVersions = await Promise.all(versionRefs.map((reference) => transaction.get(reference)));
     currentVersions.forEach((snapshot, index) => {
-      if (!snapshot.exists) transaction.create(versionRefs[index], normalizedVersions[index]);
+      if (!snapshot.exists) {
+        transaction.create(versionRefs[index], firestoreDocument(normalizedVersions[index]));
+      }
     });
     const profile: Omit<ExamFormatProfile, "id"> = {
       board: definition.board,
@@ -440,7 +462,7 @@ export async function refreshExamFormatCatalogueSlice(input: {
   const grounded = await generateGroundedResearch({ sanitizedQuery: query, urls: board.urls, timeoutMs: 60_000 });
   if (!grounded.ok) throw new Error(`Official catalogue research failed: ${grounded.reason}`);
   const generated = await generateAiText({
-    role: "supervisor",
+    role: "research",
     taskClass: "important",
     timeoutMs: 60_000,
     generationConfig: { temperature: 0, maxOutputTokens: 8_000, responseMimeType: "application/json" },
@@ -483,7 +505,11 @@ export async function refreshExamFormatCatalogueSlice(input: {
       discoveredAt: now,
       updatedAt: now,
     };
-    batch.set(db.collection("examFormatCatalogue").doc(id), entry, { merge: true });
+    batch.set(
+      db.collection("examFormatCatalogue").doc(id),
+      firestoreDocument(entry),
+      { merge: true }
+    );
     discovered += 1;
   }
   batch.set(controlRef, { board: input.board, qualification: input.qualification, updatedAt: now, runId: randomUUID(), discovered }, { merge: true });
@@ -638,7 +664,12 @@ async function persistImportedProfiles(input: {
     const versionRef = profileRef.collection("versions").doc(version);
     await getAdminDb().runTransaction(async (transaction) => {
       const versionSnapshot = await transaction.get(versionRef);
-      if (!versionSnapshot.exists) transaction.create(versionRef, { ...normalized, version, importId: input.importId });
+      if (!versionSnapshot.exists) {
+        transaction.create(
+          versionRef,
+          firestoreDocument({ ...normalized, version, importId: input.importId })
+        );
+      }
       transaction.set(profileRef, {
         board,
         qualification,
@@ -716,7 +747,7 @@ export async function processExamFormatImport(importId: string) {
       }
       if (!evidence.trim()) throw new Error("The import contained no readable exam-format evidence.");
       const generated = await generateAiText({
-        role: "supervisor",
+        role: "research",
         taskClass: "important",
         timeoutMs: 60_000,
         generationConfig: { temperature: 0, maxOutputTokens: 12_000, responseMimeType: "application/json" },
