@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "version": "2026-08-21.v1",
+  "branches": {
+    "gcse": { "approved": false, "status": "unmeasured" },
+    "alevel": { "approved": false, "status": "unmeasured" },
+    "university": { "approved": false, "status": "unmeasured" }
+  }
+}

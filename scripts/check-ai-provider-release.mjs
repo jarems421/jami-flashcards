@@ -84,6 +84,22 @@ function assertOfflineConfiguration() {
   if (process.env.GEMINI_KILL_SWITCH === "true") {
     fail("GEMINI_KILL_SWITCH is active.");
   }
+  if (process.env.PRACTICE_PAPER_MARKING_WORKFLOW_ENABLED !== "true") {
+    fail("PRACTICE_PAPER_MARKING_WORKFLOW_ENABLED must be true for a production AI release.");
+  }
+  const markingConcurrency = Number.parseInt(
+    process.env.PRACTICE_PAPER_MARKING_JOB_CONCURRENCY || "4",
+    10
+  );
+  if (!Number.isInteger(markingConcurrency) || markingConcurrency < 1 || markingConcurrency > 20) {
+    fail("PRACTICE_PAPER_MARKING_JOB_CONCURRENCY must be between 1 and 20.");
+  }
+  const markingCost = Number.parseFloat(
+    process.env.PRACTICE_PAPER_MARKING_MAX_COST_USD || "0.50"
+  );
+  if (!Number.isFinite(markingCost) || markingCost < 0.05 || markingCost > 5) {
+    fail("PRACTICE_PAPER_MARKING_MAX_COST_USD must be between 0.05 and 5.00.");
+  }
   for (const role of ROLES) {
     if (splitList(process.env[role.providersKey]).length === 0) {
       fail(`${role.providersKey} must contain an explicit provider allowlist.`);

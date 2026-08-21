@@ -113,6 +113,25 @@ describe("formal blind marking pipeline", () => {
     });
   });
 
+  it("reuses completed provider checkpoints after a workflow retry", async () => {
+    generateAiText.mockRejectedValue(new Error("provider must not be called"));
+    const parsed = JSON.parse(report({ q1: 2, q2: 3 }));
+    const normalized = (await import("@/lib/ai/practice-paper-marking"))
+      .parsePracticePaperMarkingModelAnswer(JSON.stringify(parsed), paper)!;
+    const completedStages: string[] = [];
+    const resumed = await markPracticePaperWithAudit({
+      ...input(),
+      cachedStageResults: {
+        primary: { result: normalized, diagnostics: [] },
+        verifier: { result: normalized, diagnostics: [] },
+      },
+      onStageResult: async (stage) => { completedStages.push(stage); },
+    });
+    expect(resumed.result.awardedMarks).toBe(5);
+    expect(generateAiText).not.toHaveBeenCalled();
+    expect(completedStages).toEqual([]);
+  });
+
   it("gives Kimi only the unresolved question evidence before M3 reconciles", async () => {
     let supervisorCall = 0;
     generateAiText.mockImplementation(async ({ role }: { role: string }) => {

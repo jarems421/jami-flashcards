@@ -61,7 +61,9 @@ const SECURITY_HEADERS = [
 ];
 
 export const nextConfig: NextConfig = {
-  serverExternalPackages: ["mammoth", "officeparser"],
+  // PDF evidence rendering uses a native Skia binary and must remain a
+  // server runtime dependency rather than being parsed by webpack.
+  serverExternalPackages: ["@napi-rs/canvas", "mammoth", "officeparser"],
   async headers() {
     return [{ source: "/:path*", headers: SECURITY_HEADERS }];
   },

@@ -35,6 +35,9 @@ jobs:
       - name: Check source file sizes
         run: npm run check:sizes
 
+      - name: Check approved paper-generation baselines
+        run: npm run check:paper-benchmark
+
       - name: Test
         run: npm test
 

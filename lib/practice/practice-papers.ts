@@ -6,6 +6,10 @@ import {
   normalizeMarkSchemeItem,
   type PracticePaperMarkSchemeItem,
 } from "@/lib/practice/mark-schemes";
+import { normalizeManualCorrectionAudits, normalizePracticePaperMarkRange, type PracticePaperManualCorrectionAudit, type PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
+export { mapPracticePaperMarkingJobData } from "@/lib/practice/practice-paper-marking-types";
+export { mapPracticePaperJobData } from "@/lib/practice/practice-paper-jobs";
+export type { PracticePaperEvidenceIssue, PracticePaperEvidenceManifest, PracticePaperEvidencePage, PracticePaperManualCorrectionAudit, PracticePaperMarkingJob, PracticePaperMarkingJobKind, PracticePaperMarkingJobStage, PracticePaperMarkingJobStatus, PracticePaperMarkRange } from "@/lib/practice/practice-paper-marking-types";
 
 export const MAX_PRACTICE_PAPER_SOURCE_IDS = 15;
 export const MAX_PRACTICE_PAPER_QUESTIONS = 30;
@@ -230,6 +234,8 @@ export type PracticePaperQuestionResult = {
   counted: boolean;
   manualReason?: string;
   attempted: boolean;
+  markRange?: PracticePaperMarkRange;
+  evidenceWarnings?: string[];
 };
 
 export type PracticePaperMarkingAudit = {
@@ -271,6 +277,7 @@ export type PracticePaperRemarkAudit = {
   createdAt: number;
 };
 
+
 export type PracticePaperResult = {
   awardedMarks: number;
   totalMarks: number;
@@ -280,6 +287,9 @@ export type PracticePaperResult = {
   priorities: string[];
   questionResults: PracticePaperQuestionResult[];
   gradeLabel?: string;
+  markRange?: PracticePaperMarkRange;
+  gradeEstimateKind?: "official" | "estimated";
+  evidenceWarnings?: string[];
 };
 
 export type PracticePaperAttempt = {
@@ -310,6 +320,7 @@ export type PracticePaperAttempt = {
   markingAudit?: PracticePaperMarkingAudit;
   withinTimeMarkingAudit?: PracticePaperMarkingAudit;
   remarkAudits?: PracticePaperRemarkAudit[];
+  manualCorrectionAudits?: PracticePaperManualCorrectionAudit[];
   createdAt: number;
   updatedAt: number;
 };
@@ -357,6 +368,7 @@ export type PracticePaper = {
   markingAudit?: PracticePaperMarkingAudit;
   withinTimeMarkingAudit?: PracticePaperMarkingAudit;
   remarkAudits?: PracticePaperRemarkAudit[];
+  manualCorrectionAudits?: PracticePaperManualCorrectionAudit[];
   generationAudit?: PracticePaperGenerationAudit;
   researchReceipt?: PracticePaperResearchReceipt;
   gradeGuidance: PracticePaperGradeGuidance;
@@ -506,57 +518,6 @@ export function normalizeQuestionAssets(value: unknown): PracticePaperQuestionAs
         : undefined,
     }];
   });
-}
-
-function isPracticePaperJobStatus(value: unknown): value is PracticePaperJobStatus {
-  return (
-    value === "queued" ||
-    value === "running" ||
-    value === "needs_clarification" ||
-    value === "ready" ||
-    value === "failed" ||
-    value === "cancelled"
-  );
-}
-
-function isPracticePaperJobStage(value: unknown): value is PracticePaperJobStage {
-  return (
-    value === "queued" ||
-    value === "reading_sources" ||
-    value === "researching" ||
-    value === "designing" ||
-    value === "building_mark_scheme" ||
-    value === "auditing" ||
-    value === "creating_figures" ||
-    value === "final_checks" ||
-    value === "ready"
-  );
-}
-
-export function mapPracticePaperJobData(
-  id: string,
-  data: Record<string, unknown>
-): PracticePaperJob {
-  return {
-    id,
-    paperId: normalizeOptionalString(data.paperId, 160) ?? "",
-    folderId: normalizeOptionalString(data.folderId, 160) ?? "",
-    status: isPracticePaperJobStatus(data.status) ? data.status : "queued",
-    stage: isPracticePaperJobStage(data.stage) ? data.stage : "queued",
-    progress: Math.min(100, finiteInteger(data.progress)),
-    title: normalizeOptionalString(data.title, 160) ?? "Practice paper",
-    clarificationQuestion: normalizeOptionalString(data.clarificationQuestion, 600),
-    failureCode: normalizeOptionalString(data.failureCode, 120),
-    failureMessage: normalizeOptionalString(data.failureMessage, 500),
-    workflowRunId: normalizeOptionalString(data.workflowRunId, 200),
-    cancellationRequested: data.cancellationRequested === true,
-    readyUnread: data.readyUnread === true,
-    retryCount: finiteInteger(data.retryCount),
-    createdAt: finiteInteger(data.createdAt),
-    startedAt: finiteInteger(data.startedAt) || undefined,
-    completedAt: finiteInteger(data.completedAt) || undefined,
-    updatedAt: finiteInteger(data.updatedAt),
-  };
 }
 
 export function normalizePracticePaperAssessmentProfile(
@@ -761,6 +722,8 @@ export function applyPracticePaperMarkCorrection(
           ...question,
           awardedMarks: Math.max(0, Math.min(question.maxMarks, Math.round(awardedMarks))),
           manualReason: reason.trim().slice(0, 500) || "Reviewed manually",
+          markRange: undefined,
+          evidenceWarnings: [],
         }
       : question
   );
@@ -769,12 +732,30 @@ export function applyPracticePaperMarkCorrection(
     0
   );
   const percentage = calculatePracticePaperPercentage(awarded, result.totalMarks);
+  const previousRange = result.markRange;
+  const lowerDistance = previousRange
+    ? result.awardedMarks - previousRange.lower
+    : 0;
+  const upperDistance = previousRange
+    ? previousRange.upper - result.awardedMarks
+    : 0;
   return {
     ...result,
     questionResults,
     awardedMarks: awarded,
     percentage,
     gradeLabel: getPracticePaperGradeLabel(percentage, guidance),
+    markRange: previousRange
+      ? {
+          ...previousRange,
+          lower: Math.max(0, awarded - lowerDistance),
+          upper: Math.min(result.totalMarks, awarded + upperDistance),
+          reasons: Array.from(new Set([
+            ...previousRange.reasons,
+            "A student correction is fixed at the mark you entered.",
+          ])).slice(0, 6),
+        }
+      : undefined,
   };
 }
 
@@ -867,6 +848,8 @@ function normalizeQuestionResults(value: unknown) {
         counted: item.counted !== false,
         manualReason: normalizeOptionalString(item.manualReason, 500),
         attempted: item.attempted === true || finiteInteger(item.awardedMarks) > 0,
+        markRange: normalizePracticePaperMarkRange(item.markRange, maxMarks),
+        evidenceWarnings: normalizeTextList(item.evidenceWarnings, 8, 500),
       }];
     });
 }
@@ -893,6 +876,11 @@ export function normalizePracticePaperResult(value: unknown): PracticePaperResul
     summary: normalizeOptionalString(result.summary, 2_000) ?? "",
     strengths: normalizeTextList(result.strengths, 10),
     priorities: normalizeTextList(result.priorities, 10),
+    markRange: normalizePracticePaperMarkRange(result.markRange, totalMarks),
+    gradeEstimateKind:
+      result.gradeEstimateKind === "official" ? "official" :
+        result.gradeEstimateKind === "estimated" ? "estimated" : undefined,
+    evidenceWarnings: normalizeTextList(result.evidenceWarnings, 12, 500),
     questionResults,
     gradeLabel: normalizeOptionalString(result.gradeLabel, 80),
   };
@@ -1070,6 +1058,7 @@ export function mapPracticePaperAttemptData(
       data.withinTimeMarkingAudit
     ),
     remarkAudits: normalizePracticePaperRemarkAudits(data.remarkAudits),
+    manualCorrectionAudits: normalizeManualCorrectionAudits(data.manualCorrectionAudits),
     createdAt: finiteInteger(data.createdAt),
     updatedAt: finiteInteger(data.updatedAt),
   };
@@ -1145,6 +1134,7 @@ export function mapPracticePaperData(
       data.withinTimeMarkingAudit
     ),
     remarkAudits: normalizePracticePaperRemarkAudits(data.remarkAudits),
+    manualCorrectionAudits: normalizeManualCorrectionAudits(data.manualCorrectionAudits),
     generationAudit: normalizePracticePaperGenerationAudit(data.generationAudit),
     researchReceipt: normalizePracticePaperResearchReceipt(data.researchReceipt),
     gradeGuidance: normalizePracticePaperGradeGuidance(data.gradeGuidance),

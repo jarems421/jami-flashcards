@@ -248,6 +248,20 @@ service cloud.firestore {
         allow read, write: if false;
       }
 
+      // Immutable submission evidence, marking workflow state and provider
+      // outputs are available only through authenticated server routes.
+      match /practicePaperEvidence/{attemptId} {
+        allow read, write: if false;
+      }
+
+      match /practicePaperMarkingJobs/{jobId} {
+        allow read, write: if false;
+      }
+
+      match /practicePaperMarkingJobArtifacts/{jobId} {
+        allow read, write: if false;
+      }
+
       match /practicePaperAttempts/{attemptId} {
         allow read: if isSelf(userId);
         allow create, update, delete: if false;

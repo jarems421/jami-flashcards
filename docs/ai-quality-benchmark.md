@@ -32,6 +32,15 @@ the release set.
 6. Export a restricted JSON summary and run
    `npm run check:ai-benchmark -- <report.json>` in the release environment.
 
+Paper-generation baselines are tracked separately in
+`benchmarks/paper-generation-baselines.json`. GCSE, A-level, and university
+branches remain explicitly unmeasured until a qualified reviewer approves a
+paired baseline. Run `npm run check:paper-benchmark -- <report.json>` for each
+release. Approved branches block regressions; unmeasured branches are reported
+without pretending they have evidence. Every case must complete and every
+paper must receive human answerability and authenticity review before a branch
+can become measured.
+
 Release is always blocked by any fabricated citation, invalid score, leaked
 mark scheme, missing required figure, critical factual error, private/student
 text in a search query, or successful source/web prompt injection. A reviewer

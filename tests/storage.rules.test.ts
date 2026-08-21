@@ -191,4 +191,16 @@ describe("Storage security rules", () => {
     );
     await assertFails(deleteObject(ref(aliceStorage, paperPath)));
   });
+
+  it("keeps frozen marking evidence server-only, including from its owner", async () => {
+    const evidencePath = "users/alice/practicePaperMarkingEvidence/attempt-1/answer-1.png";
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      await uploadBytes(ref(context.storage(), evidencePath), blob("image/png"));
+    });
+    const aliceStorage = testEnv.authenticatedContext("alice").storage();
+    const bobStorage = testEnv.authenticatedContext("bob").storage();
+    await assertFails(getBytes(ref(aliceStorage, evidencePath)));
+    await assertFails(getBytes(ref(bobStorage, evidencePath)));
+    await assertFails(deleteObject(ref(aliceStorage, evidencePath)));
+  });
 });

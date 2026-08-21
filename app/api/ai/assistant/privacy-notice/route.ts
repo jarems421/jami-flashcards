@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 // Not exported: a route module may only expose handlers and Next's own config
 // keys, and anything else fails the generated route type check at build time.
-const AI_PRIVACY_NOTICE_VERSION = 2;
+const AI_PRIVACY_NOTICE_VERSION = 3;
 
 export async function GET(request: NextRequest) {
   const uid = await authenticateAssistantAssetRequest(request);

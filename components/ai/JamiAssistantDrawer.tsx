@@ -991,6 +991,9 @@ export default function JamiAssistantDrawer({
                 handles source documents, optional web checks and visuals. Web search
                 is used only when current or course-specific information needs
                 checking, and private student work is never put into a search query.
+                When you submit a formal paper, Jami keeps a private frozen copy of
+                the paper, marking guide and your answers until that attempt is deleted
+                so marking and later rechecks use the same evidence.
                 This notice explains how Jami processes a request. Avoid personal details
                 and check important answers because AI can make mistakes.
               </p>

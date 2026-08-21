@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Button, ConfirmDialog, FeedbackBanner } from "@/components/ui";
+import { Button, ConfirmDialog, FeedbackBanner, ProgressBar } from "@/components/ui";
 import {
   Dialog,
   DialogBackdrop,
@@ -12,8 +12,15 @@ import {
 import PracticePaperDetailsDialog from "@/components/practice/PracticePaperDetailsDialog";
 import PracticePaperResultsDialog from "@/components/practice/PracticePaperResultsDialog";
 import { useFeedback } from "@/hooks/useFeedback";
-import type { PracticePaper, PracticePaperStatus } from "@/lib/practice/practice-papers";
-import { markPracticePaper, prepareUploadedPracticePaper } from "@/services/ai/practice-papers";
+import { PRACTICE_PAPER_MARKING_STAGE_LABELS } from "@/lib/practice/practice-paper-marking-jobs";
+import type { PracticePaper, PracticePaperMarkingJob, PracticePaperStatus } from "@/lib/practice/practice-papers";
+import {
+  cancelPracticePaperMarkingJob,
+  getPracticePaperMarkingJob,
+  getRecentPracticePaperMarkingJobs,
+  markPracticePaper,
+  prepareUploadedPracticePaper,
+} from "@/services/ai/practice-papers";
 import {
   capturePracticePaperDeadlineSnapshot,
   continuePracticePaperInOvertime,
@@ -58,9 +65,14 @@ export default function PracticePaperAttemptBar({
   const [confirmRetake, setConfirmRetake] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [reportOpen, setReportOpen] = useState(false);
+  const [markingJob, setMarkingJob] = useState<PracticePaperMarkingJob | null>(null);
   const [clock, setClock] = useState(Date.now());
   const captureVersionRef = useRef<string | null>(null);
   const { feedback, showThrownError, showError, clear } = useFeedback();
+  const replacePaper = useCallback((next: PracticePaper) => {
+    setPaper(next);
+    onStatusChange(next.status);
+  }, [onStatusChange]);
 
   useEffect(() => {
     let active = true;
@@ -79,6 +91,51 @@ export default function PracticePaperAttemptBar({
       });
     return () => { active = false; };
   }, [notebookId, onStatusChange, showThrownError, userId]);
+
+  useEffect(() => {
+    if (!paper || (paper.status !== "submitted" && paper.status !== "marked")) return;
+    let active = true;
+    void getRecentPracticePaperMarkingJobs()
+      .then((jobs) => {
+        if (!active) return;
+        const matching = jobs.find((job) =>
+          job.paperId === paper.id &&
+          job.kind === "full" &&
+          !["failed", "cancelled"].includes(job.status)
+        );
+        if (matching) setMarkingJob(matching);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, [paper]);
+
+  const markingJobId = markingJob?.id;
+  const markingJobStatus = markingJob?.status;
+  useEffect(() => {
+    if (!markingJobId || !markingJobStatus || !["queued", "running"].includes(markingJobStatus)) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const next = await getPracticePaperMarkingJob(markingJobId);
+        if (!active) return;
+        setMarkingJob(next);
+        if (next.status === "ready") {
+          const marked = await getPracticePaperByNotebookId(userId, notebookId);
+          if (!active || !marked) return;
+          replacePaper(marked);
+          setReportOpen(true);
+        }
+      } catch (error) {
+        if (active) showThrownError(error, "Could not refresh marking progress.");
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 2_500);
+    void refresh();
+    return () => {
+      active = false;
+      window.clearInterval(timer);
+    };
+  }, [markingJobId, markingJobStatus, notebookId, replacePaper, showThrownError, userId]);
 
   useEffect(() => {
     if (
@@ -119,11 +176,6 @@ export default function PracticePaperAttemptBar({
     if (!paper?.overtimeStartedAt || paper.timingState !== "overtime") return null;
     return Math.max(0, clock - paper.overtimeStartedAt);
   }, [clock, paper?.overtimeStartedAt, paper?.timingState]);
-
-  const replacePaper = useCallback((next: PracticePaper) => {
-    setPaper(next);
-    onStatusChange(next.status);
-  }, [onStatusChange]);
 
   useEffect(() => {
     if (
@@ -188,13 +240,22 @@ export default function PracticePaperAttemptBar({
         replacePaper(submitted);
       }
       setConfirmSubmit(false);
-      const marked = await markPracticePaper(notebookId);
-      replacePaper(marked);
-      setReportOpen(true);
+      const job = await markPracticePaper(notebookId, markingJob?.id);
+      setMarkingJob(job);
     } catch (error) {
       showThrownError(error, "Jami could not mark this paper.");
     } finally {
       setBusy(null);
+    }
+  };
+
+  const cancelMarking = async () => {
+    if (!markingJob) return;
+    clear();
+    try {
+      setMarkingJob(await cancelPracticePaperMarkingJob(markingJob.id));
+    } catch (error) {
+      showThrownError(error, "Could not cancel marking.");
     }
   };
 
@@ -298,6 +359,14 @@ export default function PracticePaperAttemptBar({
             : paper.tutorEnabled
               ? "Tutor assisted"
               : "Exam conditions",
+      };
+    }
+    if (paper.status === "submitted" && markingJob && ["queued", "running", "paused"].includes(markingJob.status)) {
+      return {
+        label: markingJob.status === "paused" ? "Paused" : "Marking",
+        className: "bg-accent/12 text-accent",
+        headline: PRACTICE_PAPER_MARKING_STAGE_LABELS[markingJob.stage],
+        detail: markingJob.failureMessage ?? "You can leave this page. Your work is safely saved.",
       };
     }
     if (paper.status === "submitted") {
@@ -461,7 +530,10 @@ export default function PracticePaperAttemptBar({
               </Button>
             ) : null}
             {paper.status === "in_progress" ? <Button type="button" size="sm" variant="warm" disabled={busy !== null || paper.timingState === "awaiting_overtime"} onClick={() => setConfirmSubmit(true)}>Submit paper</Button> : null}
-            {paper.status === "submitted" ? <Button type="button" size="sm" disabled={busy !== null} onClick={() => void submitAndMark()}>{busy === "mark" ? "Marking..." : "Mark paper"}</Button> : null}
+            {paper.status === "submitted" && (!markingJob || ["failed", "cancelled", "paused"].includes(markingJob.status)) ? <Button type="button" size="sm" disabled={busy !== null} onClick={() => void submitAndMark()}>{busy === "mark" ? "Queuing..." : markingJob ? "Retry marking" : "Mark paper"}</Button> : null}
+            {paper.status === "submitted" && markingJob && ["queued", "running"].includes(markingJob.status) ? (
+              <Button type="button" size="sm" variant="ghost" onClick={() => void cancelMarking()}>Cancel marking</Button>
+            ) : null}
             {paper.status === "marked" && result ? (
               <>
                 <Button type="button" size="sm" onClick={() => setReportOpen(true)}>View results</Button>
@@ -470,6 +542,20 @@ export default function PracticePaperAttemptBar({
             ) : null}
           </div>
         </div>
+        {paper.status === "submitted" && markingJob && ["queued", "running", "paused"].includes(markingJob.status) ? (
+          <div className="mt-3 border-t border-[var(--color-border)] pt-3">
+            <div className="flex items-center justify-between gap-3 text-xs text-text-muted">
+              <span>{PRACTICE_PAPER_MARKING_STAGE_LABELS[markingJob.stage]}</span>
+              <span className="tabular-nums">{markingJob.progress}%</span>
+            </div>
+            <ProgressBar progress={markingJob.progress} className="mt-2" />
+            {markingJob.status === "paused" ? (
+              <p className="mt-2 text-xs leading-5 text-text-secondary">
+                {markingJob.failureMessage} Retry when you are ready; it will not use another daily mark.
+              </p>
+            ) : null}
+          </div>
+        ) : null}
         {feedback ? <div className="mt-2.5"><FeedbackBanner type={feedback.type} message={feedback.message} onDismiss={clear} /></div> : null}
       </div>
 

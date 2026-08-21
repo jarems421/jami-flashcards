@@ -16,14 +16,19 @@ import { ScoreMeter, scoreBand } from "./ScoreBand";
 import type {
   PracticePaper,
   PracticePaperAttempt,
+  PracticePaperMarkingJob,
   PracticePaperQuestionResult,
   PracticePaperResult,
 } from "@/lib/practice/practice-papers";
 import {
   correctPracticePaperMark,
+  getPracticePaperByNotebookId,
   getPracticePaperAttempts,
 } from "@/services/study/practice-papers";
-import { remarkPracticePaperQuestion } from "@/services/ai/practice-papers";
+import {
+  getPracticePaperMarkingJob,
+  remarkPracticePaperQuestion,
+} from "@/services/ai/practice-papers";
 
 export default function PracticePaperResultsDialog({
   open,
@@ -46,6 +51,7 @@ export default function PracticePaperResultsDialog({
   const [reason, setReason] = useState("");
   const [saving, setSaving] = useState(false);
   const [rechecking, setRechecking] = useState(false);
+  const [recheckJob, setRecheckJob] = useState<PracticePaperMarkingJob | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -56,6 +62,41 @@ export default function PracticePaperResultsDialog({
       .then(setAttempts)
       .catch(() => setAttempts([]));
   }, [open, paper.id, userId]);
+
+  const recheckJobId = recheckJob?.id;
+  const recheckJobStatus = recheckJob?.status;
+  useEffect(() => {
+    if (!recheckJobId || !recheckJobStatus || !["queued", "running"].includes(recheckJobStatus)) return;
+    let active = true;
+    const refresh = async () => {
+      try {
+        const next = await getPracticePaperMarkingJob(recheckJobId);
+        if (!active) return;
+        setRecheckJob(next);
+        if (next.status === "ready") {
+          const updated = await getPracticePaperByNotebookId(userId, paper.notebookId);
+          if (!active || !updated) return;
+          onChange(updated);
+          setEditingQuestionId("");
+          setReason("");
+          setMark("");
+          setAttempts(await getPracticePaperAttempts(userId, paper.id));
+          setRechecking(false);
+          setRecheckJob(null);
+        } else if (["failed", "cancelled", "paused"].includes(next.status)) {
+          setError(next.failureMessage ?? "The recheck paused. Your existing mark has not changed.");
+          setRechecking(false);
+        }
+      } catch (caught) {
+        if (!active) return;
+        setError(caught instanceof Error ? caught.message : "Could not refresh the recheck.");
+        setRechecking(false);
+      }
+    };
+    const timer = window.setInterval(() => void refresh(), 2_500);
+    void refresh();
+    return () => { active = false; window.clearInterval(timer); };
+  }, [onChange, paper.id, paper.notebookId, recheckJobId, recheckJobStatus, userId]);
 
   const correct = async () => {
     if (!editingQuestionId) return;
@@ -88,21 +129,17 @@ export default function PracticePaperResultsDialog({
     setRechecking(true);
     setError("");
     try {
-      const updated = await remarkPracticePaperQuestion({
+      const job = await remarkPracticePaperQuestion({
         notebookId: paper.notebookId,
         questionId: editingQuestionId,
         reason,
+        idempotencyKey: recheckJob?.id,
       });
-      onChange(updated);
-      setEditingQuestionId("");
-      setReason("");
-      setMark("");
-      setAttempts(await getPracticePaperAttempts(userId, paper.id));
+      setRecheckJob(job);
     } catch (caught) {
       setError(
         caught instanceof Error ? caught.message : "Could not recheck this question."
       );
-    } finally {
       setRechecking(false);
     }
   };
@@ -111,8 +148,6 @@ export default function PracticePaperResultsDialog({
   const showOvertimeComparison = Boolean(
     result && paper.withinTimeResult && paper.overtimeStartedAt
   );
-  const audit = paper.markingAudit;
-
   return (
     <Dialog open={open} onDismiss={onClose}>
       <DialogBackdrop />
@@ -213,6 +248,20 @@ export default function PracticePaperResultsDialog({
                 <GradeContext paper={paper} />
               ) : null}
 
+              {result.evidenceWarnings?.length ? (
+                <div className="rounded-2xl border border-warning/30 bg-warning-muted p-4 sm:p-5">
+                  <p className="text-sm font-semibold text-[var(--color-warning-text)]">
+                    Some evidence needs care
+                  </p>
+                  <ul className="mt-2 space-y-1 text-xs leading-5 text-text-secondary">
+                    {result.evidenceWarnings.map((warning) => <li key={warning}>• {warning}</li>)}
+                  </ul>
+                  <p className="mt-2 text-xs leading-5 text-text-muted">
+                    Readable work was still marked. The likely range is wider where the evidence was unclear.
+                  </p>
+                </div>
+              ) : null}
+
               <div className="grid gap-3 md:grid-cols-2">
                 <ResultList title="What worked" items={result.strengths} />
                 <ResultList title="Focus next" items={result.priorities.slice(0, 3)} />
@@ -221,20 +270,15 @@ export default function PracticePaperResultsDialog({
               <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-glass-subtle)] p-4 sm:flex sm:items-start sm:justify-between sm:gap-5">
                 <div>
                   <p className="text-sm font-semibold text-text-primary">
-                    AI-assisted marking — check important decisions
+                    AI-assisted marking — review anything that looks wrong
                   </p>
                   <p className="mt-1 max-w-2xl text-xs leading-5 text-text-muted">
-                    Jami used an independent second marker and adjudicated any
-                    disagreements. You can correct a reading or mark on every
-                    question; the original audit remains attached to this attempt.
+                    Your exact score follows the paper’s marking guide. The likely
+                    range reflects places where handwriting, evidence, or marking
+                    judgement may reasonably change the result. You can request a
+                    background recheck or apply a correction to any question.
                   </p>
                 </div>
-                {audit ? (
-                  <div className="mt-3 shrink-0 text-xs text-text-muted sm:mt-0 sm:text-right">
-                    <p>{audit.disputedQuestionIds.length} reviewed dispute{audit.disputedQuestionIds.length === 1 ? "" : "s"}</p>
-                    <p>{audit.thirdViewQuestionIds.length} visual third view{audit.thirdViewQuestionIds.length === 1 ? "" : "s"}</p>
-                  </div>
-                ) : null}
               </div>
 
               <div className="space-y-3">
@@ -341,10 +385,20 @@ function ScorePanel({
         </p>
         {result.gradeLabel ? (
           <span className="rounded-full border border-accent/35 bg-accent/10 px-3 py-1 text-xs font-semibold text-accent">
-            {result.gradeLabel}
+            {result.gradeEstimateKind === "estimated" ? "Estimated · " : ""}{result.gradeLabel}
           </span>
         ) : null}
       </div>
+      {result.markRange ? (
+        <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-sm text-text-secondary">
+          <span className="font-semibold tabular-nums text-text-primary">
+            Likely range: {result.markRange.lower}–{result.markRange.upper}
+          </span>
+          {result.markRange.earlyEstimate ? (
+            <span className="text-xs text-text-muted">Early estimate</span>
+          ) : null}
+        </div>
+      ) : null}
       <ProgressBar progress={result.percentage} className="mt-4" />
       <StudyText
         text={result.summary}
@@ -482,6 +536,11 @@ function QuestionResultCard({
                 ? "Low-confidence reading — worth checking"
                 : scoreTone.caption}
           </span>
+          {question.markRange ? (
+            <span className="mt-1 block text-xs font-medium tabular-nums text-text-secondary">
+              Likely range {question.markRange.lower}–{question.markRange.upper}
+            </span>
+          ) : null}
         </span>
         <span className="flex shrink-0 items-center gap-3">
           <ScoreMeter
@@ -524,6 +583,14 @@ function QuestionResultCard({
             <p className="mt-1 text-xs leading-5 text-text-secondary">
               {question.transcriptionNote}
             </p>
+          </div>
+        ) : null}
+        {question.markRange?.reasons.length ? (
+          <div className="rounded-xl border border-warning/25 bg-warning-muted p-3">
+            <p className="text-xs font-semibold text-[var(--color-warning-text)]">Why this mark has a range</p>
+            <ul className="mt-1 space-y-1 text-xs leading-5 text-text-secondary">
+              {question.markRange.reasons.map((item) => <li key={item}>• {item}</li>)}
+            </ul>
           </div>
         ) : null}
         {question.manualReason ? (
@@ -894,7 +961,7 @@ function GradeContext({ paper }: { paper: PracticePaper }) {
   return (
     <div className="rounded-2xl border border-[var(--color-border)] p-4 sm:p-5">
       <p className="text-xs font-semibold uppercase tracking-[0.14em] text-text-muted">
-        Grade context
+        {paper.result?.gradeEstimateKind === "estimated" ? "Estimated grade context" : "Grade context"}
       </p>
       <p className="mt-2 text-sm font-semibold text-text-primary">
         {guidance.label}

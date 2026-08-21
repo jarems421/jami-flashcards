@@ -120,6 +120,9 @@ function seedPaper() {
     [`${root}/practicePaperDeadlineSnapshots/snapshot-1`]: { paperId },
     [`${root}/practicePaperJobs/job-1`]: { paperId, temporarySourceIds: [] },
     [`${root}/practicePaperJobArtifacts/job-1`]: { generation: { complete: true } },
+    [`${root}/practicePaperMarkingJobs/mark-job-1`]: { paperId, attemptId: "attempt-1" },
+    [`${root}/practicePaperMarkingJobArtifacts/mark-job-1`]: { markingReady: true },
+    [`${root}/practicePaperEvidence/attempt-1`]: { paperId, attemptId: "attempt-1" },
     [`${root}/notebooks/ordinary-notebook`]: { type: "blank" },
     [`${root}/practicePaperAttempts/unrelated-attempt`]: { paperId: "other-paper" },
   };
@@ -128,6 +131,7 @@ function seedPaper() {
   mocks.storageObjects.add(`${root}/notebookFiles/${paperId}/paper.pdf`);
   mocks.storageObjects.add(`${root}/notebookFiles/${paperId}/jami-visual.webp`);
   mocks.storageObjects.add(`${root}/notebookImages/${paperId}/legacy-visual.webp`);
+  mocks.storageObjects.add(`${root}/practicePaperMarkingEvidence/attempt-1/manifest.json`);
   mocks.storageObjects.add(`${root}/notebookFiles/ordinary-notebook/notes.pdf`);
 }
 
@@ -169,6 +173,7 @@ describe("formal practice-paper deletion", () => {
       `${root}/generatedPaperAssets/${paperId}/`,
       `${root}/notebookFiles/${paperId}/`,
       `${root}/notebookImages/${paperId}/`,
+      `${root}/practicePaperMarkingEvidence/attempt-1/`,
     ]));
 
     const repeated = await deletePracticePaperWithAdmin("user-1", paperId);

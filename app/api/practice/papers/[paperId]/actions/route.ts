@@ -127,6 +127,12 @@ export async function POST(
       submittedAt: null,
       markedAt: null,
       result: null,
+      withinTimeResult: null,
+      overtimeMarksGained: null,
+      markingAudit: null,
+      withinTimeMarkingAudit: null,
+      remarkAudits: [],
+      manualCorrectionAudits: [],
       updatedAt: now,
     };
     batch.update(paperRef, updates);
@@ -292,11 +298,29 @@ export async function POST(
       reason,
       paper.gradeGuidance
     );
+    const previousMarks = paper.result.questionResults.find(
+      (question) => question.questionId === questionId
+    )?.awardedMarks;
+    if (previousMarks === undefined) {
+      return failure("Question not found.", 404, "question_not_found");
+    }
+    const correctionAudit = {
+      questionId,
+      reason,
+      previousMarks,
+      revisedMarks: result.questionResults.find((question) => question.questionId === questionId)?.awardedMarks ?? previousMarks,
+      createdAt: now,
+    };
     const batch = db.batch();
-    batch.update(paperRef, { result, updatedAt: now });
+    batch.update(paperRef, {
+      result,
+      manualCorrectionAudits: FieldValue.arrayUnion(correctionAudit),
+      updatedAt: now,
+    });
     if (paper.activeAttemptId) {
       batch.update(userRef.collection("practicePaperAttempts").doc(paper.activeAttemptId), {
         result,
+        manualCorrectionAudits: FieldValue.arrayUnion(correctionAudit),
         updatedAt: now,
       });
     }

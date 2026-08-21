@@ -59,5 +59,11 @@ service firebase.storage {
       allow read: if isSelf(userId);
       allow write: if false;
     }
+
+    // Frozen assessment evidence is intentionally not exposed as a storage
+    // URL. Sanitized warnings and results are projected by authenticated APIs.
+    match /users/{userId}/practicePaperMarkingEvidence/{attemptId}/{allPaths=**} {
+      allow read, write: if false;
+    }
   }
 }

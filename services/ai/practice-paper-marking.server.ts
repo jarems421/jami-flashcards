@@ -90,7 +90,59 @@ export type PracticePaperMarkingInput = {
   deadlineAt: number;
   maxOutputTokens: number;
   logFallback?: (fields: Record<string, unknown>) => void;
+  /** Successful provider calls may not cross this workflow-owned ceiling. */
+  maxEstimatedCostUsd?: number;
+  /** Server-only checkpoints used by durable workflows after a redeploy/retry. */
+  cachedStageResults?: Partial<Record<PracticePaperMarkerStage, PracticePaperMarkerStageResult>>;
+  onStageResult?: (
+    stage: PracticePaperMarkerStage,
+    result: PracticePaperMarkerStageResult
+  ) => Promise<void>;
 };
+
+export type PracticePaperMarkerStage =
+  | "primary"
+  | "verifier"
+  | "adjudication"
+  | "juror"
+  | "final_reconciliation";
+
+export type PracticePaperMarkerStageResult = {
+  result: PracticePaperResult;
+  diagnostics: AiResponseDiagnostics[];
+};
+
+export class PracticePaperMarkingCostLimitError extends Error {
+  constructor() {
+    super("Practice-paper marking reached its configured cost ceiling.");
+    this.name = "PracticePaperMarkingCostLimitError";
+  }
+}
+
+function successfulCost(diagnostics: readonly AiResponseDiagnostics[]) {
+  return diagnostics.reduce((total, item) => total + (item.estimatedCostUsd ?? 0), 0);
+}
+
+function assertCostRoom(input: PracticePaperMarkingInput, diagnostics: readonly AiResponseDiagnostics[]) {
+  if (
+    input.maxEstimatedCostUsd !== undefined &&
+    successfulCost(diagnostics) >= input.maxEstimatedCostUsd
+  ) {
+    throw new PracticePaperMarkingCostLimitError();
+  }
+}
+
+async function checkpointedMarkerCall(
+  input: PracticePaperMarkingInput,
+  stage: PracticePaperMarkerStage,
+  operation: () => Promise<PracticePaperMarkerStageResult>
+) {
+  const cached = input.cachedStageResults?.[stage];
+  if (cached) return cached;
+  const completed = await operation();
+  await input.onStageResult?.(stage, completed);
+  return completed;
+}
 
 /**
  * How long each model in the ensemble gets, measured rather than assumed.
@@ -524,20 +576,21 @@ export function selectThirdViewQuestionIds(input: {
 export async function markPracticePaperWithAudit(input: PracticePaperMarkingInput): Promise<{
   result: PracticePaperResult;
   audit: PracticePaperMarkingAudit;
+  estimatedCostUsd: number;
 }> {
   // Blind markers run concurrently. The verifier sees the paper, rubric and
   // original answers, but never the primary marker's scores.
   const [primary, verifier] = await Promise.all([
-    callMarker({
+    checkpointedMarkerCall(input, "primary", () => callMarker({
       ...input,
       role: "primary",
       modelRole: "supervisor",
-    }),
-    callMarker({
+    })),
+    checkpointedMarkerCall(input, "verifier", () => callMarker({
       ...input,
       role: "verifier",
       modelRole: "worker",
-    }),
+    })),
   ]);
   const disputedQuestionIds = comparePracticePaperMarkings(
     primary.result,
@@ -546,8 +599,13 @@ export async function markPracticePaperWithAudit(input: PracticePaperMarkingInpu
   let result = primary.result;
   let adjudicatedQuestionIds: string[] = [];
   let thirdViewQuestionIds: string[] = [];
+  const diagnostics: AiResponseDiagnostics[] = [
+    ...primary.diagnostics,
+    ...verifier.diagnostics,
+  ];
 
   if (disputedQuestionIds.length > 0) {
+    assertCostRoom(input, diagnostics);
     const disputedFrom = (marking: PracticePaperResult) =>
       marking.questionResults.filter((item) =>
         disputedQuestionIds.includes(item.questionId)
@@ -559,7 +617,7 @@ export async function markPracticePaperWithAudit(input: PracticePaperMarkingInpu
     const [firstReport, secondReport] = primaryFirst
       ? [primary.result, verifier.result]
       : [verifier.result, primary.result];
-    const adjudication = await callMarker({
+    const adjudication = await checkpointedMarkerCall(input, "adjudication", () => callMarker({
       ...input,
       role: "adjudicator",
       modelRole: "supervisor",
@@ -568,8 +626,9 @@ Two independent markers of equal standing produced these reports. Neither has pr
 Report A: ${JSON.stringify(disputedFrom(firstReport))}
 Report B: ${JSON.stringify(disputedFrom(secondReport))}
 Return the complete final report for every question, preserving agreed questions unless the fixed rubric proves a deterministic error.`,
-    });
+    }));
     result = adjudication.result;
+    diagnostics.push(...adjudication.diagnostics);
     adjudicatedQuestionIds = disputedQuestionIds;
     thirdViewQuestionIds = selectThirdViewQuestionIds({
       adjudicated: result,
@@ -589,14 +648,18 @@ Return the complete final report for every question, preserving agreed questions
   // a genuine disagreement between two markers, and silently shipping one of
   // them would bury the conflict rather than settle it.
   try {
-    result = await runThirdView({
+    if (thirdViewQuestionIds.length > 0) assertCostRoom(input, diagnostics);
+    const thirdView = await runThirdView({
       input,
       result,
       primary: primary.result,
       verifier: verifier.result,
       thirdViewQuestionIds,
     });
+    result = thirdView.result;
+    diagnostics.push(...thirdView.diagnostics);
   } catch (error) {
+    if (error instanceof PracticePaperMarkingCostLimitError) throw error;
     if (input.signal?.aborted) throw error;
     input.logFallback?.({
       role: "third-view",
@@ -610,6 +673,7 @@ Return the complete final report for every question, preserving agreed questions
 
   return {
     result,
+    estimatedCostUsd: successfulCost(diagnostics),
     audit: {
       version: 1,
       primaryScores: scoreMap(primary.result),
@@ -631,6 +695,7 @@ async function runThirdView(context: {
 }) {
   const { input, primary, verifier, thirdViewQuestionIds } = context;
   let result = context.result;
+  const diagnostics: AiResponseDiagnostics[] = [];
   if (thirdViewQuestionIds.length > 0) {
     const unresolved = new Set(thirdViewQuestionIds);
     const filteredThirdViewParts = filterReferencePartsForQuestions(
@@ -657,7 +722,7 @@ async function runThirdView(context: {
         boundaries: [],
       },
     };
-    const third = await callMarker({
+    const third = await checkpointedMarkerCall(input, "juror", () => callMarker({
       ...input,
       paper: jurorPaper,
       answerParts: filteredThirdViewParts,
@@ -672,18 +737,21 @@ Dispute summary: ${JSON.stringify(thirdViewQuestionIds.map((questionId) => ({
   verifier: verifier.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
   adjudicated: result.questionResults.find((item) => item.questionId === questionId)?.awardedMarks,
 })))}. Return a complete report shape for these questions only.`,
-    });
-    const final = await callMarker({
+    }));
+    diagnostics.push(...third.diagnostics);
+    assertCostRoom(input, diagnostics);
+    const final = await checkpointedMarkerCall(input, "final_reconciliation", () => callMarker({
       ...input,
       role: "adjudicator",
       modelRole: "supervisor",
       extraPrompt: `Produce the final complete report. Give special attention to ${thirdViewQuestionIds.join(", ")}.
 Previous adjudication: ${JSON.stringify(result.questionResults)}
 Independent visual third view: ${JSON.stringify(third.result.questionResults.filter((item) => thirdViewQuestionIds.includes(item.questionId)))}`,
-    });
+    }));
+    diagnostics.push(...final.diagnostics);
     result = final.result;
   }
-  return result;
+  return { result, diagnostics };
 }
 
 function filterReferencePartsForQuestions(

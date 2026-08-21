@@ -129,13 +129,14 @@ export async function deletePracticePaperWithAdmin(
     );
   }
 
-  const [pages, inks, files, attempts, deadlineSnapshots, jobs] = await Promise.all([
+  const [pages, inks, files, attempts, deadlineSnapshots, jobs, markingJobs] = await Promise.all([
     userRef.collection("notebookPages").where("notebookId", "==", notebookId).get(),
     userRef.collection("notebookPageInk").where("notebookId", "==", notebookId).get(),
     userRef.collection("notebookFiles").where("notebookId", "==", notebookId).get(),
     userRef.collection("practicePaperAttempts").where("paperId", "==", normalizedPaperId).get(),
     userRef.collection("practicePaperDeadlineSnapshots").where("paperId", "==", normalizedPaperId).get(),
     userRef.collection("practicePaperJobs").where("paperId", "==", normalizedPaperId).get(),
+    userRef.collection("practicePaperMarkingJobs").where("paperId", "==", normalizedPaperId).get(),
   ]);
 
   // A queued paper may own temporary source uploads. Remove those while its
@@ -154,6 +155,9 @@ export async function deletePracticePaperWithAdmin(
     generatedAssetsPrefix,
     notebookFilesPrefix,
     notebookImagesPrefix,
+    ...attempts.docs.map((attempt) =>
+      `users/${normalizedUid}/practicePaperMarkingEvidence/${attempt.id}/`
+    ),
   ];
   const bucket = getAdminStorageBucket();
   await Promise.all(
@@ -171,6 +175,13 @@ export async function deletePracticePaperWithAdmin(
     ...deadlineSnapshots.docs.map((snapshot) => snapshot.ref),
     ...jobs.docs.map((job) => userRef.collection("practicePaperJobArtifacts").doc(job.id)),
     ...jobs.docs.map((job) => job.ref),
+    ...markingJobs.docs.map((job) =>
+      userRef.collection("practicePaperMarkingJobArtifacts").doc(job.id)
+    ),
+    ...markingJobs.docs.map((job) => job.ref),
+    ...attempts.docs.map((attempt) =>
+      userRef.collection("practicePaperEvidence").doc(attempt.id)
+    ),
     userRef.collection("practicePaperSecrets").doc(normalizedPaperId),
   ];
   const deletedDependents = await deleteReferences(dependentReferences);

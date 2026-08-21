@@ -29,6 +29,17 @@ text, student work, image bytes, or cost metadata.
 | All OpenRouter text inference | Set `OPENROUTER_KILL_SWITCH=true` |
 | Independent juror only | Set `OPENROUTER_JUROR_KILL_SWITCH=true` |
 | All Gemini specialist inference | Set `GEMINI_KILL_SWITCH=true` |
+
+Formal paper marking is separately released with
+`PRACTICE_PAPER_MARKING_WORKFLOW_ENABLED=true`. Keep it false until Preview has
+completed a synthetic submitted paper, overtime dual scoring, cancellation,
+retry, question recheck, and deletion. The service-wide marking lease defaults
+to four jobs (`PRACTICE_PAPER_MARKING_JOB_CONCURRENCY=4`) and the automatic
+provider ceiling defaults to `$0.50`
+(`PRACTICE_PAPER_MARKING_MAX_COST_USD=0.50`). A job that reaches the ceiling
+pauses with its evidence and completed provider checkpoints intact; raising the
+ceiling or retrying after an operational review does not consume another daily
+allowance.
 | Grounded web/URL research | Set `AI_WEB_RESEARCH_ENABLED=false` |
 | Tutor illustrations | Set `AI_TUTOR_IMAGES_ENABLED=false` |
 | Paper raster illustrations | Set `AI_PAPER_IMAGES_ENABLED=false` |

@@ -862,6 +862,27 @@ describe("Firestore security rules", () => {
     );
   });
 
+  it("keeps marking jobs, evidence manifests, and workflow artifacts server-only", async () => {
+    await testEnv.withSecurityRulesDisabled(async (context) => {
+      const adminDb = context.firestore();
+      await Promise.all([
+        setDoc(doc(adminDb, "users", ALICE, "practicePaperMarkingJobs", "mark-job-1"), { status: "running" }),
+        setDoc(doc(adminDb, "users", ALICE, "practicePaperMarkingJobArtifacts", "mark-job-1"), { providerOutput: "private" }),
+        setDoc(doc(adminDb, "users", ALICE, "practicePaperEvidence", "attempt-1"), { manifest: { private: true } }),
+      ]);
+    });
+    const aliceDb = testEnv.authenticatedContext(ALICE).firestore();
+    for (const [collectionName, id] of [
+      ["practicePaperMarkingJobs", "mark-job-1"],
+      ["practicePaperMarkingJobArtifacts", "mark-job-1"],
+      ["practicePaperEvidence", "attempt-1"],
+    ]) {
+      const reference = doc(aliceDb, "users", ALICE, collectionName, id);
+      await assertFails(getDoc(reference));
+      await assertFails(setDoc(reference, { status: "cancelled" }, { merge: true }));
+    }
+  });
+
   it("keeps answer-bearing practice-paper rubrics inaccessible before submission", async () => {
     await testEnv.withSecurityRulesDisabled(async (context) => {
       const adminDb = context.firestore();

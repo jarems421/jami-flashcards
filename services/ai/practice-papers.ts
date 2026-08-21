@@ -3,9 +3,11 @@ import type {
 } from "@/lib/ai/practice-paper-generation";
 import {
   mapPracticePaperJobData,
+  mapPracticePaperMarkingJobData,
   mapPracticePaperData,
   type PracticePaper,
   type PracticePaperJob,
+  type PracticePaperMarkingJob,
 } from "@/lib/practice/practice-papers";
 import { auth } from "@/services/firebase/client";
 
@@ -136,35 +138,75 @@ export function prepareUploadedPracticePaper(notebookId: string) {
   return runPracticePaperAction("prepare", notebookId);
 }
 
-export function markPracticePaper(notebookId: string) {
-  return runPracticePaperAction("mark", notebookId);
+export function markPracticePaper(notebookId: string, idempotencyKey?: string) {
+  return createPracticePaperMarkingJob({ paperId: notebookId, idempotencyKey });
 }
 
 export async function remarkPracticePaperQuestion(input: {
   notebookId: string;
   questionId: string;
   reason: string;
+  idempotencyKey?: string;
 }) {
-  const user = auth.currentUser;
-  if (!user) throw new Error("Not signed in");
-  const token = await user.getIdToken();
-  const response = await fetch("/api/ai/practice-papers/remark-question", {
+  return createPracticePaperMarkingJob({
+    paperId: input.notebookId,
+    kind: "question_recheck",
+    questionId: input.questionId,
+    reason: input.reason,
+    idempotencyKey: input.idempotencyKey,
+  });
+}
+
+export async function createPracticePaperMarkingJob(input: {
+  paperId: string;
+  kind?: "full" | "question_recheck";
+  questionId?: string;
+  reason?: string;
+  idempotencyKey?: string;
+}): Promise<PracticePaperMarkingJob> {
+  const data = await authenticatedPaperJobRequest("/api/practice/paper-marking-jobs", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: input.idempotencyKey
+      ? { "x-idempotency-key": input.idempotencyKey }
+      : undefined,
     body: JSON.stringify(input),
   });
-  const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!response.ok) {
-    throw new Error(
-      friendlyError(
-        response.status,
-        typeof data?.error === "string" ? data.error : undefined
-      )
-    );
-  }
-  if (!data) throw new Error("Jami returned an incomplete question recheck.");
-  return mapPracticePaperData(input.notebookId, data);
+  const id = typeof data.id === "string" ? data.id : input.idempotencyKey ?? "";
+  if (!id) throw new Error("Jami returned an incomplete marking job.");
+  return mapPracticePaperMarkingJobData(id, data);
+}
+
+export async function getPracticePaperMarkingJob(jobId: string) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-marking-jobs/${encodeURIComponent(jobId)}`
+  );
+  return mapPracticePaperMarkingJobData(jobId, data);
+}
+
+export async function getRecentPracticePaperMarkingJobs(): Promise<PracticePaperMarkingJob[]> {
+  const data = await authenticatedPaperJobRequest("/api/practice/paper-marking-jobs");
+  return Array.isArray(data.jobs)
+    ? data.jobs.flatMap((candidate) => {
+        if (!candidate || typeof candidate !== "object") return [];
+        const record = candidate as Record<string, unknown>;
+        const id = typeof record.id === "string" ? record.id : "";
+        return id ? [mapPracticePaperMarkingJobData(id, record)] : [];
+      })
+    : [];
+}
+
+export async function cancelPracticePaperMarkingJob(jobId: string) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-marking-jobs/${encodeURIComponent(jobId)}`,
+    { method: "DELETE" }
+  );
+  return mapPracticePaperMarkingJobData(jobId, data);
+}
+
+export async function acknowledgePracticePaperMarkingJob(jobId: string) {
+  const data = await authenticatedPaperJobRequest(
+    `/api/practice/paper-marking-jobs/${encodeURIComponent(jobId)}`,
+    { method: "PATCH" }
+  );
+  return mapPracticePaperMarkingJobData(jobId, data);
 }
