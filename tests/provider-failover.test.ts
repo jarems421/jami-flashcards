@@ -11,16 +11,19 @@ import { failoverProvidersFor } from "@/lib/ai/provider-policy";
  * primary; a request has to ask for the failover.
  */
 describe("deliberate provider failover", () => {
+  it("offers the worker an independent full-context endpoint", () => {
+    expect(failoverProvidersFor("worker", {} as unknown as NodeJS.ProcessEnv)).toEqual(["novita"]);
+  });
+
   it("offers the supervisor a second endpoint for the same model", () => {
     expect(failoverProvidersFor("supervisor", {} as unknown as NodeJS.ProcessEnv)).toEqual(["deepinfra"]);
   });
 
   /**
-   * Only the supervisor has shown this failure, and a failover nobody measured
-   * is just an unreviewed endpoint.
+   * Roles without a measured independent endpoint still fail closed.
    */
   it("offers none to the roles that have not needed one", () => {
-    for (const role of ["worker", "juror", "research", "documentVision"] as const) {
+    for (const role of ["juror", "research", "documentVision"] as const) {
       expect(failoverProvidersFor(role, {} as unknown as NodeJS.ProcessEnv)).toEqual([]);
     }
   });

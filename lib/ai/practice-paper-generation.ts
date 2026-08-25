@@ -19,6 +19,40 @@ import {
 export const MAX_PRACTICE_PAPER_REQUEST_LENGTH = 2_000;
 export const MAX_PRACTICE_PAPER_COVERAGE_LENGTH = 1_000;
 
+export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
+  const list = (candidate: unknown) =>
+    Array.isArray(candidate)
+      ? candidate
+      : typeof candidate === "string" && candidate.trim()
+        ? [candidate]
+        : [];
+  return value.map((candidate) => {
+    if (!candidate || typeof candidate !== "object") return candidate;
+    const item = candidate as Record<string, unknown>;
+    return {
+      ...item,
+      questionId: item.questionId ?? item.id,
+      marking: item.marking ?? item.markingModel,
+      ...(Array.isArray(item.points)
+        ? {
+            points: item.points.map((point) => {
+              if (!point || typeof point !== "object") return point;
+              const entry = point as Record<string, unknown>;
+              return {
+                ...entry,
+                dep: list(entry.dep),
+                ft: entry.ft === true,
+                essentialTerms: list(entry.essentialTerms),
+                allow: list(entry.allow),
+                reject: list(entry.reject),
+              };
+            }),
+          }
+        : {}),
+    };
+  });
+}
+
 export type PracticePaperGenerationRequest = {
   folderId: string;
   request: string;

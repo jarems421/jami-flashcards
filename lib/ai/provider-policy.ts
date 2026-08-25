@@ -116,7 +116,7 @@ const DEFAULT_MODELS = {
 const DEFAULT_PROVIDERS = {
   // These defaults are intentionally limited to current full-context ZDR
   // endpoints. The live release check rejects stale entries before cutover.
-  worker: ["novita", "parasail"],
+  worker: ["parasail"],
   // The supervisor always returns validated JSON. Of the current full-context
   // FP8 ZDR endpoints, Parasail advertises structured response support.
   supervisor: ["parasail"],
@@ -171,6 +171,7 @@ const DEFAULT_STANDBY = {
  * than quietly used.
  */
 const DEFAULT_FAILOVER_PROVIDERS = {
+  worker: ["novita"],
   supervisor: ["deepinfra"],
 } as const;
 
@@ -178,10 +179,12 @@ export function failoverProvidersFor(
   role: AiGenerationRole,
   env: NodeJS.ProcessEnv = process.env
 ): readonly string[] {
-  if (role !== "supervisor") return [];
+  if (role !== "worker" && role !== "supervisor") return [];
   return providerList(
-    env.OPENROUTER_SUPERVISOR_FAILOVER_PROVIDERS,
-    DEFAULT_FAILOVER_PROVIDERS.supervisor
+    role === "worker"
+      ? env.OPENROUTER_WORKER_FAILOVER_PROVIDERS
+      : env.OPENROUTER_SUPERVISOR_FAILOVER_PROVIDERS,
+    DEFAULT_FAILOVER_PROVIDERS[role]
   );
 }
 
@@ -523,6 +526,8 @@ export function buildAiProviderPlan(input: {
   const primary = attemptFor(role, input.policy, reason);
   const attempts = [primary, { ...primary }];
   if (role === "worker") {
+    const failover = failoverAttemptFor(role, input.policy);
+    if (failover) attempts.push(failover);
     if (capabilityIsReady("supervisor", input.policy)) {
       attempts.push(attemptFor("supervisor", input.policy, "provider_escalation"));
     }

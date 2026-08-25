@@ -35,7 +35,7 @@ describe("AI provider policy", () => {
     expect(registry.worker).toMatchObject({
       provider: "openrouter",
       modelId: "xiaomi/mimo-v2.5",
-      providerAllowlist: ["novita", "parasail"],
+      providerAllowlist: ["parasail"],
       quantizations: ["fp32", "fp16", "bf16", "fp8"],
     });
     expect(registry.supervisor).toMatchObject({
@@ -74,9 +74,14 @@ describe("AI provider policy", () => {
     expect(plan.map(({ role, model }) => `${role}:${model}`)).toEqual([
       "worker:xiaomi/mimo-v2.5",
       "worker:xiaomi/mimo-v2.5",
+      "worker:xiaomi/mimo-v2.5",
       "supervisor:minimax/minimax-m3",
     ]);
-    expect(plan[2].routeReason).toBe("provider_escalation");
+    expect(plan[2]).toMatchObject({
+      routeReason: "provider_failover",
+      providerAllowlist: ["novita"],
+    });
+    expect(plan[3].routeReason).toBe("provider_escalation");
   });
 
   it("preserves provider-neutral route reasons in diagnostics plans", () => {

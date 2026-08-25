@@ -77,7 +77,7 @@ describe("provider router", () => {
     );
   });
 
-  it("retries the worker before escalating without downgrading supervisor work", async () => {
+  it("retries the worker on its independent endpoint before escalating without downgrading supervisor work", async () => {
     mocks.generateOpenRouterText
       .mockRejectedValueOnce(new Error("worker unavailable"))
       .mockRejectedValueOnce(new Error("worker unavailable"))
@@ -91,8 +91,9 @@ describe("provider router", () => {
     expect(mocks.generateOpenRouterText.mock.calls.map((call) => call[0].model)).toEqual([
       "xiaomi/mimo-v2.5",
       "xiaomi/mimo-v2.5",
-      "minimax/minimax-m3",
+      "xiaomi/mimo-v2.5",
     ]);
+    expect(mocks.generateOpenRouterText.mock.calls[2][0].providerAllowlist).toEqual(["novita"]);
 
     mocks.generateOpenRouterText.mockReset();
     mocks.generateOpenRouterText.mockRejectedValue(new Error("supervisor unavailable"));

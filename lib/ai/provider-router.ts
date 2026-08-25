@@ -283,6 +283,99 @@ async function runBufferedAttempt(
   });
 }
 
+/**
+ * Collect a provider stream without exposing partial output to the caller.
+ *
+ * Large durable artifacts can take several minutes to finish. Streaming keeps
+ * the upstream connection active, while buffering here preserves the same
+ * atomic contract as `generateAiText`: an incomplete attempt can be discarded
+ * and a different approved endpoint can be tried safely.
+ */
+async function runStreamBufferedAttempt(
+  attempt: AiProviderAttempt,
+  options: AiRouterOptions,
+  timeoutMs: number
+) {
+  const startedAt = Date.now();
+  const chunks: string[] = [];
+  if (attempt.provider === "openrouter") {
+    const sampling = optionalSamplingParameters(attempt, options.generationConfig);
+    let usage: OpenRouterUsage = {};
+    let providerEndpoint: string | undefined;
+    for await (const chunk of streamOpenRouterText({
+      apiKey: process.env.OPENROUTER_API_KEY?.trim() ?? "",
+      model: attempt.model,
+      providerAllowlist: resolveProviderAllowlist(attempt, options),
+      quantizations: attempt.quantizations,
+      request: options.request,
+      timeoutMs,
+      signal: options.signal,
+      reasoning: attempt.thinking,
+      temperature: sampling.temperature,
+      topP: sampling.topP,
+      maxOutputTokens: cappedOutputTokens(
+        options.generationConfig?.maxOutputTokens,
+        attempt
+      ),
+      json: options.generationConfig?.responseMimeType === "application/json",
+      jsonSchema: options.generationConfig?.responseSchema,
+      onUsage: (value) => { usage = value; },
+      onProvider: (value) => { providerEndpoint = value; },
+    })) {
+      chunks.push(chunk);
+    }
+    const diagnostics: AiResponseDiagnostics = {
+      provider: "openrouter",
+      role: attempt.role,
+      routeReason: attempt.routeReason,
+      modelName: attempt.model,
+      ...(providerEndpoint ? { providerEndpoint } : {}),
+      latencyMs: Date.now() - startedAt,
+      promptTokenCount: usage.promptTokens,
+      candidatesTokenCount: usage.completionTokens,
+      totalTokenCount: usage.totalTokens,
+      estimatedCostUsd: usage.estimatedCostUsd,
+    };
+    recordUsage(diagnostics);
+    options.onResponse?.(diagnostics);
+    return chunks.join("");
+  }
+
+  for await (const chunk of streamGeminiText({
+    apiKey: process.env.GEMINI_API_KEY?.trim() ?? "",
+    request: options.request as GeminiGenerateOptions["request"],
+    timeoutMs,
+    deadlineAt: options.deadlineAt,
+    generationConfig: {
+      ...options.generationConfig,
+      maxOutputTokens: cappedOutputTokens(
+        options.generationConfig?.maxOutputTokens,
+        attempt
+      ),
+    },
+    modelNames: [attempt.model],
+    signal: options.signal,
+    onResponse: (diagnostics) => {
+      const info: AiResponseDiagnostics = {
+        provider: "gemini",
+        role: attempt.role,
+        routeReason: attempt.routeReason,
+        modelName: diagnostics.modelName,
+        latencyMs: Date.now() - startedAt,
+        promptTokenCount: diagnostics.promptTokenCount,
+        candidatesTokenCount: diagnostics.candidatesTokenCount,
+        totalTokenCount: diagnostics.totalTokenCount,
+        finishReason: diagnostics.finishReason,
+      };
+      recordUsage(info);
+      options.onResponse?.(info);
+    },
+  })) {
+    chunks.push(chunk);
+  }
+  return chunks.join("");
+}
+
 export async function generateAiText(options: AiRouterOptions) {
   const plan = planFor(options);
   if (plan.length === 0) throw new Error("AI providers are not configured");
@@ -294,6 +387,37 @@ export async function generateAiText(options: AiRouterOptions) {
     const startedAt = Date.now();
     try {
       return await runBufferedAttempt(attempt, options, timeoutMs);
+    } catch (error) {
+      if (options.signal?.aborted) throw error;
+      recordFailure(attempt, error, Date.now() - startedAt);
+      lastError = error;
+      const next = plan[index + 1];
+      if (!next) throw error;
+      options.onRetry?.({
+        error,
+        provider: attempt.provider,
+        role: attempt.role,
+        modelName: attempt.model,
+        nextProvider: next.provider,
+        nextRole: next.role,
+        nextModelName: next.model,
+      });
+    }
+  }
+  throw lastError ?? new Error("Request timed out");
+}
+
+export async function generateAiTextBufferedStream(options: AiRouterOptions) {
+  const plan = planFor(options);
+  if (plan.length === 0) throw new Error("AI providers are not configured");
+  let lastError: unknown = null;
+  for (let index = 0; index < plan.length; index += 1) {
+    const attempt = plan[index];
+    const timeoutMs = budgetFor(attempt, options);
+    if (timeoutMs <= 0) break;
+    const startedAt = Date.now();
+    try {
+      return await runStreamBufferedAttempt(attempt, options, timeoutMs);
     } catch (error) {
       if (options.signal?.aborted) throw error;
       recordFailure(attempt, error, Date.now() - startedAt);
