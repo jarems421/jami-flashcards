@@ -492,7 +492,22 @@ export function creditUnitCount(item: PracticePaperMarkSchemeItem) {
  * the whole response, not a list of separately awardable criteria, so there is
  * nothing to line up and no comparison to make.
  */
-export function schemeCriteria(item: PracticePaperMarkSchemeItem) {
+/**
+ * One creditable criterion as both markers are handed it.
+ *
+ * Declared rather than inferred, because inference narrows to whichever branch
+ * comes first and hides the fields the others carry.
+ */
+export type SchemeCriterion = {
+  id: string;
+  text: string;
+  marks: number;
+  learningOutcome?: string;
+  /** The levels a trait's mark is placed against, where the scheme states them. */
+  levels?: { label: string; marks: string; descriptor: string }[];
+};
+
+export function schemeCriteria(item: PracticePaperMarkSchemeItem): SchemeCriterion[] {
   const label = (index: number) => `C${index + 1}`;
   switch (item.marking) {
     case "additive":
@@ -503,10 +518,38 @@ export function schemeCriteria(item: PracticePaperMarkSchemeItem) {
         marks: point.marks,
       }));
     case "weightedTraits":
+      /**
+       * With the descriptors, because a trait without them is a scale with no
+       * marks on it.
+       *
+       * This list is what both blind markers are handed, and it used to carry
+       * "Analysing and synthesising, 10 marks" and nothing else. Asked to place
+       * a mark on that, a marker does the only sensible thing and hedges to the
+       * middle: measured over five coursework assignments, examiners used the
+       * whole 0 to 10 range on that trait and Jami never left 4 to 7, which
+       * alone accounted for 4.2 of a 5.0 mark error on a 30-mark paper.
+       *
+       * The bands were reachable -- the whole scheme is serialised into the
+       * prompt beside this -- but only by cross-referencing two shapes for the
+       * same thing. Naming the levels where the trait is named is what makes
+       * the difference between judging against a rubric and guessing.
+       */
       return item.traits.map((trait, index) => ({
         id: label(index),
         text: trait.label,
         marks: trait.maxMarks,
+        ...(trait.learningOutcome ? { learningOutcome: trait.learningOutcome } : {}),
+        ...(trait.bands.length > 0
+          ? {
+              levels: trait.bands.map((band) => ({
+                label: band.label,
+                marks: band.minMarks === band.maxMarks
+                  ? `${band.maxMarks}`
+                  : `${band.minMarks}-${band.maxMarks}`,
+                descriptor: band.descriptor,
+              })),
+            }
+          : {}),
       }));
     case "competency":
       return item.competencies.map((competency, index) => ({
@@ -515,6 +558,11 @@ export function schemeCriteria(item: PracticePaperMarkSchemeItem) {
         marks: 0,
       }));
     case "banded":
+      /**
+       * A banded question is a single judgement placed in a level, not a sum of
+       * criteria, so there is nothing to itemise. The levels still reach the
+       * marker through the serialised scheme.
+       */
       return [];
   }
 }

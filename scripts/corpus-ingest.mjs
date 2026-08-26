@@ -420,10 +420,15 @@ const SOURCES = [
       }
       if (legacy.length > 0) series.push({ id: "2015", form: "modernStudiesLegacy", candidates: legacy });
 
+      const { MODERN_STUDIES_ASSIGNMENT_SCHEME } = await load("sqa-assignment");
       const result = parseSqaAssignment({
         sourceId: "sqa-higher-modern-studies-assignment",
         subject: "modernStudies",
         maxMarks: 30,
+        // The board's published grid. Without it a marker is asked to place a
+        // mark on a ten-point scale with nothing said about what any point on
+        // it means, which is what the corpus was doing.
+        markScheme: MODERN_STUDIES_ASSIGNMENT_SCHEME,
         series,
       });
       return {
@@ -433,7 +438,8 @@ const SOURCES = [
           `sections skipped       ${result.stats.unbalanced} unbalanced, ${result.stats.unreadable} unreadable`,
           "typed coursework, scanned: the only criterion-level records not in handwriting",
           "2015 parses but is not ingested: its evidence draws the work in form XObjects the page loader cannot read",
-          "section tariffs are inferred from the best candidate on each; SQA publishes the total only",
+          "section tariffs are inferred from the best candidate on each, and match the board's published 10/10/2/4/4",
+          "records carry the published marking grid, so a marker is judging against a rubric rather than guessing",
         ],
       };
     },

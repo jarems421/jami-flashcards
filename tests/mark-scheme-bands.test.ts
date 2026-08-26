@@ -136,6 +136,56 @@ describe("criterion ids from the scheme", () => {
   });
 
   /**
+   * A trait without its levels is a scale with no marks on it. Handed
+   * "Analysing and synthesising, 10 marks" and nothing else, a marker does the
+   * only sensible thing and hedges: over five coursework assignments examiners
+   * used the whole 0 to 10 range on that trait while Jami never left 4 to 7,
+   * which alone was 4.2 of a 5.0 mark error on a 30-mark paper.
+   */
+  it("carries each trait's levels, so a mark has something to be placed against", () => {
+    const criteria = schemeCriteria({
+      ...common,
+      marking: "weightedTraits",
+      traits: [
+        {
+          id: "t1",
+          label: "Analysis",
+          maxMarks: 10,
+          learningOutcome: "AO2",
+          bands: [
+            { id: "b1", label: "Limited", minMarks: 0, maxMarks: 3, descriptor: "Assertion only." },
+            { id: "b2", label: "Secure", minMarks: 4, maxMarks: 7, descriptor: "Some development." },
+            { id: "b3", label: "Strong", minMarks: 8, maxMarks: 10, descriptor: "Sustained and evidenced." },
+          ],
+        },
+      ],
+    });
+    expect(criteria[0]).toMatchObject({ id: "C1", text: "Analysis", marks: 10, learningOutcome: "AO2" });
+    expect(criteria[0].levels).toEqual([
+      { label: "Limited", marks: "0-3", descriptor: "Assertion only." },
+      { label: "Secure", marks: "4-7", descriptor: "Some development." },
+      { label: "Strong", marks: "8-10", descriptor: "Sustained and evidenced." },
+    ]);
+  });
+
+  /** A level worth exactly one mark reads as that mark, not as a range of one. */
+  it("writes a single-mark level as one number", () => {
+    const criteria = schemeCriteria({
+      ...common,
+      marking: "weightedTraits",
+      traits: [
+        {
+          id: "t1",
+          label: "Accuracy",
+          maxMarks: 1,
+          bands: [{ id: "b1", label: "Met", minMarks: 1, maxMarks: 1, descriptor: "Correct." }],
+        },
+      ],
+    });
+    expect(criteria[0].levels?.[0].marks).toBe("1");
+  });
+
+  /**
    * A band judges the whole response rather than listing separately awardable
    * criteria, so there is nothing for two markers to line up.
    */

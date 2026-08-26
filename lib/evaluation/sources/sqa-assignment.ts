@@ -198,6 +198,46 @@ export function readAssignmentTitle(text: string) {
   return (cut === undefined ? after.slice(0, 90) : after.slice(0, cut)).trim();
 }
 
+/**
+ * The published marking grid, which the corpus was withholding from the marker.
+ *
+ * Every record here carried its section names and their tariffs and nothing
+ * else, so a marker was asked to place a mark on a ten-point scale with no
+ * statement of what any point on it meant. It did the only sensible thing and
+ * hedged: over five assignments the examiners used the whole 0 to 10 range on
+ * "analysing and synthesising" while Jami never left 4 to 7, and that section
+ * alone accounted for 4.2 of a 5.0 mark error on a 30-mark paper. The other
+ * four sections, whose criteria are far more concrete, sat between 0.2 and 1.4.
+ *
+ * This is the same fault the Qualifications Scotland records had before the
+ * question and mark scheme were supplied, which was worth twenty points of
+ * criterion agreement. A benchmark that hides the rubric measures the corpus,
+ * not the marker -- production sends the whole scheme, so it was never running
+ * this blind.
+ *
+ * Taken verbatim from the SQA assignment assessment task, whose own terms allow
+ * reproduction in support of SQA qualifications on a non-commercial basis. It
+ * stays on the measurement side of the line like the rest of this source, and
+ * must not be shown to a student.
+ *
+ * https://www.sqa.org.uk/files_ccc/HigherCATModernStudies.pdf
+ */
+export const MODERN_STUDIES_ASSIGNMENT_SCHEME = [
+  "Higher Modern Studies assignment, 30 marks. Award positively: marks accumulate for skills, knowledge and understanding demonstrated, and are never deducted for errors or omissions.",
+  "",
+  "A Identifying and demonstrating knowledge and understanding of the issue (10 marks). Up to 5 marks for background and framing of the issue and its alternatives; a further 5 for knowledge and understanding used to support the analysis. 0: no appropriate issue identified. 1: issue identified and background explained. 2: significance explained in terms of at least one aspect (political, social, economic, legal, international). 3: significance explained in terms of more than one aspect. 4: alternative decisions framed as a specific course of action against one or more alternatives. 5: detailed explanation of the alternative courses of action. For the second five, award up to 5 depending on quality of background information, level of detail, range of information supporting different aspects of the analysis, and synthesis of background with research evidence.",
+  "",
+  "B Analysing and synthesising information from a range of sources (10 marks). Award a maximum of 5 marks in total if no reference is made to research evidence. On implications: 0: implications not considered. 1: implications of one decision or course of action considered in terms of one aspect. 2: a single course of action in terms of two aspects, or two possible decisions in terms of one aspect. 3: a single course of action in terms of more than two aspects, or several possible decisions in terms of one aspect. 4: at least two possible decisions in terms of at least two aspects. 5: several possible decisions in terms of multiple aspects. On research evidence: 0: no reference. 1: one relevant reference. 2: two relevant references. 3: three relevant references. 4: evidence linked to support the analysis. 5: detailed evidence synthesised to support the analysis.",
+  "",
+  "C Evaluating the usefulness and reliability of sources (2 marks). 0: no evaluation. 1: clear evaluation of at least one source, or a generalised statement of usefulness or reliability. 2: clear evaluation making a comparative judgement of at least two sources.",
+  "",
+  "D Communicating information using the conventions of a report (4 marks). 0: no report format or coherent structure. Award up to 4 based on structure and use of headings, report style and social science terminology, reference to evidence used, and consistency, coherence and logic of argument.",
+  "",
+  "E Reaching a decision supported by evidence (4 marks). 0: no evidence presented to support the decision. 1: decision supported by evidence. 2: decision supported by detailed evidence. 3: decision supported by evidence as to why it is preferred to the alternatives. 4: decision supported by detailed evidence and evaluation as to why it is preferred to the alternatives.",
+  "",
+  "Do not award marks for information simply copied from the research sheet and not used to demonstrate skills, knowledge or understanding. The research sheet itself is not marked.",
+].join(String.fromCharCode(10));
+
 export type SqaAssignmentCandidate = {
   /** Number within its series, used in the record id and to find the evidence. */
   candidate: number;
@@ -225,6 +265,8 @@ export type SqaAssignmentInput = {
    * a floor like they are.
    */
   maxMarks?: number;
+  /** The board's published grid, so the marker is not guessing at the scale. */
+  markScheme?: string;
   series: readonly SqaAssignmentSeries[];
 };
 
@@ -292,6 +334,7 @@ export function parseSqaAssignment(input: SqaAssignmentInput): SqaAssignmentResu
         regime: "weightedTraits",
         questionId: "assignment",
         questionPrompt: readAssignmentTitle(candidate.text),
+        ...(input.markScheme ? { markScheme: input.markScheme } : {}),
         answer: { kind: "image", paths: [candidate.evidence] },
         humanMarks: [award.total],
         // Replaced below by the summed section ceilings where none was supplied.
