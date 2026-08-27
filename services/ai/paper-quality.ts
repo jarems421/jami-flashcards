@@ -28,6 +28,8 @@ export type PaperBenchmarkReadiness = {
   expectedCases: number;
   caseCostEstimateUsd: number | null;
   projectedCostUsd: number | null;
+  pilotExpectedCases: number;
+  pilotProjectedCostUsd: number | null;
   missingProfiles: string[];
   ready: boolean;
 };
@@ -64,10 +66,13 @@ export async function importExamFormatFile(file: File) {
   return request("/api/internal/exam-formats/imports", { method: "POST", body: form });
 }
 
-export async function startPaperBenchmark(spendCeilingUsd: number) {
+export async function startPaperBenchmark(
+  spendCeilingUsd: number,
+  kind: "pilot" | "baseline" = "baseline"
+) {
   return request("/api/internal/paper-quality/runs", {
     method: "POST",
-    body: JSON.stringify({ spendCeilingUsd }),
+    body: JSON.stringify({ spendCeilingUsd, kind }),
   });
 }
 

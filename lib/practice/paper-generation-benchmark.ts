@@ -60,8 +60,12 @@ export type PaperGenerationBenchmarkRunStatus =
   | "failed"
   | "cancelled";
 
+export type PaperGenerationBenchmarkRunKind = "pilot" | "baseline";
+
 export type PaperGenerationBenchmarkRun = {
   id: string;
+  /** Pilot runs are reviewable samples and can never become a measured baseline. */
+  kind?: PaperGenerationBenchmarkRunKind;
   definitionVersion: string;
   status: PaperGenerationBenchmarkRunStatus;
   expectedCases: number;
@@ -303,6 +307,27 @@ export function expectedPaperGenerationBenchmarkCases() {
   return PAPER_GENERATION_BENCHMARK_DEFINITIONS.length *
     PAPER_GENERATION_BENCHMARK_CASE_KINDS.length *
     PAPER_GENERATION_BENCHMARK_REPETITIONS;
+}
+
+export function paperGenerationBenchmarkCaseSpecs(
+  kind: PaperGenerationBenchmarkRunKind = "baseline"
+) {
+  if (kind === "pilot") {
+    return PAPER_GENERATION_BENCHMARK_DEFINITIONS.map((definition) => ({
+      definition,
+      kind: "official_format" as const,
+      repetition: 1 as const,
+    }));
+  }
+  return PAPER_GENERATION_BENCHMARK_DEFINITIONS.flatMap((definition) =>
+    PAPER_GENERATION_BENCHMARK_CASE_KINDS.flatMap((caseKind) =>
+      Array.from({ length: PAPER_GENERATION_BENCHMARK_REPETITIONS }, (_unused, index) => ({
+        definition,
+        kind: caseKind,
+        repetition: (index + 1) as 1 | 2 | 3,
+      }))
+    )
+  );
 }
 
 export function buildPaperGenerationBenchmarkCaseId(

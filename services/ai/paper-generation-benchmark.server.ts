@@ -6,12 +6,11 @@ import type { Source } from "@/lib/material/sources";
 import type { GeneratedPracticePaper, PracticePaperGenerationResponse } from "@/lib/practice/practice-papers";
 import { practicePaperFormatContext } from "@/lib/practice/exam-formats";
 import {
-  PAPER_GENERATION_BENCHMARK_CASE_KINDS,
   PAPER_GENERATION_BENCHMARK_DEFINITIONS,
-  PAPER_GENERATION_BENCHMARK_REPETITIONS,
   PAPER_GENERATION_BENCHMARK_VERSION,
   buildPaperGenerationBenchmarkCaseId,
   expectedPaperGenerationBenchmarkCases,
+  paperGenerationBenchmarkCaseSpecs,
   type PaperGenerationBenchmarkBlocker,
   type PaperGenerationBenchmarkCase,
   type PaperGenerationBenchmarkCaseKind,
@@ -19,6 +18,7 @@ import {
   type PaperGenerationBenchmarkReview,
   type PaperGenerationBenchmarkReviewScores,
   type PaperGenerationBenchmarkRun,
+  type PaperGenerationBenchmarkRunKind,
 } from "@/lib/practice/paper-generation-benchmark";
 import { getExamFormatProfileVersion } from "@/services/ai/exam-format-library.server";
 import { runPracticePaperGenerationForBenchmark } from "@/services/ai/practice-paper-generation.server";
@@ -59,6 +59,7 @@ function caseRef(runId: string, caseId: string) {
 function safeRun(id: string, value: Record<string, unknown>): PaperGenerationBenchmarkRun {
   return {
     id,
+    kind: value.kind === "pilot" ? "pilot" : "baseline",
     definitionVersion: typeof value.definitionVersion === "string" ? value.definitionVersion : "",
     status: value.status as PaperGenerationBenchmarkRun["status"],
     expectedCases: typeof value.expectedCases === "number" ? value.expectedCases : 0,
@@ -91,6 +92,10 @@ export async function getPaperBenchmarkReadiness() {
     expectedCases: expectedPaperGenerationBenchmarkCases(),
     caseCostEstimateUsd: estimate,
     projectedCostUsd: estimate === null ? null : Math.round(estimate * expectedPaperGenerationBenchmarkCases() * 100) / 100,
+    pilotExpectedCases: PAPER_GENERATION_BENCHMARK_DEFINITIONS.length,
+    pilotProjectedCostUsd: estimate === null
+      ? null
+      : Math.round(estimate * PAPER_GENERATION_BENCHMARK_DEFINITIONS.length * 100) / 100,
     missingProfiles,
     ready: enabled() && estimate !== null && missingProfiles.length === 0,
   };
@@ -99,26 +104,33 @@ export async function getPaperBenchmarkReadiness() {
 export async function createPaperGenerationBenchmarkRun(input: {
   reviewerUid: string;
   spendCeilingUsd: number;
+  kind?: PaperGenerationBenchmarkRunKind;
 }) {
   const readiness = await getPaperBenchmarkReadiness();
+  const kind = input.kind === "pilot" ? "pilot" : "baseline";
+  const caseSpecs = paperGenerationBenchmarkCaseSpecs(kind);
+  const projectedCostUsd = readiness.caseCostEstimateUsd === null
+    ? null
+    : Math.round(readiness.caseCostEstimateUsd * caseSpecs.length * 100) / 100;
   if (!readiness.enabled) throw new Error("Paper-generation benchmarks are disabled.");
-  if (readiness.projectedCostUsd === null) throw new Error("Configure the measured per-case cost estimate first.");
+  if (projectedCostUsd === null) throw new Error("Configure the measured per-case cost estimate first.");
   if (readiness.missingProfiles.length > 0) {
     throw new Error(`Build and verify the benchmark profiles first: ${readiness.missingProfiles.join(", ")}`);
   }
-  if (!Number.isFinite(input.spendCeilingUsd) || input.spendCeilingUsd < readiness.projectedCostUsd) {
-    throw new Error(`The spend ceiling must cover the projected $${readiness.projectedCostUsd.toFixed(2)} batch cost.`);
+  if (!Number.isFinite(input.spendCeilingUsd) || input.spendCeilingUsd < projectedCostUsd) {
+    throw new Error(`The spend ceiling must cover the projected $${projectedCostUsd.toFixed(2)} batch cost.`);
   }
   const now = Date.now();
   const ref = getAdminDb().collection("paperGenerationBenchmarkRuns").doc(randomUUID());
   const run: Omit<PaperGenerationBenchmarkRun, "id"> = {
+    kind,
     definitionVersion: PAPER_GENERATION_BENCHMARK_VERSION,
     status: "queued",
-    expectedCases: readiness.expectedCases,
+    expectedCases: caseSpecs.length,
     completedCases: 0,
     reviewedCases: 0,
     passedCases: 0,
-    projectedCostUsd: readiness.projectedCostUsd,
+    projectedCostUsd,
     spendCeilingUsd: Math.round(input.spendCeilingUsd * 100) / 100,
     estimatedCostUsd: 0,
     cancellationRequested: false,
@@ -132,23 +144,21 @@ export async function createPaperGenerationBenchmarkRun(input: {
   for (const definition of PAPER_GENERATION_BENCHMARK_DEFINITIONS) {
     const profile = await getExamFormatProfileVersion(definition.profileId);
     if (!profile) throw new Error(`Profile ${definition.profileId} disappeared before the run was created.`);
-    for (const kind of PAPER_GENERATION_BENCHMARK_CASE_KINDS) {
-      for (let repetition = 1; repetition <= PAPER_GENERATION_BENCHMARK_REPETITIONS; repetition += 1) {
-        const id = buildPaperGenerationBenchmarkCaseId(definition.id, kind, repetition);
+    for (const spec of caseSpecs.filter((candidate) => candidate.definition.id === definition.id)) {
+        const id = buildPaperGenerationBenchmarkCaseId(definition.id, spec.kind, spec.repetition);
         const item: Omit<PaperGenerationBenchmarkCase, "id"> = {
           runId: ref.id,
           definitionId: definition.id,
           profileId: definition.profileId,
           profileVersion: profile.version,
-          kind,
-          repetition: repetition as 1 | 2 | 3,
+          kind: spec.kind,
+          repetition: spec.repetition,
           status: "queued",
           estimatedCostUsd: 0,
           createdAt: now,
           updatedAt: now,
         };
         batch.create(ref.collection("cases").doc(id), item);
-      }
     }
   }
   await batch.commit();
@@ -324,6 +334,11 @@ export async function finishPaperGenerationBenchmarkRun(runId: string) {
   });
 }
 
+export async function listPaperGenerationBenchmarkCaseIds(runId: string) {
+  const snapshot = await runRef(runId).collection("cases").get();
+  return snapshot.docs.map((document) => document.id).sort((left, right) => left.localeCompare(right));
+}
+
 export async function listPaperGenerationBenchmarkRuns(limit = 20) {
   const snapshot = await getAdminDb().collection("paperGenerationBenchmarkRuns")
     .orderBy("updatedAt", "desc").limit(Math.max(1, Math.min(50, limit))).get();
@@ -490,6 +505,9 @@ export async function resumePaperGenerationBenchmarkRun(runId: string, spendCeil
 export async function approvePaperGenerationBenchmarkRun(runId: string, reviewerUid: string) {
   const detail = await getPaperGenerationBenchmarkRun(runId);
   if (!detail) throw new Error("Benchmark run not found.");
+  if (detail.run.kind === "pilot") {
+    throw new Error("Pilot runs are for review only and cannot become measured baselines.");
+  }
   if (detail.cases.length !== detail.run.expectedCases || detail.cases.some((item) => !item.review)) {
     throw new Error("Every expected paper must be reviewed before approval.");
   }

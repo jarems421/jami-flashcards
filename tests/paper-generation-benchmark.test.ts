@@ -5,6 +5,7 @@ import {
   PAPER_GENERATION_BENCHMARK_REPETITIONS,
   buildPaperGenerationBenchmarkCaseId,
   expectedPaperGenerationBenchmarkCases,
+  paperGenerationBenchmarkCaseSpecs,
 } from "@/lib/practice/paper-generation-benchmark";
 
 describe("paper-generation benchmark matrix", () => {
@@ -15,6 +16,13 @@ describe("paper-generation benchmark matrix", () => {
     expect(PAPER_GENERATION_BENCHMARK_CASE_KINDS).toHaveLength(3);
     expect(PAPER_GENERATION_BENCHMARK_REPETITIONS).toBe(3);
     expect(expectedPaperGenerationBenchmarkCases()).toBe(108);
+  });
+
+  it("builds a review-only pilot with one official-format paper per component", () => {
+    const specs = paperGenerationBenchmarkCaseSpecs("pilot");
+    expect(specs).toHaveLength(12);
+    expect(new Set(specs.map((item) => item.definition.id)).size).toBe(12);
+    expect(specs.every((item) => item.kind === "official_format" && item.repetition === 1)).toBe(true);
   });
 
   it("creates stable collision-free case identifiers", () => {
