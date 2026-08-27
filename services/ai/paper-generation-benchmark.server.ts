@@ -20,7 +20,10 @@ import {
   type PaperGenerationBenchmarkRun,
   type PaperGenerationBenchmarkRunKind,
 } from "@/lib/practice/paper-generation-benchmark";
-import { getExamFormatProfileVersion } from "@/services/ai/exam-format-library.server";
+import {
+  getActiveExamFormatProfileVersion,
+  getExamFormatProfileVersion,
+} from "@/services/ai/exam-format-library.server";
 import { runPracticePaperGenerationForBenchmark } from "@/services/ai/practice-paper-generation.server";
 import { createPaperRasterAssets } from "@/services/ai/practice-paper-workflow.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
@@ -91,7 +94,7 @@ export async function getPaperBenchmarkReadiness() {
   const pilotEstimate = pilotCaseEstimate();
   const profiles = await Promise.all(PAPER_GENERATION_BENCHMARK_DEFINITIONS.map(async (definition) => ({
     definition,
-    profile: await getExamFormatProfileVersion(definition.profileId),
+    profile: await getActiveExamFormatProfileVersion(definition.profileId),
   })));
   const missingProfiles = profiles
     .filter((item) => !item.profile || item.profile.verificationStatus !== "verified")
@@ -157,7 +160,7 @@ export async function createPaperGenerationBenchmarkRun(input: {
   const batch = db.batch();
   batch.create(ref, run);
   for (const definition of PAPER_GENERATION_BENCHMARK_DEFINITIONS) {
-    const profile = await getExamFormatProfileVersion(definition.profileId);
+    const profile = await getActiveExamFormatProfileVersion(definition.profileId);
     if (!profile) throw new Error(`Profile ${definition.profileId} disappeared before the run was created.`);
     for (const spec of caseSpecs.filter((candidate) => candidate.definition.id === definition.id)) {
         const id = buildPaperGenerationBenchmarkCaseId(definition.id, spec.kind, spec.repetition);

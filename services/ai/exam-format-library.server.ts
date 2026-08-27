@@ -222,6 +222,19 @@ export async function getExamFormatProfileVersion(profileId: string, version?: s
   return selectExamFormatVersion(loaded.versions) ?? null;
 }
 
+/**
+ * Benchmarks freeze the library's explicitly active component, including an
+ * officially announced specification whose first assessment is still ahead.
+ * Ordinary paper creation keeps using date-aware selection above.
+ */
+export async function getActiveExamFormatProfileVersion(profileId: string) {
+  const loaded = await loadProfileVersions(profileId);
+  if (!loaded) return null;
+  return loaded.versions.find(
+    (candidate) => candidate.version === loaded.profile.activeVersion
+  ) ?? null;
+}
+
 function sourceType(title: string, url: string): ExamFormatSourceReceipt["documentType"] {
   const value = `${title} ${url}`.toLowerCase();
   if (/specification|syllabus|(?:^|[\/_\-.])spec(?:[\/_\-.]|$)/.test(value)) return "specification";
