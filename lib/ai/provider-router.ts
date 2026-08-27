@@ -145,9 +145,9 @@ function optionalSamplingParameters(
 ) {
   // Moonshot's first-party Kimi endpoint deliberately owns its sampling. It
   // does not advertise temperature/top_p; omitting them keeps
-  // require_parameters=true meaningful instead of making the pinned juror
-  // route impossible to satisfy.
-  return attempt.role === "juror"
+  // require_parameters=true meaningful whether Kimi is the pinned juror or a
+  // temporary supervisor standby during a provider outage.
+  return attempt.model.startsWith("moonshotai/kimi-")
     ? { temperature: undefined, topP: undefined }
     : { temperature: config?.temperature, topP: config?.topP };
 }

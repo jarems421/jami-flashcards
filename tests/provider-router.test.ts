@@ -77,6 +77,32 @@ describe("provider router", () => {
     );
   });
 
+  it("omits unsupported sampling when an approved Kimi route temporarily supervises", async () => {
+    process.env.OPENROUTER_SUPERVISOR_MODEL = "moonshotai/kimi-k2.6";
+    process.env.OPENROUTER_SUPERVISOR_PROVIDERS = "moonshotai";
+    try {
+      await generateAiText({
+        role: "supervisor",
+        routeReason: "complex_request",
+        request,
+        timeoutMs: 5_000,
+        generationConfig: { temperature: 0.2, topP: 0.8 },
+      });
+
+      expect(mocks.generateOpenRouterText).toHaveBeenCalledWith(
+        expect.objectContaining({
+          model: "moonshotai/kimi-k2.6",
+          providerAllowlist: ["moonshotai"],
+          temperature: undefined,
+          topP: undefined,
+        })
+      );
+    } finally {
+      delete process.env.OPENROUTER_SUPERVISOR_MODEL;
+      delete process.env.OPENROUTER_SUPERVISOR_PROVIDERS;
+    }
+  });
+
   it("retries the worker on its independent endpoint before escalating without downgrading supervisor work", async () => {
     mocks.generateOpenRouterText
       .mockRejectedValueOnce(new Error("worker unavailable"))
