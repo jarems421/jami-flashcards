@@ -27,11 +27,13 @@ export type PaperBenchmarkReadiness = {
   definitionVersion: string;
   expectedCases: number;
   caseCostEstimateUsd: number | null;
+  pilotCaseCostEstimateUsd: number | null;
   projectedCostUsd: number | null;
   pilotExpectedCases: number;
   pilotProjectedCostUsd: number | null;
   missingProfiles: string[];
   ready: boolean;
+  pilotReady: boolean;
 };
 
 export async function getPaperQualityOverview() {

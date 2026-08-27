@@ -44,6 +44,15 @@ function caseEstimate() {
   return Number.isFinite(value) && value > 0 ? Math.round(value * 10_000) / 10_000 : null;
 }
 
+function pilotCaseEstimate() {
+  const value = Number.parseFloat(
+    process.env.PAPER_BENCHMARK_PILOT_CASE_COST_ESTIMATE_USD ?? ""
+  );
+  return Number.isFinite(value) && value > 0
+    ? Math.round(value * 10_000) / 10_000
+    : null;
+}
+
 function sha256(value: Buffer | string) {
   return createHash("sha256").update(value).digest("hex");
 }
@@ -79,6 +88,7 @@ function safeRun(id: string, value: Record<string, unknown>): PaperGenerationBen
 
 export async function getPaperBenchmarkReadiness() {
   const estimate = caseEstimate();
+  const pilotEstimate = pilotCaseEstimate();
   const profiles = await Promise.all(PAPER_GENERATION_BENCHMARK_DEFINITIONS.map(async (definition) => ({
     definition,
     profile: await getExamFormatProfileVersion(definition.profileId),
@@ -91,13 +101,15 @@ export async function getPaperBenchmarkReadiness() {
     definitionVersion: PAPER_GENERATION_BENCHMARK_VERSION,
     expectedCases: expectedPaperGenerationBenchmarkCases(),
     caseCostEstimateUsd: estimate,
+    pilotCaseCostEstimateUsd: pilotEstimate,
     projectedCostUsd: estimate === null ? null : Math.round(estimate * expectedPaperGenerationBenchmarkCases() * 100) / 100,
     pilotExpectedCases: PAPER_GENERATION_BENCHMARK_DEFINITIONS.length,
-    pilotProjectedCostUsd: estimate === null
+    pilotProjectedCostUsd: pilotEstimate === null
       ? null
-      : Math.round(estimate * PAPER_GENERATION_BENCHMARK_DEFINITIONS.length * 100) / 100,
+      : Math.round(pilotEstimate * PAPER_GENERATION_BENCHMARK_DEFINITIONS.length * 100) / 100,
     missingProfiles,
     ready: enabled() && estimate !== null && missingProfiles.length === 0,
+    pilotReady: enabled() && pilotEstimate !== null && missingProfiles.length === 0,
   };
 }
 
@@ -109,9 +121,12 @@ export async function createPaperGenerationBenchmarkRun(input: {
   const readiness = await getPaperBenchmarkReadiness();
   const kind = input.kind === "pilot" ? "pilot" : "baseline";
   const caseSpecs = paperGenerationBenchmarkCaseSpecs(kind);
-  const projectedCostUsd = readiness.caseCostEstimateUsd === null
+  const estimate = kind === "pilot"
+    ? readiness.pilotCaseCostEstimateUsd
+    : readiness.caseCostEstimateUsd;
+  const projectedCostUsd = estimate === null
     ? null
-    : Math.round(readiness.caseCostEstimateUsd * caseSpecs.length * 100) / 100;
+    : Math.round(estimate * caseSpecs.length * 100) / 100;
   if (!readiness.enabled) throw new Error("Paper-generation benchmarks are disabled.");
   if (projectedCostUsd === null) throw new Error("Configure the measured per-case cost estimate first.");
   if (readiness.missingProfiles.length > 0) {
@@ -215,7 +230,7 @@ export async function runPaperGenerationBenchmarkCase(runId: string, caseId: str
   const item = { id: caseId, ...caseSnapshot.data() } as PaperGenerationBenchmarkCase;
   if (run.cancellationRequested || item.status === "cancelled") return "cancelled" as const;
   if (item.status === "ready") return "ready" as const;
-  const estimate = caseEstimate();
+  const estimate = run.kind === "pilot" ? pilotCaseEstimate() : caseEstimate();
   if (estimate === null || run.estimatedCostUsd + estimate > run.spendCeilingUsd) {
     await runRef(runId).update({ status: "paused", pauseReason: "spend_ceiling", updatedAt: Date.now() });
     return "paused" as const;
