@@ -225,7 +225,7 @@ function actualCost(diagnostics: AiResponseDiagnostics[]) {
   return Math.round(diagnostics.reduce((total, item) => total + (item.estimatedCostUsd ?? 0), 0) * 10_000) / 10_000;
 }
 
-export async function runPaperGenerationBenchmarkCase(runId: string, caseId: string) {
+async function executePaperGenerationBenchmarkCase(runId: string, caseId: string) {
   const db = getAdminDb();
   const [runSnapshot, caseSnapshot] = await Promise.all([runRef(runId).get(), caseRef(runId, caseId).get()]);
   if (!runSnapshot.exists || !caseSnapshot.exists) return "cancelled" as const;
@@ -333,6 +333,28 @@ export async function runPaperGenerationBenchmarkCase(runId: string, caseId: str
     });
   });
   return "ready" as const;
+}
+
+export async function runPaperGenerationBenchmarkCase(runId: string, caseId: string) {
+  try {
+    return await executePaperGenerationBenchmarkCase(runId, caseId);
+  } catch (error) {
+    const now = Date.now();
+    await Promise.all([
+      caseRef(runId, caseId).set({
+        status: "failed",
+        failureCode: "case_generation_failed",
+        updatedAt: now,
+      }, { merge: true }),
+      runRef(runId).set({ activeCaseId: null, updatedAt: now }, { merge: true }),
+    ]);
+    console.error("paper_benchmark.case_failed", {
+      runId,
+      caseId,
+      errorCategory: error instanceof Error ? error.name : "unknown",
+    });
+    return "failed" as const;
+  }
 }
 
 export async function finishPaperGenerationBenchmarkRun(runId: string) {
