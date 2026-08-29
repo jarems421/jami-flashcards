@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { mkdtempSync, readFileSync, rmSync, existsSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { captureGenerationPass } from "@/lib/ai/generation-capture";
@@ -81,7 +81,12 @@ describe("keeping what a model returned", () => {
    * unwritable path is a bad debugging session, not a failed paper.
    */
   it("does not throw when the path cannot be written", () => {
-    process.env.JAMI_CAPTURE_GENERATION_DIR = join(directory, "a-file.txt", "nested");
+    // A real file where a directory is needed, so mkdir genuinely fails. Naming
+    // a path that merely does not exist proves nothing: mkdir would create it
+    // and the write would succeed.
+    const blocker = join(directory, "blocker");
+    writeFileSync(blocker, "not a directory", "utf8");
+    process.env.JAMI_CAPTURE_GENERATION_DIR = join(blocker, "nested");
     expect(() => captureGenerationPass(pass())).not.toThrow();
   });
 });

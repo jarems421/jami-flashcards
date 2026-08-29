@@ -17,6 +17,11 @@ import {
 } from "@/lib/ai/practice-paper-generation";
 import { captureGenerationPass } from "@/lib/ai/generation-capture";
 import {
+  readGenerationCheckpoint,
+  writeGenerationCheckpoint,
+  type CheckpointKey,
+} from "@/lib/ai/generation-checkpoint";
+import {
   isCompletePracticePaperCandidate,
   markSchemeIssues,
   parsePracticePaperQualityAudit,
@@ -644,6 +649,11 @@ export async function runPracticePaperGenerationRequest(
       contents: typeof contents;
       temperature: number;
       maxOutputTokens?: number;
+      /**
+       * What this call is about, so a rerun can recognise work already paid
+       * for. Absent means the pass is always re-run.
+       */
+      checkpoint?: CheckpointKey;
       onResponseText?: (captured: {
         pass: string;
         role: AiGenerationRole;
@@ -689,6 +699,26 @@ export async function runPracticePaperGenerationRequest(
           }),
       });
 
+      /**
+       * A pass this run has already completed, from an earlier attempt.
+       *
+       * Generation makes roughly 28 sequential calls against a provider that
+       * rate-limits, returns gateway errors and drops connections. One run
+       * failed at group 16 and discarded the fifteen valid groups before it.
+       * Marking has kept its stages since it was made durable; this is the same
+       * idea for the pipeline with seven times as many calls to lose.
+       */
+      if (input.checkpoint) {
+        const stored = readGenerationCheckpoint(input.checkpoint);
+        if (stored) {
+          log.info("generation.checkpoint_hit", {
+            pass: input.name,
+            subject: input.checkpoint.subject.length,
+          });
+          return stored;
+        }
+      }
+
       const text = await execute();
       const modelName = passDiagnostics.at(-1)?.modelName ?? input.role;
       /**
@@ -714,6 +744,7 @@ export async function runPracticePaperGenerationRequest(
       // its own still wins.
       if (input.onResponseText) input.onResponseText(captured);
       else captureGenerationPass(captured);
+      if (input.checkpoint) writeGenerationCheckpoint(input.checkpoint, { text, modelName });
       return { text, modelName };
     };
 
@@ -726,6 +757,11 @@ export async function runPracticePaperGenerationRequest(
       contents,
       temperature: 0.25,
       maxOutputTokens: 20_000,
+      // Keyed on the sources the paper is built from, which is what makes two
+      // runs the same piece of work. The most expensive single call in the
+      // pipeline at 20,000 tokens on the supervisor, and until now it was paid
+      // for again every time a later batch failed.
+      checkpoint: { pass: "paper_design", subject: sourceRefs },
     });
     let draft = parsePracticePaperModelAnswer(withProvisionalMarkScheme(paperPass.text), {
       allowedSourceRefs: sourceRefs,
@@ -825,6 +861,10 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
         batchNumber: index + offset + 1,
         pass: await runPass({
           name: `mark_scheme_batch_${index + offset + 1}`,
+          // The questions, not the batch number. High-tariff questions are
+          // split into batches of their own, so the same position covers
+          // different questions between runs.
+          checkpoint: { pass: "mark_scheme_batch", subject: questions.map((question) => question.id) },
           taskClass: "important",
           role: markSchemeRole,
           systemInstruction: markSchemeInstruction,
