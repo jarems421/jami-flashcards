@@ -19,6 +19,33 @@ import {
 export const MAX_PRACTICE_PAPER_REQUEST_LENGTH = 2_000;
 export const MAX_PRACTICE_PAPER_COVERAGE_LENGTH = 1_000;
 
+export function partitionMarkSchemeQuestions<T extends { marks: number }>(
+  questions: readonly T[],
+  options: { maximumQuestions?: number; maximumMarks?: number } = {}
+) {
+  const maximumQuestions = Math.max(1, options.maximumQuestions ?? 2);
+  const maximumMarks = Math.max(1, options.maximumMarks ?? 20);
+  const batches: T[][] = [];
+  let current: T[] = [];
+  let currentMarks = 0;
+
+  for (const question of questions) {
+    const marks = Math.max(0, Number.isFinite(question.marks) ? question.marks : 0);
+    if (
+      current.length > 0 &&
+      (current.length >= maximumQuestions || currentMarks + marks > maximumMarks)
+    ) {
+      batches.push(current);
+      current = [];
+      currentMarks = 0;
+    }
+    current.push(question);
+    currentMarks += marks;
+  }
+  if (current.length > 0) batches.push(current);
+  return batches;
+}
+
 export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
   const list = (candidate: unknown) =>
     Array.isArray(candidate)
@@ -26,31 +53,163 @@ export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
       : typeof candidate === "string" && candidate.trim()
         ? [candidate]
         : [];
+  const canonicalBands = (candidate: unknown) => Array.isArray(candidate)
+    ? candidate.map((band) => {
+        if (!band || typeof band !== "object") return band;
+        const entry = band as Record<string, unknown>;
+        return {
+          ...entry,
+          minMarks: entry.minMarks ?? entry.min ?? entry.from,
+          maxMarks: entry.maxMarks ?? entry.max ?? entry.to,
+          descriptor: entry.descriptor ?? entry.description ?? entry.text,
+        };
+      })
+    : candidate;
+  const canonicalTraits = (candidate: unknown) => Array.isArray(candidate)
+    ? candidate.map((trait) => {
+        if (!trait || typeof trait !== "object") return trait;
+        const entry = trait as Record<string, unknown>;
+        return {
+          ...entry,
+          label: entry.label ?? entry.name,
+          maxMarks: entry.maxMarks ?? entry.max ?? entry.marks,
+          bands: canonicalBands(entry.bands ?? entry.levels),
+        };
+      })
+    : candidate;
   return value.map((candidate) => {
     if (!candidate || typeof candidate !== "object") return candidate;
     const item = candidate as Record<string, unknown>;
+    const nestedMarking = item.marking && typeof item.marking === "object" && !Array.isArray(item.marking)
+      ? item.marking as Record<string, unknown>
+      : null;
+    const rawMarking = typeof item.marking === "string"
+      ? item.marking
+      : nestedMarking?.type ?? nestedMarking?.model ?? nestedMarking?.kind ??
+        nestedMarking?.method ?? nestedMarking?.schemeType ?? item.markingModel;
+    const nestedAdditive = nestedMarking?.additive && typeof nestedMarking.additive === "object"
+      ? nestedMarking.additive as Record<string, unknown>
+      : null;
+    const nestedPointPool = nestedMarking?.pointPool && typeof nestedMarking.pointPool === "object"
+      ? nestedMarking.pointPool as Record<string, unknown>
+      : null;
+    const nestedBanded = nestedMarking?.banded && typeof nestedMarking.banded === "object"
+      ? nestedMarking.banded as Record<string, unknown>
+      : null;
+    const nestedWeightedTraits = nestedMarking?.weightedTraits && typeof nestedMarking.weightedTraits === "object"
+      ? nestedMarking.weightedTraits as Record<string, unknown>
+      : null;
+    const nestedCompetency = nestedMarking?.competency && typeof nestedMarking.competency === "object"
+      ? nestedMarking.competency as Record<string, unknown>
+      : null;
+    const points = item.points ?? nestedMarking?.points ?? nestedAdditive?.points ?? nestedPointPool?.points;
+    const bands = canonicalBands(item.bands ?? item.levels ?? nestedMarking?.bands ?? nestedMarking?.levels ?? nestedBanded?.bands ?? nestedBanded?.levels);
+    const traits = canonicalTraits(item.traits ?? nestedMarking?.traits ?? nestedWeightedTraits?.traits);
+    const competencies = item.competencies ?? nestedMarking?.competencies ?? nestedCompetency?.competencies;
+    const awardable = item.awardable ?? nestedMarking?.awardable ?? nestedPointPool?.awardable;
+    const normalizedMarking = typeof rawMarking === "string"
+      ? rawMarking.replace(/[^A-Za-z]/g, "").toLowerCase()
+      : "";
+    const marking =
+      ["additive", "points", "pointbased", "pointmarking"].includes(normalizedMarking) ? "additive" :
+      ["pointpool", "pool", "bestpoints"].includes(normalizedMarking) ? "pointPool" :
+      ["banded", "bands", "level", "levels", "levelofresponse", "levelsofresponse"].includes(normalizedMarking) ? "banded" :
+      ["weightedtraits", "traits", "analytic", "analytical"].includes(normalizedMarking) ? "weightedTraits" :
+      ["competency", "competencies", "competencybased"].includes(normalizedMarking) ? "competency" :
+      nestedPointPool || (Array.isArray(points) && awardable !== undefined) ? "pointPool" :
+      Array.isArray(points) || nestedAdditive ? "additive" :
+      Array.isArray(bands) || nestedBanded ? "banded" :
+      Array.isArray(traits) || nestedWeightedTraits ? "weightedTraits" :
+      Array.isArray(competencies) || nestedCompetency ? "competency" :
+      rawMarking;
+    const normalizedPoints = Array.isArray(points)
+      ? points.map((point) => {
+          if (!point || typeof point !== "object") return point;
+          const entry = point as Record<string, unknown>;
+          return {
+            ...entry,
+            dep: list(entry.dep),
+            ft: entry.ft === true,
+            essentialTerms: list(entry.essentialTerms),
+            allow: list(entry.allow),
+            reject: list(entry.reject),
+          };
+        })
+      : undefined;
+    const pointCodes = new Map(
+      (normalizedPoints ?? []).flatMap((point) =>
+        point && typeof point === "object" && typeof (point as Record<string, unknown>).id === "string"
+          ? [[String((point as Record<string, unknown>).id), String((point as Record<string, unknown>).code ?? "").toUpperCase()] as const]
+          : []
+      )
+    );
+    const safePoints = normalizedPoints?.map((point) => {
+      if (!point || typeof point !== "object") return point;
+      const entry = point as Record<string, unknown>;
+      if (String(entry.code ?? "").toUpperCase() !== "M" || !Array.isArray(entry.dep)) return point;
+      return {
+        ...entry,
+        dep: entry.dep.filter((dependency) => pointCodes.get(String(dependency)) !== "A"),
+      };
+    });
+    const balancedPoints = (() => {
+      if (marking !== "additive" || !safePoints || safePoints.length === 0) return safePoints;
+      const maxMarks = Math.round(Number(item.maxMarks));
+      if (!Number.isFinite(maxMarks) || maxMarks < safePoints.length) return safePoints;
+      const entries = safePoints.map((point) => {
+        if (!point || typeof point !== "object") return point;
+        const entry = point as Record<string, unknown>;
+        return { ...entry, marks: Math.max(1, Math.round(Number(entry.marks) || 1)) };
+      });
+      const readable = entries.every((point) => point && typeof point === "object");
+      if (!readable) return safePoints;
+      let total = entries.reduce((sum, point) =>
+        sum + Number((point as Record<string, unknown>).marks), 0);
+      if (total < maxMarks) {
+        const last = entries.at(-1) as Record<string, unknown>;
+        last.marks = Number(last.marks) + (maxMarks - total);
+        return entries;
+      }
+      for (let index = entries.length - 1; index >= 0 && total > maxMarks; index -= 1) {
+        const point = entries[index] as Record<string, unknown>;
+        const removable = Math.min(Number(point.marks) - 1, total - maxMarks);
+        point.marks = Number(point.marks) - removable;
+        total -= removable;
+      }
+      return entries;
+    })();
     return {
       ...item,
       questionId: item.questionId ?? item.id,
-      marking: item.marking ?? item.markingModel,
-      ...(Array.isArray(item.points)
-        ? {
-            points: item.points.map((point) => {
-              if (!point || typeof point !== "object") return point;
-              const entry = point as Record<string, unknown>;
-              return {
-                ...entry,
-                dep: list(entry.dep),
-                ft: entry.ft === true,
-                essentialTerms: list(entry.essentialTerms),
-                allow: list(entry.allow),
-                reject: list(entry.reject),
-              };
-            }),
-          }
+      marking,
+      ...(item.awardable === undefined && awardable !== undefined
+        ? { awardable }
+        : {}),
+      ...(item.bands === undefined && bands !== undefined
+        ? { bands }
+        : {}),
+      ...(item.traits === undefined && traits !== undefined
+        ? { traits }
+        : {}),
+      ...(item.competencies === undefined && competencies !== undefined
+        ? { competencies }
+        : {}),
+      ...(balancedPoints
+        ? { points: balancedPoints }
         : {}),
     };
   });
+}
+
+export function normalizeGeneratedMarkSchemeBatch(
+  value: unknown[],
+  questions: ReturnType<typeof normalizePracticePaperQuestions>
+) {
+  const items = normalizePracticePaperMarkScheme(
+    { items: canonicalizeGeneratedMarkSchemeItems(value) },
+    questions
+  ).items;
+  return items.length === questions.length ? items : null;
 }
 
 export type PracticePaperGenerationRequest = {
@@ -86,6 +245,115 @@ export type ParsedPracticePaperModelAnswer =
       gradeGuidance: ReturnType<typeof normalizePracticePaperGradeGuidance>;
       examinerInsights: string[];
     };
+
+const AUDIT_REPAIR_TOP_LEVEL_KEYS = [
+  "assessmentProfile",
+  "title",
+  "instructions",
+  "companionDocuments",
+  "durationMinutes",
+  "choiceGroups",
+  "sourceRefs",
+  "gradeGuidance",
+  "examinerInsights",
+] as const;
+
+/**
+ * Applies a deliberately small audit patch to a complete paper. Audit repairs
+ * must not ask a provider to repeat an entire long paper: doing so is both
+ * wasteful and prone to output truncation. The merged value is parsed and
+ * validated by the normal paper parser immediately afterwards.
+ */
+export function applyPracticePaperAuditRepairPatch(
+  paper: Extract<ParsedPracticePaperModelAnswer, { status: "ready" }>,
+  value: unknown
+) {
+  if (!value || typeof value !== "object") return null;
+  const patch = value as Record<string, unknown>;
+  const topLevel =
+    patch.topLevel && typeof patch.topLevel === "object"
+      ? patch.topLevel as Record<string, unknown>
+      : patch.paper && typeof patch.paper === "object"
+        ? patch.paper as Record<string, unknown>
+        : {};
+  const merged: Record<string, unknown> = { ...paper };
+  for (const key of AUDIT_REPAIR_TOP_LEVEL_KEYS) {
+    if (Object.prototype.hasOwnProperty.call(topLevel, key)) {
+      merged[key] = topLevel[key];
+    }
+  }
+
+  const removeQuestionIds = new Set(
+    Array.isArray(patch.removeQuestionIds)
+      ? patch.removeQuestionIds.filter((item): item is string =>
+          typeof item === "string" && item.trim().length > 0
+        )
+      : []
+  );
+  const pairedReplacements = Array.isArray(patch.replacements)
+    ? patch.replacements.filter((item): item is Record<string, unknown> =>
+        Boolean(item) && typeof item === "object"
+      )
+    : [];
+  const rawQuestionReplacements = [
+    ...(Array.isArray(patch.questionReplacements) ? patch.questionReplacements : []),
+    ...(Array.isArray(patch.questions) ? patch.questions : []),
+    ...pairedReplacements.map((item) => item.question),
+  ];
+  const questionReplacements = rawQuestionReplacements
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+    .map((item) => ({
+      ...item,
+      id: typeof item.id === "string" ? item.id : item.questionId,
+    }))
+    .filter((item) => typeof item.id === "string" && item.id.trim().length > 0);
+  const questionsById = new Map(
+    questionReplacements.map((item) => [String(item.id), item] as const)
+  );
+  const existingQuestionIds = new Set(paper.questions.map((item) => item.id));
+  merged.questions = [
+    ...paper.questions
+      .filter((item) => !removeQuestionIds.has(item.id))
+      .map((item) => questionsById.get(item.id) ?? item),
+    ...questionReplacements.filter((item) => !existingQuestionIds.has(String(item.id))),
+  ];
+
+  const rawMarkScheme = paper.markScheme as unknown as Record<string, unknown>;
+  const markSchemeTopLevel =
+    patch.markSchemeTopLevel && typeof patch.markSchemeTopLevel === "object"
+      ? patch.markSchemeTopLevel as Record<string, unknown>
+      : {};
+  const rawItemReplacements = [
+    ...(Array.isArray(patch.markSchemeItemReplacements) ? patch.markSchemeItemReplacements : []),
+    ...(Array.isArray(patch.markSchemeItems) ? patch.markSchemeItems : []),
+    ...pairedReplacements.map((item) => item.markSchemeItem ?? item.markScheme),
+  ];
+  const itemReplacements = canonicalizeGeneratedMarkSchemeItems(rawItemReplacements);
+  const itemsByQuestionId = new Map(
+    itemReplacements
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === "object")
+      .map((item) => [String(item.questionId ?? ""), item] as const)
+      .filter(([questionId]) => Boolean(questionId))
+  );
+  const existingItemIds = new Set(
+    paper.markScheme.items.map((item) => item.questionId)
+  );
+  merged.markScheme = {
+    ...rawMarkScheme,
+    ...markSchemeTopLevel,
+    items: [
+      ...paper.markScheme.items
+        .filter((item) => !removeQuestionIds.has(item.questionId))
+        .map((item) => itemsByQuestionId.get(item.questionId) ?? item),
+      ...itemReplacements.filter((item) =>
+        item &&
+        typeof item === "object" &&
+        !existingItemIds.has(String((item as Record<string, unknown>).questionId ?? ""))
+      ),
+    ],
+  };
+  return merged;
+}
 
 function normalizeId(value: unknown) {
   return typeof value === "string" ? value.trim().slice(0, 160) : "";

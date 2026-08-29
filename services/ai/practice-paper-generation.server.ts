@@ -4,14 +4,18 @@ import {
   buildJamiAssistantReferenceParts,
 } from "@/lib/ai/jami-assistant";
 import {
+  applyPracticePaperAuditRepairPatch,
   buildPracticePaperGenerationResponse,
   canonicalizeGeneratedMarkSchemeItems,
+  normalizeGeneratedMarkSchemeBatch,
+  partitionMarkSchemeQuestions,
   parsePracticePaperGenerationRequest,
   parsePracticePaperModelAnswer,
   rankPracticePaperSources,
   type PracticePaperGenerationRequest,
   type ParsedPracticePaperModelAnswer,
 } from "@/lib/ai/practice-paper-generation";
+import { captureGenerationPass } from "@/lib/ai/generation-capture";
 import {
   isCompletePracticePaperCandidate,
   markSchemeIssues,
@@ -61,7 +65,9 @@ export const maxDuration = 300;
 const REQUEST_TIMEOUT_MS = 60_000;
 const REQUEST_DEADLINE_MS = 260_000;
 const DURABLE_REQUEST_TIMEOUT_MS = 150_000;
+const MAX_DURABLE_REQUEST_TIMEOUT_MS = 600_000;
 const DURABLE_REQUEST_DEADLINE_MS = 720_000;
+const MAX_DURABLE_REQUEST_DEADLINE_MS = 2_400_000;
 const MAX_COMBINED_SOURCE_BYTES = 45 * 1024 * 1024;
 const TOKEN_COUNT_SOURCE_BYTES = 1024 * 1024;
 
@@ -388,14 +394,14 @@ export async function runPracticePaperGenerationRequest(
     ? boundedDuration(
         process.env.PRACTICE_PAPER_MODEL_TIMEOUT_MS,
         DURABLE_REQUEST_TIMEOUT_MS,
-        240_000
+        MAX_DURABLE_REQUEST_TIMEOUT_MS
       )
     : REQUEST_TIMEOUT_MS;
   const requestDeadlineMs = durableRequest
     ? boundedDuration(
         process.env.PRACTICE_PAPER_DURABLE_DEADLINE_MS,
         DURABLE_REQUEST_DEADLINE_MS,
-        780_000
+        MAX_DURABLE_REQUEST_DEADLINE_MS
       )
     : REQUEST_DEADLINE_MS;
   const log = createLogger({
@@ -638,6 +644,12 @@ export async function runPracticePaperGenerationRequest(
       contents: typeof contents;
       temperature: number;
       maxOutputTokens?: number;
+      onResponseText?: (captured: {
+        pass: string;
+        role: AiGenerationRole;
+        modelName: string;
+        text: string;
+      }) => void;
     }) => {
       const passDiagnostics: AiResponseDiagnostics[] = [];
       const execute = () => (durableRequest
@@ -678,22 +690,42 @@ export async function runPracticePaperGenerationRequest(
       });
 
       const text = await execute();
-      return {
-        text,
-        modelName:
-          passDiagnostics.at(-1)?.modelName ?? input.role,
-      };
+      const modelName = passDiagnostics.at(-1)?.modelName ?? input.role;
+      /**
+       * Every model response, offered to the caller before anything reads it.
+       *
+       * Generation has been debugged by burning live runs. Five structural
+       * faults were found that way -- inverted mark dependencies, band ranges
+       * under provider aliases, a nested marking object the pre-check refused,
+       * additive points not summing to the tariff, items with no usable credit
+       * unit -- and not one of them needed a model to reproduce. They are
+       * parser and validator faults, findable in milliseconds against a
+       * recorded response, and each instead cost a two-hour run against a
+       * provider that was rate-limiting and dropping connections.
+       *
+       * The responses were paid for and then discarded. Kept, they become
+       * fixtures: the next defect of that class is caught by a test rather than
+       * by a pilot, and the run that found it never has to happen again.
+       */
+      const captured = { pass: input.name, role: input.role, modelName, text };
+      // A hook nobody passes captures nothing, and no call site passes this
+      // one, so the responses above were still being discarded. The default
+      // sink writes them where a run can be replayed from; a caller supplying
+      // its own still wins.
+      if (input.onResponseText) input.onResponseText(captured);
+      else captureGenerationPass(captured);
+      return { text, modelName };
     };
 
     await updateInternalJobStage(uid, auth.internalJobId, "designing");
     let paperPass = await runPass({
       name: "paper_design",
       taskClass: "important",
-      role: "worker",
+      role: "supervisor",
       systemInstruction,
       contents,
       temperature: 0.25,
-      maxOutputTokens: 12_000,
+      maxOutputTokens: 20_000,
     });
     let draft = parsePracticePaperModelAnswer(withProvisionalMarkScheme(paperPass.text), {
       allowedSourceRefs: sourceRefs,
@@ -703,11 +735,11 @@ export async function runPracticePaperGenerationRequest(
       paperPass = await runPass({
         name: "paper_design_structured_retry",
         taskClass: "important",
-        role: "worker",
+        role: "supervisor",
         systemInstruction: `${systemInstruction}\nThe previous response was structurally invalid. Return one complete JSON object with every required candidate-paper field, keep markScheme.items empty, and include no prose outside the JSON.`,
         contents,
         temperature: 0.1,
-        maxOutputTokens: 12_000,
+        maxOutputTokens: 20_000,
       });
       draft = parsePracticePaperModelAnswer(withProvisionalMarkScheme(paperPass.text), {
         allowedSourceRefs: sourceRefs,
@@ -743,6 +775,10 @@ export async function runPracticePaperGenerationRequest(
     }
 
     await updateInternalJobStage(uid, auth.internalJobId, "building_mark_scheme");
+    const markSchemeRole: AiGenerationRole =
+      process.env.PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED === "true"
+        ? "worker"
+        : "supervisor";
     const markSchemeInstruction = `You are Jami's senior mark-scheme designer. The supplied questions, assets and marks are fixed. Build a rigorous guide from the approved sources. Award method and partial credit where appropriate, include acceptable alternatives, and avoid unnecessary wording requirements.
 
 Return only {"items":[...]}. Never repeat the paper, questions, assets, instructions or assessment profile. Return exactly one item for every supplied question, and no items for any other question. Every item needs questionId, maxMarks, answer, acceptableAlternatives and commonMistakes. Choose its marking model using the board's conventions:
@@ -754,11 +790,34 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
 - competency: include explicit pass/merit/distinction competencies.
 
     Use valid JSON only. Keep explanations concise enough for an examiner to apply consistently.`;
-    const questionBatches = Array.from(
-      { length: Math.ceil(draft.questions.length / 3) },
-      (_unused, index) => draft.questions.slice(index * 3, index * 3 + 3)
-    );
+    const questionBatches = partitionMarkSchemeQuestions(draft.questions);
     const generatedItems: unknown[] = [];
+    const batchShape = (value: unknown, questions: typeof draft.questions) => {
+      const items = Array.isArray(value) ? value : [];
+      const questionIds = new Set(questions.map((question) => question.id));
+      const acceptedMarkings = new Set([
+        "additive",
+        "pointPool",
+        "banded",
+        "weightedTraits",
+        "competency",
+      ]);
+      return {
+        expectedItemCount: questions.length,
+        returnedItemCount: items.length,
+        exactQuestionIdMatches: items.filter((item) =>
+          item && typeof item === "object" && questionIds.has(String((item as Record<string, unknown>).questionId ?? (item as Record<string, unknown>).id ?? ""))
+        ).length,
+        stringMarkingFields: items.filter((item) =>
+          item && typeof item === "object" && typeof ((item as Record<string, unknown>).marking ?? (item as Record<string, unknown>).markingModel) === "string"
+        ).length,
+        acceptedMarkingFields: items.filter((item) => {
+          if (!item || typeof item !== "object") return false;
+          const candidate = (item as Record<string, unknown>).marking ?? (item as Record<string, unknown>).markingModel;
+          return typeof candidate === "string" && acceptedMarkings.has(candidate);
+        }).length,
+      };
+    };
     for (let index = 0; index < questionBatches.length; index += 1) {
       const wave = questionBatches.slice(index, index + 1);
       const passes = await Promise.all(wave.map(async (questions, offset) => ({
@@ -767,7 +826,7 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
         pass: await runPass({
           name: `mark_scheme_batch_${index + offset + 1}`,
           taskClass: "important",
-          role: "supervisor",
+          role: markSchemeRole,
           systemInstruction: markSchemeInstruction,
           contents: [
             ...evidenceContents,
@@ -789,12 +848,20 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
         } catch {
           // A capped or malformed batch is small enough to retry atomically.
         }
-        if (!Array.isArray(payload?.items)) {
+        let batchItems = Array.isArray(payload?.items)
+          ? normalizeGeneratedMarkSchemeBatch(payload.items, result.questions)
+          : null;
+        if (!batchItems) {
+          log.warn("mark_scheme.batch_unreadable", {
+            batchNumber: result.batchNumber,
+            attempt: "initial",
+            ...batchShape(payload?.items, result.questions),
+          });
           const retry = await runPass({
             name: `mark_scheme_batch_${result.batchNumber}_structured_retry`,
             taskClass: "important",
-            role: "supervisor",
-            systemInstruction: `${markSchemeInstruction}\nThe previous batch was truncated or invalid. Be concise and return one complete JSON object.`,
+            role: markSchemeRole === "worker" ? "supervisor" : markSchemeRole,
+            systemInstruction: `${markSchemeInstruction}\nThe previous batch was truncated or structurally unreadable. Use each supplied question id exactly, use only the named marking values, include every required field, and return one concise complete JSON object.`,
             contents: [{
               role: "user" as const,
               parts: [{ text: JSON.stringify(result.questions) }],
@@ -803,11 +870,21 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
             maxOutputTokens: 8_000,
           });
           payload = parseJsonObject(retry.text);
+          batchItems = Array.isArray(payload.items)
+            ? normalizeGeneratedMarkSchemeBatch(payload.items, result.questions)
+            : null;
+          if (!batchItems) {
+            log.warn("mark_scheme.batch_unreadable", {
+              batchNumber: result.batchNumber,
+              attempt: "structured_retry",
+              ...batchShape(payload.items, result.questions),
+            });
+          }
         }
-        if (!Array.isArray(payload.items)) {
-          throw new Error("A mark-scheme batch did not return an items array.");
+        if (!batchItems) {
+          throw new Error("A mark-scheme batch did not return readable items for every question.");
         }
-        generatedItems.push(...canonicalizeGeneratedMarkSchemeItems(payload.items));
+        generatedItems.push(...batchItems);
       }
     }
     let schemeCandidate: Extract<ParsedPracticePaperModelAnswer, { status: "ready" }> = {
@@ -835,10 +912,7 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
         affectedIds.size === 0 || affectedIds.has(question.id)
       );
       let mergedItems = [...generatedItems];
-      const repairBatches = Array.from(
-        { length: Math.ceil(repairQuestions.length / 3) },
-        (_unused, index) => repairQuestions.slice(index * 3, index * 3 + 3)
-      );
+      const repairBatches = partitionMarkSchemeQuestions(repairQuestions);
       for (let index = 0; index < repairBatches.length; index += 1) {
         const wave = repairBatches.slice(index, index + 1);
         const passes = await Promise.all(wave.map(async (questions, offset) => {
@@ -846,7 +920,7 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
           return runPass({
             name: `mark_scheme_targeted_repair_${repairRound}_${index + offset + 1}`,
             taskClass: "important",
-            role: "supervisor",
+            role: markSchemeRole,
             systemInstruction: `${markSchemeInstruction}\nCorrect every listed structural fault. Return replacement items only for the supplied affected questions.`,
             contents: [{
               role: "user" as const,
@@ -929,11 +1003,18 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
     let repairModelName = "";
     let finalAudit = audit;
     if (!audit.pass) {
+      log.warn("paper_audit.issues_found", {
+        issueCount: audit.issues.length,
+        issueCodes: Array.from(new Set(audit.issues.map((issue) => issue.code))),
+        affectedQuestionCount: new Set(
+          audit.issues.flatMap((issue) => issue.questionId ? [issue.questionId] : [])
+        ).size,
+      });
       const repairPass = await runPass({
         name: "paper_repair",
         taskClass: "important",
-        role: "worker",
-        systemInstruction: `You are Jami's assessment editor working from a senior supervisor's findings. Repair every substantiated audit issue in the supplied complete paper. Preserve unaffected questions and source references. Keep the assessment a full sitting, ensure every question has one matching mark-scheme item, and make all totals and choice rules internally consistent. Return the complete ready paper JSON in the original schema. Return valid JSON only.`,
+        role: "supervisor",
+        systemInstruction: `You are Jami's assessment editor working from a senior supervisor's findings. Return a MINIMAL PATCH, never the complete paper. Repair every substantiated issue while preserving everything unaffected. Return valid JSON only with this schema: {"topLevel":{},"questionReplacements":[],"markSchemeTopLevel":{},"markSchemeItemReplacements":[],"removeQuestionIds":[]}. Include a full replacement question and its full matching mark-scheme item only when that question must change. Use topLevel only for changed paper fields such as instructions, durationMinutes, choiceGroups or companionDocuments. Use markSchemeTopLevel only for changed guide-level fields. Keep question IDs stable wherever possible. Every changed or new question must have exactly one matching replacement mark-scheme item. Do not copy unchanged questions or unchanged mark-scheme items into the response.`,
         contents: [{
           role: "user" as const,
           parts: [{
@@ -941,13 +1022,43 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
           }],
         }],
         temperature: 0.1,
-        maxOutputTokens: 14_000,
+        maxOutputTokens: 20_000,
       });
       repairModelName = repairPass.modelName;
-      const repaired = parsePracticePaperModelAnswer(repairPass.text, {
-        allowedSourceRefs: sourceRefs,
-        length: parsedRequest.length,
-      });
+      const parseRepair = (text: string) => {
+        try {
+          const payload = parseJsonObject(text);
+          const merged = applyPracticePaperAuditRepairPatch(schemeCandidate, payload);
+          return merged && parsePracticePaperModelAnswer(JSON.stringify(merged), {
+            allowedSourceRefs: sourceRefs,
+            length: parsedRequest.length,
+          });
+        } catch {
+          return null;
+        }
+      };
+      let repaired = parseRepair(repairPass.text);
+      if (!repaired || !isCompletePracticePaperCandidate(repaired)) {
+        log.warn("paper_repair.patch_unreadable", {
+          initialResponseBytes: Buffer.byteLength(repairPass.text, "utf8"),
+        });
+        const retryPass = await runPass({
+          name: "paper_repair_structured_retry",
+          taskClass: "important",
+          role: "worker",
+          systemInstruction: `Correct the malformed assessment repair patch. Return JSON only as {"topLevel":{},"replacements":[{"question":{FULL QUESTION WITH ORIGINAL id},"markSchemeItem":{FULL MATCHING ITEM WITH questionId EQUAL TO THE QUESTION id}}],"markSchemeTopLevel":{},"removeQuestionIds":[]}. Include only questions that must change. Do not return the complete paper. Preserve the original IDs and use the exact field structures shown in the original paper.`,
+          contents: [{
+            role: "user" as const,
+            parts: [{
+              text: `--- ORIGINAL PAPER ---\n${JSON.stringify(schemeCandidate)}\n\n--- AUDIT ISSUES ---\n${JSON.stringify(audit.issues)}\n\n--- MALFORMED PATCH TO CORRECT ---\n${repairPass.text}`,
+            }],
+          }],
+          temperature: 0,
+          maxOutputTokens: 20_000,
+        });
+        repairModelName = retryPass.modelName;
+        repaired = parseRepair(retryPass.text);
+      }
       if (!repaired || !isCompletePracticePaperCandidate(repaired)) {
         await refund("invalid_repair_response");
         return failure(

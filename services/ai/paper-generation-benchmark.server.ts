@@ -3,8 +3,14 @@ import "server-only";
 import { createHash, randomUUID } from "node:crypto";
 import type { AiResponseDiagnostics } from "@/lib/ai/provider-router";
 import type { Source } from "@/lib/material/sources";
-import type { GeneratedPracticePaper, PracticePaperGenerationResponse } from "@/lib/practice/practice-papers";
+import {
+  buildPracticePaperPayload,
+  type GeneratedPracticePaper,
+  type PracticePaperGenerationResponse,
+} from "@/lib/practice/practice-papers";
 import { practicePaperFormatContext } from "@/lib/practice/exam-formats";
+import { buildStudyFolderPayload } from "@/lib/workspace/study-folders";
+import { buildNotebookPagePayload, buildNotebookPayload } from "@/lib/workspace/notebooks";
 import {
   PAPER_GENERATION_BENCHMARK_DEFINITIONS,
   PAPER_GENERATION_BENCHMARK_VERSION,
@@ -26,7 +32,10 @@ import {
 } from "@/services/ai/exam-format-library.server";
 import { runPracticePaperGenerationForBenchmark } from "@/services/ai/practice-paper-generation.server";
 import { createPaperRasterAssets } from "@/services/ai/practice-paper-workflow.server";
+import { practicePaperSecretRef } from "@/services/ai/practice-paper-secrets.server";
 import { getAdminDb, getAdminStorageBucket } from "@/services/firebase/admin";
+
+const PILOT_FOLDER_ID = "paper-quality-pilots";
 
 const HARD_BLOCKERS: PaperGenerationBenchmarkBlocker[] = [
   "unanswerable_question", "incorrect_scheme", "invalid_total", "answer_leak",
@@ -311,6 +320,14 @@ async function executePaperGenerationBenchmarkCase(runId: string, caseId: string
     resumable: false,
     metadata: { cacheControl: "private,no-store", metadata: { runId, caseId } },
   });
+  const publishedPaperId = run.kind === "pilot"
+    ? await publishPilotPaperToReviewerAccount({
+        uid: run.createdBy,
+        runId,
+        caseId,
+        paper: paperWithFigures,
+      })
+    : undefined;
   const cost = actualCost(generated.diagnostics);
   const now = Date.now();
   await db.runTransaction(async (transaction) => {
@@ -321,6 +338,7 @@ async function executePaperGenerationBenchmarkCase(runId: string, caseId: string
       status: "ready",
       paperStoragePath: storagePath,
       contentHash: sha256(bytes),
+      ...(publishedPaperId ? { publishedPaperId } : {}),
       estimatedCostUsd: cost,
       completedAt: now,
       updatedAt: now,
@@ -333,6 +351,105 @@ async function executePaperGenerationBenchmarkCase(runId: string, caseId: string
     });
   });
   return "ready" as const;
+}
+
+async function publishPilotPaperToReviewerAccount(input: {
+  uid: string;
+  runId: string;
+  caseId: string;
+  paper: GeneratedPracticePaper;
+}) {
+  const now = Date.now();
+  const paperId = `pilot_${input.runId}_${input.caseId}`;
+  const db = getAdminDb();
+  const userRef = db.collection("users").doc(input.uid);
+  const batch = db.batch();
+  batch.set(userRef.collection("studyFolders").doc(PILOT_FOLDER_ID), buildStudyFolderPayload({
+    name: "Paper quality pilots",
+    subject: "GCSE and A-level validation papers",
+    color: "violet",
+    icon: "folder",
+    now,
+  }), { merge: true });
+  batch.set(userRef.collection("notebooks").doc(paperId), buildNotebookPayload({
+    folderId: PILOT_FOLDER_ID,
+    title: input.paper.title,
+    type: "practice_paper",
+    sourceIds: [],
+    pastPaperId: paperId,
+    color: "violet",
+    icon: "notebook",
+    pageColor: "white",
+    pageStyle: "plain",
+    now,
+  }));
+  input.paper.questions.forEach((question, index) => {
+    const safeQuestionId = question.id.replace(/[^A-Za-z0-9_-]/g, "-");
+    batch.set(
+      userRef.collection("notebookPages").doc(`${paperId}_${safeQuestionId}`.slice(0, 1_400)),
+      buildNotebookPagePayload({
+        notebookId: paperId,
+        folderId: PILOT_FOLDER_ID,
+        pageNumber: index + 1,
+        title: question.label,
+        pageType: "question",
+        pageColor: "white",
+        pageStyle: "plain",
+        status: "blank",
+        questionPrompt: `${question.prompt}\n\n[${question.marks} ${question.marks === 1 ? "mark" : "marks"}]`,
+        questionAssets: question.assets,
+        linkedQuestionId: question.id,
+        linkedPastPaperId: paperId,
+        now,
+      })
+    );
+  });
+  batch.set(userRef.collection("pastPapers").doc(paperId), buildPracticePaperPayload({
+    notebookId: paperId,
+    folderId: PILOT_FOLDER_ID,
+    title: input.paper.title,
+    origin: "generated",
+    status: "ready",
+    sourceIds: [],
+    sourceLabels: [],
+    request: "Internal full-paper quality pilot",
+    coverage: "Complete official component",
+    length: "full",
+    focus: "balanced",
+    focusDetail: "",
+    durationMinutes: input.paper.durationMinutes,
+    timingMode: "timed",
+    timingState: "not_started",
+    totalPausedMs: 0,
+    deadlineVersion: 0,
+    tutorEnabled: false,
+    tutorUsed: false,
+    timerEnabled: true,
+    instructions: input.paper.instructions,
+    companionDocuments: input.paper.companionDocuments ?? [],
+    assessmentProfile: input.paper.assessmentProfile,
+    questions: input.paper.questions,
+    choiceGroups: input.paper.choiceGroups,
+    totalMarks: input.paper.totalMarks,
+    markScheme: input.paper.markScheme,
+    preparedAt: now,
+    gradeGuidance: input.paper.gradeGuidance,
+    examinerInsights: input.paper.examinerInsights,
+    generationAudit: input.paper.generationAudit,
+    researchReceipt: input.paper.researchReceipt,
+    attemptCount: 0,
+    now,
+  }));
+  batch.set(practicePaperSecretRef(input.uid, paperId), {
+    paperId,
+    markScheme: input.paper.markScheme,
+    benchmarkRunId: input.runId,
+    benchmarkCaseId: input.caseId,
+    createdAt: now,
+    updatedAt: now,
+  });
+  await batch.commit();
+  return paperId;
 }
 
 export async function runPaperGenerationBenchmarkCase(runId: string, caseId: string) {
