@@ -220,6 +220,24 @@ export function readAssignmentTitle(text: string) {
  * stays on the measurement side of the line like the rest of this source, and
  * must not be shown to a student.
  *
+ * It did not fix the compression, and that is worth saying plainly so nobody
+ * spends the run again. Measured over six assignments with the grid supplied
+ * against five without, the ten-mark analysis section moved from a 4 to 7 band
+ * to a 6 to 9 band while the examiner went on using the whole 0 to 10 range.
+ * The window shifted upward rather than widening: its mean gap held at 4.33
+ * against 4.20, and the paper error rose from 5.00 to 6.17.
+ *
+ * So the marker was guessing, and telling it the rules made it guess higher
+ * rather than better. That rules out the strongest remaining information-gap
+ * explanation -- the one that was worth twenty points on the maths corpus --
+ * and leaves compression looking like a property of placing a mark on a wide
+ * scale. The two and four mark sections sit at gaps of 0.33 and 0.67; only the
+ * ten-mark ones fail.
+ *
+ * The grid stays regardless. Production sends the whole scheme to its markers,
+ * so a benchmark that withholds it measures the corpus rather than the marker,
+ * whatever the accuracy turns out to be.
+ *
  * https://www.sqa.org.uk/files_ccc/HigherCATModernStudies.pdf
  */
 export const MODERN_STUDIES_ASSIGNMENT_SCHEME = [
