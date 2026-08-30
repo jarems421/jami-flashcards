@@ -163,6 +163,18 @@ describe("practice-paper generation provider normalization", () => {
     expect((item.points as Array<Record<string, unknown>>)).toHaveLength(3);
   });
 
+  /**
+   * An extended-response question gets a call to itself. Batched with a
+   * neighbour it crowds the neighbour out: a six-mark and a twelve-mark
+   * question travelled together at eighteen marks, inside the twenty-mark cap,
+   * and the model returned a scheme for one of the two. The batch was rejected
+   * for holding one item where two were required, the retry returned one
+   * again, and the paper failed.
+   *
+   * The marks cap alone cannot express this, which is why this assertion used
+   * to pair a four-mark question with a sixteen-mark one and still pass under
+   * the name it has.
+   */
   it("isolates high-mark questions so mark-scheme calls stay bounded", () => {
     const questions = [
       { id: "q1", marks: 4 },
@@ -174,7 +186,21 @@ describe("practice-paper generation provider normalization", () => {
     ];
 
     expect(partitionMarkSchemeQuestions(questions).map((batch) => batch.map((item) => item.id)))
-      .toEqual([["q1", "q2"], ["q3", "q4"], ["q5", "q6"]]);
+      .toEqual([["q1", "q2"], ["q3"], ["q4"], ["q5"], ["q6"]]);
+  });
+
+  /** The threshold is a setting, since boards put their extended tariff differently. */
+  it("keeps ordinary questions batched together", () => {
+    const questions = [
+      { id: "q1", marks: 2 },
+      { id: "q2", marks: 4 },
+      { id: "q3", marks: 6 },
+      { id: "q4", marks: 12 },
+    ];
+    expect(
+      partitionMarkSchemeQuestions(questions, { isolateAtOrAbove: 20 })
+        .map((batch) => batch.map((item) => item.id))
+    ).toEqual([["q1", "q2"], ["q3", "q4"]]);
   });
 
   it("rejects an unreadable mark-scheme batch before whole-paper repair", () => {

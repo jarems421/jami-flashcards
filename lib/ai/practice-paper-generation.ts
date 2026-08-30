@@ -21,19 +21,47 @@ export const MAX_PRACTICE_PAPER_COVERAGE_LENGTH = 1_000;
 
 export function partitionMarkSchemeQuestions<T extends { marks: number }>(
   questions: readonly T[],
-  options: { maximumQuestions?: number; maximumMarks?: number } = {}
+  options: {
+    maximumQuestions?: number;
+    maximumMarks?: number;
+    /** A question worth at least this much gets a batch to itself. */
+    isolateAtOrAbove?: number;
+  } = {}
 ) {
   const maximumQuestions = Math.max(1, options.maximumQuestions ?? 2);
   const maximumMarks = Math.max(1, options.maximumMarks ?? 20);
+  /**
+   * Above this a question is given a batch of its own.
+   *
+   * An extended-response question needs a banded or trait scheme with a
+   * descriptor for every level, which is most of what a call can produce.
+   * Batched with a neighbour it crowds the neighbour out: a six-mark and a
+   * twelve-mark question travelled together at eighteen marks, inside the
+   * twenty-mark cap, and the model returned a scheme for one of them. The
+   * batch was rejected for holding one item where two were required, the
+   * retry returned one again, and the paper failed.
+   *
+   * Twelve is where the observed papers put their extended questions. The
+   * marks cap alone cannot express this: eighteen fits under twenty and is
+   * still too much work for one call.
+   */
+  const isolateAtOrAbove = Math.max(1, options.isolateAtOrAbove ?? 12);
   const batches: T[][] = [];
   let current: T[] = [];
   let currentMarks = 0;
 
   for (const question of questions) {
     const marks = Math.max(0, Number.isFinite(question.marks) ? question.marks : 0);
+    if (current.length > 0 && marks >= isolateAtOrAbove) {
+      batches.push(current);
+      current = [];
+      currentMarks = 0;
+    }
     if (
       current.length > 0 &&
-      (current.length >= maximumQuestions || currentMarks + marks > maximumMarks)
+      (current.length >= maximumQuestions ||
+        currentMarks + marks > maximumMarks ||
+        currentMarks >= isolateAtOrAbove)
     ) {
       batches.push(current);
       current = [];
