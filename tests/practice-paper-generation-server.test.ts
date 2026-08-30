@@ -448,3 +448,86 @@ describe("batching the real Paper 1 shape", () => {
     }
   });
 });
+
+/**
+ * Bands the model got right and the parser threw away.
+ *
+ * A complete 96-mark paper reached the mark-scheme stage and failed on two of
+ * its three 16-mark essays with bands_do_not_cover. Both were correct: q8 came
+ * back 0-2, 3-5, 6-9, 10-13, 14-16 and q12 came back 0-1, 2-3, 4-6, 7-9, 10-12,
+ * 13-14, 15-16, each contiguous and covering the question exactly. Every band
+ * normalised to 0-0.
+ *
+ * The canonicaliser mapped min/max to minMarks/maxMarks and the result was
+ * applied only when the item carried no bands of its own -- so the shape the
+ * models actually return was the one it never fixed. These are the captured
+ * responses.
+ */
+describe("reading the bands a model actually returns", () => {
+  const bandsOf = (raw: Record<string, unknown>) => {
+    const [item] = canonicalizeGeneratedMarkSchemeItems([raw]) as {
+      bands?: { minMarks?: number; maxMarks?: number }[];
+    }[];
+    return (item.bands ?? []).map((band) => `${band.minMarks}-${band.maxMarks}`);
+  };
+
+  it("reads min and max on bands the item carries itself", () => {
+    expect(
+      bandsOf({
+        questionId: "q8",
+        maxMarks: 16,
+        marking: "banded",
+        bands: [
+          { id: "b0", min: 0, max: 2, descriptor: "No relevant content." },
+          { id: "b1", min: 3, max: 5, descriptor: "Limited." },
+          { id: "b2", min: 6, max: 9, descriptor: "Reasonable." },
+          { id: "b3", min: 10, max: 13, descriptor: "Good." },
+          { id: "b4", min: 14, max: 16, descriptor: "Excellent." },
+        ],
+      })
+    ).toEqual(["0-2", "3-5", "6-9", "10-13", "14-16"]);
+  });
+
+  it("still reads bands that arrive nested under marking", () => {
+    expect(
+      bandsOf({
+        questionId: "q12",
+        maxMarks: 8,
+        marking: { type: "banded", bands: [{ min: 0, max: 4 }, { min: 5, max: 8 }] },
+      })
+    ).toEqual(["0-4", "5-8"]);
+  });
+
+  /** The other vocabulary from the same run: one string, not two numbers. */
+  it("reads a band written as a range string", () => {
+    expect(
+      bandsOf({
+        questionId: "q4",
+        maxMarks: 16,
+        marking: "banded",
+        bands: [
+          { band: "0-3", description: "Limited." },
+          { band: "4-8", description: "Reasonable." },
+          { band: "9–16", description: "Good." },
+        ],
+      })
+    ).toEqual(["0-3", "4-8", "9-16"]);
+  });
+
+  /** An explicit minMarks must still win over anything inferred. */
+  it("prefers the explicit field", () => {
+    expect(bandsOf({
+      questionId: "q1", maxMarks: 4, marking: "banded",
+      bands: [{ minMarks: 0, maxMarks: 2, min: 9, max: 9 }],
+    })).toEqual(["0-2"]);
+  });
+
+  /** A band that says nothing readable must not silently become 0-0. */
+  it("leaves an unreadable band unreadable rather than scoring it zero", () => {
+    const [band] = bandsOf({
+      questionId: "q1", maxMarks: 4, marking: "banded",
+      bands: [{ descriptor: "Good work." }],
+    });
+    expect(band).toBe("undefined-undefined");
+  });
+});

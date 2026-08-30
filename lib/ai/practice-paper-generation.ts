@@ -85,10 +85,19 @@ export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
     ? candidate.map((band) => {
         if (!band || typeof band !== "object") return band;
         const entry = band as Record<string, unknown>;
+        // A band written as one string: {"band":"0-3"} or {"range":"13–16"}.
+        // Seen alongside the numeric forms in the same run, and unreadable to
+        // everything downstream, which scores it 0-0 rather than refusing it.
+        const spelled = [entry.band, entry.range, entry.marks].find(
+          (candidate) => typeof candidate === "string"
+        );
+        const span = typeof spelled === "string"
+          ? /^\s*(\d+)\s*[-–—to]+\s*(\d+)\s*$/.exec(spelled)
+          : null;
         return {
           ...entry,
-          minMarks: entry.minMarks ?? entry.min ?? entry.from,
-          maxMarks: entry.maxMarks ?? entry.max ?? entry.to,
+          minMarks: entry.minMarks ?? entry.min ?? entry.from ?? (span ? Number(span[1]) : undefined),
+          maxMarks: entry.maxMarks ?? entry.max ?? entry.to ?? (span ? Number(span[2]) : undefined),
           descriptor: entry.descriptor ?? entry.description ?? entry.text,
         };
       })
@@ -213,12 +222,22 @@ export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
       ...(item.awardable === undefined && awardable !== undefined
         ? { awardable }
         : {}),
-      ...(item.bands === undefined && bands !== undefined
-        ? { bands }
-        : {}),
-      ...(item.traits === undefined && traits !== undefined
-        ? { traits }
-        : {}),
+      // Always the canonicalised arrays, never the raw ones.
+      //
+      // These were applied only when the item had no bands of its own, which is
+      // the rare case: a model that puts bands on the item -- the common shape --
+      // kept its raw objects, so the min/max to minMarks/maxMarks mapping right
+      // above ran for nested bands only. Two 16-mark essays came back banded
+      // 0-2, 3-5, 6-9, 10-13, 14-16 and 0-1, 2-3, 4-6, 7-9, 10-12, 13-14, 15-16,
+      // both contiguous and both covering the question exactly, and every band
+      // normalised to 0-0 and failed bands_do_not_cover. The paper was rejected
+      // for a fault it did not have.
+      //
+      // canonicalBands already prefers item.bands, so this array is the item's
+      // own bands with the aliases resolved. Preferring the raw form only
+      // discards that work.
+      ...(Array.isArray(bands) ? { bands } : {}),
+      ...(Array.isArray(traits) ? { traits } : {}),
       ...(item.competencies === undefined && competencies !== undefined
         ? { competencies }
         : {}),
