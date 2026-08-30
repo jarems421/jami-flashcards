@@ -28,9 +28,9 @@ Object.assign(process.env, {
   // Pilot only. Production routing is unchanged until this is shown to mark
   // and design as well as M3 does.
   OPENROUTER_SUPERVISOR_MODEL: "z-ai/glm-5.3-flash",
-  OPENROUTER_SUPERVISOR_PROVIDERS: "modal",
+  OPENROUTER_SUPERVISOR_PROVIDERS: "morph",
   OPENROUTER_SUPERVISOR_STANDBY_MODEL: "z-ai/glm-5.3-flash",
-  OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "morph",
+  OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "parasail",
   PRACTICE_PAPER_MODEL_TIMEOUT_MS: "600000",
   PRACTICE_PAPER_DURABLE_DEADLINE_MS: "2400000",
   PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED: "true",

@@ -29,6 +29,8 @@ export type OpenRouterCallOptions = {
   timeoutMs: number;
   signal?: AbortSignal;
   reasoning: boolean;
+  /** How hard to let it think. Defaults to a bounded `medium`. */
+  reasoningEffort?: "low" | "medium" | "high";
   temperature?: number;
   topP?: number;
   maxOutputTokens?: number;
@@ -128,8 +130,26 @@ export function buildOpenRouterRequestBody(
       zdr: true,
       quantizations: [...options.quantizations],
     },
+    /**
+     * Reasoning, bounded.
+     *
+     * This asked for reasoning with no effort ceiling. Thinking tokens are
+     * still tokens: they consume the output budget and the clock, and
+     * `exclude: true` only hides them from the reply. A model willing to think
+     * at length will do exactly that.
+     *
+     * Measured against the paper design pass, which asks for a 20,000 token
+     * structured paper. The same model, provider and prompt answered in one to
+     * three seconds with effort capped, and in a direct streaming test finished
+     * in 46 seconds. Through this path, uncapped, it spent the full 600-second
+     * ceiling thinking and returned nothing -- three runs, no paper, and a
+     * timeout that looked like a provider fault.
+     *
+     * `medium` is the cap because it is what was measured working, not because
+     * it is tuned. A caller wanting more should have to say so.
+     */
     ...(options.reasoning
-      ? { reasoning: { enabled: true, exclude: true } }
+      ? { reasoning: { enabled: true, exclude: true, effort: options.reasoningEffort ?? "medium" } }
       : {}),
     ...(options.jsonSchema
       ? {

@@ -213,3 +213,41 @@ describe("OpenRouter adapter", () => {
     });
   });
 });
+
+/**
+ * Thinking tokens are still tokens: they spend the output budget and the clock,
+ * and `exclude: true` only keeps them out of the reply. Asking for reasoning
+ * with no ceiling let the paper design pass spend a full 600-second timeout
+ * thinking and return nothing, three runs in a row, while the same model and
+ * provider answered the same prompt in one to three seconds with effort capped.
+ */
+describe("how hard a model is allowed to think", () => {
+  const SSE = ['data: {"choices":[{"delta":{"content":"hi"}}]}\n\n', "data: [DONE]\n\n"];
+  // The most recent call, not the first: the fetch spy accumulates across the
+  // tests in this file, so calls[0] belongs to whichever ran earliest.
+  const bodyOf = (mock: ReturnType<typeof vi.spyOn>) =>
+    JSON.parse(String((mock.mock.calls.at(-1)?.[1] as RequestInit)?.body ?? "{}"));
+
+  it("bounds reasoning by default rather than leaving it open", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(streamResponse(SSE));
+    await collect(streamOpenRouterText({ ...baseInput, reasoning: true }));
+    expect(bodyOf(fetchMock).reasoning).toEqual({
+      enabled: true,
+      exclude: true,
+      effort: "medium",
+    });
+  });
+
+  it("lets a caller ask for more, but only deliberately", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(streamResponse(SSE));
+    await collect(streamOpenRouterText({ ...baseInput, reasoning: true, reasoningEffort: "high" }));
+    expect(bodyOf(fetchMock).reasoning.effort).toBe("high");
+  });
+
+  /** A role that does not reason must not be sent a reasoning budget at all. */
+  it("sends nothing when the role does not reason", async () => {
+    const fetchMock = vi.spyOn(globalThis, "fetch").mockResolvedValueOnce(streamResponse(SSE));
+    await collect(streamOpenRouterText({ ...baseInput, reasoning: false }));
+    expect(bodyOf(fetchMock).reasoning).toBeUndefined();
+  });
+});
