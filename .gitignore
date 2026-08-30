@@ -64,3 +64,6 @@ next-dev-*.log
 *.tsbuildinfo
 next-env.d.ts
 /.swc
+
+# Scratch space for one-off analysis scripts.
+scratch/
