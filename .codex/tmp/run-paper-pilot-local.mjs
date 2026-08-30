@@ -14,16 +14,23 @@ Object.assign(process.env, {
   PAPER_BENCHMARK_PILOT_CASE_COST_ESTIMATE_USD: "0.20",
   OPENROUTER_WORKER_PROVIDERS: "parasail",
   OPENROUTER_WORKER_FAILOVER_PROVIDERS: "novita",
-  OPENROUTER_SUPERVISOR_MODEL: "minimax/minimax-m3",
-  // Parasail is the only endpoint that passes the ZDR, full-context, fp8 and
-  // structured-output requirements for this model -- scripts/audit-ai-endpoints
-  // shows every alternative failing on context, quantisation or missing
-  // structured outputs. Atlas-cloud answered 8 of 8 probes and is not a ZDR
-  // endpoint for this model at all, which is why the app returned 404 rather
-  // than using it. Availability does not override the privacy floor.
-  OPENROUTER_SUPERVISOR_PROVIDERS: "parasail",
-  OPENROUTER_SUPERVISOR_STANDBY_MODEL: "minimax/minimax-m3",
-  OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "parasail",
+  // MiniMax M3 has exactly one endpoint meeting the ZDR, full-context, fp8 and
+  // structured-output bar, and that endpoint refuses every M3 request while
+  // serving other models on the same account at 8 of 8. One compliant provider
+  // is a single point of failure, and it failed.
+  //
+  // Scanning every ZDR endpoint for models clearing the same bar found four,
+  // and only one of them has more than a single provider: z-ai/glm-5.3-flash,
+  // compliant on Modal, Parasail, Morph, Phala and DeepInfra. Measured 8 of 8
+  // on four of those and 6 of 8 on the fifth. It is also larger context
+  // (1,310,720 against 1,048,576) and about a quarter of the price.
+  //
+  // Pilot only. Production routing is unchanged until this is shown to mark
+  // and design as well as M3 does.
+  OPENROUTER_SUPERVISOR_MODEL: "z-ai/glm-5.3-flash",
+  OPENROUTER_SUPERVISOR_PROVIDERS: "modal",
+  OPENROUTER_SUPERVISOR_STANDBY_MODEL: "z-ai/glm-5.3-flash",
+  OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "morph",
   PRACTICE_PAPER_MODEL_TIMEOUT_MS: "600000",
   PRACTICE_PAPER_DURABLE_DEADLINE_MS: "2400000",
   PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED: "true",
