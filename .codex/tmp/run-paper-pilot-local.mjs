@@ -33,7 +33,13 @@ Object.assign(process.env, {
   OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "parasail",
   PRACTICE_PAPER_MODEL_TIMEOUT_MS: "600000",
   PRACTICE_PAPER_DURABLE_DEADLINE_MS: "2400000",
-  PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED: "true",
+  // Off. The cheap worker writes the scheme batches when this is on, and it
+  // degenerated: 18,593 characters for a six-mark question, enumerating
+  // "(406) Groupthink (407) Bystander effect" until the output budget ran out
+  // mid-string. A batch that truncates costs more than the model saves, and
+  // the supervisor designed a clean 96-mark paper in 8,341 characters on the
+  // same run.
+  PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED: "false",
 });
 
 const service = await import("../../services/ai/paper-generation-benchmark.server.ts");

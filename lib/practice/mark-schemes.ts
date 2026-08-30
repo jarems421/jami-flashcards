@@ -227,9 +227,22 @@ function normalizeTraits(value: unknown, questionId: string) {
   const traits: PracticePaperMarkTrait[] = [];
   value.slice(0, MAX_TRAITS).forEach((candidate, index) => {
     if (!isRecord(candidate)) return;
-    const label = text(candidate.label, 120);
-    if (!label) return;
     const id = text(candidate.id, 80) || `${questionId}.t${index + 1}`;
+    /**
+     * A trait with no label is still a trait.
+     *
+     * Dropping it threw away a correct mark scheme over a missing display
+     * string. A twelve-mark essay came back with two traits of six marks each,
+     * four bands apiece and no labels; both were discarded here, and validation
+     * then reported single_trait, traits_do_not_sum and no_credit_units on a
+     * scheme that had none of those faults. The repair produced the same
+     * correct traits twice more, was discarded twice more, and the paper failed.
+     *
+     * What a trait needs to be usable is its marks and its bands. A name is how
+     * it is shown to a student, so an unnamed one is named after its position
+     * rather than deleted.
+     */
+    const label = text(candidate.label, 120) || `Trait ${index + 1}`;
     if (seen.has(id)) return;
     seen.add(id);
     const learningOutcome = text(candidate.learningOutcome, 400);

@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { bandsForReferenceScale, parseBandsFromScheme } from "@/lib/evaluation/mark-scheme-bands";
-import { schemeCriteria } from "@/lib/practice/mark-schemes";
+import {
+  normalizeMarkSchemeItem,
+  schemeCriteria,
+  validateMarkSchemeItem,
+} from "@/lib/practice/mark-schemes";
 
 describe("recovering published bands", () => {
   /** Medly and the exam boards write levels with an explicit mark range. */
@@ -197,5 +201,58 @@ describe("criterion ids from the scheme", () => {
         bands: [{ id: "b1", label: "Band 1", minMarks: 0, maxMarks: 2, descriptor: "" }],
       })
     ).toEqual([]);
+  });
+});
+
+/**
+ * A trait with no label was dropped, which threw away correct mark schemes over
+ * a missing display string. A twelve-mark essay came back with two six-mark
+ * traits of four bands each and no labels; both were discarded, and validation
+ * then reported single_trait, traits_do_not_sum and no_credit_units against a
+ * scheme with none of those faults. The repair returned the same correct traits
+ * twice more, was discarded twice more, and the paper failed.
+ */
+describe("a trait that arrives without a name", () => {
+  const twelveMarkEssay = (labels: (string | undefined)[]) =>
+    normalizeMarkSchemeItem({
+      questionId: "q8",
+      marking: "weightedTraits",
+      maxMarks: 12,
+      answer: "An essay.",
+      acceptableAlternatives: [],
+      commonMistakes: [],
+      traits: labels.map((label, index) => ({
+        id: `t${index + 1}`,
+        ...(label === undefined ? {} : { label }),
+        maxMarks: 6,
+        bands: [
+          { id: `b${index}1`, label: "Low", minMarks: 0, maxMarks: 3, descriptor: "Limited." },
+          { id: `b${index}2`, label: "High", minMarks: 4, maxMarks: 6, descriptor: "Secure." },
+        ],
+      })),
+    }, { id: "q8", marks: 12 });
+
+  it("keeps it, and names it after its position", () => {
+    const item = twelveMarkEssay([undefined, undefined]);
+    expect(item?.marking).toBe("weightedTraits");
+    const traits = item?.marking === "weightedTraits" ? item.traits : [];
+    expect(traits).toHaveLength(2);
+    expect(traits.map((trait) => trait.label)).toEqual(["Trait 1", "Trait 2"]);
+    expect(traits.reduce((total, trait) => total + trait.maxMarks, 0)).toBe(12);
+  });
+
+  it("leaves a trait that has a name alone", () => {
+    const item = twelveMarkEssay(["Knowledge (AO1)", "Evaluation (AO3)"]);
+    const traits = item?.marking === "weightedTraits" ? item.traits : [];
+    expect(traits.map((trait) => trait.label)).toEqual(["Knowledge (AO1)", "Evaluation (AO3)"]);
+  });
+
+  /** The scheme that was being discarded now passes the checks it always met. */
+  it("validates, where dropping the traits made it fail three ways", () => {
+    const item = twelveMarkEssay([undefined, undefined]);
+    const issues = item ? validateMarkSchemeItem(item).map((issue) => issue.code) : ["missing"];
+    expect(issues).not.toContain("single_trait");
+    expect(issues).not.toContain("traits_do_not_sum");
+    expect(issues).not.toContain("no_credit_units");
   });
 });
