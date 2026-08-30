@@ -7,9 +7,9 @@ for (let n = 1; n <= doc.numPages; n += 1) {
   all += " " + c.items.map((i) => i.str).join(" ");
 }
 const text = all.replace(/\s+/g, " ");
-// Every "[N marks]" with a little context before it
-for (const m of text.matchAll(/(Section [A-D])|(\d[\d\s.]{0,5})\s*\[\s*(\d+)\s*marks?\s*\]/g)) {
-  if (m[1]) console.log("\n=== " + m[1] + " ===");
-  else process.stdout.write(m[3] + " ");
-}
-console.log("");
+const marks = [...text.matchAll(/\[\s*(\d+)\s*marks?\s*\]/gi)].map((m) => Number(m[1]));
+console.log("mark allocations found, in order:");
+console.log(" ", marks.join(", "));
+console.log("count:", marks.length, "| sum:", marks.reduce((a, b) => a + b, 0));
+const sections = [...text.matchAll(/Section\s+([A-D])\b/g)].map((m) => m[1]);
+console.log("section markers seen:", [...new Set(sections)].join(", "));

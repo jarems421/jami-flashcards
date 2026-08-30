@@ -278,6 +278,36 @@ function normalizeMaterials(value: unknown): ExamFormatRequiredMaterial[] {
 function markArithmeticIssues(input: {
   totalMarks: number;
   sections: ExamFormatSection[];
+  tariffProgression: string[];
+}): ExamFormatVerificationIssue[] {
+  /**
+   * A profile with nothing to build from, which the arithmetic check below
+   * cannot see because there is no arithmetic to do.
+   *
+   * The AQA A-level Psychology profile that cost three days reads
+   * `verificationStatus: "verified"`, `confidence: "high"`, `issues: none` --
+   * and carries zero sections, an empty tariff progression, empty choice rules,
+   * and a one-sentence summary that names the wrong fourth topic. "Verified"
+   * meant its sources were found, never that its content could produce a paper.
+   *
+   * So the generator inferred a structure, built four blocks of 4 + 16 = 20
+   * against a stated 96, and the audit refused it. Nothing in the profile was
+   * contradictory, because there was almost nothing in the profile.
+   */
+  if (input.sections.length === 0 && input.tariffProgression.length === 0) {
+    return [{
+      code: "conflicting_component",
+      message:
+        "The profile states a total but no sections and no tariff progression, " +
+        "so there is nothing to build a paper against.",
+    }];
+  }
+  return markSumIssues(input);
+}
+
+function markSumIssues(input: {
+  totalMarks: number;
+  sections: ExamFormatSection[];
 }): ExamFormatVerificationIssue[] {
   const stated = input.sections
     .map((section) => section.marks)
@@ -302,6 +332,7 @@ function verificationIssues(input: {
   totalMarks: number;
   componentCode: string;
   sections: ExamFormatSection[];
+  tariffProgression: string[];
   assessmentArtifactUnavailable?: boolean;
 }) {
   const issues: ExamFormatVerificationIssue[] = [];
@@ -318,7 +349,11 @@ function verificationIssues(input: {
   if (!input.durationMinutes || !input.totalMarks || !input.componentCode) {
     issues.push({ code: "conflicting_component", message: "The component structure is incomplete." });
   }
-  issues.push(...markArithmeticIssues({ totalMarks: input.totalMarks, sections: input.sections }));
+  issues.push(...markArithmeticIssues({
+    totalMarks: input.totalMarks,
+    sections: input.sections,
+    tariffProgression: input.tariffProgression,
+  }));
   return issues;
 }
 
@@ -335,12 +370,14 @@ export function normalizeExamFormatProfileVersion(
   const totalMarks = integer(raw.totalMarks, 1_000);
   const componentCode = text(raw.componentCode, 120);
   const sections = normalizeSections(raw.sections);
+  const tariffProgression = list(raw.tariffProgression, 20, 300);
   const derivedIssues = verificationIssues({
     sources,
     durationMinutes,
     totalMarks,
     componentCode,
     sections,
+    tariffProgression,
     assessmentArtifactUnavailable: raw.assessmentArtifactUnavailable === true,
   });
   const suppliedIssues: ExamFormatVerificationIssue[] = Array.isArray(raw.issues)
@@ -387,7 +424,7 @@ export function normalizeExamFormatProfileVersion(
     choiceRules: list(raw.choiceRules, 20, 500),
     assessmentObjectives: list(raw.assessmentObjectives, 30, 300),
     topicExpectations: list(raw.topicExpectations, 80, 300),
-    tariffProgression: list(raw.tariffProgression, 20, 300),
+    tariffProgression,
     commandWords: list(raw.commandWords, 40, 80),
     requiredMaterials: normalizeMaterials(raw.requiredMaterials),
     formatSummary: text(raw.formatSummary, 1_500),

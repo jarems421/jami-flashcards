@@ -141,6 +141,65 @@ describe("a profile whose marks do not add up", () => {
    * A profile that describes its structure in prose is unverifiable here, not
    * wrong. Flagging it would make the check noise and get it ignored.
    */
+  /**
+   * The profile that cost three days. It read verified, high confidence, no
+   * issues -- and carried zero sections, no tariff progression and a
+   * one-sentence summary naming the wrong fourth topic. Nothing in it was
+   * contradictory because there was almost nothing in it, so the generator
+   * inferred a structure and the audit refused the result.
+   */
+  it("refuses a profile with nothing to build a paper against", () => {
+    const empty = normalizeExamFormatProfileVersion({
+      version: "2026",
+      boardLabel: "AQA",
+      qualification: "a_level",
+      qualificationLabel: "A-level",
+      subject: "Psychology",
+      specificationCode: "7182",
+      specificationTitle: "A-level Psychology",
+      componentCode: "1",
+      componentTitle: "Paper 1",
+      durationMinutes: 120,
+      totalMarks: 96,
+      sections: [],
+      tariffProgression: [],
+      status: "current",
+      sources: [
+        { id: "spec", title: "Specification", url: "https://www.aqa.org.uk/spec", documentType: "specification", retrievedAt: 1, documentHash: hash, supports: ["duration"] },
+        { id: "paper", title: "Specimen", url: "https://filestore.aqa.org.uk/s.pdf", documentType: "sample_paper", retrievedAt: 1, documentHash: hash, supports: ["marks"] },
+      ],
+    }, { profileId: "aqa-a-level-psychology-7182-1", board: "aqa", now: 10 });
+    const issue = empty?.issues.find((entry) => entry.code === "conflicting_component");
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain("nothing to build");
+    expect(empty?.verificationStatus).not.toBe("verified");
+  });
+
+  /** A tariff progression is structure too, even without section marks. */
+  it("accepts a profile that describes its tariffs instead of its sections", () => {
+    const described = normalizeExamFormatProfileVersion({
+      version: "2026",
+      boardLabel: "AQA",
+      qualification: "a_level",
+      qualificationLabel: "A-level",
+      subject: "Psychology",
+      specificationCode: "7182",
+      specificationTitle: "A-level Psychology",
+      componentCode: "1",
+      componentTitle: "Paper 1",
+      durationMinutes: 120,
+      totalMarks: 96,
+      sections: [],
+      tariffProgression: ["Each of four sections totals 24 marks: short answers then a 16-mark essay."],
+      status: "current",
+      sources: [
+        { id: "spec", title: "Specification", url: "https://www.aqa.org.uk/spec", documentType: "specification", retrievedAt: 1, documentHash: hash, supports: ["duration"] },
+        { id: "paper", title: "Specimen", url: "https://filestore.aqa.org.uk/s.pdf", documentType: "sample_paper", retrievedAt: 1, documentHash: hash, supports: ["marks"] },
+      ],
+    }, { profileId: "aqa-a-level-psychology-7182-1", board: "aqa", now: 10 });
+    expect(described?.issues.some((entry) => entry.code === "conflicting_component")).toBe(false);
+  });
+
   it("declines to judge a profile that does not state section marks", () => {
     expect(
       withSections(96, [undefined, undefined])?.issues.some((entry) => entry.code === "conflicting_marks")
