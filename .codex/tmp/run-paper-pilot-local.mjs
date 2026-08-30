@@ -15,9 +15,15 @@ Object.assign(process.env, {
   OPENROUTER_WORKER_PROVIDERS: "parasail",
   OPENROUTER_WORKER_FAILOVER_PROVIDERS: "novita",
   OPENROUTER_SUPERVISOR_MODEL: "minimax/minimax-m3",
-  OPENROUTER_SUPERVISOR_PROVIDERS: "deepinfra",
+  // Parasail is the only endpoint that passes the ZDR, full-context, fp8 and
+  // structured-output requirements for this model -- scripts/audit-ai-endpoints
+  // shows every alternative failing on context, quantisation or missing
+  // structured outputs. Atlas-cloud answered 8 of 8 probes and is not a ZDR
+  // endpoint for this model at all, which is why the app returned 404 rather
+  // than using it. Availability does not override the privacy floor.
+  OPENROUTER_SUPERVISOR_PROVIDERS: "parasail",
   OPENROUTER_SUPERVISOR_STANDBY_MODEL: "minimax/minimax-m3",
-  OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "atlas-cloud",
+  OPENROUTER_SUPERVISOR_STANDBY_PROVIDERS: "parasail",
   PRACTICE_PAPER_MODEL_TIMEOUT_MS: "600000",
   PRACTICE_PAPER_DURABLE_DEADLINE_MS: "2400000",
   PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED: "true",
