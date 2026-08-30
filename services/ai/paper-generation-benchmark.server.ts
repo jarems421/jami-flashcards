@@ -286,6 +286,11 @@ async function executePaperGenerationBenchmarkCase(runId: string, caseId: string
     },
     researchBrief: profile.sources.map((citation) => `${citation.title}: ${citation.url}`).join("\n"),
     formatContext: practicePaperFormatContext(profile),
+    // The format reaches the designer as prose, so the total also goes through
+    // as a number. A draft worth the wrong amount is then caught before the
+    // mark scheme is paid for rather than by the whole-paper audit twenty
+    // calls later.
+    expectedTotalMarks: profile.totalMarks,
   });
   const payload = await generated.response.json().catch(() => null) as
     | (PracticePaperGenerationResponse & { code?: string; error?: string })

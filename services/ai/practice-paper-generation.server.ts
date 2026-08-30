@@ -387,7 +387,15 @@ export async function runPracticePaperGenerationRequest(
   researchBrief?: string,
   formatContext?: string,
   contextOverride?: GenerationContextOverride,
-  diagnosticsSink?: (diagnostics: AiResponseDiagnostics[]) => void
+  diagnosticsSink?: (diagnostics: AiResponseDiagnostics[]) => void,
+  /**
+   * What the authoritative profile says the paper is worth.
+   *
+   * The format reaches the designer as prose, so nothing downstream could
+   * compare a draft against it. Passing the number makes that a check rather
+   * than a hope.
+   */
+  expectedTotalMarks?: number
 ) {
   if (!isAnyAiProviderConfigured()) return failure("AI features are not configured", 503, "not_configured");
   const auth = trustedAuth ?? await authenticate(request);
@@ -810,6 +818,37 @@ export async function runPracticePaperGenerationRequest(
       );
     }
 
+    /**
+     * Whether the paper is worth what the profile says, checked before any
+     * mark-scheme work is paid for.
+     *
+     * Nothing compared these. A draft built against a profile stating 96 marks
+     * came back at 80 with one set of instructions and at 166 with another --
+     * eight questions in the first case, thirty in the second, one of them
+     * worth nothing -- and both went on to consume roughly twenty further model
+     * calls before the whole-paper audit refused them. The audit was right and
+     * far too late: a paper that does not total what it must was already wrong
+     * when the design pass returned.
+     *
+     * Fails rather than repairs, deliberately. Reaching a required total means
+     * adding or removing questions, which is designing the paper again, and
+     * doing that silently inside a repair loop is how a run spends an hour
+     * getting further from a correct answer.
+     */
+    if (expectedTotalMarks && draft.totalMarks !== expectedTotalMarks) {
+      log.warn("paper_design.total_mismatch", {
+        expected: expectedTotalMarks,
+        actual: draft.totalMarks,
+        questions: draft.questions.length,
+      });
+      await refund("paper_total_mismatch");
+      return failure(
+        `Jami built a paper worth ${draft.totalMarks} marks where this component is worth ${expectedTotalMarks}. Try again, or check the exam format profile.`,
+        422,
+        "paper_total_mismatch"
+      );
+    }
+
     await updateInternalJobStage(uid, auth.internalJobId, "building_mark_scheme");
     const markSchemeRole: AiGenerationRole =
       process.env.PRACTICE_PAPER_MARK_SCHEME_WORKER_ENABLED === "true"
@@ -1211,6 +1250,8 @@ export function runPracticePaperGenerationForWorkflow(input: {
   request: PracticePaperGenerationRequest;
   researchBrief?: string;
   formatContext?: string;
+  /** What the authoritative profile says the component is worth. */
+  expectedTotalMarks?: number;
 }) {
   const request = new Request("http://jami.internal/practice-paper-generation", {
     method: "POST",
@@ -1230,6 +1271,8 @@ export async function runPracticePaperGenerationForBenchmark(input: {
   studyContext: GenerationContextOverride["studyContext"];
   researchBrief?: string;
   formatContext?: string;
+  /** What the authoritative profile says the component is worth. */
+  expectedTotalMarks?: number;
 }) {
   const request = new Request("http://jami.internal/paper-generation-benchmark", {
     method: "POST",
@@ -1243,7 +1286,8 @@ export async function runPracticePaperGenerationForBenchmark(input: {
     input.researchBrief,
     input.formatContext,
     { sources: input.sources, studyContext: input.studyContext },
-    (value) => { diagnostics = value; }
+    (value) => { diagnostics = value; },
+    input.expectedTotalMarks
   );
   return { response, diagnostics };
 }
