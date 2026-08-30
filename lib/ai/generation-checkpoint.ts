@@ -17,6 +17,12 @@ import { join } from "node:path";
  * stages, so the pipeline that needed it least had it and the one that needed
  * it most did not.
  *
+ * Verified the only way it can be: a pilot killed part-way banked the design
+ * pass and one scheme batch, and the rerun served both from disk and spent its
+ * budget on new work instead -- four model calls for $0.003 against the cold
+ * run's two for $0.006, reaching the whole-paper audit in the same window. No
+ * unit test can show that.
+ *
  * Off unless `JAMI_GENERATION_CHECKPOINT_DIR` names a directory, so production
  * and ordinary local runs behave exactly as before. Reading or writing a
  * checkpoint never throws: a cache that cannot be reached must cost a repeated
