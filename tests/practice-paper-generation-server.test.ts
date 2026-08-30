@@ -498,6 +498,35 @@ describe("reading the bands a model actually returns", () => {
     ).toEqual(["0-4", "5-8"]);
   });
 
+  /**
+   * The third form from the same run: the range inside a label, with the bare
+   * range sitting beside it under a different key. Taking the first candidate
+   * that is a string stops at "Level 4 (13–16 marks)" and never reaches it.
+   */
+  it("reads a range out of a labelled band", () => {
+    expect(
+      bandsOf({
+        questionId: "q12",
+        maxMarks: 16,
+        marking: {
+          type: "banded",
+          bands: [
+            { band: "Level 1 (1–4 marks)", marks: "1–4", criteria: "Limited." },
+            { band: "Level 4 (13–16 marks)", marks: "13–16", criteria: "Thorough." },
+          ],
+        },
+      })
+    ).toEqual(["1-4", "13-16"]);
+  });
+
+  /** criteria is that shape's word for the descriptor. */
+  it("keeps the descriptor whatever it is called", () => {
+    const [item] = canonicalizeGeneratedMarkSchemeItems([
+      { questionId: "q1", maxMarks: 4, marking: "banded", bands: [{ band: "0-4", criteria: "All of it." }] },
+    ]) as { bands?: { descriptor?: string }[] }[];
+    expect(item.bands?.[0].descriptor).toBe("All of it.");
+  });
+
   /** The other vocabulary from the same run: one string, not two numbers. */
   it("reads a band written as a range string", () => {
     expect(

@@ -85,20 +85,27 @@ export function canonicalizeGeneratedMarkSchemeItems(value: unknown[]) {
     ? candidate.map((band) => {
         if (!band || typeof band !== "object") return band;
         const entry = band as Record<string, unknown>;
-        // A band written as one string: {"band":"0-3"} or {"range":"13–16"}.
-        // Seen alongside the numeric forms in the same run, and unreadable to
-        // everything downstream, which scores it 0-0 rather than refusing it.
-        const spelled = [entry.band, entry.range, entry.marks].find(
-          (candidate) => typeof candidate === "string"
-        );
-        const span = typeof spelled === "string"
-          ? /^\s*(\d+)\s*[-–—to]+\s*(\d+)\s*$/.exec(spelled)
-          : null;
+        // A band whose range is spelled out rather than given as two numbers.
+        // Three forms turned up in one run: {"band":"0-3"}, {"marks":"13–16"}
+        // and {"band":"Level 4 (13–16 marks)","marks":"13–16"}. All are
+        // unreadable downstream, which scores the band 0-0 instead of refusing
+        // it, so a correct scheme fails bands_do_not_cover.
+        //
+        // Every candidate is tried and the first that parses wins -- taking the
+        // first that is merely a string picks "Level 4 (13–16 marks)" and stops,
+        // never reaching the "13–16" beside it.
+        const span = [entry.band, entry.range, entry.marks, entry.label]
+          .flatMap((candidate) =>
+            typeof candidate === "string"
+              ? [/(\d+)\s*(?:[-–—]|\bto\b)\s*(\d+)/.exec(candidate)]
+              : []
+          )
+          .find((match): match is RegExpExecArray => match !== null) ?? null;
         return {
           ...entry,
           minMarks: entry.minMarks ?? entry.min ?? entry.from ?? (span ? Number(span[1]) : undefined),
           maxMarks: entry.maxMarks ?? entry.max ?? entry.to ?? (span ? Number(span[2]) : undefined),
-          descriptor: entry.descriptor ?? entry.description ?? entry.text,
+          descriptor: entry.descriptor ?? entry.description ?? entry.text ?? entry.criteria,
         };
       })
     : candidate;
