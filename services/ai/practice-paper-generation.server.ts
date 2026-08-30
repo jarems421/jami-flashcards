@@ -847,6 +847,51 @@ export async function runPracticePaperGenerationRequest(
      * guard rather than a fix: it stops a wrong paper cheaply instead of
      * twenty calls later, and it will keep firing.
      */
+    /**
+     * One retry that tells the designer what it actually built.
+     *
+     * The instruction already states the total and the sections and says not
+     * to change them, and three drafts came back at 80, 164 and 143 against a
+     * required 96 regardless. Repeating the same instruction would be the
+     * fourth. What it has never been told is its own arithmetic: how many
+     * marks it produced, how far off that is, and that a question carries no
+     * section so the sections have to be built from the order and the tariffs.
+     *
+     * The mark-scheme batches already recover this way, by being handed the
+     * specific fault rather than the original instruction again.
+     */
+    if (expectedTotalMarks && draft.totalMarks !== expectedTotalMarks) {
+      const built = draft.questions.map((question) => question.marks).join(" + ");
+      paperPass = await runPass({
+        name: "paper_design_total_retry",
+        taskClass: "important",
+        role: "supervisor",
+        systemInstruction:
+          `${systemInstruction}\nYour previous paper was worth ${draft.totalMarks} marks across ` +
+          `${draft.questions.length} questions (${built}), and this component is worth exactly ` +
+          `${expectedTotalMarks}. Rebuild it to total ${expectedTotalMarks} exactly. A question has no ` +
+          "section field, so the sections exist only as consecutive runs of questions in the order you " +
+          "return them: emit each section's questions together, in order, and make each section's marks " +
+          "sum to the figure the format profile gives it. Do not add sections beyond those the profile " +
+          "lists.",
+        contents,
+        temperature: 0.1,
+        maxOutputTokens: 20_000,
+        checkpoint: { pass: "paper_design_total_retry", subject: sourceRefs },
+      });
+      const retried = parsePracticePaperModelAnswer(withProvisionalMarkScheme(paperPass.text), {
+        allowedSourceRefs: sourceRefs,
+        length: parsedRequest.length,
+      });
+      if (retried && retried.status === "ready" && retried.totalMarks === expectedTotalMarks) {
+        log.info("paper_design.total_corrected", {
+          from: draft.totalMarks,
+          to: retried.totalMarks,
+        });
+        draft = retried;
+      }
+    }
+
     if (expectedTotalMarks && draft.totalMarks !== expectedTotalMarks) {
       log.warn("paper_design.total_mismatch", {
         expected: expectedTotalMarks,
