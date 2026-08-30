@@ -834,6 +834,18 @@ export async function runPracticePaperGenerationRequest(
      * adding or removing questions, which is designing the paper again, and
      * doing that silently inside a repair loop is how a run spends an hour
      * getting further from a correct answer.
+     *
+     * What it keeps catching is a gap this check cannot close. A question
+     * carries id, label, prompt, marks and assets -- there is no section. So a
+     * profile stating "four sections of 24 marks" describes something the
+     * output format cannot express, and the designer answers with a flat list
+     * that nothing holds to those totals. Three attempts produced 80, 164 and
+     * 143 marks against 96; the last built five uneven blocks of 23, 42, 23,
+     * 35 and 41, every question labelled only "Question N".
+     *
+     * Until a question can say which section it belongs to, this check is a
+     * guard rather than a fix: it stops a wrong paper cheaply instead of
+     * twenty calls later, and it will keep firing.
      */
     if (expectedTotalMarks && draft.totalMarks !== expectedTotalMarks) {
       log.warn("paper_design.total_mismatch", {
