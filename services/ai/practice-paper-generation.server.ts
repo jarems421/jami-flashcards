@@ -308,7 +308,7 @@ Return JSON only in this shape:
   "instructions":["..."],
   "companionDocuments":[{"id":"source-booklet","role":"formula_sheet" | "source_booklet" | "data_sheet" | "insert" | "reference","title":"...","instructions":"...","pages":[{"id":"page-1","title":"...","content":"original candidate-visible content","altText":"..."}]}],
   "durationMinutes":60,
-  "questions":[{"id":"q1","label":"Question 1","prompt":"...","marks":5,"assets":[{"id":"a1","type":${assetTypes},"title":"...","content":"plain text, a Markdown table, comma-separated numeric x,y rows for a graph, a concise labelled diagram, or a precise raster-generation brief","altText":"accessible description"}]}],
+  "questions":[{"id":"q1","label":"Question 1","section":"A","prompt":"...","marks":5,"assets":[{"id":"a1","type":${assetTypes},"title":"...","content":"plain text, a Markdown table, comma-separated numeric x,y rows for a graph, a concise labelled diagram, or a precise raster-generation brief","altText":"accessible description"}]}],
   "choiceGroups":[{"id":"section-b-choice","label":"Answer two questions from Section B","requiredCount":2,"questionIds":["q5","q6","q7"],"selectionRule":"highest_scoring" | "first_answered"}],
   "markScheme":{
     "kind":"generated",
@@ -320,6 +320,8 @@ Return JSON only in this shape:
   "examinerInsights":["Concise teaching insight based on examiner reports, without copying them"],
   "sourceRefs":[${input.sourceRefs.map((reference) => `"${reference}"`).join(",")}]
 }
+
+Where the authoritative format profile lists sections, give every question a section naming the one it belongs to, emit each section's questions together in order, and make each section's marks sum exactly to the figure the profile gives that section. The paper's total is then the sum of those sections and must equal the profile's total exactly. Where the format has no sections, omit the field.
 
 sourceRefs must include only sources that materially informed the assessment profile, format, questions, marking guide, examiner insights, or grade guidance. For GCSE and A level, use the latest truly comparable official boundary as the main boundaries and add a historical median only from the same board, specification, tier/component and paper type across named years. Never mix incomparable papers. For university work, use the supplied rubric or otherwise give an estimated UK classification from percentage; do not invent institutional boundaries. Grade boundaries are official only when an authoritative source explicitly supplies them; otherwise label them estimated or return no boundaries. If status is needs_clarification, the paper fields may be empty arrays/strings, but all keys must still be present.`;
 }
@@ -396,7 +398,9 @@ export async function runPracticePaperGenerationRequest(
    * compare a draft against it. Passing the number makes that a check rather
    * than a hope.
    */
-  expectedTotalMarks?: number
+  expectedTotalMarks?: number,
+  /** What each section is worth, where the format profile lists sections. */
+  expectedSectionMarks?: Map<string, number>
 ) {
   if (!isAnyAiProviderConfigured()) return failure("AI features are not configured", 503, "not_configured");
   const auth = trustedAuth ?? await authenticate(request);
@@ -893,6 +897,36 @@ export async function runPracticePaperGenerationRequest(
       }
     }
 
+    /**
+     * The sections, now that a question can say which one it is in.
+     *
+     * The paper total alone lets a draft be right overall and wrong
+     * throughout, and a student practising a 24-mark section against 40 marks
+     * of questions has been misled about the paper they will sit.
+     */
+    if (expectedSectionMarks && expectedSectionMarks.size > 0) {
+      const built = new Map<string, number>();
+      for (const question of draft.questions) {
+        if (!question.section) continue;
+        built.set(question.section, (built.get(question.section) ?? 0) + question.marks);
+      }
+      const wrong = [...expectedSectionMarks.entries()]
+        .filter(([section, marks]) => (built.get(section) ?? 0) !== marks)
+        .map(([section, marks]) => ({ section, expected: marks, actual: built.get(section) ?? 0 }));
+      if (wrong.length > 0) {
+        log.warn("paper_design.section_mismatch", { sections: wrong });
+        forgetGenerationCheckpoint({ pass: "paper_design", subject: sourceRefs });
+        forgetGenerationCheckpoint({ pass: "paper_design_total_retry", subject: sourceRefs });
+        await refund("paper_section_mismatch");
+        return failure(
+          "Jami built sections that do not match this component: " +
+            wrong.map((entry) => `${entry.section} is ${entry.actual} marks, not ${entry.expected}`).join("; ") + ".",
+          422,
+          "paper_section_mismatch"
+        );
+      }
+    }
+
     if (expectedTotalMarks && draft.totalMarks !== expectedTotalMarks) {
       // Forget both, so a rerun draws a new paper rather than replaying this
       // one. The design varies widely between attempts on the same request, and
@@ -1336,6 +1370,8 @@ export async function runPracticePaperGenerationForBenchmark(input: {
   formatContext?: string;
   /** What the authoritative profile says the component is worth. */
   expectedTotalMarks?: number;
+  /** What each section is worth, where the profile lists sections. */
+  expectedSectionMarks?: Map<string, number>;
 }) {
   const request = new Request("http://jami.internal/paper-generation-benchmark", {
     method: "POST",
@@ -1350,7 +1386,8 @@ export async function runPracticePaperGenerationForBenchmark(input: {
     input.formatContext,
     { sources: input.sources, studyContext: input.studyContext },
     (value) => { diagnostics = value; },
-    input.expectedTotalMarks
+    input.expectedTotalMarks,
+    input.expectedSectionMarks
   );
   return { response, diagnostics };
 }

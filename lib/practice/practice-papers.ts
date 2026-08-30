@@ -139,6 +139,20 @@ export type PracticePaperQuestion = {
   prompt: string;
   marks: number;
   assets: PracticePaperQuestionAsset[];
+  /**
+   * Which section of the paper this question belongs to, where the format has
+   * sections.
+   *
+   * A question could not say. So a format profile describing "four sections of
+   * 24 marks each" described something the paper could not represent, the
+   * designer answered with a flat list, and nothing held it to the section
+   * totals: ten drafts of the same 96-mark component came back at 80, 96, 97,
+   * 136, 143, 154, 164, 169, 177 and 178 marks. One in ten was right.
+   *
+   * Optional because plenty of papers have no sections, and because every
+   * stored paper predates this.
+   */
+  section?: string;
 };
 
 export type PracticePaperChoiceGroup = {
@@ -584,6 +598,9 @@ export function normalizePracticePaperQuestions(value: unknown) {
       label: normalizeOptionalString(item.label, 80) ?? `Question ${questions.length + 1}`,
       prompt,
       marks: Math.max(1, finiteInteger(item.marks, 1)),
+      ...(normalizeOptionalString(item.section, 80)
+        ? { section: normalizeOptionalString(item.section, 80)! }
+        : {}),
       assets: normalizeQuestionAssets(item.assets),
     });
   }

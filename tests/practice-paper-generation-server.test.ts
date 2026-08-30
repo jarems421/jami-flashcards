@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { mapPracticePaperData } from "@/lib/practice/practice-papers";
 import {
   applyPracticePaperAuditRepairPatch,
   canonicalizeGeneratedMarkSchemeItems,
@@ -228,5 +229,55 @@ describe("practice-paper generation provider normalization", () => {
         { id: "q1.p2", marks: 1, code: "A", text: "Explains its consequence", dep: ["q1.p1"], ft: false, essentialTerms: [], allow: [], reject: [] },
       ],
     }], questions)).toEqual([expect.objectContaining({ questionId: "q1", marking: "additive" })]);
+  });
+});
+
+/**
+ * A question could not say which section it belonged to, so a profile
+ * describing "four sections of 24 marks each" described something the paper
+ * format could not represent. The designer answered with a flat list and
+ * nothing held it to the section totals: ten drafts of the same 96-mark
+ * component came back at 80, 96, 97, 136, 143, 154, 164, 169, 177 and 178
+ * marks. One in ten was right.
+ */
+describe("a question that knows its section", () => {
+  const paper = (questions: { id: string; section?: string; marks: number }[]) =>
+    mapPracticePaperData("p1", {
+      notebookId: "p1",
+      folderId: "f1",
+      title: "Paper",
+      status: "submitted",
+      questions: questions.map((q) => ({
+        id: q.id,
+        label: q.id.toUpperCase(),
+        prompt: "Answer.",
+        marks: q.marks,
+        ...(q.section ? { section: q.section } : {}),
+      })),
+    });
+
+  it("keeps the section it was given", () => {
+    const built = paper([{ id: "q1", section: "A", marks: 24 }]);
+    expect(built.questions[0].section).toBe("A");
+  });
+
+  /** Plenty of papers have no sections, and every stored paper predates this. */
+  it("leaves it off where the format has none", () => {
+    expect(paper([{ id: "q1", marks: 24 }]).questions[0].section).toBeUndefined();
+  });
+
+  it("adds up a section from the questions that name it", () => {
+    const built = paper([
+      { id: "q1", section: "A", marks: 2 },
+      { id: "q2", section: "A", marks: 4 },
+      { id: "q3", section: "B", marks: 6 },
+    ]);
+    const totals = new Map<string, number>();
+    for (const q of built.questions) {
+      if (!q.section) continue;
+      totals.set(q.section, (totals.get(q.section) ?? 0) + q.marks);
+    }
+    expect(totals.get("A")).toBe(6);
+    expect(totals.get("B")).toBe(6);
   });
 });
