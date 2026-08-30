@@ -17,6 +17,7 @@ import {
 } from "@/lib/ai/practice-paper-generation";
 import { captureGenerationPass } from "@/lib/ai/generation-capture";
 import {
+  forgetGenerationCheckpoint,
   readGenerationCheckpoint,
   writeGenerationCheckpoint,
   type CheckpointKey,
@@ -893,6 +894,11 @@ export async function runPracticePaperGenerationRequest(
     }
 
     if (expectedTotalMarks && draft.totalMarks !== expectedTotalMarks) {
+      // Forget both, so a rerun draws a new paper rather than replaying this
+      // one. The design varies widely between attempts on the same request, and
+      // a cached failure is what stopped retrying from ever escaping it.
+      forgetGenerationCheckpoint({ pass: "paper_design", subject: sourceRefs });
+      forgetGenerationCheckpoint({ pass: "paper_design_total_retry", subject: sourceRefs });
       log.warn("paper_design.total_mismatch", {
         expected: expectedTotalMarks,
         actual: draft.totalMarks,

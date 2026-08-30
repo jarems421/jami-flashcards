@@ -3,6 +3,7 @@ import { mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import {
+  forgetGenerationCheckpoint,
   readGenerationCheckpoint,
   writeGenerationCheckpoint,
 } from "@/lib/ai/generation-checkpoint";
@@ -103,5 +104,54 @@ describe("remembering a completed pass", () => {
     process.env.JAMI_GENERATION_CHECKPOINT_DIR = join(blocker, "nested");
     expect(() => writeGenerationCheckpoint(batch(["q1"]), { text: "x", modelName: "m" })).not.toThrow();
     expect(readGenerationCheckpoint(batch(["q1"]))).toBeNull();
+  });
+});
+
+/**
+ * A checkpoint is written as soon as a call returns, before the caller judges
+ * it, which is what makes a resumed run cheap. It also means a rejected result
+ * is remembered: a paper design worth 97 marks against a required 96 was
+ * cached under the sources it was built from, so every rerun replayed the same
+ * wrong paper. The design varies widely between attempts on the same request --
+ * 80, 96, 97, 143, 154, 164 and 177 marks across seven runs -- so resampling
+ * works, and caching the failure is what stopped it working.
+ */
+describe("forgetting a result that turned out unusable", () => {
+  let directory = "";
+  const previous = process.env.JAMI_GENERATION_CHECKPOINT_DIR;
+
+  beforeEach(() => {
+    directory = mkdtempSync(join(tmpdir(), "jami-forget-"));
+    process.env.JAMI_GENERATION_CHECKPOINT_DIR = directory;
+  });
+
+  afterEach(() => {
+    if (previous === undefined) delete process.env.JAMI_GENERATION_CHECKPOINT_DIR;
+    else process.env.JAMI_GENERATION_CHECKPOINT_DIR = previous;
+    rmSync(directory, { recursive: true, force: true });
+  });
+
+  const design = { pass: "paper_design", subject: ["src1"] };
+
+  it("lets the next run draw a new one", () => {
+    writeGenerationCheckpoint(design, { text: "a 97-mark paper", modelName: "m" });
+    expect(readGenerationCheckpoint(design)).not.toBeNull();
+    forgetGenerationCheckpoint(design);
+    expect(readGenerationCheckpoint(design)).toBeNull();
+  });
+
+  /** Forgetting one pass must not discard the others a run has banked. */
+  it("leaves every other pass alone", () => {
+    writeGenerationCheckpoint(design, { text: "design", modelName: "m" });
+    writeGenerationCheckpoint({ pass: "mark_scheme_batch", subject: ["q1"] }, {
+      text: "scheme",
+      modelName: "m",
+    });
+    forgetGenerationCheckpoint(design);
+    expect(readGenerationCheckpoint({ pass: "mark_scheme_batch", subject: ["q1"] })?.text).toBe("scheme");
+  });
+
+  it("does not complain about forgetting something never stored", () => {
+    expect(() => forgetGenerationCheckpoint({ pass: "never_ran", subject: ["x"] })).not.toThrow();
   });
 });

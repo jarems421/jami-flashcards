@@ -1,5 +1,5 @@
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
 /**
@@ -93,6 +93,28 @@ export function writeGenerationCheckpoint(key: CheckpointKey, value: Checkpointe
   try {
     mkdirSync(directory, { recursive: true });
     writeFileSync(fileFor(directory, key), JSON.stringify({ ...value, key }), "utf8");
+  } catch (error) {
+    complain(error);
+  }
+}
+
+/**
+ * Forget a pass whose result turned out to be unusable.
+ *
+ * A checkpoint is written as soon as a call returns, before the caller has
+ * judged it, which is what makes a resumed run cheap. It also means a rejected
+ * result is remembered: a paper design worth 97 marks against a required 96
+ * was cached under the sources it was built from, so every rerun replayed the
+ * same wrong paper instead of drawing a new one. The design pass varies enough
+ * between attempts to be worth resampling -- 80, 96, 97, 143, 154, 164 and 177
+ * marks across seven runs of the same request -- and caching the failure is
+ * what stopped that working.
+ */
+export function forgetGenerationCheckpoint(key: CheckpointKey) {
+  const directory = process.env.JAMI_GENERATION_CHECKPOINT_DIR;
+  if (!directory) return;
+  try {
+    rmSync(fileFor(directory, key), { force: true });
   } catch (error) {
     complain(error);
   }
