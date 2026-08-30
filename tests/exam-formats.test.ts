@@ -82,3 +82,71 @@ describe("exam-format profiles", () => {
     expect(findDistinctivePaperOverlap(["Answer all questions and show your working"], ["Answer all questions and show your working"])).toHaveLength(0);
   });
 });
+
+/**
+ * A profile whose own numbers do not add up cannot be satisfied by any paper,
+ * and until now nothing checked. `conflicting_marks` was a declared issue code
+ * that nothing ever produced.
+ *
+ * The researched AQA A-level Psychology profile said each of four topic blocks
+ * contributes 24 marks "via one 4-mark outline question and one 16-mark"
+ * question. 4 + 16 is 20, so four blocks reach 80 against a stated total of 96.
+ * The generator followed the question shapes, produced 80, and the whole-paper
+ * audit refused to publish a paper sixteen marks short of its own
+ * specification -- every run, for three days, after twenty-eight model calls
+ * had already been paid for.
+ */
+describe("a profile whose marks do not add up", () => {
+  const withSections = (totalMarks: number, sectionMarks: (number | undefined)[]) =>
+    normalizeExamFormatProfileVersion({
+      version: "2026",
+      boardLabel: "AQA",
+      qualification: "a_level",
+      qualificationLabel: "A-level",
+      subject: "Psychology",
+      specificationCode: "7182",
+      specificationTitle: "A-level Psychology",
+      componentCode: "1",
+      componentTitle: "Paper 1",
+      durationMinutes: 120,
+      totalMarks,
+      sections: sectionMarks.map((marks, index) => ({
+        id: `block${index + 1}`,
+        title: `Topic block ${index + 1}`,
+        ...(marks === undefined ? {} : { marks }),
+      })),
+      choiceRules: ["Answer all questions"],
+      status: "current",
+      sources: [
+        { id: "spec", title: "Specification", url: "https://www.aqa.org.uk/spec", documentType: "specification", retrievedAt: 1, documentHash: hash, supports: ["duration"] },
+        { id: "paper", title: "Specimen", url: "https://filestore.aqa.org.uk/s.pdf", documentType: "sample_paper", retrievedAt: 1, documentHash: hash, supports: ["marks"] },
+      ],
+    }, { profileId: "aqa-a-level-psychology-7182-1", board: "aqa", now: 10 });
+
+  it("reports the shortfall the audit would have found, before any paper is built", () => {
+    // The real defect: four blocks of 20 against a stated 96.
+    const normalized = withSections(96, [20, 20, 20, 20]);
+    const issue = normalized?.issues.find((entry) => entry.code === "conflicting_marks");
+    expect(issue).toBeDefined();
+    expect(issue?.message).toContain("80");
+    expect(issue?.message).toContain("96");
+  });
+
+  it("says nothing when the sections reach the stated total", () => {
+    const normalized = withSections(96, [24, 24, 24, 24]);
+    expect(normalized?.issues.some((entry) => entry.code === "conflicting_marks")).toBe(false);
+  });
+
+  /**
+   * A profile that describes its structure in prose is unverifiable here, not
+   * wrong. Flagging it would make the check noise and get it ignored.
+   */
+  it("declines to judge a profile that does not state section marks", () => {
+    expect(
+      withSections(96, [undefined, undefined])?.issues.some((entry) => entry.code === "conflicting_marks")
+    ).toBe(false);
+    expect(
+      withSections(96, [24, undefined])?.issues.some((entry) => entry.code === "conflicting_marks")
+    ).toBe(false);
+  });
+});

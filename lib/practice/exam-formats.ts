@@ -256,11 +256,52 @@ function normalizeMaterials(value: unknown): ExamFormatRequiredMaterial[] {
   });
 }
 
+/**
+ * Whether a profile's own numbers add up.
+ *
+ * `conflicting_marks` has been a declared issue code since this file was
+ * written and nothing has ever produced one, so nothing checked. The
+ * researched AQA A-level Psychology profile says each of four topic blocks
+ * contributes 24 marks "via one 4-mark outline question and one 16-mark"
+ * question, and 4 + 16 is 20. Four blocks of 20 is 80 against a stated total of
+ * 96.
+ *
+ * A paper generator handed that cannot satisfy it. It followed the question
+ * shapes, produced 80 marks, and the whole-paper audit correctly refused to
+ * publish something sixteen marks short of its own specification -- every run,
+ * for three days, after twenty-eight model calls had already been paid for.
+ * The instructions were impossible before the first call was made.
+ *
+ * This is arithmetic rather than judgement, so it belongs here rather than in a
+ * model's opinion, and it costs nothing to run before generation starts.
+ */
+function markArithmeticIssues(input: {
+  totalMarks: number;
+  sections: ExamFormatSection[];
+}): ExamFormatVerificationIssue[] {
+  const stated = input.sections
+    .map((section) => section.marks)
+    .filter((marks): marks is number => typeof marks === "number" && marks > 0);
+  // Only where every section declares its marks. A profile that describes its
+  // structure in prose is unverifiable here, not wrong.
+  if (stated.length === 0 || stated.length !== input.sections.length) return [];
+
+  const summed = stated.reduce((total, marks) => total + marks, 0);
+  if (summed === input.totalMarks) return [];
+  return [{
+    code: "conflicting_marks",
+    message:
+      `Sections total ${summed} marks against a stated paper total of ${input.totalMarks}. ` +
+      "A paper built to these sections cannot reach the total, and an audit will refuse it.",
+  }];
+}
+
 function verificationIssues(input: {
   sources: ExamFormatSourceReceipt[];
   durationMinutes: number;
   totalMarks: number;
   componentCode: string;
+  sections: ExamFormatSection[];
   assessmentArtifactUnavailable?: boolean;
 }) {
   const issues: ExamFormatVerificationIssue[] = [];
@@ -277,6 +318,7 @@ function verificationIssues(input: {
   if (!input.durationMinutes || !input.totalMarks || !input.componentCode) {
     issues.push({ code: "conflicting_component", message: "The component structure is incomplete." });
   }
+  issues.push(...markArithmeticIssues({ totalMarks: input.totalMarks, sections: input.sections }));
   return issues;
 }
 
@@ -292,11 +334,13 @@ export function normalizeExamFormatProfileVersion(
   const durationMinutes = integer(raw.durationMinutes, 600);
   const totalMarks = integer(raw.totalMarks, 1_000);
   const componentCode = text(raw.componentCode, 120);
+  const sections = normalizeSections(raw.sections);
   const derivedIssues = verificationIssues({
     sources,
     durationMinutes,
     totalMarks,
     componentCode,
+    sections,
     assessmentArtifactUnavailable: raw.assessmentArtifactUnavailable === true,
   });
   const suppliedIssues: ExamFormatVerificationIssue[] = Array.isArray(raw.issues)
@@ -339,7 +383,7 @@ export function normalizeExamFormatProfileVersion(
       ? raw.calculatorPolicy : undefined,
     durationMinutes,
     totalMarks,
-    sections: normalizeSections(raw.sections),
+    sections,
     choiceRules: list(raw.choiceRules, 20, 500),
     assessmentObjectives: list(raw.assessmentObjectives, 30, 300),
     topicExpectations: list(raw.topicExpectations, 80, 300),
