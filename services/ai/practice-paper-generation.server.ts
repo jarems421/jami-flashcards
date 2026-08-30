@@ -18,6 +18,7 @@ import {
 import { captureGenerationPass } from "@/lib/ai/generation-capture";
 import {
   forgetGenerationCheckpoint,
+  questionFingerprint,
   readGenerationCheckpoint,
   writeGenerationCheckpoint,
   type CheckpointKey,
@@ -1004,7 +1005,14 @@ Return only {"items":[...]}. Never repeat the paper, questions, assets, instruct
           // The questions, not the batch number. High-tariff questions are
           // split into batches of their own, so the same position covers
           // different questions between runs.
-          checkpoint: { pass: "mark_scheme_batch", subject: questions.map((question) => question.id) },
+          checkpoint: {
+            pass: "mark_scheme_batch",
+            subject: questions.map((question) => question.id),
+            // The questions themselves, because q5 means a different question
+            // in every design and an id alone once served one paper's scheme
+            // for another paper's question.
+            fingerprint: questionFingerprint(questions),
+          },
           taskClass: "important",
           role: markSchemeRole,
           systemInstruction: markSchemeInstruction,

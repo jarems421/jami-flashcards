@@ -43,15 +43,51 @@ export type CheckpointKey = {
    * while looking like it worked.
    */
   subject: readonly string[];
+  /**
+   * What the subject actually *says*, when its ids alone cannot identify it.
+   *
+   * Ids were chosen over positions to stop a batch being served another
+   * batch's scheme, and they do not achieve it: every design numbers its
+   * questions q1..q18, so an id identifies a slot and not a question. Two
+   * designs of the same component wrote into one store and it served the
+   * earlier paper's schemes for the later paper's questions -- q5 asked what
+   * interference is and was given a scheme for STM encoding and capacity,
+   * "acoustic, 7 +/- 2 items". Nothing downstream could see it, and the paper
+   * was published.
+   *
+   * Callers pass a digest of the questions themselves. A design that differs by
+   * one word of one prompt misses every scheme batch, which costs a rerun; the
+   * alternative cost a student being marked against a question nobody asked
+   * them.
+   */
+  fingerprint?: string;
 };
 
 export type CheckpointedPass = { text: string; modelName: string };
 
 const fileFor = (directory: string, key: CheckpointKey) => {
   const subject = [...key.subject].sort().join("|");
-  const digest = createHash("sha256").update(`${key.pass}::${subject}`).digest("hex").slice(0, 16);
+  const digest = createHash("sha256")
+    .update(`${key.pass}::${subject}::${key.fingerprint ?? ""}`)
+    .digest("hex")
+    .slice(0, 16);
   return join(directory, `${key.pass}-${digest}.json`);
 };
+
+/**
+ * A stable digest of the questions a pass is about.
+ *
+ * Prompt and marks, in order: the two things that decide whether a scheme
+ * written earlier is still a scheme for this question.
+ */
+export function questionFingerprint(
+  questions: readonly { prompt: string; marks: number }[]
+) {
+  return createHash("sha256")
+    .update(questions.map((question) => `${question.marks}:${question.prompt}`).join("|#|"))
+    .digest("hex")
+    .slice(0, 16);
+}
 
 let warned = false;
 

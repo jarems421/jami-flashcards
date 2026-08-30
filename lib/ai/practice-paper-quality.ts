@@ -4,6 +4,7 @@ import {
   validateMarkSchemeItem,
   type MarkSchemeIssue,
 } from "@/lib/practice/mark-schemes";
+import { schemeAlignmentIssues } from "@/lib/practice/scheme-alignment";
 
 /**
  * Everything wrong with a paper's marking guide, said specifically.
@@ -41,6 +42,10 @@ export function markSchemeIssues(
       });
     }
     issues.push(...validateMarkSchemeItem(scheme));
+    // Whether the scheme is about this question, not merely well-formed.
+    // Everything above this line passed on a paper whose q5 asked what
+    // interference is and whose q5 scheme answered STM encoding and capacity.
+    issues.push(...schemeAlignmentIssues(question, scheme));
   }
   return issues;
 }
